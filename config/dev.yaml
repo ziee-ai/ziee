@@ -1,0 +1,73 @@
+# Development runtime configuration for ziee-chat web backend
+# This file is used by src-web when running the application
+
+# PostgreSQL connection settings
+postgresql:
+  # Use embedded PostgreSQL (true) or external PostgreSQL (false)
+  use_embedded: true
+
+  # Embedded PostgreSQL configuration (used when use_embedded: true)
+  embedded:
+    version: "17.5.0"
+    port: 54321  # Use 0 for automatic port selection
+    bind_address: "127.0.0.1"
+    username: "postgres"
+    password: "password"
+    database: "postgres"
+
+    # Directories for embedded PostgreSQL runtime instance
+    installation_dir: "../../ziee-chat-data/dev/postgres"
+    data_dir: "../../ziee-chat-data/dev/postgres-data"
+
+    # Timezone settings
+    timezone: "UTC"
+    log_timezone: "UTC"
+
+    # Logging configuration for embedded PostgreSQL
+    logging:
+      collector: true
+      directory: "log"
+      filename: "postgresql-%Y-%m-%d_%H%M%S.log"
+      statement: "all"
+
+  # External PostgreSQL configuration (used when use_embedded: false)
+  external:
+    host: "localhost"
+    port: 5432
+    username: "postgres"
+    password: "password"
+    database: "ziee_chat_dev"
+
+  # Connection pool settings (used for both embedded and external)
+  pool:
+    max_connections: 10
+    min_connections: 1
+    acquire_timeout_secs: 5
+    idle_timeout_secs: 30
+    max_lifetime_secs: 300
+
+# Web server settings
+server:
+  host: "127.0.0.1"
+  port: 3000  # Use 0 for automatic port selection
+  api_prefix: "/api"  # Base path prefix for all API routes
+
+  # CORS settings
+  cors:
+    allow_origins:
+      - "http://localhost:5173"
+      - "http://localhost:3000"
+    allow_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "OPTIONS"
+    allow_headers:
+      - "Content-Type"
+      - "Authorization"
+
+# Logging settings
+logging:
+  level: "debug"
+  format: "pretty"
