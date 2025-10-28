@@ -1,6 +1,12 @@
-use super::models::*;
 use sqlx::PgPool;
 use uuid::Uuid;
+
+use super::models::{Group, User};
+use crate::common::AppError;
+
+// =====================================================
+// User Repository
+// =====================================================
 
 #[derive(Clone)]
 pub struct UserRepository {
@@ -12,135 +18,109 @@ impl UserRepository {
         Self { pool }
     }
 
-    /// Get user by ID with all related data
-    pub async fn get_by_id(&self, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
-        let user_base = sqlx::query_as!(
-            UserBase,
+    /// Get user by ID
+    pub async fn get_by_id(&self, id: Uuid) -> Result<Option<User>, AppError> {
+        sqlx::query_as!(
+            User,
             r#"
-            SELECT
-                id,
-                username,
-                created_at,
-                profile,
-                is_active,
-                is_protected,
-                last_login_at,
-                updated_at
+            SELECT id, username, email, email_verified, password_hash, display_name,
+                   avatar_url, is_active, is_admin, permissions,
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
             FROM users
             WHERE id = $1
             "#,
-            user_id
+            id
         )
         .fetch_optional(&self.pool)
-        .await?;
-
-        let Some(user_base) = user_base else {
-            return Ok(None);
-        };
-
-        let emails = self.get_user_emails(user_id).await?;
-        let services = self.get_user_services(user_id).await?;
-
-        Ok(Some(User::from_db_parts(user_base, emails, services)))
+        .await
+        .map_err(AppError::database_error)
     }
 
     /// Get user by username
-    pub async fn get_by_username(&self, username: &str) -> Result<Option<User>, sqlx::Error> {
-        let user_base = sqlx::query_as!(
-            UserBase,
+    pub async fn get_by_username(&self, username: &str) -> Result<Option<User>, AppError> {
+        sqlx::query_as!(
+            User,
             r#"
-            SELECT
-                id,
-                username,
-                created_at,
-                profile,
-                is_active,
-                is_protected,
-                last_login_at,
-                updated_at
+            SELECT id, username, email, email_verified, password_hash, display_name,
+                   avatar_url, is_active, is_admin, permissions,
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
             FROM users
             WHERE username = $1
             "#,
             username
         )
         .fetch_optional(&self.pool)
-        .await?;
-
-        let Some(user_base) = user_base else {
-            return Ok(None);
-        };
-
-        let emails = self.get_user_emails(user_base.id).await?;
-        let services = self.get_user_services(user_base.id).await?;
-
-        Ok(Some(User::from_db_parts(user_base, emails, services)))
+        .await
+        .map_err(AppError::database_error)
     }
 
     /// Get user by email
-    pub async fn get_by_email(&self, email: &str) -> Result<Option<User>, sqlx::Error> {
-        let user_email = sqlx::query_as!(
-            UserEmail,
+    pub async fn get_by_email(&self, email: &str) -> Result<Option<User>, AppError> {
+        sqlx::query_as!(
+            User,
             r#"
-            SELECT
-                id,
-                user_id,
-                address,
-                verified,
-                created_at
-            FROM user_emails
-            WHERE address = $1
+            SELECT id, username, email, email_verified, password_hash, display_name,
+                   avatar_url, is_active, is_admin, permissions,
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+            FROM users
+            WHERE email = $1
             "#,
             email
         )
         .fetch_optional(&self.pool)
-        .await?;
-
-        let Some(user_email) = user_email else {
-            return Ok(None);
-        };
-
-        self.get_by_id(user_email.user_id).await
+        .await
+        .map_err(AppError::database_error)
     }
 
-    /// Get all emails for a user
-    async fn get_user_emails(&self, user_id: Uuid) -> Result<Vec<UserEmail>, sqlx::Error> {
+    /// Get user by username or email
+    pub async fn get_by_username_or_email(&self, identifier: &str) -> Result<Option<User>, AppError> {
         sqlx::query_as!(
-            UserEmail,
+            User,
             r#"
-            SELECT
-                id,
-                user_id,
-                address,
-                verified,
-                created_at
-            FROM user_emails
-            WHERE user_id = $1
-            ORDER BY created_at
+            SELECT id, username, email, email_verified, password_hash, display_name,
+                   avatar_url, is_active, is_admin, permissions,
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+            FROM users
+            WHERE username = $1 OR email = $1
             "#,
-            user_id
+            identifier
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
+    /// List users with pagination
+    pub async fn list(&self, page: i32, per_page: i32) -> Result<(Vec<User>, i64), AppError> {
+        let offset = ((page - 1) * per_page) as i64;
+
+        // Get total count
+        let total: i64 = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!" FROM users"#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        // Get paginated users
+        let users = sqlx::query_as!(
+            User,
+            r#"
+            SELECT id, username, email, email_verified, password_hash, display_name,
+                   avatar_url, is_active, is_admin, permissions,
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+            FROM users
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+            "#,
+            per_page as i64,
+            offset
         )
         .fetch_all(&self.pool)
         .await
-    }
+        .map_err(AppError::database_error)?;
 
-    /// Get all services for a user
-    async fn get_user_services(&self, user_id: Uuid) -> Result<Vec<UserService>, sqlx::Error> {
-        sqlx::query_as!(
-            UserService,
-            r#"
-            SELECT
-                id,
-                user_id,
-                service_name,
-                service_data,
-                created_at
-            FROM user_services
-            WHERE user_id = $1
-            "#,
-            user_id
-        )
-        .fetch_all(&self.pool)
-        .await
+        Ok((users, total))
     }
 
     /// Create a new user
@@ -148,296 +128,391 @@ impl UserRepository {
         &self,
         username: &str,
         email: &str,
-        password_service: &PasswordService,
-        profile: Option<serde_json::Value>,
-    ) -> Result<User, sqlx::Error> {
-        // Start transaction
-        let mut tx = self.pool.begin().await?;
-
-        // Insert user
-        let user_base = sqlx::query_as!(
-            UserBase,
+        password_hash: Option<String>,
+        display_name: Option<String>,
+    ) -> Result<User, AppError> {
+        sqlx::query_as!(
+            User,
             r#"
-            INSERT INTO users (username, profile, is_active, is_protected)
-            VALUES ($1, $2, true, false)
-            RETURNING id, username, created_at, profile, is_active, is_protected, last_login_at, updated_at
+            INSERT INTO users (username, email, password_hash, display_name)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, username, email, email_verified, password_hash, display_name,
+                      avatar_url, is_active, is_admin, permissions,
+                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
             "#,
             username,
-            profile
+            email,
+            password_hash,
+            display_name
         )
-        .fetch_one(&mut *tx)
-        .await?;
-
-        // Insert email
-        let user_email = sqlx::query_as!(
-            UserEmail,
-            r#"
-            INSERT INTO user_emails (user_id, address, verified)
-            VALUES ($1, $2, false)
-            RETURNING id, user_id, address, verified, created_at
-            "#,
-            user_base.id,
-            email
-        )
-        .fetch_one(&mut *tx)
-        .await?;
-
-        // Insert password service
-        let service_data = serde_json::to_value(password_service)
-            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
-        let user_service = sqlx::query_as!(
-            UserService,
-            r#"
-            INSERT INTO user_services (user_id, service_name, service_data)
-            VALUES ($1, 'password', $2)
-            RETURNING id, user_id, service_name, service_data, created_at
-            "#,
-            user_base.id,
-            service_data
-        )
-        .fetch_one(&mut *tx)
-        .await?;
-
-        tx.commit().await?;
-
-        Ok(User::from_db_parts(
-            user_base,
-            vec![user_email],
-            vec![user_service],
-        ))
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)
     }
 
     /// Update user
     pub async fn update(
         &self,
-        user_id: Uuid,
-        username: Option<&str>,
-        is_active: Option<bool>,
-        profile: Option<serde_json::Value>,
-    ) -> Result<Option<User>, sqlx::Error> {
-        // Update only provided fields
-        let user_base = if let Some(username) = username {
-            sqlx::query_as!(
-                UserBase,
-                r#"
-                UPDATE users
-                SET username = COALESCE($2, username),
-                    is_active = COALESCE($3, is_active),
-                    profile = COALESCE($4, profile),
-                    updated_at = NOW()
-                WHERE id = $1
-                RETURNING id, username, created_at, profile, is_active, is_protected, last_login_at, updated_at
-                "#,
-                user_id,
-                username,
-                is_active,
-                profile
-            )
-            .fetch_optional(&self.pool)
-            .await?
-        } else {
-            sqlx::query_as!(
-                UserBase,
-                r#"
-                UPDATE users
-                SET is_active = COALESCE($2, is_active),
-                    profile = COALESCE($3, profile),
-                    updated_at = NOW()
-                WHERE id = $1
-                RETURNING id, username, created_at, profile, is_active, is_protected, last_login_at, updated_at
-                "#,
-                user_id,
-                is_active,
-                profile
-            )
-            .fetch_optional(&self.pool)
-            .await?
-        };
+        id: Uuid,
+        username: Option<String>,
+        email: Option<String>,
+        display_name: Option<String>,
+    ) -> Result<User, AppError> {
+        sqlx::query_as!(
+            User,
+            r#"
+            UPDATE users
+            SET username = COALESCE($2, username),
+                email = COALESCE($3, email),
+                display_name = COALESCE($4, display_name),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, username, email, email_verified, password_hash, display_name,
+                      avatar_url, is_active, is_admin, permissions,
+                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+            "#,
+            id,
+            username,
+            email,
+            display_name
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
 
-        let Some(user_base) = user_base else {
-            return Ok(None);
-        };
+    /// Update password hash
+    pub async fn update_password(&self, id: Uuid, password_hash: &str) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            UPDATE users
+            SET password_hash = $2, updated_at = NOW()
+            WHERE id = $1
+            "#,
+            id,
+            password_hash
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
 
-        let emails = self.get_user_emails(user_id).await?;
-        let services = self.get_user_services(user_id).await?;
+    /// Update last login timestamp
+    pub async fn update_last_login(&self, id: Uuid) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            UPDATE users
+            SET last_login_at = NOW()
+            WHERE id = $1
+            "#,
+            id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
 
-        Ok(Some(User::from_db_parts(user_base, emails, services)))
+    /// Set user active status
+    pub async fn set_active(&self, id: Uuid, is_active: bool) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            UPDATE users
+            SET is_active = $2, updated_at = NOW()
+            WHERE id = $1
+            "#,
+            id,
+            is_active
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
     }
 
     /// Delete user
-    pub async fn delete(&self, user_id: Uuid) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query!(
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        sqlx::query!(
             r#"
             DELETE FROM users WHERE id = $1
             "#,
-            user_id
+            id
         )
         .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected() > 0)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
     }
 
-    /// List users with pagination
-    pub async fn list(
+    /// Get user's groups
+    pub async fn get_user_groups(&self, user_id: Uuid) -> Result<Vec<Group>, AppError> {
+        sqlx::query_as!(
+            Group,
+            r#"
+            SELECT g.id, g.name, g.description, g.permissions, g.is_system, g.is_active,
+                   g.created_at as "created_at: _", g.updated_at as "updated_at: _"
+            FROM groups g
+            INNER JOIN user_groups ug ON ug.group_id = g.id
+            WHERE ug.user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
+    /// Assign user to group
+    pub async fn assign_to_group(
         &self,
-        page: i32,
-        per_page: i32,
-    ) -> Result<(Vec<User>, i64), sqlx::Error> {
+        user_id: Uuid,
+        group_id: Uuid,
+        assigned_by: Option<Uuid>,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            INSERT INTO user_groups (user_id, group_id, assigned_by)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, group_id) DO NOTHING
+            "#,
+            user_id,
+            group_id,
+            assigned_by
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// Remove user from group
+    pub async fn remove_from_group(&self, user_id: Uuid, group_id: Uuid) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            DELETE FROM user_groups
+            WHERE user_id = $1 AND group_id = $2
+            "#,
+            user_id,
+            group_id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+}
+
+// =====================================================
+// Group Repository
+// =====================================================
+
+#[derive(Clone)]
+pub struct GroupRepository {
+    pool: PgPool,
+}
+
+impl GroupRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    /// Get group by ID
+    pub async fn get_by_id(&self, id: Uuid) -> Result<Option<Group>, AppError> {
+        sqlx::query_as!(
+            Group,
+            r#"
+            SELECT id, name, description, permissions, is_system, is_active,
+                   created_at as "created_at: _", updated_at as "updated_at: _"
+            FROM groups
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
+    /// Get group by name
+    pub async fn get_by_name(&self, name: &str) -> Result<Option<Group>, AppError> {
+        sqlx::query_as!(
+            Group,
+            r#"
+            SELECT id, name, description, permissions, is_system, is_active,
+                   created_at as "created_at: _", updated_at as "updated_at: _"
+            FROM groups
+            WHERE name = $1
+            "#,
+            name
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
+    /// Get all groups
+    pub async fn get_all(&self) -> Result<Vec<Group>, AppError> {
+        sqlx::query_as!(
+            Group,
+            r#"
+            SELECT id, name, description, permissions, is_system, is_active,
+                   created_at as "created_at: _", updated_at as "updated_at: _"
+            FROM groups
+            ORDER BY name
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
+    /// List groups with pagination
+    pub async fn list(&self, page: i32, per_page: i32) -> Result<(Vec<Group>, i64), AppError> {
         let offset = (page - 1) * per_page;
 
         // Get total count
-        let total = sqlx::query_scalar!(
-            r#"
-            SELECT COUNT(*) as "count!" FROM users
-            "#
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let total = sqlx::query_scalar!("SELECT COUNT(*) FROM groups")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::database_error)?
+            .unwrap_or(0);
 
-        // Get paginated users
-        let user_bases = sqlx::query_as!(
-            UserBase,
+        // Get paginated results
+        let groups = sqlx::query_as!(
+            Group,
             r#"
-            SELECT
-                id,
-                username,
-                created_at,
-                profile,
-                is_active,
-                is_protected,
-                last_login_at,
-                updated_at
-            FROM users
-            ORDER BY created_at DESC
+            SELECT id, name, description, permissions, is_system, is_active,
+                   created_at as "created_at: _", updated_at as "updated_at: _"
+            FROM groups
+            ORDER BY name
             LIMIT $1 OFFSET $2
             "#,
             per_page as i64,
             offset as i64
         )
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(AppError::database_error)?;
 
-        // Build complete user objects
-        let mut users = Vec::new();
-        for user_base in user_bases {
-            let emails = self.get_user_emails(user_base.id).await?;
-            let services = self.get_user_services(user_base.id).await?;
-            users.push(User::from_db_parts(user_base, emails, services));
-        }
-
-        Ok((users, total))
+        Ok((groups, total))
     }
 
-    /// Update user password
-    pub async fn update_password(
+    /// Create a new group
+    pub async fn create(
         &self,
-        user_id: Uuid,
-        password_service: &PasswordService,
-    ) -> Result<bool, sqlx::Error> {
-        let service_data = serde_json::to_value(password_service)
-            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
-
-        let result = sqlx::query!(
-            r#"
-            UPDATE user_services
-            SET service_data = $1
-            WHERE user_id = $2 AND service_name = 'password'
-            "#,
-            service_data,
-            user_id
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected() > 0)
-    }
-
-    /// Update last login timestamp
-    pub async fn update_last_login(&self, user_id: Uuid) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query!(
-            r#"
-            UPDATE users
-            SET last_login_at = NOW()
-            WHERE id = $1
-            "#,
-            user_id
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected() > 0)
-    }
-
-    /// Store login token
-    pub async fn store_login_token(
-        &self,
-        user_id: Uuid,
-        token: &str,
-        when_created: i64,
-        expires_at: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<UserLoginToken, sqlx::Error> {
+        name: &str,
+        description: Option<String>,
+        permissions: Vec<String>,
+    ) -> Result<Group, AppError> {
         sqlx::query_as!(
-            UserLoginToken,
+            Group,
             r#"
-            INSERT INTO user_login_tokens (user_id, token, when_created, expires_at)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, user_id, token, when_created, expires_at, created_at
+            INSERT INTO groups (name, description, permissions)
+            VALUES ($1, $2, $3)
+            RETURNING id, name, description, permissions, is_system, is_active,
+                      created_at as "created_at: _", updated_at as "updated_at: _"
             "#,
-            user_id,
-            token,
-            when_created,
-            expires_at
+            name,
+            description,
+            &permissions
         )
         .fetch_one(&self.pool)
         .await
+        .map_err(AppError::database_error)
     }
 
-    /// Get user by token
-    pub async fn get_by_token(&self, token: &str) -> Result<Option<User>, sqlx::Error> {
-        let login_token = sqlx::query_as!(
-            UserLoginToken,
+    /// Update group
+    pub async fn update(
+        &self,
+        id: Uuid,
+        name: Option<String>,
+        description: Option<String>,
+        permissions: Option<Vec<String>>,
+        is_active: Option<bool>,
+    ) -> Result<Group, AppError> {
+        sqlx::query_as!(
+            Group,
             r#"
-            SELECT
-                id,
-                user_id,
-                token,
-                when_created,
-                expires_at,
-                created_at
-            FROM user_login_tokens
-            WHERE token = $1
+            UPDATE groups
+            SET name = COALESCE($2, name),
+                description = COALESCE($3, description),
+                permissions = COALESCE($4, permissions),
+                is_active = COALESCE($5, is_active),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, name, description, permissions, is_system, is_active,
+                      created_at as "created_at: _", updated_at as "updated_at: _"
             "#,
-            token
+            id,
+            name,
+            description,
+            permissions.as_deref(),
+            is_active
         )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        let Some(login_token) = login_token else {
-            return Ok(None);
-        };
-
-        // Check if token is expired
-        if let Some(expires_at) = login_token.expires_at {
-            if expires_at < chrono::Utc::now() {
-                return Ok(None);
-            }
-        }
-
-        self.get_by_id(login_token.user_id).await
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)
     }
 
-    /// Delete login token
-    pub async fn delete_login_token(&self, token: &str) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query!(
+    /// Delete group (only non-system groups)
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        sqlx::query!(
             r#"
-            DELETE FROM user_login_tokens WHERE token = $1
+            DELETE FROM groups WHERE id = $1 AND is_system = FALSE
             "#,
-            token
+            id
         )
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
 
-        Ok(result.rows_affected() > 0)
+    /// Get members of a group with pagination
+    pub async fn get_members(
+        &self,
+        group_id: Uuid,
+        page: i32,
+        per_page: i32,
+    ) -> Result<(Vec<User>, i64), AppError> {
+        let offset = (page - 1) * per_page;
+
+        // Get total count
+        let total = sqlx::query_scalar!(
+            r#"
+            SELECT COUNT(*) FROM user_groups WHERE group_id = $1
+            "#,
+            group_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)?
+        .unwrap_or(0);
+
+        // Get paginated members
+        let users = sqlx::query_as!(
+            User,
+            r#"
+            SELECT u.id, u.username, u.email, u.email_verified, u.password_hash,
+                   u.display_name, u.avatar_url, u.is_active, u.is_admin,
+                   ARRAY[]::TEXT[] as "permissions!",
+                   u.created_at as "created_at: _", u.updated_at as "updated_at: _",
+                   u.last_login_at as "last_login_at: _"
+            FROM users u
+            INNER JOIN user_groups ug ON u.id = ug.user_id
+            WHERE ug.group_id = $1
+            ORDER BY u.username
+            LIMIT $2 OFFSET $3
+            "#,
+            group_id,
+            per_page as i64,
+            offset as i64
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok((users, total))
     }
 }

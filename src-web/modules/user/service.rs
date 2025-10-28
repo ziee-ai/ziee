@@ -1,239 +1,178 @@
-use super::models::*;
-use super::repository::UserRepository;
-use bcrypt::{hash, verify, DEFAULT_COST};
-use rand::{rng, Rng};
+use std::collections::HashSet;
 use uuid::Uuid;
 
+use super::models::{Group, User};
+use super::repository::{GroupRepository, UserRepository};
+use crate::common::AppError;
+
+// =====================================================
+// User Service
+// =====================================================
+
+#[derive(Clone)]
 pub struct UserService {
-    repository: UserRepository,
+    user_repo: UserRepository,
+    group_repo: GroupRepository,
 }
 
 impl UserService {
-    pub fn new(repository: UserRepository) -> Self {
-        Self { repository }
-    }
-
-    /// Create a new user with password
-    pub async fn create_user(
-        &self,
-        request: CreateUserRequest,
-    ) -> Result<User, Box<dyn std::error::Error + Send + Sync>> {
-        // Check if username already exists
-        if let Some(_) = self.repository.get_by_username(&request.username).await? {
-            return Err("Username already exists".into());
+    pub fn new(user_repo: UserRepository, group_repo: GroupRepository) -> Self {
+        Self {
+            user_repo,
+            group_repo,
         }
-
-        // Check if email already exists
-        if let Some(_) = self.repository.get_by_email(&request.email).await? {
-            return Err("Email already exists".into());
-        }
-
-        // Generate salt and hash password
-        let salt = Self::generate_salt();
-        let bcrypt_hash = hash(&request.password, DEFAULT_COST)?;
-
-        let password_service = PasswordService {
-            bcrypt: bcrypt_hash,
-            salt,
-        };
-
-        // Create user
-        let user = self
-            .repository
-            .create(
-                &request.username,
-                &request.email,
-                &password_service,
-                request.profile,
-            )
-            .await?;
-
-        Ok(user)
     }
 
     /// Get user by ID
-    pub async fn get_user(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(self.repository.get_by_id(user_id).await?)
+    pub async fn get_user(&self, id: Uuid) -> Result<Option<User>, AppError> {
+        self.user_repo.get_by_id(id).await
     }
 
     /// Get user by username
-    #[allow(dead_code)]
-    pub async fn get_user_by_username(
-        &self,
-        username: &str,
-    ) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(self.repository.get_by_username(username).await?)
+    pub async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, AppError> {
+        self.user_repo.get_by_username(username).await
     }
 
-    /// Get user by email
-    #[allow(dead_code)]
-    pub async fn get_user_by_email(
-        &self,
-        email: &str,
-    ) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(self.repository.get_by_email(email).await?)
-    }
+    /// Get user permissions (from all groups only, not including direct user permissions)
+    pub async fn get_user_permissions(&self, user_id: Uuid) -> Result<HashSet<String>, AppError> {
+        let groups = self.user_repo.get_user_groups(user_id).await?;
 
-    /// Update user
-    pub async fn update_user(
-        &self,
-        user_id: Uuid,
-        request: UpdateUserRequest,
-    ) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
-        // If updating username, check if it's already taken
-        if let Some(ref username) = request.username {
-            if let Some(existing_user) = self.repository.get_by_username(username).await? {
-                if existing_user.id != user_id {
-                    return Err("Username already exists".into());
-                }
-            }
+        let mut permissions = HashSet::new();
+        for group in groups {
+            permissions.extend(group.permissions.into_iter());
         }
 
-        Ok(self
-            .repository
-            .update(
-                user_id,
-                request.username.as_deref(),
-                request.is_active,
-                request.profile,
-            )
-            .await?)
+        Ok(permissions)
     }
 
-    /// Delete user
-    pub async fn delete_user(
-        &self,
-        user_id: Uuid,
-    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        // Check if user is protected
-        if let Some(user) = self.repository.get_by_id(user_id).await? {
-            if user.is_protected {
-                return Err("Cannot delete protected user".into());
-            }
-        }
-
-        Ok(self.repository.delete(user_id).await?)
-    }
-
-    /// List users with pagination
-    pub async fn list_users(
-        &self,
-        page: i32,
-        per_page: i32,
-    ) -> Result<UserListResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let (users, total) = self.repository.list(page, per_page).await?;
-
-        Ok(UserListResponse {
-            users,
-            total,
-            page,
-            per_page,
-        })
-    }
-
-    /// Change user password (requires old password)
-    pub async fn change_password(
-        &self,
-        user_id: Uuid,
-        request: ChangePasswordRequest,
-    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        // Get user with services
+    /// Get effective permissions (union of user's direct permissions + all group permissions)
+    pub async fn get_effective_permissions(&self, user_id: Uuid) -> Result<Vec<String>, AppError> {
         let user = self
-            .repository
+            .user_repo
             .get_by_id(user_id)
             .await?
-            .ok_or("User not found")?;
+            .ok_or_else(|| AppError::not_found("User"))?;
 
-        // Verify old password
-        let password_service = user
-            .services
-            .password
-            .as_ref()
-            .ok_or("User has no password service")?;
+        let groups = self.user_repo.get_user_groups(user_id).await?;
 
-        if !verify(&request.old_password, &password_service.bcrypt)? {
-            return Err("Invalid old password".into());
+        let mut permissions = HashSet::new();
+
+        // Add user's direct permissions
+        permissions.extend(user.permissions.into_iter());
+
+        // Add permissions from all active groups
+        for group in groups {
+            if group.is_active {
+                permissions.extend(group.permissions.into_iter());
+            }
         }
 
-        // Hash new password
-        let salt = Self::generate_salt();
-        let bcrypt_hash = hash(&request.new_password, DEFAULT_COST)?;
-
-        let new_password_service = PasswordService {
-            bcrypt: bcrypt_hash,
-            salt,
-        };
-
-        Ok(self
-            .repository
-            .update_password(user_id, &new_password_service)
-            .await?)
+        // Convert to sorted vector for consistent output
+        let mut permissions_vec: Vec<String> = permissions.into_iter().collect();
+        permissions_vec.sort();
+        Ok(permissions_vec)
     }
 
-    /// Reset user password (admin function, doesn't require old password)
-    pub async fn reset_password(
+    /// Check if user has a specific permission
+    pub async fn has_permission(&self, user_id: Uuid, permission: &str) -> Result<bool, AppError> {
+        // Get user to check if admin
+        let user = self
+            .user_repo
+            .get_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("User"))?;
+
+        // Admins have all permissions
+        if user.is_admin {
+            return Ok(true);
+        }
+
+        let permissions = self.get_user_permissions(user_id).await?;
+
+        // Check for wildcard permission
+        if permissions.contains("*") {
+            return Ok(true);
+        }
+
+        // Check exact match
+        if permissions.contains(permission) {
+            return Ok(true);
+        }
+
+        // Check resource wildcard (e.g., "chat:*" matches "chat:read")
+        if let Some((resource, _)) = permission.split_once(':') {
+            let wildcard = format!("{}:*", resource);
+            if permissions.contains(&wildcard) {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Assign user to default group
+    pub async fn assign_to_default_group(&self, user_id: Uuid) -> Result<(), AppError> {
+        // Get default "users" group
+        let group = self
+            .group_repo
+            .get_by_name("users")
+            .await?
+            .ok_or_else(|| AppError::not_found("Default users group"))?;
+
+        self.user_repo
+            .assign_to_group(user_id, group.id, None)
+            .await
+    }
+}
+
+// =====================================================
+// Group Service
+// =====================================================
+
+#[derive(Clone)]
+pub struct GroupService {
+    group_repo: GroupRepository,
+}
+
+impl GroupService {
+    pub fn new(group_repo: GroupRepository) -> Self {
+        Self { group_repo }
+    }
+
+    /// Get group by ID
+    pub async fn get_group(&self, id: Uuid) -> Result<Option<Group>, AppError> {
+        self.group_repo.get_by_id(id).await
+    }
+
+    /// Get all groups
+    pub async fn get_all_groups(&self) -> Result<Vec<Group>, AppError> {
+        self.group_repo.get_all().await
+    }
+
+    /// Create new group
+    pub async fn create_group(
         &self,
-        user_id: Uuid,
-        request: ResetPasswordRequest,
-    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        // Hash new password
-        let salt = Self::generate_salt();
-        let bcrypt_hash = hash(&request.new_password, DEFAULT_COST)?;
-
-        let new_password_service = PasswordService {
-            bcrypt: bcrypt_hash,
-            salt,
-        };
-
-        Ok(self
-            .repository
-            .update_password(user_id, &new_password_service)
-            .await?)
+        name: &str,
+        description: Option<String>,
+        permissions: Vec<String>,
+    ) -> Result<Group, AppError> {
+        self.group_repo.create(name, description, permissions).await
     }
 
-    /// Verify user password
-    pub async fn verify_password(
+    /// Update group
+    pub async fn update_group(
         &self,
-        username_or_email: &str,
-        password: &str,
-    ) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
-        // Try to get user by username first, then by email
-        let user = if let Some(user) = self.repository.get_by_username(username_or_email).await? {
-            user
-        } else if let Some(user) = self.repository.get_by_email(username_or_email).await? {
-            user
-        } else {
-            return Ok(None);
-        };
-
-        // Check if user is active
-        if !user.is_active {
-            return Err("User is not active".into());
-        }
-
-        // Verify password
-        let password_service = user
-            .services
-            .password
-            .as_ref()
-            .ok_or("User has no password service")?;
-
-        if !verify(password, &password_service.bcrypt)? {
-            return Ok(None);
-        }
-
-        Ok(Some(user))
+        id: Uuid,
+        name: Option<String>,
+        description: Option<String>,
+        permissions: Option<Vec<String>>,
+        is_active: Option<bool>,
+    ) -> Result<Group, AppError> {
+        self.group_repo.update(id, name, description, permissions, is_active).await
     }
 
-    /// Generate random salt
-    fn generate_salt() -> String {
-        let mut rng = rng();
-        let salt: String = (0..16)
-            .map(|_| format!("{:02x}", rng.random::<u8>()))
-            .collect();
-        salt
+    /// Delete group (only non-system groups)
+    pub async fn delete_group(&self, id: Uuid) -> Result<(), AppError> {
+        self.group_repo.delete(id).await
     }
 }

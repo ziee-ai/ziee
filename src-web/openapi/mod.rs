@@ -8,18 +8,18 @@ use std::process::Command;
 use std::sync::Arc;
 
 /// Generate OpenAPI specification and TypeScript types in the output directory
-pub async fn generate_openapi_spec(output_dir: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn generate_openapi_spec(output_dir: &str, config_file: Option<String>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Generating OpenAPI specification...");
 
     // Load configuration to get database URL
-    let config = Config::load()?;
+    let config = Config::load_from(config_file)?;
     let database_url = config.database_url();
 
     // Create a database pool for module initialization
     let pool = PgPool::connect(&database_url).await?;
 
     // Initialize modules using shared builder functions
-    let module_context = ModuleContext::new(Arc::new(pool));
+    let module_context = ModuleContext::new(Arc::new(pool.clone()));
     let mut modules = app_builder::create_modules();
 
     // Initialize all modules
@@ -29,6 +29,7 @@ pub async fn generate_openapi_spec(output_dir: &str) -> Result<(), Box<dyn std::
     let (api_router, mut api_doc) = app_builder::build_api_router(
         &modules,
         &config.server.api_prefix,
+        pool,
     );
 
     // Finish the API and extract the OpenAPI spec
@@ -129,6 +130,13 @@ fn generate_basic_typescript_types(output_dir: &Path, openapi_json: &str) -> Res
                 types_content.push_str("\n");
             }
         }
+    }
+
+    // Extract and generate Permission enum
+    let permissions = extract_permissions(&spec);
+    if !permissions.is_empty() {
+        types_content.push_str(&generate_permission_enum(&permissions));
+        types_content.push_str("\n");
     }
 
     // Extract endpoints and generate parameter/response types
@@ -403,4 +411,74 @@ fn infer_typescript_type(schema: &serde_json::Value) -> String {
     }
 
     "any".to_string()
+}
+
+#[derive(Debug, Clone)]
+struct PermissionInfo {
+    name: String,
+    value: String,
+    description: String,
+}
+
+/// Extract all unique permissions from OpenAPI spec
+fn extract_permissions(spec: &serde_json::Value) -> Vec<PermissionInfo> {
+    let mut permissions = std::collections::BTreeMap::new();
+
+    // Look through all paths and operations for 403 responses with permission details
+    if let Some(paths) = spec.get("paths").and_then(|p| p.as_object()) {
+        for (_path, methods) in paths {
+            if let Some(methods_obj) = methods.as_object() {
+                for (_method, operation) in methods_obj {
+                    if let Some(responses) = operation.get("responses") {
+                        if let Some(forbidden_response) = responses.get("403") {
+                            // Check if there's a PermissionError example
+                            if let Some(content) = forbidden_response.get("content") {
+                                if let Some(json_content) = content.get("application/json") {
+                                    if let Some(example) = json_content.get("example") {
+                                        if let Some(details) = example.get("details") {
+                                            if let Some(required_perms) = details.get("required_permissions").and_then(|p| p.as_array()) {
+                                                for perm in required_perms {
+                                                    if let (Some(name), Some(value), Some(desc)) = (
+                                                        perm.get("name").and_then(|n| n.as_str()),
+                                                        perm.get("value").and_then(|v| v.as_str()),
+                                                        perm.get("description").and_then(|d| d.as_str()),
+                                                    ) {
+                                                        permissions.insert(
+                                                            value.to_string(),
+                                                            PermissionInfo {
+                                                                name: name.to_string(),
+                                                                value: value.to_string(),
+                                                                description: desc.to_string(),
+                                                            },
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by value and return
+    let mut result: Vec<PermissionInfo> = permissions.into_values().collect();
+    result.sort_by(|a, b| a.value.cmp(&b.value));
+    result
+}
+
+/// Generate TypeScript Permission enum
+fn generate_permission_enum(permissions: &[PermissionInfo]) -> String {
+    let mut enum_str = String::from("export enum Permission {\n");
+
+    for perm in permissions {
+        enum_str.push_str(&format!("  {} = '{}',\n", perm.name, perm.value));
+    }
+
+    enum_str.push_str("}\n");
+    enum_str
 }

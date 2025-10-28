@@ -7,27 +7,31 @@ use rand::Rng;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
+// Test helpers for OAuth and LDAP mock servers
+pub mod oauth_mock;
+pub mod ldap_mock;
+
 // Static to track the shared embedded PostgreSQL instance
 static SHARED_POSTGRES: std::sync::LazyLock<Mutex<Option<postgresql_embedded::PostgreSQL>>> =
     std::sync::LazyLock::new(|| Mutex::new(None));
 
 // Test configuration loaded from test.yaml
 #[derive(Debug, Clone)]
-struct TestConfig {
-    pg_version: String,
-    pg_port: u16,
-    pg_bind_address: String,
-    pg_username: String,
-    pg_password: String,
-    pg_database: String,
-    pg_installation_dir: String,
-    pg_data_dir: String,
-    pg_timezone: String,
-    pg_log_timezone: String,
-    pg_log_collector: bool,
-    pg_log_directory: String,
-    pg_log_filename: String,
-    pg_log_statement: String,
+pub struct TestConfig {
+    pub pg_version: String,
+    pub pg_port: u16,
+    pub pg_bind_address: String,
+    pub pg_username: String,
+    pub pg_password: String,
+    pub pg_database: String,
+    pub pg_installation_dir: String,
+    pub pg_data_dir: String,
+    pub pg_timezone: String,
+    pub pg_log_timezone: String,
+    pub pg_log_collector: bool,
+    pub pg_log_directory: String,
+    pub pg_log_filename: String,
+    pub pg_log_statement: String,
 }
 
 impl TestConfig {
@@ -71,7 +75,7 @@ impl TestConfig {
     }
 }
 
-static TEST_CONFIG: std::sync::LazyLock<TestConfig> =
+pub static TEST_CONFIG: std::sync::LazyLock<TestConfig> =
     std::sync::LazyLock::new(|| TestConfig::load());
 
 pub struct TestServer {
@@ -118,6 +122,13 @@ server:
   host: "127.0.0.1"
   port: {}
   api_prefix: "/api"
+
+jwt:
+  secret: "test-secret-key-for-jwt-tokens-min-32-chars-long"
+  issuer: "ziee-chat-test"
+  audience: "ziee-chat-test-api"
+  access_token_expiry_hours: 24
+  refresh_token_expiry_days: 30
 "#,
             test_config.pg_bind_address,
             test_config.pg_port,

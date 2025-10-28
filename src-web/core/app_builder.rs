@@ -2,19 +2,19 @@ use aide::axum::ApiRouter;
 use aide::openapi::OpenApi;
 use axum::http::header::HeaderName;
 use axum::http::Method;
+use sqlx::PgPool;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 use crate::core::config::Config;
 use crate::module_api::{AppModule, ModuleContext};
-use crate::modules::{AuthModule, HealthModule, UserGroupModule, UserModule};
+use crate::modules::{AuthModule, HealthModule, user::UserModule};
 
 /// Create and initialize all application modules
 pub fn create_modules() -> Vec<Box<dyn AppModule>> {
     vec![
         Box::new(HealthModule::new()),
-        Box::new(UserModule::new()),
-        Box::new(UserGroupModule::new()),
         Box::new(AuthModule::new()),
+        Box::new(UserModule::new()),
     ]
 }
 
@@ -36,18 +36,20 @@ pub fn initialize_modules(
 pub fn build_api_router(
     modules: &[Box<dyn AppModule>],
     api_prefix: &str,
+    _pool: PgPool,
 ) -> (ApiRouter, OpenApi) {
-    // Build module router
-    let mut module_router = ApiRouter::new();
+    // Build combined router from all modules
+    // Modules handle their own state requirements internally
+    let mut combined_router = ApiRouter::new();
     for module in modules.iter() {
-        module_router = module.register_routes(module_router);
+        combined_router = module.register_routes(combined_router);
     }
 
     // Create OpenAPI documentation
     let api_doc = OpenApi::default();
 
-    // Nest all module routes under the api_prefix
-    let api_router = ApiRouter::new().nest(api_prefix, module_router);
+    // Nest all routes under the api_prefix
+    let api_router = ApiRouter::new().nest(api_prefix, combined_router);
 
     (api_router, api_doc)
 }
@@ -117,3 +119,4 @@ pub fn create_cors_layer(config: &Config) -> CorsLayer {
             .allow_headers(Any)
     }
 }
+

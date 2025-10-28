@@ -1,28 +1,38 @@
+// Auth module - JWT-based authentication
+pub mod backend;
 mod errors;
-mod models;
-mod routes;
-mod service;
+pub mod jwt;
+pub mod jwt_extractor;
+pub mod password;
+pub mod providers;
+pub mod routes;
 
-#[allow(unused_imports)]
+// Re-exports
+pub use backend::{AuthBackend, AuthSession, AuthSessionWrapper, Credentials};
 pub use errors::*;
-#[allow(unused_imports)]
-pub use models::*;
-pub use routes::{routes, AuthState};
-pub use service::AuthService;
+pub use jwt::{Claims, JwtService, TokenPair};
+pub use jwt_extractor::{JwtAuth, OptionalJwtAuth};
+pub use providers::{AuthError as ProvidersAuthError, AuthProviderTrait, AuthResult, OAuthResult, UserAttributes};
+pub use routes::auth_routes;
 
-use crate::module_api::{AppModule, ModuleContext};
-use crate::modules::user::{UserRepository, UserService};
+// Modules to be added:
+// - provisioning: User auto-provisioning from external auth
+
 use aide::axum::ApiRouter;
+use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::module_api::{AppModule, ModuleContext};
+
+/// Auth module for authentication and authorization
 pub struct AuthModule {
-    state: Option<AuthState>,
+    pool: Option<Arc<PgPool>>,
 }
 
 impl AuthModule {
     pub fn new() -> Self {
-        Self { state: None }
+        Self { pool: None }
     }
 }
 
@@ -32,32 +42,24 @@ impl AppModule for AuthModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
-        // Get database pool from context
-        let pool = ctx.db_pool.as_ref().clone();
-
-        // Create repositories and services
-        let user_repository = UserRepository::new(pool.clone());
-        let user_service = UserService::new(user_repository.clone());
-        let auth_service = Arc::new(AuthService::new(user_repository, user_service));
-
-        // Store state
-        self.state = Some(AuthState {
-            service: auth_service,
-        });
-
+        self.pool = Some(ctx.db_pool.clone());
         Ok(())
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(state) = &self.state {
-            router.merge(routes(state.clone()))
+        if let Some(pool) = &self.pool {
+            // Create a stateful auth router
+            let auth_router_with_state = ApiRouter::new()
+                .nest("/auth", auth_routes())
+                .with_state((**pool).clone());
+
+            // Merge the stateful router into the provided stateless router
+            router.merge(auth_router_with_state)
         } else {
+            // Pool not initialized - this shouldn't happen in normal flow
+            tracing::error!("AuthModule: Pool not initialized during route registration");
             router
         }
-    }
-
-    fn dependencies(&self) -> Vec<&'static str> {
-        vec!["user"]
     }
 }
 

@@ -9,7 +9,7 @@ postgresql:
   # Embedded PostgreSQL configuration (used when use_embedded: true)
   embedded:
     version: "17.5.0"
-    port: 54321  # Use 0 for automatic port selection
+    port: 54323  # Use 0 for automatic port selection
     bind_address: "127.0.0.1"
     username: "postgres"
     password: "password"
@@ -71,3 +71,11 @@ server:
 logging:
   level: "debug"
   format: "pretty"
+
+# JWT authentication settings
+jwt:
+  secret: "dev-secret-change-in-production-min-32-chars-long"
+  issuer: "ziee-chat"
+  audience: "ziee-chat-api"
+  access_token_expiry_hours: 24  # Access token expires in 24 hours
+  refresh_token_expiry_days: 30  # Refresh token expires in 30 days

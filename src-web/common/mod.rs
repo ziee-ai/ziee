@@ -1,5 +1,4 @@
-pub mod errors;
-pub mod types;
+pub mod r#type;
 
-pub use errors::{ApiResult, AppError};
-pub use types::PaginationQuery;
+pub use r#type::{ApiResult, AppError, PaginationQuery};
+

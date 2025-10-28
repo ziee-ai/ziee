@@ -4,4 +4,3 @@
 mod common;
 mod auth;
 mod user;
-mod user_group;

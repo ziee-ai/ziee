@@ -1,0 +1,379 @@
+use aide::axum::{
+    routing::{delete_with, get_with, post_with},
+    ApiRouter,
+};
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    Json,
+};
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::{
+    common::{ApiResult, AppError, PaginationQuery},
+    modules::permissions::{RequirePermissions, with_permission},
+};
+
+use super::{
+    models::{
+        AssignUserToGroupRequest, CreateGroupRequest, Group, GroupListResponse,
+        UpdateGroupRequest, UserListResponse,
+    },
+    permissions::*,
+    repository::{GroupRepository, UserRepository},
+};
+
+/// Group management routes
+pub fn group_router() -> ApiRouter<PgPool> {
+    ApiRouter::new()
+        .api_route("/groups", get_with(list_groups, list_groups_docs))
+        .api_route("/groups", post_with(create_group, create_group_docs))
+        .api_route("/groups/{group_id}", get_with(get_group, get_group_docs))
+        .api_route(
+            "/groups/{group_id}",
+            post_with(update_group, update_group_docs),
+        )
+        .api_route(
+            "/groups/{group_id}",
+            delete_with(delete_group, delete_group_docs),
+        )
+        .api_route(
+            "/groups/{group_id}/members",
+            get_with(get_group_members, get_group_members_docs),
+        )
+        .api_route(
+            "/groups/assign",
+            post_with(assign_user_to_group, assign_user_to_group_docs),
+        )
+        .api_route(
+            "/groups/{user_id}/{group_id}/remove",
+            delete_with(remove_user_from_group, remove_user_from_group_docs),
+        )
+}
+
+// =====================================================
+// Route Handlers
+// =====================================================
+
+/// List all groups (requires groups::read permission)
+async fn list_groups(
+    _auth: RequirePermissions<(GroupsRead,)>,
+    Query(params): Query<PaginationQuery>,
+    State(pool): State<PgPool>,
+) -> ApiResult<Json<GroupListResponse>> {
+    let group_repo = GroupRepository::new(pool);
+    let (groups, total) = group_repo.list(params.page, params.per_page).await?;
+
+    let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
+
+    Ok((
+        StatusCode::OK,
+        Json(GroupListResponse {
+            groups,
+            total,
+            page: params.page,
+            per_page: params.per_page,
+            total_pages,
+        }),
+    ))
+}
+
+fn list_groups_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(GroupsRead,)>(op)
+        .id("UserGroup.list")
+        .tag("User Groups")
+        .summary("List all groups with pagination")
+        .response::<200, Json<GroupListResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// Get group by ID (requires groups::read permission)
+async fn get_group(
+    _auth: RequirePermissions<(GroupsRead,)>,
+    Path(group_id): Path<Uuid>,
+    State(pool): State<PgPool>,
+) -> ApiResult<Json<Group>> {
+    let group_repo = GroupRepository::new(pool);
+    let group = group_repo
+        .get_by_id(group_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Group"))?;
+
+    Ok((StatusCode::OK, Json(group)))
+}
+
+fn get_group_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(GroupsRead,)>(op)
+        .id("UserGroup.get")
+        .tag("User Groups")
+        .summary("Get group by ID")
+        .response::<200, Json<Group>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Group not found"))
+}
+
+/// Create a new group (requires groups::create permission)
+async fn create_group(
+    _auth: RequirePermissions<(GroupsCreate,)>,
+    State(pool): State<PgPool>,
+    Json(request): Json<CreateGroupRequest>,
+) -> ApiResult<Json<Group>> {
+    // Validate group name
+    if request.name.is_empty() {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "Group name cannot be empty").into());
+    }
+
+    let group_repo = GroupRepository::new(pool);
+
+    // Check if group name already exists
+    if group_repo.get_by_name(&request.name).await?.is_some() {
+        return Err(AppError::conflict("Group name").into());
+    }
+
+    // Create group
+    let group = group_repo
+        .create(&request.name, request.description, request.permissions)
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(group)))
+}
+
+fn create_group_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(GroupsCreate,)>(op)
+        .id("UserGroup.create")
+        .tag("User Groups")
+        .summary("Create a new group")
+        .response::<201, Json<Group>>()
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<409, (), _>(|res| res.description("Group name already exists"))
+}
+
+/// Update group (requires groups::edit permission)
+async fn update_group(
+    _auth: RequirePermissions<(GroupsEdit,)>,
+    Path(group_id): Path<Uuid>,
+    State(pool): State<PgPool>,
+    Json(request): Json<UpdateGroupRequest>,
+) -> ApiResult<Json<Group>> {
+    let group_repo = GroupRepository::new(pool);
+
+    // Check if group exists
+    let existing_group = group_repo
+        .get_by_id(group_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Group"))?;
+
+    // Prevent modification of system groups' core attributes
+    if existing_group.is_system {
+        if request.name.is_some() || request.is_active == Some(false) {
+            return Err(AppError::bad_request(
+                "SYSTEM_GROUP",
+                "Cannot modify name or deactivate system groups",
+            )
+            .into());
+        }
+    }
+
+    // Check if new name already exists
+    if let Some(ref name) = request.name {
+        if let Some(existing) = group_repo.get_by_name(name).await? {
+            if existing.id != group_id {
+                return Err(AppError::conflict("Group name").into());
+            }
+        }
+    }
+
+    // Update group
+    let group = group_repo
+        .update(
+            group_id,
+            request.name,
+            request.description,
+            request.permissions,
+            request.is_active,
+        )
+        .await?;
+
+    Ok((StatusCode::OK, Json(group)))
+}
+
+fn update_group_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(GroupsEdit,)>(op)
+        .id("UserGroup.update")
+        .tag("User Groups")
+        .summary("Update group")
+        .response::<200, Json<Group>>()
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Group not found"))
+        .response_with::<409, (), _>(|res| res.description("Group name already exists"))
+}
+
+/// Delete group (requires groups::delete permission)
+async fn delete_group(
+    _auth: RequirePermissions<(GroupsDelete,)>,
+    Path(group_id): Path<Uuid>,
+    State(pool): State<PgPool>,
+) -> ApiResult<StatusCode> {
+    let group_repo = GroupRepository::new(pool);
+
+    // Check if group exists
+    let group = group_repo
+        .get_by_id(group_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Group"))?;
+
+    // Prevent deletion of system groups
+    if group.is_system {
+        return Err(AppError::bad_request("SYSTEM_GROUP", "Cannot delete system groups").into());
+    }
+
+    // Delete group
+    group_repo.delete(group_id).await?;
+
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+fn delete_group_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(GroupsDelete,)>(op)
+        .id("UserGroup.delete")
+        .tag("User Groups")
+        .summary("Delete group")
+        .response_with::<204, (), _>(|res| res.description("Group deleted successfully"))
+        .response_with::<400, (), _>(|res| res.description("Cannot delete system group"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Group not found"))
+}
+
+/// Get members of a group (requires groups::read permission)
+async fn get_group_members(
+    _auth: RequirePermissions<(GroupsRead,)>,
+    Path(group_id): Path<Uuid>,
+    Query(params): Query<PaginationQuery>,
+    State(pool): State<PgPool>,
+) -> ApiResult<Json<UserListResponse>> {
+    let group_repo = GroupRepository::new(pool);
+
+    // Check if group exists
+    if group_repo.get_by_id(group_id).await?.is_none() {
+        return Err(AppError::not_found("Group").into());
+    }
+
+    // Get group members
+    let (users, total) = group_repo
+        .get_members(group_id, params.page, params.per_page)
+        .await?;
+
+    let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
+
+    Ok((
+        StatusCode::OK,
+        Json(UserListResponse {
+            users,
+            total,
+            page: params.page,
+            per_page: params.per_page,
+            total_pages,
+        }),
+    ))
+}
+
+fn get_group_members_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(GroupsRead,)>(op)
+        .id("UserGroup.getMembers")
+        .tag("User Groups")
+        .summary("Get members of a group")
+        .response::<200, Json<UserListResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Group not found"))
+}
+
+/// Assign user to group (requires groups::assign-users permission)
+async fn assign_user_to_group(
+    auth: RequirePermissions<(GroupsAssignUsers,)>,
+    State(pool): State<PgPool>,
+    Json(request): Json<AssignUserToGroupRequest>,
+) -> ApiResult<StatusCode> {
+    let user_repo = UserRepository::new(pool.clone());
+    let group_repo = GroupRepository::new(pool);
+
+    // Check if user exists
+    if user_repo.get_by_id(request.user_id).await?.is_none() {
+        return Err(AppError::not_found("User").into());
+    }
+
+    // Check if group exists
+    if group_repo.get_by_id(request.group_id).await?.is_none() {
+        return Err(AppError::not_found("Group").into());
+    }
+
+    // Assign user to group
+    user_repo
+        .assign_to_group(request.user_id, request.group_id, Some(auth.user.id))
+        .await?;
+
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+fn assign_user_to_group_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(GroupsAssignUsers,)>(op)
+        .id("UserGroup.assignUser")
+        .tag("User Groups")
+        .summary("Assign user to group")
+        .response_with::<204, (), _>(|res| res.description("User assigned successfully"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("User or Group not found"))
+}
+
+/// Remove user from group (requires groups::assign-users permission)
+async fn remove_user_from_group(
+    _auth: RequirePermissions<(GroupsAssignUsers,)>,
+    Path((user_id, group_id)): Path<(Uuid, Uuid)>,
+    State(pool): State<PgPool>,
+) -> ApiResult<StatusCode> {
+    let user_repo = UserRepository::new(pool.clone());
+    let group_repo = GroupRepository::new(pool);
+
+    // Check if user exists
+    if user_repo.get_by_id(user_id).await?.is_none() {
+        return Err(AppError::not_found("User").into());
+    }
+
+    // Check if group exists
+    if group_repo.get_by_id(group_id).await?.is_none() {
+        return Err(AppError::not_found("Group").into());
+    }
+
+    // Remove user from group
+    user_repo.remove_from_group(user_id, group_id).await?;
+
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+fn remove_user_from_group_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(GroupsAssignUsers,)>(op)
+        .id("UserGroup.removeUser")
+        .tag("User Groups")
+        .summary("Remove user from group")
+        .response_with::<204, (), _>(|res| res.description("User removed successfully"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("User or Group not found"))
+}

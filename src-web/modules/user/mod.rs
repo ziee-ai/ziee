@@ -1,29 +1,33 @@
-mod errors;
-mod models;
-mod repository;
+// User module - User and group management
+pub mod models;
+pub mod permissions;
+pub mod repository;
 mod routes;
+mod group_routes;
 mod service;
 
-#[allow(unused_imports)]
-pub use errors::*;
-#[allow(unused_imports)]
+// Re-exports
 pub use models::*;
-pub use repository::UserRepository;
-pub use routes::{routes, UserState};
-pub use service::UserService;
+pub use repository::{GroupRepository, UserRepository};
+pub use routes::user_router;
+pub use group_routes::group_router;
+pub use service::{GroupService, UserService};
 
-use crate::module_api::{AppModule, ModuleContext};
 use aide::axum::ApiRouter;
+use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::module_api::{AppModule, ModuleContext};
+
+/// User module for user and group management
 pub struct UserModule {
-    state: Option<UserState>,
+    pool: Option<Arc<PgPool>>,
 }
 
 impl UserModule {
     pub fn new() -> Self {
-        Self { state: None }
+        Self { pool: None }
     }
 }
 
@@ -33,23 +37,23 @@ impl AppModule for UserModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
-        // Get database pool from context
-        let pool = ctx.db_pool.as_ref().clone();
-
-        // Create repository and service
-        let repository = UserRepository::new(pool);
-        let service = Arc::new(UserService::new(repository));
-
-        // Store state
-        self.state = Some(UserState { service });
-
+        self.pool = Some(ctx.db_pool.clone());
         Ok(())
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(state) = &self.state {
-            router.merge(routes(state.clone()))
+        if let Some(pool) = &self.pool {
+            // Create a stateful user router with permission-based access control
+            let user_module_router = ApiRouter::new()
+                .merge(user_router())
+                .merge(group_router())
+                .with_state((**pool).clone());
+
+            // Merge the stateful router into the provided stateless router
+            router.merge(user_module_router)
         } else {
+            // Pool not initialized - this shouldn't happen in normal flow
+            tracing::error!("UserModule: Pool not initialized during route registration");
             router
         }
     }

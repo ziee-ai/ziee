@@ -3,8 +3,32 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+
+// =====================================================
+// API Result Type
+// =====================================================
+
+/// API result type that includes HTTP status code
+/// This is the standard return type for all API handlers
+///
+/// # Examples
+///
+/// ```rust
+/// use axum::{http::StatusCode, Json};
+/// use crate::common::type::ApiResult;
+///
+/// async fn my_handler() -> ApiResult<Json<MyResponse>> {
+///     Ok((StatusCode::OK, Json(MyResponse { /* ... */ })))
+/// }
+/// ```
+pub type ApiResult<T> = Result<(StatusCode, T), (StatusCode, AppError)>;
+
+// =====================================================
+// Error Types
+// =====================================================
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiError {
@@ -100,8 +124,6 @@ impl IntoResponse for AppError {
     }
 }
 
-pub type ApiResult<T> = Result<(StatusCode, T), (StatusCode, AppError)>;
-
 // Conversion from common error types
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
@@ -131,5 +153,34 @@ impl AppError {
     pub fn to_api_error(self) -> (StatusCode, Self) {
         let status = StatusCode::from_u16(self.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         (status, self)
+    }
+}
+
+// =====================================================
+// Common Types
+// =====================================================
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct PaginationQuery {
+    #[serde(default = "default_page")]
+    pub page: i32,
+    #[serde(default = "default_per_page")]
+    pub per_page: i32,
+}
+
+fn default_page() -> i32 {
+    1
+}
+
+fn default_per_page() -> i32 {
+    20
+}
+
+impl Default for PaginationQuery {
+    fn default() -> Self {
+        Self {
+            page: 1,
+            per_page: 20,
+        }
     }
 }

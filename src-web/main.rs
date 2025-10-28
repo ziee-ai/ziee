@@ -34,7 +34,7 @@ async fn main() {
             format!("{}/../ui/src/api-client", manifest_dir)
         });
 
-        match openapi::generate_openapi_spec(&output_dir).await {
+        match openapi::generate_openapi_spec(&output_dir, cli.config_file).await {
             Ok(_) => {
                 std::process::exit(0);
             }
@@ -113,14 +113,22 @@ async fn main() {
     // Setup CORS from config
     let cors = core::app_builder::create_cors_layer(&config);
 
-    // Build API router with all module routes
+    // Set up JWT service
+    let jwt_service = std::sync::Arc::new(modules::auth::JwtService::new(config.jwt.clone()));
+    tracing::info!("JWT service initialized");
+
+    // Build API router with all module routes (including auth)
     let (api_router, mut api_doc) = core::app_builder::build_api_router(
         &modules,
         &config.server.api_prefix,
+        (*module_context.db_pool).clone(),
     );
 
-    // Convert ApiRouter to Router and add CORS layer
-    let app = api_router.finish_api(&mut api_doc).layer(cors);
+    // Convert ApiRouter to Router and add JWT service and CORS layers
+    let app = api_router
+        .finish_api(&mut api_doc)
+        .layer(axum::Extension(jwt_service))
+        .layer(cors);
 
     // Get server address
     let addr = config.server_address();

@@ -6,6 +6,7 @@ pub struct Config {
     pub server: ServerConfig,
     #[serde(default)]
     pub logging: Option<LoggingConfig>,
+    pub jwt: JwtConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -82,6 +83,20 @@ pub struct CorsConfig {
 pub struct LoggingConfig {
     pub level: String,
     pub format: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct JwtConfig {
+    pub secret: String,
+    pub issuer: String,
+    pub audience: String,
+    pub access_token_expiry_hours: i64,
+    #[serde(default = "default_refresh_token_expiry")]
+    pub refresh_token_expiry_days: i64,
+}
+
+fn default_refresh_token_expiry() -> i64 {
+    30
 }
 
 impl Config {
