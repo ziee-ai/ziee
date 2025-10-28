@@ -1,8 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Divider, Dropdown, theme, Typography } from 'antd'
-import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
-import { logoutUser } from '../../modules/auth'
-import { Stores } from '../../core/stores'
+import { theme, Typography, Divider } from 'antd'
 import { useWindowMinSize } from '../../hooks/useWindowMinSize'
 import { useRouterStore } from '../../core/router'
 
@@ -78,7 +75,6 @@ export function LeftSidebar() {
   const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
 
-  const { user } = Stores.Auth
   const { sidebarItems } = useRouterStore()
 
   const isActive = (path: string) => {
@@ -184,36 +180,19 @@ export function LeftSidebar() {
         </div>
       )}
 
-      {/* User Profile Section */}
-      {user && (
-        <div>
-          <Divider className={'!m-0'} />
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: 'profile',
-                  icon: <UserOutlined />,
-                  label: 'Profile',
-                  onClick: () => console.log('Profile clicked'),
-                },
-                {
-                  key: 'logout',
-                  icon: <LogoutOutlined />,
-                  label: 'Logout',
-                  onClick: async () => await logoutUser(),
-                },
-              ].filter(Boolean),
-            }}
-            placement="topLeft"
-            trigger={['click']}
-          >
-            <div>
-              <SidebarItem icon={<UserOutlined />} label={user.username} />
-            </div>
-          </Dropdown>
-        </div>
-      )}
+      {/* Footer Slot */}
+      {sidebarItems.widgets.has('footer') &&
+        sidebarItems.widgets.get('footer')!.length > 0 && (
+          <>
+            <Divider className="!m-0" />
+            {sidebarItems.widgets
+              .get('footer')
+              ?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+              .map(widget => (
+                <div key={widget.id}>{widget.component}</div>
+              ))}
+          </>
+        )}
     </div>
   )
 }
