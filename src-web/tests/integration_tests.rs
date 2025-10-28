@@ -4,3 +4,4 @@
 mod common;
 mod auth;
 mod user;
+mod hardware;

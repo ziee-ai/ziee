@@ -207,6 +207,13 @@ fn generate_basic_typescript_types(output_dir: &Path, openapi_json: &str) -> Res
 
 /// Generate TypeScript interface from schema
 fn generate_schema_interface(name: &str, schema: &serde_json::Value) -> String {
+    // Special handling for SSE event types with oneOf pattern
+    if name.starts_with("SSE") {
+        if let Some(one_of) = schema.get("oneOf").and_then(|o| o.as_array()) {
+            return generate_sse_event_type(name, one_of);
+        }
+    }
+
     if let Some(properties) = schema.get("properties").and_then(|p| p.as_object()) {
         let mut interface = format!("export interface {} {{\n", name);
 
@@ -237,6 +244,32 @@ fn generate_schema_interface(name: &str, schema: &serde_json::Value) -> String {
     } else {
         format!("export type {} = any", name)
     }
+}
+
+/// Generate SSE event type with discriminated union pattern
+fn generate_sse_event_type(name: &str, one_of_variants: &[serde_json::Value]) -> String {
+    let mut event_types = Vec::new();
+
+    for variant in one_of_variants {
+        if let Some(properties) = variant.get("properties").and_then(|p| p.as_object()) {
+            // Each variant should have a single property representing the event name
+            if properties.len() == 1 {
+                let (event_name, event_data_schema) = properties.iter().next().unwrap();
+                let data_type = infer_typescript_type(event_data_schema);
+                event_types.push(format!("  {}: {}", event_name, data_type));
+            }
+        }
+    }
+
+    if event_types.is_empty() {
+        return format!("export type {} = any", name);
+    }
+
+    format!(
+        "export type {} = {{\n{}\n}}",
+        name,
+        event_types.join("\n")
+    )
 }
 
 /// Generate parameter type for an endpoint

@@ -21,6 +21,19 @@ export interface AuthResponse {
   token_type: string
   user: User
 }
+export interface CPUInfo {
+  architecture: string
+  base_frequency?: any
+  cores: number
+  max_frequency?: any
+  model: string
+  threads?: any
+}
+export interface CPUUsage {
+  frequency?: any
+  temperature?: any
+  usage_percentage: number
+}
 export interface CreateGroupRequest {
   description?: any
   name: string
@@ -31,6 +44,31 @@ export interface CreateUserRequest {
   email: string
   password: string
   username: string
+}
+export interface GPUComputeCapabilities {
+  cuda_support: boolean
+  cuda_version?: any
+  metal_support: boolean
+  opencl_support: boolean
+  vulkan_support?: any
+}
+export interface GPUDevice {
+  compute_capabilities: GPUComputeCapabilities
+  device_id: string
+  driver_version?: any
+  memory?: any
+  name: string
+  vendor: string
+}
+export interface GPUUsage {
+  device_id: string
+  device_name: string
+  memory_total?: any
+  memory_usage_percentage?: any
+  memory_used?: any
+  power_usage?: any
+  temperature?: any
+  utilization_percentage?: any
 }
 export interface Group {
   created_at: string
@@ -50,6 +88,21 @@ export interface GroupListResponse {
   total: number
   total_pages: number
 }
+export interface HardwareInfo {
+  cpu: CPUInfo
+  gpu_devices: GPUDevice[]
+  memory: MemoryInfo
+  operating_system: OperatingSystemInfo
+}
+export interface HardwareInfoResponse {
+  hardware: HardwareInfo
+}
+export interface HardwareUsageUpdate {
+  cpu: CPUUsage
+  gpu_devices: GPUUsage[]
+  memory: MemoryUsage
+  timestamp: string
+}
 export interface HealthResponse {
   status: string
 }
@@ -61,6 +114,23 @@ export interface LoginRequest {
 export interface MeResponse {
   permissions: string[]
   user: User
+}
+export interface MemoryInfo {
+  total_ram: number
+  total_swap?: any
+}
+export interface MemoryUsage {
+  available_ram: number
+  available_swap?: any
+  usage_percentage: number
+  used_ram: number
+  used_swap?: any
+}
+export interface OperatingSystemInfo {
+  architecture: string
+  kernel_version?: any
+  name: string
+  version: string
 }
 export interface PaginationQuery {
   page?: number
@@ -91,6 +161,13 @@ export interface RegisterRequest {
 export interface ResetPasswordRequest {
   new_password: string
   user_id: string
+}
+export interface SSEHardwareUsageConnectedData {
+  message: string
+}
+export type SSEHardwareUsageEvent = {
+  connected: SSEHardwareUsageConnectedData
+  update: HardwareUsageUpdate
 }
 export interface SetupAdminRequest {
   display_name?: any
@@ -172,6 +249,8 @@ export const ApiEndpoints = {
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'Hardware.info': 'GET /api/hardware',
+  'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
@@ -199,6 +278,8 @@ export type ApiEndpointParameters = {
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'Hardware.info': void
+  'Hardware.stream': void
   'Health.check': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
@@ -226,6 +307,8 @@ export type ApiEndpointResponses = {
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'Hardware.info': HardwareInfoResponse
+  'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
   'User.create': User
   'User.delete': void

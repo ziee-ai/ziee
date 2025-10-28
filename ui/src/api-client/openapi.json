@@ -1139,6 +1139,99 @@
           }
         ]
       }
+    },
+    "/api/hardware": {
+      "get": {
+        "tags": [
+          "Hardware"
+        ],
+        "summary": "Get Hardware Information",
+        "description": "Get static hardware information including OS, CPU, Memory, and GPU details",
+        "operationId": "Hardware.info",
+        "responses": {
+          "403": {
+            "description": "no content"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareInfoResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hardware/usage-stream": {
+      "get": {
+        "tags": [
+          "Hardware"
+        ],
+        "summary": "Subscribe to Hardware Usage Stream",
+        "description": "Subscribe to real-time hardware usage updates via Server-Sent Events (SSE)",
+        "operationId": "Hardware.stream",
+        "responses": {
+          "403": {
+            "description": "no content"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEHardwareUsageEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hardware/types": {
+      "get": {
+        "description": "Types for OpenAPI generation",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareUsageUpdate"
+                }
+              }
+            }
+          },
+          "600": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareUsageUpdate"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1189,6 +1282,78 @@
           "expires_in"
         ]
       },
+      "CPUInfo": {
+        "type": "object",
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "base_frequency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cores": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "max_frequency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          },
+          "threads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "model",
+          "architecture",
+          "cores"
+        ]
+      },
+      "CPUUsage": {
+        "type": "object",
+        "properties": {
+          "frequency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "usage_percentage": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "required": [
+          "usage_percentage"
+        ]
+      },
       "CreateGroupRequest": {
         "type": "object",
         "properties": {
@@ -1236,6 +1401,133 @@
           "username",
           "email",
           "password"
+        ]
+      },
+      "GPUComputeCapabilities": {
+        "type": "object",
+        "properties": {
+          "cuda_support": {
+            "type": "boolean"
+          },
+          "cuda_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metal_support": {
+            "type": "boolean"
+          },
+          "opencl_support": {
+            "type": "boolean"
+          },
+          "vulkan_support": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "cuda_support",
+          "metal_support",
+          "opencl_support"
+        ]
+      },
+      "GPUDevice": {
+        "type": "object",
+        "properties": {
+          "compute_capabilities": {
+            "$ref": "#/components/schemas/GPUComputeCapabilities"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "driver_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "memory": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id",
+          "name",
+          "vendor",
+          "compute_capabilities"
+        ]
+      },
+      "GPUUsage": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "memory_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "memory_usage_percentage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "memory_used": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "power_usage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "utilization_percentage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          }
+        },
+        "required": [
+          "device_id",
+          "device_name"
         ]
       },
       "Group": {
@@ -1323,6 +1615,69 @@
           "total_pages"
         ]
       },
+      "HardwareInfo": {
+        "type": "object",
+        "properties": {
+          "cpu": {
+            "$ref": "#/components/schemas/CPUInfo"
+          },
+          "gpu_devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GPUDevice"
+            }
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryInfo"
+          },
+          "operating_system": {
+            "$ref": "#/components/schemas/OperatingSystemInfo"
+          }
+        },
+        "required": [
+          "operating_system",
+          "cpu",
+          "memory",
+          "gpu_devices"
+        ]
+      },
+      "HardwareInfoResponse": {
+        "type": "object",
+        "properties": {
+          "hardware": {
+            "$ref": "#/components/schemas/HardwareInfo"
+          }
+        },
+        "required": [
+          "hardware"
+        ]
+      },
+      "HardwareUsageUpdate": {
+        "type": "object",
+        "properties": {
+          "cpu": {
+            "$ref": "#/components/schemas/CPUUsage"
+          },
+          "gpu_devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GPUUsage"
+            }
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryUsage"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp",
+          "cpu",
+          "memory",
+          "gpu_devices"
+        ]
+      },
       "HealthResponse": {
         "type": "object",
         "properties": {
@@ -1373,6 +1728,92 @@
         "required": [
           "user",
           "permissions"
+        ]
+      },
+      "MemoryInfo": {
+        "type": "object",
+        "properties": {
+          "total_ram": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "total_swap": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "total_ram"
+        ]
+      },
+      "MemoryUsage": {
+        "type": "object",
+        "properties": {
+          "available_ram": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "available_swap": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "usage_percentage": {
+            "type": "number",
+            "format": "float"
+          },
+          "used_ram": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "used_swap": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "used_ram",
+          "available_ram",
+          "usage_percentage"
+        ]
+      },
+      "OperatingSystemInfo": {
+        "type": "object",
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "kernel_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "architecture"
         ]
       },
       "PaginationQuery": {
@@ -1493,6 +1934,45 @@
         "required": [
           "user_id",
           "new_password"
+        ]
+      },
+      "SSEHardwareUsageConnectedData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "SSEHardwareUsageEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SSEHardwareUsageConnectedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "update": {
+                "$ref": "#/components/schemas/HardwareUsageUpdate"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "update"
+            ]
+          }
         ]
       },
       "SetupAdminRequest": {

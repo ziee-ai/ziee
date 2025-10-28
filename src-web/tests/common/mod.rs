@@ -342,6 +342,135 @@ impl Drop for TestServer {
     }
 }
 
+/// Common test helpers for creating users and managing permissions
+pub mod test_helpers {
+    use serde_json::json;
+    use uuid::Uuid;
+    use super::{TestServer, TEST_CONFIG};
+
+    /// Test user with token and ID
+    #[derive(Debug, Clone)]
+    pub struct TestUser {
+        pub token: String,
+        pub user_id: String,
+    }
+
+    /// Create a user with specific permissions for testing
+    /// This helper registers a user via API and assigns permissions by creating a group
+    pub async fn create_user_with_permissions(
+        server: &TestServer,
+        username: &str,
+        permissions: &[&str],
+    ) -> TestUser {
+        let unique_username = format!("{}_{}", username, &Uuid::new_v4().to_string()[..8]);
+
+        // Register user via API to get a valid JWT token
+        let register_response = reqwest::Client::new()
+            .post(&server.api_url("/auth/register"))
+            .json(&json!({
+                "username": &unique_username,
+                "email": format!("{}@example.com", unique_username),
+                "password": "password123"
+            }))
+            .send()
+            .await
+            .expect("Failed to register user");
+
+        assert_eq!(register_response.status(), 201, "Registration should succeed");
+
+        let register_body: serde_json::Value = register_response
+            .json()
+            .await
+            .expect("Failed to parse register response");
+
+        let token = register_body["access_token"]
+            .as_str()
+            .expect("access_token missing")
+            .to_string();
+        let user_id = register_body["user"]["id"]
+            .as_str()
+            .expect("user id missing")
+            .to_string();
+
+        // If permissions are needed, create a group and assign user to it
+        if !permissions.is_empty() {
+            // Connect to database to assign permissions
+            let database_url = format!(
+                "postgresql://{}:{}@{}:{}/{}",
+                TEST_CONFIG.pg_username,
+                TEST_CONFIG.pg_password,
+                TEST_CONFIG.pg_bind_address,
+                TEST_CONFIG.pg_port,
+                server.database_name
+            );
+
+            let pool = sqlx::postgres::PgPoolOptions::new()
+                .max_connections(5)
+                .connect(&database_url)
+                .await
+                .expect("Failed to connect to test database");
+
+            let group_id = Uuid::new_v4();
+            let group_name = format!("test_group_{}", &group_id.to_string()[..8]);
+            let permissions_json: Vec<String> = permissions.iter().map(|s| s.to_string()).collect();
+
+            sqlx::query(
+                "INSERT INTO groups (id, name, description, permissions, is_system, is_active, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, false, true, NOW(), NOW())"
+            )
+            .bind(group_id)
+            .bind(&group_name)
+            .bind("Test group for permissions")
+            .bind(&permissions_json)
+            .execute(&pool)
+            .await
+            .expect("Failed to create test group");
+
+            // Assign user to group
+            let user_uuid = Uuid::parse_str(&user_id).expect("Invalid user ID");
+            sqlx::query(
+                "INSERT INTO user_groups (user_id, group_id, assigned_at)
+                 VALUES ($1, $2, NOW())"
+            )
+            .bind(user_uuid)
+            .bind(group_id)
+            .execute(&pool)
+            .await
+            .expect("Failed to assign user to group");
+
+            pool.close().await;
+        }
+
+        TestUser { token, user_id }
+    }
+
+    /// Create a test user via API (requires admin token)
+    pub async fn create_test_user(
+        server: &TestServer,
+        admin_token: &str,
+        username: &str,
+        password: &str,
+    ) -> serde_json::Value {
+        let url = server.api_url("/users");
+        let payload = json!({
+            "username": username,
+            "email": format!("{}@example.com", username),
+            "password": password
+        });
+
+        let response = reqwest::Client::new()
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", admin_token))
+            .json(&payload)
+            .send()
+            .await
+            .expect("Request failed");
+
+        assert_eq!(response.status(), 201, "Failed to create test user");
+        response.json().await.expect("Failed to parse JSON")
+    }
+}
+
 /// Helper to make HTTP requests during tests
 pub mod http {
     use serde::de::DeserializeOwned;
