@@ -485,3 +485,277 @@ async fn test_auth_registration_validation() {
         "Should fail with empty username"
     );
 }
+
+// =====================================================
+// Setup Tests
+// =====================================================
+
+#[tokio::test]
+async fn test_setup_status_needs_setup() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Check setup status when no admin exists
+    let response = client
+        .get(&server.api_url("/app/setup/status"))
+        .send()
+        .await
+        .expect("Setup status request failed");
+
+    assert_eq!(response.status(), 200, "Expected 200 OK");
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse response");
+
+    // Should need setup since no admin exists
+    assert_eq!(body.get("needs_setup").unwrap(), true, "Should need setup");
+    assert_eq!(body.get("app_name").unwrap(), "Ziee Chat");
+    assert!(body.get("version").is_some());
+}
+
+#[tokio::test]
+async fn test_setup_status_no_setup_needed() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Create an admin user first
+    let setup_body = json!({
+        "username": "admin",
+        "email": "admin@example.com",
+        "password": "SecurePass123!",
+        "display_name": "Administrator"
+    });
+
+    client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&setup_body)
+        .send()
+        .await
+        .expect("Setup admin failed");
+
+    // Now check setup status
+    let response = client
+        .get(&server.api_url("/app/setup/status"))
+        .send()
+        .await
+        .expect("Setup status request failed");
+
+    assert_eq!(response.status(), 200, "Expected 200 OK");
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse response");
+
+    // Should not need setup anymore
+    assert_eq!(body.get("needs_setup").unwrap(), false, "Should not need setup");
+}
+
+#[tokio::test]
+async fn test_setup_admin_success() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    let setup_body = json!({
+        "username": "admin",
+        "email": "admin@example.com",
+        "password": "SecurePass123!",
+        "display_name": "System Administrator"
+    });
+
+    let response = client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&setup_body)
+        .send()
+        .await
+        .expect("Setup admin request failed");
+
+    assert_eq!(response.status(), 201, "Expected 201 Created");
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse response");
+
+    // Check user data
+    assert!(body.get("user").is_some());
+    let user = body.get("user").unwrap();
+    assert_eq!(user.get("username").unwrap(), "admin");
+    assert_eq!(user.get("email").unwrap(), "admin@example.com");
+    assert_eq!(user.get("display_name").unwrap(), "System Administrator");
+
+    // Check JWT tokens
+    assert!(body.get("access_token").is_some());
+    assert!(body.get("refresh_token").is_some());
+    assert_eq!(body.get("token_type").unwrap(), "Bearer");
+}
+
+#[tokio::test]
+async fn test_setup_admin_already_exists() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Create first admin
+    let setup_body = json!({
+        "username": "admin1",
+        "email": "admin1@example.com",
+        "password": "SecurePass123!"
+    });
+
+    client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&setup_body)
+        .send()
+        .await
+        .expect("First setup failed");
+
+    // Try to create second admin
+    let second_setup = json!({
+        "username": "admin2",
+        "email": "admin2@example.com",
+        "password": "SecurePass123!"
+    });
+
+    let response = client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&second_setup)
+        .send()
+        .await
+        .expect("Second setup request failed");
+
+    assert_eq!(response.status(), 403, "Expected 403 Forbidden");
+
+    let error_body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse error response");
+
+    assert_eq!(error_body.get("error_code").unwrap(), "SETUP_ALREADY_COMPLETE");
+}
+
+#[tokio::test]
+async fn test_setup_admin_weak_password() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    let setup_body = json!({
+        "username": "admin",
+        "email": "admin@example.com",
+        "password": "weak"
+    });
+
+    let response = client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&setup_body)
+        .send()
+        .await
+        .expect("Setup request failed");
+
+    assert_eq!(response.status(), 400, "Expected 400 Bad Request");
+
+    let error_body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse error response");
+
+    assert_eq!(error_body.get("error_code").unwrap(), "WEAK_PASSWORD");
+}
+
+#[tokio::test]
+async fn test_setup_admin_invalid_email() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    let setup_body = json!({
+        "username": "admin",
+        "email": "not-an-email",
+        "password": "SecurePass123!"
+    });
+
+    let response = client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&setup_body)
+        .send()
+        .await
+        .expect("Setup request failed");
+
+    assert_eq!(response.status(), 400, "Expected 400 Bad Request");
+
+    let error_body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse error response");
+
+    assert_eq!(error_body.get("error_code").unwrap(), "INVALID_EMAIL");
+}
+
+#[tokio::test]
+async fn test_setup_admin_invalid_username() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Test too short username
+    let setup_body = json!({
+        "username": "ab",
+        "email": "admin@example.com",
+        "password": "SecurePass123!"
+    });
+
+    let response = client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&setup_body)
+        .send()
+        .await
+        .expect("Setup request failed");
+
+    assert_eq!(response.status(), 400, "Expected 400 Bad Request");
+
+    let error_body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse error response");
+
+    assert_eq!(error_body.get("error_code").unwrap(), "INVALID_USERNAME");
+}
+
+#[tokio::test]
+async fn test_setup_admin_assigns_to_administrators_group() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Create admin
+    let setup_body = json!({
+        "username": "admin",
+        "email": "admin@example.com",
+        "password": "SecurePass123!"
+    });
+
+    let response = client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&setup_body)
+        .send()
+        .await
+        .expect("Setup admin failed");
+
+    let setup_response: serde_json::Value = response.json().await.unwrap();
+    let access_token = setup_response.get("access_token").unwrap().as_str().unwrap();
+
+    // Check user's permissions (should have admin permissions from Administrators group)
+    let me_response = client
+        .get(&server.api_url("/auth/me"))
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .await
+        .expect("Get me failed");
+
+    let me_body: serde_json::Value = me_response.json().await.unwrap();
+    let permissions = me_body.get("permissions").unwrap().as_array().unwrap();
+
+    // Administrators group has wildcard permission "*"
+    assert!(
+        permissions.contains(&json!("*")),
+        "Admin should have wildcard permission from Administrators group"
+    );
+}

@@ -1,18 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Divider, Dropdown, theme, Typography } from 'antd'
-import {
-  AppstoreOutlined,
-  FolderOutlined,
-  HistoryOutlined,
-  LogoutOutlined,
-  PlusOutlined,
-  SettingOutlined,
-  UserOutlined,
-} from '@ant-design/icons'
+import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
 import { logoutUser } from '../../modules/auth'
 import { Stores } from '../../core/stores'
 import { useWindowMinSize } from '../../hooks/useWindowMinSize'
-import { HiOutlineFaceSmile } from 'react-icons/hi2'
+import { useRouterStore } from '../../core/router'
 
 const { Text } = Typography
 
@@ -87,18 +79,22 @@ export function LeftSidebar() {
   const windowMinSize = useWindowMinSize()
 
   const { user } = Stores.Auth
+  const { sidebarItems } = useRouterStore()
 
   const isActive = (path: string) => {
-    if (path === '/conversations')
-      return location.pathname.startsWith('/conversations')
-    if (path === '/projects') return location.pathname.startsWith('/projects')
-    if (path === '/artifacts') return location.pathname.startsWith('/artifacts')
-    if (path === '/hub') return location.pathname.startsWith('/hub')
-    if (path === '/assistants')
-      return location.pathname.startsWith('/assistants')
-    if (path === '/settings') return location.pathname.startsWith('/settings')
-    return false
+    return location.pathname.startsWith(path)
   }
+
+  // Sort items by order
+  const sortedPrimaryActions = [...sidebarItems.primaryActions].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  )
+  const sortedNavigation = [...sidebarItems.navigation].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  )
+  const sortedTools = [...sidebarItems.tools].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  )
 
   return (
     <div
@@ -113,97 +109,111 @@ export function LeftSidebar() {
     >
       <div className={'h-[50px]'} />
       {/* Sidebar content - always rendered */}
-      {/* New Chat Button */}
 
-      <div className="mb-4">
-        <SidebarItem icon={<PlusOutlined />} label="New Chat" to="/" />
-      </div>
+      {/* Primary Actions */}
+      {sortedPrimaryActions.length > 0 && (
+        <div className="mb-4">
+          {sortedPrimaryActions.map(action => (
+            <SidebarItem
+              key={action.id}
+              icon={action.icon}
+              label={action.label}
+              to={action.to}
+              onClick={action.onClick}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Navigation Section */}
-      <div className="mb-4">
-        <SectionHeader>Navigation</SectionHeader>
-        <div className="space-y-0">
-          <SidebarItem
-            icon={<HistoryOutlined />}
-            label="Chats"
-            isActive={isActive('/conversations')}
-            to="/conversations"
-          />
-          <SidebarItem
-            icon={<FolderOutlined />}
-            label="Projects"
-            isActive={isActive('/projects')}
-            to="/projects"
-          />
+      {sortedNavigation.length > 0 && (
+        <div className="mb-4">
+          <SectionHeader>Navigation</SectionHeader>
+          <div className="space-y-0">
+            {sortedNavigation.map(item => (
+              <SidebarItem
+                key={item.id}
+                icon={item.icon}
+                label={item.label}
+                isActive={isActive(item.path)}
+                to={item.path}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Recent Section - Placeholder for future module injection */}
+      {/* Recent Section - Widget Slot */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        <SectionHeader>Recent</SectionHeader>
-        {/* RecentConversations will be injected by module here */}
+        {sidebarItems.widgets.has('recent') && (
+          <SectionHeader>Recent</SectionHeader>
+        )}
+        {sidebarItems.widgets
+          .get('recent')
+          ?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map(widget => (
+            <div key={widget.id}>{widget.component}</div>
+          ))}
       </div>
 
       {/* Tools Section */}
-      <div>
-        <SectionHeader>Tools</SectionHeader>
-        <div className="space-y-0 mb-2">
-          <SidebarItem
-            icon={<AppstoreOutlined />}
-            label="Hub"
-            isActive={isActive('/hub')}
-            to="/hub"
-          />
-          <SidebarItem
-            icon={<HiOutlineFaceSmile />}
-            label="Assistants"
-            isActive={isActive('/assistants')}
-            to="/assistants"
-          />
-          <SidebarItem
-            icon={<SettingOutlined />}
-            label="Settings"
-            isActive={isActive('/settings')}
-            to="/settings"
-          />
-        </div>
-
-        {/* Download Indicator - Placeholder for future module injection */}
-        <div className="px-2">
-          {/* DownloadIndicator will be injected by module here */}
-        </div>
-
-        {/* User Profile Section */}
-        {user && (
-          <div>
-            <Divider className={'!m-0'} />
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: 'profile',
-                    icon: <UserOutlined />,
-                    label: 'Profile',
-                    onClick: () => console.log('Profile clicked'),
-                  },
-                  {
-                    key: 'logout',
-                    icon: <LogoutOutlined />,
-                    label: 'Logout',
-                    onClick: async () => await logoutUser(),
-                  },
-                ].filter(Boolean),
-              }}
-              placement="topLeft"
-              trigger={['click']}
-            >
-              <div>
-                <SidebarItem icon={<UserOutlined />} label={user.username} />
-              </div>
-            </Dropdown>
+      {sortedTools.length > 0 && (
+        <div>
+          <SectionHeader>Tools</SectionHeader>
+          <div className="space-y-0 mb-2">
+            {sortedTools.map(item => (
+              <SidebarItem
+                key={item.id}
+                icon={item.icon}
+                label={item.label}
+                isActive={isActive(item.path)}
+                to={item.path}
+              />
+            ))}
           </div>
-        )}
-      </div>
+
+          {/* Bottom Widgets */}
+          <div className="px-2">
+            {sidebarItems.widgets
+              .get('bottom')
+              ?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+              .map(widget => (
+                <div key={widget.id}>{widget.component}</div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* User Profile Section */}
+      {user && (
+        <div>
+          <Divider className={'!m-0'} />
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'profile',
+                  icon: <UserOutlined />,
+                  label: 'Profile',
+                  onClick: () => console.log('Profile clicked'),
+                },
+                {
+                  key: 'logout',
+                  icon: <LogoutOutlined />,
+                  label: 'Logout',
+                  onClick: async () => await logoutUser(),
+                },
+              ].filter(Boolean),
+            }}
+            placement="topLeft"
+            trigger={['click']}
+          >
+            <div>
+              <SidebarItem icon={<UserOutlined />} label={user.username} />
+            </div>
+          </Dropdown>
+        </div>
+      )}
     </div>
   )
 }

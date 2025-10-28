@@ -26,71 +26,20 @@
         }
       }
     },
-    "/api/users": {
+    "/api/app/setup/status": {
       "get": {
         "tags": [
-          "users"
+          "app"
         ],
-        "description": "List users with pagination",
-        "operationId": "User.list",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "page",
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 1
-            },
-            "style": "form"
-          },
-          {
-            "in": "query",
-            "name": "per_page",
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 20
-            },
-            "style": "form"
-          }
-        ],
+        "description": "Check if initial admin setup is required",
+        "operationId": "App.getSetupStatus",
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserListResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "users"
-        ],
-        "description": "Create a new user",
-        "operationId": "User.create",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateUserRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/SetupStatusResponse"
                 }
               }
             }
@@ -98,341 +47,67 @@
         }
       }
     },
-    "/api/users/{id}": {
-      "get": {
+    "/api/app/setup/admin": {
+      "post": {
         "tags": [
-          "users"
+          "app"
         ],
-        "description": "Get user by ID",
-        "operationId": "User.get",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/User"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "users"
-        ],
-        "description": "Update user",
-        "operationId": "User.update",
+        "description": "Create the first administrator account",
+        "operationId": "App.setupAdmin",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateUserRequest"
+                "$ref": "#/components/schemas/SetupAdminRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "",
+          "201": {
+            "description": "JWT token pair (access + refresh)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/AuthResponse"
                 }
               }
             }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "users"
-        ],
-        "description": "Delete user",
-        "operationId": "User.delete",
-        "responses": {
-          "204": {
+          },
+          "403": {
+            "description": "no content"
+          },
+          "400": {
             "description": "no content"
           }
         }
       }
     },
-    "/api/users/{id}/password": {
+    "/api/auth/register": {
       "post": {
         "tags": [
-          "users"
+          "auth"
         ],
-        "description": "Change user password",
-        "operationId": "User.changePassword",
+        "description": "Register a new user with username, email, and password",
+        "operationId": "Auth.register",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ChangePasswordRequest"
+                "$ref": "#/components/schemas/RegisterRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/users/{id}/reset-password": {
-      "post": {
-        "tags": [
-          "users"
-        ],
-        "description": "Reset user password (admin)",
-        "operationId": "User.resetPassword",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResetPasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": true
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/user-groups": {
-      "get": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "List user groups with pagination",
-        "operationId": "UserGroup.list",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "page",
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 1
-            },
-            "style": "form"
-          },
-          {
-            "in": "query",
-            "name": "per_page",
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 20
-            },
-            "style": "form"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
+          "201": {
+            "description": "JWT token pair (access + refresh)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserGroupListResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "Create a new user group",
-        "operationId": "UserGroup.create",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateUserGroupRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserGroup"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/user-groups/{id}": {
-      "get": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "Get user group by ID",
-        "operationId": "UserGroup.get",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserGroup"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "Update user group",
-        "operationId": "UserGroup.update",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateUserGroupRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserGroup"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "Delete user group",
-        "operationId": "UserGroup.delete",
-        "responses": {
-          "204": {
-            "description": "no content"
-          }
-        }
-      }
-    },
-    "/api/user-groups/{id}/members": {
-      "get": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "Get group members",
-        "operationId": "UserGroup.getMembers",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserGroupMembersResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "Assign user to group",
-        "operationId": "UserGroup.assignUser",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssignUserToGroupRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserGroupMembership"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/user-groups/{id}/members/{user_id}": {
-      "delete": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "Remove user from group",
-        "operationId": "UserGroup.removeUser",
-        "responses": {
-          "204": {
-            "description": "no content"
-          }
-        }
-      }
-    },
-    "/api/users/{user_id}/groups": {
-      "get": {
-        "tags": [
-          "user-groups"
-        ],
-        "description": "Get user's groups",
-        "operationId": "UserGroup.getUserGroups",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/UserGroup"
-                  }
+                  "$ref": "#/components/schemas/AuthResponse"
                 }
               }
             }
@@ -459,11 +134,11 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "JWT token pair (access + refresh)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LoginResponse"
+                  "$ref": "#/components/schemas/AuthResponse"
                 }
               }
             }
@@ -471,18 +146,18 @@
         }
       }
     },
-    "/api/auth/register": {
+    "/api/auth/refresh": {
       "post": {
         "tags": [
           "auth"
         ],
-        "description": "Register a new user",
-        "operationId": "Auth.register",
+        "description": "Refresh access token using refresh token",
+        "operationId": "Auth.refresh",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RegisterRequest"
+                "$ref": "#/components/schemas/RefreshTokenRequest"
               }
             }
           },
@@ -490,11 +165,11 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "JWT token pair (access + refresh)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LoginResponse"
+                  "$ref": "#/components/schemas/TokenPair"
                 }
               }
             }
@@ -521,20 +196,948 @@
         "tags": [
           "auth"
         ],
-        "description": "Get current user information",
-        "operationId": "Auth.getCurrentUser",
+        "description": "Get currently authenticated user with their effective permissions",
+        "operationId": "Auth.me",
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CurrentUserResponse"
+                  "$ref": "#/components/schemas/MeResponse"
                 }
               }
             }
           }
         }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List all users with pagination",
+        "description": "\n\n**Required Permission:** `users::read`\n\nView user information and list users",
+        "operationId": "User.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View user information and list users",
+                        "name": "UsersRead",
+                        "value": "users::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: users::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Create a new user account",
+        "description": "\n\n**Required Permission:** `users::create`\n\nCreate new user accounts",
+        "operationId": "User.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new user accounts",
+                        "name": "UsersCreate",
+                        "value": "users::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: users::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/users/{user_id}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Get user by ID",
+        "description": "\n\n**Required Permission:** `users::read`\n\nView user information and list users",
+        "operationId": "User.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View user information and list users",
+                        "name": "UsersRead",
+                        "value": "users::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: users::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Update user",
+        "description": "\n\n**Required Permission:** `users::edit`\n\nEdit existing user information",
+        "operationId": "User.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing user information",
+                        "name": "UsersEdit",
+                        "value": "users::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: users::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Delete user",
+        "description": "\n\n**Required Permission:** `users::delete`\n\nDelete user accounts",
+        "operationId": "User.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete user accounts",
+                        "name": "UsersDelete",
+                        "value": "users::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: users::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "User deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/users/{user_id}/toggle-active": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Toggle user active status",
+        "description": "\n\n**Required Permission:** `users::toggle-status`\n\nEnable or disable user accounts",
+        "operationId": "User.toggleActive",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Enable or disable user accounts",
+                        "name": "UsersToggleStatus",
+                        "value": "users::toggle-status"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: users::toggle-status",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserActiveStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/users/reset-password": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Reset user password",
+        "description": "\n\n**Required Permission:** `users::reset-password`\n\nReset user passwords",
+        "operationId": "User.resetPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Reset user passwords",
+                        "name": "UsersResetPassword",
+                        "value": "users::reset-password"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: users::reset-password",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Password reset successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups": {
+      "get": {
+        "tags": [
+          "User Groups"
+        ],
+        "summary": "List all groups with pagination",
+        "description": "\n\n**Required Permission:** `groups::read`\n\nView groups and group information",
+        "operationId": "UserGroup.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View groups and group information",
+                        "name": "GroupsRead",
+                        "value": "groups::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: groups::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "User Groups"
+        ],
+        "summary": "Create a new group",
+        "description": "\n\n**Required Permission:** `groups::create`\n\nCreate new groups",
+        "operationId": "UserGroup.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new groups",
+                        "name": "GroupsCreate",
+                        "value": "groups::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: groups::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Group name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups/{group_id}": {
+      "get": {
+        "tags": [
+          "User Groups"
+        ],
+        "summary": "Get group by ID",
+        "description": "\n\n**Required Permission:** `groups::read`\n\nView groups and group information",
+        "operationId": "UserGroup.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View groups and group information",
+                        "name": "GroupsRead",
+                        "value": "groups::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: groups::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Group not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "User Groups"
+        ],
+        "summary": "Update group",
+        "description": "\n\n**Required Permission:** `groups::edit`\n\nEdit existing group information and permissions",
+        "operationId": "UserGroup.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing group information and permissions",
+                        "name": "GroupsEdit",
+                        "value": "groups::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: groups::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Group not found"
+          },
+          "409": {
+            "description": "Group name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "User Groups"
+        ],
+        "summary": "Delete group",
+        "description": "\n\n**Required Permission:** `groups::delete`\n\nDelete non-system groups",
+        "operationId": "UserGroup.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete non-system groups",
+                        "name": "GroupsDelete",
+                        "value": "groups::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: groups::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Group deleted successfully"
+          },
+          "400": {
+            "description": "Cannot delete system group"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Group not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups/{group_id}/members": {
+      "get": {
+        "tags": [
+          "User Groups"
+        ],
+        "summary": "Get members of a group",
+        "description": "\n\n**Required Permission:** `groups::read`\n\nView groups and group information",
+        "operationId": "UserGroup.getMembers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View groups and group information",
+                        "name": "GroupsRead",
+                        "value": "groups::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: groups::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Group not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups/assign": {
+      "post": {
+        "tags": [
+          "User Groups"
+        ],
+        "summary": "Assign user to group",
+        "description": "\n\n**Required Permission:** `groups::assign-users`\n\nAssign users to groups and remove users from groups",
+        "operationId": "UserGroup.assignUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignUserToGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Assign users to groups and remove users from groups",
+                        "name": "GroupsAssignUsers",
+                        "value": "groups::assign-users"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: groups::assign-users",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "User assigned successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User or Group not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups/{user_id}/{group_id}/remove": {
+      "delete": {
+        "tags": [
+          "User Groups"
+        ],
+        "summary": "Remove user from group",
+        "description": "\n\n**Required Permission:** `groups::assign-users`\n\nAssign users to groups and remove users from groups",
+        "operationId": "UserGroup.removeUser",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Assign users to groups and remove users from groups",
+                        "name": "GroupsAssignUsers",
+                        "value": "groups::assign-users"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: groups::assign-users",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "User removed successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User or Group not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     }
   },
@@ -543,31 +1146,50 @@
       "AssignUserToGroupRequest": {
         "type": "object",
         "properties": {
+          "group_id": {
+            "type": "string",
+            "format": "uuid"
+          },
           "user_id": {
             "type": "string",
             "format": "uuid"
           }
         },
         "required": [
-          "user_id"
+          "user_id",
+          "group_id"
         ]
       },
-      "ChangePasswordRequest": {
+      "AuthResponse": {
+        "description": "JWT token pair (access + refresh)",
         "type": "object",
         "properties": {
-          "new_password": {
+          "access_token": {
             "type": "string"
           },
-          "old_password": {
+          "expires_in": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "refresh_token": {
             "type": "string"
+          },
+          "token_type": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
           }
         },
         "required": [
-          "old_password",
-          "new_password"
+          "user",
+          "access_token",
+          "refresh_token",
+          "token_type",
+          "expires_in"
         ]
       },
-      "CreateUserGroupRequest": {
+      "CreateGroupRequest": {
         "type": "object",
         "properties": {
           "description": {
@@ -594,13 +1216,18 @@
       "CreateUserRequest": {
         "type": "object",
         "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "email": {
             "type": "string"
           },
           "password": {
             "type": "string"
           },
-          "profile": true,
           "username": {
             "type": "string"
           }
@@ -611,15 +1238,89 @@
           "password"
         ]
       },
-      "CurrentUserResponse": {
+      "Group": {
         "type": "object",
         "properties": {
-          "user": {
-            "$ref": "#/components/schemas/User"
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "is_system": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
-          "user"
+          "id",
+          "name",
+          "permissions",
+          "is_system",
+          "is_active",
+          "is_default",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "GroupListResponse": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_pages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "groups",
+          "total",
+          "page",
+          "per_page",
+          "total_pages"
         ]
       },
       "HealthResponse": {
@@ -639,33 +1340,39 @@
           "password": {
             "type": "string"
           },
-          "username_or_email": {
+          "provider": {
+            "description": "Optional provider name for LDAP/OAuth authentication\n If not specified, defaults to local password authentication",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
             "type": "string"
           }
         },
         "required": [
-          "username_or_email",
+          "username",
           "password"
         ]
       },
-      "LoginResponse": {
+      "MeResponse": {
         "type": "object",
         "properties": {
-          "expires_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "token": {
-            "type": "string"
+          "permissions": {
+            "description": "Effective permissions (union of user's direct permissions + all active group permissions)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "user": {
             "$ref": "#/components/schemas/User"
           }
         },
         "required": [
-          "token",
           "user",
-          "expires_at"
+          "permissions"
         ]
       },
       "PaginationQuery": {
@@ -683,31 +1390,85 @@
           }
         }
       },
-      "PasswordService": {
+      "PermissionDetail": {
         "type": "object",
         "properties": {
-          "bcrypt": {
+          "description": {
             "type": "string"
           },
-          "salt": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
             "type": "string"
           }
         },
         "required": [
-          "bcrypt",
-          "salt"
+          "name",
+          "value",
+          "description"
+        ]
+      },
+      "PermissionError": {
+        "description": "403 Forbidden response for missing permissions",
+        "type": "object",
+        "properties": {
+          "details": {
+            "$ref": "#/components/schemas/PermissionErrorDetails"
+          },
+          "error": {
+            "type": "string"
+          },
+          "error_code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "error_code",
+          "details"
+        ]
+      },
+      "PermissionErrorDetails": {
+        "type": "object",
+        "properties": {
+          "required_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionDetail"
+            }
+          }
+        },
+        "required": [
+          "required_permissions"
+        ]
+      },
+      "RefreshTokenRequest": {
+        "type": "object",
+        "properties": {
+          "refresh_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
         ]
       },
       "RegisterRequest": {
         "type": "object",
         "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "email": {
             "type": "string"
           },
           "password": {
             "type": "string"
           },
-          "profile": true,
           "username": {
             "type": "string"
           }
@@ -723,13 +1484,87 @@
         "properties": {
           "new_password": {
             "type": "string"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
+          "user_id",
           "new_password"
         ]
       },
-      "UpdateUserGroupRequest": {
+      "SetupAdminRequest": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "password"
+        ]
+      },
+      "SetupStatusResponse": {
+        "type": "object",
+        "properties": {
+          "app_name": {
+            "type": "string"
+          },
+          "needs_setup": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "needs_setup",
+          "app_name",
+          "version"
+        ]
+      },
+      "TokenPair": {
+        "description": "JWT token pair (access + refresh)",
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "token_type",
+          "expires_in"
+        ]
+      },
+      "UpdateGroupRequest": {
         "type": "object",
         "properties": {
           "description": {
@@ -764,6 +1599,12 @@
       "UpdateUserRequest": {
         "type": "object",
         "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "email": {
             "type": [
               "string",
@@ -776,7 +1617,6 @@
               "null"
             ]
           },
-          "profile": true,
           "username": {
             "type": [
               "string",
@@ -788,15 +1628,27 @@
       "User": {
         "type": "object",
         "properties": {
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
           },
-          "emails": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/UserEmail"
-            }
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "email_verified": {
+            "type": "boolean"
           },
           "id": {
             "type": "string",
@@ -805,19 +1657,12 @@
           "is_active": {
             "type": "boolean"
           },
-          "is_protected": {
-            "type": "boolean"
-          },
           "last_login_at": {
             "type": [
               "string",
               "null"
             ],
             "format": "date-time"
-          },
-          "profile": true,
-          "services": {
-            "$ref": "#/components/schemas/UserServices"
           },
           "updated_at": {
             "type": "string",
@@ -830,204 +1675,27 @@
         "required": [
           "id",
           "username",
-          "emails",
-          "created_at",
-          "services",
+          "email",
+          "email_verified",
           "is_active",
-          "is_protected",
+          "created_at",
           "updated_at"
         ]
       },
-      "UserEmail": {
+      "UserActiveStatusResponse": {
         "type": "object",
         "properties": {
-          "address": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "user_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "verified": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "user_id",
-          "address",
-          "verified",
-          "created_at"
-        ]
-      },
-      "UserGroup": {
-        "type": "object",
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
           "is_active": {
             "type": "boolean"
           },
-          "is_protected": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "permissions": true,
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "permissions",
-          "is_protected",
-          "is_active",
-          "created_at",
-          "updated_at"
-        ]
-      },
-      "UserGroupListResponse": {
-        "type": "object",
-        "properties": {
-          "groups": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/UserGroup"
-            }
-          },
-          "page": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "per_page": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "total": {
-            "type": "integer",
-            "format": "int64"
-          }
-        },
-        "required": [
-          "groups",
-          "total",
-          "page",
-          "per_page"
-        ]
-      },
-      "UserGroupMembersResponse": {
-        "type": "object",
-        "properties": {
-          "memberships": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/UserGroupMembershipWithUser"
-            }
-          },
-          "total": {
-            "type": "integer",
-            "format": "int64"
-          }
-        },
-        "required": [
-          "memberships",
-          "total"
-        ]
-      },
-      "UserGroupMembership": {
-        "type": "object",
-        "properties": {
-          "assigned_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "assigned_by": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "group_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
           "user_id": {
             "type": "string",
             "format": "uuid"
           }
         },
         "required": [
-          "id",
           "user_id",
-          "group_id",
-          "assigned_at"
-        ]
-      },
-      "UserGroupMembershipWithUser": {
-        "type": "object",
-        "properties": {
-          "assigned_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "assigned_by": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "group_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "user_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "username": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "user_id",
-          "group_id",
-          "assigned_at",
-          "username"
+          "is_active"
         ]
       },
       "UserListResponse": {
@@ -1045,6 +1713,10 @@
             "type": "integer",
             "format": "int64"
           },
+          "total_pages": {
+            "type": "integer",
+            "format": "int64"
+          },
           "users": {
             "type": "array",
             "items": {
@@ -1056,23 +1728,9 @@
           "users",
           "total",
           "page",
-          "per_page"
+          "per_page",
+          "total_pages"
         ]
-      },
-      "UserServices": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PasswordService"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
       }
     }
   }

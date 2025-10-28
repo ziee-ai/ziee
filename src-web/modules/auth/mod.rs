@@ -13,7 +13,7 @@ pub use errors::*;
 pub use jwt::{Claims, JwtService, TokenPair};
 pub use jwt_extractor::{JwtAuth, OptionalJwtAuth};
 pub use providers::{AuthError as ProvidersAuthError, AuthProviderTrait, AuthResult, OAuthResult, UserAttributes};
-pub use routes::auth_routes;
+pub use routes::{auth_routes, AuthResponse};
 
 // Modules to be added:
 // - provisioning: User auto-provisioning from external auth

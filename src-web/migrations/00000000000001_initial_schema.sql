@@ -41,6 +41,7 @@ CREATE TABLE groups (
     permissions TEXT[] DEFAULT '{}' NOT NULL, -- PostgreSQL array of permission strings
     is_system BOOLEAN DEFAULT FALSE NOT NULL, -- System groups cannot be deleted
     is_active BOOLEAN DEFAULT TRUE NOT NULL, -- Inactive groups are ignored in permission checks
+    is_default BOOLEAN DEFAULT FALSE NOT NULL, -- Default group for new user registrations
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
 );
@@ -166,31 +167,12 @@ VALUES (
 );
 
 -- Create default Users group for regular users
-INSERT INTO groups (name, description, permissions, is_system, is_active)
+INSERT INTO groups (name, description, permissions, is_system, is_active, is_default)
 VALUES (
     'Users',
     'Default group for all users',
     ARRAY['chat::read', 'chat::create', 'profile::read', 'profile::edit'],
     TRUE,
-    TRUE
-);
-
--- Create root admin user (password: admin123 - CHANGE THIS IN PRODUCTION!)
--- bcrypt hash for "admin123"
--- NOTE: is_admin = TRUE is unique constraint - only ONE root admin can exist
-INSERT INTO users (username, email, email_verified, password_hash, display_name, is_active, is_admin)
-VALUES (
-    'admin',
-    'admin@ziee.chat',
-    TRUE,
-    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYzP5cU3JJC',
-    'Root Administrator',
     TRUE,
     TRUE
 );
-
--- Assign root admin to Administrators group
-INSERT INTO user_groups (user_id, group_id)
-SELECT u.id, g.id
-FROM users u, groups g
-WHERE u.username = 'admin' AND g.name = 'Administrators';

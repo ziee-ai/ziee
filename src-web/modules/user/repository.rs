@@ -150,6 +150,45 @@ impl UserRepository {
         .map_err(AppError::database_error)
     }
 
+    /// Check if an admin user exists
+    pub async fn has_admin(&self) -> Result<bool, AppError> {
+        let result = sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT 1 FROM users WHERE is_admin = true) as "exists!""#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok(result)
+    }
+
+    /// Create an admin user (only for initial setup)
+    pub async fn create_admin(
+        &self,
+        username: &str,
+        email: &str,
+        password_hash: String,
+        display_name: Option<String>,
+    ) -> Result<User, AppError> {
+        sqlx::query_as!(
+            User,
+            r#"
+            INSERT INTO users (username, email, password_hash, display_name, is_active, is_admin)
+            VALUES ($1, $2, $3, $4, true, true)
+            RETURNING id, username, email, email_verified, password_hash, display_name,
+                      avatar_url, is_active, is_admin, permissions,
+                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+            "#,
+            username,
+            email,
+            password_hash,
+            display_name
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
     /// Update user
     pub async fn update(
         &self,
@@ -250,7 +289,7 @@ impl UserRepository {
         sqlx::query_as!(
             Group,
             r#"
-            SELECT g.id, g.name, g.description, g.permissions, g.is_system, g.is_active,
+            SELECT g.id, g.name, g.description, g.permissions, g.is_system, g.is_active, g.is_default,
                    g.created_at as "created_at: _", g.updated_at as "updated_at: _"
             FROM groups g
             INNER JOIN user_groups ug ON ug.group_id = g.id
@@ -322,7 +361,7 @@ impl GroupRepository {
         sqlx::query_as!(
             Group,
             r#"
-            SELECT id, name, description, permissions, is_system, is_active,
+            SELECT id, name, description, permissions, is_system, is_active, is_default,
                    created_at as "created_at: _", updated_at as "updated_at: _"
             FROM groups
             WHERE id = $1
@@ -339,7 +378,7 @@ impl GroupRepository {
         sqlx::query_as!(
             Group,
             r#"
-            SELECT id, name, description, permissions, is_system, is_active,
+            SELECT id, name, description, permissions, is_system, is_active, is_default,
                    created_at as "created_at: _", updated_at as "updated_at: _"
             FROM groups
             WHERE name = $1
@@ -356,7 +395,7 @@ impl GroupRepository {
         sqlx::query_as!(
             Group,
             r#"
-            SELECT id, name, description, permissions, is_system, is_active,
+            SELECT id, name, description, permissions, is_system, is_active, is_default,
                    created_at as "created_at: _", updated_at as "updated_at: _"
             FROM groups
             ORDER BY name
@@ -382,7 +421,7 @@ impl GroupRepository {
         let groups = sqlx::query_as!(
             Group,
             r#"
-            SELECT id, name, description, permissions, is_system, is_active,
+            SELECT id, name, description, permissions, is_system, is_active, is_default,
                    created_at as "created_at: _", updated_at as "updated_at: _"
             FROM groups
             ORDER BY name
@@ -410,7 +449,7 @@ impl GroupRepository {
             r#"
             INSERT INTO groups (name, description, permissions)
             VALUES ($1, $2, $3)
-            RETURNING id, name, description, permissions, is_system, is_active,
+            RETURNING id, name, description, permissions, is_system, is_active, is_default,
                       created_at as "created_at: _", updated_at as "updated_at: _"
             "#,
             name,
@@ -441,7 +480,7 @@ impl GroupRepository {
                 is_active = COALESCE($5, is_active),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, description, permissions, is_system, is_active,
+            RETURNING id, name, description, permissions, is_system, is_active, is_default,
                       created_at as "created_at: _", updated_at as "updated_at: _"
             "#,
             id,

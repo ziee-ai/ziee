@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { LeftSidebar } from './LeftSidebar'
 import { Button, theme } from 'antd'
-import { useWindowMinSize } from '../../hooks/useWindowMinSize'
+import { useWindowMinSize } from '@/hooks/useWindowMinSize.ts'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import tinycolor from 'tinycolor2'
 import 'overlayscrollbars/overlayscrollbars.css'

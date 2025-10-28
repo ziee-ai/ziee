@@ -93,7 +93,7 @@ pub async fn register(
         return Err((StatusCode::BAD_REQUEST, AppError::bad_request("INVALID_PASSWORD", "Password cannot be empty")));
     }
 
-    let user_repo = UserRepository::new(pool);
+    let user_repo = UserRepository::new(pool.clone());
 
     // Hash password
     let password_hash = password::hash_password(&req.password)
@@ -104,6 +104,35 @@ pub async fn register(
         .create(&req.username, &req.email, Some(password_hash), req.display_name)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // Auto-assign user to default group
+    let default_group = sqlx::query_as!(
+        crate::modules::user::Group,
+        r#"
+        SELECT id, name, description, permissions, is_system, is_active, is_default,
+               created_at as "created_at: _", updated_at as "updated_at: _"
+        FROM groups
+        WHERE is_default = true
+        LIMIT 1
+        "#
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+
+    if let Some(group) = default_group {
+        sqlx::query!(
+            r#"
+            INSERT INTO user_groups (user_id, group_id, assigned_at)
+            VALUES ($1, $2, NOW())
+            "#,
+            user.id,
+            group.id
+        )
+        .execute(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+    }
 
     // Generate JWT tokens
     let tokens = jwt_service
@@ -253,6 +282,35 @@ async fn login_with_provider(
         .execute(&pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+
+        // Auto-assign user to default group
+        let default_group = sqlx::query_as!(
+            crate::modules::user::Group,
+            r#"
+            SELECT id, name, description, permissions, is_system, is_active, is_default,
+                   created_at as "created_at: _", updated_at as "updated_at: _"
+            FROM groups
+            WHERE is_default = true
+            LIMIT 1
+            "#
+        )
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+
+        if let Some(group) = default_group {
+            sqlx::query!(
+                r#"
+                INSERT INTO user_groups (user_id, group_id, assigned_at)
+                VALUES ($1, $2, NOW())
+                "#,
+                new_user_id,
+                group.id
+            )
+            .execute(&pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+        }
 
         // Fetch the newly created user
         user_repo.get_by_id(new_user_id).await
@@ -509,10 +567,10 @@ pub fn auth_routes() -> ApiRouter<PgPool> {
         .api_route(
             "/me",
             get_with(me, |op| {
-                op.description("Get currently authenticated user")
+                op.description("Get currently authenticated user with their effective permissions")
                     .id("Auth.me")
                     .tag("auth")
-                    .response::<200, Json<User>>()
+                    .response::<200, Json<MeResponse>>()
             }),
         )
         // OAuth routes use regular routing (not aide) since they return redirects

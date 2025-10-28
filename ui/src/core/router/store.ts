@@ -1,11 +1,17 @@
 import { create } from 'zustand'
-import type { RouteConfig, AppModule } from './types'
+import type { RouteConfig, AppModule, SidebarActionButton, SidebarNavItem, SidebarWidget } from './types'
 import { createStoreProxy } from '../stores'
 
 interface RouterState {
   routes: RouteConfig[]
   modules: AppModule[]
   stores: Record<string, any>
+  sidebarItems: {
+    primaryActions: SidebarActionButton[]
+    navigation: SidebarNavItem[]
+    tools: SidebarNavItem[]
+    widgets: Map<string, SidebarWidget[]>
+  }
   registerModule: (module: AppModule) => void
   initializeModules: () => void
 }
@@ -14,13 +20,101 @@ export const useRouterStore = create<RouterState>((set, get) => ({
   routes: [],
   modules: [],
   stores: {},
+  sidebarItems: {
+    primaryActions: [],
+    navigation: [],
+    tools: [],
+    widgets: new Map(),
+  },
 
   registerModule: (module: AppModule) => {
     set((state) => {
       // Check if module is already registered
-      if (state.modules.some((m) => m.metadata.name === module.metadata.name)) {
-        console.warn(`Module ${module.metadata.name} is already registered`)
-        return state
+      const existingIndex = state.modules.findIndex((m) => m.metadata.name === module.metadata.name)
+
+      if (existingIndex !== -1) {
+        // In development, allow re-registration for HMR
+        if (import.meta.env.DEV) {
+          console.log(`🔄 Re-registering module for HMR: ${module.metadata.name}`)
+
+          // Remove old module and its routes
+          const oldModule = state.modules[existingIndex]
+          const oldRoutes = oldModule.registerRoutes()
+          const oldRoutePaths = new Set(oldRoutes.map(r => r.path))
+
+          const newModules = [...state.modules]
+          newModules[existingIndex] = module
+
+          // Remove old routes and add new ones
+          const filteredRoutes = state.routes.filter(r => !oldRoutePaths.has(r.path))
+          const moduleRoutes = module.registerRoutes()
+          const newRoutes = [...filteredRoutes, ...moduleRoutes]
+
+          // Re-register stores
+          const newStores = { ...state.stores }
+          if (module.registerStores) {
+            const storeRegistrations = module.registerStores()
+            storeRegistrations.forEach((reg) => {
+              newStores[reg.name] = createStoreProxy(reg.store)
+            })
+          }
+
+          // Re-register sidebar items - remove old ones first
+          // Get old sidebar items from the old module
+          const oldSidebar = oldModule.registerSidebar?.()
+          const oldActionIds = new Set(oldSidebar?.primaryActions?.map(a => a.id) || [])
+          const oldNavIds = new Set(oldSidebar?.navigation?.map(n => n.id) || [])
+          const oldToolIds = new Set(oldSidebar?.tools?.map(t => t.id) || [])
+
+          // Filter out old items
+          const newSidebarItems = {
+            primaryActions: state.sidebarItems.primaryActions.filter(a => !oldActionIds.has(a.id)),
+            navigation: state.sidebarItems.navigation.filter(n => !oldNavIds.has(n.id)),
+            tools: state.sidebarItems.tools.filter(t => !oldToolIds.has(t.id)),
+            widgets: new Map(state.sidebarItems.widgets),
+          }
+
+          // Remove old widgets
+          if (oldSidebar?.widgets) {
+            oldSidebar.widgets.forEach(oldWidget => {
+              const slotWidgets = newSidebarItems.widgets.get(oldWidget.slot) || []
+              newSidebarItems.widgets.set(
+                oldWidget.slot,
+                slotWidgets.filter(w => w.id !== oldWidget.id)
+              )
+            })
+          }
+
+          // Add new sidebar items
+          if (module.registerSidebar) {
+            const sidebar = module.registerSidebar()
+            if (sidebar.primaryActions) {
+              newSidebarItems.primaryActions.push(...sidebar.primaryActions)
+            }
+            if (sidebar.navigation) {
+              newSidebarItems.navigation.push(...sidebar.navigation)
+            }
+            if (sidebar.tools) {
+              newSidebarItems.tools.push(...sidebar.tools)
+            }
+            if (sidebar.widgets) {
+              sidebar.widgets.forEach(widget => {
+                const existing = newSidebarItems.widgets.get(widget.slot) || []
+                newSidebarItems.widgets.set(widget.slot, [...existing, widget])
+              })
+            }
+          }
+
+          return {
+            modules: newModules,
+            routes: newRoutes,
+            stores: newStores,
+            sidebarItems: newSidebarItems,
+          }
+        } else {
+          console.warn(`Module ${module.metadata.name} is already registered`)
+          return state
+        }
       }
 
       // Register the module
@@ -37,20 +131,46 @@ export const useRouterStore = create<RouterState>((set, get) => ({
         storeRegistrations.forEach((reg) => {
           newStores[reg.name] = createStoreProxy(reg.store)
         })
-        console.log(`Registered module: ${module.metadata.name}`, {
-          routes: moduleRoutes.length,
-          stores: storeRegistrations.length,
-        })
-      } else {
-        console.log(`Registered module: ${module.metadata.name}`, {
-          routes: moduleRoutes.length,
-        })
       }
+
+      // Get sidebar items from the module
+      const newSidebarItems = {
+        primaryActions: [...state.sidebarItems.primaryActions],
+        navigation: [...state.sidebarItems.navigation],
+        tools: [...state.sidebarItems.tools],
+        widgets: new Map(state.sidebarItems.widgets),
+      }
+
+      if (module.registerSidebar) {
+        const sidebar = module.registerSidebar()
+        if (sidebar.primaryActions) {
+          newSidebarItems.primaryActions.push(...sidebar.primaryActions)
+        }
+        if (sidebar.navigation) {
+          newSidebarItems.navigation.push(...sidebar.navigation)
+        }
+        if (sidebar.tools) {
+          newSidebarItems.tools.push(...sidebar.tools)
+        }
+        if (sidebar.widgets) {
+          sidebar.widgets.forEach(widget => {
+            const existing = newSidebarItems.widgets.get(widget.slot) || []
+            newSidebarItems.widgets.set(widget.slot, [...existing, widget])
+          })
+        }
+      }
+
+      console.log(`Registered module: ${module.metadata.name}`, {
+        routes: moduleRoutes.length,
+        stores: module.registerStores ? module.registerStores().length : 0,
+        sidebar: module.registerSidebar ? 'yes' : 'no',
+      })
 
       return {
         modules: newModules,
         routes: newRoutes,
         stores: newStores,
+        sidebarItems: newSidebarItems,
       }
     })
   },

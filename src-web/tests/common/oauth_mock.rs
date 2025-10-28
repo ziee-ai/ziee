@@ -28,12 +28,47 @@ impl OAuthMockServer {
         // The OAuth server doesn't log a "ready" message, so we use a simple duration wait
         let image = GenericImage::new("ghcr.io/navikt/mock-oauth2-server", "2.1.10")
             .with_exposed_port(ContainerPort::Tcp(8080))
-            .with_wait_for(WaitFor::seconds(3));
+            .with_wait_for(WaitFor::seconds(5));
 
         let container = image.start().await?;
         let host = "127.0.0.1".to_string();
         let port = container.get_host_port_ipv4(8080).await?;
         let issuer_url = format!("http://{}:{}/default", host, port);
+
+        // Wait for the server to be ready with retry logic
+        let well_known_url = format!("{}/.well-known/openid-configuration", issuer_url);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()?;
+
+        let max_retries = 10;
+        let mut retry_count = 0;
+        let mut last_error = None;
+
+        while retry_count < max_retries {
+            match client.get(&well_known_url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    // Server is ready
+                    break;
+                }
+                Ok(_) | Err(_) => {
+                    last_error = Some(format!("Attempt {} failed", retry_count + 1));
+                    retry_count += 1;
+                    if retry_count < max_retries {
+                        // Exponential backoff: 100ms, 200ms, 400ms, 800ms, etc.
+                        let delay = std::time::Duration::from_millis(100 * 2_u64.pow(retry_count.min(5)));
+                        tokio::time::sleep(delay).await;
+                    }
+                }
+            }
+        }
+
+        if retry_count >= max_retries {
+            return Err(format!(
+                "OAuth mock server failed to become ready after {} attempts. Last error: {:?}",
+                max_retries, last_error
+            ).into());
+        }
 
         Ok(Self {
             container,

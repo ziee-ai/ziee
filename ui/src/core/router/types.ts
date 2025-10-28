@@ -1,11 +1,11 @@
-import type { ReactElement } from 'react'
+import type { ReactElement, ComponentType, ReactNode } from 'react'
 import type { UseBoundStore, StoreApi } from 'zustand'
 
 export interface RouteConfig {
   path: string
   element: ReactElement
   requiresAuth?: boolean
-  layout?: 'default' | 'none'
+  layout?: ComponentType<{ children: ReactNode }>
   index?: boolean
 }
 
@@ -20,10 +20,44 @@ export interface ModuleMetadata {
   description?: string
 }
 
+// Sidebar types
+export interface SidebarActionButton {
+  id: string
+  icon: ReactNode
+  label: string
+  onClick?: () => void
+  to?: string
+  order?: number
+}
+
+export interface SidebarNavItem {
+  id: string
+  icon: ReactNode
+  label: string
+  path: string
+  order?: number
+  requiresPermission?: string
+}
+
+export interface SidebarWidget {
+  id: string
+  slot: string
+  component: ReactNode
+  order?: number
+}
+
+export interface SidebarRegistration {
+  primaryActions?: SidebarActionButton[]
+  navigation?: SidebarNavItem[]
+  tools?: SidebarNavItem[]
+  widgets?: SidebarWidget[]
+}
+
 export interface AppModule {
   metadata: ModuleMetadata
   registerRoutes: () => RouteConfig[]
   registerStores?: () => StoreRegistration[]
+  registerSidebar?: () => SidebarRegistration
   initialize?: () => void | Promise<void>
   cleanup?: () => void | Promise<void>
 }

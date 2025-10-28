@@ -48,7 +48,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
       >
         <Form.Item
           label="Username or Email"
-          name="username_or_email"
+          name="username"
           rules={[{ required: true, message: 'Please input your username or email!' }]}
         >
           <Input

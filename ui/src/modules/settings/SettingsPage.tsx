@@ -15,7 +15,7 @@ export default function SettingsPage() {
               <Input defaultValue={user?.username} disabled />
             </Form.Item>
             <Form.Item label="Email">
-              <Input defaultValue={user?.emails[0]?.address} disabled />
+              <Input defaultValue={user?.email} disabled />
             </Form.Item>
             <Form.Item label="Member Since">
               <Input

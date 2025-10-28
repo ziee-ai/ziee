@@ -13,7 +13,6 @@ export default createModule({
       path: '/auth',
       element: <AuthPage />,
       requiresAuth: false,
-      layout: 'none',
     },
   ],
   stores: [

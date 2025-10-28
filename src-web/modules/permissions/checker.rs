@@ -86,6 +86,7 @@ mod tests {
             permissions: permissions.into_iter().map(String::from).collect(),
             is_system: false,
             is_active: true,
+            is_default: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

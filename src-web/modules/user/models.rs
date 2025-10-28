@@ -69,6 +69,7 @@ pub struct Group {
     pub permissions: Vec<String>, // PostgreSQL array
     pub is_system: bool,
     pub is_active: bool,
+    pub is_default: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

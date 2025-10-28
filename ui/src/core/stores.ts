@@ -59,12 +59,18 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
 // Registered Stores - Dynamic store registry with IntelliSense
 // ============================================================================
 
+// Helper type to wrap store state with proxy methods
+export type StoreProxy<T> = Readonly<T & {
+  __state: T
+  __setState: (partial: Partial<T> | ((state: T) => Partial<T>)) => void
+}>
+
 // This interface will be augmented by modules via declaration merging
 export interface RegisteredStores {
   // Modules will add their store types here via:
   // declare module '@/core/stores' {
   //   interface RegisteredStores {
-  //     Auth: { user: User, isAuthenticated: boolean, ... }
+  //     Auth: StoreProxy<{ user: User, isAuthenticated: boolean, ... }>
   //   }
   // }
 }

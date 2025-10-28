@@ -11,130 +11,153 @@
 // =============================================================================
 
 export interface AssignUserToGroupRequest {
+  group_id: string
   user_id: string
 }
-export interface ChangePasswordRequest {
-  new_password: string
-  old_password: string
+export interface AuthResponse {
+  access_token: string
+  expires_in: number
+  refresh_token: string
+  token_type: string
+  user: User
 }
-export interface CreateUserGroupRequest {
+export interface CreateGroupRequest {
   description?: any
   name: string
   permissions: string[]
 }
 export interface CreateUserRequest {
+  display_name?: any
   email: string
   password: string
-  profile?: any
   username: string
 }
-export interface CurrentUserResponse {
-  user: User
+export interface Group {
+  created_at: string
+  description?: any
+  id: string
+  is_active: boolean
+  is_default: boolean
+  is_system: boolean
+  name: string
+  permissions: string[]
+  updated_at: string
+}
+export interface GroupListResponse {
+  groups: Group[]
+  page: number
+  per_page: number
+  total: number
+  total_pages: number
 }
 export interface HealthResponse {
   status: string
 }
 export interface LoginRequest {
   password: string
-  username_or_email: string
+  provider?: any
+  username: string
 }
-export interface LoginResponse {
-  expires_at: string
-  token: string
+export interface MeResponse {
+  permissions: string[]
   user: User
 }
 export interface PaginationQuery {
   page?: number
   per_page?: number
 }
-export interface PasswordService {
-  bcrypt: string
-  salt: string
+export interface PermissionDetail {
+  description: string
+  name: string
+  value: string
+}
+export interface PermissionError {
+  details: PermissionErrorDetails
+  error: string
+  error_code: string
+}
+export interface PermissionErrorDetails {
+  required_permissions: PermissionDetail[]
+}
+export interface RefreshTokenRequest {
+  refresh_token: string
 }
 export interface RegisterRequest {
+  display_name?: any
   email: string
   password: string
-  profile?: any
   username: string
 }
 export interface ResetPasswordRequest {
   new_password: string
+  user_id: string
 }
-export interface UpdateUserGroupRequest {
+export interface SetupAdminRequest {
+  display_name?: any
+  email: string
+  password: string
+  username: string
+}
+export interface SetupStatusResponse {
+  app_name: string
+  needs_setup: boolean
+  version: string
+}
+export interface TokenPair {
+  access_token: string
+  expires_in: number
+  refresh_token: string
+  token_type: string
+}
+export interface UpdateGroupRequest {
   description?: any
   is_active?: any
   name?: any
   permissions?: any
 }
 export interface UpdateUserRequest {
+  display_name?: any
   email?: any
   is_active?: any
-  profile?: any
   username?: any
 }
 export interface User {
+  avatar_url?: any
   created_at: string
-  emails: UserEmail[]
+  display_name?: any
+  email: string
+  email_verified: boolean
   id: string
   is_active: boolean
-  is_protected: boolean
   last_login_at?: any
-  profile?: any
-  services: UserServices
   updated_at: string
   username: string
 }
-export interface UserEmail {
-  address: string
-  created_at: string
-  id: string
-  user_id: string
-  verified: boolean
-}
-export interface UserGroup {
-  created_at: string
-  description?: any
-  id: string
+export interface UserActiveStatusResponse {
   is_active: boolean
-  is_protected: boolean
-  name: string
-  permissions: any
-  updated_at: string
-}
-export interface UserGroupListResponse {
-  groups: UserGroup[]
-  page: number
-  per_page: number
-  total: number
-}
-export interface UserGroupMembersResponse {
-  memberships: UserGroupMembershipWithUser[]
-  total: number
-}
-export interface UserGroupMembership {
-  assigned_at: string
-  assigned_by?: any
-  group_id: string
-  id: string
   user_id: string
-}
-export interface UserGroupMembershipWithUser {
-  assigned_at: string
-  assigned_by?: any
-  group_id: string
-  id: string
-  user_id: string
-  username: string
 }
 export interface UserListResponse {
   page: number
   per_page: number
   total: number
+  total_pages: number
   users: User[]
 }
-export interface UserServices {
-  password?: any
+export enum Permission {
+  GroupsAssignUsers = 'groups::assign-users',
+  GroupsCreate = 'groups::create',
+  GroupsDelete = 'groups::delete',
+  GroupsEdit = 'groups::edit',
+  GroupsRead = 'groups::read',
+  UsersCreate = 'users::create',
+  UsersDelete = 'users::delete',
+  UsersEdit = 'users::edit',
+  UsersRead = 'users::read',
+  UsersResetPassword = 'users::reset-password',
+  UsersToggleStatus = 'users::toggle-status',
 }
+
 
 // =============================================================================
 // API ENDPOINTS
@@ -142,77 +165,83 @@ export interface UserServices {
 
 // API endpoint definitions
 export const ApiEndpoints = {
-  'Auth.getCurrentUser': 'GET /api/auth/me',
+  'App.getSetupStatus': 'GET /api/app/setup/status',
+  'App.setupAdmin': 'POST /api/app/setup/admin',
   'Auth.login': 'POST /api/auth/login',
   'Auth.logout': 'POST /api/auth/logout',
+  'Auth.me': 'GET /api/auth/me',
+  'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
   'Health.check': 'GET /api/health',
-  'User.changePassword': 'POST /api/users/{id}/password',
   'User.create': 'POST /api/users',
-  'User.delete': 'DELETE /api/users/{id}',
-  'User.get': 'GET /api/users/{id}',
+  'User.delete': 'DELETE /api/users/{user_id}',
+  'User.get': 'GET /api/users/{user_id}',
   'User.list': 'GET /api/users',
-  'User.resetPassword': 'POST /api/users/{id}/reset-password',
-  'User.update': 'PUT /api/users/{id}',
-  'UserGroup.assignUser': 'POST /api/user-groups/{id}/members',
-  'UserGroup.create': 'POST /api/user-groups',
-  'UserGroup.delete': 'DELETE /api/user-groups/{id}',
-  'UserGroup.get': 'GET /api/user-groups/{id}',
-  'UserGroup.getMembers': 'GET /api/user-groups/{id}/members',
-  'UserGroup.getUserGroups': 'GET /api/users/{user_id}/groups',
-  'UserGroup.list': 'GET /api/user-groups',
-  'UserGroup.removeUser': 'DELETE /api/user-groups/{id}/members/{user_id}',
-  'UserGroup.update': 'PUT /api/user-groups/{id}',
+  'User.resetPassword': 'POST /api/users/reset-password',
+  'User.toggleActive': 'POST /api/users/{user_id}/toggle-active',
+  'User.update': 'POST /api/users/{user_id}',
+  'UserGroup.assignUser': 'POST /api/groups/assign',
+  'UserGroup.create': 'POST /api/groups',
+  'UserGroup.delete': 'DELETE /api/groups/{group_id}',
+  'UserGroup.get': 'GET /api/groups/{group_id}',
+  'UserGroup.getMembers': 'GET /api/groups/{group_id}/members',
+  'UserGroup.list': 'GET /api/groups',
+  'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
+  'UserGroup.update': 'POST /api/groups/{group_id}',
 } as const
 
 // API endpoint parameters
 export type ApiEndpointParameters = {
-  'Auth.getCurrentUser': void
+  'App.getSetupStatus': void
+  'App.setupAdmin': SetupAdminRequest
   'Auth.login': LoginRequest
   'Auth.logout': void
+  'Auth.me': void
+  'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
   'Health.check': void
-  'User.changePassword': { id: string } & ChangePasswordRequest
   'User.create': CreateUserRequest
-  'User.delete': { id: string }
-  'User.get': { id: string }
+  'User.delete': { user_id: string }
+  'User.get': { user_id: string }
   'User.list': { page?: number; per_page?: number }
-  'User.resetPassword': { id: string } & ResetPasswordRequest
-  'User.update': { id: string } & UpdateUserRequest
-  'UserGroup.assignUser': { id: string } & AssignUserToGroupRequest
-  'UserGroup.create': CreateUserGroupRequest
-  'UserGroup.delete': { id: string }
-  'UserGroup.get': { id: string }
-  'UserGroup.getMembers': { id: string }
-  'UserGroup.getUserGroups': { user_id: string }
+  'User.resetPassword': ResetPasswordRequest
+  'User.toggleActive': { user_id: string }
+  'User.update': { user_id: string } & UpdateUserRequest
+  'UserGroup.assignUser': AssignUserToGroupRequest
+  'UserGroup.create': CreateGroupRequest
+  'UserGroup.delete': { group_id: string }
+  'UserGroup.get': { group_id: string }
+  'UserGroup.getMembers': { group_id: string; page?: number; per_page?: number }
   'UserGroup.list': { page?: number; per_page?: number }
-  'UserGroup.removeUser': { id: string; user_id: string }
-  'UserGroup.update': { id: string } & UpdateUserGroupRequest
+  'UserGroup.removeUser': { user_id: string; group_id: string }
+  'UserGroup.update': { group_id: string } & UpdateGroupRequest
 }
 
 // API endpoint responses
 export type ApiEndpointResponses = {
-  'Auth.getCurrentUser': CurrentUserResponse
-  'Auth.login': LoginResponse
+  'App.getSetupStatus': SetupStatusResponse
+  'App.setupAdmin': AuthResponse
+  'Auth.login': AuthResponse
   'Auth.logout': void
-  'Auth.register': LoginResponse
+  'Auth.me': MeResponse
+  'Auth.refresh': TokenPair
+  'Auth.register': AuthResponse
   'Health.check': HealthResponse
-  'User.changePassword': any
   'User.create': User
   'User.delete': void
   'User.get': User
   'User.list': UserListResponse
-  'User.resetPassword': any
+  'User.resetPassword': void
+  'User.toggleActive': UserActiveStatusResponse
   'User.update': User
-  'UserGroup.assignUser': UserGroupMembership
-  'UserGroup.create': UserGroup
+  'UserGroup.assignUser': void
+  'UserGroup.create': Group
   'UserGroup.delete': void
-  'UserGroup.get': UserGroup
-  'UserGroup.getMembers': UserGroupMembersResponse
-  'UserGroup.getUserGroups': UserGroup[]
-  'UserGroup.list': UserGroupListResponse
+  'UserGroup.get': Group
+  'UserGroup.getMembers': UserListResponse
+  'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
-  'UserGroup.update': UserGroup
+  'UserGroup.update': Group
 }
 
 // Type helpers

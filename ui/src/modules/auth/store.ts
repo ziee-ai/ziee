@@ -6,10 +6,12 @@ import type {
   CreateUserRequest,
   User,
 } from '../../api-client/types'
+import type { StoreProxy } from '@/core/stores'
 
 interface AuthState {
   user?: User | null
   token?: string | null
+  permissions?: string[]
   isAuthenticated: boolean
   isLoading: boolean
   error?: string | null
@@ -18,13 +20,14 @@ interface AuthState {
 // Augment the RegisteredStores interface for IntelliSense
 declare module '../../core/stores' {
   interface RegisteredStores {
-    Auth: AuthState
+    Auth: StoreProxy<AuthState>
   }
 }
 
 const defaultState: AuthState = {
   user: null,
   token: null,
+  permissions: [],
   isAuthenticated: false,
   isLoading: false,
   error: null,
@@ -53,7 +56,7 @@ export const authenticateUser = async (
 
     useAuthStore.setState({
       user: response.user,
-      token: response.token,
+      token: response.access_token,
       isAuthenticated: true,
       isLoading: false,
       error: null,
@@ -115,7 +118,7 @@ export const registerNewUser = async (
 
     useAuthStore.setState({
       user: response.user,
-      token: response.token,
+      token: response.access_token,
       isAuthenticated: true,
       isLoading: false,
       error: null,
@@ -143,10 +146,11 @@ export const initAuth = async (): Promise<void> => {
   try {
     const token = useAuthStore.getState().token
     if (token) {
-      // Fetch current user profile
-      const response = await ApiClient.Auth.getCurrentUser(undefined, undefined)
+      // Fetch current user profile with permissions
+      const response = await ApiClient.Auth.me(undefined, undefined)
       useAuthStore.setState({
         user: response.user,
+        permissions: response.permissions,
         isAuthenticated: true,
         isLoading: false,
       })
@@ -169,3 +173,4 @@ export const initAuth = async (): Promise<void> => {
     })
   }
 }
+
