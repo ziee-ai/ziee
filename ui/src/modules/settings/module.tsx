@@ -1,7 +1,6 @@
 import { createModule } from '@/core'
 import { SettingOutlined } from '@ant-design/icons'
-import SettingsPage from './SettingsPage'
-import AppLayout from '@/components/Layout/AppLayout'
+import SettingsLayout from './SettingsLayout'
 
 export default createModule({
   metadata: {
@@ -12,9 +11,8 @@ export default createModule({
   routes: [
     {
       path: '/settings',
-      element: <SettingsPage />,
+      element: <SettingsLayout />,
       requiresAuth: true,
-      layout: AppLayout,
     },
   ],
   sidebar: {

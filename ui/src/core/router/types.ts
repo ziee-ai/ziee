@@ -53,11 +53,22 @@ export interface SidebarRegistration {
   widgets?: SidebarWidget[]
 }
 
+// Settings types
+export interface SettingsMenuItem {
+  id: string
+  icon: ReactNode
+  label: string
+  path: string
+  section: 'user' | 'admin'
+  order?: number
+}
+
 export interface AppModule {
   metadata: ModuleMetadata
   registerRoutes: () => RouteConfig[]
   registerStores?: () => StoreRegistration[]
   registerSidebar?: () => SidebarRegistration
+  registerSettings?: () => SettingsMenuItem[]
   initialize?: () => void | Promise<void>
   cleanup?: () => void | Promise<void>
 }

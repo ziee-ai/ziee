@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { RouteConfig, AppModule, SidebarActionButton, SidebarNavItem, SidebarWidget } from './types'
+import type { RouteConfig, AppModule, SidebarActionButton, SidebarNavItem, SidebarWidget, SettingsMenuItem } from './types'
 import { createStoreProxy } from '../stores'
 
 interface RouterState {
@@ -12,6 +12,7 @@ interface RouterState {
     tools: SidebarNavItem[]
     widgets: Map<string, SidebarWidget[]>
   }
+  settingsItems: SettingsMenuItem[]
   registerModule: (module: AppModule) => void
   initializeModules: () => void
 }
@@ -26,6 +27,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
     tools: [],
     widgets: new Map(),
   },
+  settingsItems: [],
 
   registerModule: (module: AppModule) => {
     set((state) => {
@@ -105,11 +107,25 @@ export const useRouterStore = create<RouterState>((set, get) => ({
             }
           }
 
+          // Re-register settings items - remove old ones first
+          const oldSettings = oldModule.registerSettings?.()
+          const oldSettingsIds = new Set(oldSettings?.map(s => s.id) || [])
+
+          // Filter out old items
+          let newSettingsItems = state.settingsItems.filter(s => !oldSettingsIds.has(s.id))
+
+          // Add new settings items
+          if (module.registerSettings) {
+            const settings = module.registerSettings()
+            newSettingsItems = [...newSettingsItems, ...settings]
+          }
+
           return {
             modules: newModules,
             routes: newRoutes,
             stores: newStores,
             sidebarItems: newSidebarItems,
+            settingsItems: newSettingsItems,
           }
         } else {
           console.warn(`Module ${module.metadata.name} is already registered`)
@@ -160,10 +176,18 @@ export const useRouterStore = create<RouterState>((set, get) => ({
         }
       }
 
+      // Get settings items from the module
+      const newSettingsItems = [...state.settingsItems]
+      if (module.registerSettings) {
+        const settings = module.registerSettings()
+        newSettingsItems.push(...settings)
+      }
+
       console.log(`Registered module: ${module.metadata.name}`, {
         routes: moduleRoutes.length,
         stores: module.registerStores ? module.registerStores().length : 0,
         sidebar: module.registerSidebar ? 'yes' : 'no',
+        settings: module.registerSettings ? module.registerSettings().length : 0,
       })
 
       return {
@@ -171,6 +195,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
         routes: newRoutes,
         stores: newStores,
         sidebarItems: newSidebarItems,
+        settingsItems: newSettingsItems,
       }
     })
   },
