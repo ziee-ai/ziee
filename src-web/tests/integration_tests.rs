@@ -6,3 +6,4 @@ mod auth;
 mod user;
 mod hardware;
 mod llm_repository;
+mod llm_provider;

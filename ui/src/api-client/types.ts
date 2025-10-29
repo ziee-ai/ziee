@@ -10,6 +10,10 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+export interface AssignProviderToGroupRequest {
+  group_id: string
+  provider_id: string
+}
 export interface AssignUserToGroupRequest {
   group_id: string
   user_id: string
@@ -38,6 +42,14 @@ export interface CreateGroupRequest {
   description?: any
   name: string
   permissions: string[]
+}
+export interface CreateLlmProviderRequest {
+  api_key?: any
+  base_url?: any
+  enabled?: any
+  name: string
+  provider_type: string
+  proxy_settings?: any
 }
 export interface CreateLlmRepositoryRequest {
   auth_config?: any
@@ -113,6 +125,24 @@ export interface HardwareUsageUpdate {
 export interface HealthResponse {
   status: string
 }
+export interface LlmProvider {
+  api_key?: any
+  base_url?: any
+  built_in: boolean
+  created_at: string
+  enabled: boolean
+  id: string
+  name: string
+  provider_type: string
+  proxy_settings: ProxySettings
+  updated_at: string
+}
+export interface LlmProviderListResponse {
+  page: number
+  per_page: number
+  providers: LlmProvider[]
+  total: number
+}
 export interface LlmRepository {
   auth_config: RepositoryAuthConfig
   auth_type: string
@@ -172,6 +202,14 @@ export interface PermissionError {
 }
 export interface PermissionErrorDetails {
   required_permissions: PermissionDetail[]
+}
+export interface ProxySettings {
+  enabled?: boolean
+  ignore_ssl_certificates?: boolean
+  no_proxy?: string
+  password?: string
+  url?: string
+  username?: string
 }
 export interface RefreshTokenRequest {
   refresh_token: string
@@ -233,6 +271,13 @@ export interface UpdateGroupRequest {
   name?: any
   permissions?: any
 }
+export interface UpdateLlmProviderRequest {
+  api_key?: any
+  base_url?: any
+  enabled?: any
+  name?: any
+  proxy_settings?: any
+}
 export interface UpdateLlmRepositoryRequest {
   auth_config?: any
   auth_type?: any
@@ -275,6 +320,11 @@ export enum Permission {
   GroupsDelete = 'groups::delete',
   GroupsEdit = 'groups::edit',
   GroupsRead = 'groups::read',
+  LlmProvidersAssignGroups = 'llm_providers::assign_groups',
+  LlmProvidersCreate = 'llm_providers::create',
+  LlmProvidersDelete = 'llm_providers::delete',
+  LlmProvidersEdit = 'llm_providers::edit',
+  LlmProvidersRead = 'llm_providers::read',
   LlmRepositoriesCreate = 'llm_repositories::create',
   LlmRepositoriesDelete = 'llm_repositories::delete',
   LlmRepositoriesEdit = 'llm_repositories::edit',
@@ -304,6 +354,14 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'LlmProvider.assignGroup': 'POST /api/llm-providers/assign-group',
+  'LlmProvider.create': 'POST /api/llm-providers',
+  'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
+  'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
+  'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
+  'LlmProvider.list': 'GET /api/llm-providers',
+  'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/{group_id}/remove-group',
+  'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
   'LlmRepository.create': 'POST /api/llm-repositories',
   'LlmRepository.delete': 'DELETE /api/llm-repositories/{repository_id}',
   'LlmRepository.get': 'GET /api/llm-repositories/{repository_id}',
@@ -339,6 +397,14 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'LlmProvider.assignGroup': AssignProviderToGroupRequest
+  'LlmProvider.create': CreateLlmProviderRequest
+  'LlmProvider.delete': { provider_id: string }
+  'LlmProvider.get': { provider_id: string }
+  'LlmProvider.getGroups': { provider_id: string }
+  'LlmProvider.list': { page?: number; per_page?: number }
+  'LlmProvider.removeGroup': { provider_id: string; group_id: string }
+  'LlmProvider.update': { provider_id: string } & UpdateLlmProviderRequest
   'LlmRepository.create': CreateLlmRepositoryRequest
   'LlmRepository.delete': { repository_id: string }
   'LlmRepository.get': { repository_id: string }
@@ -374,6 +440,14 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'LlmProvider.assignGroup': void
+  'LlmProvider.create': LlmProvider
+  'LlmProvider.delete': void
+  'LlmProvider.get': LlmProvider
+  'LlmProvider.getGroups': Group[]
+  'LlmProvider.list': LlmProviderListResponse
+  'LlmProvider.removeGroup': void
+  'LlmProvider.update': LlmProvider
   'LlmRepository.create': LlmRepository
   'LlmRepository.delete': void
   'LlmRepository.get': LlmRepository

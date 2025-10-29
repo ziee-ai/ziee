@@ -1233,6 +1233,479 @@
         }
       }
     },
+    "/api/llm-providers": {
+      "get": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "List all LLM providers with pagination",
+        "description": "\n\n**Required Permission:** `llm_providers::read`\n\nView LLM providers and list available providers",
+        "operationId": "LlmProvider.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM providers and list available providers",
+                        "name": "LlmProvidersRead",
+                        "value": "llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProviderListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Create a new LLM provider",
+        "description": "\n\n**Required Permission:** `llm_providers::create`\n\nCreate new LLM provider configurations",
+        "operationId": "LlmProvider.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new LLM provider configurations",
+                        "name": "LlmProvidersCreate",
+                        "value": "llm_providers::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-providers/{provider_id}": {
+      "get": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Get LLM provider by ID",
+        "description": "\n\n**Required Permission:** `llm_providers::read`\n\nView LLM providers and list available providers",
+        "operationId": "LlmProvider.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM providers and list available providers",
+                        "name": "LlmProvidersRead",
+                        "value": "llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Update an existing LLM provider",
+        "description": "\n\n**Required Permission:** `llm_providers::edit`\n\nEdit existing LLM provider information and settings",
+        "operationId": "LlmProvider.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM provider information and settings",
+                        "name": "LlmProvidersEdit",
+                        "value": "llm_providers::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Delete an LLM provider",
+        "description": "Delete a non-built-in LLM provider. Built-in providers cannot be deleted.",
+        "operationId": "LlmProvider.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete non-built-in LLM providers",
+                        "name": "LlmProvidersDelete",
+                        "value": "llm_providers::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Provider deleted successfully"
+          },
+          "400": {
+            "description": "Cannot delete built-in provider"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-providers/{provider_id}/groups": {
+      "get": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Get groups assigned to a provider",
+        "description": "\n\n**Required Permission:** `llm_providers::read`\n\nView LLM providers and list available providers",
+        "operationId": "LlmProvider.getGroups",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM providers and list available providers",
+                        "name": "LlmProvidersRead",
+                        "value": "llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Group"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-providers/assign-group": {
+      "post": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Assign a provider to a user group",
+        "description": "\n\n**Required Permission:** `llm_providers::assign_groups`\n\nAssign LLM providers to user groups",
+        "operationId": "LlmProvider.assignGroup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignProviderToGroupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Assign LLM providers to user groups",
+                        "name": "LlmProvidersAssignGroups",
+                        "value": "llm_providers::assign_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::assign_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Provider assigned to group successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-providers/{provider_id}/{group_id}/remove-group": {
+      "delete": {
+        "tags": [
+          "LLM Providers"
+        ],
+        "summary": "Remove a provider from a user group",
+        "description": "\n\n**Required Permission:** `llm_providers::assign_groups`\n\nAssign LLM providers to user groups",
+        "operationId": "LlmProvider.removeGroup",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Assign LLM providers to user groups",
+                        "name": "LlmProvidersAssignGroups",
+                        "value": "llm_providers::assign_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::assign_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Provider removed from group successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Assignment not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-repositories": {
       "get": {
         "tags": [
@@ -1611,6 +2084,23 @@
   },
   "components": {
     "schemas": {
+      "AssignProviderToGroupRequest": {
+        "type": "object",
+        "properties": {
+          "group_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "provider_id",
+          "group_id"
+        ]
+      },
       "AssignUserToGroupRequest": {
         "type": "object",
         "properties": {
@@ -1751,6 +2241,50 @@
         "required": [
           "name",
           "permissions"
+        ]
+      },
+      "CreateLlmProviderRequest": {
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string"
+          },
+          "proxy_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProxySettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "provider_type"
         ]
       },
       "CreateLlmRepositoryRequest": {
@@ -2100,6 +2634,89 @@
           "status"
         ]
       },
+      "LlmProvider": {
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string"
+          },
+          "proxy_settings": {
+            "$ref": "#/components/schemas/ProxySettings"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "enabled",
+          "built_in",
+          "proxy_settings",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "LlmProviderListResponse": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmProvider"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "providers",
+          "total",
+          "page",
+          "per_page"
+        ]
+      },
       "LlmRepository": {
         "type": "object",
         "properties": {
@@ -2370,6 +2987,36 @@
           "required_permissions"
         ]
       },
+      "ProxySettings": {
+        "description": "Proxy settings for LLM providers",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "ignore_ssl_certificates": {
+            "type": "boolean",
+            "default": false
+          },
+          "no_proxy": {
+            "type": "string",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "default": ""
+          },
+          "url": {
+            "type": "string",
+            "default": ""
+          },
+          "username": {
+            "type": "string",
+            "default": ""
+          }
+        }
+      },
       "RefreshTokenRequest": {
         "type": "object",
         "properties": {
@@ -2638,6 +3285,45 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "UpdateLlmProviderRequest": {
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proxy_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProxySettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
