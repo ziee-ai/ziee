@@ -5,3 +5,4 @@ mod common;
 mod auth;
 mod user;
 mod hardware;
+mod llm_repository;

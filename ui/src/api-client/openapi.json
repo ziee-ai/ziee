@@ -1232,6 +1232,381 @@
           }
         }
       }
+    },
+    "/api/llm-repositories": {
+      "get": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "List all LLM repositories with pagination",
+        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
+        "operationId": "LlmRepository.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM repositories and list repositories",
+                        "name": "LlmRepositoriesRead",
+                        "value": "llm_repositories::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRepositoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Create a new LLM repository",
+        "description": "\n\n**Required Permission:** `llm_repositories::create`\n\nCreate new LLM repositories",
+        "operationId": "LlmRepository.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new LLM repositories",
+                        "name": "LlmRepositoriesCreate",
+                        "value": "llm_repositories::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRepository"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-repositories/test": {
+      "post": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Test repository connection without saving",
+        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
+        "operationId": "LlmRepository.test",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRepositoryConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM repositories and list repositories",
+                        "name": "LlmRepositoriesRead",
+                        "value": "llm_repositories::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRepositoryConnectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-repositories/{repository_id}": {
+      "get": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Get LLM repository by ID",
+        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
+        "operationId": "LlmRepository.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM repositories and list repositories",
+                        "name": "LlmRepositoriesRead",
+                        "value": "llm_repositories::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRepository"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Update an existing LLM repository",
+        "description": "\n\n**Required Permission:** `llm_repositories::edit`\n\nEdit existing LLM repository information and authentication",
+        "operationId": "LlmRepository.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM repository information and authentication",
+                        "name": "LlmRepositoriesEdit",
+                        "value": "llm_repositories::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRepository"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Delete an LLM repository",
+        "description": "\n\n**Required Permission:** `llm_repositories::delete`\n\nDelete non-built-in LLM repositories",
+        "operationId": "LlmRepository.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete non-built-in LLM repositories",
+                        "name": "LlmRepositoriesDelete",
+                        "value": "llm_repositories::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "Cannot delete built-in repository"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1376,6 +1751,42 @@
         "required": [
           "name",
           "permissions"
+        ]
+      },
+      "CreateLlmRepositoryRequest": {
+        "type": "object",
+        "properties": {
+          "auth_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryAuthConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "auth_type": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "url",
+          "auth_type"
         ]
       },
       "CreateUserRequest": {
@@ -1689,6 +2100,81 @@
           "status"
         ]
       },
+      "LlmRepository": {
+        "type": "object",
+        "properties": {
+          "auth_config": {
+            "$ref": "#/components/schemas/RepositoryAuthConfig"
+          },
+          "auth_type": {
+            "type": "string"
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "auth_type",
+          "auth_config",
+          "enabled",
+          "built_in",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "LlmRepositoryListResponse": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmRepository"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "repositories",
+          "total",
+          "page",
+          "per_page"
+        ]
+      },
       "LoginRequest": {
         "type": "object",
         "properties": {
@@ -1920,6 +2406,41 @@
           "password"
         ]
       },
+      "RepositoryAuthConfig": {
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "auth_test_api_endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ResetPasswordRequest": {
         "type": "object",
         "properties": {
@@ -2019,6 +2540,50 @@
           "version"
         ]
       },
+      "TestRepositoryConnectionRequest": {
+        "type": "object",
+        "properties": {
+          "auth_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryAuthConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "auth_type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "auth_type"
+        ]
+      },
+      "TestRepositoryConnectionResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ]
+      },
       "TokenPair": {
         "description": "JWT token pair (access + refresh)",
         "type": "object",
@@ -2073,6 +2638,45 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "UpdateLlmRepositoryRequest": {
+        "type": "object",
+        "properties": {
+          "auth_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryAuthConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "auth_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

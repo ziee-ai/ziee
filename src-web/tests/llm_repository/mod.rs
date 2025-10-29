@@ -1,0 +1,744 @@
+// ============================================================================
+// LLM Repository Module Integration Tests
+// ============================================================================
+//
+// This test suite covers all CRUD operations and permission checks for the
+// LLM Repository module, which manages external LLM model repositories like
+// Hugging Face and GitHub with authentication support.
+
+use serde_json::json;
+
+#[tokio::test]
+async fn test_list_llm_repositories_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user with llm_repositories::read permission
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::read"],
+    )
+    .await;
+
+    // Create user without permission
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[])
+        .await;
+
+    // Admin should be able to list repositories
+    let url = server.api_url("/llm-repositories");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Admin should list repositories");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(
+        body.get("repositories").is_some(),
+        "Should have repositories array"
+    );
+    assert!(body.get("total").is_some(), "Should have total count");
+    assert!(body.get("page").is_some(), "Should have page number");
+    assert!(body.get("per_page").is_some(), "Should have per_page");
+
+    // Verify at least built-in repositories exist (Hugging Face, GitHub)
+    let repositories = body
+        .get("repositories")
+        .and_then(|r| r.as_array())
+        .expect("repositories should be an array");
+    assert!(
+        repositories.len() >= 2,
+        "Should have at least 2 built-in repositories"
+    );
+
+    // Regular user without permission should get 403
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Regular user should be forbidden");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("INSUFFICIENT_PERMISSIONS")
+    );
+}
+
+#[tokio::test]
+async fn test_create_llm_repository() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user with llm_repositories::create permission
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    // Create a test repository
+    let url = server.api_url("/llm-repositories");
+    let create_data = json!({
+        "name": "Test Repository",
+        "url": "https://example.com/test",
+        "auth_type": "api_key",
+        "auth_config": {
+            "api_key": "test-api-key-12345"
+        },
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&create_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201, "Should create repository");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(body.get("id").is_some(), "Should have repository ID");
+    assert_eq!(
+        body.get("name").and_then(|v| v.as_str()),
+        Some("Test Repository")
+    );
+    assert_eq!(
+        body.get("url").and_then(|v| v.as_str()),
+        Some("https://example.com/test")
+    );
+    assert_eq!(
+        body.get("auth_type").and_then(|v| v.as_str()),
+        Some("api_key")
+    );
+    assert_eq!(body.get("enabled").and_then(|v| v.as_bool()), Some(true));
+    assert_eq!(
+        body.get("built_in").and_then(|v| v.as_bool()),
+        Some(false),
+        "Created repository should not be built-in"
+    );
+
+    // Verify auth_config is present
+    let auth_config = body.get("auth_config").expect("Should have auth_config");
+    assert_eq!(
+        auth_config.get("api_key").and_then(|v| v.as_str()),
+        Some("test-api-key-12345")
+    );
+}
+
+#[tokio::test]
+async fn test_create_llm_repository_validation() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let url = server.api_url("/llm-repositories");
+
+    // Test 1: Invalid URL format
+    let invalid_url_data = json!({
+        "name": "Test Repository",
+        "url": "not-a-valid-url",
+        "auth_type": "none"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&invalid_url_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        400,
+        "Should reject invalid URL format"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("VALIDATION_ERROR")
+    );
+
+    // Test 2: Invalid auth type
+    let invalid_auth_data = json!({
+        "name": "Test Repository",
+        "url": "https://example.com",
+        "auth_type": "invalid_auth_type"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&invalid_auth_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        400,
+        "Should reject invalid auth type"
+    );
+
+    // Test 3: Missing auth_config for api_key auth type
+    let missing_auth_config_data = json!({
+        "name": "Test Repository",
+        "url": "https://example.com",
+        "auth_type": "api_key"
+        // Missing auth_config
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&missing_auth_config_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        400,
+        "Should reject missing auth_config for api_key"
+    );
+
+    // Test 4: Empty api_key in auth_config
+    let empty_api_key_data = json!({
+        "name": "Test Repository",
+        "url": "https://example.com",
+        "auth_type": "api_key",
+        "auth_config": {
+            "api_key": ""
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&empty_api_key_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        400,
+        "Should reject empty api_key"
+    );
+
+    // Test 5: Missing credentials for basic_auth
+    let missing_basic_auth_data = json!({
+        "name": "Test Repository",
+        "url": "https://example.com",
+        "auth_type": "basic_auth",
+        "auth_config": {
+            "username": "testuser"
+            // Missing password
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&missing_basic_auth_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        400,
+        "Should reject incomplete basic_auth credentials"
+    );
+}
+
+#[tokio::test]
+async fn test_update_llm_repository() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create", "llm_repositories::edit", "llm_repositories::read"],
+    )
+    .await;
+
+    // Create a repository first
+    let create_url = server.api_url("/llm-repositories");
+    let create_data = json!({
+        "name": "Update Test Repository",
+        "url": "https://example.com/test",
+        "auth_type": "none",
+        "enabled": true
+    });
+
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&create_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created_repo: serde_json::Value =
+        create_response.json().await.expect("Failed to parse JSON");
+    let repo_id = created_repo.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Update the repository
+    let update_url = server.api_url(&format!("/llm-repositories/{}", repo_id));
+    let update_data = json!({
+        "name": "Updated Repository Name",
+        "enabled": false
+    });
+
+    let response = reqwest::Client::new()
+        .post(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should update repository");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("name").and_then(|v| v.as_str()),
+        Some("Updated Repository Name")
+    );
+    assert_eq!(body.get("enabled").and_then(|v| v.as_bool()), Some(false));
+    // URL should remain unchanged
+    assert_eq!(
+        body.get("url").and_then(|v| v.as_str()),
+        Some("https://example.com/test")
+    );
+}
+
+#[tokio::test]
+async fn test_update_llm_repository_built_in_protection() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::read", "llm_repositories::edit", "llm_repositories::create"],
+    )
+    .await;
+
+    // Get the list of repositories to find a built-in one
+    let list_url = server.api_url("/llm-repositories");
+    let list_response = reqwest::Client::new()
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let list_body: serde_json::Value =
+        list_response.json().await.expect("Failed to parse JSON");
+    let repositories = list_body
+        .get("repositories")
+        .and_then(|r| r.as_array())
+        .expect("Should have repositories array");
+
+    // Find a built-in repository (Hugging Face or GitHub)
+    let built_in_repo = repositories
+        .iter()
+        .find(|r| r.get("built_in").and_then(|v| v.as_bool()) == Some(true))
+        .expect("Should have at least one built-in repository");
+
+    let repo_id = built_in_repo
+        .get("id")
+        .and_then(|v| v.as_str())
+        .expect("Repository should have ID");
+
+    // Try to update the built-in repository - this should succeed
+    // Built-in repositories can be updated (e.g., adding API keys)
+    let update_url = server.api_url(&format!("/llm-repositories/{}", repo_id));
+    let update_data = json!({
+        "enabled": false
+    });
+
+    let response = reqwest::Client::new()
+        .post(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    // Built-in repositories CAN be updated, just not deleted
+    assert_eq!(
+        response.status(),
+        200,
+        "Built-in repositories can be updated"
+    );
+}
+
+#[tokio::test]
+async fn test_delete_llm_repository() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "llm_repositories::create",
+            "llm_repositories::delete",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    // Create a repository first
+    let create_url = server.api_url("/llm-repositories");
+    let create_data = json!({
+        "name": "Delete Test Repository",
+        "url": "https://example.com/delete-test",
+        "auth_type": "none"
+    });
+
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&create_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created_repo: serde_json::Value =
+        create_response.json().await.expect("Failed to parse JSON");
+    let repo_id = created_repo.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Delete the repository
+    let delete_url = server.api_url(&format!("/llm-repositories/{}", repo_id));
+    let response = reqwest::Client::new()
+        .delete(&delete_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 204, "Should delete repository");
+
+    // Verify repository is deleted by trying to get it
+    let get_url = server.api_url(&format!("/llm-repositories/{}", repo_id));
+    let get_response = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        get_response.status(),
+        404,
+        "Deleted repository should return 404"
+    );
+}
+
+#[tokio::test]
+async fn test_delete_built_in_repository_protected() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::read", "llm_repositories::delete"],
+    )
+    .await;
+
+    // Get the list of repositories to find a built-in one
+    let list_url = server.api_url("/llm-repositories");
+    let list_response = reqwest::Client::new()
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let list_body: serde_json::Value =
+        list_response.json().await.expect("Failed to parse JSON");
+    let repositories = list_body
+        .get("repositories")
+        .and_then(|r| r.as_array())
+        .expect("Should have repositories array");
+
+    // Find a built-in repository (Hugging Face or GitHub)
+    let built_in_repo = repositories
+        .iter()
+        .find(|r| r.get("built_in").and_then(|v| v.as_bool()) == Some(true))
+        .expect("Should have at least one built-in repository");
+
+    let repo_id = built_in_repo
+        .get("id")
+        .and_then(|v| v.as_str())
+        .expect("Repository should have ID");
+
+    // Try to delete the built-in repository - should be rejected
+    let delete_url = server.api_url(&format!("/llm-repositories/{}", repo_id));
+    let response = reqwest::Client::new()
+        .delete(&delete_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        400,
+        "Should reject deletion of built-in repository"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let error_message = body
+        .get("error")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    assert!(
+        error_message.to_lowercase().contains("built-in") || error_message.to_lowercase().contains("built in"),
+        "Error message should mention built-in protection, got: {}",
+        error_message
+    );
+}
+
+#[tokio::test]
+async fn test_delete_repository_not_found() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::delete"],
+    )
+    .await;
+
+    // Try to delete a non-existent repository
+    let fake_uuid = "00000000-0000-0000-0000-000000000000";
+    let delete_url = server.api_url(&format!("/llm-repositories/{}", fake_uuid));
+    let response = reqwest::Client::new()
+        .delete(&delete_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        404,
+        "Should return 404 for non-existent repository"
+    );
+}
+
+#[tokio::test]
+async fn test_repository_connection_test() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create", "llm_repositories::read"],
+    )
+    .await;
+
+    // Test connection with valid URL (use a public endpoint like GitHub)
+    let test_url = server.api_url("/llm-repositories/test");
+    let test_data = json!({
+        "name": "Test Connection",
+        "url": "https://api.github.com",
+        "auth_type": "none"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&test_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&test_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    // Connection test should return 200 and success/failure status
+    assert_eq!(
+        response.status(),
+        200,
+        "Connection test endpoint should respond"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(
+        body.get("success").is_some(),
+        "Should have success field"
+    );
+    assert!(
+        body.get("message").is_some(),
+        "Should have message field"
+    );
+}
+
+#[tokio::test]
+async fn test_create_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user without llm_repositories::create permission
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+
+    let url = server.api_url("/llm-repositories");
+    let create_data = json!({
+        "name": "Test Repository",
+        "url": "https://example.com/test",
+        "auth_type": "none"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&create_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "Should be forbidden without permission"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("INSUFFICIENT_PERMISSIONS")
+    );
+}
+
+#[tokio::test]
+async fn test_edit_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+
+    // Create a repository as admin
+    let create_url = server.api_url("/llm-repositories");
+    let create_data = json!({
+        "name": "Permission Test Repository",
+        "url": "https://example.com/test",
+        "auth_type": "none"
+    });
+
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&create_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created_repo: serde_json::Value =
+        create_response.json().await.expect("Failed to parse JSON");
+    let repo_id = created_repo.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Try to update as regular user without permission
+    let update_url = server.api_url(&format!("/llm-repositories/{}", repo_id));
+    let update_data = json!({
+        "enabled": false
+    });
+
+    let response = reqwest::Client::new()
+        .post(&update_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&update_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "Should be forbidden without permission"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("INSUFFICIENT_PERMISSIONS")
+    );
+}
+
+#[tokio::test]
+async fn test_delete_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+
+    // Create a repository as admin
+    let create_url = server.api_url("/llm-repositories");
+    let create_data = json!({
+        "name": "Delete Permission Test",
+        "url": "https://example.com/test",
+        "auth_type": "none"
+    });
+
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&create_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created_repo: serde_json::Value =
+        create_response.json().await.expect("Failed to parse JSON");
+    let repo_id = created_repo.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Try to delete as regular user without permission
+    let delete_url = server.api_url(&format!("/llm-repositories/{}", repo_id));
+    let response = reqwest::Client::new()
+        .delete(&delete_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "Should be forbidden without permission"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("INSUFFICIENT_PERMISSIONS")
+    );
+}

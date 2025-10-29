@@ -39,6 +39,13 @@ export interface CreateGroupRequest {
   name: string
   permissions: string[]
 }
+export interface CreateLlmRepositoryRequest {
+  auth_config?: any
+  auth_type: string
+  enabled?: any
+  name: string
+  url: string
+}
 export interface CreateUserRequest {
   display_name?: any
   email: string
@@ -106,6 +113,23 @@ export interface HardwareUsageUpdate {
 export interface HealthResponse {
   status: string
 }
+export interface LlmRepository {
+  auth_config: RepositoryAuthConfig
+  auth_type: string
+  built_in: boolean
+  created_at: string
+  enabled: boolean
+  id: string
+  name: string
+  updated_at: string
+  url: string
+}
+export interface LlmRepositoryListResponse {
+  page: number
+  per_page: number
+  repositories: LlmRepository[]
+  total: number
+}
 export interface LoginRequest {
   password: string
   provider?: any
@@ -158,6 +182,13 @@ export interface RegisterRequest {
   password: string
   username: string
 }
+export interface RepositoryAuthConfig {
+  api_key?: any
+  auth_test_api_endpoint?: any
+  password?: any
+  token?: any
+  username?: any
+}
 export interface ResetPasswordRequest {
   new_password: string
   user_id: string
@@ -180,6 +211,16 @@ export interface SetupStatusResponse {
   needs_setup: boolean
   version: string
 }
+export interface TestRepositoryConnectionRequest {
+  auth_config?: any
+  auth_type: string
+  name: string
+  url: string
+}
+export interface TestRepositoryConnectionResponse {
+  message: string
+  success: boolean
+}
 export interface TokenPair {
   access_token: string
   expires_in: number
@@ -191,6 +232,13 @@ export interface UpdateGroupRequest {
   is_active?: any
   name?: any
   permissions?: any
+}
+export interface UpdateLlmRepositoryRequest {
+  auth_config?: any
+  auth_type?: any
+  enabled?: any
+  name?: any
+  url?: any
 }
 export interface UpdateUserRequest {
   display_name?: any
@@ -227,6 +275,10 @@ export enum Permission {
   GroupsDelete = 'groups::delete',
   GroupsEdit = 'groups::edit',
   GroupsRead = 'groups::read',
+  LlmRepositoriesCreate = 'llm_repositories::create',
+  LlmRepositoriesDelete = 'llm_repositories::delete',
+  LlmRepositoriesEdit = 'llm_repositories::edit',
+  LlmRepositoriesRead = 'llm_repositories::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
   UsersEdit = 'users::edit',
@@ -252,6 +304,12 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'LlmRepository.create': 'POST /api/llm-repositories',
+  'LlmRepository.delete': 'DELETE /api/llm-repositories/{repository_id}',
+  'LlmRepository.get': 'GET /api/llm-repositories/{repository_id}',
+  'LlmRepository.list': 'GET /api/llm-repositories',
+  'LlmRepository.test': 'POST /api/llm-repositories/test',
+  'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -281,6 +339,12 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'LlmRepository.create': CreateLlmRepositoryRequest
+  'LlmRepository.delete': { repository_id: string }
+  'LlmRepository.get': { repository_id: string }
+  'LlmRepository.list': { page?: number; per_page?: number }
+  'LlmRepository.test': TestRepositoryConnectionRequest
+  'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -310,6 +374,12 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'LlmRepository.create': LlmRepository
+  'LlmRepository.delete': void
+  'LlmRepository.get': LlmRepository
+  'LlmRepository.list': LlmRepositoryListResponse
+  'LlmRepository.test': TestRepositoryConnectionResponse
+  'LlmRepository.update': LlmRepository
   'User.create': User
   'User.delete': void
   'User.get': User
