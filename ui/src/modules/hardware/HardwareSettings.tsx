@@ -174,15 +174,23 @@ export default function HardwareSettings() {
     <Card title="Memory">
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div className="flex flex-wrap gap-6">
-          <Statistic
-            title="Total RAM"
-            value={formatBytes(hardwareInfo?.memory.total_ram || 0)}
-          />
-          {hardwareInfo?.memory.total_swap && (
-            <Statistic
-              title="Total Swap"
-              value={formatBytes(hardwareInfo.memory.total_swap)}
-            />
+          <div>
+            <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+              Total RAM
+            </Text>
+            <div style={{ fontSize: '24px', fontWeight: 600 }}>
+              {formatBytes(hardwareInfo?.memory.total_ram || 0)}
+            </div>
+          </div>
+          {(hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0) && (
+            <div>
+              <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                Total Swap
+              </Text>
+              <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                {formatBytes(hardwareInfo.memory.total_swap)}
+              </div>
+            </div>
           )}
         </div>
         {currentUsage && (
@@ -244,25 +252,52 @@ export default function HardwareSettings() {
             }}
           >
             <div className="flex flex-wrap gap-6">
-              <Statistic title="Vendor" value={gpu.vendor} />
+              <div>
+                <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                  Vendor
+                </Text>
+                <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                  {gpu.vendor}
+                </div>
+              </div>
               {gpu.memory ? (
-                <Statistic
-                  title={
-                    gpu.vendor?.includes('Apple') ? 'Dedicated VRAM' : 'Memory'
-                  }
-                  value={formatBytes(gpu.memory)}
-                />
+                <div>
+                  <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                    {gpu.vendor?.includes('Apple') ? 'Dedicated VRAM' : 'Memory'}
+                  </Text>
+                  <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                    {formatBytes(gpu.memory)}
+                  </div>
+                </div>
               ) : gpu.vendor?.includes('Apple') ? (
-                <Statistic title="Memory Architecture" value="Unified Memory" />
+                <div>
+                  <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                    Memory Architecture
+                  </Text>
+                  <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                    Unified Memory
+                  </div>
+                </div>
               ) : null}
               {gpu.driver_version && (
-                <Statistic title="Driver" value={gpu.driver_version} />
+                <div>
+                  <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                    Driver
+                  </Text>
+                  <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                    {gpu.driver_version}
+                  </div>
+                </div>
               )}
               {gpu.vendor?.includes('Apple') && hardwareInfo?.memory && (
-                <Statistic
-                  title="Shared System Memory"
-                  value={formatBytes(hardwareInfo.memory.total_ram)}
-                />
+                <div>
+                  <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                    Shared System Memory
+                  </Text>
+                  <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                    {formatBytes(hardwareInfo.memory.total_ram)}
+                  </div>
+                </div>
               )}
             </div>
 

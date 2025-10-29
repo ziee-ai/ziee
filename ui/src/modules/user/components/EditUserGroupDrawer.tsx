@@ -1,0 +1,159 @@
+import { App, Button, Form, Input, Switch } from 'antd'
+import { Drawer } from '@/components/common/Drawer.tsx'
+import { useEffect, useState } from 'react'
+import { Stores } from '@/core/stores'
+import { updateUserGroup } from '../store'
+import type { UpdateGroupRequest, Group } from '@/api-client/types'
+
+const { TextArea } = Input
+
+interface EditUserGroupDrawerProps {
+  group: Group | null
+  open: boolean
+  onClose: () => void
+  onSuccess?: () => void
+}
+
+export function EditUserGroupDrawer({
+  group,
+  open,
+  onClose,
+  onSuccess,
+}: EditUserGroupDrawerProps) {
+  const { message } = App.useApp()
+  const [form] = Form.useForm()
+  const [loading, setLoading] = useState(false)
+
+  const { updating } = Stores.UserGroups
+
+  // Load group data when it changes
+  useEffect(() => {
+    if (group && open) {
+      form.setFieldsValue({
+        name: group.name,
+        description: group.description,
+        permissions: JSON.stringify(group.permissions, null, 2),
+        is_active: group.is_active,
+      })
+    }
+  }, [group, open, form])
+
+  const handleClose = () => {
+    form.resetFields()
+    onClose()
+  }
+
+  const handleSubmit = async (values: any) => {
+    if (!group) return
+
+    try {
+      setLoading(true)
+
+      let permissions: string[] = []
+      try {
+        permissions = JSON.parse(values.permissions || '[]')
+        if (!Array.isArray(permissions)) {
+          throw new Error('Permissions must be an array')
+        }
+      } catch (error) {
+        message.error(
+          'Invalid permissions format. Please enter a valid JSON array.',
+        )
+        return
+      }
+
+      const updateData: UpdateGroupRequest = {
+        name: values.name,
+        description: values.description,
+        permissions,
+        is_active: values.is_active,
+      }
+
+      await updateUserGroup(group.id, updateData)
+      message.success('User group updated successfully')
+      handleClose()
+      onSuccess?.()
+    } catch (error) {
+      console.error('Failed to update user group:', error)
+      message.error('Failed to update user group')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Drawer
+      title="Edit User Group"
+      open={open}
+      onClose={handleClose}
+      footer={null}
+      width={600}
+      maskClosable={false}
+    >
+      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form.Item
+          name="name"
+          label="Group Name"
+          rules={[
+            { required: true, message: 'Please enter a group name' },
+            { min: 2, message: 'Group name must be at least 2 characters' },
+          ]}
+        >
+          <Input placeholder="Enter group name" />
+        </Form.Item>
+
+        <Form.Item name="description" label="Description">
+          <TextArea
+            placeholder="Enter group description (optional)"
+            rows={3}
+            showCount
+            maxLength={500}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="permissions"
+          label="Permissions (JSON Array)"
+          rules={[
+            {
+              validator: async (_, value) => {
+                if (value) {
+                  try {
+                    const parsed = JSON.parse(value)
+                    if (!Array.isArray(parsed)) {
+                      throw new Error('Must be an array')
+                    }
+                  } catch (error) {
+                    throw new Error('Invalid JSON format')
+                  }
+                }
+              },
+            },
+          ]}
+        >
+          <TextArea
+            placeholder='["users::read", "users::edit", "chat::read"]'
+            rows={6}
+          />
+        </Form.Item>
+
+        <Form.Item name="is_active" label="Active" valuePropName="checked">
+          <Switch />
+        </Form.Item>
+
+        <div className="flex justify-end gap-3 pt-4">
+          <Button onClick={handleClose} disabled={loading || updating}>
+            Cancel
+          </Button>
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading || updating}
+          >
+            Update Group
+          </Button>
+        </div>
+      </Form>
+    </Drawer>
+  )
+}
