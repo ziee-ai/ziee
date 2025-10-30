@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, Typography } from 'antd'
 import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { clearAuthenticationError, registerNewUser } from './store'
 import { Stores } from '@/core/stores'
 import type { CreateUserRequest } from '../../api-client/types'
@@ -15,11 +16,14 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 }) => {
   const [form] = Form.useForm()
   const { isLoading, error } = Stores.Auth
+  const navigate = useNavigate()
 
   const onFinish = async (values: CreateUserRequest) => {
     try {
       clearAuthenticationError()
       await registerNewUser(values)
+      // Redirect to home page after successful registration
+      navigate('/', { replace: true })
     } catch (error) {
       // Error is handled by the store
       console.error('Registration failed:', error)

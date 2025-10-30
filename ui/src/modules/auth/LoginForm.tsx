@@ -1,5 +1,6 @@
 import { Alert, Button, Card, Form, Input, Typography } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { authenticateUser, clearAuthenticationError } from './store'
 import { Stores } from '@/core/stores'
 import type { LoginRequest } from '../../api-client/types'
@@ -13,11 +14,14 @@ interface LoginFormProps {
 export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   const [form] = Form.useForm()
   const { isLoading, error } = Stores.Auth
+  const navigate = useNavigate()
 
   const onFinish = async (values: LoginRequest) => {
     try {
       clearAuthenticationError()
       await authenticateUser(values)
+      // Redirect to home page after successful login
+      navigate('/', { replace: true })
     } catch (error) {
       // Error is handled by the store
       console.error('Login failed:', error)
