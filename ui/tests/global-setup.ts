@@ -7,7 +7,7 @@ import pg from 'pg'
 const { Pool } = pg
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-export default async function globalSetup(config: FullConfig) {
+export default async function globalSetup(_config: FullConfig) {
   console.log('\n🚀 Starting Playwright E2E Test Infrastructure...\n')
 
   // 1. Start Docker PostgreSQL (single instance for all tests)
