@@ -1,5 +1,6 @@
-// LLM Provider models - copied from react-test and refactored for ziee-chat
+// LLM Provider models - Database entities only
 // Source: react-test/src-tauri/src/database/models/provider.rs
+// API request/response types have been moved to types.rs
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -23,6 +24,7 @@ pub struct ProxySettings {
     pub ignore_ssl_certificates: bool,
 }
 
+/// Database entity representing an LLM provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LlmProvider {
     pub id: Uuid,
@@ -37,47 +39,4 @@ pub struct LlmProvider {
     pub proxy_settings: ProxySettings,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CreateLlmProviderRequest {
-    pub name: String,
-    pub provider_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub proxy_settings: Option<ProxySettings>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct UpdateLlmProviderRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub proxy_settings: Option<ProxySettings>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct LlmProviderListResponse {
-    pub providers: Vec<LlmProvider>,
-    pub total: i64,
-    pub page: i32,
-    pub per_page: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AssignProviderToGroupRequest {
-    pub provider_id: Uuid,
-    pub group_id: Uuid,
 }

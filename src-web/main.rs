@@ -31,8 +31,16 @@ async fn main() {
     // Check for OpenAPI generation flag
     if cli.generate_openapi.is_some() {
         let output_dir = cli.generate_openapi.unwrap_or_else(|| {
-            let manifest_dir = env!("CARGO_MANIFEST_DIR");
-            format!("{}/../ui/src/api-client", manifest_dir)
+            // CARGO_MANIFEST_DIR is only available during development builds with Cargo
+            // In production, you must explicitly specify the output directory with --generate-openapi <DIR>
+            match option_env!("CARGO_MANIFEST_DIR") {
+                Some(manifest_dir) => format!("{}/../ui/src/api-client", manifest_dir),
+                None => {
+                    eprintln!("Please specify an output directory explicitly:");
+                    eprintln!("  --generate-openapi /path/to/output");
+                    std::process::exit(1);
+                }
+            }
         });
 
         match openapi::generate_openapi_spec(&output_dir, cli.config_file).await {

@@ -5,11 +5,70 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::models::{
-    AssignProviderToGroupRequest, CreateLlmProviderRequest, LlmProvider, ProxySettings,
-    UpdateLlmProviderRequest,
+use super::models::{LlmProvider, ProxySettings};
+use super::types::{
+    AssignProviderToGroupRequest, CreateLlmProviderRequest, UpdateLlmProviderRequest,
 };
 use crate::modules::user::models::Group;
+
+// =====================================================
+// Repository Struct
+// =====================================================
+
+#[derive(Clone)]
+pub struct LlmProviderRepository {
+    pool: PgPool,
+}
+
+impl LlmProviderRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn get_by_id(&self, provider_id: Uuid) -> Result<Option<LlmProvider>, sqlx::Error> {
+        get_llm_provider_by_id(&self.pool, provider_id).await
+    }
+
+    pub async fn list(&self) -> Result<Vec<LlmProvider>, sqlx::Error> {
+        list_llm_providers(&self.pool).await
+    }
+
+    pub async fn create(&self, request: CreateLlmProviderRequest) -> Result<LlmProvider, sqlx::Error> {
+        create_llm_provider(&self.pool, request).await
+    }
+
+    pub async fn update(&self, provider_id: Uuid, request: UpdateLlmProviderRequest) -> Result<Option<LlmProvider>, sqlx::Error> {
+        update_llm_provider(&self.pool, provider_id, request).await
+    }
+
+    pub async fn delete(&self, provider_id: Uuid) -> Result<Result<bool, String>, sqlx::Error> {
+        delete_llm_provider(&self.pool, provider_id).await
+    }
+
+    pub async fn get_provider_groups(&self, provider_id: Uuid) -> Result<Vec<Group>, sqlx::Error> {
+        get_llm_provider_groups(&self.pool, provider_id).await
+    }
+
+    pub async fn assign_to_group(&self, request: AssignProviderToGroupRequest) -> Result<(), sqlx::Error> {
+        assign_provider_to_group(&self.pool, request).await
+    }
+
+    pub async fn remove_from_group(&self, group_id: Uuid, provider_id: Uuid) -> Result<bool, sqlx::Error> {
+        remove_provider_from_group(&self.pool, group_id, provider_id).await
+    }
+
+    pub async fn get_for_group(&self, group_id: Uuid) -> Result<Vec<LlmProvider>, sqlx::Error> {
+        get_providers_for_group(&self.pool, group_id).await
+    }
+
+    pub async fn get_for_user(&self, user_id: Uuid) -> Result<Vec<LlmProvider>, sqlx::Error> {
+        get_providers_for_user(&self.pool, user_id).await
+    }
+}
+
+// =====================================================
+// Legacy Functions (kept for backwards compatibility)
+// =====================================================
 
 pub async fn get_llm_provider_by_id(
     pool: &PgPool,

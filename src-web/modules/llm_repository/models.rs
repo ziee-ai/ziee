@@ -1,11 +1,18 @@
-// LLM Repository models - copied from react-test and refactored for ziee-chat
+// LLM Repository database models - Database entities only
 // Source: react-test/src-tauri/src/database/models/repository.rs
+// Note: API request/response types have been moved to types.rs
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// =====================================================
+// Database Entities
+// =====================================================
+
+/// Authentication configuration for LLM repositories
+/// This is part of the database entity and stored as JSONB in PostgreSQL
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RepositoryAuthConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -20,6 +27,20 @@ pub struct RepositoryAuthConfig {
     pub auth_test_api_endpoint: Option<String>,
 }
 
+impl Default for RepositoryAuthConfig {
+    fn default() -> Self {
+        Self {
+            api_key: None,
+            username: None,
+            password: None,
+            token: None,
+            auth_test_api_endpoint: None,
+        }
+    }
+}
+
+/// LLM Repository database entity
+/// Represents a row in the llm_repositories table
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LlmRepository {
     pub id: Uuid,
@@ -31,53 +52,4 @@ pub struct LlmRepository {
     pub built_in: bool, // true for built-in repositories like Hugging Face
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CreateLlmRepositoryRequest {
-    pub name: String,
-    pub url: String,
-    pub auth_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth_config: Option<RepositoryAuthConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct UpdateLlmRepositoryRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth_config: Option<RepositoryAuthConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct LlmRepositoryListResponse {
-    pub repositories: Vec<LlmRepository>,
-    pub total: i64,
-    pub page: i32,
-    pub per_page: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TestRepositoryConnectionRequest {
-    pub name: String,
-    pub url: String,
-    pub auth_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth_config: Option<RepositoryAuthConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TestRepositoryConnectionResponse {
-    pub success: bool,
-    pub message: String,
 }

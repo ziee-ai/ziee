@@ -9,16 +9,34 @@ use std::sync::Arc;
 use crate::module_api::AppModule;
 use crate::ModuleContext;
 
+pub mod handlers;
 pub mod models;
 pub mod permissions;
 pub mod repository;
 pub mod routes;
-pub mod service;
+pub mod utils;
 pub mod storage;
+pub mod types;
 pub mod uploads;
 
-pub use models::*;
+// Re-export database entities from models
+pub use models::{
+    DeviceType, DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData,
+    DownloadStatus, EngineType, FileFormat, LlamaCppSettings, LlmModel, LlmRepository,
+    MistralRsCommand, MistralRsSettings, ModelCapabilities, ModelEngineSettings, ModelFile,
+    ModelParameters, SourceInfo,
+};
+
+// Re-export API types from types module
+pub use types::{
+    CreateDownloadInstanceRequest, CreateLlmModelRequest, DownloadInstanceListResponse,
+    ListModelsQuery, LlmModelListResponse, UpdateDownloadProgressRequest,
+    UpdateDownloadStatusRequest, UpdateLlmModelRequest,
+};
+
+// Re-export other public items
 pub use permissions::*;
+pub use repository::{DownloadInstanceRepository, LlmModelRepository};
 pub use routes::llm_model_router;
 
 /// LLM Model Module
@@ -44,9 +62,17 @@ impl AppModule for LlmModelModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(pool) = &self.pool {
+            // Create repositories once at module level
+            let model_repo = repository::LlmModelRepository::new((**pool).clone());
+            let download_repo = repository::DownloadInstanceRepository::new((**pool).clone());
+
+            // Create LLM model router with both state (for permission checks) and extensions (for repositories)
             let llm_model_module_router = ApiRouter::new()
                 .merge(llm_model_router())
-                .with_state((**pool).clone());
+                .with_state((**pool).clone())
+                .layer(axum::Extension(model_repo))
+                .layer(axum::Extension(download_repo));
+
             router.merge(llm_model_module_router)
         } else {
             tracing::error!("LlmModelModule: Pool not initialized during route registration");

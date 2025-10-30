@@ -17,10 +17,18 @@ use crate::modules::permissions::RequirePermissions;
 use crate::utils::git::{GitError, GitPhase, GitProgress, GitService};
 
 use super::{
-    models::*,
+    models::{
+        DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData,
+        DownloadStatus, EngineType, FileFormat, LlmModel, ModelCapabilities, ModelEngineSettings,
+        ModelParameters, SourceInfo,
+    },
     permissions::*,
     repository,
     storage::ModelStorage,
+    types::{
+        CreateDownloadInstanceRequest, CreateLlmModelRequest, UpdateDownloadProgressRequest,
+        UpdateDownloadStatusRequest,
+    },
 };
 
 /// Convert GitPhase to DownloadPhase

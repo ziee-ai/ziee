@@ -5,11 +5,9 @@ use sqlx::PgPool;
 
 use crate::modules::permissions::with_permission;
 
-use super::{
-    api::{get_hardware_info, subscribe_hardware_usage},
-    permissions::{HardwareMonitor, HardwareRead},
-    types::{HardwareInfoResponse, HardwareUsageUpdate, SSEHardwareUsageEvent},
-};
+use super::handlers::*;
+use super::permissions::{HardwareMonitor, HardwareRead};
+use super::types::{HardwareInfoResponse, HardwareUsageUpdate, SSEHardwareUsageEvent};
 
 /// Hardware module routes
 pub fn hardware_router() -> ApiRouter<PgPool> {
@@ -54,11 +52,6 @@ fn subscribe_hardware_usage_docs(op: TransformOperation) -> TransformOperation {
         .response::<200, Json<SSEHardwareUsageEvent>>()
         .response::<401, ()>()
         .response::<403, ()>()
-}
-
-/// Dummy endpoint for type generation - ensures SSE types are included in OpenAPI spec
-async fn hardware_types() -> Json<HardwareUsageUpdate> {
-    unreachable!("This endpoint is only for OpenAPI type generation")
 }
 
 /// Documentation for types endpoint

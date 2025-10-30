@@ -5,7 +5,49 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::models::{CreateLlmRepositoryRequest, LlmRepository, RepositoryAuthConfig, UpdateLlmRepositoryRequest};
+use super::{
+    models::{LlmRepository, RepositoryAuthConfig},
+    types::{CreateLlmRepositoryRequest, UpdateLlmRepositoryRequest},
+};
+
+// =====================================================
+// Repository Struct
+// =====================================================
+
+#[derive(Clone)]
+pub struct LlmRepositoryRepository {
+    pool: PgPool,
+}
+
+impl LlmRepositoryRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn get_by_id(&self, repository_id: Uuid) -> Result<Option<LlmRepository>, sqlx::Error> {
+        get_llm_repository_by_id(&self.pool, repository_id).await
+    }
+
+    pub async fn list(&self) -> Result<Vec<LlmRepository>, sqlx::Error> {
+        list_llm_repositories(&self.pool).await
+    }
+
+    pub async fn create(&self, request: CreateLlmRepositoryRequest) -> Result<LlmRepository, sqlx::Error> {
+        create_llm_repository(&self.pool, request).await
+    }
+
+    pub async fn update(&self, repository_id: Uuid, request: UpdateLlmRepositoryRequest) -> Result<Option<LlmRepository>, sqlx::Error> {
+        update_llm_repository(&self.pool, repository_id, request).await
+    }
+
+    pub async fn delete(&self, repository_id: Uuid) -> Result<Result<bool, String>, sqlx::Error> {
+        delete_llm_repository(&self.pool, repository_id).await
+    }
+}
+
+// =====================================================
+// Legacy Functions (kept for backwards compatibility)
+// =====================================================
 
 pub async fn get_llm_repository_by_id(
     pool: &PgPool,
@@ -184,17 +226,5 @@ pub async fn delete_llm_repository(
             }
         }
         None => Ok(Ok(false)),
-    }
-}
-
-impl Default for RepositoryAuthConfig {
-    fn default() -> Self {
-        Self {
-            api_key: None,
-            username: None,
-            password: None,
-            token: None,
-            auth_test_api_endpoint: None,
-        }
     }
 }

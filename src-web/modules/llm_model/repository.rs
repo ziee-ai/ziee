@@ -8,11 +8,13 @@ use uuid::Uuid;
 use crate::common::AppError;
 
 use super::models::{
-    CreateLlmModelRequest, LlmModel, ModelCapabilities, ModelEngineSettings, ModelParameters,
-    SourceInfo, UpdateLlmModelRequest, EngineType, FileFormat,
-    DownloadInstance, DownloadInstanceListResponse, DownloadPhase, DownloadProgressData,
-    DownloadRequestData, DownloadStatus, CreateDownloadInstanceRequest,
-    UpdateDownloadProgressRequest, UpdateDownloadStatusRequest,
+    DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData, DownloadStatus,
+    EngineType, FileFormat, LlmModel, ModelCapabilities, ModelEngineSettings, ModelParameters,
+    SourceInfo,
+};
+use super::types::{
+    CreateDownloadInstanceRequest, CreateLlmModelRequest, DownloadInstanceListResponse,
+    UpdateDownloadProgressRequest, UpdateDownloadStatusRequest, UpdateLlmModelRequest,
 };
 
 // Note: SQLx query_as! automatically handles type conversions including time crate types
@@ -54,6 +56,34 @@ impl LlmModelRepository {
         issues: Option<Vec<String>>,
     ) -> Result<(), AppError> {
         set_model_validation_status(&self.pool, model_id, status, issues)
+            .await
+            .map_err(AppError::database_error)
+    }
+
+    /// List all LLM models across all providers
+    pub async fn list_all(&self) -> Result<Vec<LlmModel>, AppError> {
+        list_all_llm_models(&self.pool)
+            .await
+            .map_err(AppError::database_error)
+    }
+
+    /// List LLM models by provider ID
+    pub async fn list_by_provider(&self, provider_id: Uuid) -> Result<Vec<LlmModel>, AppError> {
+        list_llm_models_by_provider(&self.pool, provider_id)
+            .await
+            .map_err(AppError::database_error)
+    }
+
+    /// Update an existing LLM model
+    pub async fn update(&self, model_id: Uuid, request: UpdateLlmModelRequest) -> Result<Option<LlmModel>, AppError> {
+        update_llm_model(&self.pool, model_id, request)
+            .await
+            .map_err(AppError::database_error)
+    }
+
+    /// Delete an LLM model
+    pub async fn delete(&self, model_id: Uuid) -> Result<bool, AppError> {
+        delete_llm_model(&self.pool, model_id)
             .await
             .map_err(AppError::database_error)
     }

@@ -2,7 +2,7 @@
 // Similar to LLM Repository service but for provider management
 
 use crate::common::AppError;
-use super::models::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
+use super::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
 
 /// Validate provider type is one of the allowed types
 pub fn validate_provider_type(provider_type: &str) -> Result<(), AppError> {

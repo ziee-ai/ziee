@@ -3,7 +3,10 @@
 // IMPORTANT: All validation logic copied exactly from react-test
 
 use crate::common::AppError;
-use super::models::{CreateLlmRepositoryRequest, LlmRepository, RepositoryAuthConfig, TestRepositoryConnectionRequest, UpdateLlmRepositoryRequest};
+use super::{
+    models::{LlmRepository, RepositoryAuthConfig},
+    types::{CreateLlmRepositoryRequest, TestRepositoryConnectionRequest, UpdateLlmRepositoryRequest},
+};
 
 /// Validate URL format using reqwest URL parser
 pub fn validate_url(url: &str) -> Result<(), AppError> {

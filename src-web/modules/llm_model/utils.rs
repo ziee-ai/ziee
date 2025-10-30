@@ -3,7 +3,7 @@
 
 use crate::common::r#type::AppError;
 
-use super::models::{CreateLlmModelRequest, UpdateLlmModelRequest};
+use super::types::{CreateLlmModelRequest, UpdateLlmModelRequest};
 
 /// Validate create model request
 pub fn validate_create_request(request: &CreateLlmModelRequest) -> Result<(), AppError> {

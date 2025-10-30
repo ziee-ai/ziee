@@ -5,15 +5,19 @@
 // This module manages external LLM model repositories (Hugging Face, GitHub, etc.)
 // with authentication support for downloading and accessing models
 
+pub mod handlers;
 pub mod models;
 pub mod permissions;
 pub mod repository;
 pub mod routes;
-pub mod service;
+pub mod utils;
+pub mod types;
 
 // Re-export main types and router
 pub use models::*;
+pub use types::*;
 pub use permissions::all_permissions;
+pub use repository::LlmRepositoryRepository;
 pub use routes::llm_repository_router;
 
 use aide::axum::ApiRouter;
@@ -46,10 +50,14 @@ impl AppModule for LlmRepositoryModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(pool) = &self.pool {
-            // Create a stateful LLM repository router
+            // Create repository once at module level
+            let llm_repo = repository::LlmRepositoryRepository::new((**pool).clone());
+
+            // Create LLM repository router with both state (for permission checks) and extensions (for repository)
             let llm_repo_module_router = ApiRouter::new()
                 .merge(llm_repository_router())
-                .with_state((**pool).clone());
+                .with_state((**pool).clone())
+                .layer(axum::Extension(llm_repo));
 
             // Merge the stateful router into the provided stateless router
             router.merge(llm_repo_module_router)

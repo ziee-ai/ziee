@@ -7,6 +7,7 @@
 
 pub mod api;
 pub mod detection;
+pub mod handlers;
 pub mod monitoring;
 pub mod permissions;
 pub mod routes;

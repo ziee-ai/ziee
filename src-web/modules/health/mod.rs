@@ -1,6 +1,9 @@
+mod handlers;
 mod routes;
+mod types;
 
 pub use routes::routes;
+pub use types::*;
 
 use crate::module_api::{AppModule, ModuleContext};
 use aide::axum::ApiRouter;

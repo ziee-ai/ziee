@@ -3,9 +3,9 @@ use aide::axum::{
     ApiRouter,
 };
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
-    Json,
+    Extension, Json,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -16,8 +16,9 @@ use crate::{
 };
 
 use super::{
-    models::{
-        AssignUserToGroupRequest, CreateGroupRequest, Group, GroupListResponse,
+    models::Group,
+    types::{
+        AssignUserToGroupRequest, CreateGroupRequest, GroupListResponse,
         UpdateGroupRequest, UserListResponse,
     },
     permissions::*,
@@ -60,9 +61,8 @@ pub fn group_router() -> ApiRouter<PgPool> {
 async fn list_groups(
     _auth: RequirePermissions<(GroupsRead,)>,
     Query(params): Query<PaginationQuery>,
-    State(pool): State<PgPool>,
+    Extension(group_repo): Extension<GroupRepository>,
 ) -> ApiResult<Json<GroupListResponse>> {
-    let group_repo = GroupRepository::new(pool);
     let (groups, total) = group_repo.list(params.page, params.per_page).await?;
 
     let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
@@ -94,9 +94,8 @@ fn list_groups_docs(
 async fn get_group(
     _auth: RequirePermissions<(GroupsRead,)>,
     Path(group_id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    Extension(group_repo): Extension<GroupRepository>,
 ) -> ApiResult<Json<Group>> {
-    let group_repo = GroupRepository::new(pool);
     let group = group_repo
         .get_by_id(group_id)
         .await?
@@ -120,15 +119,13 @@ fn get_group_docs(
 /// Create a new group (requires groups::create permission)
 async fn create_group(
     _auth: RequirePermissions<(GroupsCreate,)>,
-    State(pool): State<PgPool>,
+    Extension(group_repo): Extension<GroupRepository>,
     Json(request): Json<CreateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Validate group name
     if request.name.is_empty() {
         return Err(AppError::bad_request("VALIDATION_ERROR", "Group name cannot be empty").into());
     }
-
-    let group_repo = GroupRepository::new(pool);
 
     // Check if group name already exists
     if group_repo.get_by_name(&request.name).await?.is_some() {
@@ -160,10 +157,9 @@ fn create_group_docs(
 async fn update_group(
     _auth: RequirePermissions<(GroupsEdit,)>,
     Path(group_id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    Extension(group_repo): Extension<GroupRepository>,
     Json(request): Json<UpdateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
-    let group_repo = GroupRepository::new(pool);
 
     // Check if group exists
     let existing_group = group_repo
@@ -223,9 +219,8 @@ fn update_group_docs(
 async fn delete_group(
     _auth: RequirePermissions<(GroupsDelete,)>,
     Path(group_id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    Extension(group_repo): Extension<GroupRepository>,
 ) -> ApiResult<StatusCode> {
-    let group_repo = GroupRepository::new(pool);
 
     // Check if group exists
     let group = group_repo
@@ -262,9 +257,8 @@ async fn get_group_members(
     _auth: RequirePermissions<(GroupsRead,)>,
     Path(group_id): Path<Uuid>,
     Query(params): Query<PaginationQuery>,
-    State(pool): State<PgPool>,
+    Extension(group_repo): Extension<GroupRepository>,
 ) -> ApiResult<Json<UserListResponse>> {
-    let group_repo = GroupRepository::new(pool);
 
     // Check if group exists
     if group_repo.get_by_id(group_id).await?.is_none() {
@@ -305,11 +299,10 @@ fn get_group_members_docs(
 /// Assign user to group (requires groups::assign-users permission)
 async fn assign_user_to_group(
     auth: RequirePermissions<(GroupsAssignUsers,)>,
-    State(pool): State<PgPool>,
+    Extension(user_repo): Extension<UserRepository>,
+    Extension(group_repo): Extension<GroupRepository>,
     Json(request): Json<AssignUserToGroupRequest>,
 ) -> ApiResult<StatusCode> {
-    let user_repo = UserRepository::new(pool.clone());
-    let group_repo = GroupRepository::new(pool);
 
     // Check if user exists
     if user_repo.get_by_id(request.user_id).await?.is_none() {
@@ -345,10 +338,9 @@ fn assign_user_to_group_docs(
 async fn remove_user_from_group(
     _auth: RequirePermissions<(GroupsAssignUsers,)>,
     Path((user_id, group_id)): Path<(Uuid, Uuid)>,
-    State(pool): State<PgPool>,
+    Extension(user_repo): Extension<UserRepository>,
+    Extension(group_repo): Extension<GroupRepository>,
 ) -> ApiResult<StatusCode> {
-    let user_repo = UserRepository::new(pool.clone());
-    let group_repo = GroupRepository::new(pool);
 
     // Check if user exists
     if user_repo.get_by_id(user_id).await?.is_none() {
