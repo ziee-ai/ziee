@@ -7,6 +7,13 @@ pub struct Config {
     #[serde(default)]
     pub logging: Option<LoggingConfig>,
     pub jwt: JwtConfig,
+    #[serde(default)]
+    pub app: Option<AppConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AppConfig {
+    pub data_dir: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]

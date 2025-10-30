@@ -7,7 +7,7 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 use crate::core::config::Config;
 use crate::module_api::{AppModule, ModuleContext};
-use crate::modules::{AppModule as AppMod, AuthModule, HealthModule, user::UserModule, hardware::HardwareModule, llm_provider::LlmProviderModule, llm_repository::LlmRepositoryModule};
+use crate::modules::{AppModule as AppMod, AuthModule, HealthModule, user::UserModule, hardware::HardwareModule, llm_provider::LlmProviderModule, llm_repository::LlmRepositoryModule, llm_model::LlmModelModule};
 
 /// Create and initialize all application modules
 pub fn create_modules() -> Vec<Box<dyn AppModule>> {
@@ -19,6 +19,7 @@ pub fn create_modules() -> Vec<Box<dyn AppModule>> {
         Box::new(HardwareModule::new()),
         Box::new(LlmProviderModule::new()),
         Box::new(LlmRepositoryModule::new()),
+        Box::new(LlmModelModule::new()),
     ]
 }
 

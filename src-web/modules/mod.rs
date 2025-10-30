@@ -3,6 +3,7 @@ pub mod app;
 pub mod auth;
 pub mod hardware;
 pub mod health;
+pub mod llm_model;
 pub mod llm_provider;
 pub mod llm_repository;
 pub mod permissions;

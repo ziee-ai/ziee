@@ -4,6 +4,7 @@ mod core;
 mod module_api;
 mod modules;
 mod openapi;
+mod utils;
 
 use clap::Parser;
 use module_api::ModuleContext;
@@ -87,6 +88,18 @@ async fn main() {
     }
 
     tracing::info!("Starting Ziee Chat backend server");
+
+    // Initialize application data directory from config
+    if let Some(ref app_config) = config.app {
+        let data_dir = std::path::PathBuf::from(&app_config.data_dir);
+        core::set_app_data_dir(data_dir);
+    } else {
+        // Use default if not configured
+        let default_data_dir = dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".ziee-chat");
+        core::set_app_data_dir(default_data_dir);
+    }
 
     // Initialize database
     let pool = match core::database::initialize_database(&config).await {
