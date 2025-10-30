@@ -4,7 +4,8 @@ import HardwareSettings from './HardwareSettings'
 import { HardwareMonitor } from './HardwareMonitor'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
 import { useHardwareStore } from './store'
-import './types' // Import type augmentation
+import './types'
+import { BlankLayout } from '@/components/Layout/BlankLayout.tsx' // Import type augmentation
 
 export default createModule({
   metadata: {
@@ -23,6 +24,7 @@ export default createModule({
       path: '/hardware-monitor',
       element: <HardwareMonitor />,
       requiresAuth: true,
+      layout: BlankLayout,
     },
   ],
   stores: [

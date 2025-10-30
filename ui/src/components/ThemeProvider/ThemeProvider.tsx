@@ -1,19 +1,20 @@
 import { App, ConfigProvider } from 'antd'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useUpdate } from 'react-use'
 import { ThemeContext } from '../../hooks/useTheme'
-import { themes, type ThemeName } from '../../themes'
+import { themes } from '../../themes'
 import { AppThemeConfig } from '@/themes/light'
 import { resolveSystemTheme } from './resolveTheme'
+import { Stores } from '@/core/stores'
+import { setThemePreference } from '@/modules/config-client/store'
 
 interface ThemeProviderProps {
   children: React.ReactNode
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  // For now, use light theme by default. This can be extended to use
-  // a store-based theme selection in the future
-  const [selectedTheme] = useState<ThemeName | 'system'>('light')
+  // Use config-client store for theme preference with automatic localStorage persistence
+  const { themePreference: selectedTheme } = Stores.ConfigClient
 
   const resolvedTheme =
     selectedTheme === 'system' ? resolveSystemTheme() : selectedTheme
@@ -56,7 +57,15 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, [isDarkMode, currentTheme])
 
   return (
-    <ThemeContext.Provider value={currentTheme}>
+    <ThemeContext.Provider
+      value={{
+        currentTheme,
+        selectedTheme,
+        setTheme: setThemePreference,
+        isDarkMode,
+        resolvedTheme,
+      }}
+    >
       <ConfigProvider theme={currentTheme}>
         <App
           message={{

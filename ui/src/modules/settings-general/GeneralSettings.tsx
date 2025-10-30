@@ -1,13 +1,11 @@
-import { Card, Typography } from 'antd'
-
-const { Text } = Typography
+import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
+import { ThemeSettings } from './components/ThemeSettings'
 
 export default function GeneralSettings() {
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <Card title="General Settings">
-        <Text type="secondary">General settings will be displayed here</Text>
-      </Card>
-    </div>
+    <SettingsPageContainer title="General">
+      <ThemeSettings />
+      {/* Future settings cards go here */}
+    </SettingsPageContainer>
   )
 }

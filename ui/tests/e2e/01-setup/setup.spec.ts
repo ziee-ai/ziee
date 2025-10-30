@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
+import { setTheme, isDarkMode } from '../../utils/theme'
 
 test.describe('App Setup', () => {
   test('should pass accessibility checks', async ({ page, testInfra }) => {
@@ -10,6 +11,25 @@ test.describe('App Setup', () => {
     await page.waitForSelector('#username', { timeout: 30000 })
 
     // Check accessibility on the setup page
+    await assertNoAccessibilityViolations(page)
+  })
+
+  test('should pass accessibility checks in dark mode', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await page.goto(`${baseURL}/setup`)
+
+    // Wait for the form to be visible
+    await page.waitForSelector('#username', { timeout: 30000 })
+
+    // Switch to dark mode
+    await setTheme(page, 'dark')
+    await page.waitForSelector('#username', { timeout: 30000 })
+
+    // Verify dark mode is active
+    const darkModeActive = await isDarkMode(page)
+    expect(darkModeActive).toBe(true)
+
+    // Check accessibility in dark mode
     await assertNoAccessibilityViolations(page)
   })
 

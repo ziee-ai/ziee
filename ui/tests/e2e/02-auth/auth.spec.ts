@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
+import { setTheme, isDarkMode } from '../../utils/theme'
 
 test.describe('Authentication', () => {
   test('should pass accessibility checks', async ({ page, testInfra }) => {
@@ -26,6 +27,41 @@ test.describe('Authentication', () => {
     await page.waitForSelector('#login_username', { timeout: 30000 })
 
     // Check accessibility
+    await assertNoAccessibilityViolations(page)
+  })
+
+  test('should pass accessibility checks in dark mode', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+
+    // First create an admin user so we can access auth page
+    await page.goto(`${baseURL}/setup`)
+    await page.waitForSelector('#username', { timeout: 30000 })
+    await page.fill('#username', 'admin')
+    await page.fill('#email', 'admin@example.com')
+    await page.fill('#password', 'password123')
+    await page.fill('#confirm_password', 'password123')
+    await page.click('button[type="submit"]')
+    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+
+    // Clear localStorage/sessionStorage to log out
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+
+    // Navigate to auth page
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.waitForSelector('#login_username', { timeout: 30000 })
+
+    // Switch to dark mode
+    await setTheme(page, 'dark')
+    await page.waitForSelector('#login_username', { timeout: 30000 })
+
+    // Verify dark mode is active
+    const darkModeActive = await isDarkMode(page)
+    expect(darkModeActive).toBe(true)
+
+    // Check accessibility in dark mode
     await assertNoAccessibilityViolations(page)
   })
 
