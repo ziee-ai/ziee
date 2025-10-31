@@ -281,16 +281,18 @@ async fn create_model_with_files(
         source: request.source,
     };
 
-    // Create the model record with the pre-generated ID
-    let _model_db = repo.create(create_request)
+    // Create the model record - it will generate its own ID
+    let model_db = repo.create(create_request)
         .await
         .map_err(|e| {
             let error_str = e.to_string();
-            if error_str.contains("llm_models_provider_id_name_unique") {
+            tracing::warn!("Database error during model creation: {}", error_str);
+            if error_str.contains("llm_models_provider_id_name_unique")
+                || (error_str.contains("duplicate key") && error_str.contains("name")) {
                 AppError::bad_request(
                     "DUPLICATE_ENTRY",
                     &format!(
-                        "Model ID '{}' already exists for this provider. Please use a different model ID.",
+                        "A model with the name '{}' already exists for this provider. Please use a different model name.",
                         model_name
                     )
                 )
@@ -299,17 +301,30 @@ async fn create_model_with_files(
             }
         })?;
 
+    // The database record has been created with its own ID
+    // But files are in directory with the pre-generated model_id
+    // We need to rename the directory to match the database ID
+    let old_dir = storage.get_model_path(&request.provider_id, &model_id);
+    let new_dir = storage.get_model_path(&request.provider_id, &model_db.id);
+
+    if old_dir != new_dir {
+        tokio::fs::rename(&old_dir, &new_dir)
+            .await
+            .map_err(|e| {
+                AppError::internal_error(&format!("Failed to rename model directory: {}", e))
+            })?;
+        tracing::debug!("Renamed model directory from {} to {}", old_dir.display(), new_dir.display());
+    }
+
     // Create all file records in the database
     // TODO: Add model_files table support when repository functions are ready
 
-    // Update model with total size and validation status
-    repo.set_validation_status(model_id, "completed", None)
+    // Update model with total size and validation status using the correct model ID
+    repo.set_validation_status(model_db.id, "completed", None)
         .await?;
 
-    // Return the created model with files
-    let model = repo.get_by_id(model_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Model"))?;
+    // Return the created model directly
+    let model = model_db;
 
     tracing::info!(
         "Model created successfully: {} files, {} total size",
@@ -745,12 +760,7 @@ pub async fn upload_multiple_files_and_commit(
         },
     )
     .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(&format!("Failed to create model from uploaded files: {}", e)),
-        )
-    })?;
+    .map_err(|e| e.to_api_error())?;
 
     tracing::info!("Model created successfully: {} ({})", model.display_name, model.id);
 
@@ -883,6 +893,22 @@ pub async fn initiate_repository_download(
     State(pool): State<sqlx::PgPool>,
     Json(request): Json<DownloadFromRepositoryRequest>,
 ) -> ApiResult<Json<DownloadInstance>> {
+    // Validate that repository exists
+    let _repository = crate::modules::llm_repository::repository::get_llm_repository_by_id(&pool, request.repository_id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error(&format!("Database error: {}", e)),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                AppError::not_found(&format!("Repository with ID {} not found", request.repository_id)),
+            )
+        })?;
+
     // Create repository instances
     let download_repo = repository::DownloadInstanceRepository::new(pool.clone());
     let model_repo = repository::LlmModelRepository::new(pool.clone());

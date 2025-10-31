@@ -146,8 +146,10 @@ async fn main() {
     );
 
     // Convert ApiRouter to Router and add JWT service and CORS layers
+    // Disable body size limit for model uploads (models can be very large)
     let app = api_router
         .finish_api(&mut api_doc)
+        .layer(axum::extract::DefaultBodyLimit::disable())
         .layer(axum::Extension(jwt_service))
         .layer(cors);
 

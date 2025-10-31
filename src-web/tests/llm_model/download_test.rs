@@ -1,0 +1,499 @@
+/// Model Download Integration Tests
+///
+/// These tests verify the download functionality from remote repositories like Hugging Face.
+/// The tests use the initiate_repository_download endpoint to start background downloads
+/// and verify the download instance creation and status tracking.
+
+use reqwest::StatusCode;
+use serde_json::json;
+
+/// Helper to get the Hugging Face repository from the database and optionally configure it with API key
+async fn get_huggingface_repository(
+    server: &crate::common::TestServer,
+    token: &str,
+    configure_api_key: bool,
+) -> serde_json::Value {
+    let response = reqwest::Client::new()
+        .get(&server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+
+    // Find the Hugging Face repository
+    let repositories = body["repositories"].as_array().unwrap();
+    let mut hf_repo = None;
+    for repo in repositories {
+        if repo["name"].as_str() == Some("Hugging Face Hub") {
+            hf_repo = Some(repo.clone());
+            break;
+        }
+    }
+
+    let hf_repo = hf_repo.expect("Hugging Face Hub repository not found in database");
+
+    // Return repository without configuring if not needed (e.g., for permission tests)
+    if !configure_api_key {
+        return hf_repo;
+    }
+
+    // Get API key from environment variable
+    let api_key = std::env::var("HUGGINGFACE_API_KEY")
+        .expect("HUGGINGFACE_API_KEY not set. Please source tests/.env.test or set the environment variable.");
+
+    // Update the repository with the API key
+    let repo_id = hf_repo["id"].as_str().unwrap();
+    let update_payload = json!({
+        "auth_config": {
+            "api_key": api_key,
+            "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-repositories/{}", repo_id)))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&update_payload)
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    if status != StatusCode::OK {
+        let error_body = response.text().await.unwrap();
+        panic!(
+            "Failed to update Hugging Face repository with API key. Status: {}, Body: {}",
+            status, error_body
+        );
+    }
+
+    // Return the updated repository
+    response.json().await.unwrap()
+}
+
+/// Helper to get or create a local provider
+async fn get_local_provider(
+    server: &crate::common::TestServer,
+    token: &str,
+) -> serde_json::Value {
+    let response = reqwest::Client::new()
+        .get(&server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .unwrap();
+
+    let body: serde_json::Value = response.json().await.unwrap();
+
+    // Look for a local provider
+    if let Some(providers) = body["providers"].as_array() {
+        for provider in providers {
+            if provider["provider_type"].as_str() == Some("local") {
+                return provider.clone();
+            }
+        }
+    }
+
+    // Create a local provider if none exists
+    let payload = json!({
+        "name": "Local Models",
+        "provider_type": "local",
+        "display_name": "Local Models",
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    response.json().await.unwrap()
+}
+
+#[tokio::test]
+async fn test_initiate_download_from_huggingface() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "downloader",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    // Get Hugging Face repository and configure API key
+    let hf_repo = get_huggingface_repository(&server, &user.token, true).await;
+    let repo_id = hf_repo["id"].as_str().unwrap();
+
+    // Get local provider
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Initiate download of a tiny test model
+    let payload = json!({
+        "provider_id": provider_id,
+        "repository_id": repo_id,
+        "repository_path": "hf-internal-testing/tiny-random-gpt2",
+        "repository_branch": "main",
+        "name": "tiny-gpt2-download-test",
+        "display_name": "Tiny GPT-2 (Download Test)",
+        "description": "Test model downloaded from Hugging Face",
+        "file_format": "safetensors",
+        "main_filename": "model.safetensors",
+        "source": {
+            "type": "hub",
+            "id": "hf-internal-testing/tiny-random-gpt2"
+        }
+    });
+
+    println!("Initiating download request...");
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    println!("Download initiation response status: {}", status);
+
+    if !status.is_success() {
+        let error_body = response.text().await.unwrap();
+        println!("Error response: {}", error_body);
+        panic!("Download initiation failed with status {}", status);
+    }
+
+    assert_eq!(status, StatusCode::OK);
+
+    let download_instance: serde_json::Value = response.json().await.unwrap();
+    println!(
+        "Download instance created: {}",
+        serde_json::to_string_pretty(&download_instance).unwrap()
+    );
+
+    // Verify download instance fields
+    assert!(download_instance["id"].as_str().is_some());
+    assert_eq!(download_instance["provider_id"].as_str().unwrap(), provider_id);
+    assert_eq!(download_instance["repository_id"].as_str().unwrap(), repo_id);
+
+    let request_data = &download_instance["request_data"];
+    assert_eq!(request_data["model_name"].as_str().unwrap(), "tiny-gpt2-download-test");
+    assert_eq!(request_data["revision"].as_str().unwrap(), "main");
+    assert_eq!(request_data["repository_path"].as_str().unwrap(), "hf-internal-testing/tiny-random-gpt2");
+
+    // Status should be pending initially
+    let status_str = download_instance["status"].as_str().unwrap();
+    assert!(
+        status_str == "pending" || status_str == "in_progress" || status_str == "completed",
+        "Expected status to be pending, in_progress, or completed, got: {}",
+        status_str
+    );
+
+    println!("✅ Download initiation test passed!");
+}
+
+#[tokio::test]
+async fn test_download_requires_create_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    // User with only read permission
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "reader",
+        &["llm_models::read", "llm_providers::read", "llm_repositories::read"],
+    )
+    .await;
+
+    // Get Hugging Face repository (without configuring API key, user doesn't have permission)
+    let hf_repo = get_huggingface_repository(&server, &user.token, false).await;
+    let repo_id = hf_repo["id"].as_str().unwrap();
+
+    // Try to create a provider (should fail)
+    let payload = json!({
+        "name": "Test Provider",
+        "provider_type": "local",
+        "display_name": "Test Provider",
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    // This should fail with forbidden
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    // Try to initiate download without create permission
+    let download_payload = json!({
+        "provider_id": "00000000-0000-0000-0000-000000000000",
+        "repository_id": repo_id,
+        "repository_path": "hf-internal-testing/tiny-random-gpt2",
+        "name": "unauthorized-download",
+        "display_name": "Unauthorized Download",
+        "file_format": "safetensors",
+        "main_filename": "model.safetensors",
+        "source": {
+            "type": "hub",
+            "id": "hf-internal-testing/tiny-random-gpt2"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&download_payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_download_missing_required_fields() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "downloader",
+        &[
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    // Get Hugging Face repository (no API key needed for validation test)
+    let hf_repo = get_huggingface_repository(&server, &user.token, false).await;
+    let repo_id = hf_repo["id"].as_str().unwrap();
+
+    // Get provider
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Test missing repository_path
+    let payload = json!({
+        "provider_id": provider_id,
+        "repository_id": repo_id,
+        // Missing repository_path
+        "name": "test-model",
+        "display_name": "Test Model",
+        "file_format": "safetensors",
+        "main_filename": "model.safetensors",
+        "source": {
+            "type": "hub",
+            "id": "test/model"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    // Axum's Json extractor returns 422 for JSON deserialization errors (missing required fields)
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_download_invalid_repository() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "downloader",
+        &[
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    // Note: No need to get HF repository for this test since we're testing invalid repository ID
+
+    // Get provider
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Use a non-existent repository ID
+    let payload = json!({
+        "provider_id": provider_id,
+        "repository_id": "00000000-0000-0000-0000-000000000000",
+        "repository_path": "test/model",
+        "name": "test-model",
+        "display_name": "Test Model",
+        "file_format": "safetensors",
+        "main_filename": "model.safetensors",
+        "source": {
+            "type": "hub",
+            "id": "test/model"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    // API returns 404 NOT_FOUND when repository doesn't exist
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_download_multiple_models() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "downloader",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    // Get Hugging Face repository and configure API key
+    let hf_repo = get_huggingface_repository(&server, &user.token, true).await;
+    let repo_id = hf_repo["id"].as_str().unwrap();
+
+    // Get local provider
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Test models to download
+    let test_models = vec![
+        (
+            "hf-internal-testing/tiny-random-gpt2",
+            "tiny-gpt2-multi-1",
+            "Tiny GPT-2 Model 1",
+        ),
+        (
+            "hf-internal-testing/tiny-random-bert",
+            "tiny-bert-multi-1",
+            "Tiny BERT Model 1",
+        ),
+    ];
+
+    for (repo_path, name, display_name) in test_models {
+        let payload = json!({
+            "provider_id": provider_id,
+            "repository_id": repo_id,
+            "repository_path": repo_path,
+            "name": name,
+            "display_name": display_name,
+            "file_format": "safetensors",
+            "main_filename": "model.safetensors",
+            "source": {
+                "type": "hub",
+                "id": repo_path
+            }
+        });
+
+        println!("Initiating download for {}...", name);
+        let response = reqwest::Client::new()
+            .post(&server.api_url("/llm-models/download"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&payload)
+            .send()
+            .await
+            .unwrap();
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap();
+            println!("Error for {}: {}", name, error_body);
+            panic!("Failed to initiate download for {}: {}", name, status);
+        }
+
+        assert_eq!(status, StatusCode::OK, "Failed to initiate download for {}", name);
+
+        let download_instance: serde_json::Value = response.json().await.unwrap();
+        assert!(download_instance["id"].as_str().is_some());
+        println!("✅ Download initiated for {}", name);
+    }
+}
+
+#[tokio::test]
+async fn test_download_with_specific_branch() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "downloader",
+        &[
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+        ],
+    )
+    .await;
+
+    // Get Hugging Face repository and configure API key
+    let hf_repo = get_huggingface_repository(&server, &user.token, true).await;
+    let repo_id = hf_repo["id"].as_str().unwrap();
+
+    // Get local provider
+    let provider = get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Download with specific branch
+    let payload = json!({
+        "provider_id": provider_id,
+        "repository_id": repo_id,
+        "repository_path": "hf-internal-testing/tiny-random-gpt2",
+        "repository_branch": "main",
+        "name": "tiny-gpt2-main-branch",
+        "display_name": "Tiny GPT-2 (Main Branch)",
+        "file_format": "safetensors",
+        "main_filename": "model.safetensors",
+        "source": {
+            "type": "hub",
+            "id": "hf-internal-testing/tiny-random-gpt2"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let download_instance: serde_json::Value = response.json().await.unwrap();
+    let request_data = &download_instance["request_data"];
+    assert_eq!(request_data["revision"].as_str().unwrap(), "main");
+}
