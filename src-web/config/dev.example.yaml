@@ -1,6 +1,10 @@
 # Development runtime configuration for ziee-chat web backend
 # This file is used by src-web when running the application
 
+# Application settings
+app:
+  data_dir: "../../ziee-chat-data/dev/app-data"  # Directory for models, caches, and temporary files
+
 # PostgreSQL connection settings
 postgresql:
   # Use embedded PostgreSQL (true) or external PostgreSQL (false)

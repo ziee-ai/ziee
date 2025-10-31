@@ -10,9 +10,8 @@ export default createModule({
   },
   routes: [
     {
-      path: '/auth',
+      path: '/login',
       element: <AuthPage />,
-      requiresAuth: false,
     },
   ],
   stores: [

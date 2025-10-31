@@ -1,57 +1,57 @@
 use std::env;
-use std::fs;
 use std::path::PathBuf;
 
-fn main() {
-    // Get config file path from BUILD_CONFIG_FILE or use default
-    let config_path = env::var("BUILD_CONFIG_FILE").unwrap_or_else(|_| {
-        let mut default_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        default_path.push("../config/build.yaml");
-        default_path.to_string_lossy().to_string()
-    });
+#[tokio::main]
+async fn main() {
+    // Get DATABASE_URL or use default
+    let database_url = env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://postgres:password@127.0.0.1:54321/postgres".to_string());
 
-    println!("cargo:rerun-if-env-changed=BUILD_CONFIG_FILE");
-    println!("cargo:rerun-if-changed={}", config_path);
+    println!("cargo:rerun-if-env-changed=DATABASE_URL");
 
-    // Read and parse the config file
-    let config_content = fs::read_to_string(&config_path)
-        .unwrap_or_else(|e| panic!("Failed to read config file '{}': {}", config_path, e));
+    // Connect to the database
+    let pool = match sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+    {
+        Ok(pool) => pool,
+        Err(e) => {
+            eprintln!("\nERROR: Failed to connect to database: {}", e);
+            eprintln!("DATABASE_URL: {}", database_url);
+            panic!("Database connection failed");
+        }
+    };
 
-    let config: serde_yaml::Value = serde_yaml::from_str(&config_content)
-        .unwrap_or_else(|e| panic!("Failed to parse config file '{}': {}", config_path, e));
+    // Wipe the database
+    sqlx::query("DROP SCHEMA IF EXISTS public CASCADE")
+        .execute(&pool)
+        .await
+        .ok();
 
-    // Extract PostgreSQL configuration
-    // build.yaml always uses embedded PostgreSQL with a simple flat structure
-    let postgresql = config
-        .get("postgresql")
-        .expect("postgresql section not found in config");
+    sqlx::query("CREATE SCHEMA public")
+        .execute(&pool)
+        .await
+        .expect("Failed to create schema");
 
-    let username = postgresql
-        .get("username")
-        .and_then(|v| v.as_str())
-        .expect("postgresql.username not found");
-    let password = postgresql
-        .get("password")
-        .and_then(|v| v.as_str())
-        .expect("postgresql.password not found");
-    let bind_address = postgresql
-        .get("bind_address")
-        .and_then(|v| v.as_str())
-        .unwrap_or("127.0.0.1");
-    let port = postgresql
-        .get("port")
-        .and_then(|v| v.as_u64())
-        .expect("postgresql.port not found");
-    let database = postgresql
-        .get("database")
-        .and_then(|v| v.as_str())
-        .expect("postgresql.database not found");
+    sqlx::query("GRANT ALL ON SCHEMA public TO PUBLIC")
+        .execute(&pool)
+        .await
+        .ok();
 
-    let database_url = format!(
-        "postgresql://{}:{}@{}:{}/{}",
-        username, password, bind_address, port, database
-    );
+    // Run migrations
+    let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let migrator = sqlx::migrate::Migrator::new(migrations_path)
+        .await
+        .expect("Failed to create migrator");
 
-    // Set DATABASE_URL as a compile-time environment variable for SQLx macros
+    if let Err(e) = migrator.run(&pool).await {
+        eprintln!("\nERROR: Migration failed: {}", e);
+        panic!("Migration failed");
+    }
+
+    pool.close().await;
+
+    // Set DATABASE_URL for SQLx compile-time verification
     println!("cargo:rustc-env=DATABASE_URL={}", database_url);
 }

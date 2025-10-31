@@ -82,6 +82,10 @@ impl AppError {
         Self::new(StatusCode::BAD_REQUEST, error_code, message)
     }
 
+    pub fn unprocessable_entity(error_code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, error_code, message)
+    }
+
     pub fn unauthorized(error_code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(StatusCode::UNAUTHORIZED, error_code, message)
     }

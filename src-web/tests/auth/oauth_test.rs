@@ -40,12 +40,9 @@ async fn test_create_oauth_provider() {
     let provider_config = oauth_server.create_test_provider_config("test-client", "test-secret");
 
     // Insert provider into database
-    let pool = sqlx::PgPool::connect(&format!(
-        "postgresql://postgres:password@127.0.0.1:54322/{}",
-        test_server.database_name
-    ))
-    .await
-    .expect("Failed to connect to test database");
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .expect("Failed to connect to test database");
 
     let provider_id = sqlx::query_scalar!(
         r#"
@@ -99,12 +96,9 @@ async fn test_oauth_authorization_flow() {
         .expect("Failed to start OAuth mock server");
 
     // Step 1: Create OAuth provider in database pointing to mock server
-    let pool = sqlx::PgPool::connect(&format!(
-        "postgresql://postgres:password@127.0.0.1:54322/{}",
-        test_server.database_name
-    ))
-    .await
-    .expect("Failed to connect to test database");
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .expect("Failed to connect to test database");
 
     let provider_config = serde_json::json!({
         "client_id": "test-client",

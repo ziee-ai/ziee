@@ -608,7 +608,7 @@ async fn test_create_model_empty_name() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -634,7 +634,7 @@ async fn test_create_model_empty_display_name() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -662,7 +662,7 @@ async fn test_create_model_name_too_long() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -690,7 +690,7 @@ async fn test_create_model_display_name_too_long() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -715,7 +715,7 @@ async fn test_update_model_empty_name() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -740,7 +740,7 @@ async fn test_update_model_empty_display_name() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -768,6 +768,615 @@ async fn test_create_model_invalid_provider() {
 
     // Should fail because provider doesn't exist
     assert!(response.status().is_client_error() || response.status().is_server_error());
+}
+
+// =====================================================
+// Missing Field Tests
+// =====================================================
+
+#[tokio::test]
+async fn test_create_model_missing_provider_id() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let payload = json!({
+        "name": "test-model",
+        "display_name": "Test Model",
+        "engine_type": "llamacpp",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_missing_name() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "display_name": "Test Model",
+        "engine_type": "llamacpp",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_missing_display_name() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "engine_type": "llamacpp",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_missing_engine_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_missing_file_format() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "engine_type": "llamacpp"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// =====================================================
+// Wrong Type Tests
+// =====================================================
+
+#[tokio::test]
+async fn test_create_model_provider_id_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let payload = json!({
+        "provider_id": 12345, // Should be UUID string
+        "name": "test-model",
+        "display_name": "Test Model",
+        "engine_type": "llamacpp",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_name_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": 12345, // Should be string
+        "display_name": "Test Model",
+        "engine_type": "llamacpp",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_display_name_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": true, // Should be string
+        "engine_type": "llamacpp",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_enabled_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "enabled": "yes", // Should be boolean
+        "engine_type": "llamacpp",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_description_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "description": ["array", "instead", "of", "string"], // Should be string
+        "engine_type": "llamacpp",
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_capabilities_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "engine_type": "llamacpp",
+        "file_format": "gguf",
+        "capabilities": "not an object" // Should be object
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_parameters_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "engine_type": "llamacpp",
+        "file_format": "gguf",
+        "parameters": [1, 2, 3] // Should be object
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_engine_settings_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "engine_type": "llamacpp",
+        "file_format": "gguf",
+        "engine_settings": "string instead of object" // Should be object
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// =====================================================
+// Invalid Enum Value Tests
+// =====================================================
+
+#[tokio::test]
+async fn test_create_model_invalid_engine_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "engine_type": "invalid_engine", // Invalid enum value
+        "file_format": "gguf"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_create_model_invalid_file_format() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+
+    let provider = get_first_provider(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": "test-model",
+        "display_name": "Test Model",
+        "engine_type": "llamacpp",
+        "file_format": "invalid_format" // Invalid enum value
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// =====================================================
+// Update Field Wrong Type Tests
+// =====================================================
+
+#[tokio::test]
+async fn test_update_model_name_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "name": 12345 // Should be string
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_update_model_display_name_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "display_name": false // Should be string
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_update_model_enabled_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "enabled": "true" // Should be boolean
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_update_model_description_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "description": {"object": "instead of string"} // Should be string
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_update_model_invalid_engine_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "engine_type": "nonexistent_engine" // Invalid enum value
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_update_model_invalid_file_format() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "file_format": "unsupported_format" // Invalid enum value
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_update_model_capabilities_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "capabilities": "wrong type" // Should be object
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_update_model_parameters_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "parameters": "not an object" // Should be object
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_update_model_engine_settings_wrong_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+
+    let model = create_test_model(&server, &user.token).await;
+    let model_id = model["id"].as_str().unwrap();
+
+    let payload = json!({
+        "engine_settings": [1, 2, 3] // Should be object
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 // =====================================================
