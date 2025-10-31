@@ -43,6 +43,19 @@ export interface CreateGroupRequest {
   name: string
   permissions: string[]
 }
+export interface CreateLlmModelRequest {
+  capabilities?: any
+  description?: any
+  display_name: string
+  enabled?: any
+  engine_settings?: any
+  engine_type: EngineType
+  file_format: FileFormat
+  name: string
+  parameters?: any
+  provider_id: string
+  source?: any
+}
 export interface CreateLlmProviderRequest {
   api_key?: any
   base_url?: any
@@ -64,6 +77,65 @@ export interface CreateUserRequest {
   password: string
   username: string
 }
+export type DeviceType = any
+export interface DownloadFromRepositoryRequest {
+  capabilities?: any
+  description?: any
+  display_name: string
+  engine_settings?: any
+  engine_type?: any
+  file_format: FileFormat
+  main_filename: string
+  name: string
+  parameters?: any
+  provider_id: string
+  repository_branch?: any
+  repository_id: string
+  repository_path: string
+  source: SourceInfo
+}
+export interface DownloadInstance {
+  completed_at?: any
+  created_at: string
+  error_message?: any
+  id: string
+  model_id?: any
+  progress_data: JsonOption_for_DownloadProgressData
+  provider_id: string
+  repository_id: string
+  request_data: DownloadRequestData
+  started_at: string
+  status: DownloadStatus
+  updated_at: string
+}
+export type DownloadPhase = string
+export interface DownloadProgressData {
+  current: number
+  eta_seconds: number
+  message: string
+  phase: DownloadPhase
+  speed_bps: number
+  total: number
+}
+export interface DownloadRequestData {
+  capabilities?: any
+  description?: any
+  display_name?: any
+  engine_settings?: any
+  engine_type?: any
+  file_format?: any
+  files?: any
+  main_filename?: any
+  model_name: string
+  parameters?: any
+  quantization?: any
+  repository_path?: any
+  revision?: any
+  source?: any
+}
+export type DownloadStatus = string
+export type EngineType = string
+export type FileFormat = string
 export interface GPUComputeCapabilities {
   cuda_support: boolean
   cuda_version?: any
@@ -125,6 +197,68 @@ export interface HardwareUsageUpdate {
 export interface HealthResponse {
   status: string
 }
+export type JsonOption_for_DownloadProgressData = any
+export interface ListModelsQuery {
+  page?: number
+  perPage?: number
+  providerId?: any
+}
+export interface LlamaCppSettings {
+  batch_size?: any
+  cache_type_k?: any
+  cache_type_v?: any
+  cont_batching?: any
+  ctx_size?: any
+  device_ids?: any
+  device_type?: any
+  flash_attn?: any
+  keep?: any
+  main_gpu?: any
+  mlock?: any
+  n_gpu_layers?: any
+  no_kv_offload?: any
+  no_mmap?: any
+  numa?: any
+  parallel?: any
+  rope_freq_base?: any
+  rope_freq_scale?: any
+  rope_scaling?: any
+  seed?: any
+  split_mode?: any
+  tensor_split?: any
+  threads?: any
+  threads_batch?: any
+  ubatch_size?: any
+}
+export interface LlmModel {
+  capabilities: ModelCapabilities
+  created_at: string
+  description?: any
+  display_name: string
+  enabled: boolean
+  engine_settings?: any
+  engine_type: EngineType
+  file_format: FileFormat
+  file_size_bytes?: any
+  id: string
+  is_active: boolean
+  is_deprecated: boolean
+  name: string
+  parameters: ModelParameters
+  pid?: any
+  port?: any
+  provider_id: string
+  source?: any
+  updated_at: string
+  validation_issues?: any
+  validation_status?: any
+}
+export interface LlmModelListResponse {
+  models: LlmModel[]
+  page: number
+  per_page: number
+  total: number
+}
 export interface LlmProvider {
   api_key?: any
   base_url?: any
@@ -179,6 +313,72 @@ export interface MemoryUsage {
   usage_percentage: number
   used_ram: number
   used_swap?: any
+}
+export type MistralRsCommand = any
+export interface MistralRsSettings {
+  arch?: any
+  chat_template?: any
+  command?: any
+  cpu?: any
+  device_ids?: any
+  device_type?: any
+  dtype?: any
+  enable_search?: any
+  enable_thinking?: any
+  in_situ_quant?: any
+  interactive_mode?: any
+  jinja_explicit?: any
+  log_file?: any
+  max_edge?: any
+  max_image_length?: any
+  max_num_images?: any
+  max_seq_len?: any
+  max_seqs?: any
+  model_id_name?: any
+  no_kv_cache?: any
+  no_paged_attn?: any
+  num_device_layers?: any
+  paged_attn?: any
+  paged_attn_block_size?: any
+  paged_attn_gpu_mem?: any
+  paged_attn_gpu_mem_usage?: any
+  paged_ctxt_len?: any
+  prefix_cache_n?: any
+  prompt_chunksize?: any
+  quantized_filename?: any
+  search_bert_model?: any
+  seed?: any
+  serve_ip?: any
+  token_source?: any
+  tokenizer_json?: any
+  truncate_sequence?: any
+  weight_file?: any
+}
+export interface ModelCapabilities {
+  audio?: any
+  chat?: any
+  code_interpreter?: any
+  image_generator?: any
+  text_embedding?: any
+  tools?: any
+  vision?: any
+}
+export interface ModelEngineSettings {
+  llamacpp?: any
+  mistralrs?: any
+}
+export interface ModelParameters {
+  frequency_penalty?: any
+  max_tokens?: any
+  min_p?: any
+  presence_penalty?: any
+  repeat_last_n?: any
+  repeat_penalty?: any
+  seed?: any
+  stop?: any
+  temperature?: any
+  top_k?: any
+  top_p?: any
 }
 export interface OperatingSystemInfo {
   architecture: string
@@ -249,6 +449,10 @@ export interface SetupStatusResponse {
   needs_setup: boolean
   version: string
 }
+export interface SourceInfo {
+  id?: any
+  type: string
+}
 export interface TestRepositoryConnectionRequest {
   auth_config?: any
   auth_type: string
@@ -270,6 +474,18 @@ export interface UpdateGroupRequest {
   is_active?: any
   name?: any
   permissions?: any
+}
+export interface UpdateLlmModelRequest {
+  capabilities?: any
+  description?: any
+  display_name?: any
+  enabled?: any
+  engine_settings?: any
+  engine_type?: any
+  file_format?: any
+  is_active?: any
+  name?: any
+  parameters?: any
 }
 export interface UpdateLlmProviderRequest {
   api_key?: any
@@ -320,6 +536,10 @@ export enum Permission {
   GroupsDelete = 'groups::delete',
   GroupsEdit = 'groups::edit',
   GroupsRead = 'groups::read',
+  LlmModelsCreate = 'llm_models::create',
+  LlmModelsDelete = 'llm_models::delete',
+  LlmModelsEdit = 'llm_models::edit',
+  LlmModelsRead = 'llm_models::read',
   LlmProvidersAssignGroups = 'llm_providers::assign_groups',
   LlmProvidersCreate = 'llm_providers::create',
   LlmProvidersDelete = 'llm_providers::delete',
@@ -354,6 +574,15 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'LlmModel.create': 'POST /api/llm-models',
+  'LlmModel.delete': 'DELETE /api/llm-models/{model_id}',
+  'LlmModel.disable': 'POST /api/llm-models/{model_id}/disable',
+  'LlmModel.download': 'POST /api/llm-models/download',
+  'LlmModel.enable': 'POST /api/llm-models/{model_id}/enable',
+  'LlmModel.get': 'GET /api/llm-models/{model_id}',
+  'LlmModel.list': 'GET /api/llm-models',
+  'LlmModel.update': 'POST /api/llm-models/{model_id}',
+  'LlmModel.upload': 'POST /api/llm-models/upload',
   'LlmProvider.assignGroup': 'POST /api/llm-providers/assign-group',
   'LlmProvider.create': 'POST /api/llm-providers',
   'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
@@ -397,6 +626,15 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'LlmModel.create': CreateLlmModelRequest
+  'LlmModel.delete': { model_id: string }
+  'LlmModel.disable': { model_id: string }
+  'LlmModel.download': DownloadFromRepositoryRequest
+  'LlmModel.enable': { model_id: string }
+  'LlmModel.get': { model_id: string }
+  'LlmModel.list': { page?: number; perPage?: number; providerId?: any }
+  'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
+  'LlmModel.upload': void
   'LlmProvider.assignGroup': AssignProviderToGroupRequest
   'LlmProvider.create': CreateLlmProviderRequest
   'LlmProvider.delete': { provider_id: string }
@@ -440,6 +678,15 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'LlmModel.create': LlmModel
+  'LlmModel.delete': void
+  'LlmModel.disable': LlmModel
+  'LlmModel.download': DownloadInstance
+  'LlmModel.enable': LlmModel
+  'LlmModel.get': LlmModel
+  'LlmModel.list': LlmModelListResponse
+  'LlmModel.update': LlmModel
+  'LlmModel.upload': LlmModel
   'LlmProvider.assignGroup': void
   'LlmProvider.create': LlmProvider
   'LlmProvider.delete': void

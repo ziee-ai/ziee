@@ -1349,7 +1349,7 @@
             }
           },
           "201": {
-            "description": "",
+            "description": "Database entity representing an LLM provider configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -1405,7 +1405,7 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Database entity representing an LLM provider configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -1469,7 +1469,7 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Database entity representing an LLM provider configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -1822,7 +1822,7 @@
             }
           },
           "201": {
-            "description": "",
+            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
             "content": {
               "application/json": {
                 "schema": {
@@ -1941,7 +1941,7 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
             "content": {
               "application/json": {
                 "schema": {
@@ -2005,7 +2005,7 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
             "content": {
               "application/json": {
                 "schema": {
@@ -2066,6 +2066,583 @@
           },
           "400": {
             "description": "Cannot delete built-in repository"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models": {
+      "get": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "List LLM models with pagination and optional provider filtering",
+        "description": "List all LLM models. Optionally filter by provider_id query parameter.",
+        "operationId": "LlmModel.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "description": "Page number (1-indexed)",
+            "schema": {
+              "description": "Page number (1-indexed)",
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "perPage",
+            "description": "Items per page",
+            "schema": {
+              "description": "Items per page",
+              "type": "integer",
+              "format": "int64",
+              "default": 10
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "providerId",
+            "description": "Optional provider ID to filter models by",
+            "schema": {
+              "description": "Optional provider ID to filter models by",
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read LLM models",
+                        "name": "LlmModelsRead",
+                        "value": "llm_models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for listing LLM models with pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModelListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Create a new LLM model",
+        "description": "\n\n**Required Permission:** `llm_models::create`\n\nCreate new LLM models",
+        "operationId": "LlmModel.create",
+        "requestBody": {
+          "description": "Request to create a new LLM model",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new LLM models",
+                        "name": "LlmModelsCreate",
+                        "value": "llm_models::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "LLM Model database entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/{model_id}": {
+      "get": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Get LLM model by ID",
+        "description": "\n\n**Required Permission:** `llm_models::read`\n\nRead LLM models",
+        "operationId": "LlmModel.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read LLM models",
+                        "name": "LlmModelsRead",
+                        "value": "llm_models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "LLM Model database entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Update an existing LLM model",
+        "description": "\n\n**Required Permission:** `llm_models::edit`\n\nEdit existing LLM models",
+        "operationId": "LlmModel.update",
+        "requestBody": {
+          "description": "Request to update an existing LLM model",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM models",
+                        "name": "LlmModelsEdit",
+                        "value": "llm_models::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "LLM Model database entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Delete an LLM model",
+        "description": "\n\n**Required Permission:** `llm_models::delete`\n\nDelete LLM models",
+        "operationId": "LlmModel.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete LLM models",
+                        "name": "LlmModelsDelete",
+                        "value": "llm_models::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Model deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/{model_id}/enable": {
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Enable an LLM model",
+        "description": "\n\n**Required Permission:** `llm_models::edit`\n\nEdit existing LLM models",
+        "operationId": "LlmModel.enable",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM models",
+                        "name": "LlmModelsEdit",
+                        "value": "llm_models::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "LLM Model database entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/{model_id}/disable": {
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Disable an LLM model",
+        "description": "\n\n**Required Permission:** `llm_models::edit`\n\nEdit existing LLM models",
+        "operationId": "LlmModel.disable",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM models",
+                        "name": "LlmModelsEdit",
+                        "value": "llm_models::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "LLM Model database entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/upload": {
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Upload model files and create a new model",
+        "description": "Upload model weight files, config, and tokenizer files. The model is automatically created from the uploaded files.",
+        "operationId": "LlmModel.upload",
+        "requestBody": {
+          "description": "multipart form data",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new LLM models",
+                        "name": "LlmModelsCreate",
+                        "value": "llm_models::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "LLM Model database entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmModel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or file validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/download": {
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Initiate model download from a repository",
+        "description": "Start a background download task for a model from a Git repository (e.g., Hugging Face). Returns immediately with a download instance ID. The actual download happens in the background.",
+        "operationId": "LlmModel.download",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadFromRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new LLM models",
+                        "name": "LlmModelsCreate",
+                        "value": "llm_models::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Download instance database entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadInstance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
           },
           "401": {
             "description": "Unauthorized"
@@ -2243,6 +2820,88 @@
           "permissions"
         ]
       },
+      "CreateLlmModelRequest": {
+        "description": "Request to create a new LLM model",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCapabilities"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "engine_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelEngineSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "engine_type": {
+            "$ref": "#/components/schemas/EngineType"
+          },
+          "file_format": {
+            "$ref": "#/components/schemas/FileFormat"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelParameters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "provider_id",
+          "name",
+          "display_name",
+          "engine_type",
+          "file_format"
+        ]
+      },
       "CreateLlmProviderRequest": {
         "type": "object",
         "properties": {
@@ -2346,6 +3005,402 @@
           "username",
           "email",
           "password"
+        ]
+      },
+      "DeviceType": {
+        "description": "Device types for ML model inference",
+        "oneOf": [
+          {
+            "description": "CPU-only inference",
+            "type": "string",
+            "const": "cpu"
+          },
+          {
+            "description": "NVIDIA CUDA GPU acceleration",
+            "type": "string",
+            "const": "cuda"
+          },
+          {
+            "description": "Apple Metal GPU acceleration (macOS)",
+            "type": "string",
+            "const": "metal"
+          },
+          {
+            "description": "AMD ROCm GPU acceleration",
+            "type": "string",
+            "const": "rocm"
+          },
+          {
+            "description": "Vulkan GPU acceleration",
+            "type": "string",
+            "const": "vulkan"
+          },
+          {
+            "description": "OpenCL GPU acceleration",
+            "type": "string",
+            "const": "opencl"
+          },
+          {
+            "description": "Automatic device detection and selection",
+            "type": "string",
+            "const": "auto"
+          }
+        ]
+      },
+      "DownloadFromRepositoryRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCapabilities"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "engine_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelEngineSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "engine_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngineType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file_format": {
+            "$ref": "#/components/schemas/FileFormat"
+          },
+          "main_filename": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelParameters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repository_branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repository_path": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceInfo"
+          }
+        },
+        "required": [
+          "provider_id",
+          "repository_id",
+          "repository_path",
+          "name",
+          "display_name",
+          "file_format",
+          "main_filename",
+          "source"
+        ]
+      },
+      "DownloadInstance": {
+        "description": "Download instance database entity",
+        "type": "object",
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "progress_data": {
+            "$ref": "#/components/schemas/JsonOption_for_DownloadProgressData"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "request_data": {
+            "$ref": "#/components/schemas/DownloadRequestData"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DownloadStatus"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "provider_id",
+          "repository_id",
+          "request_data",
+          "status",
+          "progress_data",
+          "started_at",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "DownloadPhase": {
+        "description": "Download phase enum",
+        "type": "string",
+        "enum": [
+          "created",
+          "connecting",
+          "analyzing",
+          "downloading",
+          "receiving",
+          "resolving",
+          "checkingout",
+          "committing",
+          "complete",
+          "error"
+        ]
+      },
+      "DownloadProgressData": {
+        "description": "Progress data for download tracking (stored as JSON in database)",
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "eta_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "message": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/DownloadPhase"
+          },
+          "speed_bps": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "phase",
+          "current",
+          "total",
+          "message",
+          "speed_bps",
+          "eta_seconds"
+        ]
+      },
+      "DownloadRequestData": {
+        "description": "Request data for initiating a download (stored as JSON in database)",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCapabilities"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "engine_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelEngineSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "engine_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngineType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file_format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "files": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "main_filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelParameters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantization": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "model_name"
+        ]
+      },
+      "DownloadStatus": {
+        "description": "Download status enum",
+        "type": "string",
+        "enum": [
+          "pending",
+          "downloading",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "EngineType": {
+        "type": "string",
+        "enum": [
+          "mistralrs",
+          "llamacpp",
+          "none"
+        ]
+      },
+      "FileFormat": {
+        "description": "File format types for local models",
+        "type": "string",
+        "enum": [
+          "safetensors",
+          "pytorch",
+          "gguf"
         ]
       },
       "GPUComputeCapabilities": {
@@ -2634,7 +3689,376 @@
           "status"
         ]
       },
+      "JsonOption_for_DownloadProgressData": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/DownloadProgressData"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "ListModelsQuery": {
+        "description": "Query parameters for listing models with optional provider filtering",
+        "type": "object",
+        "properties": {
+          "page": {
+            "description": "Page number (1-indexed)",
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          },
+          "perPage": {
+            "description": "Items per page",
+            "type": "integer",
+            "format": "int64",
+            "default": 10
+          },
+          "providerId": {
+            "description": "Optional provider ID to filter models by",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "LlamaCppSettings": {
+        "description": "LlamaCpp-specific settings for llama-server configuration",
+        "type": "object",
+        "properties": {
+          "batch_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "cache_type_k": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cache_type_v": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cont_batching": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "ctx_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "device_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "device_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flash_attn": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "keep": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "main_gpu": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "mlock": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "n_gpu_layers": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "no_kv_offload": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "no_mmap": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "numa": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parallel": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "rope_freq_base": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "rope_freq_scale": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "rope_scaling": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "split_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tensor_split": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "threads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "threads_batch": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "ubatch_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "LlmModel": {
+        "description": "LLM Model database entity",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ModelCapabilities"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "engine_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelEngineSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "engine_type": {
+            "$ref": "#/components/schemas/EngineType"
+          },
+          "file_format": {
+            "$ref": "#/components/schemas/FileFormat"
+          },
+          "file_size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "is_deprecated": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/ModelParameters"
+          },
+          "pid": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validation_issues": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "validation_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "provider_id",
+          "name",
+          "display_name",
+          "enabled",
+          "is_deprecated",
+          "is_active",
+          "capabilities",
+          "parameters",
+          "created_at",
+          "updated_at",
+          "engine_type",
+          "file_format"
+        ]
+      },
+      "LlmModelListResponse": {
+        "description": "Response for listing LLM models with pagination",
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmModel"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "models",
+          "total",
+          "page",
+          "per_page"
+        ]
+      },
       "LlmProvider": {
+        "description": "Database entity representing an LLM provider configuration",
         "type": "object",
         "properties": {
           "api_key": {
@@ -2718,6 +4142,7 @@
         ]
       },
       "LlmRepository": {
+        "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
         "type": "object",
         "properties": {
           "auth_config": {
@@ -2894,6 +4319,478 @@
           "usage_percentage"
         ]
       },
+      "MistralRsCommand": {
+        "description": "MistralRS command types for different model formats and use cases",
+        "oneOf": [
+          {
+            "description": "Plain model format (safetensors/pytorch)",
+            "type": "string",
+            "const": "plain"
+          },
+          {
+            "description": "GGUF quantized model format",
+            "type": "string",
+            "const": "gguf"
+          },
+          {
+            "description": "Auto-loader for various model formats",
+            "type": "string",
+            "const": "run"
+          },
+          {
+            "description": "Vision-enabled plain models for multimodal capabilities",
+            "type": "string",
+            "const": "vision-plain"
+          },
+          {
+            "description": "X-LoRA (Cross-Layer LoRA) models",
+            "type": "string",
+            "const": "x-lora"
+          },
+          {
+            "description": "LoRA (Low-Rank Adaptation) models",
+            "type": "string",
+            "const": "lora"
+          },
+          {
+            "description": "TOML configuration-based models",
+            "type": "string",
+            "const": "toml"
+          }
+        ]
+      },
+      "MistralRsSettings": {
+        "description": "MistralRs-specific settings for individual model performance and batching configuration",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "chat_template": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "command": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MistralRsCommand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cpu": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "device_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "device_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dtype": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enable_search": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "enable_thinking": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "in_situ_quant": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "interactive_mode": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "jinja_explicit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "log_file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_edge": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "max_image_length": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "max_num_images": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "max_seq_len": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "max_seqs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "model_id_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "no_kv_cache": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "no_paged_attn": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "num_device_layers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "paged_attn": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "paged_attn_block_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "paged_attn_gpu_mem": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "paged_attn_gpu_mem_usage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "paged_ctxt_len": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "prefix_cache_n": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "prompt_chunksize": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "quantized_filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "search_bert_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "serve_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tokenizer_json": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncate_sequence": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "weight_file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ModelCapabilities": {
+        "description": "Model capabilities configuration",
+        "type": "object",
+        "properties": {
+          "audio": {
+            "description": "Audio capability - can process audio",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "chat": {
+            "description": "Chat capability - can engage in conversational text generation",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "code_interpreter": {
+            "description": "Code interpreter capability",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "image_generator": {
+            "description": "Image generation capability - can generate images from text descriptions",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "text_embedding": {
+            "description": "Text embedding capability - can generate text embeddings for semantic search",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "tools": {
+            "description": "Tools capability - can use function calling/tools",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "vision": {
+            "description": "Vision capability - can process images",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "ModelEngineSettings": {
+        "description": "Engine-specific settings for model configuration",
+        "type": "object",
+        "properties": {
+          "llamacpp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlamaCppSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mistralrs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MistralRsSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ModelParameters": {
+        "description": "Model parameters for inference configuration",
+        "type": "object",
+        "properties": {
+          "frequency_penalty": {
+            "description": "Frequency penalty for repeated tokens",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "max_tokens": {
+            "description": "Context size for the model",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "min_p": {
+            "description": "Min-P sampling parameter (0.0-1.0)",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "presence_penalty": {
+            "description": "Presence penalty for new tokens",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "repeat_last_n": {
+            "description": "Number of last tokens to consider for repetition penalty",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "repeat_penalty": {
+            "description": "Repetition penalty (1.0 = no penalty)",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "seed": {
+            "description": "Random seed for reproducible outputs",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "stop": {
+            "description": "Stop sequences to terminate generation",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "temperature": {
+            "description": "Temperature for randomness (0.0-2.0)",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "top_k": {
+            "description": "Top-K sampling parameter",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "top_p": {
+            "description": "Top-P (nucleus) sampling parameter (0.0-1.0)",
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          }
+        }
+      },
       "OperatingSystemInfo": {
         "type": "object",
         "properties": {
@@ -3054,6 +4951,7 @@
         ]
       },
       "RepositoryAuthConfig": {
+        "description": "Authentication configuration for LLM repositories\n This is part of the database entity and stored as JSONB in PostgreSQL",
         "type": "object",
         "properties": {
           "api_key": {
@@ -3187,6 +5085,26 @@
           "version"
         ]
       },
+      "SourceInfo": {
+        "description": "Source information for download tracking",
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "Type of download source: \"manual\" or \"hub\"",
+            "type": "string"
+          },
+          "id": {
+            "description": "Model ID from hub (for hub downloads) or null for manual downloads",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
       "TestRepositoryConnectionRequest": {
         "type": "object",
         "properties": {
@@ -3285,6 +5203,92 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "UpdateLlmModelRequest": {
+        "description": "Request to update an existing LLM model",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCapabilities"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "engine_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelEngineSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "engine_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngineType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file_format": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_active": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelParameters"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },

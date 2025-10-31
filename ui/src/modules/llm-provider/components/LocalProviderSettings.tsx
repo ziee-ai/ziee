@@ -3,6 +3,10 @@ import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { clearLlmProviderStoreError, Stores } from '../store'
 import { ProviderHeader } from './ProviderHeader'
+import { LlmModelsSection } from './LlmModelsSection'
+import { AddLocalLlmModelUploadDrawer } from './llm-models/AddLocalLlmModelUploadDrawer'
+import { AddLocalLlmModelDownloadDrawer } from './llm-models/AddLocalLlmModelDownloadDrawer'
+import { EditLlmModelDrawer } from './llm-models/EditLlmModelDrawer'
 
 const { Text } = Typography
 
@@ -39,6 +43,13 @@ export function LocalProviderSettings() {
         Local providers use models running on your local machine. Configure your local
         inference server separately.
       </Text>
+
+      <LlmModelsSection />
+
+      {/* Model Management Drawers */}
+      <AddLocalLlmModelUploadDrawer />
+      <AddLocalLlmModelDownloadDrawer />
+      <EditLlmModelDrawer />
     </Flex>
   )
 }

@@ -2,14 +2,21 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
-  LlmProvider,
+  LlmProvider as BaseLlmProvider,
   CreateLlmProviderRequest,
   UpdateLlmProviderRequest,
+  LlmModel,
 } from '@/api-client/types'
+
+// Extended type that includes models array
+// TODO: Backend should include llm_models in LlmProvider response
+export interface LlmProviderWithModels extends BaseLlmProvider {
+  llm_models?: LlmModel[]
+}
 
 interface LlmProviderState {
   // Data
-  providers: LlmProvider[]
+  providers: LlmProviderWithModels[]
   isInitialized: boolean
 
   // Loading states
@@ -17,6 +24,10 @@ interface LlmProviderState {
   creating: boolean
   updating: boolean
   deleting: boolean
+
+  // LLM Model loading states
+  llmModelsLoading: Record<string, boolean> // providerId -> loading
+  llmModelOperations: Record<string, boolean> // modelId -> operation in progress
 
   // Error state
   error: string | null
@@ -36,6 +47,8 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       creating: false,
       updating: false,
       deleting: false,
+      llmModelsLoading: {},
+      llmModelOperations: {},
       error: null,
       __init__: {
         providers: async () => loadLlmProviders(),
@@ -58,8 +71,15 @@ export const loadLlmProviders = async (): Promise<void> => {
       per_page: 50,
     })
 
+    // Initialize each provider with llm_models array
+    // TODO: Backend should include models in provider response or provide a way to fetch them
+    const providersWithModels: LlmProviderWithModels[] = response.providers.map(p => ({
+      ...p,
+      llm_models: [],
+    }))
+
     useLlmProviderStore.setState({
-      providers: response.providers,
+      providers: providersWithModels,
       isInitialized: true,
       loading: false,
     })
@@ -75,7 +95,7 @@ export const loadLlmProviders = async (): Promise<void> => {
 
 export const createLlmProvider = async (
   data: CreateLlmProviderRequest,
-): Promise<LlmProvider> => {
+): Promise<LlmProviderWithModels> => {
   const state = useLlmProviderStore.getState()
   if (state.creating) {
     return Promise.resolve(null as any)
@@ -86,12 +106,18 @@ export const createLlmProvider = async (
 
     const provider = await ApiClient.LlmProvider.create(data)
 
+    // Add llm_models array to provider
+    const providerWithModels: LlmProviderWithModels = {
+      ...provider,
+      llm_models: [],
+    }
+
     useLlmProviderStore.setState(state => ({
-      providers: [...state.providers, provider],
+      providers: [...state.providers, providerWithModels],
       creating: false,
     }))
 
-    return provider
+    return providerWithModels
   } catch (error) {
     useLlmProviderStore.setState({
       error:
@@ -105,7 +131,7 @@ export const createLlmProvider = async (
 export const updateLlmProvider = async (
   id: string,
   data: UpdateLlmProviderRequest,
-): Promise<LlmProvider> => {
+): Promise<LlmProviderWithModels> => {
   const state = useLlmProviderStore.getState()
   if (state.updating) {
     return Promise.resolve(null as any)
@@ -120,11 +146,13 @@ export const updateLlmProvider = async (
     })
 
     useLlmProviderStore.setState(state => ({
-      providers: state.providers.map(p => (p.id === id ? provider : p)),
+      providers: state.providers.map(p =>
+        p.id === id ? { ...provider, llm_models: p.llm_models } : p
+      ),
       updating: false,
     }))
 
-    return provider
+    return state.providers.find(p => p.id === id)!
   } catch (error) {
     useLlmProviderStore.setState({
       error:
@@ -164,14 +192,14 @@ export const clearLlmProviderStoreError = (): void => {
   useLlmProviderStore.setState({ error: null })
 }
 
-export const findLlmProviderById = (id: string): LlmProvider | undefined => {
+export const findLlmProviderById = (id: string): LlmProviderWithModels | undefined => {
   return useLlmProviderStore
     .getState()
     .providers.find(p => p.id === id)
 }
 
 export const llmProviderHasCredentials = (
-  provider: LlmProvider,
+  provider: BaseLlmProvider | LlmProviderWithModels,
 ): boolean => {
   // Local providers don't need credentials
   if (provider.provider_type === 'local') {
@@ -187,8 +215,159 @@ export const llmProviderHasCredentials = (
   return !!(provider.api_key && provider.api_key.trim())
 }
 
-// Re-export drawer store functions and hook
+// LLM Model actions
+export const enableLlmModel = async (modelId: string): Promise<LlmModel> => {
+  try {
+    useLlmProviderStore.setState(state => ({
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: true },
+      error: null,
+    }))
+
+    const model = await ApiClient.LlmModel.update({
+      model_id: modelId,
+      enabled: true,
+    })
+
+    // Update the model in the provider's llm_models array
+    useLlmProviderStore.setState(state => ({
+      providers: state.providers.map(p => ({
+        ...p,
+        llm_models: p.llm_models?.map(m => (m.id === modelId ? model : m)),
+      })),
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+    }))
+
+    return model
+  } catch (error) {
+    useLlmProviderStore.setState(state => ({
+      error:
+        error instanceof Error ? error.message : 'Failed to enable model',
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+    }))
+    throw error
+  }
+}
+
+export const disableLlmModel = async (modelId: string): Promise<LlmModel> => {
+  try {
+    useLlmProviderStore.setState(state => ({
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: true },
+      error: null,
+    }))
+
+    const model = await ApiClient.LlmModel.update({
+      model_id: modelId,
+      enabled: false,
+    })
+
+    // Update the model in the provider's llm_models array
+    useLlmProviderStore.setState(state => ({
+      providers: state.providers.map(p => ({
+        ...p,
+        llm_models: p.llm_models?.map(m => (m.id === modelId ? model : m)),
+      })),
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+    }))
+
+    return model
+  } catch (error) {
+    useLlmProviderStore.setState(state => ({
+      error:
+        error instanceof Error ? error.message : 'Failed to disable model',
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+    }))
+    throw error
+  }
+}
+
+export const deleteLlmModel = async (modelId: string): Promise<void> => {
+  try {
+    useLlmProviderStore.setState(state => ({
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: true },
+      error: null,
+    }))
+
+    await ApiClient.LlmModel.delete({ model_id: modelId })
+
+    // Remove the model from the provider's llm_models array
+    useLlmProviderStore.setState(state => ({
+      providers: state.providers.map(p => ({
+        ...p,
+        llm_models: p.llm_models?.filter(m => m.id !== modelId),
+      })),
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+    }))
+  } catch (error) {
+    useLlmProviderStore.setState(state => ({
+      error:
+        error instanceof Error ? error.message : 'Failed to delete model',
+      llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+    }))
+    throw error
+  }
+}
+
+export const findLlmModelById = (modelId: string): LlmModel | undefined => {
+  const state = useLlmProviderStore.getState()
+  for (const provider of state.providers) {
+    const model = provider.llm_models?.find(m => m.id === modelId)
+    if (model) return model
+  }
+  return undefined
+}
+
+export const addLlmModelToProvider = (
+  providerId: string,
+  model: LlmModel,
+): void => {
+  useLlmProviderStore.setState(state => ({
+    providers: state.providers.map(p => {
+      if (p.id === providerId) {
+        return {
+          ...p,
+          llm_models: [...(p.llm_models || []), model],
+        }
+      }
+      return p
+    }),
+  }))
+}
+
+export const updateLlmModelInProvider = (
+  providerId: string,
+  modelId: string,
+  updatedModel: LlmModel,
+): void => {
+  useLlmProviderStore.setState(state => ({
+    providers: state.providers.map(p => {
+      if (p.id === providerId) {
+        return {
+          ...p,
+          llm_models: p.llm_models?.map(m =>
+            m.id === modelId ? updatedModel : m,
+          ),
+        }
+      }
+      return p
+    }),
+  }))
+}
+
+// Re-export drawer store functions and hooks
 export { useLlmProviderDrawerStore, openLlmProviderDrawer, closeLlmProviderDrawer } from './drawer-store'
+
+// Re-export llm-model drawer stores
+export * from './llm-model-drawer-store'
+
+// Re-export download store functions
+export {
+  downloadLlmModelFromRepository,
+  cancelLlmModelDownload,
+  deleteLlmModelDownload,
+  clearLlmModelDownload,
+  clearAllLlmModelDownloads,
+  useLlmModelDownloadStore,
+} from './llm-model-download-store'
 
 // Re-export for compatibility with Stores pattern
 export { Stores } from '@/core/stores'

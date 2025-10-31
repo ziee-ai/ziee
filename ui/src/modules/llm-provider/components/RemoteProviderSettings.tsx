@@ -13,6 +13,9 @@ import {
 } from '../store'
 import { ProviderProxySettingsForm } from './ProviderProxySettingsForm'
 import { ProviderHeader } from './ProviderHeader'
+import { LlmModelsSection } from './LlmModelsSection'
+import { AddRemoteLlmModelDrawer } from './llm-models/AddRemoteLlmModelDrawer'
+import { EditLlmModelDrawer } from './llm-models/EditLlmModelDrawer'
 import type { ProxySettings } from '@/api-client/types'
 
 const { Title, Text } = Typography
@@ -187,6 +190,12 @@ export function RemoteProviderSettings() {
         }
         onSave={handleProxySettingsSave}
       />
+
+      <LlmModelsSection />
+
+      {/* Model Management Drawers */}
+      <AddRemoteLlmModelDrawer />
+      <EditLlmModelDrawer />
     </Flex>
   )
 }
