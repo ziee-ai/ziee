@@ -1,5 +1,6 @@
 // User handlers and request/response models
 
+use aide::transform::TransformOperation;
 use axum::{
     extract::{Path, Query},
     http::StatusCode,
@@ -9,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
-    modules::permissions::RequirePermissions,
+    modules::permissions::{RequirePermissions, with_permission},
 };
 
 use super::{
@@ -48,6 +49,16 @@ pub async fn list_users(
     ))
 }
 
+/// Documentation for list_users endpoint
+pub fn list_users_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(UsersRead,)>(op)
+        .id("User.list")
+        .tag("Users")
+        .summary("List all users with pagination")
+        .response::<200, Json<UserListResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
 /// Get user by ID (requires users::read permission)
 pub async fn get_user(
     _auth: RequirePermissions<(UsersRead,)>,
@@ -60,6 +71,17 @@ pub async fn get_user(
         .ok_or_else(|| AppError::not_found("User"))?;
 
     Ok((StatusCode::OK, Json(user)))
+}
+
+/// Documentation for get_user endpoint
+pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(UsersRead,)>(op)
+        .id("User.get")
+        .tag("Users")
+        .summary("Get user by ID")
+        .response::<200, Json<User>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("User not found"))
 }
 
 /// Create a new user (requires users::create permission)
@@ -101,6 +123,17 @@ pub async fn create_user(
         .await?;
 
     Ok((StatusCode::CREATED, Json(user)))
+}
+
+/// Documentation for create_user endpoint
+pub fn create_user_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(UsersCreate,)>(op)
+        .id("User.create")
+        .tag("Users")
+        .summary("Create a new user account")
+        .response::<201, Json<User>>()
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 
 /// Update user (requires users::edit permission)
@@ -153,6 +186,18 @@ pub async fn update_user(
     Ok((StatusCode::OK, Json(updated_user)))
 }
 
+/// Documentation for update_user endpoint
+pub fn update_user_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(UsersEdit,)>(op)
+        .id("User.update")
+        .tag("Users")
+        .summary("Update user")
+        .response::<200, Json<User>>()
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("User not found"))
+}
+
 /// Toggle user active status (requires users::toggle-status permission)
 pub async fn toggle_user_active(
     _auth: RequirePermissions<(UsersToggleStatus,)>,
@@ -179,6 +224,17 @@ pub async fn toggle_user_active(
     ))
 }
 
+/// Documentation for toggle_user_active endpoint
+pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(UsersToggleStatus,)>(op)
+        .id("User.toggleActive")
+        .tag("Users")
+        .summary("Toggle user active status")
+        .response::<200, Json<UserActiveStatusResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("User not found"))
+}
+
 /// Reset user password (requires users::reset-password permission)
 pub async fn reset_user_password(
     _auth: RequirePermissions<(UsersResetPassword,)>,
@@ -203,6 +259,17 @@ pub async fn reset_user_password(
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
+/// Documentation for reset_user_password endpoint
+pub fn reset_user_password_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(UsersResetPassword,)>(op)
+        .id("User.resetPassword")
+        .tag("Users")
+        .summary("Reset user password")
+        .response_with::<204, (), _>(|res| res.description("Password reset successfully"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("User not found"))
+}
+
 /// Delete user (requires users::delete permission)
 pub async fn delete_user(
     _auth: RequirePermissions<(UsersDelete,)>,
@@ -219,4 +286,15 @@ pub async fn delete_user(
     user_repo.delete(user_id).await?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+/// Documentation for delete_user endpoint
+pub fn delete_user_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(UsersDelete,)>(op)
+        .id("User.delete")
+        .tag("Users")
+        .summary("Delete user")
+        .response_with::<204, (), _>(|res| res.description("User deleted successfully"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("User not found"))
 }

@@ -1,5 +1,6 @@
 // Hardware handlers and request/response models
 
+use aide::transform::TransformOperation;
 use axum::{
     debug_handler,
     extract::State,
@@ -12,7 +13,7 @@ use sysinfo::System;
 use uuid::Uuid;
 
 use crate::common::ApiResult;
-use crate::modules::permissions::RequirePermissions;
+use crate::modules::permissions::{RequirePermissions, with_permission};
 
 use super::detection::detect_gpu_devices;
 use super::monitoring::{add_client, remove_client, start_hardware_monitoring};
@@ -82,6 +83,18 @@ pub async fn get_hardware_info(
     ))
 }
 
+/// Documentation for get_hardware_info endpoint
+pub fn get_hardware_info_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HardwareRead,)>(op)
+        .id("Hardware.info")
+        .summary("Get Hardware Information")
+        .description("Get static hardware information including OS, CPU, Memory, and GPU details")
+        .tag("Hardware")
+        .response::<200, Json<HardwareInfoResponse>>()
+        .response::<401, ()>()
+        .response::<403, ()>()
+}
+
 /// GET /api/hardware/usage-stream
 /// SSE endpoint for real-time hardware usage monitoring
 #[debug_handler]
@@ -117,7 +130,25 @@ pub async fn subscribe_hardware_usage(
     Ok((axum::http::StatusCode::OK, Sse::new(stream)))
 }
 
+/// Documentation for subscribe_hardware_usage endpoint
+pub fn subscribe_hardware_usage_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HardwareMonitor,)>(op)
+        .id("Hardware.stream")
+        .summary("Subscribe to Hardware Usage Stream")
+        .description("Subscribe to real-time hardware usage updates via Server-Sent Events (SSE)")
+        .tag("Hardware")
+        .response::<200, Json<SSEHardwareUsageEvent>>()
+        .response::<401, ()>()
+        .response::<403, ()>()
+}
+
 /// Dummy endpoint for type generation - ensures SSE types are included in OpenAPI spec
 pub async fn hardware_types() -> Json<HardwareUsageUpdate> {
     unreachable!("This endpoint is only for OpenAPI type generation")
+}
+
+/// Documentation for types endpoint
+pub fn hardware_types_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Types for OpenAPI generation")
+        .response::<600, Json<HardwareUsageUpdate>>()
 }

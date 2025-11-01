@@ -1,7 +1,8 @@
 // Integration tests for LLM Model module
 
-mod upload_test;
+mod download_management_test;
 mod download_test;
+mod upload_test;
 
 use serde_json::json;
 use reqwest::StatusCode;

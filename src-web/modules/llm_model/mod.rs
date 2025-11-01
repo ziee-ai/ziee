@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::module_api::AppModule;
 use crate::ModuleContext;
 
+pub mod download_handlers;
 pub mod handlers;
 pub mod models;
 pub mod permissions;

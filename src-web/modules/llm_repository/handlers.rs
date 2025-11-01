@@ -2,6 +2,7 @@
 // Source: react-test/src-tauri/src/api/repositories.rs
 // IMPORTANT: ALL validation logic preserved from react-test
 
+use aide::transform::TransformOperation;
 use axum::{
     extract::{Path, Query},
     http::StatusCode,
@@ -11,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
-    modules::permissions::RequirePermissions,
+    modules::permissions::{RequirePermissions, with_permission},
 };
 
 use super::{
@@ -65,6 +66,16 @@ pub async fn list_repositories(
     ))
 }
 
+/// Documentation for list_repositories endpoint
+pub fn list_repositories_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LlmRepositoriesRead,)>(op)
+        .id("LlmRepository.list")
+        .tag("LLM Repositories")
+        .summary("List all LLM repositories with pagination")
+        .response::<200, Json<LlmRepositoryListResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
 /// Get LLM repository by ID (requires llm_repositories::read permission)
 pub async fn get_repository(
     _auth: RequirePermissions<(LlmRepositoriesRead,)>,
@@ -79,6 +90,17 @@ pub async fn get_repository(
         .ok_or_else(|| AppError::not_found("Repository"))?;
 
     Ok((StatusCode::OK, Json(repository)))
+}
+
+/// Documentation for get_repository endpoint
+pub fn get_repository_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LlmRepositoriesRead,)>(op)
+        .id("LlmRepository.get")
+        .tag("LLM Repositories")
+        .summary("Get LLM repository by ID")
+        .response::<200, Json<LlmRepository>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Repository not found"))
 }
 
 /// Create a new LLM repository (requires llm_repositories::create permission)
@@ -105,6 +127,17 @@ pub async fn create_repository(
         })?;
 
     Ok((StatusCode::CREATED, Json(repository)))
+}
+
+/// Documentation for create_repository endpoint
+pub fn create_repository_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LlmRepositoriesCreate,)>(op)
+        .id("LlmRepository.create")
+        .tag("LLM Repositories")
+        .summary("Create a new LLM repository")
+        .response::<201, Json<LlmRepository>>()
+        .response_with::<400, (), _>(|res| res.description("Invalid input"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 
 /// Update an existing LLM repository (requires llm_repositories::edit permission)
@@ -147,6 +180,18 @@ pub async fn update_repository(
     Ok((StatusCode::OK, Json(updated_repository)))
 }
 
+/// Documentation for update_repository endpoint
+pub fn update_repository_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LlmRepositoriesEdit,)>(op)
+        .id("LlmRepository.update")
+        .tag("LLM Repositories")
+        .summary("Update an existing LLM repository")
+        .response::<200, Json<LlmRepository>>()
+        .response_with::<400, (), _>(|res| res.description("Invalid input"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Repository not found"))
+}
+
 /// Delete an LLM repository (requires llm_repositories::delete permission)
 /// Built-in repositories cannot be deleted
 pub async fn delete_repository(
@@ -169,6 +214,18 @@ pub async fn delete_repository(
             Err(AppError::internal_error("Database operation failed").into())
         }
     }
+}
+
+/// Documentation for delete_repository endpoint
+pub fn delete_repository_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LlmRepositoriesDelete,)>(op)
+        .id("LlmRepository.delete")
+        .tag("LLM Repositories")
+        .summary("Delete an LLM repository")
+        .response::<204, ()>()
+        .response_with::<400, (), _>(|res| res.description("Cannot delete built-in repository"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Repository not found"))
 }
 
 /// Test LLM repository connection (requires llm_repositories::read permission)
@@ -206,4 +263,14 @@ pub async fn test_repository_connection(
             }),
         )),
     }
+}
+
+/// Documentation for test_repository_connection endpoint
+pub fn test_repository_connection_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(LlmRepositoriesRead,)>(op)
+        .id("LlmRepository.test")
+        .tag("LLM Repositories")
+        .summary("Test repository connection without saving")
+        .response::<200, Json<TestRepositoryConnectionResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }

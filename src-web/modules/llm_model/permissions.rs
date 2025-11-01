@@ -35,3 +35,28 @@ impl PermissionCheck for LlmModelsDelete {
     const DESCRIPTION: &'static str = "Delete LLM models";
     const MODULE: &'static str = "llm_model";
 }
+
+// Download management permissions
+pub struct LlmModelsDownloadsRead;
+impl PermissionCheck for LlmModelsDownloadsRead {
+    const NAME: &'static str = "LlmModelsDownloadsRead";
+    const PERMISSION: &'static str = "llm_models::downloads_read";
+    const DESCRIPTION: &'static str = "Read download instances";
+    const MODULE: &'static str = "llm_model";
+}
+
+pub struct LlmModelsDownloadsCancel;
+impl PermissionCheck for LlmModelsDownloadsCancel {
+    const NAME: &'static str = "LlmModelsDownloadsCancel";
+    const PERMISSION: &'static str = "llm_models::downloads_cancel";
+    const DESCRIPTION: &'static str = "Cancel active downloads";
+    const MODULE: &'static str = "llm_model";
+}
+
+pub struct LlmModelsDownloadsDelete;
+impl PermissionCheck for LlmModelsDownloadsDelete {
+    const NAME: &'static str = "LlmModelsDownloadsDelete";
+    const PERMISSION: &'static str = "llm_models::downloads_delete";
+    const DESCRIPTION: &'static str = "Delete download instances";
+    const MODULE: &'static str = "llm_model";
+}

@@ -132,6 +132,39 @@ impl DownloadInstanceRepository {
             .await
             .map_err(AppError::database_error)
     }
+
+    /// Get download instance by ID
+    pub async fn get_by_id(&self, download_id: Uuid) -> Result<Option<DownloadInstance>, AppError> {
+        get_download_instance_by_id(&self.pool, download_id)
+            .await
+            .map_err(AppError::database_error)
+    }
+
+    /// List download instances with pagination and optional status filter
+    pub async fn list(
+        &self,
+        page: i32,
+        per_page: i32,
+        status_filter: Option<DownloadStatus>,
+    ) -> Result<DownloadInstanceListResponse, AppError> {
+        get_download_instances(&self.pool, page, per_page, status_filter)
+            .await
+            .map_err(AppError::database_error)
+    }
+
+    /// Delete a download instance
+    pub async fn delete(&self, download_id: Uuid) -> Result<bool, AppError> {
+        delete_download_instance(&self.pool, download_id)
+            .await
+            .map_err(AppError::database_error)
+    }
+
+    /// Get all active downloads (pending, downloading, failed, cancelled)
+    pub async fn get_all_active(&self) -> Result<Vec<DownloadInstance>, AppError> {
+        get_all_active_downloads(&self.pool)
+            .await
+            .map_err(AppError::database_error)
+    }
 }
 
 pub async fn get_llm_model_by_id(

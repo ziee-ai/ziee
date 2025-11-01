@@ -1,3 +1,4 @@
+use aide::transform::TransformOperation;
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use axum::debug_handler;
 use sqlx::PgPool;
@@ -31,6 +32,14 @@ pub async fn get_setup_status(
         app_name: "Ziee Chat".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     })))
+}
+
+/// Documentation for get_setup_status endpoint
+pub fn get_setup_status_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Check if initial admin setup is required")
+        .id("App.getSetupStatus")
+        .tag("app")
+        .response::<200, Json<SetupStatusResponse>>()
 }
 
 /// POST /api/app/setup/admin
@@ -136,4 +145,14 @@ pub async fn setup_admin(
     );
 
     Ok((StatusCode::CREATED, Json(AuthResponse { user, tokens })))
+}
+
+/// Documentation for setup_admin endpoint
+pub fn setup_admin_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Create the first administrator account")
+        .id("App.setupAdmin")
+        .tag("app")
+        .response::<201, Json<AuthResponse>>()
+        .response::<403, ()>()
+        .response::<400, ()>()
 }

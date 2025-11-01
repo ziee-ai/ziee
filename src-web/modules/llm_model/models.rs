@@ -884,3 +884,21 @@ crate::impl_json_from!(DownloadRequestData);
 crate::impl_json_from!(DownloadProgressData);
 crate::impl_string_to_enum!(DownloadStatus);
 crate::impl_json_option_from!(DownloadProgressData);
+
+impl DownloadInstance {
+    /// Check if the download is in a terminal state
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self.status,
+            DownloadStatus::Completed | DownloadStatus::Failed | DownloadStatus::Cancelled
+        )
+    }
+
+    /// Check if the download can be cancelled
+    pub fn can_cancel(&self) -> bool {
+        matches!(
+            self.status,
+            DownloadStatus::Pending | DownloadStatus::Downloading
+        )
+    }
+}

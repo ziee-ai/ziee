@@ -1,5 +1,6 @@
 // Auth handlers
 
+use aide::transform::TransformOperation;
 use axum::{debug_handler, extract::{Path, Query, State}, http::StatusCode, response::{IntoResponse, Redirect}, Extension, Json};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -91,6 +92,14 @@ pub async fn register(
     })))
 }
 
+/// Documentation for register endpoint
+pub fn register_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Register a new user with username, email, and password")
+        .id("Auth.register")
+        .tag("auth")
+        .response::<201, Json<AuthResponse>>()
+}
+
 /// POST /api/auth/login
 /// Login with username/email and password
 #[debug_handler]
@@ -146,6 +155,14 @@ pub async fn login(
         user,
         tokens,
     })))
+}
+
+/// Documentation for login endpoint
+pub fn login_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Login with username/email and password")
+        .id("Auth.login")
+        .tag("auth")
+        .response::<200, Json<AuthResponse>>()
 }
 
 /// Login with external provider (LDAP/OAuth)
@@ -322,6 +339,14 @@ pub async fn refresh(
     Ok((StatusCode::OK, Json(tokens)))
 }
 
+/// Documentation for refresh endpoint
+pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Refresh access token using refresh token")
+        .id("Auth.refresh")
+        .tag("auth")
+        .response::<200, Json<TokenPair>>()
+}
+
 /// POST /api/auth/logout
 /// Logout current user (JWT is stateless, so this is just a placeholder)
 /// Client should discard the token
@@ -330,6 +355,14 @@ pub async fn logout(_auth: JwtAuth) -> ApiResult<()> {
     // JWT is stateless, logout is handled client-side by discarding the token
     // This endpoint exists for API consistency
     Ok((StatusCode::NO_CONTENT, ()))
+}
+
+/// Documentation for logout endpoint
+pub fn logout_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Logout current user")
+        .id("Auth.logout")
+        .tag("auth")
+        .response::<204, ()>()
 }
 
 /// GET /api/auth/me
@@ -360,6 +393,14 @@ pub async fn me(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     Ok((StatusCode::OK, Json(MeResponse { user, permissions })))
+}
+
+/// Documentation for me endpoint
+pub fn me_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Get currently authenticated user with their effective permissions")
+        .id("Auth.me")
+        .tag("auth")
+        .response::<200, Json<MeResponse>>()
 }
 
 /// GET /api/auth/oauth/{provider_name}/authorize
