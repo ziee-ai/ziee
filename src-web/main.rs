@@ -19,8 +19,8 @@ struct Cli {
     config_file: Option<String>,
 
     /// Generate OpenAPI specification and TypeScript types, then exit
-    /// If no value is provided, defaults to ../ui/src/api-client
-    #[arg(long, value_name = "OUTPUT_DIR", num_args = 0..=1, default_missing_value = "../ui/src/api-client")]
+    /// If no value is provided, defaults to ../ui/openapi
+    #[arg(long, value_name = "OUTPUT_DIR", num_args = 0..=1, default_missing_value = "../ui/openapi")]
     generate_openapi: Option<String>,
 }
 
@@ -34,7 +34,7 @@ async fn main() {
             // CARGO_MANIFEST_DIR is only available during development builds with Cargo
             // In production, you must explicitly specify the output directory with --generate-openapi <DIR>
             match option_env!("CARGO_MANIFEST_DIR") {
-                Some(manifest_dir) => format!("{}/../ui/src/api-client", manifest_dir),
+                Some(manifest_dir) => format!("{}/../ui/openapi", manifest_dir),
                 None => {
                     eprintln!("Please specify an output directory explicitly:");
                     eprintln!("  --generate-openapi /path/to/output");

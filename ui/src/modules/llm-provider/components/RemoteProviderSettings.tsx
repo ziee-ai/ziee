@@ -183,6 +183,8 @@ export function RemoteProviderSettings() {
         </Card>
       </Form>
 
+      <LlmModelsSection />
+
       {/* Proxy Settings - For non-Local providers */}
       <ProviderProxySettingsForm
         initialSettings={
@@ -190,8 +192,6 @@ export function RemoteProviderSettings() {
         }
         onSave={handleProxySettingsSave}
       />
-
-      <LlmModelsSection />
 
       {/* Model Management Drawers */}
       <AddRemoteLlmModelDrawer />

@@ -54,7 +54,7 @@ pub async fn generate_openapi_spec(output_dir: &str, config_file: Option<String>
 
     println!("\n✓ OpenAPI generation complete!");
     println!("  - OpenAPI spec: {}", openapi_json_path.display());
-    println!("  - TypeScript types: {}", output_path.join("types.ts").display());
+    println!("  - TypeScript types: {}", output_path.join("../src/api-client/types.ts").display());
 
     Ok(())
 }
@@ -64,15 +64,14 @@ fn generate_typescript_types(output_dir: &Path, openapi_json: &str) -> Result<()
     println!("Generating TypeScript types...");
 
     // Check if the TypeScript generator script exists
-    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
-    let ts_generator = project_root.join("openapi").join("generate-endpoints.ts");
+    let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let ts_generator = cargo_dir.join("../ui/openapi").join("generate-endpoints.ts");
 
     if ts_generator.exists() {
-        // Run the TypeScript generator using Node.js
+        // Run the TypeScript generator using tsx (via npx to auto-install if needed)
         println!("Running TypeScript generator: {}", ts_generator.display());
 
-        let status = Command::new("node")
-            .arg("--loader")
+        let status = Command::new("npx")
             .arg("tsx")
             .arg(&ts_generator)
             .current_dir(output_dir)

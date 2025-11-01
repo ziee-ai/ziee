@@ -45,6 +45,7 @@ export default defineConfig(async () => ({
         changeOrigin: true,
       },
     },
+    allowedHosts: true
   },
 
   build: {

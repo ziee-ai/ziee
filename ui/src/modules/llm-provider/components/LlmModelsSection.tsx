@@ -22,8 +22,6 @@ import {
   openAddLocalLlmModelUploadDrawer,
   openAddRemoteLlmModelDrawer,
   openEditLlmModelDrawer,
-} from '../llm-model-drawer-store'
-import {
   deleteLlmModel,
   disableLlmModel,
   enableLlmModel,

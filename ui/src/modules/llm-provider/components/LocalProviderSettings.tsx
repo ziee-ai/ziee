@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import { clearLlmProviderStoreError, Stores } from '../store'
 import { ProviderHeader } from './ProviderHeader'
 import { LlmModelsSection } from './LlmModelsSection'
+import { DownloadsSection } from './downloads/DownloadsSection'
 import { AddLocalLlmModelUploadDrawer } from './llm-models/AddLocalLlmModelUploadDrawer'
 import { AddLocalLlmModelDownloadDrawer } from './llm-models/AddLocalLlmModelDownloadDrawer'
 import { EditLlmModelDrawer } from './llm-models/EditLlmModelDrawer'
@@ -43,6 +44,8 @@ export function LocalProviderSettings() {
         Local providers use models running on your local machine. Configure your local
         inference server separately.
       </Text>
+
+      <DownloadsSection providerId={currentProvider.id} />
 
       <LlmModelsSection />
 

@@ -77,3 +77,12 @@ export function formatTime(seconds: number): string {
     return `${secs}s`
   }
 }
+
+/**
+ * Format ETA (Estimated Time of Arrival) - alias for formatTime
+ * @param seconds Time in seconds
+ * @returns Formatted string (e.g., "2h 15m", "45s")
+ */
+export function formatETA(seconds: number): string {
+  return formatTime(seconds)
+}

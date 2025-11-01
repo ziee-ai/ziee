@@ -2657,6 +2657,207 @@
           }
         ]
       }
+    },
+    "/api/llm-models/downloads": {
+      "get": {
+        "tags": [
+          "LLM Models - Downloads"
+        ],
+        "summary": "List all download instances",
+        "description": "Get paginated list of download instances with optional status filter",
+        "operationId": "LlmModel.listDownloads",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "Response for download instance list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadInstanceListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/downloads/subscribe": {
+      "get": {
+        "tags": [
+          "LLM Models - Downloads"
+        ],
+        "summary": "Subscribe to download progress via SSE",
+        "description": "Real-time Server-Sent Events stream of download progress. Updates every 2 seconds. Auto-closes when no active downloads remain.",
+        "operationId": "LlmModel.subscribeDownloadProgress",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "SSE event types for download progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEDownloadProgressEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/downloads/{download_id}": {
+      "get": {
+        "tags": [
+          "LLM Models - Downloads"
+        ],
+        "summary": "Get download instance by ID",
+        "description": "Retrieve a specific download instance",
+        "operationId": "LlmModel.getDownload",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "Download instance database entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadInstance"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Download not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "LLM Models - Downloads"
+        ],
+        "summary": "Delete a terminal download instance",
+        "description": "Delete a download that is completed, failed, or cancelled. Active downloads cannot be deleted.",
+        "operationId": "LlmModel.deleteDownload",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "204": {
+            "description": "Download deleted successfully"
+          },
+          "400": {
+            "description": "Cannot delete active download"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Download not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/llm-models/downloads/{download_id}/cancel": {
+      "post": {
+        "tags": [
+          "LLM Models - Downloads"
+        ],
+        "summary": "Cancel an active download",
+        "description": "Cancel a download that is pending or in progress. The download will be automatically deleted after 60 seconds.",
+        "operationId": "LlmModel.cancelDownload",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "204": {
+            "description": "Download cancelled successfully"
+          },
+          "400": {
+            "description": "Cannot cancel download in current state"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Download not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3210,6 +3411,61 @@
           "updated_at"
         ]
       },
+      "DownloadInstanceListResponse": {
+        "description": "Response for download instance list",
+        "type": "object",
+        "properties": {
+          "downloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadInstance"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "downloads",
+          "total",
+          "page",
+          "per_page"
+        ]
+      },
+      "DownloadPaginationQuery": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "per_page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "DownloadPhase": {
         "description": "Download phase enum",
         "type": "string",
@@ -3260,6 +3516,66 @@
           "message",
           "speed_bps",
           "eta_seconds"
+        ]
+      },
+      "DownloadProgressUpdate": {
+        "description": "Simplified progress data for SSE streaming",
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eta_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phase": {
+            "$ref": "#/components/schemas/DownloadPhase"
+          },
+          "speed_bps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "phase"
         ]
       },
       "DownloadRequestData": {
@@ -5000,6 +5316,90 @@
         "required": [
           "user_id",
           "new_password"
+        ]
+      },
+      "SSEDownloadProgressConnectedData": {
+        "description": "SSE connected event data",
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SSEDownloadProgressEvent": {
+        "description": "SSE event types for download progress",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "Connected"
+              },
+              "data": {
+                "$ref": "#/components/schemas/SSEDownloadProgressConnectedData"
+              }
+            },
+            "required": [
+              "type",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "Update"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DownloadProgressUpdate"
+                }
+              }
+            },
+            "required": [
+              "type",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "Complete"
+              },
+              "data": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "Error"
+              },
+              "data": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "data"
+            ]
+          }
         ]
       },
       "SSEHardwareUsageConnectedData": {

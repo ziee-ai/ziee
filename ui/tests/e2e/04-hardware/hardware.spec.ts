@@ -1,30 +1,7 @@
 import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { setTheme, isDarkMode } from '../../utils/theme'
-
-// Helper to log in an admin user
-async function loginAsAdmin(page: any, baseURL: string) {
-  // Create admin if needed
-  await page.goto(`${baseURL}/setup`)
-  const usernameField = await page.locator('#username').count()
-
-  if (usernameField > 0) {
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
-  } else {
-    // Admin already exists, need to login
-    await page.goto(`${baseURL}/auth`)
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.fill('#login_username', 'admin')
-    await page.fill('#login_password', 'password123')
-    await page.click('button:has-text("Sign In")')
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
-  }
-}
+import { loginAsAdmin } from '../../common/auth-helpers'
 
 test.describe('Hardware Settings', () => {
   test('should pass accessibility checks', async ({ page, testInfra }) => {

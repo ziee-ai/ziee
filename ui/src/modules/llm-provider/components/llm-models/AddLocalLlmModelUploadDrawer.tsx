@@ -3,7 +3,7 @@ import { Drawer } from '@/components/common/Drawer'
 import {
   closeAddLocalLlmModelUploadDrawer,
   useAddLocalLlmModelUploadDrawerStore,
-} from '@/modules/llm-provider/llm-model-drawer-store'
+} from '@/modules/llm-provider/store'
 
 /**
  * TODO: Implement full local model upload functionality

@@ -2,7 +2,8 @@ import { createModule } from '@/core'
 import { CloudServerOutlined } from '@ant-design/icons'
 import { LlmProviderSettings } from './components/LlmProviderSettings'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
-import { useLlmProviderStore } from './store'
+import { useLlmProviderStore, useLlmModelDownloadStore } from './store'
+import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
 
 export default createModule({
@@ -24,7 +25,21 @@ export default createModule({
       name: 'LlmProvider',
       store: useLlmProviderStore,
     },
+    {
+      name: 'LlmModelDownload',
+      store: useLlmModelDownloadStore,
+    },
   ],
+  sidebar: {
+    widgets: [
+      {
+        id: 'download-indicator',
+        slot: 'bottom',
+        component: <DownloadIndicatorWidget />,
+        order: 10,
+      },
+    ],
+  },
   settings: [
     {
       id: 'llm-providers',

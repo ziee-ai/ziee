@@ -147,3 +147,39 @@ export const setAddRemoteLlmModelDrawerLoading = (loading: boolean) => {
     loading,
   })
 }
+
+// ===== View Download Drawer =====
+interface ViewDownloadDrawerState {
+  open: boolean
+  loading: boolean
+  downloadId: string | null
+}
+
+export const useViewDownloadDrawerStore = create<ViewDownloadDrawerState>(
+  () => ({
+    open: false,
+    loading: false,
+    downloadId: null,
+  }),
+)
+
+export const openViewDownloadDrawer = (downloadId: string) => {
+  useViewDownloadDrawerStore.setState({
+    open: true,
+    downloadId,
+  })
+}
+
+export const closeViewDownloadDrawer = () => {
+  useViewDownloadDrawerStore.setState({
+    open: false,
+    loading: false,
+    downloadId: null,
+  })
+}
+
+export const setViewDownloadDrawerLoading = (loading: boolean) => {
+  useViewDownloadDrawerStore.setState({
+    loading,
+  })
+}

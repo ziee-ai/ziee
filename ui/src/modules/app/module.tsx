@@ -1,6 +1,7 @@
 import {createModule, Stores} from '@/core'
 import { useAppStore, checkSetupStatus } from './store'
 import SetupPage from './SetupPage'
+import { BlankLayout } from '@/components/Layout/BlankLayout'
 
 export default createModule({
   metadata: {
@@ -13,6 +14,7 @@ export default createModule({
       path: '/setup',
       element: <SetupPage />,
       requiresAuth: false,
+      layout: BlankLayout
     },
   ],
   stores: [
