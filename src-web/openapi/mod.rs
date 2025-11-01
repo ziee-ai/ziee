@@ -11,25 +11,25 @@ use std::sync::Arc;
 pub async fn generate_openapi_spec(output_dir: &str, config_file: Option<String>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Generating OpenAPI specification...");
 
-    // Load configuration to get database URL
+    // Load configuration
     let config = Config::load_from(config_file)?;
-    let database_url = config.database_url();
 
-    // Create a database pool for module initialization
-    let pool = PgPool::connect(&database_url).await?;
+    // Initialize database properly (this starts embedded PostgreSQL if use_embedded: true)
+    let pool = crate::core::database::initialize_database(&config).await?;
 
     // Initialize modules using shared builder functions
-    let module_context = ModuleContext::new(Arc::new(pool.clone()));
+    let module_context = ModuleContext::new(pool.clone());
     let mut modules = app_builder::create_modules();
 
     // Initialize all modules
     app_builder::initialize_modules(&mut modules, &module_context)?;
 
     // Build API router using shared builder function
+    // build_api_router expects PgPool, so we need to extract it from Arc
     let (api_router, mut api_doc) = app_builder::build_api_router(
         &modules,
         &config.server.api_prefix,
-        pool,
+        (*pool).clone(),
     );
 
     // Finish the API and extract the OpenAPI spec
