@@ -1,7 +1,11 @@
 // App module - Application-level endpoints
+mod handlers;
 mod routes;
+mod types;
+mod utils;
 
-pub use routes::{app_routes, SetupStatusResponse, SetupAdminRequest};
+pub use routes::app_routes;
+pub use types::{SetupStatusResponse, SetupAdminRequest};
 
 use aide::axum::ApiRouter;
 use sqlx::PgPool;
