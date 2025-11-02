@@ -234,6 +234,28 @@ async fn test_upload_model_helper(
     assert_eq!(retrieved_model["id"].as_str().unwrap(), model_id);
     assert_eq!(retrieved_model["name"].as_str().unwrap(), model_name);
 
+    // Verify model appears in provider's models list
+    let response = reqwest::Client::new()
+        .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
+        .header("Authorization", format!("Bearer {}", user_token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let models_list: serde_json::Value = response.json().await.unwrap();
+    let models = models_list["models"].as_array().unwrap();
+
+    let found_model = models.iter().find(|m| {
+        m["id"].as_str().unwrap() == model_id
+    });
+
+    assert!(found_model.is_some(), "Uploaded model should appear in provider's models list");
+    let found = found_model.unwrap();
+    assert_eq!(found["name"].as_str().unwrap(), model_name);
+    assert_eq!(found["display_name"].as_str().unwrap(), display_name);
+
     println!("✅ {} model upload test passed!", file_format);
 }
 

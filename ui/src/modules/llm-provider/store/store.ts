@@ -71,17 +71,43 @@ export const loadLlmProviders = async (): Promise<void> => {
       per_page: 50,
     })
 
-    // Initialize each provider with llm_models array
-    // TODO: Backend should include models in provider response or provide a way to fetch them
-    const providersWithModels: LlmProviderWithModels[] = response.providers.map(p => ({
-      ...p,
-      llm_models: [],
-    }))
+    const providers = response.providers
+
+    // Set providers immediately without models
+    useLlmProviderStore.setState({
+      providers: providers.map(p => ({ ...p, llm_models: [] })),
+      isInitialized: true,
+      loading: false,
+    })
+
+    // Fetch models for each provider in parallel
+    const modelPromises = providers.map(async provider => {
+      try {
+        const modelsResponse = await ApiClient.LlmModel.list({
+          providerId: provider.id,
+          page: 1,
+          perPage: 100,
+        })
+        return { providerId: provider.id, models: modelsResponse.models }
+      } catch (error) {
+        console.error(`Failed to load models for provider ${provider.id}:`, error)
+        return { providerId: provider.id, models: [] }
+      }
+    })
+
+    const results = await Promise.allSettled(modelPromises)
+
+    // Update each provider with its models
+    const providersWithModels = providers.map(provider => {
+      const result = results.find(r =>
+        r.status === 'fulfilled' && r.value.providerId === provider.id
+      )
+      const models = result?.status === 'fulfilled' ? result.value.models : []
+      return { ...provider, llm_models: models }
+    })
 
     useLlmProviderStore.setState({
       providers: providersWithModels,
-      isInitialized: true,
-      loading: false,
     })
   } catch (error) {
     useLlmProviderStore.setState({
@@ -90,6 +116,25 @@ export const loadLlmProviders = async (): Promise<void> => {
       loading: false,
     })
     throw error
+  }
+}
+
+export const loadModelsForProvider = async (providerId: string): Promise<void> => {
+  try {
+    const modelsResponse = await ApiClient.LlmModel.list({
+      providerId,
+      page: 1,
+      perPage: 100,
+    })
+
+    // Update provider with fresh models
+    useLlmProviderStore.setState(state => ({
+      providers: state.providers.map(p =>
+        p.id === providerId ? { ...p, llm_models: modelsResponse.models } : p
+      ),
+    }))
+  } catch (error) {
+    console.error(`Failed to load models for provider ${providerId}:`, error)
   }
 }
 

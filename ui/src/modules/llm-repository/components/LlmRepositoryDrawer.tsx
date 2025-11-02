@@ -208,7 +208,7 @@ export function LlmRepositoryDrawer({
       width={600}
       maskClosable={false}
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form name="llm-repository-form" form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item
           name="name"
           label="Repository Name"

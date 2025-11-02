@@ -114,6 +114,7 @@ export function LlmProviderDrawer() {
       maskClosable={false}
     >
       <Form
+        name="llm-provider-form"
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
@@ -187,7 +188,7 @@ export function LlmProviderDrawer() {
           label="Enable Provider"
           valuePropName="checked"
         >
-          <Switch />
+          <Switch aria-label="Enable or disable this provider" />
         </Form.Item>
 
         <div className="flex justify-end gap-3 pt-4">

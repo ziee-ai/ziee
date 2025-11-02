@@ -62,12 +62,13 @@ export const Drawer: React.FC<DrawerProps> = props => {
             <Button
               type={'text'}
               onClick={props.onClose}
+              aria-label="Close drawer"
               style={{
                 width: 30,
               }}
             >
               <div className={'text-xl'}>
-                <IoIosArrowBack />
+                <IoIosArrowBack aria-hidden="true" />
               </div>
             </Button>
             {typeof props.title === 'string' ? (

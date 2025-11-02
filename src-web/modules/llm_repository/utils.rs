@@ -164,15 +164,15 @@ pub fn validate_auth_config_for_update(
 
 /// Test repository connectivity
 /// Copied exactly from react-test - includes all business logic:
-/// - 30s timeout
+/// - 10s timeout (reduced from 30s for faster failure on invalid credentials)
 /// - Hugging Face special handling (Bearer vs X-API-Key)
 /// - auth_test_api_endpoint support
 /// - Only HTTP 200 is success
 pub async fn test_repository_connectivity(
     request: &TestRepositoryConnectionRequest,
 ) -> Result<(), String> {
-    // Create a reqwest client with timeout
-    let client_builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(30));
+    // Create a reqwest client with timeout (10s for faster feedback)
+    let client_builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10));
 
     let client = client_builder
         .build()

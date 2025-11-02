@@ -57,7 +57,7 @@ export function ProviderProxySettingsForm({
 
   return (
     <Card title={'Proxy Settings'}>
-      <Form form={form} layout="vertical" onFinish={handleSave}>
+      <Form name="provider-proxy-form" form={form} layout="vertical" onFinish={handleSave}>
         <Flex className={'flex-col'}>
           <Flex className={'flex-col gap-3'}>
             {/* Enable Proxy Toggle */}
@@ -75,7 +75,7 @@ export function ProviderProxySettingsForm({
                   valuePropName="checked"
                   style={{ margin: 0 }}
                 >
-                  <Switch disabled={disabled} />
+                  <Switch disabled={disabled} aria-label="Enable or disable proxy settings" />
                 </Form.Item>
               </div>
             </div>
@@ -189,7 +189,7 @@ export function ProviderProxySettingsForm({
                 valuePropName="checked"
                 style={{ margin: 0 }}
               >
-                <Switch disabled={disabled} />
+                <Switch disabled={disabled} aria-label="Ignore SSL certificate errors" />
               </Form.Item>
             </div>
           </Flex>

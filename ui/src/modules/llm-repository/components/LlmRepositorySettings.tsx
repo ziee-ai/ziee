@@ -128,6 +128,7 @@ export function LlmRepositorySettings() {
         className="!mr-2"
         checked={repository.enabled}
         onChange={checked => handleToggleRepository(repository.id, checked)}
+        aria-label={`Toggle ${repository.name} repository`}
       />,
     )
 

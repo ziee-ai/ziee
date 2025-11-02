@@ -35,26 +35,69 @@ export async function loginAsAdmin(
     password = 'password123',
   } = credentials
 
-  // Try to go to setup page
+  // Navigate to setup page to check if admin exists
   await page.goto(`${baseURL}/setup`)
-  const usernameField = await page.locator('#username').count()
+  await page.waitForLoadState('networkidle')
 
-  if (usernameField > 0) {
-    // Admin doesn't exist, create it
+  // Wait for React to initialize and check if setup form appears
+  // The setup page will redirect if admin already exists
+  await page.waitForTimeout(1500)
+
+  // Check if we're still on setup page (admin doesn't exist) or redirected (admin exists)
+  const currentURL = page.url()
+  const needsSetup = currentURL.includes('/setup')
+
+  if (needsSetup) {
+    // Admin doesn't exist - create it via setup form
+    await page.waitForSelector('#username', { timeout: 30000 })
     await page.fill('#username', username)
     await page.fill('#email', email)
     await page.fill('#password', password)
     await page.fill('#confirm_password', password)
     await page.click('button[type="submit"]')
+
+    // Wait for navigation to home
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+
+    // CRITICAL: Wait for authentication token to be stored in localStorage
+    await page.waitForFunction(
+      () => {
+        const authStorage = localStorage.getItem('auth-storage')
+        if (!authStorage) return false
+        try {
+          const parsed = JSON.parse(authStorage)
+          return parsed.state?.token !== null && parsed.state?.token !== undefined
+        } catch {
+          return false
+        }
+      },
+      { timeout: 10000 }
+    )
   } else {
-    // Admin already exists, need to login
+    // Admin already exists - login instead
     await page.goto(`${baseURL}/auth`)
     await page.waitForSelector('#login_username', { timeout: 30000 })
     await page.fill('#login_username', username)
     await page.fill('#login_password', password)
     await page.click('button:has-text("Sign In")')
+
+    // Wait for navigation to home
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+
+    // Wait for token to be stored
+    await page.waitForFunction(
+      () => {
+        const authStorage = localStorage.getItem('auth-storage')
+        if (!authStorage) return false
+        try {
+          const parsed = JSON.parse(authStorage)
+          return parsed.state?.token !== null && parsed.state?.token !== undefined
+        } catch {
+          return false
+        }
+      },
+      { timeout: 10000 }
+    )
   }
 }
 

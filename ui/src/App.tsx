@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect } from 'react'
 import {
   BrowserRouter,
   Routes,
@@ -10,12 +10,19 @@ import { useRouterStore } from './core'
 import { AuthGuard } from './modules/auth'
 import { ThemeProvider } from './components/ThemeProvider'
 import { loadModules } from './modules/loader'
+import { setupAccessibilityFixes } from './utils/accessibilityFixes'
 
 // Load all modules before rendering
 loadModules()
 
 function App() {
   const { routes } = useRouterStore()
+
+  // Setup global accessibility fixes
+  useEffect(() => {
+    const cleanup = setupAccessibilityFixes()
+    return cleanup
+  }, [])
 
   // Memoized route grouping by requiresAuth and layout
   const { hasProtectedRoutes, protectedByLayout, publicByLayout } =
@@ -139,7 +146,7 @@ function App() {
             path="*"
             element={
               <AuthGuard>
-                <Navigate to="/login" replace />
+                <Navigate to="/" replace />
               </AuthGuard>
             }
           />

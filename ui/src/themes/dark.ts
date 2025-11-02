@@ -50,6 +50,23 @@ export const darkTheme: AppThemeConfig = {
       contentFontSize: 18,
       // Statistic inherits colorTextDescription from token
     },
+    Menu: {
+      // Fix color contrast for selected menu items in dark mode (WCAG AA requires 4.5:1)
+      // Default: foreground #1668dc on background #15325b gives 2.46:1 (FAIL)
+      // Fix: Use lighter blue #69b1ff for better contrast on dark background
+      colorPrimary: '#69b1ff', // Light blue for selected item text
+      colorPrimaryBg: '#15325b', // Dark blue background
+      // Fix color contrast for menu item text (applies to Dropdown too since it uses Menu)
+      // Light text on dark backgrounds needs high opacity for good contrast
+      itemColor: 'rgba(255,255,255,0.85)', // Ensures 4.5:1+ contrast ratio
+    },
+    Dropdown: {
+      // Fix color contrast for dropdown menu items in dark mode (WCAG AA requires 4.5:1)
+      // Light text on dark backgrounds needs high opacity for good contrast
+      // Dropdown inherits from Menu, so we set both colorText and colorTextLabel
+      colorText: 'rgba(255,255,255,0.85)', // Ensures 4.5:1+ contrast ratio on dark backgrounds
+      colorTextLabel: 'rgba(255,255,255,0.85)', // Ant Design 5 uses this for menu item text
+    },
   },
   app: {
     chatBackground: '#141414', // Dark background for chat

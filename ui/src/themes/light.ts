@@ -49,6 +49,23 @@ const baseTheme = {
       bodyPadding: 12,
       headerPadding: 12,
     },
+    Menu: {
+      // Fix color contrast for selected menu items (WCAG AA requires 4.5:1)
+      // Default: foreground #1677ff on background #e6f4ff gives 3.66:1
+      // Fix: Use darker blue #0958d9 for better contrast
+      colorPrimary: '#0958d9', // Darker blue for selected item text
+      colorPrimaryBg: '#e6f4ff', // Keep light background
+      // Fix color contrast for menu item text (applies to Dropdown too since it uses Menu)
+      // Default uses rgba(0,0,0,0.65) which gives insufficient contrast
+      itemColor: 'rgba(0,0,0,0.88)', // Ensures 4.5:1+ contrast ratio
+    },
+    Dropdown: {
+      // Fix color contrast for dropdown menu items (WCAG AA requires 4.5:1)
+      // Default Ant Design uses rgba(0,0,0,0.65) which gives insufficient contrast
+      // Dropdown inherits from Menu, so we set both colorText and colorTextLabel
+      colorText: 'rgba(0,0,0,0.88)', // Ensures 4.5:1+ contrast ratio on #fcfcfc background
+      colorTextLabel: 'rgba(0,0,0,0.88)', // Ant Design 5 uses this for menu item text
+    },
   },
   app: {
     chatBackground: '#f0f2f5',

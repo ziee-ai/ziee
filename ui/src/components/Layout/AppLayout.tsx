@@ -226,8 +226,9 @@ export function AppLayout({ children }: AppLayoutProps) {
             borderRadius: '4px',
             minWidth: '20px',
           }}
+          aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {isSidebarCollapsed ? <GoSidebarCollapse /> : <GoSidebarExpand />}
+          {isSidebarCollapsed ? <GoSidebarCollapse aria-hidden="true" /> : <GoSidebarExpand aria-hidden="true" />}
         </Button>
       </div>
 

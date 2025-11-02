@@ -517,6 +517,8 @@ pub async fn upload_multiple_files_and_commit(
         )
     })?;
 
+    tracing::info!("Starting upload_local_model handler");
+
     let mut uploaded_files = Vec::new();
     let mut main_filename: Option<String> = None;
     let mut provider_id: Option<Uuid> = None;
@@ -525,10 +527,11 @@ pub async fn upload_multiple_files_and_commit(
     let mut description: Option<String> = None;
     let mut file_format: Option<String> = None;
     let mut capabilities: Option<ModelCapabilities> = None;
-    let engine_type: Option<EngineType> = None;
+    let mut engine_type: Option<EngineType> = None;
     let mut engine_settings: Option<ModelEngineSettings> = None;
 
     // Process multipart form data
+    tracing::info!("Starting to parse multipart fields");
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -631,29 +634,49 @@ pub async fn upload_multiple_files_and_commit(
                     })?;
                 }
             }
-            "settings" => {
+            "engine_type" => {
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read settings: {}", e)),
+                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read engine_type: {}", e)),
+                    )
+                })?;
+                if !value.is_empty() {
+                    engine_type = Some(EngineType::from_str(&value).ok_or_else(|| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            AppError::bad_request("INVALID_INPUT", &format!("Invalid engine_type: {}", value)),
+                        )
+                    })?);
+                }
+            }
+            "engine_settings" => {
+                let value = field.text().await.map_err(|e| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read engine_settings: {}", e)),
                     )
                 })?;
                 if !value.is_empty() {
                     engine_settings = Some(serde_json::from_str(&value).map_err(|e| {
                         (
                             StatusCode::BAD_REQUEST,
-                            AppError::bad_request("INVALID_INPUT", &format!("Invalid settings JSON: {}", e)),
+                            AppError::bad_request("INVALID_INPUT", &format!("Invalid engine_settings JSON: {}", e)),
                         )
                     })?)
                 }
             }
             _ => {
+                // Skip unknown fields
                 continue;
             }
         }
     }
 
+    tracing::info!("Finished parsing multipart fields. Files: {}, provider_id: {:?}, name: {:?}", uploaded_files.len(), provider_id, name);
+
     // Validate required fields
+    tracing::info!("Starting field validation");
     if uploaded_files.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -734,6 +757,8 @@ pub async fn upload_multiple_files_and_commit(
     let source_dir = crate::core::get_app_data_dir()
         .join("temp")
         .join(temp_session_id.to_string());
+
+    tracing::info!("Creating model with source_dir: {:?}, engine_type: {:?}, engine_settings: {:?}", source_dir, engine_type, engine_settings);
 
     // Create model using the existing function
     let model = create_model_with_files(

@@ -15,6 +15,7 @@ import {
   Spin,
   Switch,
   Typography,
+  theme,
 } from 'antd'
 import { useParams } from 'react-router-dom'
 import {
@@ -31,10 +32,12 @@ import {
 import type { LlmModel } from '@/api-client/types'
 
 const { Text } = Typography
+const { useToken } = theme
 
 export function LlmModelsSection() {
   const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
+  const { token } = useToken()
 
   // Store data
   const { llmModelsLoading } = Stores.LlmProvider
@@ -136,6 +139,7 @@ export function LlmModelsSection() {
         key="enable"
         checked={llmModel.enabled !== false}
         onChange={checked => handleToggleLlmModel(llmModel.id, checked)}
+        aria-label={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
       />,
     )
 
@@ -211,13 +215,13 @@ export function LlmModelsSection() {
           }}
           trigger={['click']}
         >
-          <Button type="text" icon={<PlusOutlined />} />
+          <Button type="text" icon={<PlusOutlined aria-hidden="true" />} aria-label="Add model" />
         </Dropdown>
       )
     }
 
     return (
-      <Button type="text" icon={<PlusOutlined />} onClick={handleAddLlmModel} />
+      <Button type="text" icon={<PlusOutlined aria-hidden="true" />} onClick={handleAddLlmModel} aria-label="Add model" />
     )
   }
 

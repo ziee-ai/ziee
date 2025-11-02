@@ -591,6 +591,152 @@ async fn test_repository_connection_test() {
 }
 
 #[tokio::test]
+async fn test_repository_connection_test_with_valid_huggingface_credentials() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::read"],
+    )
+    .await;
+
+    // Get HuggingFace API key from environment (if available)
+    let hf_api_key = std::env::var("HUGGINGFACE_API_KEY").ok();
+
+    if let Some(api_key) = hf_api_key {
+        let test_url = server.api_url("/llm-repositories/test");
+        let test_data = json!({
+            "name": "HuggingFace Test",
+            "url": "https://huggingface.co",
+            "auth_type": "bearer_token",
+            "auth_config": {
+                "token": api_key,
+                "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
+            }
+        });
+
+        let response = reqwest::Client::new()
+            .post(&test_url)
+            .header("Authorization", format!("Bearer {}", admin.token))
+            .json(&test_data)
+            .send()
+            .await
+            .expect("Request failed");
+
+        assert_eq!(response.status(), 200, "Connection test should respond");
+
+        let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+        assert_eq!(
+            body.get("success").and_then(|v| v.as_bool()),
+            Some(true),
+            "Connection with valid credentials should succeed. Response: {:?}",
+            body
+        );
+    } else {
+        println!("Skipping HuggingFace valid credentials test - HUGGINGFACE_API_KEY not set");
+    }
+}
+
+#[tokio::test]
+async fn test_repository_connection_test_with_invalid_huggingface_credentials() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::read"],
+    )
+    .await;
+
+    // Test with invalid HuggingFace credentials - should fail quickly (within 10s timeout)
+    let test_url = server.api_url("/llm-repositories/test");
+    let test_data = json!({
+        "name": "HuggingFace Invalid Test",
+        "url": "https://huggingface.co",
+        "auth_type": "bearer_token",
+        "auth_config": {
+            "token": "hf_invalid_token_12345",
+            "auth_test_api_endpoint": "https://huggingface.co/api/whoami-v2"
+        }
+    });
+
+    let start = std::time::Instant::now();
+    let response = reqwest::Client::new()
+        .post(&test_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&test_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let duration = start.elapsed();
+
+    assert_eq!(response.status(), 200, "Connection test should respond");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("success").and_then(|v| v.as_bool()),
+        Some(false),
+        "Connection with invalid credentials should fail"
+    );
+
+    // Should fail quickly (within 15 seconds including network overhead)
+    assert!(
+        duration.as_secs() < 15,
+        "Connection test with invalid credentials should fail quickly, took {}s",
+        duration.as_secs()
+    );
+}
+
+#[tokio::test]
+async fn test_repository_connection_test_with_invalid_url() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::read"],
+    )
+    .await;
+
+    // Test with invalid URL - should fail quickly
+    let test_url = server.api_url("/llm-repositories/test");
+    let test_data = json!({
+        "name": "Invalid URL Test",
+        "url": "https://invalid-test-url-that-does-not-exist-12345.com",
+        "auth_type": "none"
+    });
+
+    let start = std::time::Instant::now();
+    let response = reqwest::Client::new()
+        .post(&test_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&test_data)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let duration = start.elapsed();
+
+    assert_eq!(response.status(), 200, "Connection test should respond");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(
+        body.get("success").and_then(|v| v.as_bool()),
+        Some(false),
+        "Connection to invalid URL should fail"
+    );
+
+    // Should fail quickly (within 15 seconds)
+    assert!(
+        duration.as_secs() < 15,
+        "Connection test with invalid URL should fail quickly, took {}s",
+        duration.as_secs()
+    );
+}
+
+#[tokio::test]
 async fn test_create_requires_permission() {
     let server = crate::common::TestServer::start().await;
 

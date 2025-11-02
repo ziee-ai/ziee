@@ -51,6 +51,7 @@ export function LocalLlmModelCommonFields() {
             message: 'Please select a file format',
           },
         ]}
+        initialValue="safetensors"
       >
         <Select
           placeholder="Select file format"

@@ -121,6 +121,7 @@ export function ProviderHeader() {
       <Flex align="center" gap="middle">
         <IconComponent className="text-2xl" />
         <Form
+          name="provider-header-name-form"
           style={{
             display: isEditingName ? 'block' : 'none',
           }}
@@ -147,11 +148,12 @@ export function ProviderHeader() {
                     setIsEditingName(false)
                   })
                 }}
+                aria-label="Save provider name"
               >
-                <CheckOutlined />
+                <CheckOutlined aria-hidden="true" />
               </Button>
-              <Button onClick={() => setIsEditingName(false)}>
-                <CloseOutlined />
+              <Button onClick={() => setIsEditingName(false)} aria-label="Cancel editing provider name">
+                <CloseOutlined aria-hidden="true" />
               </Button>
             </div>
           </div>
@@ -175,12 +177,13 @@ export function ProviderHeader() {
               onClick={() => {
                 setIsEditingName(!isEditingName)
               }}
+              aria-label="Edit provider name"
             >
-              <EditOutlined />
+              <EditOutlined aria-hidden="true" />
             </Button>
             {!currentProvider.built_in && (
-              <Button type={'text'} danger onClick={handleDeleteProvider}>
-                <DeleteOutlined />
+              <Button type={'text'} danger onClick={handleDeleteProvider} aria-label="Delete provider">
+                <DeleteOutlined aria-hidden="true" />
               </Button>
             )}
           </div>
@@ -197,6 +200,7 @@ export function ProviderHeader() {
             onChange={enabled =>
               handleProviderToggle(currentProvider.id, enabled)
             }
+            aria-label={`${currentProvider.enabled ? 'Disable' : 'Enable'} ${currentProvider.name} provider`}
           />
         )
 

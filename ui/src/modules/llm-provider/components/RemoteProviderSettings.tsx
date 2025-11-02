@@ -113,6 +113,7 @@ export function RemoteProviderSettings() {
 
       {/* API Configuration */}
       <Form
+        name="remote-provider-settings-form"
         form={form}
         layout="vertical"
         initialValues={{
@@ -153,10 +154,11 @@ export function RemoteProviderSettings() {
                   suffix={
                     <Button
                       type="text"
-                      icon={<CopyOutlined />}
+                      icon={<CopyOutlined aria-hidden="true" />}
                       onClick={() =>
                         copyToClipboard(currentProvider.api_key || '')
                       }
+                      aria-label="Copy API key to clipboard"
                     />
                   }
                 />
