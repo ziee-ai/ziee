@@ -16,7 +16,7 @@ use crate::common::r#type::{ApiResult, AppError};
 use crate::modules::permissions::RequirePermissions;
 use crate::utils::git::{GitError, GitPhase, GitProgress, GitService};
 
-use super::{
+use super::super::{
     models::{
         DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData,
         DownloadStatus, EngineType, FileFormat, LlmModel, ModelCapabilities, ModelEngineSettings,

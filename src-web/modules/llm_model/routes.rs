@@ -6,8 +6,6 @@ use aide::axum::{routing::{delete_with, get_with, post_with}, ApiRouter};
 use sqlx::PgPool;
 
 use super::handlers::*;
-use super::uploads;
-use super::download_handlers;
 
 /// LLM Model management routes
 pub fn llm_model_router() -> ApiRouter<PgPool> {
@@ -22,27 +20,27 @@ pub fn llm_model_router() -> ApiRouter<PgPool> {
         .api_route("/llm-models/{model_id}/enable", post_with(enable_model, enable_model_docs))
         .api_route("/llm-models/{model_id}/disable", post_with(disable_model, disable_model_docs))
         // File upload/download
-        .api_route("/llm-models/upload", post_with(uploads::upload_multiple_files_and_commit, upload_files_docs))
-        .api_route("/llm-models/download", post_with(uploads::initiate_repository_download, initiate_download_docs))
+        .api_route("/llm-models/upload", post_with(upload_multiple_files_and_commit, upload_files_docs))
+        .api_route("/llm-models/download", post_with(initiate_repository_download, initiate_download_docs))
         // Download management
         .api_route(
             "/llm-models/downloads",
-            get_with(download_handlers::list_all_downloads, download_handlers::list_all_downloads_docs)
+            get_with(list_all_downloads, list_all_downloads_docs)
         )
         .api_route(
             "/llm-models/downloads/subscribe",
-            get_with(download_handlers::subscribe_download_progress, download_handlers::subscribe_download_progress_docs)
+            get_with(subscribe_download_progress, subscribe_download_progress_docs)
         )
         .api_route(
             "/llm-models/downloads/{download_id}",
-            get_with(download_handlers::get_download, download_handlers::get_download_docs)
+            get_with(get_download, get_download_docs)
         )
         .api_route(
             "/llm-models/downloads/{download_id}",
-            delete_with(download_handlers::delete_download, download_handlers::delete_download_docs)
+            delete_with(delete_download, delete_download_docs)
         )
         .api_route(
             "/llm-models/downloads/{download_id}/cancel",
-            post_with(download_handlers::cancel_download, download_handlers::cancel_download_docs)
+            post_with(cancel_download, cancel_download_docs)
         )
 }

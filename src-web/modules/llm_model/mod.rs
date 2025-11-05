@@ -9,7 +9,6 @@ use std::sync::Arc;
 use crate::module_api::AppModule;
 use crate::ModuleContext;
 
-pub mod download_handlers;
 pub mod handlers;
 pub mod models;
 pub mod permissions;
@@ -18,7 +17,6 @@ pub mod routes;
 pub mod utils;
 pub mod storage;
 pub mod types;
-pub mod uploads;
 
 // Re-export database entities from models
 pub use models::{

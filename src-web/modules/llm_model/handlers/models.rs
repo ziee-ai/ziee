@@ -15,7 +15,7 @@ use crate::{
     modules::permissions::{RequirePermissions, with_permission},
 };
 
-use super::{
+use super::super::{
     models::{DownloadInstance, LlmModel},
     permissions::*,
     repository::LlmModelRepository,
