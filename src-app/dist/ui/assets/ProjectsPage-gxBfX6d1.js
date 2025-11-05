@@ -1,0 +1,1 @@
+import{j as s,T as e}from"./index-DD01PUMj.js";const{Title:r,Paragraph:o}=e;function a(){return s.jsxs("div",{className:"p-8",children:[s.jsx(r,{level:2,children:"Projects"}),s.jsx(o,{children:"Projects functionality coming soon..."})]})}export{a as default};

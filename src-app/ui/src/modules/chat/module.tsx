@@ -1,7 +1,9 @@
 import { createModule } from '@/core'
 import { PlusOutlined, HistoryOutlined } from '@ant-design/icons'
-import ChatPage from './ChatPage'
 import AppLayout from '@/components/Layout/AppLayout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const ChatPage = lazyWithPreload(() => import('./ChatPage.tsx'))
 
 export default createModule({
   metadata: {
@@ -12,7 +14,7 @@ export default createModule({
   routes: [
     {
       path: '/chat',
-      element: <ChatPage />,
+      element: ChatPage,
       requiresAuth: true,
       layout: AppLayout,
     },

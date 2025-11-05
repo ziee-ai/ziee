@@ -4,8 +4,33 @@ import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { updateUserGroup } from '../store'
 import type { UpdateGroupRequest, Group } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
 
 const { TextArea } = Input
+
+// Helper function to validate permissions
+const validatePermissions = (_: any, value: string) => {
+  if (!value) return Promise.resolve()
+
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) {
+      return Promise.reject('Must be an array')
+    }
+
+    // Check if all values are valid permissions
+    const validPermissions = Object.values(Permissions)
+    const invalidPermissions = parsed.filter(perm => !validPermissions.includes(perm))
+
+    if (invalidPermissions.length > 0) {
+      return Promise.reject(`Invalid permissions: ${invalidPermissions.join(', ')}`)
+    }
+
+    return Promise.resolve()
+  } catch {
+    return Promise.reject('Invalid JSON format')
+  }
+}
 
 interface EditUserGroupDrawerProps {
   group: Group | null
@@ -114,25 +139,10 @@ export function EditUserGroupDrawer({
         <Form.Item
           name="permissions"
           label="Permissions (JSON Array)"
-          rules={[
-            {
-              validator: async (_, value) => {
-                if (value) {
-                  try {
-                    const parsed = JSON.parse(value)
-                    if (!Array.isArray(parsed)) {
-                      throw new Error('Must be an array')
-                    }
-                  } catch (_error) {
-                    throw new Error('Invalid JSON format')
-                  }
-                }
-              },
-            },
-          ]}
+          rules={[{ validator: validatePermissions }]}
         >
           <TextArea
-            placeholder='["users::read", "users::edit", "chat::read"]'
+            placeholder='["users::read", "users::edit"]'
             rows={6}
           />
         </Form.Item>

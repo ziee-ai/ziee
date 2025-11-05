@@ -20,6 +20,25 @@ export interface AssignUserToGroupRequest {
   user_id: string
 }
 
+export interface Assistant {
+  description?: string
+  created_at: string
+  created_by?: string
+  enabled: boolean
+  id: string
+  instructions?: string
+  is_default: boolean
+  is_template: boolean
+  name: string
+  parameters?: any
+  updated_at: string
+}
+
+export interface AssistantListResponse {
+  assistants: Assistant[]
+  total: number
+}
+
 export interface AuthResponse {
   access_token: string
   expires_in: number
@@ -41,6 +60,15 @@ export interface CPUUsage {
   frequency?: number
   temperature?: number
   usage_percentage: number
+}
+
+export interface CreateAssistantRequest {
+  description?: string
+  instructions?: string
+  is_default?: boolean
+  is_template?: boolean
+  name?: string
+  parameters?: ModelParameters
 }
 
 export interface CreateGroupRequest {
@@ -84,6 +112,7 @@ export interface CreateUserRequest {
   display_name?: string
   email: string
   password: string
+  permissions?: string[]
   username: string
 }
 
@@ -464,6 +493,11 @@ export interface PaginationQuery {
   per_page?: number
 }
 
+export interface PaginationQuery2 {
+  limit?: number
+  page?: number
+}
+
 export interface PermissionDetail {
   description: string
   name: string
@@ -570,6 +604,15 @@ export interface TokenPair {
   token_type: string
 }
 
+export interface UpdateAssistantRequest {
+  description?: string
+  enabled?: boolean
+  instructions?: string
+  is_default?: boolean
+  name?: string
+  parameters?: ModelParameters
+}
+
 export interface UpdateGroupRequest {
   description?: string
   is_active?: boolean
@@ -610,6 +653,7 @@ export interface UpdateUserRequest {
   display_name?: string
   email?: string
   is_active?: boolean
+  permissions?: string[]
   username?: string
 }
 
@@ -622,6 +666,7 @@ export interface User {
   id: string
   is_active: boolean
   last_login_at?: string
+  permissions: string[]
   updated_at: string
   username: string
 }
@@ -640,6 +685,64 @@ export interface UserListResponse {
 }
 
 // =============================================================================
+// PERMISSIONS
+// =============================================================================
+
+export enum Permissions {
+  GroupsAssignUsers = 'groups::assign_users',
+  GroupsCreate = 'groups::create',
+  GroupsDelete = 'groups::delete',
+  GroupsEdit = 'groups::edit',
+  GroupsRead = 'groups::read',
+  LlmModelsCreate = 'llm_models::create',
+  LlmModelsDelete = 'llm_models::delete',
+  LlmModelsEdit = 'llm_models::edit',
+  LlmModelsRead = 'llm_models::read',
+  LlmProvidersAssignGroups = 'llm_providers::assign_groups',
+  LlmProvidersCreate = 'llm_providers::create',
+  LlmProvidersDelete = 'llm_providers::delete',
+  LlmProvidersEdit = 'llm_providers::edit',
+  LlmProvidersRead = 'llm_providers::read',
+  LlmRepositoriesCreate = 'llm_repositories::create',
+  LlmRepositoriesDelete = 'llm_repositories::delete',
+  LlmRepositoriesEdit = 'llm_repositories::edit',
+  LlmRepositoriesRead = 'llm_repositories::read',
+  UsersCreate = 'users::create',
+  UsersDelete = 'users::delete',
+  UsersEdit = 'users::edit',
+  UsersRead = 'users::read',
+  UsersResetPassword = 'users::reset_password',
+  UsersToggleStatus = 'users::toggle_status'
+}
+
+export const PermissionDescriptions: Record<string, string> = {
+  GroupsAssignUsers: 'Assign users to groups and remove users from groups',
+  GroupsCreate: 'Create new groups',
+  GroupsDelete: 'Delete non-system groups',
+  GroupsEdit: 'Edit existing group information and permissions',
+  GroupsRead: 'View groups and group information',
+  LlmModelsCreate: 'Create new LLM models',
+  LlmModelsDelete: 'Delete LLM models',
+  LlmModelsEdit: 'Edit existing LLM models',
+  LlmModelsRead: 'Read LLM models',
+  LlmProvidersAssignGroups: 'Assign LLM providers to user groups',
+  LlmProvidersCreate: 'Create new LLM provider configurations',
+  LlmProvidersDelete: 'Delete non-built-in LLM providers',
+  LlmProvidersEdit: 'Edit existing LLM provider information and settings',
+  LlmProvidersRead: 'View LLM providers and list available providers',
+  LlmRepositoriesCreate: 'Create new LLM repositories',
+  LlmRepositoriesDelete: 'Delete non-built-in LLM repositories',
+  LlmRepositoriesEdit: 'Edit existing LLM repository information and authentication',
+  LlmRepositoriesRead: 'View LLM repositories and list repositories',
+  UsersCreate: 'Create new user accounts',
+  UsersDelete: 'Delete user accounts',
+  UsersEdit: 'Edit existing user information',
+  UsersRead: 'View user information and list users',
+  UsersResetPassword: 'Reset user passwords',
+  UsersToggleStatus: 'Enable or disable user accounts'
+}
+
+// =============================================================================
 // API ENDPOINTS
 // =============================================================================
 
@@ -647,6 +750,18 @@ export interface UserListResponse {
 export const ApiEndpoints = {
   'App.getSetupStatus': 'GET /api/app/setup/status',
   'App.setupAdmin': 'POST /api/app/setup/admin',
+  'Assistant.createUser': 'POST /api/assistants',
+  'Assistant.deleteUser': 'DELETE /api/assistants/{id}',
+  'Assistant.getDefaultUser': 'GET /api/assistants/default',
+  'Assistant.getUser': 'GET /api/assistants/{id}',
+  'Assistant.listUser': 'GET /api/assistants',
+  'Assistant.updateUser': 'PUT /api/assistants/{id}',
+  'AssistantTemplate.create': 'POST /api/assistants-template',
+  'AssistantTemplate.delete': 'DELETE /api/assistants-template/{id}',
+  'AssistantTemplate.get': 'GET /api/assistants-template/{id}',
+  'AssistantTemplate.getDefault': 'GET /api/assistants-template/default',
+  'AssistantTemplate.list': 'GET /api/assistants-template',
+  'AssistantTemplate.update': 'PUT /api/assistants-template/{id}',
   'Auth.login': 'POST /api/auth/login',
   'Auth.logout': 'POST /api/auth/logout',
   'Auth.me': 'GET /api/auth/me',
@@ -704,6 +819,18 @@ export const ApiEndpoints = {
 export type ApiEndpointParameters = {
   'App.getSetupStatus': void
   'App.setupAdmin': SetupAdminRequest
+  'Assistant.createUser': CreateAssistantRequest
+  'Assistant.deleteUser': { id: string }
+  'Assistant.getDefaultUser': void
+  'Assistant.getUser': { id: string }
+  'Assistant.listUser': { limit?: number; page?: number }
+  'Assistant.updateUser': { id: string } & UpdateAssistantRequest
+  'AssistantTemplate.create': CreateAssistantRequest
+  'AssistantTemplate.delete': { id: string }
+  'AssistantTemplate.get': { id: string }
+  'AssistantTemplate.getDefault': void
+  'AssistantTemplate.list': { limit?: number; page?: number }
+  'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
   'Auth.login': LoginRequest
   'Auth.logout': void
   'Auth.me': void
@@ -761,6 +888,18 @@ export type ApiEndpointParameters = {
 export type ApiEndpointResponses = {
   'App.getSetupStatus': SetupStatusResponse
   'App.setupAdmin': AuthResponse
+  'Assistant.createUser': Assistant
+  'Assistant.deleteUser': void
+  'Assistant.getDefaultUser': Assistant
+  'Assistant.getUser': Assistant
+  'Assistant.listUser': AssistantListResponse
+  'Assistant.updateUser': Assistant
+  'AssistantTemplate.create': Assistant
+  'AssistantTemplate.delete': void
+  'AssistantTemplate.get': Assistant
+  'AssistantTemplate.getDefault': Assistant
+  'AssistantTemplate.list': AssistantListResponse
+  'AssistantTemplate.update': Assistant
   'Auth.login': AuthResponse
   'Auth.logout': void
   'Auth.me': MeResponse

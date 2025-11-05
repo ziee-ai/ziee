@@ -27,11 +27,26 @@ export function loadModules(): void {
     { eager: true },
   )
 
+  // Also discover core modules from components directory
+  const coreModuleFiles = import.meta.glob<{ default: AppModule }>(
+    '../components/**/module.tsx',
+    { eager: true },
+  )
+
   // Register each discovered module
   for (const [path, moduleExports] of Object.entries(moduleFiles)) {
     const module = moduleExports.default
     if (module) {
       console.log(`📦 Loading module: ${module.metadata.name} from ${path}`)
+      registerModule(module)
+    }
+  }
+
+  // Register core modules
+  for (const [path, moduleExports] of Object.entries(coreModuleFiles)) {
+    const module = moduleExports.default
+    if (module) {
+      console.log(`📦 Loading core module: ${module.metadata.name} from ${path}`)
       registerModule(module)
     }
   }

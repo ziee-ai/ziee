@@ -1,0 +1,1 @@
+import{j as s,T as n}from"./index-Q3vyWI7E.js";const{Title:e,Paragraph:a}=n;function i(){return s.jsxs("div",{className:"p-8",children:[s.jsx(e,{level:2,children:"Hub"}),s.jsx(a,{children:"Extensions and integrations hub coming soon..."})]})}export{i as default};

@@ -16,6 +16,7 @@ pub struct CreateUserRequest {
     pub email: String,
     pub password: String,
     pub display_name: Option<String>,
+    pub permissions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -24,6 +25,7 @@ pub struct UpdateUserRequest {
     pub email: Option<String>,
     pub display_name: Option<String>,
     pub is_active: Option<bool>,
+    pub permissions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

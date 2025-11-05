@@ -1,5 +1,6 @@
 // All feature modules
 pub mod app;
+pub mod assistant;
 pub mod auth;
 pub mod hardware;
 pub mod health;

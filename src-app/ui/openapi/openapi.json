@@ -527,7 +527,7 @@
           "Users"
         ],
         "summary": "Toggle user active status",
-        "description": "\n\n**Required Permission:** `users::toggle-status`\n\nEnable or disable user accounts",
+        "description": "\n\n**Required Permission:** `users::toggle_status`\n\nEnable or disable user accounts",
         "operationId": "User.toggleActive",
         "responses": {
           "403": {
@@ -543,11 +543,11 @@
                       {
                         "description": "Enable or disable user accounts",
                         "name": "UsersToggleStatus",
-                        "value": "users::toggle-status"
+                        "value": "users::toggle_status"
                       }
                     ]
                   },
-                  "error": "Missing required permission: users::toggle-status",
+                  "error": "Missing required permission: users::toggle_status",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -583,7 +583,7 @@
           "Users"
         ],
         "summary": "Reset user password",
-        "description": "\n\n**Required Permission:** `users::reset-password`\n\nReset user passwords",
+        "description": "\n\n**Required Permission:** `users::reset_password`\n\nReset user passwords",
         "operationId": "User.resetPassword",
         "requestBody": {
           "content": {
@@ -609,11 +609,11 @@
                       {
                         "description": "Reset user passwords",
                         "name": "UsersResetPassword",
-                        "value": "users::reset-password"
+                        "value": "users::reset_password"
                       }
                     ]
                   },
-                  "error": "Missing required permission: users::reset-password",
+                  "error": "Missing required permission: users::reset_password",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -1038,7 +1038,7 @@
           "User Groups"
         ],
         "summary": "Assign user to group",
-        "description": "\n\n**Required Permission:** `groups::assign-users`\n\nAssign users to groups and remove users from groups",
+        "description": "\n\n**Required Permission:** `groups::assign_users`\n\nAssign users to groups and remove users from groups",
         "operationId": "UserGroup.assignUser",
         "requestBody": {
           "content": {
@@ -1064,11 +1064,11 @@
                       {
                         "description": "Assign users to groups and remove users from groups",
                         "name": "GroupsAssignUsers",
-                        "value": "groups::assign-users"
+                        "value": "groups::assign_users"
                       }
                     ]
                   },
-                  "error": "Missing required permission: groups::assign-users",
+                  "error": "Missing required permission: groups::assign_users",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -1097,7 +1097,7 @@
           "User Groups"
         ],
         "summary": "Remove user from group",
-        "description": "\n\n**Required Permission:** `groups::assign-users`\n\nAssign users to groups and remove users from groups",
+        "description": "\n\n**Required Permission:** `groups::assign_users`\n\nAssign users to groups and remove users from groups",
         "operationId": "UserGroup.removeUser",
         "responses": {
           "403": {
@@ -1113,11 +1113,11 @@
                       {
                         "description": "Assign users to groups and remove users from groups",
                         "name": "GroupsAssignUsers",
-                        "value": "groups::assign-users"
+                        "value": "groups::assign_users"
                       }
                     ]
                   },
-                  "error": "Missing required permission: groups::assign-users",
+                  "error": "Missing required permission: groups::assign_users",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -2858,6 +2858,466 @@
           }
         ]
       }
+    },
+    "/api/assistants": {
+      "get": {
+        "tags": [
+          "Assistants"
+        ],
+        "summary": "List user assistants",
+        "description": "List all assistants owned by the authenticated user.",
+        "operationId": "Assistant.listUser",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "description": "Items per page",
+            "schema": {
+              "description": "Items per page",
+              "type": "integer",
+              "format": "int64",
+              "default": 20
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "description": "Page number (1-indexed)",
+            "schema": {
+              "description": "Page number (1-indexed)",
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "Response structure for listing assistants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Assistants"
+        ],
+        "summary": "Create a new user assistant",
+        "description": "Create a user assistant. The assistant will be owned by the authenticated user.",
+        "operationId": "Assistant.createUser",
+        "requestBody": {
+          "description": "Request structure for creating a new assistant",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "201": {
+            "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assistant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/default": {
+      "get": {
+        "tags": [
+          "Assistants"
+        ],
+        "summary": "Get default user assistant",
+        "description": "Get the default assistant for the user. Falls back to default template if no user default is set.",
+        "operationId": "Assistant.getDefaultUser",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assistant"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default assistant not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{id}": {
+      "get": {
+        "tags": [
+          "Assistants"
+        ],
+        "summary": "Get user assistant by ID",
+        "description": "Get a specific user assistant. Only the owner can access their assistants.",
+        "operationId": "Assistant.getUser",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions or not owner"
+          },
+          "200": {
+            "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assistant"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Assistant not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Assistants"
+        ],
+        "summary": "Update user assistant",
+        "description": "Update a user assistant. Only the owner can edit their assistants.",
+        "operationId": "Assistant.updateUser",
+        "requestBody": {
+          "description": "Request structure for updating an existing assistant",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions or not owner"
+          },
+          "200": {
+            "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assistant"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Assistant not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Assistants"
+        ],
+        "summary": "Delete user assistant",
+        "description": "Delete a user assistant. Only the owner can delete their assistants.",
+        "operationId": "Assistant.deleteUser",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions or not owner"
+          },
+          "204": {
+            "description": "Assistant deleted successfully"
+          },
+          "404": {
+            "description": "Assistant not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants-template": {
+      "get": {
+        "tags": [
+          "Assistant Templates"
+        ],
+        "summary": "List template assistants",
+        "description": "List all template assistants. Templates are system-wide assistants available to all users.",
+        "operationId": "AssistantTemplate.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "description": "Items per page",
+            "schema": {
+              "description": "Items per page",
+              "type": "integer",
+              "format": "int64",
+              "default": 20
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "description": "Page number (1-indexed)",
+            "schema": {
+              "description": "Page number (1-indexed)",
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "Response structure for listing assistants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Assistant Templates"
+        ],
+        "summary": "Create a new template assistant",
+        "description": "Create a template assistant. Templates are system-wide and have no owner.",
+        "operationId": "AssistantTemplate.create",
+        "requestBody": {
+          "description": "Request structure for creating a new assistant",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "201": {
+            "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assistant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants-template/default": {
+      "get": {
+        "tags": [
+          "Assistant Templates"
+        ],
+        "summary": "Get default template assistant",
+        "description": "Get the default template assistant.",
+        "operationId": "AssistantTemplate.getDefault",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assistant"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default template assistant not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants-template/{id}": {
+      "get": {
+        "tags": [
+          "Assistant Templates"
+        ],
+        "summary": "Get template assistant by ID",
+        "description": "Get a specific template assistant.",
+        "operationId": "AssistantTemplate.get",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assistant"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Assistant template not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Assistant Templates"
+        ],
+        "summary": "Update template assistant",
+        "description": "Update a template assistant.",
+        "operationId": "AssistantTemplate.update",
+        "requestBody": {
+          "description": "Request structure for updating an existing assistant",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "200": {
+            "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assistant"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Assistant template not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Assistant Templates"
+        ],
+        "summary": "Delete template assistant",
+        "description": "Delete a template assistant.",
+        "operationId": "AssistantTemplate.delete",
+        "responses": {
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "204": {
+            "description": "Assistant template deleted successfully"
+          },
+          "404": {
+            "description": "Assistant template not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2894,6 +3354,92 @@
         "required": [
           "user_id",
           "group_id"
+        ]
+      },
+      "Assistant": {
+        "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "description": "User who created this assistant (NULL for system templates)",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enabled": {
+            "description": "Whether this assistant is enabled (false means disabled/soft-deleted)",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_default": {
+            "description": "Whether this is the default assistant for the user/template context",
+            "type": "boolean"
+          },
+          "is_template": {
+            "description": "Whether this is a system-wide template (immutable after creation)",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parameters": {
+            "description": "Model parameters stored as JSONB\n Can be deserialized to ModelParameters when needed",
+            "default": null
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_template",
+          "is_default",
+          "enabled",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "AssistantListResponse": {
+        "description": "Response structure for listing assistants",
+        "type": "object",
+        "properties": {
+          "assistants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Assistant"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "assistants",
+          "total"
         ]
       },
       "AuthResponse": {
@@ -2996,6 +3542,58 @@
         "required": [
           "usage_percentage"
         ]
+      },
+      "CreateAssistantRequest": {
+        "description": "Request structure for creating a new assistant",
+        "type": "object",
+        "properties": {
+          "description": {
+            "description": "Brief description of the assistant purpose",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instructions": {
+            "description": "System instructions for the AI assistant",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_default": {
+            "description": "Whether this is the default assistant\n Setting to true will unset other defaults in the same context",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "is_template": {
+            "description": "Whether this is a system-wide template\n - true: Requires assistants-template::create permission, created_by will be NULL\n - false/omitted: Requires assistants::create permission, created_by will be set to current user\n This field is IMMUTABLE after creation",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Unique name for the assistant (within user scope for user assistants, globally for templates)",
+            "type": "string",
+            "default": "",
+            "maxLength": 255,
+            "minLength": 1
+          },
+          "parameters": {
+            "description": "Model parameters (temperature, max_tokens, etc.)",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelParameters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "CreateGroupRequest": {
         "type": "object",
@@ -3197,6 +3795,15 @@
           },
           "password": {
             "type": "string"
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
           },
           "username": {
             "type": "string"
@@ -5164,6 +5771,23 @@
           }
         }
       },
+      "PaginationQuery2": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "description": "Items per page",
+            "type": "integer",
+            "format": "int64",
+            "default": 20
+          },
+          "page": {
+            "description": "Page number (1-indexed)",
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          }
+        }
+      },
       "PermissionDetail": {
         "type": "object",
         "properties": {
@@ -5574,6 +6198,60 @@
           "expires_in"
         ]
       },
+      "UpdateAssistantRequest": {
+        "description": "Request structure for updating an existing assistant",
+        "type": "object",
+        "properties": {
+          "description": {
+            "description": "Update description",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "description": "Update enabled status (soft delete)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "instructions": {
+            "description": "Update instructions",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_default": {
+            "description": "Update default status\n Setting to true will unset other defaults in the same context",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Update assistant name",
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255,
+            "minLength": 1
+          },
+          "parameters": {
+            "description": "Update model parameters",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelParameters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "UpdateGroupRequest": {
         "type": "object",
         "properties": {
@@ -5791,6 +6469,15 @@
               "null"
             ]
           },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
           "username": {
             "type": [
               "string",
@@ -5838,6 +6525,12 @@
             ],
             "format": "date-time"
           },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
@@ -5852,6 +6545,7 @@
           "email",
           "email_verified",
           "is_active",
+          "permissions",
           "created_at",
           "updated_at"
         ]

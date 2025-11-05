@@ -1,11 +1,13 @@
 import { createModule } from '@/core'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
-import HardwareSettings from './HardwareSettings'
-import { HardwareMonitor } from './HardwareMonitor'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
 import { useHardwareStore } from './store'
 import './types'
 import { BlankLayout } from '@/components/Layout/BlankLayout.tsx' // Import type augmentation
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const HardwareSettings = lazyWithPreload(() => import('./HardwareSettings'))
+const HardwareMonitor = lazyWithPreload(() => import('./HardwareMonitor').then(m => ({ default: m.HardwareMonitor })))
 
 export default createModule({
   metadata: {
@@ -16,13 +18,13 @@ export default createModule({
   routes: [
     {
       path: '/settings/hardware',
-      element: <HardwareSettings />,
+      element: HardwareSettings,
       requiresAuth: true,
       layout: SettingsLayout,
     },
     {
       path: '/hardware-monitor',
-      element: <HardwareMonitor />,
+      element: HardwareMonitor,
       requiresAuth: true,
       layout: BlankLayout,
     },

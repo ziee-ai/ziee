@@ -1,17 +1,21 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { LeftSidebar } from './LeftSidebar'
-import { Button, theme } from 'antd'
+import React, { useCallback, useEffect, useRef } from 'react'
+import { LeftSidebar, SidebarToggleButton } from './components'
+import { theme } from 'antd'
 import { useWindowMinSize } from '@/hooks/useWindowMinSize.ts'
-import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import tinycolor from 'tinycolor2'
 import 'overlayscrollbars/overlayscrollbars.css'
+import {
+  setMainContentWidth,
+  setSidebarCollapsed,
+} from './appLayoutStore'
+import { Stores } from '@/core/stores'
 
 interface AppLayoutProps {
   children: React.ReactNode
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const { isSidebarCollapsed } = Stores.AppLayout
   const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
 
@@ -38,7 +42,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           if (spacerRef.current) {
             spacerRef.current.style.transition = 'all 200ms ease-out'
           }
-          setIsSidebarCollapsed(true)
+          setSidebarCollapsed(true)
         } else if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
           // If coming from collapsed state, re-enable transition for smooth expand
           if (isSidebarCollapsed) {
@@ -47,7 +51,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             }
 
             setTimeout(() => {
-              setIsSidebarCollapsed(false)
+              setSidebarCollapsed(false)
               currentWidth.current = newWidth
               if (sidebarRef.current) {
                 sidebarRef.current.style.width = `${newWidth}px`
@@ -68,7 +72,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             }, 10)
           } else {
             // Disable the transition for smooth dragging
-            setIsSidebarCollapsed(false)
+            setSidebarCollapsed(false)
             currentWidth.current = newWidth
             if (sidebarRef.current) {
               sidebarRef.current.style.width = `${newWidth}px`
@@ -106,10 +110,29 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     if (windowMinSize.xs) {
       if (!isSidebarCollapsed) {
-        setIsSidebarCollapsed(true)
+        setSidebarCollapsed(true)
       }
     }
-  }, [windowMinSize.xs, isSidebarCollapsed])
+  }, [windowMinSize.xs])
+
+  // ResizeObserver to listen to main content width changes
+  useEffect(() => {
+    const mainContentElement = mainContentRef.current
+    if (!mainContentElement) return
+
+    const resizeObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width } = entry.contentRect
+        setMainContentWidth(Math.round(width))
+      }
+    })
+
+    resizeObserver.observe(mainContentElement)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [])
 
   useEffect(() => {
     //set root document background color based on theme
@@ -143,11 +166,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   }, [])
 
-  const toggleSidebar = () => {
+  const handleMaskClick = () => {
     if (sidebarRef.current) {
       sidebarRef.current.style.transition = 'transform 200ms ease-out'
     }
-    setIsSidebarCollapsed(!isSidebarCollapsed)
+    setSidebarCollapsed(true)
     setTimeout(() => {
       if (sidebarRef.current) {
         sidebarRef.current.style.transition = 'none'
@@ -175,9 +198,9 @@ export function AppLayout({ children }: AppLayoutProps) {
               .toRgbString(),
             pointerEvents: isSidebarCollapsed ? 'none' : 'auto',
           }}
-          onClick={toggleSidebar}
-          onMouseDown={toggleSidebar}
-          onTouchStart={toggleSidebar}
+          onClick={handleMaskClick}
+          onMouseDown={handleMaskClick}
+          onTouchStart={handleMaskClick}
         />
       )}
 
@@ -206,37 +229,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <LeftSidebar />
       </div>
 
-      <div
-        className="flex items-center gap-6 mr-4 fixed z-10 h-[50px]"
-        style={{
-          left: 12,
-          top: 0,
-        }}
-      >
-        {/* Collapse/Expand Sidebar Button */}
-        <Button
-          type="text"
-          onClick={toggleSidebar}
-          className="flex items-center justify-center"
-          style={{
-            width: '24px',
-            height: '24px',
-            padding: 0,
-            fontSize: '30px',
-            borderRadius: '4px',
-            minWidth: '20px',
-          }}
-          aria-label={
-            isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
-          }
-        >
-          {isSidebarCollapsed ? (
-            <GoSidebarCollapse aria-hidden="true" />
-          ) : (
-            <GoSidebarExpand aria-hidden="true" />
-          )}
-        </Button>
-      </div>
+      <SidebarToggleButton />
 
       {/* Spacer div for layout */}
       <div

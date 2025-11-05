@@ -1,6 +1,8 @@
 import { createModule } from '@/core'
 import { SettingOutlined } from '@ant-design/icons'
-import SettingsLayout from './SettingsLayout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const SettingsLayout = lazyWithPreload(() => import('./SettingsLayout'))
 
 export default createModule({
   metadata: {
@@ -11,7 +13,7 @@ export default createModule({
   routes: [
     {
       path: '/settings',
-      element: <SettingsLayout />,
+      element: SettingsLayout,
       requiresAuth: true,
     },
   ],

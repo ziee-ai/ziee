@@ -1,7 +1,9 @@
 import { createModule, Stores } from '@/core'
 import { useAppStore, checkSetupStatus } from './store'
-import SetupPage from './SetupPage'
 import { BlankLayout } from '@/components/Layout/BlankLayout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const SetupPage = lazyWithPreload(() => import('./SetupPage'))
 
 export default createModule({
   metadata: {
@@ -12,7 +14,7 @@ export default createModule({
   routes: [
     {
       path: '/setup',
-      element: <SetupPage />,
+      element: SetupPage,
       requiresAuth: false,
       layout: BlankLayout,
     },

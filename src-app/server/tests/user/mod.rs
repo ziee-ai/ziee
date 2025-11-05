@@ -401,7 +401,7 @@ async fn test_delete_user_not_found() {
 #[tokio::test]
 async fn test_toggle_user_active() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle-status"]).await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle_status"]).await;
 
     // Create user (initially active)
     let user = test_helpers::create_test_user(&server, &admin.token, "toggleuser", "password123").await;
@@ -440,7 +440,7 @@ async fn test_toggle_user_active() {
 #[tokio::test]
 async fn test_reset_user_password() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::reset-password"]).await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::reset_password"]).await;
 
     // Create user
     let user = test_helpers::create_test_user(&server, &admin.token, "resetuser", "oldpassword").await;
@@ -467,7 +467,7 @@ async fn test_reset_user_password() {
 #[tokio::test]
 async fn test_reset_password_user_not_found() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::reset-password"]).await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::reset_password"]).await;
 
     let fake_id = Uuid::new_v4();
     let url = server.api_url("/users/reset-password");

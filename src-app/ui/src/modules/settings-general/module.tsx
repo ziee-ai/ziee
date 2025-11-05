@@ -1,7 +1,9 @@
 import { createModule } from '@/core'
 import { IoMdPerson } from 'react-icons/io'
-import GeneralSettings from './GeneralSettings'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const GeneralSettings = lazyWithPreload(() => import('./GeneralSettings'))
 
 export default createModule({
   metadata: {
@@ -12,7 +14,7 @@ export default createModule({
   routes: [
     {
       path: '/settings/general',
-      element: <GeneralSettings />,
+      element: GeneralSettings,
       requiresAuth: true,
       layout: SettingsLayout,
     },

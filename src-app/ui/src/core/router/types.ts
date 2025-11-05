@@ -1,9 +1,9 @@
-import type { ReactElement, ComponentType, ReactNode } from 'react'
+import type { ReactElement, ComponentType, ReactNode, LazyExoticComponent } from 'react'
 import type { UseBoundStore, StoreApi } from 'zustand'
 
 export interface RouteConfig {
   path: string
-  element: ReactElement
+  element: ReactElement | LazyExoticComponent<ComponentType<any>> | (() => Promise<{ default: ComponentType<any> }>)
   requiresAuth?: boolean
   layout?: ComponentType<{ children: ReactNode }>
   index?: boolean

@@ -88,6 +88,51 @@ function extractSchemaName(ref: string): string {
   return schemaName
 }
 
+interface PermissionInfo {
+  name: string
+  value: string
+  description: string
+}
+
+function extractPermissionsFromSpec(spec: OpenApiSpec): PermissionInfo[] {
+  const permissionsMap = new Map<string, PermissionInfo>()
+
+  // Scan through all paths and operations
+  for (const [, methods] of Object.entries(spec.paths)) {
+    for (const [, operation] of Object.entries(methods)) {
+      // Check if there's a 403 response with required_permissions
+      const forbiddenResponse = operation.responses?.['403']
+      if (!forbiddenResponse?.content) continue
+
+      const jsonContent = forbiddenResponse.content['application/json'] as any
+      if (!jsonContent) continue
+
+      // The example is directly on jsonContent, not on schema
+      if (jsonContent.example?.details?.required_permissions) {
+        const requiredPerms = jsonContent.example.details.required_permissions
+
+        if (Array.isArray(requiredPerms)) {
+          for (const perm of requiredPerms) {
+            if (perm.name && perm.value && perm.description) {
+              // Use name as key to avoid duplicates
+              permissionsMap.set(perm.name, {
+                name: perm.name,
+                value: perm.value,
+                description: perm.description,
+              })
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Convert map to array and sort by name
+  return Array.from(permissionsMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )
+}
+
 function generateEndpoints(): void {
   try {
     // Read and parse the OpenAPI JSON
@@ -118,12 +163,16 @@ function generateEndpoints(): void {
       }
     }
 
+    // Extract all permissions from required_permissions
+    const permissions = extractPermissionsFromSpec(spec)
+
     // Generate the TypeScript file content
     const content = generateTypeScriptContent(
       endpoints,
       parameters,
       responses,
       spec.components?.schemas || {},
+      permissions,
     )
 
     // Write the generated file
@@ -726,7 +775,7 @@ function generateAllSchemas(schemas: Record<string, SchemaDefinition>): string {
 
     const schema = schemas[schemaName]
     const interfaceDefinition = generateSchemaInterface(schemaName, schema)
-    
+
     // Only add non-empty interface definitions
     if (interfaceDefinition.trim()) {
       interfaces.push(interfaceDefinition)
@@ -736,11 +785,38 @@ function generateAllSchemas(schemas: Record<string, SchemaDefinition>): string {
   return interfaces.join('\n\n')
 }
 
+function generatePermissionsEnum(permissions: PermissionInfo[]): string {
+  if (permissions.length === 0) {
+    return `export enum Permissions {}`
+  }
+
+  const enumEntries = permissions.map(perm => `  ${perm.name} = '${perm.value}'`)
+
+  return `export enum Permissions {
+${enumEntries.join(',\n')}
+}`
+}
+
+function generatePermissionDescriptions(permissions: PermissionInfo[]): string {
+  if (permissions.length === 0) {
+    return `export const PermissionDescriptions: Record<string, string> = {}`
+  }
+
+  const descriptionEntries = permissions.map(
+    perm => `  ${perm.name}: '${perm.description.replace(/'/g, "\\'")}'`,
+  )
+
+  return `export const PermissionDescriptions: Record<string, string> = {
+${descriptionEntries.join(',\n')}
+}`
+}
+
 function generateTypeScriptContent(
   endpoints: Record<string, string>,
   parameters: Record<string, string>,
   responses: Record<string, string>,
   schemas: Record<string, SchemaDefinition>,
+  permissions: PermissionInfo[],
 ): string {
   const sortedEndpoints = Object.keys(endpoints).sort()
 
@@ -761,6 +837,17 @@ function generateTypeScriptContent(
 
   // Generate all schema interfaces
   const schemaDefinitions = generateAllSchemas(schemas) + '\n\n'
+
+  // Generate permissions enum and descriptions
+  const permissionsSection = `// =============================================================================
+// PERMISSIONS
+// =============================================================================
+
+${generatePermissionsEnum(permissions)}
+
+${generatePermissionDescriptions(permissions)}
+
+`
 
   // Generate endpoints object
   const endpointsSection = `// =============================================================================
@@ -842,6 +929,7 @@ export type { ValidateParametersComplete, ValidateResponsesComplete }
   return (
     header +
     schemaDefinitions +
+    permissionsSection +
     endpointsSection +
     parametersSection +
     responsesSection +

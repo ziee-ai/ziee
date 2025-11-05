@@ -20,7 +20,7 @@ use super::{
         UserActiveStatusResponse, UserListResponse,
     },
     permissions::*,
-    repository::UserRepository,
+    repository::{UserRepository, GroupRepository},
 };
 
 // =====================================================
@@ -88,6 +88,7 @@ pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
 pub async fn create_user(
     _auth: RequirePermissions<(UsersCreate,)>,
     Extension(user_repo): Extension<UserRepository>,
+    Extension(group_repo): Extension<GroupRepository>,
     Json(request): Json<CreateUserRequest>,
 ) -> ApiResult<Json<User>> {
     // Validate username and email format
@@ -119,8 +120,16 @@ pub async fn create_user(
             &request.email,
             Some(password_hash),
             request.display_name,
+            request.permissions,
         )
         .await?;
+
+    // Assign user to default group if it exists
+    if let Some(default_group) = group_repo.get_default().await? {
+        // Assign user to default group (assigned_by is None for automatic assignment)
+        let _ = user_repo.assign_to_group(user.id, default_group.id, None).await;
+        // Note: We ignore errors here to not fail user creation if group assignment fails
+    }
 
     Ok((StatusCode::CREATED, Json(user)))
 }
@@ -169,7 +178,7 @@ pub async fn update_user(
 
     // Update user
     user_repo
-        .update(user_id, request.username, request.email, request.display_name)
+        .update(user_id, request.username, request.email, request.display_name, request.permissions)
         .await?;
 
     // Update active status if provided
@@ -198,7 +207,7 @@ pub fn update_user_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<404, (), _>(|res| res.description("User not found"))
 }
 
-/// Toggle user active status (requires users::toggle-status permission)
+/// Toggle user active status (requires users::toggle_status permission)
 pub async fn toggle_user_active(
     _auth: RequirePermissions<(UsersToggleStatus,)>,
     Path(user_id): Path<Uuid>,
@@ -235,7 +244,7 @@ pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<404, (), _>(|res| res.description("User not found"))
 }
 
-/// Reset user password (requires users::reset-password permission)
+/// Reset user password (requires users::reset_password permission)
 pub async fn reset_user_password(
     _auth: RequirePermissions<(UsersResetPassword,)>,
     Extension(user_repo): Extension<UserRepository>,

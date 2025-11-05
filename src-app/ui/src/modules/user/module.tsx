@@ -1,10 +1,12 @@
 import { createModule } from '@/core'
 import { UserOutlined, TeamOutlined } from '@ant-design/icons'
-import { UsersSettings } from './components/UsersSettings'
-import { UserGroupsSettings } from './components/UserGroupsSettings'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
 import { useUsersStore, useUserGroupsStore } from './store'
 import './types' // Import type augmentation
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const UsersSettings = lazyWithPreload(() => import('./components/UsersSettings').then(m => ({ default: m.UsersSettings })))
+const UserGroupsSettings = lazyWithPreload(() => import('./components/UserGroupsSettings').then(m => ({ default: m.UserGroupsSettings })))
 
 export default createModule({
   metadata: {
@@ -15,13 +17,13 @@ export default createModule({
   routes: [
     {
       path: '/settings/users',
-      element: <UsersSettings />,
+      element: UsersSettings,
       requiresAuth: true,
       layout: SettingsLayout,
     },
     {
       path: '/settings/user-groups',
-      element: <UserGroupsSettings />,
+      element: UserGroupsSettings,
       requiresAuth: true,
       layout: SettingsLayout,
     },

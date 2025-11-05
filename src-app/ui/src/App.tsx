@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, Suspense, isValidElement, lazy } from 'react'
 import {
   BrowserRouter,
   Routes,
@@ -6,14 +6,39 @@ import {
   Navigate,
   Outlet,
 } from 'react-router-dom'
+import { Spin } from 'antd'
 import { useRouterStore } from './core'
 import { AuthGuard } from './modules/auth'
 import { ThemeProvider } from './components/ThemeProvider'
 import { loadModules } from './modules/loader'
 import { setupAccessibilityFixes } from './utils/accessibilityFixes'
+import { usePrefetchModules } from './hooks/usePrefetchModules'
+import type { RouteConfig } from './core/router/types'
 
 // Load all modules before rendering
 loadModules()
+
+// Helper function to wrap route elements in Suspense for lazy loading
+function wrapWithSuspense(element: RouteConfig['element']) {
+  // If it's already a valid React element, return as-is
+  if (isValidElement(element)) {
+    return element
+  }
+
+  // Otherwise, it's a function (preload function from lazyWithPreload), wrap with lazy
+  const LazyComponent = lazy(element as () => Promise<{ default: React.ComponentType<any> }>)
+  return (
+    <Suspense
+      fallback={
+        <div className="h-full w-full flex items-center justify-center">
+          <Spin size="large" />
+        </div>
+      }
+    >
+      <LazyComponent />
+    </Suspense>
+  )
+}
 
 function App() {
   const { routes } = useRouterStore()
@@ -23,6 +48,9 @@ function App() {
     const cleanup = setupAccessibilityFixes()
     return cleanup
   }, [])
+
+  // Prefetch lazy-loaded modules when browser is idle
+  usePrefetchModules()
 
   // Memoized route grouping by requiresAuth and layout
   const { hasProtectedRoutes, protectedByLayout, publicByLayout } =
@@ -81,7 +109,7 @@ function App() {
                           <Route
                             key={route.path}
                             path={route.path}
-                            element={route.element}
+                            element={wrapWithSuspense(route.element)}
                             index={route.index}
                           />
                         ))}
@@ -93,7 +121,7 @@ function App() {
                       <Route
                         key={route.path}
                         path={route.path}
-                        element={route.element}
+                        element={wrapWithSuspense(route.element)}
                         index={route.index}
                       />
                     ))
@@ -121,7 +149,7 @@ function App() {
                       <Route
                         key={route.path}
                         path={route.path}
-                        element={route.element}
+                        element={wrapWithSuspense(route.element)}
                         index={route.index}
                       />
                     ))}
@@ -133,7 +161,7 @@ function App() {
                   <Route
                     key={route.path}
                     path={route.path}
-                    element={route.element}
+                    element={wrapWithSuspense(route.element)}
                     index={route.index}
                   />
                 ))

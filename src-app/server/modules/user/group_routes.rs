@@ -296,7 +296,7 @@ fn get_group_members_docs(
         .response_with::<404, (), _>(|res| res.description("Group not found"))
 }
 
-/// Assign user to group (requires groups::assign-users permission)
+/// Assign user to group (requires groups::assign_users permission)
 async fn assign_user_to_group(
     auth: RequirePermissions<(GroupsAssignUsers,)>,
     Extension(user_repo): Extension<UserRepository>,
@@ -334,7 +334,7 @@ fn assign_user_to_group_docs(
         .response_with::<404, (), _>(|res| res.description("User or Group not found"))
 }
 
-/// Remove user from group (requires groups::assign-users permission)
+/// Remove user from group (requires groups::assign_users permission)
 async fn remove_user_from_group(
     _auth: RequirePermissions<(GroupsAssignUsers,)>,
     Path((user_id, group_id)): Path<(Uuid, Uuid)>,

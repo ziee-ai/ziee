@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { theme, Typography, Divider } from 'antd'
-import { useWindowMinSize } from '../../hooks/useWindowMinSize'
-import { useRouterStore } from '../../core/router'
+import { useWindowMinSize } from '@/hooks/useWindowMinSize'
+import { useRouterStore } from '@/core/router'
 
 const { Text } = Typography
 

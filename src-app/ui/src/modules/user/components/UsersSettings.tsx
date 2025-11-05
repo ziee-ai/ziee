@@ -27,12 +27,12 @@ import {
 } from 'antd'
 import { Drawer } from '@/components/common/Drawer.tsx'
 import { useEffect, useState } from 'react'
-import { useTranslation } from 'node_modules/react-i18next/index'
 import { Stores } from '@/core/stores'
 import {
   assignUserToUserGroup,
   clearUserGroupsStoreError,
   clearUsersStoreError,
+  createUser,
   loadUserGroupMembers,
   loadUsers,
   removeUserFromUserGroup,
@@ -40,15 +40,40 @@ import {
   toggleUserActiveStatus,
   updateUser,
 } from '../store.ts'
-import type { UpdateUserRequest, User } from '@/api-client/types'
+import type { CreateUserRequest, UpdateUserRequest, User } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 import { UserRegistrationSettings } from './UserRegistrationSettings.tsx'
 
 const { Text } = Typography
 const { Option } = Select
+const { TextArea } = Input
+
+// Helper function to validate permissions
+const validatePermissions = (_: any, value: string) => {
+  if (!value) return Promise.resolve()
+
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) {
+      return Promise.reject('Must be an array')
+    }
+
+    // Check if all values are valid permissions
+    const validPermissions = Object.values(Permissions)
+    const invalidPermissions = parsed.filter(perm => !validPermissions.includes(perm))
+
+    if (invalidPermissions.length > 0) {
+      return Promise.reject(`Invalid permissions: ${invalidPermissions.join(', ')}`)
+    }
+
+    return Promise.resolve()
+  } catch {
+    return Promise.reject('Invalid JSON format')
+  }
+}
 
 export function UsersSettings() {
-  const { t } = useTranslation()
   const { message } = App.useApp()
 
   // Stores
@@ -58,15 +83,18 @@ export function UsersSettings() {
     currentPage: storePage,
     pageSize: storePageSize,
     loading: loadingUsers,
+    creating: creatingUser,
     error: usersError,
   } = Stores.Users
   const { groups, error: groupsError } = Stores.UserGroups
 
+  const [createModalVisible, setCreateModalVisible] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [passwordModalVisible, setPasswordModalVisible] = useState(false)
   const [groupsDrawerVisible, setGroupsDrawerVisible] = useState(false)
   const [assignGroupModalVisible, setAssignGroupModalVisible] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [createForm] = Form.useForm()
   const [editForm] = Form.useForm()
   const [passwordForm] = Form.useForm()
   const [assignGroupForm] = Form.useForm()
@@ -85,6 +113,27 @@ export function UsersSettings() {
     }
   }, [usersError, groupsError, message])
 
+  const handleCreateUser = async (values: any) => {
+    try {
+      const userData: CreateUserRequest = {
+        username: values.username,
+        email: values.email,
+        password: values.password,
+        display_name: values.display_name,
+        permissions: values.permissions ? JSON.parse(values.permissions) : undefined,
+      }
+
+      await createUser(userData)
+
+      message.success('User created successfully')
+      setCreateModalVisible(false)
+      createForm.resetFields()
+    } catch (error) {
+      console.error('Failed to create user:', error)
+      // Error is handled by the store
+    }
+  }
+
   const handleEditUser = async (values: any) => {
     if (!selectedUser) return
 
@@ -93,6 +142,7 @@ export function UsersSettings() {
         username: values.username,
         email: values.email,
         is_active: values.is_active,
+        permissions: values.permissions ? JSON.parse(values.permissions) : undefined,
       }
 
       await updateUser(selectedUser.id, updateData)
@@ -175,6 +225,7 @@ export function UsersSettings() {
       username: user.username,
       email: user.email,
       is_active: user.is_active,
+      permissions: user.permissions?.length > 0 ? JSON.stringify(user.permissions, null, 2) : '',
     })
     setEditModalVisible(true)
   }
@@ -292,7 +343,17 @@ export function UsersSettings() {
         <Flex vertical className="gap-3">
           <UserRegistrationSettings />
 
-          <Card title={t('admin.users.title')}>
+          <Card
+            title="Users"
+            extra={
+              <Button
+                type="text"
+                icon={<PlusOutlined aria-hidden="true" />}
+                onClick={() => setCreateModalVisible(true)}
+                aria-label="Create user"
+              />
+            }
+          >
             {loadingUsers ? (
               <div className="flex justify-center py-8">
                 <Spin size="large" />
@@ -380,9 +441,91 @@ export function UsersSettings() {
           </Card>
         </Flex>
 
+        {/* Create User Modal */}
+        <Drawer
+          title="Create User"
+          open={createModalVisible}
+          onClose={() => {
+            setCreateModalVisible(false)
+            createForm.resetFields()
+          }}
+          footer={null}
+          width={600}
+          maskClosable={false}
+        >
+          <Form
+            form={createForm}
+            layout="vertical"
+            onFinish={handleCreateUser}
+          >
+            <Form.Item
+              name="username"
+              label="Username"
+              rules={[{ required: true, message: 'Please enter username' }]}
+            >
+              <Input placeholder="Enter username" />
+            </Form.Item>
+            <Form.Item
+              name="email"
+              label="Email"
+              rules={[
+                {
+                  required: true,
+                  type: 'email',
+                  message: 'Please enter valid email',
+                },
+              ]}
+            >
+              <Input placeholder="Enter email" />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              label="Password"
+              rules={[
+                { required: true, message: 'Please enter password' },
+                { min: 6, message: 'Password must be at least 6 characters' },
+              ]}
+            >
+              <Input.Password placeholder="Enter password" />
+            </Form.Item>
+            <Form.Item
+              name="display_name"
+              label="Display Name"
+            >
+              <Input placeholder="Enter display name (optional)" />
+            </Form.Item>
+            <Form.Item
+              name="permissions"
+              label="Permissions (JSON Array)"
+              rules={[{ validator: validatePermissions }]}
+            >
+              <TextArea
+                rows={6}
+                placeholder='["users::read", "users::edit"]'
+              />
+            </Form.Item>
+            <Form.Item className="mb-0">
+              <Flex className="gap-2">
+                <Button type="primary" htmlType="submit" loading={creatingUser}>
+                  Create User
+                </Button>
+                <Button
+                  onClick={() => {
+                    setCreateModalVisible(false)
+                    createForm.resetFields()
+                  }}
+                  disabled={creatingUser}
+                >
+                  Cancel
+                </Button>
+              </Flex>
+            </Form.Item>
+          </Form>
+        </Drawer>
+
         {/* Edit User Modal */}
         <Drawer
-          title={t('admin.users.editUser')}
+          title="Edit User"
           open={editModalVisible}
           onClose={() => {
             setEditModalVisible(false)
@@ -396,14 +539,14 @@ export function UsersSettings() {
           <Form form={editForm} layout="vertical" onFinish={handleEditUser}>
             <Form.Item
               name="username"
-              label={t('admin.users.forms.username')}
+              label="Username"
               rules={[{ required: true, message: 'Please enter username' }]}
             >
-              <Input placeholder={t('admin.users.forms.enterUsername')} />
+              <Input placeholder="Enter username" />
             </Form.Item>
             <Form.Item
               name="email"
-              label={t('admin.users.forms.email')}
+              label="Email"
               rules={[
                 {
                   required: true,
@@ -412,14 +555,24 @@ export function UsersSettings() {
                 },
               ]}
             >
-              <Input placeholder={t('admin.users.forms.enterEmail')} />
+              <Input placeholder="Enter email" />
             </Form.Item>
             <Form.Item
               name="is_active"
-              label={t('admin.users.forms.active')}
+              label="Active"
               valuePropName="checked"
             >
               <Switch />
+            </Form.Item>
+            <Form.Item
+              name="permissions"
+              label="Permissions (JSON Array)"
+              rules={[{ validator: validatePermissions }]}
+            >
+              <TextArea
+                rows={6}
+                placeholder='["users::read", "users::edit"]'
+              />
             </Form.Item>
             <Form.Item className="mb-0">
               <Flex className="gap-2">
@@ -442,7 +595,7 @@ export function UsersSettings() {
 
         {/* Reset Password Modal */}
         <Drawer
-          title={t('admin.users.resetPassword')}
+          title="Reset Password"
           open={passwordModalVisible}
           onClose={() => {
             setPasswordModalVisible(false)
@@ -459,19 +612,19 @@ export function UsersSettings() {
           >
             <Form.Item
               name="new_password"
-              label={t('admin.users.forms.newPassword')}
+              label="New Password"
               rules={[
                 { required: true, message: 'Please enter new password' },
                 { min: 6, message: 'Password must be at least 6 characters' },
               ]}
             >
               <Input.Password
-                placeholder={t('admin.users.forms.enterNewPassword')}
+                placeholder="Enter new password"
               />
             </Form.Item>
             <Form.Item
               name="confirm_password"
-              label={t('admin.users.forms.confirmPassword')}
+              label="Confirm Password"
               dependencies={['new_password']}
               rules={[
                 { required: true, message: 'Please confirm password' },
@@ -486,7 +639,7 @@ export function UsersSettings() {
               ]}
             >
               <Input.Password
-                placeholder={t('admin.users.forms.confirmNewPassword')}
+                placeholder="Confirm new password"
               />
             </Form.Item>
             <Form.Item className="mb-0">
@@ -520,16 +673,15 @@ export function UsersSettings() {
           width={400}
           extra={
             <Button
-              type="primary"
-              icon={<PlusOutlined />}
+              type="text"
+              icon={<PlusOutlined aria-hidden="true" />}
               onClick={() => {
                 setGroupsDrawerVisible(false)
                 openAssignGroupModal(selectedUser!)
               }}
               className={'mr-2'}
-            >
-              Assign Group
-            </Button>
+              aria-label="Assign group"
+            />
           }
         >
           {loadingUserGroups ? (
@@ -603,7 +755,7 @@ export function UsersSettings() {
 
         {/* Assign Group Modal */}
         <Drawer
-          title={t('admin.users.assignToGroup')}
+          title="Assign to Group"
           open={assignGroupModalVisible}
           onClose={() => {
             setAssignGroupModalVisible(false)
@@ -620,15 +772,15 @@ export function UsersSettings() {
           >
             <Form.Item
               name="group_id"
-              label={t('admin.users.forms.selectGroup')}
+              label="Select Group"
               rules={[
                 {
                   required: true,
-                  message: t('admin.users.forms.pleaseSelectGroup'),
+                  message: 'Please select a group',
                 },
               ]}
             >
-              <Select placeholder={t('admin.users.forms.selectGroupToAssign')}>
+              <Select placeholder="Select group to assign">
                 {groups.map(group => (
                   <Option key={group.id} value={group.id}>
                     {group.name}

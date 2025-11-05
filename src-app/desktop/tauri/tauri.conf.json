@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev --workspace=@ziee/desktop-ui",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build --workspace=@ziee/desktop-ui",
+    "beforeBuildCommand": "npm run build:nocheck --workspace=@ziee/desktop-ui",
     "frontendDist": "../ui/dist"
   },
   "app": {

@@ -1,6 +1,5 @@
 import { App, Card, Form, Switch, Typography } from 'antd'
 import { useEffect } from 'react'
-import { useTranslation } from 'node_modules/react-i18next'
 import { Stores } from '@/core/stores'
 import {
   clearUsersStoreError,
@@ -11,7 +10,6 @@ import {
 const { Text } = Typography
 
 export function UserRegistrationSettings() {
-  const { t } = useTranslation()
   const { message } = App.useApp()
   const [form] = Form.useForm()
 
@@ -53,7 +51,7 @@ export function UserRegistrationSettings() {
   }
 
   return (
-    <Card title={t('admin.userRegistration')}>
+    <Card title="User Registration">
       <Form
         form={form}
         onValuesChange={handleFormChange}

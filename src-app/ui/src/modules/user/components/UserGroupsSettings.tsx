@@ -34,11 +34,36 @@ import {
   loadUserGroups,
 } from '../store.ts'
 import type { CreateGroupRequest, Group } from '@/api-client/types'
+import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 import { EditUserGroupDrawer } from './EditUserGroupDrawer.tsx'
 
 const { Text } = Typography
 const { TextArea } = Input
+
+// Helper function to validate permissions
+const validatePermissions = (_: any, value: string) => {
+  if (!value) return Promise.resolve()
+
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) {
+      return Promise.reject('Must be an array')
+    }
+
+    // Check if all values are valid permissions
+    const validPermissions = Object.values(Permissions)
+    const invalidPermissions = parsed.filter(perm => !validPermissions.includes(perm))
+
+    if (invalidPermissions.length > 0) {
+      return Promise.reject(`Invalid permissions: ${invalidPermissions.join(', ')}`)
+    }
+
+    return Promise.resolve()
+  } catch {
+    return Promise.reject('Invalid JSON format')
+  }
+}
 
 export function UserGroupsSettings() {
   const { message } = App.useApp()
@@ -173,12 +198,11 @@ export function UserGroupsSettings() {
           title="User Groups"
           extra={
             <Button
-              type="primary"
-              icon={<PlusOutlined />}
+              type="text"
+              icon={<PlusOutlined aria-hidden="true" />}
               onClick={() => setCreateModalVisible(true)}
-            >
-              Create Group
-            </Button>
+              aria-label="Create group"
+            />
           }
         >
           {loadingGroups ? (
@@ -295,26 +319,11 @@ export function UserGroupsSettings() {
             <Form.Item
               name="permissions"
               label="Permissions (JSON Array)"
-              rules={[
-                {
-                  validator: (_, value) => {
-                    if (!value) return Promise.resolve()
-                    try {
-                      const parsed = JSON.parse(value)
-                      if (!Array.isArray(parsed)) {
-                        return Promise.reject('Must be an array')
-                      }
-                      return Promise.resolve()
-                    } catch {
-                      return Promise.reject('Invalid JSON format')
-                    }
-                  },
-                },
-              ]}
+              rules={[{ validator: validatePermissions }]}
             >
               <TextArea
                 rows={6}
-                placeholder='["users::read", "users::edit", "chat::read"]'
+                placeholder='["users::read", "users::edit"]'
               />
             </Form.Item>
 

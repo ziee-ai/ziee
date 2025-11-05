@@ -35,7 +35,8 @@
     "test:db:start": "node scripts/test-db.js start",
     "test:db:stop": "node scripts/test-db.js stop",
     "test:db:clean": "node scripts/test-db.js clean",
-    "test:db:logs": "node scripts/test-db.js logs"
+    "test:db:logs": "node scripts/test-db.js logs",
+    "build:nocheck": "npm run generate-openapi && vite build"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",

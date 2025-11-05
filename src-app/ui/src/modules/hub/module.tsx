@@ -1,7 +1,9 @@
 import { createModule } from '@/core'
 import { AppstoreOutlined } from '@ant-design/icons'
-import HubPage from './HubPage'
 import AppLayout from '@/components/Layout/AppLayout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const HubPage = lazyWithPreload(() => import('./HubPage'))
 
 export default createModule({
   metadata: {
@@ -12,7 +14,7 @@ export default createModule({
   routes: [
     {
       path: '/hub',
-      element: <HubPage />,
+      element: HubPage,
       requiresAuth: true,
       layout: AppLayout,
     },

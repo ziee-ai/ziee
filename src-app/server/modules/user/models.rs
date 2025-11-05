@@ -24,8 +24,6 @@ pub struct User {
     #[serde(skip_serializing)]
     #[schemars(skip)]
     pub is_admin: bool,
-    #[serde(skip_serializing)]
-    #[schemars(skip)]
     pub permissions: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

@@ -1,6 +1,8 @@
 import { createModule } from '@/core'
-import { AuthPage } from './AuthPage'
 import { useAuthStore } from './store'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const AuthPage = lazyWithPreload(() => import('./AuthPage').then(m => ({ default: m.AuthPage })))
 
 export default createModule({
   metadata: {
@@ -11,7 +13,7 @@ export default createModule({
   routes: [
     {
       path: '/login',
-      element: <AuthPage />,
+      element: AuthPage,
     },
   ],
   stores: [

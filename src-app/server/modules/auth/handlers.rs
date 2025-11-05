@@ -48,7 +48,7 @@ pub async fn register(
 
     // Create user
     let user = user_repo
-        .create(&req.username, &req.email, Some(password_hash), req.display_name)
+        .create(&req.username, &req.email, Some(password_hash), req.display_name, None)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 

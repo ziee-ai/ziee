@@ -335,7 +335,7 @@ async fn test_delete_group_not_found() {
 #[tokio::test]
 async fn test_get_group_members() {
     let server = crate::common::TestServer::start().await;
-    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "groups::read", "users::create", "groups::assign-users"]).await;
+    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "groups::read", "users::create", "groups::assign_users"]).await;
 
     // Create group
     let group = helpers::create_test_group(&server, &admin.token, "membergroup").await;
@@ -367,7 +367,7 @@ async fn test_get_group_members() {
 #[tokio::test]
 async fn test_assign_user_to_group() {
     let server = crate::common::TestServer::start().await;
-    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "users::create", "groups::assign-users"]).await;
+    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "users::create", "groups::assign_users"]).await;
 
     // Create group and user
     let group = helpers::create_test_group(&server, &admin.token, "assigngroup").await;
@@ -397,7 +397,7 @@ async fn test_assign_user_to_group() {
 #[tokio::test]
 async fn test_assign_user_not_found() {
     let server = crate::common::TestServer::start().await;
-    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "groups::assign-users"]).await;
+    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "groups::assign_users"]).await;
 
     let group = helpers::create_test_group(&server, &admin.token, "testgroup").await;
     let group_id = group["id"].as_str().expect("Should have group ID");
@@ -424,7 +424,7 @@ async fn test_assign_user_not_found() {
 #[tokio::test]
 async fn test_assign_group_not_found() {
     let server = crate::common::TestServer::start().await;
-    let admin = helpers::create_user_with_permissions(&server, "admin", &["users::create", "groups::assign-users"]).await;
+    let admin = helpers::create_user_with_permissions(&server, "admin", &["users::create", "groups::assign_users"]).await;
 
     let user = helpers::create_test_user_via_api(&server, &admin.token, "testuser").await;
     let user_id = user["id"].as_str().expect("Should have user ID");
@@ -451,7 +451,7 @@ async fn test_assign_group_not_found() {
 #[tokio::test]
 async fn test_remove_user_from_group() {
     let server = crate::common::TestServer::start().await;
-    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "users::create", "groups::assign-users"]).await;
+    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "users::create", "groups::assign_users"]).await;
 
     // Create group and user
     let group = helpers::create_test_group(&server, &admin.token, "removegroup").await;
@@ -478,7 +478,7 @@ async fn test_remove_user_from_group() {
 #[tokio::test]
 async fn test_remove_user_not_found() {
     let server = crate::common::TestServer::start().await;
-    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "groups::assign-users"]).await;
+    let admin = helpers::create_user_with_permissions(&server, "admin", &["groups::create", "groups::assign_users"]).await;
 
     let group = helpers::create_test_group(&server, &admin.token, "testgroup").await;
     let group_id = group["id"].as_str().expect("Should have group ID");

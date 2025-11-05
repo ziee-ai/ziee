@@ -58,12 +58,11 @@ const baseTheme = {
       // Fix color contrast for menu item text (applies to Dropdown too since it uses Menu)
       // Default uses rgba(0,0,0,0.65) which gives insufficient contrast
       itemColor: 'rgba(0,0,0,0.88)', // Ensures 4.5:1+ contrast ratio
+      itemHoverColor: 'rgba(0,0,0,0.88)', // Hover state text
+      itemSelectedColor: 'rgba(0,0,0,0.88)', // Selected state text
       // Since Dropdown uses Menu internally, we need to ensure Menu items have proper contrast
       // The .ant-dropdown-menu-title-content elements specifically need this
       colorText: 'rgba(0,0,0,0.88)', // Primary text color for menu items
-      colorItemText: 'rgba(0,0,0,0.88)', // Item text color (used by .ant-menu-item)
-      colorItemTextHover: 'rgba(0,0,0,0.88)', // Hover state text
-      colorItemTextSelected: 'rgba(0,0,0,0.88)', // Selected state text
     },
     Dropdown: {
       // Fix color contrast for dropdown menu items (WCAG AA requires 4.5:1)

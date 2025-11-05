@@ -14,7 +14,10 @@ export default defineConfig({
 
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      // Resolve @ to core UI src (core UI uses this extensively)
+      '@': path.resolve(__dirname, '../../ui/src'),
+      // Resolve @ziee/ui-core to source files
+      '@ziee/ui-core': path.resolve(__dirname, '../../ui/src'),
       // Override getBaseURL for desktop - calls Tauri backend for dynamic port
       '@ziee/ui-core/src/api-client/getBaseURL': path.resolve(
         __dirname,

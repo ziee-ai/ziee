@@ -1,7 +1,9 @@
 import { createModule } from '@/core'
 import { FolderOutlined, FolderAddOutlined } from '@ant-design/icons'
-import ProjectsPage from './ProjectsPage'
 import AppLayout from '@/components/Layout/AppLayout'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const ProjectsPage = lazyWithPreload(() => import('./ProjectsPage'))
 
 export default createModule({
   metadata: {
@@ -12,7 +14,7 @@ export default createModule({
   routes: [
     {
       path: '/projects',
-      element: <ProjectsPage />,
+      element: ProjectsPage,
       requiresAuth: true,
       layout: AppLayout,
     },

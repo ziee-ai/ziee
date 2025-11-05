@@ -1,10 +1,12 @@
 import { createModule } from '@/core'
 import { CloudServerOutlined } from '@ant-design/icons'
-import { LlmProviderSettings } from './components/LlmProviderSettings'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
 import { useLlmProviderStore, useLlmModelDownloadStore } from './store'
 import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
+import { lazyWithPreload } from '@/utils/lazyWithPreload'
+
+const LlmProviderSettings = lazyWithPreload(() => import('./components/LlmProviderSettings').then(m => ({ default: m.LlmProviderSettings })))
 
 export default createModule({
   metadata: {
@@ -15,7 +17,7 @@ export default createModule({
   routes: [
     {
       path: '/settings/llm-providers/:providerId?',
-      element: <LlmProviderSettings />,
+      element: LlmProviderSettings,
       requiresAuth: true,
       layout: SettingsLayout,
     },

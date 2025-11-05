@@ -34,3 +34,6 @@ WixTools/
 *.njsproj
 *.sln
 *.sw?
+
+# xwin cache (should be in $HOME/.cache/xwin, but ignore if accidentally created here)
+~

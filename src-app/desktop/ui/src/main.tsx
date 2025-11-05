@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App, loadModules as loadCoreModules } from '@ziee/ui-core'
 import { loadDesktopModules } from './modules/loader'
-import '@ziee/ui-core/src/index.css'
+import '@ziee/ui-core/index.css'
 
 /**
  * Desktop Application Entry Point

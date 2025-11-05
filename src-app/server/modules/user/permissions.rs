@@ -44,7 +44,7 @@ impl PermissionCheck for UsersDelete {
 pub struct UsersResetPassword;
 impl PermissionCheck for UsersResetPassword {
     const NAME: &'static str = "UsersResetPassword";
-    const PERMISSION: &'static str = "users::reset-password";
+    const PERMISSION: &'static str = "users::reset_password";
     const DESCRIPTION: &'static str = "Reset user passwords";
     const MODULE: &'static str = "user";
 }
@@ -53,7 +53,7 @@ impl PermissionCheck for UsersResetPassword {
 pub struct UsersToggleStatus;
 impl PermissionCheck for UsersToggleStatus {
     const NAME: &'static str = "UsersToggleStatus";
-    const PERMISSION: &'static str = "users::toggle-status";
+    const PERMISSION: &'static str = "users::toggle_status";
     const DESCRIPTION: &'static str = "Enable or disable user accounts";
     const MODULE: &'static str = "user";
 }
@@ -102,7 +102,7 @@ impl PermissionCheck for GroupsDelete {
 pub struct GroupsAssignUsers;
 impl PermissionCheck for GroupsAssignUsers {
     const NAME: &'static str = "GroupsAssignUsers";
-    const PERMISSION: &'static str = "groups::assign-users";
+    const PERMISSION: &'static str = "groups::assign_users";
     const DESCRIPTION: &'static str = "Assign users to groups and remove users from groups";
     const MODULE: &'static str = "user";
 }

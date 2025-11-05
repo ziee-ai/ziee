@@ -1,0 +1,238 @@
+import { useEffect } from 'react'
+import { App, Button, Form, Input, Switch } from 'antd'
+import { Drawer } from '@/components/common/Drawer'
+import {
+  Stores,
+  closeAssistantDrawer,
+  setAssistantDrawerLoading,
+  createUserAssistant,
+  updateUserAssistant,
+  createTemplateAssistant,
+  updateTemplateAssistant,
+} from '../store'
+
+const { TextArea } = Input
+
+// JSON validator for parameters field
+const validateJSON = (_: any, value: string) => {
+  if (!value || !value.trim()) {
+    return Promise.resolve()
+  }
+  try {
+    JSON.parse(value)
+    return Promise.resolve()
+  } catch (error) {
+    return Promise.reject(new Error('Please enter valid JSON'))
+  }
+}
+
+interface FormValues {
+  name: string
+  description?: string
+  instructions?: string
+  parameters?: string  // JSON string
+  is_default?: boolean
+  enabled?: boolean
+}
+
+export function AssistantFormDrawer() {
+  const { message } = App.useApp()
+  const [form] = Form.useForm<FormValues>()
+
+  // Use drawer store
+  const { open, loading, editingAssistant, isTemplate } = Stores.AssistantDrawer
+
+  // Initialize form when drawer opens or editing assistant changes
+  useEffect(() => {
+    if (open) {
+      if (editingAssistant) {
+        // Stringify parameters for textarea
+        const parametersString = editingAssistant.parameters
+          ? JSON.stringify(editingAssistant.parameters, null, 2)
+          : ''
+
+        form.setFieldsValue({
+          name: editingAssistant.name,
+          description: editingAssistant.description,
+          instructions: editingAssistant.instructions,
+          parameters: parametersString,
+          enabled: editingAssistant.enabled,
+          is_default: editingAssistant.is_default,
+        })
+      } else {
+        // Creating new assistant with default values
+        form.setFieldsValue({
+          enabled: true,
+          is_default: false,
+        })
+      }
+    }
+  }, [open, editingAssistant, form])
+
+  const handleClose = () => {
+    form.resetFields()
+    closeAssistantDrawer()
+  }
+
+  const handleParametersBlur = () => {
+    const value = form.getFieldValue('parameters')
+    if (!value || !value.trim()) return
+
+    try {
+      const parsed = JSON.parse(value)
+      const prettified = JSON.stringify(parsed, null, 2)
+      form.setFieldValue('parameters', prettified)
+    } catch (error) {
+      // Invalid JSON, leave as is - validation will show error
+    }
+  }
+
+  const handleSubmit = async (values: FormValues) => {
+    // Parse parameters JSON string
+    let parameters: any = undefined
+    if (values.parameters && values.parameters.trim()) {
+      try {
+        parameters = JSON.parse(values.parameters)
+      } catch (error) {
+        // JSON validation should catch this, but handle it just in case
+        message.error('Invalid JSON in parameters field')
+        return
+      }
+    }
+
+    const payload = {
+      name: values.name,
+      description: values.description,
+      instructions: values.instructions,
+      parameters,
+      is_default: values.is_default,
+      enabled: values.enabled,
+    }
+
+    setAssistantDrawerLoading(true)
+    try {
+      if (editingAssistant) {
+        if (isTemplate) {
+          await updateTemplateAssistant(editingAssistant.id, payload)
+        } else {
+          await updateUserAssistant(editingAssistant.id, payload)
+        }
+        message.success('Assistant updated successfully')
+      } else {
+        if (isTemplate) {
+          await createTemplateAssistant(payload)
+        } else {
+          await createUserAssistant(payload)
+        }
+        message.success('Assistant created successfully')
+      }
+      closeAssistantDrawer()
+    } catch (error) {
+      console.error('Failed to save assistant:', error)
+      // Error already shown via store error state
+    } finally {
+      setAssistantDrawerLoading(false)
+    }
+  }
+
+  const getTitle = () => {
+    if (editingAssistant) {
+      return isTemplate ? 'Edit Template Assistant' : 'Edit Assistant'
+    }
+    return isTemplate ? 'Create Template Assistant' : 'Create Assistant'
+  }
+
+  return (
+    <Drawer
+      title={getTitle()}
+      open={open}
+      onClose={handleClose}
+      width={600}
+      maskClosable={false}
+      footer={null}
+    >
+      <Form
+        name="assistant-form"
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+      >
+        <Form.Item
+          name="name"
+          label="Name"
+          rules={[
+            { required: true, message: 'Please enter a name' },
+            { max: 255, message: 'Name must be less than 255 characters' },
+          ]}
+        >
+          <Input placeholder="Enter assistant name" aria-label="Assistant name" />
+        </Form.Item>
+
+        <Form.Item
+          name="description"
+          label="Description"
+          rules={[{ max: 1000, message: 'Description must be less than 1000 characters' }]}
+        >
+          <TextArea
+            placeholder="Enter a brief description"
+            rows={2}
+            aria-label="Assistant description"
+          />
+        </Form.Item>
+
+        <Form.Item name="instructions" label="Instructions">
+          <TextArea
+            placeholder="Enter system instructions for the assistant"
+            rows={6}
+            aria-label="Assistant instructions"
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="parameters"
+          label="Parameters"
+          tooltip="Model parameters in JSON format (e.g., temperature, max_tokens, top_p)"
+          rules={[{ validator: validateJSON }]}
+        >
+          <TextArea
+            placeholder='{"temperature": 0.7, "max_tokens": 2048, "top_p": 0.9}'
+            rows={6}
+            aria-label="Model parameters in JSON format"
+            onBlur={handleParametersBlur}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="enabled"
+          label="Enabled"
+          valuePropName="checked"
+          tooltip="Whether this assistant is enabled"
+        >
+          <Switch />
+        </Form.Item>
+
+        <Form.Item
+          name="is_default"
+          label="Set as Default"
+          valuePropName="checked"
+          tooltip={
+            isTemplate
+              ? 'Set as the default template assistant for all users'
+              : 'Set as your default assistant'
+          }
+        >
+          <Switch />
+        </Form.Item>
+
+        <div className="flex justify-end gap-3 pt-4">
+          <Button onClick={handleClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button type="primary" htmlType="submit" loading={loading}>
+            {editingAssistant ? 'Update' : 'Create'}
+          </Button>
+        </div>
+      </Form>
+    </Drawer>
+  )
+}

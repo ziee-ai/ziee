@@ -130,12 +130,13 @@ impl UserRepository {
         email: &str,
         password_hash: Option<String>,
         display_name: Option<String>,
+        permissions: Option<Vec<String>>,
     ) -> Result<User, AppError> {
         sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (username, email, password_hash, display_name)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO users (username, email, password_hash, display_name, permissions)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id, username, email, email_verified, password_hash, display_name,
                       avatar_url, is_active, is_admin, permissions,
                       created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
@@ -143,7 +144,8 @@ impl UserRepository {
             username,
             email,
             password_hash,
-            display_name
+            display_name,
+            permissions.as_deref().unwrap_or(&[])
         )
         .fetch_one(&self.pool)
         .await
@@ -196,6 +198,7 @@ impl UserRepository {
         username: Option<String>,
         email: Option<String>,
         display_name: Option<String>,
+        permissions: Option<Vec<String>>,
     ) -> Result<User, AppError> {
         sqlx::query_as!(
             User,
@@ -204,6 +207,7 @@ impl UserRepository {
             SET username = COALESCE($2, username),
                 email = COALESCE($3, email),
                 display_name = COALESCE($4, display_name),
+                permissions = COALESCE($5, permissions),
                 updated_at = NOW()
             WHERE id = $1
             RETURNING id, username, email, email_verified, password_hash, display_name,
@@ -213,7 +217,8 @@ impl UserRepository {
             id,
             username,
             email,
-            display_name
+            display_name,
+            permissions.as_deref()
         )
         .fetch_one(&self.pool)
         .await
@@ -402,6 +407,23 @@ impl GroupRepository {
             "#
         )
         .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
+    /// Get default group (where is_default = true)
+    pub async fn get_default(&self) -> Result<Option<Group>, AppError> {
+        sqlx::query_as!(
+            Group,
+            r#"
+            SELECT id, name, description, permissions, is_system, is_active, is_default,
+                   created_at as "created_at: _", updated_at as "updated_at: _"
+            FROM groups
+            WHERE is_default = true AND is_active = true
+            LIMIT 1
+            "#
+        )
+        .fetch_optional(&self.pool)
         .await
         .map_err(AppError::database_error)
     }
