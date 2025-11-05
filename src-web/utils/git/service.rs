@@ -71,6 +71,27 @@ impl GitService {
         format!("{}-{:x}", repository_id, hash)
     }
 
+    /// Clear cached repository for testing purposes
+    pub async fn clear_cache(
+        &self,
+        repository_id: &Uuid,
+        repository_url: &str,
+        branch: Option<&str>,
+    ) -> Result<(), GitError> {
+        let cache_key = Self::generate_cache_key(repository_id, repository_url, branch);
+        let repo_cache_dir = self.cache_dir.join(cache_key);
+
+        if repo_cache_dir.exists() {
+            tracing::info!("Clearing cache for repository at {:?}", repo_cache_dir);
+            tokio::fs::remove_dir_all(&repo_cache_dir).await?;
+            tracing::info!("Cache cleared successfully");
+        } else {
+            tracing::debug!("Cache directory does not exist, nothing to clear");
+        }
+
+        Ok(())
+    }
+
     /// Clone a repository with cancellation support (LFS files not included in initial clone)
     pub async fn clone_repository(
         &self,

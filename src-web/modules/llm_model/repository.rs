@@ -858,7 +858,8 @@ pub async fn delete_download_instance(
     Ok(result.rows_affected() > 0)
 }
 
-/// Get all active downloads (pending or downloading)
+/// Get all active downloads (pending, downloading, failed, cancelled, completed)
+/// Includes completed downloads to ensure SSE sends final status update before closing stream
 pub async fn get_all_active_downloads(pool: &PgPool) -> Result<Vec<DownloadInstance>, sqlx::Error> {
     sqlx::query_as!(
         DownloadInstance,
@@ -873,7 +874,7 @@ pub async fn get_all_active_downloads(pool: &PgPool) -> Result<Vec<DownloadInsta
                  created_at as "created_at: _",
                  updated_at as "updated_at: _"
          FROM download_instances
-         WHERE status IN ('pending', 'downloading', 'failed', 'cancelled')
+         WHERE status IN ('pending', 'downloading', 'failed', 'cancelled', 'completed')
          ORDER BY created_at ASC"#
     )
     .fetch_all(pool)

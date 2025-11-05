@@ -59,6 +59,11 @@ export const darkTheme: AppThemeConfig = {
       // Fix color contrast for menu item text (applies to Dropdown too since it uses Menu)
       // Light text on dark backgrounds needs high opacity for good contrast
       itemColor: 'rgba(255,255,255,0.85)', // Ensures 4.5:1+ contrast ratio
+      // Since Dropdown uses Menu internally, ensure menu items have proper contrast in dark mode
+      colorText: 'rgba(255,255,255,0.85)', // Primary text color for menu items
+      colorItemText: 'rgba(255,255,255,0.85)', // Item text color
+      colorItemTextHover: 'rgba(255,255,255,0.85)', // Hover state text
+      colorItemTextSelected: 'rgba(255,255,255,0.85)', // Selected state text
     },
     Dropdown: {
       // Fix color contrast for dropdown menu items in dark mode (WCAG AA requires 4.5:1)

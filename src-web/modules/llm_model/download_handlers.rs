@@ -14,11 +14,11 @@ use sqlx::PgPool;
 use futures_util::stream::Stream;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::convert::Infallible;
+use std::sync::Mutex;
 use std::time::Duration;
 use tokio::time::interval;
-use tokio_stream::wrappers::IntervalStream;
-use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use crate::{
@@ -52,6 +52,7 @@ pub struct DownloadPaginationQuery {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DownloadProgressUpdate {
     pub id: String,
+    pub provider_id: String,
     pub status: String,
     pub phase: DownloadPhase,
     pub current: Option<i64>,
@@ -60,12 +61,14 @@ pub struct DownloadProgressUpdate {
     pub speed_bps: Option<i64>,
     pub eta_seconds: Option<i64>,
     pub error_message: Option<String>,
+    pub model_id: Option<String>,
 }
 
 impl From<&DownloadInstance> for DownloadProgressUpdate {
     fn from(download: &DownloadInstance) -> Self {
         DownloadProgressUpdate {
             id: download.id.to_string(),
+            provider_id: download.provider_id.to_string(),
             status: download.status.as_str().to_string(),
             phase: download
                 .progress_data
@@ -78,6 +81,7 @@ impl From<&DownloadInstance> for DownloadProgressUpdate {
             speed_bps: download.progress_data.as_ref().map(|p| p.speed_bps),
             eta_seconds: download.progress_data.as_ref().map(|p| p.eta_seconds),
             error_message: download.error_message.clone(),
+            model_id: download.model_id.map(|id| id.to_string()),
         }
     }
 }
@@ -89,37 +93,25 @@ pub struct SSEDownloadProgressConnectedData {
 }
 
 /// SSE event types for download progress
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "data")]
-pub enum SSEDownloadProgressEvent {
-    Connected(SSEDownloadProgressConnectedData),
-    Update(Vec<DownloadProgressUpdate>),
-    Complete(String),
-    Error(String),
-}
-
-impl SSEDownloadProgressEvent {
-    /// Convert enum to JSON data string
-    pub fn data(&self) -> Option<String> {
-        serde_json::to_string(self).ok()
+crate::sse_event_enum! {
+    #[derive(Debug, Clone, Serialize, JsonSchema)]
+    pub enum SSEDownloadProgressEvent {
+        Connected(SSEDownloadProgressConnectedData),
+        Update(Vec<DownloadProgressUpdate>),
+        Complete(String),
+        Error(String),
     }
 }
 
-impl From<SSEDownloadProgressEvent> for Event {
-    fn from(event: SSEDownloadProgressEvent) -> Self {
-        let event_type = match &event {
-            SSEDownloadProgressEvent::Connected(_) => "Connected",
-            SSEDownloadProgressEvent::Update(_) => "Update",
-            SSEDownloadProgressEvent::Complete(_) => "Complete",
-            SSEDownloadProgressEvent::Error(_) => "Error",
-        };
+// =====================================================
+// SSE Connection Management
+// =====================================================
 
-        let data = serde_json::to_string(&event).unwrap_or_default();
+type ClientId = Uuid;
 
-        Event::default()
-            .event(event_type)
-            .data(data)
-    }
+lazy_static::lazy_static! {
+    static ref SSE_CLIENTS: Mutex<HashMap<ClientId, tokio::sync::mpsc::UnboundedSender<Result<Event, axum::Error>>>> = Mutex::new(HashMap::new());
+    static ref MONITORING_ACTIVE: Mutex<bool> = Mutex::new(false);
 }
 
 // =====================================================
@@ -344,102 +336,41 @@ pub async fn subscribe_download_progress(
     State(_pool): State<PgPool>,
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
     Extension(repo): Extension<DownloadInstanceRepository>,
-) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
-    // Create interval for polling (every 2 seconds)
-    let mut interval_stream = IntervalStream::new(interval(Duration::from_secs(2)));
+) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
+    let client_id = Uuid::new_v4();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
-    // Create the stream
+    // Add client to the connection pool
+    {
+        let mut clients = SSE_CLIENTS.lock().unwrap();
+        clients.insert(client_id, tx.clone());
+    }
+
+    // Send initial connection event
+    let connected_event = SSEDownloadProgressEvent::Connected(SSEDownloadProgressConnectedData {
+        message: Some("Connected to download progress stream".to_string()),
+    });
+
+    let _ = tx.send(Ok(connected_event.into()));
+
+    // Start monitoring if not already active
+    start_download_monitoring(repo).await;
+
+    // Create the SSE stream with proper cleanup
     let stream = async_stream::stream! {
-        let mut last_downloads_state: Option<String>;
+        // Keep the sender alive for the stream lifetime
+        let _tx_keeper = tx;
 
-        // Send initial connected event
-        let connected_event = SSEDownloadProgressEvent::Connected(
-            SSEDownloadProgressConnectedData {
-                message: Some("Connected to download progress stream".to_string()),
-            }
-        );
-        yield Ok(connected_event.into());
-
-        // Send initial update immediately
-        let downloads = repo.get_all_active().await;
-
-        match downloads {
-            Ok(downloads) => {
-                if downloads.is_empty() {
-                    // No active downloads, send complete event and close
-                    let complete_event = SSEDownloadProgressEvent::Complete(
-                        "No active downloads".to_string()
-                    );
-                    yield Ok(complete_event.into());
-                    return;
-                } else {
-                    let progress_updates: Vec<DownloadProgressUpdate> =
-                        downloads.iter().map(DownloadProgressUpdate::from).collect();
-
-                    let update_event = SSEDownloadProgressEvent::Update(progress_updates);
-                    let downloads_json = update_event.data().unwrap_or_default();
-
-                    last_downloads_state = Some(downloads_json.clone());
-
-                    yield Ok(update_event.into());
-                }
-            }
-            Err(e) => {
-                let error_event = SSEDownloadProgressEvent::Error(
-                    format!("Failed to get downloads: {}", e)
-                );
-                yield Ok(error_event.into());
-                return;
-            }
+        while let Some(event) = rx.recv().await {
+            yield event;
         }
 
-        // Poll for updates - the stream will be automatically dropped when client disconnects
-        while let Some(_) = interval_stream.next().await {
-            let downloads = repo.get_all_active().await;
-
-            match downloads {
-                Ok(downloads) => {
-                    if downloads.is_empty() {
-                        // No more active downloads, send complete event and close
-                        let complete_event = SSEDownloadProgressEvent::Complete(
-                            "All downloads completed".to_string()
-                        );
-                        yield Ok(complete_event.into());
-                        break;
-                    } else {
-                        let progress_updates: Vec<DownloadProgressUpdate> =
-                            downloads.iter().map(DownloadProgressUpdate::from).collect();
-
-                        let update_event = SSEDownloadProgressEvent::Update(progress_updates);
-                        let downloads_json = update_event.data().unwrap_or_default();
-
-                        // Only send update if state has changed
-                        if last_downloads_state.as_ref() != Some(&downloads_json) {
-                            last_downloads_state = Some(downloads_json.clone());
-
-                            yield Ok(update_event.into());
-                        }
-                    }
-                }
-                Err(e) => {
-                    let error_event = SSEDownloadProgressEvent::Error(
-                        format!("Failed to get downloads: {}", e)
-                    );
-                    yield Ok(error_event.into());
-                    break;
-                }
-            }
-        }
+        // Stream ended, remove client
+        tracing::info!("Download monitoring client disconnected: {}", client_id);
+        remove_client(client_id);
     };
 
-    Ok((
-        StatusCode::OK,
-        Sse::new(stream).keep_alive(
-            KeepAlive::new()
-                .interval(Duration::from_secs(15))
-                .text("keep-alive"),
-        ),
-    ))
+    Ok((StatusCode::OK, Sse::new(stream)))
 }
 
 pub fn subscribe_download_progress_docs(op: TransformOperation) -> TransformOperation {
@@ -451,4 +382,124 @@ pub fn subscribe_download_progress_docs(op: TransformOperation) -> TransformOper
         .response::<200, Json<SSEDownloadProgressEvent>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
+}
+
+// =====================================================
+// SSE Helper Functions
+// =====================================================
+
+/// Start download monitoring service
+async fn start_download_monitoring(repo: DownloadInstanceRepository) {
+    let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
+    if *monitoring_active {
+        return; // Already running
+    }
+    *monitoring_active = true;
+    drop(monitoring_active);
+
+    tracing::info!("Starting download monitoring service");
+
+    tokio::spawn(async move {
+        let mut interval = interval(Duration::from_secs(2)); // Update every 2 seconds
+        let mut last_downloads_state: Option<String> = None;
+
+        loop {
+            interval.tick().await;
+
+            // Check if we have any connected clients
+            let client_count = {
+                let clients = SSE_CLIENTS.lock().unwrap();
+                clients.len()
+            };
+
+            if client_count == 0 {
+                // No clients connected, stop monitoring
+                tracing::info!("No clients connected, stopping download monitoring");
+                let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
+                *monitoring_active = false;
+                break;
+            }
+
+            // Fetch active downloads
+            let downloads = repo.get_all_active().await;
+
+            match downloads {
+                Ok(downloads) => {
+                    if downloads.is_empty() {
+                        // No more active downloads, send complete event and stop
+                        let complete_event = SSEDownloadProgressEvent::Complete(
+                            "All downloads completed".to_string()
+                        );
+                        broadcast_event(complete_event.into()).await;
+
+                        tracing::info!("All downloads completed, stopping download monitoring");
+                        let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
+                        *monitoring_active = false;
+                        break;
+                    } else {
+                        let progress_updates: Vec<DownloadProgressUpdate> =
+                            downloads.iter().map(DownloadProgressUpdate::from).collect();
+
+                        let update_event = SSEDownloadProgressEvent::Update(progress_updates);
+                        let downloads_json = update_event.data().unwrap_or_default();
+
+                        // Only send update if state has changed
+                        if last_downloads_state.as_ref() != Some(&downloads_json) {
+                            last_downloads_state = Some(downloads_json.clone());
+                            broadcast_event(update_event.into()).await;
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to get downloads: {}", e);
+                    let error_event = SSEDownloadProgressEvent::Error(
+                        format!("Failed to get downloads: {}", e)
+                    );
+                    broadcast_event(error_event.into()).await;
+
+                    // Stop monitoring on error
+                    let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
+                    *monitoring_active = false;
+                    break;
+                }
+            }
+        }
+    });
+}
+
+/// Broadcast event to all connected clients
+async fn broadcast_event(event: Event) {
+    let clients = {
+        let clients = SSE_CLIENTS.lock().unwrap();
+        clients.clone()
+    };
+
+    if clients.is_empty() {
+        return;
+    }
+
+    // Send to all clients and track disconnected ones
+    let mut disconnected_clients = Vec::new();
+
+    for (client_id, tx) in clients.iter() {
+        if tx.send(Ok(event.clone())).is_err() {
+            disconnected_clients.push(*client_id);
+        }
+    }
+
+    // Remove disconnected clients
+    if !disconnected_clients.is_empty() {
+        let mut clients = SSE_CLIENTS.lock().unwrap();
+        for client_id in disconnected_clients {
+            clients.remove(&client_id);
+            tracing::info!("Removed disconnected download monitoring client: {}", client_id);
+        }
+    }
+}
+
+/// Remove client from connection pool
+fn remove_client(client_id: ClientId) {
+    let mut clients = SSE_CLIENTS.lock().unwrap();
+    clients.remove(&client_id);
+    tracing::info!("Removed download monitoring client: {}", client_id);
 }

@@ -82,7 +82,7 @@ export function DownloadItem({
   // FULL MODE (for LocalProviderSettings)
   if (mode === 'full') {
     return (
-      <Card size="small" style={{ marginBottom: 16 }}>
+      <Card size="small">
         <Space direction="vertical" style={{ width: '100%' }} size="small">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Space>
@@ -147,7 +147,7 @@ export function DownloadItem({
   // COMPACT MODE (for future use)
   if (mode === 'compact') {
     return (
-      <div style={{ marginBottom: 12 }}>
+      <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <Link onClick={handleNavigateToProvider}>
             {download.request_data.display_name}

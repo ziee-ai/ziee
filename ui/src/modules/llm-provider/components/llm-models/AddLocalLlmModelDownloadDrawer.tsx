@@ -7,6 +7,7 @@ import {
   Input,
   Progress,
   Select,
+  Switch,
   Typography,
 } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
@@ -17,10 +18,10 @@ import {
   useViewDownloadDrawerStore,
   closeViewDownloadDrawer,
   downloadLlmModelFromRepository,
-  useLlmModelDownloadStore,
   cancelLlmModelDownload,
   clearLlmProviderStoreError,
 } from '@/modules/llm-provider/store'
+import { Stores } from '@/core/stores'
 import { LocalLlmModelCommonFields } from './shared/LocalLlmModelCommonFields'
 import { ApiClient } from '@/api-client'
 import type {
@@ -39,7 +40,7 @@ export function AddLocalLlmModelDownloadDrawer() {
 
   const { open: addMode, providerId } = useAddLocalLlmModelDownloadDrawerStore()
   const { open: viewMode, downloadId } = useViewDownloadDrawerStore()
-  const downloads = useLlmModelDownloadStore(state => state.downloads)
+  const { downloads } = Stores.LlmModelDownload
 
   const open = viewMode || addMode
 
@@ -156,6 +157,7 @@ export function AddLocalLlmModelDownloadDrawer() {
             source: {
               type: 'manual' as const,
             },
+            clear_cache: values.clear_cache || false,
           },
           openViewDownloadDrawer,
         )
@@ -213,7 +215,7 @@ export function AddLocalLlmModelDownloadDrawer() {
 
   return (
     <Drawer
-      title={viewMode ? 'View Download Details' : 'Download Model from Repository'}
+      title={viewMode ? 'View Download Details' : 'Download from Repository'}
       open={open}
       onClose={handleCloseModal}
       footer={
@@ -323,6 +325,7 @@ export function AddLocalLlmModelDownloadDrawer() {
         )}
 
         <Form
+          name="llm-model-download"
           form={form}
           layout="vertical"
           disabled={viewMode}
@@ -330,6 +333,7 @@ export function AddLocalLlmModelDownloadDrawer() {
             file_format: 'safetensors',
             main_filename: '',
             repository_branch: 'main',
+            clear_cache: false,
           }}
         >
           <LocalLlmModelCommonFields />
@@ -392,6 +396,15 @@ export function AddLocalLlmModelDownloadDrawer() {
 
           <Form.Item name="repository_branch" label="Branch">
             <Input placeholder="main" />
+          </Form.Item>
+
+          <Form.Item
+            name="clear_cache"
+            label="Clear Cache"
+            valuePropName="checked"
+            tooltip="Clear the cached repository before downloading. Useful for testing or forcing a fresh download."
+          >
+            <Switch />
           </Form.Item>
         </Form>
       </div>

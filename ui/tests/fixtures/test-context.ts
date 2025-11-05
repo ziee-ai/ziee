@@ -115,7 +115,7 @@ server:
       - "Authorization"
 
 logging:
-  level: "warn"
+  level: "info"
   format: "json"
 
 jwt:
@@ -142,6 +142,21 @@ jwt:
 
     serverProcess.on('error', (error) => {
       console.error(`❌ Backend server error:`, error)
+    })
+
+    // Log backend stdout
+    serverProcess.stdout?.on('data', (data) => {
+      const message = data.toString()
+      console.log(`[Backend stdout] ${message}`)
+    })
+
+    // Log backend stderr to help debug issues
+    serverProcess.stderr?.on('data', (data) => {
+      const message = data.toString()
+      // Log errors, warnings, and info messages (but not debug)
+      if (message.includes('"level":"error"') || message.includes('"level":"warn"') || message.includes('"level":"info"')) {
+        console.error(`[Backend stderr] ${message}`)
+      }
     })
 
     // Wait for backend to be ready (120 seconds for cargo compilation on first run)

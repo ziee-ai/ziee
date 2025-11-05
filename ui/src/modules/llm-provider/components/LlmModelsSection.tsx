@@ -32,12 +32,10 @@ import {
 import type { LlmModel } from '@/api-client/types'
 
 const { Text } = Typography
-const { useToken } = theme
 
 export function LlmModelsSection() {
   const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
-  const { token } = useToken()
 
   // Store data
   const { llmModelsLoading } = Stores.LlmProvider
@@ -168,8 +166,9 @@ export function LlmModelsSection() {
       <Button
         key="edit"
         type="text"
-        icon={<EditOutlined />}
+        icon={<EditOutlined aria-hidden="true" />}
         onClick={() => handleEditLlmModel(llmModel.id)}
+        aria-label={`Edit ${llmModel.display_name} model`}
       >
         {'Edit'}
       </Button>,
@@ -179,8 +178,9 @@ export function LlmModelsSection() {
       <Button
         key="delete"
         type="text"
-        icon={<DeleteOutlined />}
+        icon={<DeleteOutlined aria-hidden="true" />}
         onClick={() => handleDeleteLlmModel(llmModel.id)}
+        aria-label={`Delete ${llmModel.display_name} model`}
       >
         {'Delete'}
       </Button>,

@@ -23,17 +23,17 @@ export function LocalLlmModelCommonFields() {
 
       <Form.Item
         name="engine_type"
-        label="Engine"
+        label="Engine Type"
         rules={[
           {
             required: true,
-            message: 'Please select an engine',
+            message: 'Please select an engine type',
           },
         ]}
         initialValue="mistralrs"
       >
         <Select
-          placeholder="Select Engine"
+          placeholder="Select Engine Type"
           options={ENGINE_OPTIONS.map(option => ({
             value: option.value,
             label: option.label,

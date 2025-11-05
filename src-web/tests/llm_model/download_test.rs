@@ -8,7 +8,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 /// Helper to get the Hugging Face repository from the database and optionally configure it with API key
-async fn get_huggingface_repository(
+pub async fn get_huggingface_repository(
     server: &crate::common::TestServer,
     token: &str,
     configure_api_key: bool,
@@ -75,7 +75,7 @@ async fn get_huggingface_repository(
 }
 
 /// Helper to get or create a local provider
-async fn get_local_provider(
+pub async fn get_local_provider(
     server: &crate::common::TestServer,
     token: &str,
 ) -> serde_json::Value {
@@ -202,6 +202,37 @@ async fn test_initiate_download_from_huggingface() {
         "Expected status to be pending, in_progress, or completed, got: {}",
         status_str
     );
+
+    // If download completed, verify model appears in provider's models list
+    if status_str == "completed" {
+        // Get the model ID from download instance result
+        if let Some(model_id) = download_instance["result"]["model_id"].as_str() {
+            println!("Download completed, verifying model appears in provider's models list...");
+
+            // Verify model appears in provider's models list
+            let response = reqwest::Client::new()
+                .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
+                .header("Authorization", format!("Bearer {}", user.token))
+                .send()
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK);
+
+            let models_list: serde_json::Value = response.json().await.unwrap();
+            let models = models_list["models"].as_array().unwrap();
+
+            let found_model = models.iter().find(|m| {
+                m["id"].as_str().unwrap() == model_id
+            });
+
+            assert!(found_model.is_some(), "Downloaded model should appear in provider's models list");
+            let found = found_model.unwrap();
+            assert_eq!(found["name"].as_str().unwrap(), "tiny-gpt2-download-test");
+
+            println!("✅ Model appears in provider's models list");
+        }
+    }
 
     println!("✅ Download initiation test passed!");
 }

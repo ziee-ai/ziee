@@ -25,10 +25,7 @@ use super::{
     permissions::*,
     repository,
     storage::ModelStorage,
-    types::{
-        CreateDownloadInstanceRequest, CreateLlmModelRequest, UpdateDownloadProgressRequest,
-        UpdateDownloadStatusRequest,
-    },
+    types::{self, CreateDownloadInstanceRequest, CreateLlmModelRequest},
 };
 
 /// Convert GitPhase to DownloadPhase
@@ -499,6 +496,9 @@ pub struct DownloadFromRepositoryRequest {
     pub engine_type: Option<EngineType>,
     pub engine_settings: Option<ModelEngineSettings>,
     pub source: SourceInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(description = "Clear cached repository before downloading (for testing)")]
+    pub clear_cache: Option<bool>,
 }
 
 /// Upload multiple model files and auto-commit as a model
@@ -918,8 +918,8 @@ pub async fn initiate_repository_download(
     State(pool): State<sqlx::PgPool>,
     Json(request): Json<DownloadFromRepositoryRequest>,
 ) -> ApiResult<Json<DownloadInstance>> {
-    // Validate that repository exists
-    let _repository = crate::modules::llm_repository::repository::get_llm_repository_by_id(&pool, request.repository_id)
+    // Get repository information
+    let repository = crate::modules::llm_repository::repository::get_llm_repository_by_id(&pool, request.repository_id)
         .await
         .map_err(|e| {
             (
@@ -971,12 +971,35 @@ pub async fn initiate_repository_download(
 
     // Clone necessary data for the background task
     let download_id = download_instance.id;
-    let repository_url = request.repository_path.clone();
-    // TODO: Add proper auth token handling when repository module is implemented
-    let auth_token: Option<String> = None;
+    let repository_id = repository.id;
+    let repository_url = GitService::build_repository_url(&repository.url, &request.repository_path);
+    let repository_branch = request.repository_branch.clone();
+
+    // Extract authentication token based on repository auth type
+    let auth_token = match repository.auth_type.as_str() {
+        "api_key" => repository
+            .auth_config
+            .api_key
+            .clone(),
+        "bearer_token" => repository
+            .auth_config
+            .token
+            .clone(),
+        "basic_auth" => {
+            if let (Some(username), Some(password)) = (&repository.auth_config.username, &repository.auth_config.password) {
+                Some(format!("{}:{}", username, password))
+            } else {
+                None
+            }
+        }
+        "none" | _ => None,
+    };
 
     // Clone pool for background task
     let bg_pool = pool.clone();
+
+    // Clone clear_cache flag for background task
+    let clear_cache = request.clear_cache.unwrap_or(false);
 
     // Create cancellation token for this download
     let cancellation_token =
@@ -984,9 +1007,30 @@ pub async fn initiate_repository_download(
 
     // Spawn background task to handle the download
     tokio::spawn(async move {
-        // Create repository instance for background task
+        // Create repository instances for background task
+        let download_repo = repository::DownloadInstanceRepository::new(bg_pool.clone());
         let model_repo = repository::LlmModelRepository::new(bg_pool.clone());
-        // Use the repository in the background task
+
+        // Update status to downloading
+        if let Err(e) = download_repo
+            .update_status(
+                download_id,
+                types::UpdateDownloadStatusRequest {
+                    status: DownloadStatus::Downloading,
+                    error_message: None,
+                    model_id: None,
+                },
+            )
+            .await
+        {
+            tracing::error!(
+                "Failed to update download status to downloading for ID {}: {}",
+                download_id,
+                e
+            );
+            return;
+        }
+
         tracing::info!(
             "Starting download for repository: {} (ID: {})",
             repository_url,
@@ -999,8 +1043,62 @@ pub async fn initiate_repository_download(
         // Create git service
         let git_service = GitService::new();
 
+        // Clear cache if requested (for testing)
+        if clear_cache {
+            tracing::info!("Clearing cache for repository (clear_cache=true)");
+            if let Err(e) = git_service
+                .clear_cache(&repository_id, &repository_url, repository_branch.as_deref())
+                .await
+            {
+                tracing::warn!("Failed to clear git cache: {}", e);
+            }
+        }
+
         // Spawn task to update download progress in database
-        // TODO: Implement progress tracking with database updates
+        let download_id_progress = download_id;
+        let download_repo_progress = download_repo.clone();
+        let progress_task = tokio::spawn(async move {
+            let mut tracker = ProgressTracker::new();
+            while let Some(git_progress) = progress_rx.recv().await {
+                // Calculate speed and ETA
+                let current_bytes = git_progress.current;
+                let total_bytes = git_progress.total;
+                let (speed_bps_f64, _) = tracker.update(current_bytes);
+                let speed_bps = speed_bps_f64.map(|s| s as i64);
+                let eta_seconds = tracker
+                    .calculate_eta(current_bytes, total_bytes, speed_bps_f64)
+                    .map(|eta| eta as i64);
+
+                let progress_data = DownloadProgressData {
+                    phase: git_phase_to_download_phase(git_progress.phase),
+                    current: git_progress.current as i64,
+                    total: git_progress.total as i64,
+                    message: git_progress.message.clone(),
+                    speed_bps: speed_bps.unwrap_or(0),
+                    eta_seconds: eta_seconds.unwrap_or(0),
+                };
+
+                let status = match git_progress.phase {
+                    GitPhase::Error => Some(DownloadStatus::Failed),
+                    _ => None,
+                };
+
+                let _ = download_repo_progress
+                    .update_progress(
+                        download_id_progress,
+                        types::UpdateDownloadProgressRequest {
+                            progress_data,
+                            status,
+                        },
+                    )
+                    .await;
+
+                // Break on error phase
+                if matches!(git_progress.phase, GitPhase::Error) {
+                    break;
+                }
+            }
+        });
 
         // Clone repository (LFS files not included in initial clone)
         let clone_result = git_service
@@ -1017,10 +1115,31 @@ pub async fn initiate_repository_download(
         // Drop the progress sender to signal completion to the progress task
         drop(progress_tx);
 
+        // Wait for progress task with timeout to ensure it processes any final messages
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), progress_task).await;
+
         tracing::info!("Clone result: {:?}", clone_result);
 
         match clone_result {
             Ok(cache_path) => {
+                // Update progress: Analyzing files
+                let _ = download_repo
+                    .update_progress(
+                        download_id,
+                        types::UpdateDownloadProgressRequest {
+                            progress_data: DownloadProgressData {
+                                phase: DownloadPhase::Analyzing,
+                                current: 10,
+                                total: 100,
+                                message: "Analyzing repository files...".to_string(),
+                                speed_bps: 0,
+                                eta_seconds: 0,
+                            },
+                            status: None,
+                        },
+                    )
+                    .await;
+
                 // List files in the repository
                 let source_files = match std::fs::read_dir(&cache_path) {
                     Ok(entries) => entries
@@ -1034,6 +1153,20 @@ pub async fn initiate_repository_download(
                     Err(e) => {
                         tracing::error!("Failed to read repository directory: {}", e);
                         crate::utils::cancellation::remove_download_tracking(download_id).await;
+
+                        let _ = download_repo
+                            .update_status(
+                                download_id,
+                                types::UpdateDownloadStatusRequest {
+                                    status: DownloadStatus::Failed,
+                                    error_message: Some(format!(
+                                        "Failed to read repository directory: {}",
+                                        e
+                                    )),
+                                    model_id: None,
+                                },
+                            )
+                            .await;
                         return;
                     }
                 };
@@ -1045,9 +1178,41 @@ pub async fn initiate_repository_download(
                         Err(e) => {
                             tracing::error!("Failed to determine files to copy: {}", e);
                             crate::utils::cancellation::remove_download_tracking(download_id).await;
+
+                            let _ = download_repo
+                                .update_status(
+                                    download_id,
+                                    types::UpdateDownloadStatusRequest {
+                                        status: DownloadStatus::Failed,
+                                        error_message: Some(format!(
+                                            "Failed to determine files to copy: {}",
+                                            e
+                                        )),
+                                        model_id: None,
+                                    },
+                                )
+                                .await;
                             return;
                         }
                     };
+
+                // Update progress: Downloading LFS files
+                let _ = download_repo
+                    .update_progress(
+                        download_id,
+                        types::UpdateDownloadProgressRequest {
+                            progress_data: DownloadProgressData {
+                                phase: DownloadPhase::Downloading,
+                                current: 20,
+                                total: 100,
+                                message: "Checking for LFS files...".to_string(),
+                                speed_bps: 0,
+                                eta_seconds: 0,
+                            },
+                            status: None,
+                        },
+                    )
+                    .await;
 
                 // Create new progress channel for LFS
                 let (lfs_progress_tx, _lfs_progress_rx) =
@@ -1067,14 +1232,50 @@ pub async fn initiate_repository_download(
                 // Check LFS result
                 if let Err(e) = lfs_result {
                     let is_cancelled = matches!(e, GitError::Cancelled);
-                    if is_cancelled {
-                        tracing::info!("Download was cancelled by user");
+                    let (status, error_msg) = if is_cancelled {
+                        (
+                            DownloadStatus::Cancelled,
+                            "Download was cancelled by user".to_string(),
+                        )
                     } else {
-                        tracing::error!("Failed to download LFS files: {}", e);
-                    }
+                        (
+                            DownloadStatus::Failed,
+                            format!("Failed to download LFS files: {}", e),
+                        )
+                    };
+
                     crate::utils::cancellation::remove_download_tracking(download_id).await;
+
+                    let _ = download_repo
+                        .update_status(
+                            download_id,
+                            types::UpdateDownloadStatusRequest {
+                                status,
+                                error_message: Some(error_msg),
+                                model_id: None,
+                            },
+                        )
+                        .await;
                     return;
                 }
+
+                // Update progress: Creating model
+                let _ = download_repo
+                    .update_progress(
+                        download_id,
+                        types::UpdateDownloadProgressRequest {
+                            progress_data: DownloadProgressData {
+                                phase: DownloadPhase::Committing,
+                                current: 90,
+                                total: 100,
+                                message: "Creating model from downloaded files...".to_string(),
+                                speed_bps: 0,
+                                eta_seconds: 0,
+                            },
+                            status: None,
+                        },
+                    )
+                    .await;
 
                 // Create model with files
                 match create_model_with_files(
@@ -1103,22 +1304,107 @@ pub async fn initiate_repository_download(
                             model.display_name,
                             model.id
                         );
+
+                        // Update download as completed with model ID
+                        let _ = download_repo
+                            .update_status(
+                                download_id,
+                                types::UpdateDownloadStatusRequest {
+                                    status: DownloadStatus::Completed,
+                                    error_message: None,
+                                    model_id: Some(model.id),
+                                },
+                            )
+                            .await;
+
                         crate::utils::cancellation::remove_download_tracking(download_id).await;
+
+                        // Note: Don't delete the download record immediately
+                        // The SSE needs it to send the provider_id to the frontend
+                        // Frontend will delete it after processing the complete event
                     }
                     Err(e) => {
                         tracing::error!("Failed to create model: {}", e);
                         crate::utils::cancellation::remove_download_tracking(download_id).await;
+
+                        let _ = download_repo
+                            .update_status(
+                                download_id,
+                                types::UpdateDownloadStatusRequest {
+                                    status: DownloadStatus::Failed,
+                                    error_message: Some(format!("Failed to create model: {}", e)),
+                                    model_id: None,
+                                },
+                            )
+                            .await;
                     }
                 }
             }
             Err(e) => {
                 let is_cancelled = matches!(e, GitError::Cancelled);
-                if is_cancelled {
-                    tracing::info!("Download was cancelled by user");
+
+                let (status, error_msg) = if is_cancelled {
+                    (
+                        DownloadStatus::Cancelled,
+                        "Download was cancelled by user".to_string(),
+                    )
+                } else if e.to_string().contains("403")
+                    || e.to_string().contains("HTTP status code: 403")
+                {
+                    (
+                        DownloadStatus::Failed,
+                        format!(
+                            "Access denied (403): Authentication failed or insufficient permissions. {}",
+                            e
+                        ),
+                    )
+                } else if e.to_string().contains("401")
+                    || e.to_string().contains("HTTP status code: 401")
+                {
+                    (
+                        DownloadStatus::Failed,
+                        format!(
+                            "Authentication required (401): Invalid or missing credentials. {}",
+                            e
+                        ),
+                    )
                 } else {
-                    tracing::error!("Download failed: {}", e);
-                }
+                    (DownloadStatus::Failed, format!("Download failed: {}", e))
+                };
+
                 crate::utils::cancellation::remove_download_tracking(download_id).await;
+
+                tracing::info!(
+                    "Updating download {} status to {:?} with error: {}",
+                    download_id,
+                    status,
+                    error_msg
+                );
+
+                if let Err(e) = download_repo
+                    .update_status(
+                        download_id,
+                        types::UpdateDownloadStatusRequest {
+                            status,
+                            error_message: Some(error_msg.clone()),
+                            model_id: None,
+                        },
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to update download {} status to {:?}: {}",
+                        download_id,
+                        status,
+                        e
+                    );
+                } else {
+                    tracing::info!(
+                        "Successfully updated download {} status to {:?}",
+                        download_id,
+                        status
+                    );
+                }
             }
         }
     });

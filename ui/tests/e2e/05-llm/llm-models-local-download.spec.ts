@@ -2,8 +2,6 @@ import { test, expect } from '../../fixtures/test-context'
 import { assertNoAccessibilityViolations } from '../../utils/accessibility'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
-  goToProvidersPage,
-  waitForProvidersPageLoad,
   clickProviderCard,
 } from './helpers/navigation-helpers'
 import {
@@ -17,6 +15,9 @@ import {
   assertModelExists,
   deleteModel,
 } from './helpers/model-helpers'
+import {
+  configureHuggingFaceAuth,
+} from './helpers/repository-helpers'
 
 /**
  * LLM Models - Local Download Tests
@@ -45,9 +46,8 @@ test.describe('LLM Models - Local Download - UI Structure', () => {
     await loginAsAdmin(page, baseURL)
     await createLocalProvider(page, baseURL, testProvider, 'Download test provider')
 
-    // Navigate to provider detail page
-    await goToProvidersPage(page, baseURL)
-    await waitForProvidersPageLoad(page)
+    // Click on the provider in the sidebar to open its detail page
+    // The provider should already be visible after createLocalProvider
     await clickProviderCard(page, testProvider)
   })
 
@@ -67,21 +67,26 @@ test.describe('LLM Models - Local Download - UI Structure', () => {
     // Verify drawer title
     await expect(page.locator('.ant-drawer-title:has-text("Download from Repository")')).toBeVisible()
 
-    // Verify form fields
-    await expect(page.locator('label:has-text("Repository")')).toBeVisible()
-    await expect(page.locator('label:has-text("Repository Path")')).toBeVisible()
-    await expect(page.locator('label:has-text("Branch")')).toBeVisible()
-    await expect(page.locator('label:has-text("Display Name")')).toBeVisible()
-    await expect(page.locator('label:has-text("Main Filename")')).toBeVisible()
-    await expect(page.locator('label:has-text("File Format")')).toBeVisible()
-    await expect(page.locator('label:has-text("Engine Type")')).toBeVisible()
+    // Verify form fields (use exact text to avoid ambiguous matches)
+    await expect(page.locator('label[for="llm-model-download_repository_id"]')).toBeVisible()
+    await expect(page.locator('label[for="llm-model-download_repository_path"]')).toBeVisible()
+    await expect(page.locator('label[for="llm-model-download_repository_branch"]')).toBeVisible()
+    await expect(page.locator('label[for="llm-model-download_display_name"]')).toBeVisible()
+    await expect(page.locator('label[for="llm-model-download_main_filename"]')).toBeVisible()
+    await expect(page.locator('label[for="llm-model-download_file_format"]')).toBeVisible()
+    await expect(page.locator('label[for="llm-model-download_engine_type"]')).toBeVisible()
 
-    // Verify buttons
-    await expect(page.locator('button:has-text("Cancel")')).toBeVisible()
-    await expect(page.locator('button:has-text("Start Download")')).toBeVisible()
+    // Verify buttons - scope to drawer to avoid strict mode violations
+    const downloadDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("Download from Repository"))')
+    await expect(downloadDrawer.locator('button:has-text("Cancel")')).toBeVisible()
+    await expect(downloadDrawer.locator('button:has-text("Start Download")')).toBeVisible()
 
-    // Close drawer
-    await page.click('button:has-text("Cancel")')
+    // Close drawer explicitly and wait for it to close
+    await downloadDrawer.locator('button:has-text("Cancel")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("Download from Repository")', {
+      state: 'hidden',
+      timeout: 5000
+    })
   })
 
   test('should show repository dropdown', async ({ page }) => {
@@ -97,7 +102,14 @@ test.describe('LLM Models - Local Download - UI Structure', () => {
 
     // Close dropdown
     await page.keyboard.press('Escape')
-    await page.click('button:has-text("Cancel")')
+
+    // Close the Download from Repository drawer explicitly
+    const downloadDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("Download from Repository"))')
+    await downloadDrawer.locator('button:has-text("Cancel")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("Download from Repository")', {
+      state: 'hidden',
+      timeout: 5000
+    })
   })
 
   test('should show example repository paths', async ({ page }) => {
@@ -105,14 +117,20 @@ test.describe('LLM Models - Local Download - UI Structure', () => {
     await selectAddModelOption(page, 'download')
 
     // Repository path field should have placeholder with example
-    const repositoryPathInput = page.locator('#repository_path')
+    const repositoryPathInput = page.locator('#llm-model-download_repository_path')
     await expect(repositoryPathInput).toBeVisible()
 
     // Verify placeholder exists (adjust based on actual implementation)
     const placeholder = await repositoryPathInput.getAttribute('placeholder')
     expect(placeholder).toBeTruthy()
 
-    await page.click('button:has-text("Cancel")')
+    // Close the Download from Repository drawer explicitly
+    const downloadDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("Download from Repository"))')
+    await downloadDrawer.locator('button:has-text("Cancel")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("Download from Repository")', {
+      state: 'hidden',
+      timeout: 5000
+    })
   })
 })
 
@@ -127,8 +145,6 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     await createLocalProvider(page, baseURL, testProvider, 'Download validation test provider')
 
     // Navigate to provider detail page
-    await goToProvidersPage(page, baseURL)
-    await waitForProvidersPageLoad(page)
     await clickProviderCard(page, testProvider)
   })
 
@@ -142,7 +158,7 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     // Should show validation errors
     await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
 
-    await page.click('button:has-text("Cancel")')
+    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should validate repository is required', async ({ page }) => {
@@ -150,9 +166,9 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     await selectAddModelOption(page, 'download')
 
     // Fill other fields but not repository
-    await page.fill('#repository_path', 'test/model')
-    await page.fill('#display_name', 'Test Model')
-    await page.fill('#main_filename', 'model.safetensors')
+    await page.fill('#llm-model-download_repository_path', 'test/model')
+    await page.fill('#llm-model-download_display_name', 'Test Model')
+    await page.fill('#llm-model-download_main_filename', 'model.safetensors')
 
     // Submit
     await page.click('button:has-text("Start Download")')
@@ -160,58 +176,70 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     // Should show error for repository
     await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
 
-    await page.click('button:has-text("Cancel")')
+    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should validate repository path is required', async ({ page }) => {
     await openAddModelDropdown(page)
     await selectAddModelOption(page, 'download')
 
-    // Fill display name only
-    await page.fill('#display_name', 'Test Model')
+    // Clear pre-filled repository path field
+    await page.fill('#llm-model-download_repository_path', '')
+
+    // Select repository
+    const repositorySelect = page.locator('.ant-select:has(input#llm-model-download_repository_id)')
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
     // Submit
     await page.click('button:has-text("Start Download")')
 
     // Should show error for repository path
-    await expect(page.locator('.ant-form-item-explain-error:has-text("repository path")')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
 
-    await page.click('button:has-text("Cancel")')
+    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should validate display name is required', async ({ page }) => {
     await openAddModelDropdown(page)
     await selectAddModelOption(page, 'download')
 
-    // Fill repository path only
-    await page.fill('#repository_path', 'test/model')
+    // Clear pre-filled display name
+    await page.fill('#llm-model-download_display_name', '')
+
+    // Select repository
+    const repositorySelect = page.locator('.ant-select:has(input#llm-model-download_repository_id)')
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
     // Submit
     await page.click('button:has-text("Start Download")')
 
     // Should show error for display name
-    await expect(page.locator('.ant-form-item-explain-error:has-text("display name")')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
 
-    await page.click('button:has-text("Cancel")')
+    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should validate main filename is required', async ({ page }) => {
     await openAddModelDropdown(page)
     await selectAddModelOption(page, 'download')
 
-    // Fill required fields except main filename
-    await page.click('.ant-select:has-text("Repository") .ant-select-selector')
-    await page.click('.ant-select-item-option:has-text("Hugging Face Hub")')
-    await page.fill('#repository_path', 'test/model')
-    await page.fill('#display_name', 'Test Model')
+    // Clear pre-filled main filename
+    await page.fill('#llm-model-download_main_filename', '')
+
+    // Fill other required fields
+    const repositorySelect = page.locator('.ant-select:has(input#llm-model-download_repository_id)')
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
     // Submit
     await page.click('button:has-text("Start Download")')
 
     // Should show error for main filename
-    await expect(page.locator('.ant-form-item-explain-error:has-text("main filename")')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
 
-    await page.click('button:has-text("Cancel")')
+    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
   })
 })
 
@@ -226,10 +254,9 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     await createLocalProvider(page, baseURL, testProvider, 'Download initiation test provider')
 
     // Navigate to provider detail page
-    await goToProvidersPage(page, baseURL)
-    await waitForProvidersPageLoad(page)
     await clickProviderCard(page, testProvider)
   })
+
 
   test('should start download with valid data', async ({ page }) => {
     const modelName = `test-download-${Date.now()}`
@@ -238,16 +265,18 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     await selectAddModelOption(page, 'download')
 
     // Fill form with test model from Hugging Face
-    await page.click('.ant-select:has-text("Repository") .ant-select-selector')
-    await page.click('.ant-select-item-option:has-text("Hugging Face Hub")')
+    const repositorySelect = page.locator('.ant-select:has(input#llm-model-download_repository_id)')
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
-    await page.fill('#repository_path', 'hf-internal-testing/tiny-random-gpt2')
-    await page.fill('#display_name', modelName)
-    await page.fill('#main_filename', 'model.safetensors')
+    await page.fill('#llm-model-download_repository_path', 'hf-internal-testing/tiny-random-gpt2')
+    await page.fill('#llm-model-download_display_name', modelName)
+    await page.fill('#llm-model-download_main_filename', 'model.safetensors')
 
     // Select file format
-    await page.click('.ant-select:has-text("File Format") .ant-select-selector')
-    await page.click('.ant-select-item-option:has-text("SafeTensors")')
+    const fileFormatSelect = page.locator('.ant-select:has(input#llm-model-download_file_format)')
+    await fileFormatSelect.click()
+    await page.click('.ant-select-item:has-text("SafeTensors")')
 
     // Submit
     await page.click('button:has-text("Start Download")')
@@ -258,44 +287,65 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     // Verify drawer closes
     await expect(page.locator('.ant-drawer-title:has-text("Download from Repository")')).not.toBeVisible({ timeout: 5000 })
 
-    // Model may appear immediately or after download completes
-    // For now, just verify download was initiated successfully
-
-    // Note: Cleanup depends on whether download completes during test
-    // If model appears, we should delete it
-    try {
-      await assertModelExists(page)
-      await deleteModel(page, modelName)
-    } catch {
-      // Model might still be downloading - that's ok for this test
-    }
+    // Close the View Download Details drawer that auto-opened
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
   })
 
   test('should show error for non-existent repository path', async ({ page }) => {
+    const invalidModelName = `invalid-model-${Date.now()}`
+
     await openAddModelDropdown(page)
     await selectAddModelOption(page, 'download')
 
     // Fill form with invalid repository path
-    await page.click('.ant-select:has-text("Repository") .ant-select-selector')
-    await page.click('.ant-select-item-option:has-text("Hugging Face Hub")')
+    const repositorySelect = page.locator('.ant-select:has(input#llm-model-download_repository_id)')
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
-    await page.fill('#repository_path', 'non-existent/invalid-model-path-12345')
-    await page.fill('#display_name', 'Invalid Model')
-    await page.fill('#main_filename', 'model.safetensors')
+    await page.fill('#llm-model-download_repository_path', 'non-existent/invalid-model-path-12345')
+    await page.fill('#llm-model-download_display_name', invalidModelName)
+    await page.fill('#llm-model-download_main_filename', 'model.safetensors')
 
     // Select file format
-    await page.click('.ant-select:has-text("File Format") .ant-select-selector')
-    await page.click('.ant-select-item-option:has-text("SafeTensors")')
+    const fileFormatSelect = page.locator('.ant-select:has(input#llm-model-download_file_format)')
+    await fileFormatSelect.click()
+    await page.click('.ant-select-item:has-text("SafeTensors")')
 
-    // Submit
+    // Submit - download is accepted but validation happens asynchronously
     await page.click('button:has-text("Start Download")')
 
-    // Should show error message
-    // Error might appear immediately or after backend validation
-    await page.waitForSelector('.ant-message-error, text=failed, text=not found, text=error', { timeout: 15000 })
+    // Wait for success message (download created, not yet validated)
+    await page.waitForSelector('text=Download started successfully', { timeout: 10000 })
 
-    // Drawer should remain open or close depending on error handling
-    // Just verify error was shown
+    // Wait for drawer to close
+    await page.waitForSelector('.ant-drawer-title:has-text("Download from Repository")', { state: 'hidden', timeout: 5000 })
+
+    // Download appears in "Downloading Models" section
+    await page.waitForSelector('text=Downloading Models', { timeout: 5000 })
+    await page.waitForSelector(`text=${invalidModelName}`, { timeout: 5000 })
+
+    // Backend worker processes download asynchronously:
+    // 1. Updates status to "downloading"
+    // 2. Attempts git clone
+    // 3. Fails with 404/timeout for non-existent repository
+    // 4. Updates status to "failed" with error_message
+    // 5. SSE broadcasts update to frontend
+    // 6. Frontend displays red "Failed" tag and error message
+
+    // Assert: Failed tag appears (40s timeout for worker processing)
+    await expect(page.locator('.ant-tag-red:has-text("Failed")')).toBeVisible({ timeout: 40000 })
+
+    // Assert: Error message is displayed (appears in both card and drawer)
+    await expect(page.locator('.ant-typography-danger').first()).toBeVisible()
+
+    // Close the View Download Details drawer that auto-opened
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
   })
 
   test('should handle optional branch parameter', async ({ page }) => {
@@ -305,17 +355,19 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     await selectAddModelOption(page, 'download')
 
     // Fill form with branch specified
-    await page.click('.ant-select:has-text("Repository") .ant-select-selector')
-    await page.click('.ant-select-item-option:has-text("Hugging Face Hub")')
+    const repositorySelect = page.locator('.ant-select:has(input#llm-model-download_repository_id)')
+    await repositorySelect.click()
+    await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
-    await page.fill('#repository_path', 'hf-internal-testing/tiny-random-gpt2')
-    await page.fill('#repository_branch', 'main')
-    await page.fill('#display_name', modelName)
-    await page.fill('#main_filename', 'model.safetensors')
+    await page.fill('#llm-model-download_repository_path', 'hf-internal-testing/tiny-random-gpt2')
+    await page.fill('#llm-model-download_repository_branch', 'main')
+    await page.fill('#llm-model-download_display_name', modelName)
+    await page.fill('#llm-model-download_main_filename', 'model.safetensors')
 
     // Select file format
-    await page.click('.ant-select:has-text("File Format") .ant-select-selector')
-    await page.click('.ant-select-item-option:has-text("SafeTensors")')
+    const fileFormatSelect = page.locator('.ant-select:has(input#llm-model-download_file_format)')
+    await fileFormatSelect.click()
+    await page.click('.ant-select-item:has-text("SafeTensors")')
 
     // Submit
     await page.click('button:has-text("Start Download")')
@@ -323,13 +375,11 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     // Wait for success
     await page.waitForSelector('text=Download started successfully', { timeout: 15000 })
 
-    // Cleanup
-    try {
-      await assertModelExists(page)
-      await deleteModel(page, modelName)
-    } catch {
-      // Model might still be downloading
-    }
+    // Close the View Download Details drawer that auto-opened
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
   })
 })
 
@@ -341,13 +391,16 @@ test.describe('LLM Models - Local Download - Progress Tracking', () => {
     testProvider = `test-download-progress-${Date.now()}`
 
     await loginAsAdmin(page, baseURL)
+
+    // Configure HuggingFace repository with API key for downloads
+    await configureHuggingFaceAuth(page, baseURL)
+
     await createLocalProvider(page, baseURL, testProvider, 'Download progress test provider')
 
     // Navigate to provider detail page
-    await goToProvidersPage(page, baseURL)
-    await waitForProvidersPageLoad(page)
     await clickProviderCard(page, testProvider)
   })
+
 
   test('should show Downloads section when download is active', async ({ page }) => {
     const modelName = `test-download-progress-${Date.now()}`
@@ -362,24 +415,14 @@ test.describe('LLM Models - Local Download - Progress Tracking', () => {
       mainFilename: 'model.safetensors',
     })
 
-    // Wait a moment for download to start
-    await page.waitForTimeout(1000)
+    // Assert: Downloading Models section appears
+    await expect(page.locator('text=Downloading Models')).toBeVisible({ timeout: 5000 })
 
-    // Verify Downloads section appears
-    // Note: Downloads section only appears when there are active downloads
-    // For very fast downloads, this may not be visible
-    try {
-      await expect(page.locator('.ant-card-head-title:has-text("Downloads")')).toBeVisible({ timeout: 5000 })
-    } catch {
-      // Download might complete too fast for tiny test model - that's ok
-    }
-
-    // Cleanup
-    try {
-      await deleteModel(page, modelName)
-    } catch {
-      // Model might not have completed downloading
-    }
+    // Close the View Download Details drawer that auto-opened
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
   })
 
   test('should show download progress for individual download', async ({ page }) => {
@@ -395,23 +438,16 @@ test.describe('LLM Models - Local Download - Progress Tracking', () => {
       mainFilename: 'model.safetensors',
     })
 
-    // Wait for download to start
-    await page.waitForTimeout(1000)
+    // Assert: Progress bar is visible
+    await expect(page.locator('.ant-progress-line').first()).toBeVisible({ timeout: 10000 })
 
-    // Check for progress bar (might be very fast)
-    try {
-      const progressBar = page.locator('.ant-progress-line').first()
-      await expect(progressBar).toBeVisible({ timeout: 5000 })
-    } catch {
-      // Download completed too fast - that's ok
-    }
-
-    // Cleanup
-    try {
-      await deleteModel(page, modelName)
-    } catch {
-      // Model might not exist yet
-    }
+    // Close the View Download Details drawer that auto-opened
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', {
+      state: 'hidden',
+      timeout: 5000
+    })
   })
 
   test('should update download status in real-time via SSE', async ({ page }) => {
@@ -427,27 +463,17 @@ test.describe('LLM Models - Local Download - Progress Tracking', () => {
       mainFilename: 'model.safetensors',
     })
 
-    // Wait for download to start
-    await page.waitForTimeout(1000)
+    // Assert: Download status updates are visible (SSE working)
+    // The download should show "Downloading..." tag
+    await expect(page.locator('.ant-tag:has-text("Downloading")')).toBeVisible({ timeout: 10000 })
 
-    // Verify SSE connection is established by checking for status updates
-    // Status should change from pending -> in_progress -> completed
-    // For tiny test models, this might happen very fast
-
-    // Check for download status text
-    try {
-      const downloadStatus = page.locator('text=Downloading, text=In Progress, text=Completed, text=Pending')
-      await expect(downloadStatus.first()).toBeVisible({ timeout: 10000 })
-    } catch {
-      // Status might complete too fast
-    }
-
-    // Cleanup
-    try {
-      await deleteModel(page, modelName)
-    } catch {
-      // Model might still be processing
-    }
+    // Close the View Download Details drawer that auto-opened
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', {
+      state: 'hidden',
+      timeout: 5000
+    })
   })
 
   test('should show model in models list after download completes', async ({ page }) => {
@@ -463,9 +489,19 @@ test.describe('LLM Models - Local Download - Progress Tracking', () => {
       mainFilename: 'model.safetensors',
     })
 
-    // Wait for download to complete
-    // For tiny test model, this should be fast (< 30 seconds)
-    await page.waitForTimeout(5000)
+    // Close the View Download Details drawer that auto-opened
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', {
+      state: 'hidden',
+      timeout: 5000
+    })
+
+    // Wait for download to complete - tiny test model should download quickly
+    // Wait for the "Downloading Models" section to disappear (download complete)
+    // or for the model to appear in the Models list
+    await page.waitForTimeout(15000) // Give enough time for small model to download
 
     // Verify model appears in models list
     await assertModelExists(page, modelName)
@@ -483,13 +519,16 @@ test.describe('LLM Models - Local Download - Download Management', () => {
     testProvider = `test-download-management-${Date.now()}`
 
     await loginAsAdmin(page, baseURL)
+
+    // Configure HuggingFace repository with API key for downloads
+    await configureHuggingFaceAuth(page, baseURL)
+
     await createLocalProvider(page, baseURL, testProvider, 'Download management test provider')
 
     // Navigate to provider detail page
-    await goToProvidersPage(page, baseURL)
-    await waitForProvidersPageLoad(page)
     await clickProviderCard(page, testProvider)
   })
+
 
   test('should show cancel button for active downloads', async ({ page }) => {
     const modelName = `test-download-cancel-${Date.now()}`
@@ -505,52 +544,45 @@ test.describe('LLM Models - Local Download - Download Management', () => {
     })
 
     // Wait for download to start
-    await page.waitForTimeout(1000)
+    // Assert: Cancel button is visible
+    await expect(page.locator('button:has-text("Cancel")').first()).toBeVisible({ timeout: 10000 })
 
-    // Check for cancel button (if download is still in progress)
-    try {
-      const cancelButton = page.locator('button:has-text("Cancel")').first()
-      await expect(cancelButton).toBeVisible({ timeout: 5000 })
-    } catch {
-      // Download might have completed already - that's ok
-    }
+    // Close the View Download Details drawer that auto-opened
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
   })
 
   test('should allow cancelling an active download', async ({ page }) => {
     const modelName = `test-download-cancel-action-${Date.now()}`
 
-    // Start download
+    // Start download - using distilgpt2 (~350MB) to ensure download takes long enough to cancel
     await startModelDownload(page, {
       displayName: modelName,
       fileFormat: 'safetensors',
       engineType: 'mistralrs',
       repositoryId: 'huggingface',
-      repositoryPath: 'hf-internal-testing/tiny-random-bert',
+      repositoryPath: 'distilgpt2',
       mainFilename: 'model.safetensors',
+      clearCache: true,
     })
 
-    // Wait a moment
-    await page.waitForTimeout(500)
+    // Close the View Download Details drawer that auto-opened
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
 
-    // Try to cancel (if button is visible)
-    try {
-      const cancelButton = page.locator('button:has-text("Cancel"), button[aria-label="Cancel download"]').first()
-      await cancelButton.click({ timeout: 3000 })
+    // Assert: Cancel button appears
+    const cancelButton = page.locator('button:has-text("Cancel")').first()
+    await expect(cancelButton).toBeVisible({ timeout: 5000 })
 
-      // Wait for cancellation confirmation
-      await page.waitForSelector('text=cancelled, text=canceled', { timeout: 5000 })
+    // Click cancel
+    await cancelButton.click()
 
-      // Verify download is cancelled
-      // Download should disappear from downloads list or show cancelled status
-    } catch {
-      // Download might have completed before we could cancel - that's ok for this test
-      // If model completed, clean it up
-      try {
-        await deleteModel(page, modelName)
-      } catch {
-        // Model might not exist
-      }
-    }
+    // Assert: Download is cancelled
+    await expect(page.locator('.ant-tag:has-text("Cancelled")')).toBeVisible({ timeout: 5000 })
   })
 
   test('should remove download from list after completion', async ({ page }) => {
@@ -566,8 +598,14 @@ test.describe('LLM Models - Local Download - Download Management', () => {
       mainFilename: 'model.safetensors',
     })
 
+    // Close the View Download Details drawer that auto-opened
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const viewDetailsDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await viewDetailsDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
+
     // Wait for download to complete
-    await page.waitForTimeout(10000)
+    await page.waitForTimeout(15000)
 
     // Verify Downloads section is no longer visible (if no other downloads)
     // Or verify specific download is removed from list
@@ -589,40 +627,57 @@ test.describe('LLM Models - Local Download - Multiple Downloads', () => {
     testProvider = `test-download-multiple-${Date.now()}`
 
     await loginAsAdmin(page, baseURL)
+
+    // Configure HuggingFace repository with API key for downloads
+    await configureHuggingFaceAuth(page, baseURL)
+
     await createLocalProvider(page, baseURL, testProvider, 'Multiple downloads test provider')
 
     // Navigate to provider detail page
-    await goToProvidersPage(page, baseURL)
-    await waitForProvidersPageLoad(page)
     await clickProviderCard(page, testProvider)
   })
+
 
   test('should handle multiple simultaneous downloads', async ({ page }) => {
     const model1Name = `test-download-multi-1-${Date.now()}`
     const model2Name = `test-download-multi-2-${Date.now()}`
 
-    // Start first download
+    // Start first download - using distilgpt2 (~350MB) to ensure downloads take long enough
     await startModelDownload(page, {
       displayName: model1Name,
       fileFormat: 'safetensors',
       engineType: 'mistralrs',
       repositoryId: 'huggingface',
-      repositoryPath: 'hf-internal-testing/tiny-random-gpt2',
+      repositoryPath: 'distilgpt2',
       mainFilename: 'model.safetensors',
+      clearCache: true,
     })
+
+    // Close the first View Download Details drawer
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const firstDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await firstDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
 
     // Wait a moment
     await page.waitForTimeout(1000)
 
-    // Start second download
+    // Start second download - using a different model to avoid caching
     await startModelDownload(page, {
       displayName: model2Name,
       fileFormat: 'safetensors',
       engineType: 'mistralrs',
       repositoryId: 'huggingface',
-      repositoryPath: 'hf-internal-testing/tiny-random-bert',
+      repositoryPath: 'openai-community/gpt2',
       mainFilename: 'model.safetensors',
+      clearCache: true,
     })
+
+    // Close the second View Download Details drawer
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const secondDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await secondDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
 
     // Wait for downloads to complete
     await page.waitForTimeout(15000)
@@ -640,47 +695,46 @@ test.describe('LLM Models - Local Download - Multiple Downloads', () => {
     const model1Name = `test-download-list-1-${Date.now()}`
     const model2Name = `test-download-list-2-${Date.now()}`
 
-    // Start first download
+    // Start first download - using larger models to ensure they're still downloading when we check
     await startModelDownload(page, {
       displayName: model1Name,
       fileFormat: 'safetensors',
       engineType: 'mistralrs',
       repositoryId: 'huggingface',
-      repositoryPath: 'hf-internal-testing/tiny-random-gpt2',
+      repositoryPath: 'distilgpt2',
       mainFilename: 'model.safetensors',
     })
 
-    // Start second download quickly
+    // Close the first View Download Details drawer
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const firstDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await firstDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
+
+    // Start second download quickly - using different model to avoid caching
     await page.waitForTimeout(500)
     await startModelDownload(page, {
       displayName: model2Name,
       fileFormat: 'safetensors',
       engineType: 'mistralrs',
       repositoryId: 'huggingface',
-      repositoryPath: 'hf-internal-testing/tiny-random-bert',
+      repositoryPath: 'openai-community/gpt2',
       mainFilename: 'model.safetensors',
     })
 
+    // Close the second View Download Details drawer
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { timeout: 5000 })
+    const secondDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("View Download Details"))')
+    await secondDrawer.locator('button:has-text("Close")').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("View Download Details")', { state: 'hidden', timeout: 5000 })
+
     // Check for Downloads section
-    try {
-      await expect(page.locator('.ant-card-head-title:has-text("Downloads")')).toBeVisible({ timeout: 5000 })
+    // Assert: Downloading Models section is visible
+    await expect(page.locator('text=Downloading Models')).toBeVisible({ timeout: 5000 })
 
-      // Try to verify both downloads are listed
-      await expect(page.locator(`text=${model1Name}`)).toBeVisible({ timeout: 3000 })
-      await expect(page.locator(`text=${model2Name}`)).toBeVisible({ timeout: 3000 })
-    } catch {
-      // Downloads might complete too fast
-    }
-
-    // Wait for completion
-    await page.waitForTimeout(15000)
-
-    // Cleanup
-    try {
-      await deleteModel(page, model1Name)
-      await deleteModel(page, model2Name)
-    } catch {
-      // Models might still be processing
-    }
+    // Assert: Both downloads are listed - scope to Downloading Models section to avoid drawer conflicts
+    const downloadingSection = page.locator('.ant-card:has-text("Downloading Models")')
+    await expect(downloadingSection.locator(`text=${model1Name}`)).toBeVisible({ timeout: 5000 })
+    await expect(downloadingSection.locator(`text=${model2Name}`)).toBeVisible({ timeout: 5000 })
   })
 })

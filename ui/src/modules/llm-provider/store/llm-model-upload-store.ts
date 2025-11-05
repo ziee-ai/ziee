@@ -54,6 +54,9 @@ export const useUploadStore = create<UploadState>()(() => ({
   uploadError: null,
 }))
 
+// Store XHR for cancellation
+let currentUploadXhr: XMLHttpRequest | null = null
+
 /**
  * Upload local model with progress tracking using ApiClient
  */
@@ -108,26 +111,31 @@ export const uploadLocalModel = async (
     // Call the upload API with file upload progress tracking
     const model = await ApiClient.LlmModel.upload(formData as any, {
       fileUploadProgress: {
+        __init: (xhr: XMLHttpRequest) => {
+          // Store XHR for cancellation
+          currentUploadXhr = xhr
+        },
         onProgress: (
           progress: number,
           fileIndex: number,
           overallProgress: number,
         ) => {
           // Handle file-specific upload progress
+          // Note: progress and overallProgress are already in 0-100 range from core.ts
           useUploadStore.setState(state => ({
             uploadProgress: state.uploadProgress.map((fp, index) =>
               index === fileIndex
                 ? {
                     ...fp,
-                    progress: Math.round(progress * 100),
+                    progress: Math.round(progress),
                     status:
-                      progress >= 1
+                      progress >= 100
                         ? ('completed' as const)
                         : ('uploading' as const),
                   }
                 : fp,
             ),
-            overallUploadProgress: Math.round(overallProgress * 100),
+            overallUploadProgress: Math.round(overallProgress),
           }))
         },
         onComplete: () => {
@@ -141,6 +149,9 @@ export const uploadLocalModel = async (
             overallUploadProgress: 100,
             uploading: false,
           }))
+
+          // Clear XHR reference
+          currentUploadXhr = null
 
           // Refresh the provider's models list (don't await to avoid blocking)
           loadModelsForProvider(data.provider_id)
@@ -156,6 +167,9 @@ export const uploadLocalModel = async (
             uploadError: error || 'Upload failed',
             uploading: false,
           }))
+
+          // Clear XHR reference
+          currentUploadXhr = null
         },
       },
     })
@@ -167,7 +181,21 @@ export const uploadLocalModel = async (
       uploading: false,
       uploadError: errorMessage,
     })
+
+    // Clear XHR reference
+    currentUploadXhr = null
+
     throw error
+  }
+}
+
+/**
+ * Cancel ongoing upload
+ */
+export const cancelUpload = (): void => {
+  if (currentUploadXhr) {
+    currentUploadXhr.abort()
+    currentUploadXhr = null
   }
 }
 

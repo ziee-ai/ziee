@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test'
+import { Page, expect } from '@playwright/test'
 
 /**
  * LLM-specific form helpers
@@ -121,19 +121,24 @@ export interface ModelFormData {
   useMlock?: boolean
 }
 
-export async function fillModelCommonFields(page: Page, data: ModelFormData) {
-  await page.fill('#display_name', data.displayName)
+export async function fillModelCommonFields(page: Page, data: ModelFormData, formName: string = '') {
+  const prefix = formName ? `${formName}_` : ''
+
+  await page.fill(`#${prefix}display_name`, data.displayName)
 
   if (data.description) {
-    await page.fill('#description', data.description)
+    await page.fill(`#${prefix}description`, data.description)
   }
 
-  // File format dropdown
-  await page.click('.ant-select:has-text("File Format")')
+  // File format dropdown - Ant Design Select requires clicking on the .ant-select wrapper
+  // We use the input ID to find the correct .ant-select
+  const fileFormatSelect = page.locator(`.ant-select:has(input#${prefix}file_format)`)
+  await fileFormatSelect.click()
   await page.click(`text=${data.fileFormat}`)
 
-  // Engine type dropdown
-  await page.click('.ant-select:has-text("Engine Type")')
+  // Engine type dropdown - Ant Design Select requires clicking on the .ant-select wrapper
+  const engineTypeSelect = page.locator(`.ant-select:has(input#${prefix}engine_type)`)
+  await engineTypeSelect.click()
   await page.click(`text=${data.engineType}`)
 }
 
@@ -234,25 +239,55 @@ export interface DownloadFormData extends ModelFormData {
   repositoryPath: string
   mainFilename: string
   branch?: string
+  clearCache?: boolean
 }
 
 export async function fillDownloadForm(page: Page, data: DownloadFormData) {
   // Fill common model fields
-  await fillModelCommonFields(page, data)
+  await fillModelCommonFields(page, data, 'llm-model-download')
 
-  // Repository selection
-  await page.click('.ant-select:has-text("Repository")')
-  await page.click(`[data-repository-id="${data.repositoryId}"]`)
+  // Repository selection - Ant Design Select requires clicking on the .ant-select wrapper
+  const repositorySelect = page.locator('.ant-select:has(input#llm-model-download_repository_id)')
+  await repositorySelect.click()
+  // Wait for dropdown to appear
+  await page.waitForSelector(`.ant-select-dropdown:not(.ant-select-dropdown-hidden)`)
 
-  // Repository path
-  await page.fill('#repository_path', data.repositoryPath)
+  // Click the option - support both UUID and name-based selection
+  // For tests using repository names like "huggingface", match partial text in the title
+  // The title format is: "Repository Name (URL)"
+  const isUUID = data.repositoryId.includes('-') && data.repositoryId.length > 20
+  if (isUUID) {
+    // If it's a UUID, we can't match by text, so select the first option for now
+    await page.click('.ant-select-item:not(.ant-select-item-option-disabled)').first()
+  } else {
+    // For name-based selection (like "huggingface"), match the repository by name
+    // Map common test identifiers to repository names
+    const nameMap: Record<string, string> = {
+      'huggingface': 'Hugging Face Hub',
+      'github': 'GitHub'
+    }
+    const repoName = nameMap[data.repositoryId.toLowerCase()] || data.repositoryId
+    await page.click(`.ant-select-item:has-text("${repoName}")`)
+  }
 
-  // Main filename
-  await page.fill('#main_filename', data.mainFilename)
+  // Repository path - use prefixed ID
+  await page.fill('#llm-model-download_repository_path', data.repositoryPath)
 
-  // Branch (optional)
+  // Main filename - use prefixed ID
+  await page.fill('#llm-model-download_main_filename', data.mainFilename)
+
+  // Branch (optional) - use prefixed ID
   if (data.branch) {
-    await page.fill('#repository_branch', data.branch)
+    await page.fill('#llm-model-download_repository_branch', data.branch)
+  }
+
+  // Clear cache switch (optional)
+  if (data.clearCache) {
+    const clearCacheSwitch = page.locator('#llm-model-download_clear_cache')
+    const isChecked = await clearCacheSwitch.isChecked()
+    if (!isChecked) {
+      await clearCacheSwitch.click()
+    }
   }
 
   // Fill capabilities, parameters, engine settings
@@ -332,7 +367,7 @@ export interface UploadFormData extends ModelFormData {
 
 export async function fillUploadForm(page: Page, data: UploadFormData) {
   // Fill common model fields
-  await fillModelCommonFields(page, data)
+  await fillModelCommonFields(page, data, 'llm-model-upload')
 
   // File format should already be selected via fillModelCommonFields
   // Now we need to upload the folder
@@ -363,5 +398,14 @@ export async function fillUploadForm(page: Page, data: UploadFormData) {
 
 export async function submitUploadForm(page: Page) {
   const drawer = page.locator('.ant-drawer:visible').last()
-  await drawer.locator('button:has-text("Upload")').click()
+  const uploadButton = drawer.locator('button:has-text("Upload")')
+
+  // Ensure button is enabled before clicking
+  await expect(uploadButton).toBeEnabled()
+
+  await uploadButton.click()
+
+  // After clicking, the button should enter loading state quickly
+  // Wait a bit to ensure the upload has started
+  await page.waitForTimeout(500)
 }

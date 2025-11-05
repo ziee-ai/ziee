@@ -2741,7 +2741,7 @@
             "description": "Insufficient permissions"
           },
           "200": {
-            "description": "SSE event types for download progress",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -3267,6 +3267,13 @@
               }
             ]
           },
+          "clear_cache": {
+            "description": "Clear cached repository before downloading (for testing)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "display_name": {
             "type": "string"
           },
@@ -3551,8 +3558,17 @@
               "null"
             ]
           },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "phase": {
             "$ref": "#/components/schemas/DownloadPhase"
+          },
+          "provider_id": {
+            "type": "string"
           },
           "speed_bps": {
             "type": [
@@ -3574,6 +3590,7 @@
         },
         "required": [
           "id",
+          "provider_id",
           "status",
           "phase"
         ]
@@ -5331,73 +5348,56 @@
         }
       },
       "SSEDownloadProgressEvent": {
-        "description": "SSE event types for download progress",
         "oneOf": [
           {
             "type": "object",
             "properties": {
-              "type": {
-                "type": "string",
-                "const": "Connected"
-              },
-              "data": {
+              "connected": {
                 "$ref": "#/components/schemas/SSEDownloadProgressConnectedData"
               }
             },
+            "additionalProperties": false,
             "required": [
-              "type",
-              "data"
+              "connected"
             ]
           },
           {
             "type": "object",
             "properties": {
-              "type": {
-                "type": "string",
-                "const": "Update"
-              },
-              "data": {
+              "update": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/DownloadProgressUpdate"
                 }
               }
             },
+            "additionalProperties": false,
             "required": [
-              "type",
-              "data"
+              "update"
             ]
           },
           {
             "type": "object",
             "properties": {
-              "type": {
-                "type": "string",
-                "const": "Complete"
-              },
-              "data": {
+              "complete": {
                 "type": "string"
               }
             },
+            "additionalProperties": false,
             "required": [
-              "type",
-              "data"
+              "complete"
             ]
           },
           {
             "type": "object",
             "properties": {
-              "type": {
-                "type": "string",
-                "const": "Error"
-              },
-              "data": {
+              "error": {
                 "type": "string"
               }
             },
+            "additionalProperties": false,
             "required": [
-              "type",
-              "data"
+              "error"
             ]
           }
         ]

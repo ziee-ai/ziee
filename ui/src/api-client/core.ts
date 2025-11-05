@@ -25,6 +25,7 @@ export const getBaseUrl = (function () {
 
 // Files upload progress callback type
 export interface FileUploadProgressCallback {
+  __init?: (xhr: XMLHttpRequest) => void
   onProgress?: (
     progress: number,
     fileIndex: number,
@@ -145,6 +146,9 @@ export const callAsync = async <U extends ApiEndpointUrl>(
     if (isFormData && fileUploadProgress && body) {
       response = await new Promise<Response>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
+
+        // Call __init callback if provided to give caller access to XHR for cancellation
+        fileUploadProgress.__init?.(xhr)
 
         // Get file information from FormData
         const formData = body as FormData
@@ -272,6 +276,11 @@ export const callAsync = async <U extends ApiEndpointUrl>(
         xhr.addEventListener('error', () => {
           fileUploadProgress.onError?.('Network error during file upload')
           reject(new Error('Network error during file upload'))
+        })
+
+        xhr.addEventListener('abort', () => {
+          fileUploadProgress.onError?.('Upload cancelled')
+          reject(new Error('Upload cancelled'))
         })
 
         xhr.open(method, `${bUrl}${endpointPath}`)

@@ -1,21 +1,19 @@
-import { Card, Divider, Typography } from 'antd'
+import { Card } from 'antd'
 import { DownloadItem } from './DownloadItem'
 import {
   cancelLlmModelDownload,
   deleteLlmModelDownload,
-  useLlmModelDownloadStore,
   openViewDownloadDrawer,
 } from '@/modules/llm-provider/store'
+import { Stores } from '@/core/stores'
 import type { DownloadInstance } from '@/api-client/types'
-
-const { Title } = Typography
 
 interface DownloadsSectionProps {
   providerId: string
 }
 
 export function DownloadsSection({ providerId }: DownloadsSectionProps) {
-  const downloads = useLlmModelDownloadStore(state => state.downloads)
+  const { downloads } = Stores.LlmModelDownload
 
   // Filter downloads for this provider
   const providerDownloads = downloads.filter(
@@ -47,9 +45,8 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
   }
 
   return (
-    <Card style={{ marginBottom: 24 }}>
-      <Title level={4}>Downloading Models</Title>
-      {providerDownloads.map((download, index) => (
+    <Card title="Downloading Models" classNames={{body: "flex flex-col gap-3"}}>
+      {providerDownloads.map((download) => (
         <div key={download.id}>
           <DownloadItem
             download={download}
@@ -58,7 +55,6 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
             onClose={() => handleCloseDownload(download.id)}
             onViewDetails={() => handleViewDetails(download.id)}
           />
-          {index < providerDownloads.length - 1 && <Divider />}
         </div>
       ))}
     </Card>

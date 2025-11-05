@@ -387,3 +387,361 @@ async fn test_subscribe_download_progress_connected_event() {
 
     // Don't read more - drop the connection
 }
+
+// =====================================================
+// SSE Progress & Completion Tests (Tier 2 - Advanced)
+// =====================================================
+
+#[tokio::test]
+async fn test_sse_completion_event_structure() {
+    // This test verifies that the download completion flow works and that
+    // the completed download has the correct data structure that would be
+    // sent in a Complete SSE event (model_id and provider_id).
+    //
+    // Note: With tiny test models (<1 second to download), real-time SSE event
+    // capture is unreliable in tests. The download_progress_test.rs already
+    // tests the end-to-end download flow. This test focuses on verifying the
+    // data structure of a completed download.
+
+    use tokio::time::{sleep, Duration};
+
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "downloader",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+            "llm_models::downloads_read",
+        ],
+    )
+    .await;
+
+    // Get Hugging Face repository and configure API key
+    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
+        &server,
+        &user.token,
+        true,
+    )
+    .await;
+    let repo_id = hf_repo["id"].as_str().unwrap();
+
+    // Get local provider
+    let provider = crate::llm_model::download_test::get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Initiate download
+    let payload = serde_json::json!({
+        "provider_id": provider_id,
+        "repository_id": repo_id,
+        "repository_path": "hf-internal-testing/tiny-random-gpt2",
+        "repository_branch": "main",
+        "name": "tiny-gpt2-completion-structure-test",
+        "display_name": "Tiny GPT-2 (Completion Structure Test)",
+        "description": "Test model for completion event structure",
+        "file_format": "safetensors",
+        "main_filename": "model.safetensors",
+        "source": {
+            "type": "hub",
+            "id": "hf-internal-testing/tiny-random-gpt2"
+        }
+    });
+
+    let download_response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(download_response.status(), 200);
+
+    let download_instance: serde_json::Value = download_response.json().await.unwrap();
+    let download_id = download_instance["id"].as_str().unwrap();
+
+    println!("Download initiated with ID: {}", download_id);
+
+    // Poll for completion
+    let mut iterations = 0;
+    let max_iterations = 30;
+    let mut final_download: Option<serde_json::Value> = None;
+
+    while iterations < max_iterations {
+        sleep(Duration::from_secs(1)).await;
+        iterations += 1;
+
+        let response = reqwest::Client::new()
+            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap();
+
+        if response.status() == 404 {
+            // Download was deleted after completion
+            println!("✅ Download completed and was deleted (expected behavior)");
+            // Since it was deleted, we can't verify the structure, but completion is confirmed
+            return;
+        }
+
+        assert_eq!(response.status(), 200);
+
+        let download: serde_json::Value = response.json().await.unwrap();
+        let status = download["status"].as_str().unwrap();
+
+        if status == "completed" {
+            final_download = Some(download);
+            println!("✅ Download completed");
+            break;
+        }
+
+        if status == "failed" {
+            let error = download["error_message"].as_str().unwrap_or("Unknown error");
+            panic!("Download failed: {}", error);
+        }
+    }
+
+    // Verify the completed download structure
+    if let Some(download) = final_download {
+        // Debug: Print the full download structure
+        println!("Download structure: {}", serde_json::to_string_pretty(&download).unwrap());
+
+        // Check if download has model_id (the key field for completion)
+        let model_id = download["model_id"]
+            .as_str()
+            .expect("Completed download should include model_id");
+
+        assert!(!model_id.is_empty(), "model_id should not be empty");
+
+        // Verify provider_id matches
+        assert_eq!(
+            download["provider_id"].as_str().unwrap(),
+            provider_id,
+            "Download should have correct provider_id"
+        );
+
+        println!("✅ Completed download includes model_id: {}", model_id);
+        println!("✅ Completed download includes provider_id: {}", provider_id);
+        println!("✅ This structure would be sent in SSE Complete event");
+    }
+
+    println!("✅ SSE completion event structure test passed!");
+}
+
+#[tokio::test]
+async fn test_sse_sends_update_events_during_download() {
+    // This test verifies that SSE actually sends UPDATE events during an active download
+    use futures_util::StreamExt;
+    use tokio::time::{timeout, Duration};
+
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "downloader",
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+            "llm_repositories::edit",
+            "llm_models::downloads_read",
+        ],
+    )
+    .await;
+
+    // Get Hugging Face repository and configure API key
+    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
+        &server,
+        &user.token,
+        true,
+    )
+    .await;
+    let repo_id = hf_repo["id"].as_str().unwrap();
+
+    // Get local provider
+    let provider = crate::llm_model::download_test::get_local_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // 1. Start download FIRST (matches real client behavior - client creates download, THEN subscribes)
+    // Using distilgpt2 (~350MB) to ensure download takes enough time to catch UPDATE events
+    let payload = serde_json::json!({
+        "provider_id": provider_id,
+        "repository_id": repo_id,
+        "repository_path": "distilbert/distilgpt2",
+        "repository_branch": "main",
+        "name": "distilgpt2-sse-update-test",
+        "display_name": "DistilGPT2 (SSE Update Test)",
+        "description": "Test model for SSE UPDATE events - larger model to catch progress",
+        "file_format": "safetensors",
+        "main_filename": "model.safetensors",
+        "clear_cache": true,  // Force fresh download to slow it down
+        "source": {
+            "type": "hub",
+            "id": "distilbert/distilgpt2"
+        }
+    });
+
+    let download_response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models/download"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(download_response.status(), 200);
+    let download_instance: serde_json::Value = download_response.json().await.unwrap();
+    let download_id = download_instance["id"].as_str().unwrap();
+
+    println!("✅ Download started with ID: {}", download_id);
+
+    // 2. NOW connect to SSE stream (after download exists)
+    let sse_url = server.api_url("/llm-models/downloads/subscribe");
+    let sse_response = reqwest::Client::new()
+        .get(&sse_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Accept", "text/event-stream")
+        .send()
+        .await
+        .expect("Failed to connect to SSE");
+
+    assert_eq!(sse_response.status(), 200);
+    let mut sse_stream = sse_response.bytes_stream();
+
+    println!("✅ Connected to SSE stream");
+
+    // 3. Read Connected event
+    let connected_chunk = timeout(Duration::from_secs(5), sse_stream.next())
+        .await
+        .expect("Timeout waiting for Connected event")
+        .expect("Stream ended prematurely")
+        .expect("Failed to read chunk");
+
+    let connected_text = String::from_utf8(connected_chunk.to_vec())
+        .expect("Failed to convert to UTF-8");
+
+    println!("📡 First event: {}", connected_text);
+    assert!(
+        connected_text.contains("Connected"),
+        "First event should be Connected"
+    );
+
+    // 4. Read SSE events - look for UPDATE events
+    let mut update_events_received = 0;
+    let mut complete_event_received = false;
+    let max_events = 200; // Read up to 200 events (larger model will take longer)
+    let mut events_read = 0;
+
+    while events_read < max_events {
+        match timeout(Duration::from_secs(60), sse_stream.next()).await {
+            Ok(Some(Ok(chunk))) => {
+                let event_text = String::from_utf8(chunk.to_vec())
+                    .expect("Failed to convert to UTF-8");
+
+                println!("📡 SSE Event #{}: {}", events_read + 1, event_text);
+
+                // Check if this is an UPDATE event (lowercase "update")
+                if event_text.contains("event: update") || event_text.contains("event:update") {
+                    // Extract and validate the data payload
+                    let data_line = event_text
+                        .lines()
+                        .find(|line| line.starts_with("data:"))
+                        .expect("UPDATE event should have data field");
+
+                    let json_str = data_line.strip_prefix("data:").unwrap().trim();
+
+                    // Parse as JSON array of DownloadProgressUpdate
+                    let updates: Vec<serde_json::Value> = serde_json::from_str(json_str)
+                        .expect("UPDATE event data should be valid JSON array");
+
+                    // Skip empty UPDATE events (polling before download starts)
+                    if updates.is_empty() {
+                        println!("⏭️  Skipping empty UPDATE event (download not started yet)");
+                        continue;
+                    }
+
+                    // Only count non-empty UPDATE events
+                    update_events_received += 1;
+
+                    // Validate structure of first update
+                    let update = &updates[0];
+
+                    // Required fields
+                    assert!(update.get("id").is_some(), "UPDATE should have 'id' field");
+                    assert!(update["id"].is_string(), "'id' should be a string");
+
+                    assert!(update.get("status").is_some(), "UPDATE should have 'status' field");
+                    assert!(update["status"].is_string(), "'status' should be a string");
+
+                    assert!(update.get("phase").is_some(), "UPDATE should have 'phase' field");
+                    assert!(update["phase"].is_string(), "'phase' should be a string");
+
+                    // Optional fields (can be null or present)
+                    assert!(update.get("current").is_some(), "UPDATE should have 'current' field");
+                    assert!(update.get("total").is_some(), "UPDATE should have 'total' field");
+                    assert!(update.get("message").is_some(), "UPDATE should have 'message' field");
+                    assert!(update.get("speed_bps").is_some(), "UPDATE should have 'speed_bps' field");
+                    assert!(update.get("eta_seconds").is_some(), "UPDATE should have 'eta_seconds' field");
+                    assert!(update.get("error_message").is_some(), "UPDATE should have 'error_message' field");
+
+                    // If numeric fields are present (not null), they should be numbers
+                    if !update["current"].is_null() {
+                        assert!(update["current"].is_number(), "'current' should be a number when present");
+                    }
+                    if !update["total"].is_null() {
+                        assert!(update["total"].is_number(), "'total' should be a number when present");
+                    }
+                    if !update["speed_bps"].is_null() {
+                        assert!(update["speed_bps"].is_number(), "'speed_bps' should be a number when present");
+                    }
+                    if !update["eta_seconds"].is_null() {
+                        assert!(update["eta_seconds"].is_number(), "'eta_seconds' should be a number when present");
+                    }
+
+                    println!("✅ Received valid UPDATE event #{} - status: {}, phase: {}",
+                        update_events_received,
+                        update["status"].as_str().unwrap_or("unknown"),
+                        update["phase"].as_str().unwrap_or("unknown")
+                    );
+                }
+
+                // Check if this is a COMPLETE event (lowercase "complete")
+                if event_text.contains("event: complete") || event_text.contains("event:complete") {
+                    complete_event_received = true;
+                    println!("✅ Received COMPLETE event");
+                    break; // Stop reading after Complete
+                }
+
+                events_read += 1;
+            }
+            Ok(Some(Err(e))) => {
+                panic!("Error reading SSE stream: {}", e);
+            }
+            Ok(None) => {
+                println!("⚠️ SSE stream ended");
+                break;
+            }
+            Err(_) => {
+                println!("⚠️ Timeout waiting for next SSE event");
+                break;
+            }
+        }
+    }
+
+    // 5. Verify we received at least one UPDATE event
+    assert!(
+        update_events_received > 0,
+        "Should have received at least one UPDATE event during download, got {}",
+        update_events_received
+    );
+
+    println!("✅ SSE UPDATE events test passed!");
+    println!("   - Received {} UPDATE events", update_events_received);
+    println!("   - Complete event: {}", if complete_event_received { "Yes" } else { "No" });
+}

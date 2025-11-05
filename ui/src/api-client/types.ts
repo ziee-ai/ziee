@@ -92,6 +92,7 @@ export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl'
 export interface DownloadFromRepositoryRequest {
   description?: string
   capabilities?: ModelCapabilities
+  clear_cache?: boolean
   display_name: string
   engine_settings?: ModelEngineSettings
   engine_type?: EngineType
@@ -151,7 +152,9 @@ export interface DownloadProgressUpdate {
   eta_seconds?: number
   id: string
   message?: string
+  model_id?: string
   phase: DownloadPhase
+  provider_id: string
   speed_bps?: number
   status: string
   total?: number
@@ -515,7 +518,10 @@ export interface SSEDownloadProgressConnectedData {
 }
 
 export type SSEDownloadProgressEvent = {
-
+  connected: SSEDownloadProgressConnectedData
+  update: DownloadProgressUpdate[]
+  complete: string
+  error: string
 }
 
 export interface SSEHardwareUsageConnectedData {

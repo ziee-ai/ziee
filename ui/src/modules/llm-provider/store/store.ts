@@ -27,6 +27,7 @@ interface LlmProviderState {
 
   // LLM Model loading states
   llmModelsLoading: Record<string, boolean> // providerId -> loading
+  modelError: Record<string, string> // providerId -> error message
   llmModelOperations: Record<string, boolean> // modelId -> operation in progress
 
   // Error state
@@ -48,6 +49,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       updating: false,
       deleting: false,
       llmModelsLoading: {},
+      modelError: {},
       llmModelOperations: {},
       error: null,
       __init__: {
@@ -121,6 +123,11 @@ export const loadLlmProviders = async (): Promise<void> => {
 
 export const loadModelsForProvider = async (providerId: string): Promise<void> => {
   try {
+    useLlmProviderStore.setState(state => ({
+      llmModelsLoading: { ...state.llmModelsLoading, [providerId]: true },
+      modelError: { ...state.modelError, [providerId]: '' },
+    }))
+
     const modelsResponse = await ApiClient.LlmModel.list({
       providerId,
       page: 1,
@@ -132,9 +139,15 @@ export const loadModelsForProvider = async (providerId: string): Promise<void> =
       providers: state.providers.map(p =>
         p.id === providerId ? { ...p, llm_models: modelsResponse.models } : p
       ),
+      llmModelsLoading: { ...state.llmModelsLoading, [providerId]: false },
     }))
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load models'
     console.error(`Failed to load models for provider ${providerId}:`, error)
+    useLlmProviderStore.setState(state => ({
+      llmModelsLoading: { ...state.llmModelsLoading, [providerId]: false },
+      modelError: { ...state.modelError, [providerId]: errorMessage },
+    }))
   }
 }
 
@@ -190,14 +203,21 @@ export const updateLlmProvider = async (
       ...data,
     })
 
+    // Find existing provider to preserve llm_models
+    const existingProvider = state.providers.find(p => p.id === id)
+    const updatedProvider: LlmProviderWithModels = {
+      ...provider,
+      llm_models: existingProvider?.llm_models || [],
+    }
+
     useLlmProviderStore.setState(state => ({
       providers: state.providers.map(p =>
-        p.id === id ? { ...provider, llm_models: p.llm_models } : p
+        p.id === id ? updatedProvider : p
       ),
       updating: false,
     }))
 
-    return state.providers.find(p => p.id === id)!
+    return updatedProvider
   } catch (error) {
     useLlmProviderStore.setState({
       error:
@@ -219,10 +239,18 @@ export const deleteLlmProvider = async (id: string): Promise<void> => {
 
     await ApiClient.LlmProvider.delete({ provider_id: id })
 
-    useLlmProviderStore.setState(state => ({
-      providers: state.providers.filter(p => p.id !== id),
-      deleting: false,
-    }))
+    useLlmProviderStore.setState(state => {
+      // Clean up loading and error states for this provider
+      const { [id]: _loading, ...remainingLoading } = state.llmModelsLoading
+      const { [id]: _error, ...remainingErrors } = state.modelError
+
+      return {
+        providers: state.providers.filter(p => p.id !== id),
+        llmModelsLoading: remainingLoading,
+        modelError: remainingErrors,
+        deleting: false,
+      }
+    })
   } catch (error) {
     useLlmProviderStore.setState({
       error:

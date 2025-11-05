@@ -4,8 +4,11 @@ import {
   ApiEndpointResponses,
   ApiEndpoints,
 } from './types'
-import { callAsync, FileUploadProgressCallback } from './core'
+import { callAsync, FileUploadProgressCallback, getAuthToken } from './core'
 import type { SSECallback, SSEEventKey, SSEEventData } from './sse-types'
+
+// Re-export utility functions
+export { getAuthToken }
 
 // Helper types for automatic namespace/method extraction
 type ExtractNamespace<T extends string> = T extends `${infer N}.${string}`

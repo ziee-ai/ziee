@@ -6,6 +6,46 @@
  */
 
 /**
+ * Inject CSS to fix color contrast issues in Ant Design components
+ *
+ * Some Ant Design components don't properly respect theme tokens, so we need
+ * to inject CSS overrides to meet WCAG AA contrast requirements.
+ */
+function injectAccessibilityCSS() {
+  // Check if we already injected the styles
+  if (document.getElementById('accessibility-fixes-css')) {
+    return
+  }
+
+  const style = document.createElement('style')
+  style.id = 'accessibility-fixes-css'
+  style.textContent = `
+    /* Fix dropdown menu item text color for proper contrast (WCAG AA 4.5:1) */
+    /* Use high specificity to override Ant Design default styles */
+    .ant-dropdown .ant-dropdown-menu .ant-dropdown-menu-item .ant-dropdown-menu-title-content,
+    .ant-dropdown-menu .ant-dropdown-menu-item .ant-dropdown-menu-title-content {
+      color: rgba(0, 0, 0, 0.88) !important;
+    }
+
+    /* Dark mode fix for dropdown menu items */
+    .dark .ant-dropdown .ant-dropdown-menu .ant-dropdown-menu-item .ant-dropdown-menu-title-content,
+    .dark .ant-dropdown-menu .ant-dropdown-menu-item .ant-dropdown-menu-title-content {
+      color: rgba(255, 255, 255, 0.85) !important;
+    }
+
+    /* Also target the menu item wrapper to ensure coverage */
+    .ant-dropdown-menu-item:not(.ant-dropdown-menu-item-disabled) {
+      color: rgba(0, 0, 0, 0.88) !important;
+    }
+
+    .dark .ant-dropdown-menu-item:not(.ant-dropdown-menu-item-disabled) {
+      color: rgba(255, 255, 255, 0.85) !important;
+    }
+  `
+  document.head.appendChild(style)
+}
+
+/**
  * Remove aria-required from Select components
  *
  * Ant Design's Form.Item adds aria-required="true" to Select components when
@@ -21,6 +61,9 @@ export function setupAccessibilityFixes() {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return
   }
+
+  // Inject CSS fixes for color contrast
+  injectAccessibilityCSS()
 
   // Function to remove aria-required from Select components
   const removeAriaRequiredFromSelects = () => {

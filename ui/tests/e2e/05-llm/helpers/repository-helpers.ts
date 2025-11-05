@@ -297,3 +297,42 @@ export async function waitForConnectionTestResult(page: Page, expectedType: 'suc
     await expect(messageSelector).toBeVisible({ timeout: 15000 })
   }
 }
+
+// =====================================================
+// Repository Configuration (for tests requiring auth)
+// =====================================================
+
+/**
+ * Configure the built-in HuggingFace repository with API key from environment
+ * This is required for download tests that access HuggingFace models
+ *
+ * Mirrors backend test helper: src-web/tests/llm_model/download_test.rs::get_huggingface_repository
+ */
+export async function configureHuggingFaceAuth(page: Page, baseURL: string): Promise<void> {
+  const apiKey = process.env.HUGGINGFACE_API_KEY
+
+  if (!apiKey) {
+    throw new Error('HUGGINGFACE_API_KEY not set in environment. Please ensure tests/.env.test is loaded.')
+  }
+
+  // Navigate to repositories page
+  await goToRepositoriesPage(page, baseURL)
+  await waitForRepositoriesPageLoad(page)
+
+  // Open edit drawer for Hugging Face Hub
+  await openEditRepositoryDrawer(page, 'Hugging Face Hub')
+
+  // Fill in the API key
+  await page.fill('#llm-repository-form_api_key', apiKey)
+
+  // Update the repository
+  await updateRepositoryForm(page)
+  await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
+
+  // Navigate to Settings > LLM Providers to clean up UI state
+  // This ensures any open drawers are closed and we're on a clean page
+  await page.goto(`${baseURL}/settings`)
+  await page.waitForLoadState('networkidle')
+  await page.click('text=LLM Providers')
+  await page.waitForLoadState('networkidle')
+}

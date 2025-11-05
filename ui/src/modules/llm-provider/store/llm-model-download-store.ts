@@ -5,6 +5,7 @@ import type {
   DownloadFromRepositoryRequest,
   DownloadInstance,
 } from '@/api-client/types'
+import { loadModelsForProvider } from './store'
 
 interface LlmModelDownloadState {
   // Download instances array
@@ -56,6 +57,7 @@ export const downloadLlmModelFromRepository = async (
     onStart?.(downloadInstance.id)
 
     // Set up download tracking subscription if not already done
+    console.log('[Download] Setting up download tracking after adding download:', downloadInstance.id)
     setupDownloadTracking()
 
     return { downloadId: downloadInstance.id }
@@ -127,122 +129,143 @@ export const findDownloadById = (
     .downloads.find(download => download.id === downloadId)
 }
 
-// SSE EventSource instance
-let sseEventSource: EventSource | null = null
+// SSE abort controller for connection management
+let sseAbortController: AbortController | null = null
 
-// Subscribe to download progress updates via SSE
-export const subscribeToDownloadProgress = (): void => {
+// Subscribe to download progress updates via SSE using ApiClient
+export const subscribeToDownloadProgress = async (): Promise<void> => {
   const state = useLlmModelDownloadStore.getState()
 
   // Don't reconnect if already connected
-  if (state.sseConnected || sseEventSource) {
+  if (state.sseConnected || sseAbortController) {
     console.log('SSE already connected')
     return
   }
 
-  console.log('Subscribing to download progress updates...')
+  console.log('Subscribing to download progress updates via ApiClient...')
 
   try {
-    // Create EventSource connection
-    const token = localStorage.getItem('auth_token')
-    const url = `/api/llm-models/downloads/subscribe${token ? `?token=${token}` : ''}`
-    sseEventSource = new EventSource(url)
+    // Call ApiClient with SSE handlers
+    await ApiClient.LlmModel.subscribeDownloadProgress(undefined, {
+      SSE: {
+        __init: ({ abortController }) => {
+          // Store abort controller for manual disconnection
+          sseAbortController = abortController
+          console.log('SSE connection initialized')
+          useLlmModelDownloadStore.setState({
+            sseConnected: true,
+            sseError: null,
+            reconnectAttempts: 0,
+          })
+        },
 
-    // Handle connection opened
-    sseEventSource.addEventListener('open', () => {
-      console.log('SSE connection established')
-      useLlmModelDownloadStore.setState({
-        sseConnected: true,
-        sseError: null,
-        reconnectAttempts: 0,
-      })
+        connected: (data: { message?: string }) => {
+          console.log('SSE connected:', data)
+        },
+
+        update: (updates: any[]) => {
+          console.log('SSE update:', updates)
+
+          // Detect newly completed downloads and refresh their providers' models
+          const newlyCompleted = updates.filter((u: any) => u.status === 'completed')
+          if (newlyCompleted.length > 0) {
+            // Extract unique provider IDs from completed downloads
+            const providerIds = [
+              ...new Set(
+                newlyCompleted
+                  .map((d: any) => d.provider_id)
+                  .filter((id: string | undefined): id is string => !!id),
+              ),
+            ]
+
+            // Refresh models for each provider
+            console.log('[Download] Refreshing models for providers:', providerIds)
+            for (const providerId of providerIds) {
+              void loadModelsForProvider(providerId)
+            }
+          }
+
+          useLlmModelDownloadStore.setState(state => {
+            const updatedDownloads = state.downloads.map(download => {
+              const update = updates.find((u: any) => u.id === download.id)
+              return update ? { ...download, ...update } : download
+            })
+
+            // Filter out cancelled and completed downloads before updating state
+            const filteredDownloads = updatedDownloads.filter(
+              download =>
+                download.status !== 'cancelled' &&
+                download.status !== 'completed',
+            )
+
+            return { downloads: filteredDownloads }
+          })
+        },
+
+        complete: (data: string) => {
+          console.log('SSE complete:', data)
+
+          // Get provider IDs from all downloads before they're filtered out
+          const allDownloads = useLlmModelDownloadStore.getState().downloads
+          const providerIds = [
+            ...new Set(
+              allDownloads
+                .map(d => d.provider_id)
+                .filter((id): id is string => !!id),
+            ),
+          ]
+
+          // Refresh models for all providers that had downloads
+          console.log('[Download] Refreshing models for providers on complete:', providerIds)
+          for (const providerId of providerIds) {
+            void loadModelsForProvider(providerId)
+          }
+
+          // Disconnect and reload downloads
+          disconnectSSE()
+          void loadExistingDownloads()
+        },
+
+        error: (errorMessage: string) => {
+          console.error('SSE error:', errorMessage)
+          useLlmModelDownloadStore.setState({
+            sseError: errorMessage,
+            sseConnected: false,
+          })
+        },
+
+        default: (event, data) => {
+          console.warn('Unknown SSE event:', event, data)
+        },
+      },
     })
-
-    // Handle 'connected' event
-    sseEventSource.addEventListener('connected', (event) => {
-      const data = JSON.parse(event.data)
-      console.log('SSE connected event:', data)
-    })
-
-    // Handle 'update' event (progress updates)
-    sseEventSource.addEventListener('update', (event) => {
-      const updates = JSON.parse(event.data)
-      console.log('SSE update event:', updates)
-
-      useLlmModelDownloadStore.setState(state => {
-        const updatedDownloads = state.downloads.map(download => {
-          const update = updates.find((u: any) => u.id === download.id)
-          return update ? { ...download, ...update } : download
-        })
-        return { downloads: updatedDownloads }
-      })
-    })
-
-    // Handle 'complete' event
-    sseEventSource.addEventListener('complete', (event) => {
-      const data = JSON.parse(event.data)
-      console.log('SSE complete event:', data)
-
-      // Disconnect and reload downloads
-      disconnectSSE()
-      void loadExistingDownloads()
-    })
-
-    // Handle 'error' event from server
-    sseEventSource.addEventListener('error_event', (event) => {
-      const data = JSON.parse(event.data)
-      console.error('SSE error event:', data)
-
-      useLlmModelDownloadStore.setState(state => {
-        const updatedDownloads = state.downloads.map(download =>
-          download.id === data.download_id
-            ? { ...download, status: 'failed' as const, error_message: data.message }
-            : download
-        )
-        return { downloads: updatedDownloads }
-      })
-    })
-
-    // Handle connection errors
-    sseEventSource.onerror = (error) => {
-      console.error('SSE connection error:', error)
-
-      const state = useLlmModelDownloadStore.getState()
-      const attempts = state.reconnectAttempts + 1
-      const maxAttempts = 5
-
-      if (attempts < maxAttempts) {
-        console.log(`Reconnection attempt ${attempts}/${maxAttempts}`)
-        useLlmModelDownloadStore.setState({
-          sseConnected: false,
-          sseError: 'Connection lost, reconnecting...',
-          reconnectAttempts: attempts,
-        })
-
-        // Close current connection
-        sseEventSource?.close()
-        sseEventSource = null
-
-        // Retry after 3 seconds
-        setTimeout(() => {
-          subscribeToDownloadProgress()
-        }, 3000)
-      } else {
-        console.error('Max reconnection attempts reached')
-        useLlmModelDownloadStore.setState({
-          sseConnected: false,
-          sseError: 'Failed to connect to download updates',
-          reconnectAttempts: attempts,
-        })
-        disconnectSSE()
-      }
-    }
   } catch (error) {
-    console.error('Failed to subscribe to download progress:', error)
-    useLlmModelDownloadStore.setState({
-      sseConnected: false,
-      sseError: 'Failed to establish connection',
-    })
+    console.error('SSE connection failed:', error)
+
+    const state = useLlmModelDownloadStore.getState()
+    const attempts = state.reconnectAttempts + 1
+    const maxAttempts = 5
+
+    if (attempts < maxAttempts) {
+      console.log(`Reconnection attempt ${attempts}/${maxAttempts}`)
+      useLlmModelDownloadStore.setState({
+        sseConnected: false,
+        sseError: 'Connection lost, reconnecting...',
+        reconnectAttempts: attempts,
+      })
+
+      // Retry after 3 seconds
+      setTimeout(() => {
+        void subscribeToDownloadProgress()
+      }, 3000)
+    } else {
+      console.error('Max reconnection attempts reached')
+      useLlmModelDownloadStore.setState({
+        sseConnected: false,
+        sseError: 'Failed to connect to download updates',
+        reconnectAttempts: attempts,
+      })
+    }
   }
 }
 
@@ -250,9 +273,9 @@ export const subscribeToDownloadProgress = (): void => {
 export const disconnectSSE = (): void => {
   console.log('Disconnecting SSE...')
 
-  if (sseEventSource) {
-    sseEventSource.close()
-    sseEventSource = null
+  if (sseAbortController) {
+    sseAbortController.abort()
+    sseAbortController = null
   }
 
   useLlmModelDownloadStore.setState({
@@ -269,13 +292,14 @@ const loadExistingDownloads = async (): Promise<void> => {
       per_page: 100,
     })
 
-    // Filter out completed/cancelled downloads
-    const activeDownloads = response.downloads.filter(d =>
-      d.status === 'downloading' || d.status === 'pending'
+    // Filter to only keep pending, downloading, and failed
+    // (exclude completed and cancelled)
+    const downloads = response.downloads.filter(download =>
+      ['pending', 'downloading', 'failed'].includes(download.status),
     )
 
     useLlmModelDownloadStore.setState({
-      downloads: activeDownloads,
+      downloads,
     })
   } catch (error) {
     console.error('Failed to load downloads:', error)
@@ -289,6 +313,7 @@ const setupDownloadTracking = (): void => {
   isSubscriptionSetup = true
 
   // Subscribe to store changes to manage SSE connection
+  // fireImmediately: true ensures the callback runs with current state on setup
   useLlmModelDownloadStore.subscribe(
     state => state.downloads,
     downloads => {
@@ -296,16 +321,22 @@ const setupDownloadTracking = (): void => {
         d => d.status === 'downloading' || d.status === 'pending',
       )
 
-      const { sseConnected } = useLlmModelDownloadStore.getState()
-
-      if (activeDownloads.length > 0 && !sseConnected) {
-        console.log('Active downloads detected, connecting SSE...')
-        subscribeToDownloadProgress()
-      } else if (activeDownloads.length === 0 && sseConnected) {
-        console.log('No active downloads, disconnecting SSE...')
+      if (
+        activeDownloads.length > 0 &&
+        !useLlmModelDownloadStore.getState().sseConnected
+      ) {
+        // We have active downloads but no SSE connection, establish one
+        console.log('[Download] Active downloads detected, establishing SSE connection')
+        void subscribeToDownloadProgress()
+      } else if (
+        activeDownloads.length === 0 &&
+        useLlmModelDownloadStore.getState().sseConnected
+      ) {
+        // No active downloads and SSE is connected, disconnect
         disconnectSSE()
       }
     },
+    { fireImmediately: true },
   )
 }
 

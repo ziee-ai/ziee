@@ -1,13 +1,13 @@
 import { Badge, Popover, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
-import { useLlmModelDownloadStore } from '@/modules/llm-provider/store'
+import { Stores } from '@/core/stores'
 import { DownloadItem } from '../downloads/DownloadItem'
 import type { DownloadInstance } from '@/api-client/types'
 
 const { Text } = Typography
 
 export function DownloadIndicatorWidget() {
-  const downloads = useLlmModelDownloadStore(state => state.downloads)
+  const { downloads } = Stores.LlmModelDownload
 
   // Filter for active downloads
   const activeDownloads = downloads.filter(

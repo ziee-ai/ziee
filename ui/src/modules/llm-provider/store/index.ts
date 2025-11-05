@@ -9,4 +9,4 @@ export * from './llm-model-drawer-store'
 export * from './llm-model-download-store'
 
 // Upload store
-export * from './upload-store'
+export * from './llm-model-upload-store'
