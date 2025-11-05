@@ -27,7 +27,7 @@ import {
 } from 'antd'
 import { Drawer } from '@/components/common/Drawer.tsx'
 import { useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'node_modules/react-i18next/index'
 import { Stores } from '@/core/stores'
 import {
   assignUserToUserGroup,
@@ -39,7 +39,7 @@ import {
   resetUserPassword,
   toggleUserActiveStatus,
   updateUser,
-} from '../store'
+} from '../store.ts'
 import type {
   UpdateUserRequest,
   User,

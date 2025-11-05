@@ -1,6 +1,6 @@
 import { App, Card, Form, Switch, Typography } from 'antd'
 import { useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'node_modules/react-i18next'
 import { Stores } from '@/core/stores'
 import {
   clearUsersStoreError,

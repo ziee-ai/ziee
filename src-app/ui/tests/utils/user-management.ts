@@ -1,4 +1,4 @@
-import pg from 'pg'
+import pg from 'node_modules/@types/pg'
 import { v4 as uuidv4 } from 'uuid'
 import bcrypt from 'bcryptjs'
 

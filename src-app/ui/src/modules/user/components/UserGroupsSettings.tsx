@@ -32,7 +32,7 @@ import {
   deleteUserGroup,
   loadUserGroupMembers,
   loadUserGroups,
-} from '../store'
+} from '../store.ts'
 import type { CreateGroupRequest, Group } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 import { EditUserGroupDrawer } from './EditUserGroupDrawer.tsx'

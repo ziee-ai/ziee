@@ -1,4 +1,4 @@
-import pg from 'pg'
+import pg from 'node_modules/@types/pg'
 import { readFileSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
