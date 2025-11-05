@@ -92,7 +92,10 @@ export const loadLlmProviders = async (): Promise<void> => {
         })
         return { providerId: provider.id, models: modelsResponse.models }
       } catch (error) {
-        console.error(`Failed to load models for provider ${provider.id}:`, error)
+        console.error(
+          `Failed to load models for provider ${provider.id}:`,
+          error,
+        )
         return { providerId: provider.id, models: [] }
       }
     })
@@ -101,8 +104,8 @@ export const loadLlmProviders = async (): Promise<void> => {
 
     // Update each provider with its models
     const providersWithModels = providers.map(provider => {
-      const result = results.find(r =>
-        r.status === 'fulfilled' && r.value.providerId === provider.id
+      const result = results.find(
+        r => r.status === 'fulfilled' && r.value.providerId === provider.id,
       )
       const models = result?.status === 'fulfilled' ? result.value.models : []
       return { ...provider, llm_models: models }
@@ -121,7 +124,9 @@ export const loadLlmProviders = async (): Promise<void> => {
   }
 }
 
-export const loadModelsForProvider = async (providerId: string): Promise<void> => {
+export const loadModelsForProvider = async (
+  providerId: string,
+): Promise<void> => {
   try {
     useLlmProviderStore.setState(state => ({
       llmModelsLoading: { ...state.llmModelsLoading, [providerId]: true },
@@ -137,12 +142,13 @@ export const loadModelsForProvider = async (providerId: string): Promise<void> =
     // Update provider with fresh models
     useLlmProviderStore.setState(state => ({
       providers: state.providers.map(p =>
-        p.id === providerId ? { ...p, llm_models: modelsResponse.models } : p
+        p.id === providerId ? { ...p, llm_models: modelsResponse.models } : p,
       ),
       llmModelsLoading: { ...state.llmModelsLoading, [providerId]: false },
     }))
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to load models'
+    const errorMessage =
+      error instanceof Error ? error.message : 'Failed to load models'
     console.error(`Failed to load models for provider ${providerId}:`, error)
     useLlmProviderStore.setState(state => ({
       llmModelsLoading: { ...state.llmModelsLoading, [providerId]: false },
@@ -211,9 +217,7 @@ export const updateLlmProvider = async (
     }
 
     useLlmProviderStore.setState(state => ({
-      providers: state.providers.map(p =>
-        p.id === id ? updatedProvider : p
-      ),
+      providers: state.providers.map(p => (p.id === id ? updatedProvider : p)),
       updating: false,
     }))
 
@@ -265,10 +269,10 @@ export const clearLlmProviderStoreError = (): void => {
   useLlmProviderStore.setState({ error: null })
 }
 
-export const findLlmProviderById = (id: string): LlmProviderWithModels | undefined => {
-  return useLlmProviderStore
-    .getState()
-    .providers.find(p => p.id === id)
+export const findLlmProviderById = (
+  id: string,
+): LlmProviderWithModels | undefined => {
+  return useLlmProviderStore.getState().providers.find(p => p.id === id)
 }
 
 export const llmProviderHasCredentials = (
@@ -313,8 +317,7 @@ export const enableLlmModel = async (modelId: string): Promise<LlmModel> => {
     return model
   } catch (error) {
     useLlmProviderStore.setState(state => ({
-      error:
-        error instanceof Error ? error.message : 'Failed to enable model',
+      error: error instanceof Error ? error.message : 'Failed to enable model',
       llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
     }))
     throw error
@@ -345,8 +348,7 @@ export const disableLlmModel = async (modelId: string): Promise<LlmModel> => {
     return model
   } catch (error) {
     useLlmProviderStore.setState(state => ({
-      error:
-        error instanceof Error ? error.message : 'Failed to disable model',
+      error: error instanceof Error ? error.message : 'Failed to disable model',
       llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
     }))
     throw error
@@ -372,8 +374,7 @@ export const deleteLlmModel = async (modelId: string): Promise<void> => {
     }))
   } catch (error) {
     useLlmProviderStore.setState(state => ({
-      error:
-        error instanceof Error ? error.message : 'Failed to delete model',
+      error: error instanceof Error ? error.message : 'Failed to delete model',
       llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
     }))
     throw error
@@ -427,7 +428,11 @@ export const updateLlmModelInProvider = (
 }
 
 // Re-export drawer store functions and hooks
-export { useLlmProviderDrawerStore, openLlmProviderDrawer, closeLlmProviderDrawer } from './drawer-store'
+export {
+  useLlmProviderDrawerStore,
+  openLlmProviderDrawer,
+  closeLlmProviderDrawer,
+} from './drawer-store'
 
 // Re-export llm-model drawer stores
 export * from './llm-model-drawer-store'

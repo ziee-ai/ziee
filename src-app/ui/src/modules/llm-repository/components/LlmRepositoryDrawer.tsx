@@ -50,8 +50,7 @@ export function LlmRepositoryDrawer({
         username: repository.auth_config?.username,
         password: repository.auth_config?.password,
         token: repository.auth_config?.token,
-        auth_test_api_endpoint:
-          repository.auth_config?.auth_test_api_endpoint,
+        auth_test_api_endpoint: repository.auth_config?.auth_test_api_endpoint,
         enabled: repository.enabled,
       })
     } else if (!repository && open) {
@@ -208,7 +207,12 @@ export function LlmRepositoryDrawer({
       width={600}
       maskClosable={false}
     >
-      <Form name="llm-repository-form" form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form
+        name="llm-repository-form"
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+      >
         <Form.Item
           name="name"
           label="Repository Name"
@@ -375,7 +379,10 @@ export function LlmRepositoryDrawer({
         </Form.Item>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button onClick={handleClose} disabled={loading || creating || updating}>
+          <Button
+            onClick={handleClose}
+            disabled={loading || creating || updating}
+          >
             Cancel
           </Button>
           <Button

@@ -6,11 +6,7 @@ import {
 import { App, Button, Card, Flex, Form, Input, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import {
-  clearLlmProviderStoreError,
-  Stores,
-  updateLlmProvider,
-} from '../store'
+import { clearLlmProviderStoreError, Stores, updateLlmProvider } from '../store'
 import { ProviderProxySettingsForm } from './ProviderProxySettingsForm'
 import { ProviderHeader } from './ProviderHeader'
 import { LlmModelsSection } from './LlmModelsSection'
@@ -139,8 +135,8 @@ export function RemoteProviderSettings() {
               <Title level={5}>API Key</Title>
               <Text type="secondary">
                 The {currentProvider.name} API uses API keys for authentication.
-                Visit your API Keys page to retrieve
-                the API key you'll use in your requests.
+                Visit your API Keys page to retrieve the API key you'll use in
+                your requests.
               </Text>
               <Form.Item
                 name="api_key"
@@ -169,9 +165,10 @@ export function RemoteProviderSettings() {
               <Title level={5}>Base URL</Title>
               <Text type="secondary">
                 The base{' '}
-                {currentProvider.provider_type === 'gemini' ? 'OpenAI-compatible' : ''}{' '}
-                endpoint to use. See the{' '}
-                {currentProvider.name} documentation{' '}
+                {currentProvider.provider_type === 'gemini'
+                  ? 'OpenAI-compatible'
+                  : ''}{' '}
+                endpoint to use. See the {currentProvider.name} documentation{' '}
                 for more information.
               </Text>
               <Form.Item

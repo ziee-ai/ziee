@@ -4,7 +4,15 @@ import { logoutUser } from '../auth'
 import { Stores } from '@/core/stores'
 
 // Import SidebarItem from LeftSidebar - we'll need to extract this to a shared location
-function SidebarItem({ icon, label, onClick }: { icon: React.ReactNode, label: string, onClick?: () => void }) {
+function SidebarItem({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick?: () => void
+}) {
   return (
     <div
       onClick={onClick}

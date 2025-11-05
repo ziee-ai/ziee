@@ -55,7 +55,7 @@ export function EditUserGroupDrawer({
         if (!Array.isArray(permissions)) {
           throw new Error('Permissions must be an array')
         }
-      } catch (error) {
+      } catch (_error) {
         message.error(
           'Invalid permissions format. Please enter a valid JSON array.',
         )
@@ -123,7 +123,7 @@ export function EditUserGroupDrawer({
                     if (!Array.isArray(parsed)) {
                       throw new Error('Must be an array')
                     }
-                  } catch (error) {
+                  } catch (_error) {
                     throw new Error('Invalid JSON format')
                   }
                 }

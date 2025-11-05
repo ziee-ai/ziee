@@ -7,11 +7,13 @@ interface LlmRepositoryDrawerState {
   editingRepository: LlmRepository | null
 }
 
-export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>(() => ({
-  open: false,
-  loading: false,
-  editingRepository: null,
-}))
+export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>(
+  () => ({
+    open: false,
+    loading: false,
+    editingRepository: null,
+  }),
+)
 
 // Modal actions
 export const openLlmRepositoryDrawer = (repository?: LlmRepository) => {

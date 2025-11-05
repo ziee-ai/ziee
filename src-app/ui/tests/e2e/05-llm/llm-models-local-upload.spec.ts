@@ -6,16 +6,14 @@ import {
 } from './helpers/navigation-helpers'
 import {
   createLocalProvider,
-  assertProviderExists,
 } from './helpers/provider-helpers'
 import {
   openUploadDrawer,
   uploadModelFolder,
-  assertUploadProgressVisible,
   assertModelExists,
   deleteModel,
 } from './helpers/model-helpers'
-import { fillUploadForm, submitUploadForm } from './helpers/form-helpers'
+import { submitUploadForm } from './helpers/form-helpers'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -502,7 +500,7 @@ test.describe('LLM Models - Local Upload - Progress Tracking', () => {
     await clickProviderCard(page, testProvider)
   })
 
-  test.afterEach(async ({ page }) => {
+  test.afterEach(async () => {
     if (testModelFolder) {
       await cleanupTestModelFolder(testModelFolder)
     }
@@ -600,7 +598,7 @@ test.describe('LLM Models - Local Upload - Success Flow', () => {
     await clickProviderCard(page, testProvider)
   })
 
-  test.afterEach(async ({ page }) => {
+  test.afterEach(async () => {
     if (testModelFolder) {
       await cleanupTestModelFolder(testModelFolder)
     }

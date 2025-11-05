@@ -6,7 +6,6 @@ import {
 } from './helpers/navigation-helpers'
 import {
   createLocalProvider,
-  assertProviderExists,
 } from './helpers/provider-helpers'
 import {
   openAddModelDropdown,

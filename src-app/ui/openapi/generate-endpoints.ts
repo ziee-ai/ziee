@@ -1,10 +1,14 @@
 import { readFileSync, writeFileSync } from 'fs'
-import { resolve } from 'path'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 
-// The Rust code sets current_dir to output_dir (ui/openapi/) before running this script
-// Read openapi.json from CWD and write types.ts to ../src/api-client/types.ts
-const openapiJsonPath = resolve(process.cwd(), 'openapi.json')
-const targetPath = resolve(process.cwd(), '../src/api-client/types.ts')
+// Get the directory where this script is located
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+// Read openapi.json from the openapi directory and write types.ts to ../src/api-client/types.ts
+const openapiJsonPath = resolve(__dirname, 'openapi.json')
+const targetPath = resolve(__dirname, '../src/api-client/types.ts')
 
 interface OpenApiSpec {
   openapi: string

@@ -1,4 +1,11 @@
-import type { AppModule, ModuleMetadata, RouteConfig, StoreRegistration, SidebarRegistration, SettingsMenuItem } from './router/types'
+import type {
+  AppModule,
+  ModuleMetadata,
+  RouteConfig,
+  StoreRegistration,
+  SidebarRegistration,
+  SettingsMenuItem,
+} from './router/types'
 
 export interface CreateModuleOptions {
   metadata: ModuleMetadata

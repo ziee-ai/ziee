@@ -66,7 +66,8 @@ export function LlmProviderSettings() {
   }, [providers, providerId, navigate])
 
   const menuItems = providers.map(provider => {
-    const IconComponent = PROVIDER_ICONS[provider.provider_type] || PROVIDER_ICONS.custom
+    const IconComponent =
+      PROVIDER_ICONS[provider.provider_type] || PROVIDER_ICONS.custom
     return {
       key: provider.id,
       label: (
@@ -187,7 +188,8 @@ export function LlmProviderSettings() {
                           <Flex className="gap-2 items-center">
                             {(() => {
                               const IconComponent =
-                                PROVIDER_ICONS[currentProvider.provider_type] || PROVIDER_ICONS.custom
+                                PROVIDER_ICONS[currentProvider.provider_type] ||
+                                PROVIDER_ICONS.custom
                               return <IconComponent className="text-lg" />
                             })()}
                             {currentProvider.name}

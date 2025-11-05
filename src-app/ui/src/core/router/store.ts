@@ -1,5 +1,12 @@
 import { create } from 'zustand'
-import type { RouteConfig, AppModule, SidebarActionButton, SidebarNavItem, SidebarWidget, SettingsMenuItem } from './types'
+import type {
+  RouteConfig,
+  AppModule,
+  SidebarActionButton,
+  SidebarNavItem,
+  SidebarWidget,
+  SettingsMenuItem,
+} from './types'
 import { createStoreProxy } from '../stores'
 
 interface RouterState {
@@ -30,14 +37,18 @@ export const useRouterStore = create<RouterState>((set, get) => ({
   settingsItems: [],
 
   registerModule: (module: AppModule) => {
-    set((state) => {
+    set(state => {
       // Check if module is already registered
-      const existingIndex = state.modules.findIndex((m) => m.metadata.name === module.metadata.name)
+      const existingIndex = state.modules.findIndex(
+        m => m.metadata.name === module.metadata.name,
+      )
 
       if (existingIndex !== -1) {
         // In development, allow re-registration for HMR
         if (import.meta.env.DEV) {
-          console.log(`🔄 Re-registering module for HMR: ${module.metadata.name}`)
+          console.log(
+            `🔄 Re-registering module for HMR: ${module.metadata.name}`,
+          )
 
           // Remove old module and its routes
           const oldModule = state.modules[existingIndex]
@@ -48,7 +59,9 @@ export const useRouterStore = create<RouterState>((set, get) => ({
           newModules[existingIndex] = module
 
           // Remove old routes and add new ones
-          const filteredRoutes = state.routes.filter(r => !oldRoutePaths.has(r.path))
+          const filteredRoutes = state.routes.filter(
+            r => !oldRoutePaths.has(r.path),
+          )
           const moduleRoutes = module.registerRoutes()
           const newRoutes = [...filteredRoutes, ...moduleRoutes]
 
@@ -56,7 +69,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
           const newStores = { ...state.stores }
           if (module.registerStores) {
             const storeRegistrations = module.registerStores()
-            storeRegistrations.forEach((reg) => {
+            storeRegistrations.forEach(reg => {
               newStores[reg.name] = createStoreProxy(reg.store)
             })
           }
@@ -64,14 +77,22 @@ export const useRouterStore = create<RouterState>((set, get) => ({
           // Re-register sidebar items - remove old ones first
           // Get old sidebar items from the old module
           const oldSidebar = oldModule.registerSidebar?.()
-          const oldActionIds = new Set(oldSidebar?.primaryActions?.map(a => a.id) || [])
-          const oldNavIds = new Set(oldSidebar?.navigation?.map(n => n.id) || [])
+          const oldActionIds = new Set(
+            oldSidebar?.primaryActions?.map(a => a.id) || [],
+          )
+          const oldNavIds = new Set(
+            oldSidebar?.navigation?.map(n => n.id) || [],
+          )
           const oldToolIds = new Set(oldSidebar?.tools?.map(t => t.id) || [])
 
           // Filter out old items
           const newSidebarItems = {
-            primaryActions: state.sidebarItems.primaryActions.filter(a => !oldActionIds.has(a.id)),
-            navigation: state.sidebarItems.navigation.filter(n => !oldNavIds.has(n.id)),
+            primaryActions: state.sidebarItems.primaryActions.filter(
+              a => !oldActionIds.has(a.id),
+            ),
+            navigation: state.sidebarItems.navigation.filter(
+              n => !oldNavIds.has(n.id),
+            ),
             tools: state.sidebarItems.tools.filter(t => !oldToolIds.has(t.id)),
             widgets: new Map(state.sidebarItems.widgets),
           }
@@ -79,10 +100,11 @@ export const useRouterStore = create<RouterState>((set, get) => ({
           // Remove old widgets
           if (oldSidebar?.widgets) {
             oldSidebar.widgets.forEach(oldWidget => {
-              const slotWidgets = newSidebarItems.widgets.get(oldWidget.slot) || []
+              const slotWidgets =
+                newSidebarItems.widgets.get(oldWidget.slot) || []
               newSidebarItems.widgets.set(
                 oldWidget.slot,
-                slotWidgets.filter(w => w.id !== oldWidget.id)
+                slotWidgets.filter(w => w.id !== oldWidget.id),
               )
             })
           }
@@ -112,7 +134,9 @@ export const useRouterStore = create<RouterState>((set, get) => ({
           const oldSettingsIds = new Set(oldSettings?.map(s => s.id) || [])
 
           // Filter out old items
-          let newSettingsItems = state.settingsItems.filter(s => !oldSettingsIds.has(s.id))
+          let newSettingsItems = state.settingsItems.filter(
+            s => !oldSettingsIds.has(s.id),
+          )
 
           // Add new settings items
           if (module.registerSettings) {
@@ -144,7 +168,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
       const newStores = { ...state.stores }
       if (module.registerStores) {
         const storeRegistrations = module.registerStores()
-        storeRegistrations.forEach((reg) => {
+        storeRegistrations.forEach(reg => {
           newStores[reg.name] = createStoreProxy(reg.store)
         })
       }
@@ -187,7 +211,9 @@ export const useRouterStore = create<RouterState>((set, get) => ({
         routes: moduleRoutes.length,
         stores: module.registerStores ? module.registerStores().length : 0,
         sidebar: module.registerSidebar ? 'yes' : 'no',
-        settings: module.registerSettings ? module.registerSettings().length : 0,
+        settings: module.registerSettings
+          ? module.registerSettings().length
+          : 0,
       })
 
       return {
@@ -210,13 +236,23 @@ export const useRouterStore = create<RouterState>((set, get) => ({
           // If initialize returns a promise, handle it but don't await
           if (result instanceof Promise) {
             result
-              .then(() => console.log(`Initialized module: ${module.metadata.name}`))
-              .catch((error) => console.error(`Failed to initialize module ${module.metadata.name}:`, error))
+              .then(() =>
+                console.log(`Initialized module: ${module.metadata.name}`),
+              )
+              .catch(error =>
+                console.error(
+                  `Failed to initialize module ${module.metadata.name}:`,
+                  error,
+                ),
+              )
           } else {
             console.log(`Initialized module: ${module.metadata.name}`)
           }
         } catch (error) {
-          console.error(`Failed to initialize module ${module.metadata.name}:`, error)
+          console.error(
+            `Failed to initialize module ${module.metadata.name}:`,
+            error,
+          )
         }
       }
     }

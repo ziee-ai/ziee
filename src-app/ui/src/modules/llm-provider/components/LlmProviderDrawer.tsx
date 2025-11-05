@@ -1,7 +1,4 @@
-import {
-  EyeInvisibleOutlined,
-  EyeTwoTone,
-} from '@ant-design/icons'
+import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
 import { App, Button, Form, Input, Select, Switch, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/components/common/Drawer.tsx'
@@ -35,7 +32,8 @@ export function LlmProviderDrawer() {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
-  const { isOpen: open, editingProvider: provider } = useLlmProviderDrawerStore()
+  const { isOpen: open, editingProvider: provider } =
+    useLlmProviderDrawerStore()
 
   // Update form when editing provider
   useEffect(() => {
@@ -102,11 +100,7 @@ export function LlmProviderDrawer() {
 
   return (
     <Drawer
-      title={
-        provider
-          ? `Edit Provider: ${provider.name}`
-          : 'Add Provider'
-      }
+      title={provider ? `Edit Provider: ${provider.name}` : 'Add Provider'}
       open={open}
       onClose={handleClose}
       footer={null}
@@ -122,9 +116,7 @@ export function LlmProviderDrawer() {
         <Form.Item
           name="name"
           label="Provider Name"
-          rules={[
-            { required: true, message: 'Please enter a provider name' },
-          ]}
+          rules={[{ required: true, message: 'Please enter a provider name' }]}
         >
           <Input placeholder="My Custom Provider" />
         </Form.Item>
@@ -195,11 +187,7 @@ export function LlmProviderDrawer() {
           <Button onClick={handleClose} disabled={loading}>
             Cancel
           </Button>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={loading}
-          >
+          <Button type="primary" htmlType="submit" loading={loading}>
             {provider ? 'Update' : 'Add'} Provider
           </Button>
         </div>

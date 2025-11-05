@@ -40,10 +40,7 @@ import {
   toggleUserActiveStatus,
   updateUser,
 } from '../store.ts'
-import type {
-  UpdateUserRequest,
-  User,
-} from '@/api-client/types'
+import type { UpdateUserRequest, User } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 import { UserRegistrationSettings } from './UserRegistrationSettings.tsx'
 

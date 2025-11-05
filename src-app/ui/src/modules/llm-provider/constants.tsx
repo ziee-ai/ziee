@@ -1,9 +1,5 @@
 import { FaServer, FaWrench } from 'react-icons/fa'
-import {
-  RiOpenaiFill,
-  RiAnthropicFill,
-  RiGeminiFill,
-} from 'react-icons/ri'
+import { RiOpenaiFill, RiAnthropicFill, RiGeminiFill } from 'react-icons/ri'
 import { BsFillLightningChargeFill } from 'react-icons/bs'
 import { SiHuggingface } from 'react-icons/si'
 import { DeepSeek, Mistral } from '@lobehub/icons'

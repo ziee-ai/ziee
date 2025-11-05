@@ -1,4 +1,4 @@
-import {createModule, Stores} from '@/core'
+import { createModule, Stores } from '@/core'
 import { useAppStore, checkSetupStatus } from './store'
 import SetupPage from './SetupPage'
 import { BlankLayout } from '@/components/Layout/BlankLayout'
@@ -14,7 +14,7 @@ export default createModule({
       path: '/setup',
       element: <SetupPage />,
       requiresAuth: false,
-      layout: BlankLayout
+      layout: BlankLayout,
     },
   ],
   stores: [
@@ -30,7 +30,7 @@ export default createModule({
       console.log('Application needs setup')
       if (window.location.pathname !== '/setup') window.location.href = '/setup'
     } else {
-        console.log('Application is already set up')
+      console.log('Application is already set up')
     }
     console.log('App module initialized')
   },

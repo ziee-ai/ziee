@@ -214,7 +214,10 @@ export function AddLocalLlmModelUploadDrawer() {
     }
 
     // Update form field
-    form.setFieldValue('local_folder_path', `${rootFiles.length} files selected`)
+    form.setFieldValue(
+      'local_folder_path',
+      `${rootFiles.length} files selected`,
+    )
   }
 
   /**
@@ -242,7 +245,7 @@ export function AddLocalLlmModelUploadDrawer() {
       let values
       try {
         values = await form.validateFields()
-      } catch (error) {
+      } catch (_error) {
         // Form validation failed - errors are already displayed by Ant Design
         setLoading(false)
         return
@@ -311,14 +314,18 @@ export function AddLocalLlmModelUploadDrawer() {
       setFilteredFiles([])
 
       // Close drawer (imported from drawer-store)
-      const { closeAddLocalLlmModelUploadDrawer } = await import('../../store/llm-model-drawer-store')
+      const { closeAddLocalLlmModelUploadDrawer } = await import(
+        '../../store/llm-model-drawer-store'
+      )
       closeAddLocalLlmModelUploadDrawer()
 
       // Note: Model will be added to provider automatically by the component's parent
       // when the drawer closes and the provider detail page refreshes
     } catch (error) {
       console.error('Failed to upload model:', error)
-      message.error(error instanceof Error ? error.message : 'Failed to upload model')
+      message.error(
+        error instanceof Error ? error.message : 'Failed to upload model',
+      )
     } finally {
       setLoading(false)
     }
@@ -337,14 +344,18 @@ export function AddLocalLlmModelUploadDrawer() {
   const handleCancel = async () => {
     // Prevent closing if upload is in progress
     if (uploading) {
-      message.warning('Upload in progress - please cancel or wait for it to complete')
+      message.warning(
+        'Upload in progress - please cancel or wait for it to complete',
+      )
       return
     }
     form.resetFields()
     setSelectedFiles([])
     setFilteredFiles([])
 
-    const { closeAddLocalLlmModelUploadDrawer } = await import('../../store/llm-model-drawer-store')
+    const { closeAddLocalLlmModelUploadDrawer } = await import(
+      '../../store/llm-model-drawer-store'
+    )
     closeAddLocalLlmModelUploadDrawer()
   }
 

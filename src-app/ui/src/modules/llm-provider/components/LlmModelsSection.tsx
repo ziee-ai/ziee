@@ -15,7 +15,6 @@ import {
   Spin,
   Switch,
   Typography,
-  theme,
 } from 'antd'
 import { useParams } from 'react-router-dom'
 import {
@@ -42,7 +41,7 @@ export function LlmModelsSection() {
 
   // Get current provider and its models
   const currentProvider = Stores.LlmProvider.providers.find(
-    (p) => p.id === providerId,
+    p => p.id === providerId,
   )
   const llmModels = currentProvider?.llm_models || []
   const loading = llmModelsLoading?.[providerId!] || false
@@ -60,7 +59,7 @@ export function LlmModelsSection() {
       // Check if this was the last enabled model being disabled
       if (!enabled) {
         const remainingEnabledModels = llmModels.filter(
-          (m) => m.id !== modelId && m.enabled !== false,
+          m => m.id !== modelId && m.enabled !== false,
         )
 
         // If no models remain enabled and provider is currently enabled, disable the provider
@@ -68,24 +67,25 @@ export function LlmModelsSection() {
           try {
             await updateLlmProvider(currentProvider.id, { enabled: false })
             const modelName =
-              llmModels.find((m) => m.id === modelId)?.name || 'Model'
+              llmModels.find(m => m.id === modelId)?.name || 'Model'
             message.success(
               `${modelName} disabled. ${currentProvider.name} provider disabled as no models remain active.`,
             )
           } catch (providerError) {
             console.error('Failed to disable provider:', providerError)
             const modelName =
-              llmModels.find((m) => m.id === modelId)?.name || 'Model'
+              llmModels.find(m => m.id === modelId)?.name || 'Model'
             message.warning(
               `${modelName} disabled, but failed to disable provider automatically`,
             )
           }
         } else {
-          const modelName = llmModels.find((m) => m.id === modelId)?.name || 'Model'
+          const modelName =
+            llmModels.find(m => m.id === modelId)?.name || 'Model'
           message.success(`${modelName} ${enabled ? 'enabled' : 'disabled'}`)
         }
       } else {
-        const modelName = llmModels.find((m) => m.id === modelId)?.name || 'Model'
+        const modelName = llmModels.find(m => m.id === modelId)?.name || 'Model'
         message.success(`${modelName} ${enabled ? 'enabled' : 'disabled'}`)
       }
     } catch (error) {
@@ -118,7 +118,10 @@ export function LlmModelsSection() {
       // For local providers, open the upload drawer by default
       openAddLocalLlmModelUploadDrawer(currentProvider.id)
     } else {
-      openAddRemoteLlmModelDrawer(currentProvider.id, currentProvider.provider_type)
+      openAddRemoteLlmModelDrawer(
+        currentProvider.id,
+        currentProvider.provider_type,
+      )
     }
   }
 
@@ -215,13 +218,22 @@ export function LlmModelsSection() {
           }}
           trigger={['click']}
         >
-          <Button type="text" icon={<PlusOutlined aria-hidden="true" />} aria-label="Add model" />
+          <Button
+            type="text"
+            icon={<PlusOutlined aria-hidden="true" />}
+            aria-label="Add model"
+          />
         </Dropdown>
       )
     }
 
     return (
-      <Button type="text" icon={<PlusOutlined aria-hidden="true" />} onClick={handleAddLlmModel} aria-label="Add model" />
+      <Button
+        type="text"
+        icon={<PlusOutlined aria-hidden="true" />}
+        onClick={handleAddLlmModel}
+        aria-label="Add model"
+      />
     )
   }
 
@@ -249,7 +261,9 @@ export function LlmModelsSection() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">
                     <div className={'flex-1 min-w-48'}>
-                      <Text className="font-medium">{llmModel.display_name}</Text>
+                      <Text className="font-medium">
+                        {llmModel.display_name}
+                      </Text>
                       {llmModel.is_deprecated && (
                         <span className="text-xs">⚠️</span>
                       )}

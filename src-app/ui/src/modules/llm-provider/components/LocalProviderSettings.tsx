@@ -41,8 +41,8 @@ export function LocalProviderSettings() {
       <ProviderHeader />
 
       <Text type="secondary">
-        Local providers use models running on your local machine. Configure your local
-        inference server separately.
+        Local providers use models running on your local machine. Configure your
+        local inference server separately.
       </Text>
 
       <DownloadsSection providerId={currentProvider.id} />

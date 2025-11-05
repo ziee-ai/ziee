@@ -17,10 +17,9 @@ import {
   assertProviderEnabled,
   assertProviderDisabled,
   openAddProviderDrawer,
-  updateProvider,
   selectProviderType,
 } from './helpers/provider-helpers'
-import { fillProviderForm, submitProviderForm } from './helpers/form-helpers'
+import { submitProviderForm } from './helpers/form-helpers'
 
 test.describe('LLM Providers - List Page', () => {
   test('should pass accessibility checks', async ({ page, testInfra }) => {
@@ -391,10 +390,6 @@ test.describe('LLM Providers - Empty States', () => {
     await loginAsAdmin(page, baseURL)
     await goToProvidersPage(page, baseURL)
     await waitForProvidersPageLoad(page)
-
-    // Get all provider cards
-    const providerCards = page.locator('[data-testid="provider-card"]')
-    const count = await providerCards.count()
 
     // If no providers exist, the page should still be functional
     // (No specific empty state component is required - just verify page loads)

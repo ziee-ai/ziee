@@ -100,7 +100,9 @@ export const Drawer: React.FC<DrawerProps> = props => {
           ...(restProps.styles?.mask || {}),
         },
         wrapper: {
-          border: windowMinSize.xs ? 'none' : `1px solid ${token.colorBorderSecondary}`,
+          border: windowMinSize.xs
+            ? 'none'
+            : `1px solid ${token.colorBorderSecondary}`,
           borderRadius: windowMinSize.xs ? 0 : 8,
           maxWidth: `calc(100vw - ${windowMinSize.xs ? 0 : 24}px)`,
           boxShadow: 'none',

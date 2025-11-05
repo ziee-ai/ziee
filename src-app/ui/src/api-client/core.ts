@@ -1,6 +1,7 @@
 import { ApiEndpointUrl, ParameterByUrl, ResponseByUrl } from './types'
 import type { SSECallback } from './sse-types'
 import { createSSEHandler } from './sse-types'
+import { getBaseUrl } from './getBaseURL'
 
 export const getAuthToken = () => {
   // eslint-disable-next-line no-undef
@@ -12,16 +13,7 @@ export const getAuthToken = () => {
   return null
 }
 
-export const getBaseUrl = (function () {
-  let baseUrl: Promise<string>
-  //@ts-ignore
-  return async function () {
-    if (baseUrl) {
-      return baseUrl // Return existing promise if already created
-    }
-    return window.location.origin
-  }
-})()
+export { getBaseUrl }
 
 // Files upload progress callback type
 export interface FileUploadProgressCallback {

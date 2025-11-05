@@ -29,8 +29,12 @@ export function DownloadItem({
 }: DownloadItemProps) {
   const navigate = useNavigate()
 
-  const isActive = download.status === 'downloading' || download.status === 'pending'
-  const isTerminal = download.status === 'completed' || download.status === 'failed' || download.status === 'cancelled'
+  const isActive =
+    download.status === 'downloading' || download.status === 'pending'
+  const isTerminal =
+    download.status === 'completed' ||
+    download.status === 'failed' ||
+    download.status === 'cancelled'
 
   const handleNavigateToProvider = () => {
     navigate(`/settings/llm-providers/${download.provider_id}`)
@@ -42,9 +46,17 @@ export function DownloadItem({
       case 'pending':
         return <Tag color="blue">Downloading...</Tag>
       case 'completed':
-        return <Tag color="green" icon={<CheckCircleOutlined />}>Downloaded</Tag>
+        return (
+          <Tag color="green" icon={<CheckCircleOutlined />}>
+            Downloaded
+          </Tag>
+        )
       case 'failed':
-        return <Tag color="red" icon={<ExclamationCircleOutlined />}>Failed</Tag>
+        return (
+          <Tag color="red" icon={<ExclamationCircleOutlined />}>
+            Failed
+          </Tag>
+        )
       case 'cancelled':
         return <Tag color="default">Cancelled</Tag>
       default:
@@ -84,7 +96,13 @@ export function DownloadItem({
     return (
       <Card size="small">
         <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
             <Space>
               <Text strong>{download.request_data.display_name}</Text>
               {renderStatusTag()}
@@ -148,7 +166,14 @@ export function DownloadItem({
   if (mode === 'compact') {
     return (
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 4,
+          }}
+        >
           <Link onClick={handleNavigateToProvider}>
             {download.request_data.display_name}
           </Link>
@@ -178,9 +203,8 @@ export function DownloadItem({
   // MINIMAL MODE (for DownloadIndicator widget)
   if (mode === 'minimal') {
     const fullName = download.request_data.display_name || 'Unnamed Model'
-    const displayName = fullName.length > 30
-      ? fullName.substring(0, 30) + '...'
-      : fullName
+    const displayName =
+      fullName.length > 30 ? fullName.substring(0, 30) + '...' : fullName
 
     return (
       <Tooltip title={renderProgressInfo()}>
@@ -188,12 +212,23 @@ export function DownloadItem({
           style={{ marginBottom: 8, cursor: 'pointer' }}
           onClick={handleNavigateToProvider}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginBottom: 2,
+            }}
+          >
             <Text ellipsis style={{ fontSize: 12 }}>
               {displayName}
             </Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {Math.round((download.progress_data?.current || 0) / (download.progress_data?.total || 1) * 100)}%
+              {Math.round(
+                ((download.progress_data?.current || 0) /
+                  (download.progress_data?.total || 1)) *
+                  100,
+              )}
+              %
             </Text>
           </div>
           <DownloadProgress

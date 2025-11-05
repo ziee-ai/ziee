@@ -67,7 +67,9 @@ export function setupAccessibilityFixes() {
 
   // Function to remove aria-required from Select components
   const removeAriaRequiredFromSelects = () => {
-    const selects = document.querySelectorAll('.ant-select[aria-required="true"]')
+    const selects = document.querySelectorAll(
+      '.ant-select[aria-required="true"]',
+    )
     selects.forEach(select => {
       select.removeAttribute('aria-required')
     })
@@ -79,7 +81,10 @@ export function setupAccessibilityFixes() {
   // Set up MutationObserver to handle dynamically added Selects
   const observer = new MutationObserver(mutations => {
     for (const mutation of mutations) {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'aria-required') {
+      if (
+        mutation.type === 'attributes' &&
+        mutation.attributeName === 'aria-required'
+      ) {
         const target = mutation.target as HTMLElement
         if (target.classList.contains('ant-select')) {
           target.removeAttribute('aria-required')

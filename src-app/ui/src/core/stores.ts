@@ -60,10 +60,12 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
 // ============================================================================
 
 // Helper type to wrap store state with proxy methods
-export type StoreProxy<T> = Readonly<T & {
-  __state: T
-  __setState: (partial: Partial<T> | ((state: T) => Partial<T>)) => void
-}>
+export type StoreProxy<T> = Readonly<
+  T & {
+    __state: T
+    __setState: (partial: Partial<T> | ((state: T) => Partial<T>)) => void
+  }
+>
 
 // This interface will be augmented by modules via declaration merging
 export interface RegisteredStores {

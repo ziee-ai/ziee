@@ -176,7 +176,8 @@ export const uploadLocalModel = async (
 
     return model
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to upload model'
+    const errorMessage =
+      error instanceof Error ? error.message : 'Failed to upload model'
     useUploadStore.setState({
       uploading: false,
       uploadError: errorMessage,

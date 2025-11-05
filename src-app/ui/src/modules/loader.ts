@@ -24,7 +24,7 @@ export function loadModules(): void {
   // Auto-discover all module.tsx files in the modules directory
   const moduleFiles = import.meta.glob<{ default: AppModule }>(
     './**/module.tsx',
-    { eager: true }
+    { eager: true },
   )
 
   // Register each discovered module

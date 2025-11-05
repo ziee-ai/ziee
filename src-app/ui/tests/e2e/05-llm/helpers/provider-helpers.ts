@@ -48,7 +48,7 @@ export async function createProvider(
   page: Page,
   baseURL: string,
   data: ProviderFormData,
-  type: 'local' | 'remote' = 'local'
+  type: 'local' | 'openai' | 'anthropic' | 'groq' | 'gemini' | 'mistral' | 'deepseek' | 'huggingface' | 'custom' = 'local'
 ): Promise<void> {
   await goToProvidersPage(page, baseURL)
   await waitForProvidersPageLoad(page)

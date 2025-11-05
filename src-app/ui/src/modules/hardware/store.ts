@@ -65,7 +65,8 @@ export const loadHardwareInfo = async (): Promise<void> => {
   useHardwareStore.setState({ hardwareLoading: true, hardwareError: null })
 
   try {
-    const response: HardwareInfoResponse = await ApiClient.Hardware.info(undefined)
+    const response: HardwareInfoResponse =
+      await ApiClient.Hardware.info(undefined)
     useHardwareStore.setState({
       hardwareInfo: response.hardware,
       hardwareInitialized: true,
@@ -103,13 +104,17 @@ export const subscribeToHardwareUsage = async (): Promise<void> => {
   // Prevent reconnection immediately after disconnect (StrictMode remount protection)
   const timeSinceDisconnect = Date.now() - lastDisconnectTime
   if (timeSinceDisconnect < 200 && lastDisconnectTime > 0) {
-    console.log(`Hardware SSE: Skipping connection attempt (disconnected ${timeSinceDisconnect}ms ago)`)
+    console.log(
+      `Hardware SSE: Skipping connection attempt (disconnected ${timeSinceDisconnect}ms ago)`,
+    )
     return
   }
 
   // Check module-level flag first to prevent StrictMode double-mounting issues
   if (isCurrentlyConnecting || sseAbortController !== null) {
-    console.log('Hardware SSE: Skipping connection attempt (already connecting or connected)')
+    console.log(
+      'Hardware SSE: Skipping connection attempt (already connecting or connected)',
+    )
     return
   }
 
@@ -117,7 +122,9 @@ export const subscribeToHardwareUsage = async (): Promise<void> => {
 
   // Additional check against store state
   if (state.sseConnected || state.sseConnecting) {
-    console.log('Hardware SSE: Skipping connection attempt (store shows connected/connecting)')
+    console.log(
+      'Hardware SSE: Skipping connection attempt (store shows connected/connecting)',
+    )
     return
   }
 

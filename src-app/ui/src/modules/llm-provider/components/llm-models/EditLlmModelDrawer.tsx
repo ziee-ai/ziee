@@ -29,8 +29,8 @@ export function EditLlmModelDrawer() {
   const currentModel = modelId ? findLlmModelById(modelId) : null
 
   // Find provider that owns this model
-  const currentProvider = Stores.LlmProvider.providers.find((p) =>
-    p.llm_models?.some((m) => m.id === modelId),
+  const currentProvider = Stores.LlmProvider.providers.find(p =>
+    p.llm_models?.some(m => m.id === modelId),
   )
 
   const isLocalModel = currentProvider?.provider_type === 'local'
@@ -65,7 +65,11 @@ export function EditLlmModelDrawer() {
       })
 
       // Update in store
-      updateLlmModelInProvider(currentProvider.id, currentModel.id, updatedModel)
+      updateLlmModelInProvider(
+        currentProvider.id,
+        currentModel.id,
+        updatedModel,
+      )
 
       closeEditLlmModelDrawer()
       message.success('Model updated successfully')

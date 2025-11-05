@@ -24,10 +24,7 @@ import {
 import { Stores } from '@/core/stores'
 import { LocalLlmModelCommonFields } from './shared/LocalLlmModelCommonFields'
 import { ApiClient } from '@/api-client'
-import type {
-  LlmRepository,
-  FileFormat,
-} from '@/api-client/types'
+import type { LlmRepository, FileFormat } from '@/api-client/types'
 
 const { Text } = Typography
 
@@ -203,7 +200,8 @@ export function AddLocalLlmModelDownloadDrawer() {
         // In add mode, set default values
         form.setFieldsValue({
           display_name: 'TinyLlama Chat Model',
-          description: 'Small 1.1B parameter chat model for quick testing (~637MB)',
+          description:
+            'Small 1.1B parameter chat model for quick testing (~637MB)',
           file_format: 'safetensors',
           repository_path: 'meta-llama/Llama-3.1-8B-Instruct',
           main_filename: 'model.safetensors',

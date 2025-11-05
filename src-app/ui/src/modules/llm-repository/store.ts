@@ -198,10 +198,10 @@ export const clearLlmRepositoryStoreError = (): void => {
   useLlmRepositoryStore.setState({ error: null })
 }
 
-export const findLlmRepositoryById = (id: string): LlmRepository | undefined => {
-  return useLlmRepositoryStore
-    .getState()
-    .repositories.find(r => r.id === id)
+export const findLlmRepositoryById = (
+  id: string,
+): LlmRepository | undefined => {
+  return useLlmRepositoryStore.getState().repositories.find(r => r.id === id)
 }
 
 export const llmRepositoryHasCredentials = (

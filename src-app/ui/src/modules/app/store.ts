@@ -67,7 +67,10 @@ export const setupAdmin = async (request: SetupAdminRequest): Promise<void> => {
       setupError: null,
     })
   } catch (error: any) {
-    const message = error?.response?.data?.message || error?.message || 'Setup failed. Please try again.'
+    const message =
+      error?.response?.data?.message ||
+      error?.message ||
+      'Setup failed. Please try again.'
     useAppStore.setState({
       isSettingUpAdmin: false,
       setupError: message,

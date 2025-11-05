@@ -114,7 +114,8 @@ export function ProviderHeader() {
     return null
   }
 
-  const IconComponent = PROVIDER_ICONS[currentProvider.provider_type] || PROVIDER_ICONS.custom
+  const IconComponent =
+    PROVIDER_ICONS[currentProvider.provider_type] || PROVIDER_ICONS.custom
 
   return (
     <Flex justify="space-between" align="center">
@@ -152,7 +153,10 @@ export function ProviderHeader() {
               >
                 <CheckOutlined aria-hidden="true" />
               </Button>
-              <Button onClick={() => setIsEditingName(false)} aria-label="Cancel editing provider name">
+              <Button
+                onClick={() => setIsEditingName(false)}
+                aria-label="Cancel editing provider name"
+              >
                 <CloseOutlined aria-hidden="true" />
               </Button>
             </div>
@@ -182,7 +186,12 @@ export function ProviderHeader() {
               <EditOutlined aria-hidden="true" />
             </Button>
             {!currentProvider.built_in && (
-              <Button type={'text'} danger onClick={handleDeleteProvider} aria-label="Delete provider">
+              <Button
+                type={'text'}
+                danger
+                onClick={handleDeleteProvider}
+                aria-label="Delete provider"
+              >
                 <DeleteOutlined aria-hidden="true" />
               </Button>
             )}

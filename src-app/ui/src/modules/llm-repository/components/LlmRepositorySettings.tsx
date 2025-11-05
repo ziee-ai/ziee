@@ -37,7 +37,8 @@ export function LlmRepositorySettings() {
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [editingRepository, setEditingRepository] = useState<LlmRepository | null>(null)
+  const [editingRepository, setEditingRepository] =
+    useState<LlmRepository | null>(null)
 
   const testRepositoryConnection = async (repository: LlmRepository) => {
     // Check if repository has credentials configured
@@ -165,11 +166,7 @@ export function LlmRepositorySettings() {
           cancelText="Cancel"
           okButtonProps={{ danger: true }}
         >
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-          >
+          <Button type="text" danger icon={<DeleteOutlined />}>
             Delete
           </Button>
         </Popconfirm>,

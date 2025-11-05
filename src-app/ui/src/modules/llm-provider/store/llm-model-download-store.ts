@@ -57,7 +57,10 @@ export const downloadLlmModelFromRepository = async (
     onStart?.(downloadInstance.id)
 
     // Set up download tracking subscription if not already done
-    console.log('[Download] Setting up download tracking after adding download:', downloadInstance.id)
+    console.log(
+      '[Download] Setting up download tracking after adding download:',
+      downloadInstance.id,
+    )
     setupDownloadTracking()
 
     return { downloadId: downloadInstance.id }
@@ -167,7 +170,9 @@ export const subscribeToDownloadProgress = async (): Promise<void> => {
           console.log('SSE update:', updates)
 
           // Detect newly completed downloads and refresh their providers' models
-          const newlyCompleted = updates.filter((u: any) => u.status === 'completed')
+          const newlyCompleted = updates.filter(
+            (u: any) => u.status === 'completed',
+          )
           if (newlyCompleted.length > 0) {
             // Extract unique provider IDs from completed downloads
             const providerIds = [
@@ -179,7 +184,10 @@ export const subscribeToDownloadProgress = async (): Promise<void> => {
             ]
 
             // Refresh models for each provider
-            console.log('[Download] Refreshing models for providers:', providerIds)
+            console.log(
+              '[Download] Refreshing models for providers:',
+              providerIds,
+            )
             for (const providerId of providerIds) {
               void loadModelsForProvider(providerId)
             }
@@ -216,7 +224,10 @@ export const subscribeToDownloadProgress = async (): Promise<void> => {
           ]
 
           // Refresh models for all providers that had downloads
-          console.log('[Download] Refreshing models for providers on complete:', providerIds)
+          console.log(
+            '[Download] Refreshing models for providers on complete:',
+            providerIds,
+          )
           for (const providerId of providerIds) {
             void loadModelsForProvider(providerId)
           }
@@ -326,7 +337,9 @@ const setupDownloadTracking = (): void => {
         !useLlmModelDownloadStore.getState().sseConnected
       ) {
         // We have active downloads but no SSE connection, establish one
-        console.log('[Download] Active downloads detected, establishing SSE connection')
+        console.log(
+          '[Download] Active downloads detected, establishing SSE connection',
+        )
         void subscribeToDownloadProgress()
       } else if (
         activeDownloads.length === 0 &&

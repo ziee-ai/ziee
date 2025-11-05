@@ -1,5 +1,5 @@
 import { Page, expect } from '@playwright/test'
-import { fillModelCommonFields, fillModelCapabilities, fillModelParameters, fillModelEngineSettings, fillDownloadForm, fillUploadForm, submitUploadForm, type ModelFormData, type DownloadFormData, type UploadFormData } from './form-helpers'
+import { fillDownloadForm, fillUploadForm, submitUploadForm, type DownloadFormData, type UploadFormData } from './form-helpers'
 
 /**
  * LLM Model CRUD helpers

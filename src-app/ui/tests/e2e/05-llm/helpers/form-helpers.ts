@@ -258,7 +258,7 @@ export async function fillDownloadForm(page: Page, data: DownloadFormData) {
   const isUUID = data.repositoryId.includes('-') && data.repositoryId.length > 20
   if (isUUID) {
     // If it's a UUID, we can't match by text, so select the first option for now
-    await page.click('.ant-select-item:not(.ant-select-item-option-disabled)').first()
+    await page.locator('.ant-select-item:not(.ant-select-item-option-disabled)').first().click()
   } else {
     // For name-based selection (like "huggingface"), match the repository by name
     // Map common test identifiers to repository names

@@ -173,4 +173,3 @@ export const initAuth = async (): Promise<void> => {
     })
   }
 }
-

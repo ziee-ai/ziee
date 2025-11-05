@@ -17,7 +17,7 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
 
   // Filter downloads for this provider
   const providerDownloads = downloads.filter(
-    (download: DownloadInstance) => download.provider_id === providerId
+    (download: DownloadInstance) => download.provider_id === providerId,
   )
 
   if (providerDownloads.length === 0) {
@@ -45,8 +45,11 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
   }
 
   return (
-    <Card title="Downloading Models" classNames={{body: "flex flex-col gap-3"}}>
-      {providerDownloads.map((download) => (
+    <Card
+      title="Downloading Models"
+      classNames={{ body: 'flex flex-col gap-3' }}
+    >
+      {providerDownloads.map(download => (
         <div key={download.id}>
           <DownloadItem
             download={download}

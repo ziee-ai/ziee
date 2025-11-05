@@ -31,28 +31,46 @@ export default function SettingsPage() {
       icon: item.icon,
       label: item.label,
     })),
-    ...(adminSettingsItems.length > 0 ? [
-      { type: 'divider' as const },
-      { key: 'admin', icon: <IoMdSettings />, label: 'Admin', type: 'group' as const },
-      ...adminSettingsItems.map(item => ({
-        key: item.path,
-        icon: item.icon,
-        label: item.label,
-      })),
-    ] : []),
+    ...(adminSettingsItems.length > 0
+      ? [
+          { type: 'divider' as const },
+          {
+            key: 'admin',
+            icon: <IoMdSettings />,
+            label: 'Admin',
+            type: 'group' as const,
+          },
+          ...adminSettingsItems.map(item => ({
+            key: item.path,
+            icon: item.icon,
+            label: item.label,
+          })),
+        ]
+      : []),
   ]
 
   // Extract the current settings section from the URL and validate it
   const urlSection = location.pathname.match(/\/settings\/([^/]+)/)?.[1]
   const validSections = menuItems
-    .filter(item => 'key' in item && item.key && (item as any).type !== 'divider' && (item as any).type !== 'group')
+    .filter(
+      item =>
+        'key' in item &&
+        item.key &&
+        (item as any).type !== 'divider' &&
+        (item as any).type !== 'group',
+    )
     .map(item => (item as any).key)
 
-  const currentSection = validSections.includes(urlSection) ? urlSection : validSections[0]
+  const currentSection = validSections.includes(urlSection)
+    ? urlSection
+    : validSections[0]
 
   // Redirect to first available settings page if at root /settings
   useEffect(() => {
-    if (location.pathname === '/settings' || location.pathname === '/settings/') {
+    if (
+      location.pathname === '/settings' ||
+      location.pathname === '/settings/'
+    ) {
       if (validSections.length > 0) {
         navigate(`/settings/${validSections[0]}`, { replace: true })
       }

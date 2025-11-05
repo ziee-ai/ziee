@@ -175,23 +175,30 @@ export default function HardwareSettings() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div className="flex flex-wrap gap-6">
           <div>
-            <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+            <Text
+              type="secondary"
+              style={{ fontSize: '12px', display: 'block' }}
+            >
               Total RAM
             </Text>
             <div style={{ fontSize: '24px', fontWeight: 600 }}>
               {formatBytes(hardwareInfo?.memory.total_ram || 0)}
             </div>
           </div>
-          {(hardwareInfo?.memory.total_swap !== undefined && hardwareInfo.memory.total_swap > 0) && (
-            <div>
-              <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
-                Total Swap
-              </Text>
-              <div style={{ fontSize: '24px', fontWeight: 600 }}>
-                {formatBytes(hardwareInfo.memory.total_swap)}
+          {hardwareInfo?.memory.total_swap !== undefined &&
+            hardwareInfo.memory.total_swap > 0 && (
+              <div>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: '12px', display: 'block' }}
+                >
+                  Total Swap
+                </Text>
+                <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                  {formatBytes(hardwareInfo.memory.total_swap)}
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
         {currentUsage && (
           <div>
@@ -253,7 +260,10 @@ export default function HardwareSettings() {
           >
             <div className="flex flex-wrap gap-6">
               <div>
-                <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: '12px', display: 'block' }}
+                >
                   Vendor
                 </Text>
                 <div style={{ fontSize: '24px', fontWeight: 600 }}>
@@ -262,8 +272,13 @@ export default function HardwareSettings() {
               </div>
               {gpu.memory ? (
                 <div>
-                  <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
-                    {gpu.vendor?.includes('Apple') ? 'Dedicated VRAM' : 'Memory'}
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: '12px', display: 'block' }}
+                  >
+                    {gpu.vendor?.includes('Apple')
+                      ? 'Dedicated VRAM'
+                      : 'Memory'}
                   </Text>
                   <div style={{ fontSize: '24px', fontWeight: 600 }}>
                     {formatBytes(gpu.memory)}
@@ -271,7 +286,10 @@ export default function HardwareSettings() {
                 </div>
               ) : gpu.vendor?.includes('Apple') ? (
                 <div>
-                  <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: '12px', display: 'block' }}
+                  >
                     Memory Architecture
                   </Text>
                   <div style={{ fontSize: '24px', fontWeight: 600 }}>
@@ -281,7 +299,10 @@ export default function HardwareSettings() {
               ) : null}
               {gpu.driver_version && (
                 <div>
-                  <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: '12px', display: 'block' }}
+                  >
                     Driver
                   </Text>
                   <div style={{ fontSize: '24px', fontWeight: 600 }}>
@@ -291,7 +312,10 @@ export default function HardwareSettings() {
               )}
               {gpu.vendor?.includes('Apple') && hardwareInfo?.memory && (
                 <div>
-                  <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: '12px', display: 'block' }}
+                  >
                     Shared System Memory
                   </Text>
                   <div style={{ fontSize: '24px', fontWeight: 600 }}>
@@ -596,8 +620,7 @@ export default function HardwareSettings() {
         )}
         {currentUsage && (
           <Text type="secondary" style={{ fontSize: '12px' }}>
-            Last update:{' '}
-            {new Date(currentUsage.timestamp).toLocaleTimeString()}
+            Last update: {new Date(currentUsage.timestamp).toLocaleTimeString()}
           </Text>
         )}
       </div>

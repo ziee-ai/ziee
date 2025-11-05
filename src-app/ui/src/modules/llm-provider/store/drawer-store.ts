@@ -12,7 +12,10 @@ export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>(() => ({
 }))
 
 export const openLlmProviderDrawer = (provider?: LlmProvider) => {
-  useLlmProviderDrawerStore.setState({ isOpen: true, editingProvider: provider ?? null })
+  useLlmProviderDrawerStore.setState({
+    isOpen: true,
+    editingProvider: provider ?? null,
+  })
 }
 
 export const closeLlmProviderDrawer = () => {

@@ -12,12 +12,12 @@ export function DownloadIndicatorWidget() {
   // Filter for active downloads
   const activeDownloads = downloads.filter(
     (download: DownloadInstance) =>
-      download.status === 'downloading' || download.status === 'pending'
+      download.status === 'downloading' || download.status === 'pending',
   )
 
   // Check if any downloads have failed
   const hasFailedDownloads = downloads.some(
-    (download: DownloadInstance) => download.status === 'failed'
+    (download: DownloadInstance) => download.status === 'failed',
   )
 
   // Hide widget if no active or failed downloads
