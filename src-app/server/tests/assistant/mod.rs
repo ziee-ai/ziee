@@ -53,7 +53,7 @@ async fn test_create_template_requires_template_create_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistants-template"))
+        .post(&server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -69,7 +69,7 @@ async fn test_list_templates_requires_template_read_permission() {
     let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::read"]).await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/assistants-template"))
+        .get(&server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -224,7 +224,7 @@ async fn test_delete_user_assistant() {
 #[tokio::test]
 async fn test_create_template_assistant_success() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants-template::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistant_templates::create"]).await;
 
     let payload = json!({
         "name": "Template Assistant",
@@ -232,7 +232,7 @@ async fn test_create_template_assistant_success() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistants-template"))
+        .post(&server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -249,7 +249,7 @@ async fn test_create_template_assistant_success() {
 #[tokio::test]
 async fn test_list_template_assistants() {
     let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistants-template::create", "assistants-template::read"]).await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistant_templates::create", "assistant_templates::read"]).await;
 
     // Create templates
     create_template_assistant(&server, &admin.token, "Template 1").await;
@@ -257,7 +257,7 @@ async fn test_list_template_assistants() {
 
     // List templates
     let response = reqwest::Client::new()
-        .get(&server.api_url("/assistants-template"))
+        .get(&server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
@@ -272,7 +272,7 @@ async fn test_list_template_assistants() {
 #[tokio::test]
 async fn test_get_template_assistant_by_id() {
     let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistants-template::create", "assistants-template::read"]).await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistant_templates::create", "assistant_templates::read"]).await;
 
     // Create template
     let template = create_template_assistant(&server, &admin.token, "Template").await;
@@ -280,7 +280,7 @@ async fn test_get_template_assistant_by_id() {
 
     // Get by ID
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/assistants-template/{}", template_id)))
+        .get(&server.api_url(&format!("/assistant-templates/{}", template_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
@@ -295,7 +295,7 @@ async fn test_get_template_assistant_by_id() {
 #[tokio::test]
 async fn test_update_template_assistant() {
     let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistants-template::create", "assistants-template::edit"]).await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistant_templates::create", "assistant_templates::edit"]).await;
 
     // Create template
     let template = create_template_assistant(&server, &admin.token, "Original Template").await;
@@ -307,7 +307,7 @@ async fn test_update_template_assistant() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/assistants-template/{}", template_id)))
+        .put(&server.api_url(&format!("/assistant-templates/{}", template_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&payload)
         .send()
@@ -322,7 +322,7 @@ async fn test_update_template_assistant() {
 #[tokio::test]
 async fn test_delete_template_assistant() {
     let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistants-template::create", "assistants-template::delete"]).await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistant_templates::create", "assistant_templates::delete"]).await;
 
     // Create template
     let template = create_template_assistant(&server, &admin.token, "To Delete").await;
@@ -330,7 +330,7 @@ async fn test_delete_template_assistant() {
 
     // Delete
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/assistants-template/{}", template_id)))
+        .delete(&server.api_url(&format!("/assistant-templates/{}", template_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
@@ -568,7 +568,7 @@ async fn create_template_assistant(server: &crate::common::TestServer, token: &s
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistants-template"))
+        .post(&server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()

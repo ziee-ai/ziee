@@ -69,7 +69,7 @@ pub async fn create_user_assistant(
 
 pub fn create_user_assistant_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(AssistantsCreate,)>(op)
-        .id("Assistant.createUser")
+        .id("Assistant.create")
         .tag("Assistants")
         .summary("Create a new user assistant")
         .description("Create a user assistant. The assistant will be owned by the authenticated user.")
@@ -87,7 +87,7 @@ pub async fn list_user_assistants(
     let response = repository::list_assistants(
         &pool,
         Some(auth.user.id),
-        Some(false), // Only user assistants
+        false, // Only user assistants (never returns templates)
         query.page,
         query.limit,
     ).await?;
@@ -97,7 +97,7 @@ pub async fn list_user_assistants(
 
 pub fn list_user_assistants_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(AssistantsRead,)>(op)
-        .id("Assistant.listUser")
+        .id("Assistant.list")
         .tag("Assistants")
         .summary("List user assistants")
         .description("List all assistants owned by the authenticated user.")
@@ -132,7 +132,7 @@ pub async fn get_user_assistant(
 
 pub fn get_user_assistant_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(AssistantsRead,)>(op)
-        .id("Assistant.getUser")
+        .id("Assistant.get")
         .tag("Assistants")
         .summary("Get user assistant by ID")
         .description("Get a specific user assistant. Only the owner can access their assistants.")
@@ -171,7 +171,7 @@ pub async fn update_user_assistant(
 
 pub fn update_user_assistant_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(AssistantsEdit,)>(op)
-        .id("Assistant.updateUser")
+        .id("Assistant.update")
         .tag("Assistants")
         .summary("Update user assistant")
         .description("Update a user assistant. Only the owner can edit their assistants.")
@@ -209,7 +209,7 @@ pub async fn delete_user_assistant(
 
 pub fn delete_user_assistant_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(AssistantsDelete,)>(op)
-        .id("Assistant.deleteUser")
+        .id("Assistant.delete")
         .tag("Assistants")
         .summary("Delete user assistant")
         .description("Delete a user assistant. Only the owner can delete their assistants.")
@@ -232,7 +232,7 @@ pub async fn get_default_user_assistant(
 
 pub fn get_default_user_assistant_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(AssistantsRead,)>(op)
-        .id("Assistant.getDefaultUser")
+        .id("Assistant.getDefault")
         .tag("Assistants")
         .summary("Get default user assistant")
         .description("Get the default assistant for the user. Falls back to default template if no user default is set.")
@@ -287,7 +287,7 @@ pub async fn list_template_assistants(
     let response = repository::list_assistants(
         &pool,
         None, // No user filter for templates
-        Some(true), // Only templates
+        true, // Only templates
         query.page,
         query.limit,
     ).await?;

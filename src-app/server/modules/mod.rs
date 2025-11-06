@@ -7,6 +7,7 @@ pub mod health;
 pub mod llm_model;
 pub mod llm_provider;
 pub mod llm_repository;
+pub mod mcp;
 pub mod permissions;
 pub mod user;
 

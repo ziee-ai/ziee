@@ -142,28 +142,58 @@ pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>,
 /// List assistants with pagination and filtering
 ///
 /// Parameters:
-/// - user_id: User ID for ownership filtering (None means no user-specific filtering)
+/// - user_id: User ID for ownership filtering (required for user assistants)
 /// - is_template: Filter by template status
-///   - None: Return all accessible (user's assistants + all templates)
-///   - Some(true): Return only templates
-///   - Some(false): Return only user's assistants (requires user_id)
+///   - true: Return only templates (user_id is ignored)
+///   - false: Return only user's own assistants (requires user_id, never returns templates)
 /// - page: Page number (1-indexed)
 /// - limit: Items per page
 pub async fn list_assistants(
     pool: &PgPool,
     user_id: Option<Uuid>,
-    is_template: Option<bool>,
+    is_template: bool,
     page: i64,
     limit: i64,
 ) -> Result<AssistantListResponse, AppError> {
     let offset = (page - 1) * limit;
 
-    // Build query based on filters
-    match is_template {
-        Some(true) => {
-            // Only templates
+    // Build query based on is_template flag
+    if is_template {
+        // Only templates
+        let count: i64 = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM assistants WHERE is_template = true AND enabled = true"
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::database_error)?
+        .unwrap_or(0);
+
+        let rows = sqlx::query!(
+            r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+             FROM assistants
+             WHERE is_template = true AND enabled = true
+             ORDER BY created_at DESC
+             LIMIT $1 OFFSET $2"#,
+            limit,
+            offset
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        let assistants = rows.into_iter().map(|r| row_to_assistant(
+            r.id, r.name, r.description, r.instructions, r.parameters,
+            r.created_by, r.is_template, r.is_default, r.enabled,
+            r.created_at, r.updated_at
+        )).collect();
+
+        Ok(AssistantListResponse { assistants, total: count })
+    } else {
+        // Only user's own assistants (never return templates)
+        if let Some(uid) = user_id {
             let count: i64 = sqlx::query_scalar!(
-                "SELECT COUNT(*) FROM assistants WHERE is_template = true AND enabled = true"
+                "SELECT COUNT(*) FROM assistants WHERE created_by = $1 AND is_template = false AND enabled = true",
+                uid
             )
             .fetch_one(pool)
             .await
@@ -173,9 +203,10 @@ pub async fn list_assistants(
             let rows = sqlx::query!(
                 r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
                  FROM assistants
-                 WHERE is_template = true AND enabled = true
+                 WHERE created_by = $1 AND is_template = false AND enabled = true
                  ORDER BY created_at DESC
-                 LIMIT $1 OFFSET $2"#,
+                 LIMIT $2 OFFSET $3"#,
+                uid,
                 limit,
                 offset
             )
@@ -189,110 +220,10 @@ pub async fn list_assistants(
                 r.created_at, r.updated_at
             )).collect();
 
-            return Ok(AssistantListResponse { assistants, total: count });
-        }
-        Some(false) => {
-            // Only user's assistants
-            if let Some(uid) = user_id {
-                let count: i64 = sqlx::query_scalar!(
-                    "SELECT COUNT(*) FROM assistants WHERE created_by = $1 AND is_template = false AND enabled = true",
-                    uid
-                )
-                .fetch_one(pool)
-                .await
-                .map_err(AppError::database_error)?
-                .unwrap_or(0);
-
-                let rows = sqlx::query!(
-                    r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
-                     FROM assistants
-                     WHERE created_by = $1 AND is_template = false AND enabled = true
-                     ORDER BY created_at DESC
-                     LIMIT $2 OFFSET $3"#,
-                    uid,
-                    limit,
-                    offset
-                )
-                .fetch_all(pool)
-                .await
-                .map_err(AppError::database_error)?;
-
-                let assistants = rows.into_iter().map(|r| row_to_assistant(
-                    r.id, r.name, r.description, r.instructions, r.parameters,
-                    r.created_by, r.is_template, r.is_default, r.enabled,
-                    r.created_at, r.updated_at
-                )).collect();
-
-                return Ok(AssistantListResponse { assistants, total: count });
-            } else {
-                // No user_id provided but filtering for user assistants - return empty
-                return Ok(AssistantListResponse { assistants: vec![], total: 0 });
-            }
-        }
-        None => {
-            // All accessible: user's assistants + all templates
-            if let Some(uid) = user_id {
-                let count: i64 = sqlx::query_scalar!(
-                    "SELECT COUNT(*) FROM assistants WHERE enabled = true AND (is_template = true OR created_by = $1)",
-                    uid
-                )
-                .fetch_one(pool)
-                .await
-                .map_err(AppError::database_error)?
-                .unwrap_or(0);
-
-                let rows = sqlx::query!(
-                    r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
-                     FROM assistants
-                     WHERE enabled = true AND (is_template = true OR created_by = $1)
-                     ORDER BY created_at DESC
-                     LIMIT $2 OFFSET $3"#,
-                    uid,
-                    limit,
-                    offset
-                )
-                .fetch_all(pool)
-                .await
-                .map_err(AppError::database_error)?;
-
-                let assistants = rows.into_iter().map(|r| row_to_assistant(
-                    r.id, r.name, r.description, r.instructions, r.parameters,
-                    r.created_by, r.is_template, r.is_default, r.enabled,
-                    r.created_at, r.updated_at
-                )).collect();
-
-                return Ok(AssistantListResponse { assistants, total: count });
-            } else {
-                // No user_id - only return templates
-                let count: i64 = sqlx::query_scalar!(
-                    "SELECT COUNT(*) FROM assistants WHERE is_template = true AND enabled = true"
-                )
-                .fetch_one(pool)
-                .await
-                .map_err(AppError::database_error)?
-                .unwrap_or(0);
-
-                let rows = sqlx::query!(
-                    r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
-                     FROM assistants
-                     WHERE is_template = true AND enabled = true
-                     ORDER BY created_at DESC
-                     LIMIT $1 OFFSET $2"#,
-                    limit,
-                    offset
-                )
-                .fetch_all(pool)
-                .await
-                .map_err(AppError::database_error)?;
-
-                let assistants = rows.into_iter().map(|r| row_to_assistant(
-                    r.id, r.name, r.description, r.instructions, r.parameters,
-                    r.created_by, r.is_template, r.is_default, r.enabled,
-                    r.created_at, r.updated_at
-                )).collect();
-
-                return Ok(AssistantListResponse { assistants, total: count });
-            }
+            Ok(AssistantListResponse { assistants, total: count })
+        } else {
+            // No user_id provided but filtering for user assistants - return empty
+            Ok(AssistantListResponse { assistants: vec![], total: 0 })
         }
     }
 }
@@ -523,13 +454,3 @@ pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Resu
     }
 }
 
-/// List all accessible assistants for a user (their own + all templates)
-/// This is a convenience function that wraps list_assistants with is_template=None
-pub async fn list_accessible_assistants(
-    pool: &PgPool,
-    user_id: Uuid,
-    page: i64,
-    limit: i64,
-) -> Result<AssistantListResponse, AppError> {
-    list_assistants(pool, Some(user_id), None, page, limit).await
-}

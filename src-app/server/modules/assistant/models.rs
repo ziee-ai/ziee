@@ -52,7 +52,7 @@ pub struct CreateAssistantRequest {
     pub parameters: Option<ModelParameters>,
 
     /// Whether this is a system-wide template
-    /// - true: Requires assistants-template::create permission, created_by will be NULL
+    /// - true: Requires assistant_templates::create permission, created_by will be NULL
     /// - false/omitted: Requires assistants::create permission, created_by will be set to current user
     /// This field is IMMUTABLE after creation
     pub is_template: Option<bool>,

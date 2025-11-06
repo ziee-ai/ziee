@@ -1,7 +1,7 @@
 // Assistant permissions
 // Two namespaces:
 // - assistants::* for user-created assistants
-// - assistants-template::* for system-wide template assistants
+// - assistant_templates::* for system-wide template assistants
 
 use crate::modules::permissions::PermissionCheck;
 
@@ -50,13 +50,13 @@ impl PermissionCheck for AssistantsSetDefault {
 }
 
 // ============================================================
-// Template Assistants Permissions (assistants-template::*)
+// Template Assistants Permissions (assistant_templates::*)
 // ============================================================
 
 pub struct AssistantsTemplateCreate;
 impl PermissionCheck for AssistantsTemplateCreate {
     const NAME: &'static str = "AssistantsTemplateCreate";
-    const PERMISSION: &'static str = "assistants-template::create";
+    const PERMISSION: &'static str = "assistant_templates::create";
     const DESCRIPTION: &'static str = "Create system-wide template assistants";
     const MODULE: &'static str = "assistant";
 }
@@ -64,7 +64,7 @@ impl PermissionCheck for AssistantsTemplateCreate {
 pub struct AssistantsTemplateRead;
 impl PermissionCheck for AssistantsTemplateRead {
     const NAME: &'static str = "AssistantsTemplateRead";
-    const PERMISSION: &'static str = "assistants-template::read";
+    const PERMISSION: &'static str = "assistant_templates::read";
     const DESCRIPTION: &'static str = "Read system-wide template assistants";
     const MODULE: &'static str = "assistant";
 }
@@ -72,7 +72,7 @@ impl PermissionCheck for AssistantsTemplateRead {
 pub struct AssistantsTemplateEdit;
 impl PermissionCheck for AssistantsTemplateEdit {
     const NAME: &'static str = "AssistantsTemplateEdit";
-    const PERMISSION: &'static str = "assistants-template::edit";
+    const PERMISSION: &'static str = "assistant_templates::edit";
     const DESCRIPTION: &'static str = "Edit system-wide template assistants";
     const MODULE: &'static str = "assistant";
 }
@@ -80,7 +80,7 @@ impl PermissionCheck for AssistantsTemplateEdit {
 pub struct AssistantsTemplateDelete;
 impl PermissionCheck for AssistantsTemplateDelete {
     const NAME: &'static str = "AssistantsTemplateDelete";
-    const PERMISSION: &'static str = "assistants-template::delete";
+    const PERMISSION: &'static str = "assistant_templates::delete";
     const DESCRIPTION: &'static str = "Delete system-wide template assistants";
     const MODULE: &'static str = "assistant";
 }
@@ -88,7 +88,7 @@ impl PermissionCheck for AssistantsTemplateDelete {
 pub struct AssistantsTemplateSetDefault;
 impl PermissionCheck for AssistantsTemplateSetDefault {
     const NAME: &'static str = "AssistantsTemplateSetDefault";
-    const PERMISSION: &'static str = "assistants-template::set_default";
+    const PERMISSION: &'static str = "assistant_templates::set_default";
     const DESCRIPTION: &'static str = "Set default template assistant";
     const MODULE: &'static str = "assistant";
 }

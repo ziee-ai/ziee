@@ -49,3 +49,24 @@ COMMENT ON COLUMN assistants.created_by IS 'User who created this assistant (NUL
 COMMENT ON COLUMN assistants.is_template IS 'Whether this is a system-wide template available to all users';
 COMMENT ON COLUMN assistants.is_default IS 'Whether this is the default assistant for the user/template context';
 COMMENT ON COLUMN assistants.enabled IS 'Whether this assistant is enabled (false means disabled/soft-deleted)';
+
+-- Insert default template assistant
+INSERT INTO assistants (
+    name,
+    description,
+    instructions,
+    parameters,
+    created_by,
+    is_template,
+    is_default,
+    enabled
+) VALUES (
+    'Default Assistant',
+    'General-purpose AI assistant for everyday tasks',
+    'You are a helpful, harmless, and honest AI assistant. Provide clear, accurate, and concise responses to user queries. If you are unsure about something, say so rather than making up information.',
+    '{"temperature": 0.7, "max_tokens": 2048, "top_p": 0.9}',
+    NULL,
+    true,
+    true,
+    true
+);

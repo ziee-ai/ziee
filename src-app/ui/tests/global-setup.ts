@@ -2,7 +2,7 @@ import { FullConfig } from '@playwright/test'
 import { execSync } from 'child_process'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import pg from 'node_modules/@types/pg'
+import pg from 'pg'
 import dotenv from 'dotenv'
 
 const { Pool } = pg

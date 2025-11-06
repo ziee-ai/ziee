@@ -108,6 +108,20 @@ export interface CreateLlmRepositoryRequest {
   url: string
 }
 
+export interface CreateMcpServerRequest {
+  description?: string
+  args?: string[]
+  command?: string
+  display_name: string
+  enabled?: boolean
+  environment_variables?: any
+  headers?: any
+  name: string
+  timeout_seconds?: number
+  transport_type: TransportType
+  url?: string
+}
+
 export interface CreateUserRequest {
   display_name?: string
   email: string
@@ -260,6 +274,10 @@ export interface GroupListResponse {
   total_pages: number
 }
 
+export interface GroupMcpServersRequest {
+  server_ids: string[]
+}
+
 export interface HardwareInfo {
   cpu: CPUInfo
   gpu_devices: GPUDevice[]
@@ -390,6 +408,33 @@ export interface LoginRequest {
   password: string
   provider?: string
   username: string
+}
+
+export interface McpServer {
+  description?: string
+  args: any
+  command?: string
+  created_at: string
+  display_name: string
+  enabled: boolean
+  environment_variables: any
+  headers: any
+  id: string
+  is_system: boolean
+  name: string
+  timeout_seconds: number
+  transport_type: TransportType
+  updated_at: string
+  url?: string
+  user_id?: string
+}
+
+export interface McpServerListResponse {
+  page: number
+  per_page: number
+  servers: McpServer[]
+  total: number
+  total_pages: number
 }
 
 export interface MeResponse {
@@ -604,6 +649,8 @@ export interface TokenPair {
   token_type: string
 }
 
+export type TransportType = 'stdio' | 'http' | 'sse'
+
 export interface UpdateAssistantRequest {
   description?: string
   enabled?: boolean
@@ -646,6 +693,19 @@ export interface UpdateLlmRepositoryRequest {
   auth_type?: string
   enabled?: boolean
   name?: string
+  url?: string
+}
+
+export interface UpdateMcpServerRequest {
+  description?: string
+  args?: string[]
+  command?: string
+  display_name?: string
+  enabled?: boolean
+  environment_variables?: any
+  headers?: any
+  name?: string
+  timeout_seconds?: number
   url?: string
 }
 
@@ -707,6 +767,14 @@ export enum Permissions {
   LlmRepositoriesDelete = 'llm_repositories::delete',
   LlmRepositoriesEdit = 'llm_repositories::edit',
   LlmRepositoriesRead = 'llm_repositories::read',
+  McpServersAdminCreate = 'mcp_servers_admin::create',
+  McpServersAdminDelete = 'mcp_servers_admin::delete',
+  McpServersAdminEdit = 'mcp_servers_admin::edit',
+  McpServersAdminRead = 'mcp_servers_admin::read',
+  McpServersCreate = 'mcp_servers::create',
+  McpServersDelete = 'mcp_servers::delete',
+  McpServersEdit = 'mcp_servers::edit',
+  McpServersRead = 'mcp_servers::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
   UsersEdit = 'users::edit',
@@ -734,6 +802,14 @@ export const PermissionDescriptions: Record<string, string> = {
   LlmRepositoriesDelete: 'Delete non-built-in LLM repositories',
   LlmRepositoriesEdit: 'Edit existing LLM repository information and authentication',
   LlmRepositoriesRead: 'View LLM repositories and list repositories',
+  McpServersAdminCreate: 'Create system MCP servers',
+  McpServersAdminDelete: 'Delete system MCP servers',
+  McpServersAdminEdit: 'Edit system MCP servers and manage group assignments',
+  McpServersAdminRead: 'View system MCP servers',
+  McpServersCreate: 'Create MCP servers',
+  McpServersDelete: 'Delete MCP servers',
+  McpServersEdit: 'Edit MCP servers',
+  McpServersRead: 'View MCP servers',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
   UsersEdit: 'Edit existing user information',
@@ -750,18 +826,18 @@ export const PermissionDescriptions: Record<string, string> = {
 export const ApiEndpoints = {
   'App.getSetupStatus': 'GET /api/app/setup/status',
   'App.setupAdmin': 'POST /api/app/setup/admin',
-  'Assistant.createUser': 'POST /api/assistants',
-  'Assistant.deleteUser': 'DELETE /api/assistants/{id}',
-  'Assistant.getDefaultUser': 'GET /api/assistants/default',
-  'Assistant.getUser': 'GET /api/assistants/{id}',
-  'Assistant.listUser': 'GET /api/assistants',
-  'Assistant.updateUser': 'PUT /api/assistants/{id}',
-  'AssistantTemplate.create': 'POST /api/assistants-template',
-  'AssistantTemplate.delete': 'DELETE /api/assistants-template/{id}',
-  'AssistantTemplate.get': 'GET /api/assistants-template/{id}',
-  'AssistantTemplate.getDefault': 'GET /api/assistants-template/default',
-  'AssistantTemplate.list': 'GET /api/assistants-template',
-  'AssistantTemplate.update': 'PUT /api/assistants-template/{id}',
+  'Assistant.create': 'POST /api/assistants',
+  'Assistant.delete': 'DELETE /api/assistants/{id}',
+  'Assistant.get': 'GET /api/assistants/{id}',
+  'Assistant.getDefault': 'GET /api/assistants/default',
+  'Assistant.list': 'GET /api/assistants',
+  'Assistant.update': 'PUT /api/assistants/{id}',
+  'AssistantTemplate.create': 'POST /api/assistant-templates',
+  'AssistantTemplate.delete': 'DELETE /api/assistant-templates/{id}',
+  'AssistantTemplate.get': 'GET /api/assistant-templates/{id}',
+  'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
+  'AssistantTemplate.list': 'GET /api/assistant-templates',
+  'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
   'Auth.login': 'POST /api/auth/login',
   'Auth.logout': 'POST /api/auth/logout',
   'Auth.me': 'GET /api/auth/me',
@@ -798,6 +874,19 @@ export const ApiEndpoints = {
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
+  'McpServer.create': 'POST /api/mcp/servers',
+  'McpServer.delete': 'DELETE /api/mcp/servers/{id}',
+  'McpServer.get': 'GET /api/mcp/servers/{id}',
+  'McpServer.listAccessible': 'GET /api/mcp/servers',
+  'McpServer.update': 'PUT /api/mcp/servers/{id}',
+  'McpServerAdmin.create': 'POST /api/mcp/system-servers',
+  'McpServerAdmin.delete': 'DELETE /api/mcp/system-servers/{id}',
+  'McpServerAdmin.get': 'GET /api/mcp/system-servers/{id}',
+  'McpServerAdmin.getGroupServers': 'GET /api/mcp/groups/{group_id}/servers',
+  'McpServerAdmin.list': 'GET /api/mcp/system-servers',
+  'McpServerAdmin.removeGroupServer': 'DELETE /api/mcp/groups/{group_id}/servers/{server_id}',
+  'McpServerAdmin.setGroupServers': 'PUT /api/mcp/groups/{group_id}/servers',
+  'McpServerAdmin.update': 'PUT /api/mcp/system-servers/{id}',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -819,12 +908,12 @@ export const ApiEndpoints = {
 export type ApiEndpointParameters = {
   'App.getSetupStatus': void
   'App.setupAdmin': SetupAdminRequest
-  'Assistant.createUser': CreateAssistantRequest
-  'Assistant.deleteUser': { id: string }
-  'Assistant.getDefaultUser': void
-  'Assistant.getUser': { id: string }
-  'Assistant.listUser': { limit?: number; page?: number }
-  'Assistant.updateUser': { id: string } & UpdateAssistantRequest
+  'Assistant.create': CreateAssistantRequest
+  'Assistant.delete': { id: string }
+  'Assistant.get': { id: string }
+  'Assistant.getDefault': void
+  'Assistant.list': { limit?: number; page?: number }
+  'Assistant.update': { id: string } & UpdateAssistantRequest
   'AssistantTemplate.create': CreateAssistantRequest
   'AssistantTemplate.delete': { id: string }
   'AssistantTemplate.get': { id: string }
@@ -867,6 +956,19 @@ export type ApiEndpointParameters = {
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
+  'McpServer.create': CreateMcpServerRequest
+  'McpServer.delete': { id: string }
+  'McpServer.get': { id: string }
+  'McpServer.listAccessible': PaginationQuery
+  'McpServer.update': { id: string } & UpdateMcpServerRequest
+  'McpServerAdmin.create': CreateMcpServerRequest
+  'McpServerAdmin.delete': { id: string }
+  'McpServerAdmin.get': { id: string }
+  'McpServerAdmin.getGroupServers': { group_id: string }
+  'McpServerAdmin.list': PaginationQuery
+  'McpServerAdmin.removeGroupServer': { group_id: string; server_id: string }
+  'McpServerAdmin.setGroupServers': { group_id: string } & GroupMcpServersRequest
+  'McpServerAdmin.update': { id: string } & UpdateMcpServerRequest
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -888,12 +990,12 @@ export type ApiEndpointParameters = {
 export type ApiEndpointResponses = {
   'App.getSetupStatus': SetupStatusResponse
   'App.setupAdmin': AuthResponse
-  'Assistant.createUser': Assistant
-  'Assistant.deleteUser': void
-  'Assistant.getDefaultUser': Assistant
-  'Assistant.getUser': Assistant
-  'Assistant.listUser': AssistantListResponse
-  'Assistant.updateUser': Assistant
+  'Assistant.create': Assistant
+  'Assistant.delete': void
+  'Assistant.get': Assistant
+  'Assistant.getDefault': Assistant
+  'Assistant.list': AssistantListResponse
+  'Assistant.update': Assistant
   'AssistantTemplate.create': Assistant
   'AssistantTemplate.delete': void
   'AssistantTemplate.get': Assistant
@@ -936,6 +1038,19 @@ export type ApiEndpointResponses = {
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
+  'McpServer.create': McpServer
+  'McpServer.delete': void
+  'McpServer.get': McpServer
+  'McpServer.listAccessible': McpServerListResponse
+  'McpServer.update': McpServer
+  'McpServerAdmin.create': McpServer
+  'McpServerAdmin.delete': void
+  'McpServerAdmin.get': McpServer
+  'McpServerAdmin.getGroupServers': string[]
+  'McpServerAdmin.list': McpServerListResponse
+  'McpServerAdmin.removeGroupServer': void
+  'McpServerAdmin.setGroupServers': void
+  'McpServerAdmin.update': McpServer
   'User.create': User
   'User.delete': void
   'User.get': User

@@ -2866,7 +2866,7 @@
         ],
         "summary": "List user assistants",
         "description": "List all assistants owned by the authenticated user.",
-        "operationId": "Assistant.listUser",
+        "operationId": "Assistant.list",
         "parameters": [
           {
             "in": "query",
@@ -2920,7 +2920,7 @@
         ],
         "summary": "Create a new user assistant",
         "description": "Create a user assistant. The assistant will be owned by the authenticated user.",
-        "operationId": "Assistant.createUser",
+        "operationId": "Assistant.create",
         "requestBody": {
           "description": "Request structure for creating a new assistant",
           "content": {
@@ -2964,7 +2964,7 @@
         ],
         "summary": "Get default user assistant",
         "description": "Get the default assistant for the user. Falls back to default template if no user default is set.",
-        "operationId": "Assistant.getDefaultUser",
+        "operationId": "Assistant.getDefault",
         "responses": {
           "403": {
             "description": "Insufficient permissions"
@@ -2997,7 +2997,7 @@
         ],
         "summary": "Get user assistant by ID",
         "description": "Get a specific user assistant. Only the owner can access their assistants.",
-        "operationId": "Assistant.getUser",
+        "operationId": "Assistant.get",
         "responses": {
           "403": {
             "description": "Insufficient permissions or not owner"
@@ -3028,7 +3028,7 @@
         ],
         "summary": "Update user assistant",
         "description": "Update a user assistant. Only the owner can edit their assistants.",
-        "operationId": "Assistant.updateUser",
+        "operationId": "Assistant.update",
         "requestBody": {
           "description": "Request structure for updating an existing assistant",
           "content": {
@@ -3070,7 +3070,7 @@
         ],
         "summary": "Delete user assistant",
         "description": "Delete a user assistant. Only the owner can delete their assistants.",
-        "operationId": "Assistant.deleteUser",
+        "operationId": "Assistant.delete",
         "responses": {
           "403": {
             "description": "Insufficient permissions or not owner"
@@ -3089,7 +3089,7 @@
         ]
       }
     },
-    "/api/assistants-template": {
+    "/api/assistant-templates": {
       "get": {
         "tags": [
           "Assistant Templates"
@@ -3187,7 +3187,7 @@
         ]
       }
     },
-    "/api/assistants-template/default": {
+    "/api/assistant-templates/default": {
       "get": {
         "tags": [
           "Assistant Templates"
@@ -3220,7 +3220,7 @@
         ]
       }
     },
-    "/api/assistants-template/{id}": {
+    "/api/assistant-templates/{id}": {
       "get": {
         "tags": [
           "Assistant Templates"
@@ -3310,6 +3310,802 @@
           },
           "404": {
             "description": "Assistant template not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers": {
+      "get": {
+        "tags": [
+          "MCP Servers"
+        ],
+        "summary": "List accessible MCP servers",
+        "description": "List user's own MCP servers and system servers assigned through groups",
+        "operationId": "McpServer.listAccessible",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "MCP Servers"
+        ],
+        "summary": "Create user MCP server",
+        "description": "Create a new personal MCP server configuration",
+        "operationId": "McpServer.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create MCP servers",
+                        "name": "McpServersCreate",
+                        "value": "mcp_servers::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Server name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}": {
+      "get": {
+        "tags": [
+          "MCP Servers"
+        ],
+        "summary": "Get user MCP server",
+        "description": "Get a user MCP server by ID",
+        "operationId": "McpServer.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "MCP Servers"
+        ],
+        "summary": "Update user MCP server",
+        "description": "Update a user MCP server configuration",
+        "operationId": "McpServer.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit MCP servers",
+                        "name": "McpServersEdit",
+                        "value": "mcp_servers::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          },
+          "409": {
+            "description": "Server name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "MCP Servers"
+        ],
+        "summary": "Delete user MCP server",
+        "description": "Delete a user MCP server configuration",
+        "operationId": "McpServer.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete MCP servers",
+                        "name": "McpServersDelete",
+                        "value": "mcp_servers::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Server deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/system-servers": {
+      "get": {
+        "tags": [
+          "Admin - MCP Servers"
+        ],
+        "summary": "List system MCP servers",
+        "description": "List all system MCP servers (admin only)",
+        "operationId": "McpServerAdmin.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View system MCP servers",
+                        "name": "McpServersAdminRead",
+                        "value": "mcp_servers_admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Admin - MCP Servers"
+        ],
+        "summary": "Create system MCP server",
+        "description": "Create a new system MCP server configuration (admin only)",
+        "operationId": "McpServerAdmin.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create system MCP servers",
+                        "name": "McpServersAdminCreate",
+                        "value": "mcp_servers_admin::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "Server name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/system-servers/{id}": {
+      "get": {
+        "tags": [
+          "Admin - MCP Servers"
+        ],
+        "summary": "Get system MCP server",
+        "description": "Get a system MCP server by ID (admin only)",
+        "operationId": "McpServerAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View system MCP servers",
+                        "name": "McpServersAdminRead",
+                        "value": "mcp_servers_admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin - MCP Servers"
+        ],
+        "summary": "Update system MCP server",
+        "description": "Update a system MCP server configuration (admin only)",
+        "operationId": "McpServerAdmin.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit system MCP servers and manage group assignments",
+                        "name": "McpServersAdminEdit",
+                        "value": "mcp_servers_admin::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - validation failed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          },
+          "409": {
+            "description": "Server name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Admin - MCP Servers"
+        ],
+        "summary": "Delete system MCP server",
+        "description": "Delete a system MCP server configuration (admin only)",
+        "operationId": "McpServerAdmin.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete system MCP servers",
+                        "name": "McpServersAdminDelete",
+                        "value": "mcp_servers_admin::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Server deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/groups/{group_id}/servers": {
+      "get": {
+        "tags": [
+          "Admin - MCP Servers"
+        ],
+        "summary": "Get group's MCP servers",
+        "description": "Get MCP servers assigned to a group (admin only)",
+        "operationId": "McpServerAdmin.getGroupServers",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View system MCP servers",
+                        "name": "McpServersAdminRead",
+                        "value": "mcp_servers_admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin - MCP Servers"
+        ],
+        "summary": "Set group's MCP servers",
+        "description": "Set MCP servers for a group (replaces all assignments, admin only)",
+        "operationId": "McpServerAdmin.setGroupServers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupMcpServersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit system MCP servers and manage group assignments",
+                        "name": "McpServersAdminEdit",
+                        "value": "mcp_servers_admin::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Servers assigned successfully"
+          },
+          "400": {
+            "description": "Bad request - only system servers can be assigned"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/groups/{group_id}/servers/{server_id}": {
+      "delete": {
+        "tags": [
+          "Admin - MCP Servers"
+        ],
+        "summary": "Remove MCP server from group",
+        "description": "Remove an MCP server from a group (admin only)",
+        "operationId": "McpServerAdmin.removeGroupServer",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit system MCP servers and manage group assignments",
+                        "name": "McpServersAdminEdit",
+                        "value": "mcp_servers_admin::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Server removed successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server assignment not found"
           }
         },
         "security": [
@@ -3569,7 +4365,7 @@
             ]
           },
           "is_template": {
-            "description": "Whether this is a system-wide template\n - true: Requires assistants-template::create permission, created_by will be NULL\n - false/omitted: Requires assistants::create permission, created_by will be set to current user\n This field is IMMUTABLE after creation",
+            "description": "Whether this is a system-wide template\n - true: Requires assistant-templates::create permission, created_by will be NULL\n - false/omitted: Requires assistants::create permission, created_by will be set to current user\n This field is IMMUTABLE after creation",
             "type": [
               "boolean",
               "null"
@@ -3779,6 +4575,83 @@
           "name",
           "url",
           "auth_type"
+        ]
+      },
+      "CreateMcpServerRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "environment_variables": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "transport_type": {
+            "$ref": "#/components/schemas/TransportType"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "transport_type"
         ]
       },
       "CreateUserRequest": {
@@ -4555,6 +5428,21 @@
           "total_pages"
         ]
       },
+      "GroupMcpServersRequest": {
+        "type": "object",
+        "properties": {
+          "server_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "server_ids"
+        ]
+      },
       "HardwareInfo": {
         "type": "object",
         "properties": {
@@ -5177,6 +6065,118 @@
         "required": [
           "username",
           "password"
+        ]
+      },
+      "McpServer": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args": true,
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environment_variables": true,
+          "headers": true,
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_system": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transport_type": {
+            "$ref": "#/components/schemas/TransportType"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "enabled",
+          "is_system",
+          "transport_type",
+          "args",
+          "environment_variables",
+          "headers",
+          "timeout_seconds",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "McpServerListResponse": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServer"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_pages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "servers",
+          "total",
+          "page",
+          "per_page",
+          "total_pages"
         ]
       },
       "MeResponse": {
@@ -6198,6 +7198,14 @@
           "expires_in"
         ]
       },
+      "TransportType": {
+        "type": "string",
+        "enum": [
+          "stdio",
+          "http",
+          "sse"
+        ]
+      },
       "UpdateAssistantRequest": {
         "description": "Request structure for updating an existing assistant",
         "type": "object",
@@ -6439,6 +7447,81 @@
               "string",
               "null"
             ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UpdateMcpServerRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "environment_variables": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           },
           "url": {
             "type": [

@@ -16,11 +16,11 @@ pub fn assistant_router() -> ApiRouter<PgPool> {
         .api_route("/assistants/{id}", put_with(update_user_assistant, update_user_assistant_docs))
         .api_route("/assistants/{id}", delete_with(delete_user_assistant, delete_user_assistant_docs))
 
-        // Template assistant routes (/assistants-template)
-        .api_route("/assistants-template", post_with(create_template_assistant, create_template_assistant_docs))
-        .api_route("/assistants-template", get_with(list_template_assistants, list_template_assistants_docs))
-        .api_route("/assistants-template/default", get_with(get_default_template_assistant, get_default_template_assistant_docs))
-        .api_route("/assistants-template/{id}", get_with(get_template_assistant, get_template_assistant_docs))
-        .api_route("/assistants-template/{id}", put_with(update_template_assistant, update_template_assistant_docs))
-        .api_route("/assistants-template/{id}", delete_with(delete_template_assistant, delete_template_assistant_docs))
+        // Template assistant routes (/assistant-templates)
+        .api_route("/assistant-templates", post_with(create_template_assistant, create_template_assistant_docs))
+        .api_route("/assistant-templates", get_with(list_template_assistants, list_template_assistants_docs))
+        .api_route("/assistant-templates/default", get_with(get_default_template_assistant, get_default_template_assistant_docs))
+        .api_route("/assistant-templates/{id}", get_with(get_template_assistant, get_template_assistant_docs))
+        .api_route("/assistant-templates/{id}", put_with(update_template_assistant, update_template_assistant_docs))
+        .api_route("/assistant-templates/{id}", delete_with(delete_template_assistant, delete_template_assistant_docs))
 }

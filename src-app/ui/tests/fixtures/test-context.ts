@@ -1,9 +1,9 @@
 import { test as base } from '@playwright/test'
 import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync, rmSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync, rmSync, realpathSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import pg from 'node_modules/@types/pg'
+import pg from 'pg'
 import crypto from 'crypto'
 
 const { Pool } = pg
@@ -130,13 +130,28 @@ jwt:
 
     // 3. Start backend server
     console.log(`🚀 Starting backend server on port ${backendPort}...`)
+
+    // Get cargo path (try symlink first, then resolved path)
+    const cargoSymlink = process.env.CARGO_HOME
+      ? `${process.env.CARGO_HOME}/bin/cargo`
+      : `${process.env.HOME}/.cargo/bin/cargo`
+
+    console.log(`Cargo symlink: ${cargoSymlink}`)
+    console.log(`Symlink exists: ${existsSync(cargoSymlink)}`)
+
+    // Try using symlink directly instead of realpath
+    const cargoPath = cargoSymlink
+
+    console.log(`Using cargo at: ${cargoPath}`)
+
     const serverProcess = spawn(
-      'cargo',
+      cargoPath,
       ['run', '--bin', 'ziee-chat', '--', '--config-file', configPath],
       {
-        cwd: resolve(__dirname, '../../../src-web'),
+        cwd: resolve(__dirname, '../../server'),
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
+        env: process.env,
       }
     )
 
