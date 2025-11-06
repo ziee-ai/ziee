@@ -9,7 +9,7 @@ import type {
   useAddRemoteLlmModelDrawerStore,
   useViewDownloadDrawerStore,
   useUploadStore,
-} from './store'
+} from './stores'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

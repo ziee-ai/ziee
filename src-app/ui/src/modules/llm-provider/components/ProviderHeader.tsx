@@ -16,12 +16,7 @@ import {
 } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import {
-  deleteLlmProvider,
-  updateLlmProvider,
-  Stores,
-  llmProviderHasCredentials,
-} from '../store'
+import { Stores } from '@/core/stores'
 import { PROVIDER_ICONS } from '../constants'
 import type { LlmProvider } from '@/api-client/types'
 
@@ -51,13 +46,13 @@ export function ProviderHeader() {
   const canEnableProvider = (provider: LlmProvider): boolean => {
     if (provider.enabled) return true // Already enabled
     if (provider.provider_type === 'local') return true
-    return llmProviderHasCredentials(provider)
+    return Stores.LlmProvider.llmProviderHasCredentials(provider)
   }
 
   const getEnableDisabledReason = (provider: LlmProvider): string | null => {
     if (provider.enabled) return null
     if (provider.provider_type === 'local') return null
-    if (!llmProviderHasCredentials(provider)) {
+    if (!Stores.LlmProvider.llmProviderHasCredentials(provider)) {
       return 'API key is required for remote providers'
     }
     return null
@@ -67,7 +62,7 @@ export function ProviderHeader() {
     if (!currentProvider) return
 
     try {
-      await updateLlmProvider(providerId, {
+      await Stores.LlmProvider.updateLlmProvider(providerId, {
         enabled: enabled,
       })
       message.success(
@@ -96,7 +91,7 @@ export function ProviderHeader() {
       cancelText: 'Cancel',
       onOk: async () => {
         try {
-          await deleteLlmProvider(currentProvider.id)
+          await Stores.LlmProvider.deleteLlmProvider(currentProvider.id)
           navigate(`/settings/llm-providers`, {
             replace: true,
           })
@@ -143,7 +138,7 @@ export function ProviderHeader() {
                 type={'primary'}
                 onClick={() => {
                   form.validateFields().then(async values => {
-                    await updateLlmProvider(currentProvider.id, {
+                    await Stores.LlmProvider.updateLlmProvider(currentProvider.id, {
                       name: values.name,
                     })
                     setIsEditingName(false)

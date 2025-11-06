@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { Button, Input, Select, Typography, Flex } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { loadSystemServers, openMcpServerDrawer } from '../../store'
 import { McpServerCard } from '../McpServerCard'
 import { McpServerDrawer } from '../McpServerDrawer'
 
@@ -18,7 +17,7 @@ export function SystemServersTab() {
   // Load servers on mount
   useEffect(() => {
     if (!systemServersInitialized) {
-      loadSystemServers().catch(console.error)
+      Stores.SystemMcpServer.loadSystemServers().catch(console.error)
     }
   }, [systemServersInitialized])
 
@@ -28,7 +27,7 @@ export function SystemServersTab() {
   }
 
   const handleCreateServer = () => {
-    openMcpServerDrawer(undefined, 'create-system')
+    Stores.McpServerDrawer.openMcpServerDrawer(undefined, 'create-system')
   }
 
   // Filter and sort servers

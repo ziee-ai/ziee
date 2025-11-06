@@ -6,38 +6,40 @@ interface AssistantDrawerState {
   loading: boolean
   editingAssistant: Assistant | null
   isTemplate: boolean
+
+  // Actions
+  openAssistantDrawer: (assistant?: Assistant | null, isTemplate?: boolean) => void
+  closeAssistantDrawer: () => void
+  setAssistantDrawerLoading: (loading: boolean) => void
 }
 
-export const useAssistantDrawerStore = create<AssistantDrawerState>(() => ({
-  open: false,
-  loading: false,
-  editingAssistant: null,
-  isTemplate: false,
-}))
-
-// Drawer actions
-export const openAssistantDrawer = (
-  assistant?: Assistant | null,
-  isTemplate = false,
-) => {
-  useAssistantDrawerStore.setState({
-    open: true,
-    editingAssistant: assistant || null,
-    isTemplate,
-  })
-}
-
-export const closeAssistantDrawer = () => {
-  useAssistantDrawerStore.setState({
+export const useAssistantDrawerStore = create<AssistantDrawerState>(
+  (set): AssistantDrawerState => ({
     open: false,
     loading: false,
     editingAssistant: null,
     isTemplate: false,
-  })
-}
 
-export const setAssistantDrawerLoading = (loading: boolean) => {
-  useAssistantDrawerStore.setState({
-    loading,
-  })
-}
+    // Actions
+    openAssistantDrawer: (assistant?: Assistant | null, isTemplate = false) => {
+      set({
+        open: true,
+        editingAssistant: assistant || null,
+        isTemplate,
+      })
+    },
+
+    closeAssistantDrawer: () => {
+      set({
+        open: false,
+        loading: false,
+        editingAssistant: null,
+        isTemplate: false,
+      })
+    },
+
+    setAssistantDrawerLoading: (loading: boolean) => {
+      set({ loading })
+    },
+  }),
+)

@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { App } from 'antd'
 import { SystemServersTab } from './SystemServersTab'
 import { Stores } from '@/core/stores'
-import { loadSystemServers } from '../../store'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
 export function SystemMcpServersPage() {
@@ -14,7 +13,7 @@ export function SystemMcpServersPage() {
     const initializeStores = async () => {
       try {
         if (!systemServersInitialized) {
-          await loadSystemServers()
+          await Stores.SystemMcpServer.loadSystemServers()
         }
       } catch (error) {
         console.error('Failed to initialize system MCP servers:', error)

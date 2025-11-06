@@ -12,8 +12,7 @@ import {
 } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import {
-  clearLlmProviderStoreError,
-} from '@/modules/llm-provider/store'
+} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
 import { LocalLlmModelCommonFields } from './shared/LocalLlmModelCommonFields'
 import { ApiClient } from '@/api-client'
@@ -86,7 +85,7 @@ export function AddLocalLlmModelDownloadDrawer() {
   const handleSubmit = async () => {
     try {
       setLoading(true)
-      clearLlmProviderStoreError()
+      Stores.LlmProvider.clearLlmProviderStoreError()
       const values = await form.validateFields()
 
       // Auto-generate model ID from display name

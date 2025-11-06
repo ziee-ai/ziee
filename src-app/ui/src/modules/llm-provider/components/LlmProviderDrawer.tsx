@@ -2,10 +2,6 @@ import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
 import { App, Button, Form, Input, Select, Switch, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/components/common/Drawer.tsx'
-import {
-  createLlmProvider,
-  updateLlmProvider,
-} from '../store'
 import { Stores } from '@/core/stores'
 import type {
   CreateLlmProviderRequest,
@@ -68,7 +64,7 @@ export function LlmProviderDrawer() {
           base_url: values.base_url,
           enabled: values.enabled ?? true,
         }
-        await updateLlmProvider(provider.id, updateData)
+        await Stores.LlmProvider.updateLlmProvider(provider.id, updateData)
         message.success('Provider updated successfully')
       } else {
         // Add new provider
@@ -79,7 +75,7 @@ export function LlmProviderDrawer() {
           base_url: values.base_url,
           enabled: values.enabled ?? true,
         }
-        await createLlmProvider(createData)
+        await Stores.LlmProvider.createLlmProvider(createData)
         message.success('Provider added successfully')
       }
 

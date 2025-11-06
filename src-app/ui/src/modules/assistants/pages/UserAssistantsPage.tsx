@@ -8,10 +8,6 @@ import {
 import { PiSortAscending } from 'react-icons/pi'
 import {
   Stores,
-  loadUserAssistants,
-  deleteUserAssistant,
-  clearUserAssistantsStoreError,
-  openAssistantDrawer,
 } from '../store'
 import type { Assistant } from '@/api-client/types'
 import { AssistantCard } from '../components/AssistantCard'
@@ -40,7 +36,7 @@ export function UserAssistantsPage() {
 
   // Load data on mount
   useEffect(() => {
-    loadUserAssistants().catch(err => {
+    Stores.UserAssistants.loadUserAssistants().catch(err => {
       console.error('Failed to load user assistants:', err)
     })
   }, [])
@@ -49,21 +45,21 @@ export function UserAssistantsPage() {
   useEffect(() => {
     if (error) {
       message.error(error)
-      clearUserAssistantsStoreError()
+      Stores.UserAssistants.clearUserAssistantsStoreError()
     }
   }, [error, message])
 
   const handleCreate = () => {
-    openAssistantDrawer(null, false)
+    Stores.AssistantDrawer.openAssistantDrawer(null, false)
   }
 
   const handleEdit = (assistant: Assistant) => {
-    openAssistantDrawer(assistant, false)
+    Stores.AssistantDrawer.openAssistantDrawer(assistant, false)
   }
 
   const handleDelete = async (assistant: Assistant) => {
     try {
-      await deleteUserAssistant(assistant.id)
+      await Stores.UserAssistants.deleteUserAssistant(assistant.id)
       message.success('Assistant deleted successfully')
     } catch (error) {
       message.error('Failed to delete assistant')

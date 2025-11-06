@@ -12,6 +12,13 @@ interface PortLock {
   backendPort: number
 }
 
+interface PostgresPortLock {
+  pid: number
+  timestamp: number
+  port: number
+  runId: string
+}
+
 /**
  * Check if a process is still running
  * Uses signal 0 which doesn't kill the process, just checks existence
@@ -187,4 +194,113 @@ export function cleanupStaleLocks(): void {
   }
 
   console.log(`✅ Cleanup complete: ${removed} removed, ${kept} kept\n`)
+}
+
+/**
+ * Validate PostgreSQL port lock
+ */
+function isPostgresLockValid(lock: PostgresPortLock): boolean {
+  const now = Date.now()
+
+  // Check if lock is expired (timeout fallback)
+  if (now - lock.timestamp > LOCK_TIMEOUT_MS) {
+    console.log(`🧹 PostgreSQL lock expired (timestamp: ${lock.timestamp}, now: ${now})`)
+    return false
+  }
+
+  // Check if process is still alive
+  if (!isProcessAlive(lock.pid)) {
+    console.log(`🧹 PostgreSQL lock orphaned (PID ${lock.pid} not running)`)
+    return false
+  }
+
+  return true
+}
+
+/**
+ * Try to acquire a lock for a specific PostgreSQL port
+ * Returns true if lock was acquired, false if port is in use
+ */
+function acquirePostgresPortLock(port: number, runId: string): boolean {
+  if (!existsSync(LOCK_DIR)) {
+    mkdirSync(LOCK_DIR, { recursive: true })
+  }
+
+  const lockFile = resolve(LOCK_DIR, `postgres-${port}.lock`)
+
+  // Check existing lock
+  if (existsSync(lockFile)) {
+    try {
+      const existingLock: PostgresPortLock = JSON.parse(readFileSync(lockFile, 'utf-8'))
+
+      if (isPostgresLockValid(existingLock)) {
+        // Lock is valid, port is in use
+        return false
+      } else {
+        // Lock is stale, remove it
+        console.log(`🧹 Removing stale PostgreSQL lock: ${lockFile}`)
+        unlinkSync(lockFile)
+      }
+    } catch (e) {
+      // Corrupted lock file, remove it
+      console.log(`🧹 Removing corrupted PostgreSQL lock: ${lockFile}`)
+      unlinkSync(lockFile)
+    }
+  }
+
+  // Acquire lock
+  const lock: PostgresPortLock = {
+    pid: process.pid,
+    timestamp: Date.now(),
+    port,
+    runId,
+  }
+
+  writeFileSync(lockFile, JSON.stringify(lock, null, 2))
+  return true
+}
+
+/**
+ * Allocate a PostgreSQL port for this test run
+ * Tries multiple ports starting from base port 54331
+ * Returns the allocated port number
+ */
+export async function allocatePostgresPort(runId: string): Promise<number> {
+  const BASE_PORT = 54331
+  const MAX_ATTEMPTS = 100
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const port = BASE_PORT + attempt
+
+    if (acquirePostgresPortLock(port, runId)) {
+      console.log(`🔒 Locked PostgreSQL port ${port} for test run ${runId}`)
+      return port
+    }
+  }
+
+  throw new Error(
+    `Could not find available PostgreSQL port after ${MAX_ATTEMPTS} attempts (base: ${BASE_PORT})`
+  )
+}
+
+/**
+ * Release a PostgreSQL port lock
+ * Only releases if we own the lock (matching PID)
+ */
+export function releasePostgresPortLock(port: number): void {
+  const lockFile = resolve(LOCK_DIR, `postgres-${port}.lock`)
+
+  try {
+    if (existsSync(lockFile)) {
+      const lock: PostgresPortLock = JSON.parse(readFileSync(lockFile, 'utf-8'))
+
+      // Only release if we own the lock
+      if (lock.pid === process.pid) {
+        unlinkSync(lockFile)
+        console.log(`🔓 Released PostgreSQL port lock: ${port}`)
+      }
+    }
+  } catch (e) {
+    // Best effort cleanup
+  }
 }

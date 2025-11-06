@@ -1,6 +1,6 @@
 import { test as base } from '@playwright/test'
 import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync, rmSync, realpathSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import pg from 'pg'
@@ -36,15 +36,25 @@ export const test = base.extend<TestFixtures>({
     const backendPort = ports.backend
     const vitePort = ports.vite
 
+    // Read PostgreSQL port from global-setup config
+    const runId = process.env.TEST_RUN_ID
+    if (!runId) {
+      throw new Error('TEST_RUN_ID not set - global-setup may have failed')
+    }
+    const postgresConfigPath = resolve(__dirname, `../.test-configs/postgres-${runId}.json`)
+    const postgresConfig = JSON.parse(readFileSync(postgresConfigPath, 'utf-8'))
+    const postgresPort = postgresConfig.port
+
     console.log(`\n🔧 Setting up test infrastructure for: ${testInfo.title}`)
     console.log(`   Database: ${databaseName}`)
+    console.log(`   PostgreSQL: port ${postgresPort}`)
     console.log(`   Backend: http://localhost:${backendPort}`)
     console.log(`   Vite: http://localhost:${vitePort}\n`)
 
     // 1. Create database
     const pool = new Pool({
       host: 'localhost',
-      port: 54321,
+      port: postgresPort,
       user: 'postgres',
       password: 'password',
       database: 'postgres',
@@ -72,7 +82,7 @@ export const test = base.extend<TestFixtures>({
 
   external:
     host: "localhost"
-    port: 54321
+    port: ${postgresPort}
     username: "postgres"
     password: "password"
     database: "${databaseName}"
@@ -194,6 +204,10 @@ export default defineConfig({
     port: ${vitePort},
     strictPort: true,
     host: '127.0.0.1',
+    hmr: false,
+    watch: {
+      ignored: ['**/*'],
+    },
     proxy: {
       '/api/': {
         target: 'http://localhost:${backendPort}',
@@ -277,7 +291,7 @@ export default defineConfig({
     // Drop database
     const cleanupPool = new Pool({
       host: 'localhost',
-      port: 54321,
+      port: postgresPort,
       user: 'postgres',
       password: 'password',
       database: 'postgres',

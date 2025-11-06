@@ -2,10 +2,7 @@ import { App, Button, Form } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import { useState } from 'react'
 import {
-  addLlmModelToProvider,
-  loadLlmProviders,
-  clearLlmProviderStoreError,
-} from '@/modules/llm-provider/store'
+} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import { LlmModelParametersSection } from './shared/LlmModelParametersSection'
@@ -24,7 +21,7 @@ export function AddRemoteLlmModelDrawer() {
 
     try {
       setLoading(true)
-      clearLlmProviderStoreError()
+      Stores.LlmProvider.clearLlmProviderStoreError()
       const values = await form.validateFields()
 
       // Create model via API
@@ -49,8 +46,8 @@ export function AddRemoteLlmModelDrawer() {
       })
 
       // Add to provider in store
-      addLlmModelToProvider(providerId, model)
-      await loadLlmProviders()
+      Stores.LlmProvider.addLlmModelToProvider(providerId, model)
+      await Stores.LlmProvider.loadLlmProviders()
 
       form.resetFields()
       Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()

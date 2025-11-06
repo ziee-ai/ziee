@@ -44,10 +44,11 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
   await page.click('.ant-select:has(input#transport_type)')
   await page.click(`.ant-select-item-option:has-text("${data.transportType === 'stdio' ? 'Standard I/O' : data.transportType === 'http' ? 'HTTP' : 'Server-Sent Events'}")`)
 
-  // Wait for transport-specific fields to appear
-  await page.waitForTimeout(500)
-
+  // Wait for transport-specific fields to appear and be ready
   if (data.transportType === 'stdio') {
+    // Wait for command field to be visible
+    await page.waitForSelector('input#command', { state: 'visible', timeout: 5000 })
+
     // Command
     if (data.command) {
       await page.fill('input#command', data.command)
@@ -63,6 +64,9 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
       await page.fill('textarea#env', JSON.stringify(data.env, null, 2))
     }
   } else {
+    // Wait for URL field to be visible and ready
+    await page.waitForSelector('input#url', { state: 'visible', timeout: 5000 })
+
     // URL for http/sse
     if (data.url) {
       await page.fill('input#url', data.url)
@@ -81,11 +85,19 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
   }
 }
 
-export async function submitMcpServerForm(page: Page, action: 'create' | 'update' = 'create') {
-  const buttonText = action === 'create' ? 'Create Server' : 'Update Server'
-  const drawerTitle = action === 'create' ? 'Add MCP Server' : 'Edit MCP Server'
+export async function submitMcpServerForm(page: Page, action: 'create' | 'update' = 'create', isSystemServer = false) {
+  const buttonText = isSystemServer
+    ? (action === 'create' ? 'Create System Server' : 'Update System Server')
+    : (action === 'create' ? 'Create Server' : 'Update Server')
+  const drawerTitle = isSystemServer
+    ? (action === 'create' ? 'Add System Server' : 'Edit System Server')
+    : (action === 'create' ? 'Add MCP Server' : 'Edit MCP Server')
 
   await page.click(`button:has-text("${buttonText}")`)
+
+  // Wait for success message to appear (before checking if drawer closed)
+  // This must happen first because Ant Design messages auto-dismiss after ~3 seconds
+  await page.waitForSelector('.ant-message-success', { state: 'visible', timeout: 5000 })
 
   // Wait for specific drawer to close by waiting for its title to disappear
   await page.waitForSelector(`.ant-drawer-title:has-text("${drawerTitle}")`, {
@@ -94,14 +106,15 @@ export async function submitMcpServerForm(page: Page, action: 'create' | 'update
   })
 }
 
-export async function clickEditServerButton(page: Page, serverName: string) {
+export async function clickEditServerButton(page: Page, serverName: string, isSystemServer = false) {
   const serverCard = page.locator(`.ant-card:has-text("${serverName}")`)
   await serverCard.locator('button:has-text("Edit")').click()
   // Wait for specific Edit drawer title, not generic .ant-drawer-open class
-  await page.waitForSelector('.ant-drawer-title:has-text("Edit MCP Server")', { timeout: 5000 })
+  const drawerTitle = isSystemServer ? 'Edit System Server' : 'Edit MCP Server'
+  await page.waitForSelector(`.ant-drawer-title:has-text("${drawerTitle}")`, { timeout: 5000 })
 }
 
-export async function deleteServer(page: Page, serverName: string) {
+export async function deleteServer(_page: Page, _serverName: string) {
   // This function would be for delete functionality if/when implemented
   // For now, just a placeholder
 }
@@ -118,7 +131,8 @@ export async function toggleServerEnabled(page: Page, serverName: string) {
   const serverCard = page.locator(`.ant-card:has-text("${serverName}")`)
   const switchButton = serverCard.locator('.ant-switch').first()
   await switchButton.click()
-  await page.waitForTimeout(1000) // Wait for update to complete
+  // Wait for success message to appear
+  await page.waitForSelector('.ant-message-success', { state: 'visible', timeout: 5000 })
 }
 
 export async function verifyServerEnabled(page: Page, serverName: string, enabled: boolean) {

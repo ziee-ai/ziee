@@ -64,7 +64,7 @@ test.describe('MCP - Admin System Servers', () => {
 
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
-    await submitMcpServerForm(page, 'create')
+    await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
     await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
@@ -87,7 +87,7 @@ test.describe('MCP - Admin System Servers', () => {
 
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
-    await submitMcpServerForm(page, 'create')
+    await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
     await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
@@ -98,7 +98,7 @@ test.describe('MCP - Admin System Servers', () => {
 
   test('should edit system server', async ({ page }) => {
     // Edit an existing system server (Web Fetch)
-    await clickEditServerButton(page, 'Web Fetch')
+    await clickEditServerButton(page, 'Web Fetch', true)
 
     // Verify drawer opens with pre-filled data
     await expect(page.locator('.ant-drawer-title:has-text("Edit System Server")')).toBeVisible()
@@ -107,7 +107,7 @@ test.describe('MCP - Admin System Servers', () => {
     // Update description
     await page.fill('textarea#description', 'Updated description for Web Fetch server')
 
-    await submitMcpServerForm(page, 'update')
+    await submitMcpServerForm(page, 'update', true)
 
     // Verify success message
     await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
@@ -168,8 +168,8 @@ test.describe('MCP - Admin System Servers', () => {
     const cards = page.locator('.ant-card')
     const firstCardText = await cards.first().textContent()
 
-    // First card should be "Filesystem Access" (alphabetically first)
-    expect(firstCardText).toContain('Filesystem Access')
+    // First card should be "Browser Automation" (alphabetically first)
+    expect(firstCardText).toContain('Browser Automation')
   })
 
   test('should sort servers by status', async ({ page }) => {
@@ -230,18 +230,18 @@ test.describe('MCP - Admin System Servers', () => {
 
   test('should validate transport type cannot be changed in edit mode', async ({ page }) => {
     // Edit Web Fetch server
-    await clickEditServerButton(page, 'Web Fetch')
+    await clickEditServerButton(page, 'Web Fetch', true)
 
-    // Transport type dropdown should be disabled or show only current option
+    // Transport type dropdown should be disabled in edit mode
     const transportSelect = page.locator('.ant-select:has(input#transport_type)')
-    await transportSelect.click()
 
-    // Should only show stdio option (current transport type)
-    const options = page.locator('.ant-select-item-option')
-    const count = await options.count()
+    // Check if the select is disabled
+    const isDisabled = await transportSelect.evaluate((el) => {
+      return el.classList.contains('ant-select-disabled')
+    })
 
-    // Only one option should be available (the current transport type)
-    expect(count).toBe(1)
+    // Transport type should be disabled in edit mode
+    expect(isDisabled).toBe(true)
   })
 
   test('should create SSE transport server', async ({ page }) => {
@@ -256,7 +256,7 @@ test.describe('MCP - Admin System Servers', () => {
 
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
-    await submitMcpServerForm(page, 'create')
+    await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
     await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })

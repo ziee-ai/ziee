@@ -1,7 +1,7 @@
 import { createModule } from '@/core'
 import { ApiOutlined } from '@ant-design/icons'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
-import { useMcpStore, useSystemMcpServersStore } from './store'
+import { useMcpStore, useSystemMcpServersStore, useMcpServerDrawerStore } from './stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types' // CRITICAL: Import to enable type declaration merging
 
@@ -45,6 +45,10 @@ export default createModule({
     {
       name: 'SystemMcpServer',
       store: useSystemMcpServersStore,
+    },
+    {
+      name: 'McpServerDrawer',
+      store: useMcpServerDrawerStore,
     },
   ],
   settings: [

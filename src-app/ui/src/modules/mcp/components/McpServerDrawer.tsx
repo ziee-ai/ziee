@@ -1,13 +1,10 @@
 import { Button, Form, Input, Select, Switch, App } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import { useEffect } from 'react'
+import { Stores } from '@/core/stores'
 import {
-  closeMcpServerDrawer,
-  setMcpServerDrawerLoading,
   useMcpServerDrawerStore,
-} from '../store'
-import { createMcpServer, updateMcpServer } from '../store/mcp-store'
-import { createSystemServer, updateSystemServer } from '../store/system-mcp-servers-store'
+} from '../stores'
 import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
@@ -71,7 +68,7 @@ export function McpServerDrawer() {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
-      setMcpServerDrawerLoading(true)
+      Stores.McpServerDrawer.setMcpServerDrawerLoading(true)
 
       // Parse arguments from JSON array string
       let args: string[] = []
@@ -80,13 +77,13 @@ export function McpServerDrawer() {
           const parsed = JSON.parse(values.args)
           if (!Array.isArray(parsed)) {
             message.error('Arguments must be a JSON array')
-            setMcpServerDrawerLoading(false)
+            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
             return
           }
           args = parsed
         } catch (error) {
           message.error('Invalid JSON in arguments')
-          setMcpServerDrawerLoading(false)
+          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
           return
         }
       }
@@ -98,12 +95,12 @@ export function McpServerDrawer() {
           environmentVariables = JSON.parse(values.env)
           if (typeof environmentVariables !== 'object' || Array.isArray(environmentVariables)) {
             message.error('Environment variables must be a JSON object')
-            setMcpServerDrawerLoading(false)
+            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
             return
           }
         } catch (error) {
           message.error('Invalid JSON in environment variables')
-          setMcpServerDrawerLoading(false)
+          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
           return
         }
       }
@@ -121,7 +118,7 @@ export function McpServerDrawer() {
       }
 
       if (mode === 'create') {
-        await createMcpServer(serverData as CreateMcpServerRequest)
+        await Stores.McpServer.createMcpServer(serverData as CreateMcpServerRequest)
         message.success('MCP server created successfully')
       } else if (mode === 'edit' && editingServer) {
         const updateData: UpdateMcpServerRequest = {
@@ -133,10 +130,10 @@ export function McpServerDrawer() {
           environment_variables: environmentVariables,
           enabled: values.enabled ?? true,
         }
-        await updateMcpServer(editingServer.id, updateData)
+        await Stores.McpServer.updateMcpServer(editingServer.id, updateData)
         message.success('MCP server updated successfully')
       } else if (mode === 'create-system') {
-        await createSystemServer(serverData as CreateMcpServerRequest)
+        await Stores.SystemMcpServer.createSystemServer(serverData as CreateMcpServerRequest)
         message.success('System MCP server created successfully')
       } else if (mode === 'edit-system' && editingServer) {
         const updateData: UpdateMcpServerRequest = {
@@ -148,22 +145,22 @@ export function McpServerDrawer() {
           environment_variables: environmentVariables,
           enabled: values.enabled ?? true,
         }
-        await updateSystemServer(editingServer.id, updateData)
+        await Stores.SystemMcpServer.updateSystemServer(editingServer.id, updateData)
         message.success('System MCP server updated successfully')
       }
 
-      closeMcpServerDrawer()
+      Stores.McpServerDrawer.closeMcpServerDrawer()
       form.resetFields()
     } catch (error) {
       console.error('Failed to save MCP server:', error)
       message.error('Failed to save MCP server')
     } finally {
-      setMcpServerDrawerLoading(false)
+      Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
     }
   }
 
   const handleClose = () => {
-    closeMcpServerDrawer()
+    Stores.McpServerDrawer.closeMcpServerDrawer()
     form.resetFields()
   }
 
@@ -245,6 +242,7 @@ export function McpServerDrawer() {
             rules={[{ required: true, message: 'Please select a transport type' }]}
           >
             <Select
+              disabled={mode === 'edit' || mode === 'edit-system'}
               options={TRANSPORT_TYPES.map(type => ({
                 ...type,
                 disabled:

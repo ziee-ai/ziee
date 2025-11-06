@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { App, Button, Flex, Input, Select, Spin, Typography } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { loadMcpServers, clearMcpError, openMcpServerDrawer } from '../store'
 import { McpServerCard } from './McpServerCard'
 import { McpServerDrawer } from './McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
@@ -18,19 +17,19 @@ export function McpServersSettings() {
 
   useEffect(() => {
     if (!isInitialized) {
-      loadMcpServers()
+      Stores.McpServer.loadMcpServers()
     }
   }, [isInitialized])
 
   useEffect(() => {
     if (error) {
       message.error(error)
-      clearMcpError()
+      Stores.McpServer.clearMcpError()
     }
   }, [error, message])
 
   const handleAddServer = () => {
-    openMcpServerDrawer(undefined, 'create')
+    Stores.McpServerDrawer.openMcpServerDrawer(undefined, 'create')
   }
 
   const clearAllFilters = () => {
@@ -96,7 +95,7 @@ export function McpServersSettings() {
           <div className="mt-4">
             <Button
               onClick={() => {
-                loadMcpServers().catch((err: Error) => {
+                Stores.McpServer.loadMcpServers().catch((err: Error) => {
                   console.error('Failed to load MCP servers:', err)
                   message.error('Failed to load MCP servers')
                 })

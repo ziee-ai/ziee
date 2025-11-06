@@ -6,7 +6,7 @@ import {
 import { App, Button, Card, Flex, Form, Input, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { clearLlmProviderStoreError, Stores, updateLlmProvider } from '../store'
+import { Stores } from '@/core/stores'
 import { ProviderProxySettingsForm } from './ProviderProxySettingsForm'
 import { ProviderHeader } from './ProviderHeader'
 import { LlmModelsSection } from './LlmModelsSection'
@@ -52,7 +52,7 @@ export function RemoteProviderSettings() {
     if (!currentProvider || !pendingSettings) return
 
     try {
-      await updateLlmProvider(currentProvider.id, pendingSettings)
+      await Stores.LlmProvider.updateLlmProvider(currentProvider.id, pendingSettings)
 
       setHasUnsavedChanges(false)
       setPendingSettings(null)
@@ -67,7 +67,7 @@ export function RemoteProviderSettings() {
     if (!currentProvider) return
 
     try {
-      await updateLlmProvider(currentProvider.id, {
+      await Stores.LlmProvider.updateLlmProvider(currentProvider.id, {
         proxy_settings: proxySettings,
       })
       message.success('Proxy settings saved')
@@ -81,7 +81,7 @@ export function RemoteProviderSettings() {
   useEffect(() => {
     if (error) {
       message.error(error)
-      clearLlmProviderStoreError()
+      Stores.LlmProvider.clearLlmProviderStoreError()
     }
   }, [error, message])
 

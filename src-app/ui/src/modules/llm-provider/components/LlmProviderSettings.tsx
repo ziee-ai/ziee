@@ -12,9 +12,8 @@ import {
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  clearLlmProviderStoreError,
   Stores,
-} from '../store'
+} from '../stores'
 import { PROVIDER_ICONS } from '../constants'
 import { LlmProviderDrawer } from './LlmProviderDrawer'
 import { LocalProviderSettings } from './LocalProviderSettings'
@@ -39,7 +38,7 @@ export function LlmProviderSettings() {
   useEffect(() => {
     if (error) {
       message.error(error)
-      clearLlmProviderStoreError()
+      Stores.LlmProvider.clearLlmProviderStoreError()
     }
   }, [error, message])
 

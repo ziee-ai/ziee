@@ -16,12 +16,6 @@ import {
   Typography,
 } from 'antd'
 import { Stores } from '@/core/stores'
-import {
-  deleteLlmRepository,
-  testLlmRepositoryConnection,
-  updateLlmRepository,
-  llmRepositoryHasCredentials,
-} from '../store'
 import type { LlmRepository } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 
@@ -35,7 +29,7 @@ export function LlmRepositorySettings() {
 
   const testRepositoryConnection = async (repository: LlmRepository) => {
     // Check if repository has credentials configured
-    if (!llmRepositoryHasCredentials(repository)) {
+    if (!Stores.LlmRepository.llmRepositoryHasCredentials(repository)) {
       message.warning(
         'Please configure authentication credentials for this repository first',
       )
@@ -50,7 +44,7 @@ export function LlmRepositorySettings() {
         auth_config: repository.auth_config,
       }
 
-      const result = await testLlmRepositoryConnection(testData)
+      const result = await Stores.LlmRepository.testLlmRepositoryConnection(testData)
 
       if (result.success) {
         message.success(
@@ -85,7 +79,7 @@ export function LlmRepositorySettings() {
     }
 
     try {
-      await deleteLlmRepository(repositoryId)
+      await Stores.LlmRepository.deleteLlmRepository(repositoryId)
       message.success('Repository removed successfully')
     } catch (error: any) {
       console.error('Failed to delete repository:', error)
@@ -98,7 +92,7 @@ export function LlmRepositorySettings() {
     enabled: boolean,
   ) => {
     try {
-      await updateLlmRepository(repositoryId, { enabled })
+      await Stores.LlmRepository.updateLlmRepository(repositoryId, { enabled })
     } catch (error: any) {
       console.error('Failed to toggle repository:', error)
       message.error(error?.message || 'Failed to toggle repository')

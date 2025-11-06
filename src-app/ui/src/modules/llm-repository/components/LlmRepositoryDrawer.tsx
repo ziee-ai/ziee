@@ -7,11 +7,6 @@ import { App, Button, Form, Input, Select, Switch, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/components/common/Drawer.tsx'
 import { Stores } from '@/core/stores'
-import {
-  createLlmRepository,
-  testLlmRepositoryConnection,
-  updateLlmRepository,
-} from '../store'
 import type {
   CreateLlmRepositoryRequest,
   UpdateLlmRepositoryRequest,
@@ -93,7 +88,7 @@ export function LlmRepositoryDrawer() {
         },
       }
 
-      const result = await testLlmRepositoryConnection(testData)
+      const result = await Stores.LlmRepository.testLlmRepositoryConnection(testData)
 
       if (result.success) {
         message.success(
@@ -149,7 +144,7 @@ export function LlmRepositoryDrawer() {
     try {
       if (repository) {
         // Update existing repository
-        await updateLlmRepository(repository.id, repositoryData)
+        await Stores.LlmRepository.updateLlmRepository(repository.id, repositoryData)
         message.success('Repository updated successfully')
       } else {
         // Add new repository - need full CreateLlmRepositoryRequest
@@ -166,7 +161,7 @@ export function LlmRepositoryDrawer() {
           },
           enabled: values.enabled ?? true,
         }
-        await createLlmRepository(createData)
+        await Stores.LlmRepository.createLlmRepository(createData)
         message.success('Repository added successfully')
       }
 

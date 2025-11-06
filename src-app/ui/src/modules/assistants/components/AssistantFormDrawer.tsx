@@ -3,12 +3,6 @@ import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import {
   Stores,
-  closeAssistantDrawer,
-  setAssistantDrawerLoading,
-  createUserAssistant,
-  updateUserAssistant,
-  createTemplateAssistant,
-  updateTemplateAssistant,
 } from '../store'
 
 const { TextArea } = Input
@@ -71,7 +65,7 @@ export function AssistantFormDrawer() {
 
   const handleClose = () => {
     form.resetFields()
-    closeAssistantDrawer()
+    Stores.AssistantDrawer.closeAssistantDrawer()
   }
 
   const handleParametersBlur = () => {
@@ -109,29 +103,29 @@ export function AssistantFormDrawer() {
       enabled: values.enabled,
     }
 
-    setAssistantDrawerLoading(true)
+    Stores.AssistantDrawer.setAssistantDrawerLoading(true)
     try {
       if (editingAssistant) {
         if (isTemplate) {
-          await updateTemplateAssistant(editingAssistant.id, payload)
+          await Stores.TemplateAssistants.updateTemplateAssistant(editingAssistant.id, payload)
         } else {
-          await updateUserAssistant(editingAssistant.id, payload)
+          await Stores.UserAssistants.updateUserAssistant(editingAssistant.id, payload)
         }
         message.success('Assistant updated successfully')
       } else {
         if (isTemplate) {
-          await createTemplateAssistant(payload)
+          await Stores.TemplateAssistants.createTemplateAssistant(payload)
         } else {
-          await createUserAssistant(payload)
+          await Stores.UserAssistants.createUserAssistant(payload)
         }
         message.success('Assistant created successfully')
       }
-      closeAssistantDrawer()
+      Stores.AssistantDrawer.closeAssistantDrawer()
     } catch (error) {
       console.error('Failed to save assistant:', error)
       // Error already shown via store error state
     } finally {
-      setAssistantDrawerLoading(false)
+      Stores.AssistantDrawer.setAssistantDrawerLoading(false)
     }
   }
 

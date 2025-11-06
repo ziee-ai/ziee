@@ -17,13 +17,7 @@ import {
   Typography,
 } from 'antd'
 import { useParams } from 'react-router-dom'
-import {
-  deleteLlmModel,
-  disableLlmModel,
-  enableLlmModel,
-  Stores,
-  updateLlmProvider,
-} from '../store'
+import { Stores } from '@/core/stores'
 import type { LlmModel } from '@/api-client/types'
 
 const { Text } = Typography
@@ -47,9 +41,9 @@ export function LlmModelsSection() {
 
     try {
       if (enabled) {
-        await enableLlmModel(modelId)
+        await Stores.LlmProvider.enableLlmModel(modelId)
       } else {
-        await disableLlmModel(modelId)
+        await Stores.LlmProvider.disableLlmModel(modelId)
       }
 
       // Check if this was the last enabled model being disabled
@@ -61,7 +55,7 @@ export function LlmModelsSection() {
         // If no models remain enabled and provider is currently enabled, disable the provider
         if (remainingEnabledModels.length === 0 && currentProvider.enabled) {
           try {
-            await updateLlmProvider(currentProvider.id, { enabled: false })
+            await Stores.LlmProvider.updateLlmProvider(currentProvider.id, { enabled: false })
             const modelName =
               llmModels.find(m => m.id === modelId)?.name || 'Model'
             message.success(
@@ -94,7 +88,7 @@ export function LlmModelsSection() {
     if (!currentProvider) return
 
     try {
-      await deleteLlmModel(modelId)
+      await Stores.LlmProvider.deleteLlmModel(modelId)
       message.success('Model deleted')
     } catch (error) {
       console.error('Failed to delete model:', error)

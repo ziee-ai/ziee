@@ -21,7 +21,7 @@ export async function goToTemplateAssistantsSettings(page: Page, baseURL: string
  * Assistant Form Drawer helpers
  */
 
-export async function openCreateAssistantDrawer(page: Page, isUserPage = true) {
+export async function openCreateAssistantDrawer(page: Page, _isUserPage = true) {
   // Both pages now use the same aria-label for the create button
   await page.click('button[aria-label="Create assistant"]')
   await page.waitForSelector('.ant-drawer', { state: 'visible' })
@@ -86,8 +86,8 @@ export async function fillAssistantForm(
 
 export async function submitAssistantForm(page: Page) {
   await page.click('.ant-drawer button[type="submit"]')
-  // Wait for drawer to be removed from DOM after successful submission
-  await page.waitForSelector('.ant-drawer', { state: 'detached', timeout: 15000 })
+  // Don't wait for drawer here - let the test verify success message first
+  // The drawer will close automatically after successful submission
 }
 
 export async function cancelAssistantForm(page: Page) {
@@ -150,7 +150,8 @@ export async function clickAssistantCard(page: Page, assistantName: string) {
  */
 
 export async function getTemplateAssistantRow(page: Page, assistantName: string) {
-  return page.locator(`.ant-card-body >> text=${assistantName}`).locator('..')
+  // Find the assistant name text, then navigate up to the parent flex container that has the actions
+  return page.locator(`.ant-card-body`).locator(`text=${assistantName}`).locator('..').locator('..').locator('..')
 }
 
 export async function editTemplateAssistant(page: Page, assistantName: string) {

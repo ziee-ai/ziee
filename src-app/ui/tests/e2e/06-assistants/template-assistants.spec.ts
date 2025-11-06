@@ -8,6 +8,7 @@ import {
   submitAssistantForm,
   editTemplateAssistant,
   deleteTemplateAssistant,
+  getTemplateAssistantRow,
   goToPage,
   changePageSize,
   assertTemplateAssistantExists,
@@ -77,7 +78,7 @@ test.describe('Template Assistants - Settings Page', () => {
     await assertTemplateAssistantExists(page, 'Full Template Assistant')
 
     // Verify Default tag
-    const row = page.locator(`.ant-card-body >> text=Full Template Assistant`).locator('..')
+    const row = await getTemplateAssistantRow(page, 'Full Template Assistant')
     await expect(row.locator('.ant-tag:has-text("Default")')).toBeVisible()
   })
 
@@ -134,7 +135,7 @@ test.describe('Template Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
 
-    const row = page.locator(`.ant-card-body >> text=Default Template Test`).locator('..')
+    const row = await getTemplateAssistantRow(page, 'Default Template Test')
     await expect(row.locator('.ant-tag:has-text("Default")')).toBeVisible()
   })
 
@@ -146,7 +147,7 @@ test.describe('Template Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
 
-    const row = page.locator(`.ant-card-body >> text=Inactive Template Test`).locator('..')
+    const row = await getTemplateAssistantRow(page, 'Inactive Template Test')
     await expect(row.locator('.ant-tag:has-text("Inactive")')).toBeVisible()
   })
 
@@ -158,7 +159,7 @@ test.describe('Template Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
 
-    const row = page.locator(`.ant-card-body >> text=Info Template Test`).locator('..')
+    const row = await getTemplateAssistantRow(page, 'Info Template Test')
 
     // Verify description is displayed
     await expect(row.getByText('Test description for display', { exact: true })).toBeVisible()
@@ -228,7 +229,7 @@ test.describe('Template Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
 
-    let row1 = page.locator(`.ant-card-body >> text=Template 1`).locator('..')
+    let row1 = await getTemplateAssistantRow(page, 'Template 1')
     await expect(row1.locator('.ant-tag:has-text("Default")')).toBeVisible()
 
     await openCreateAssistantDrawer(page, false)
@@ -246,11 +247,11 @@ test.describe('Template Assistants - Settings Page', () => {
     await submitAssistantForm(page)
 
     // Verify Template 2 is now default
-    const row2 = page.locator(`.ant-card-body >> text=Template 2`).locator('..')
+    const row2 = await getTemplateAssistantRow(page, 'Template 2')
     await expect(row2.locator('.ant-tag:has-text("Default")')).toBeVisible()
 
     // Verify Template 1 is no longer default
-    row1 = page.locator(`.ant-card-body >> text=Template 1`).locator('..')
+    row1 = await getTemplateAssistantRow(page, 'Template 1')
     await expect(row1.locator('.ant-tag:has-text("Default")')).not.toBeVisible()
   })
 

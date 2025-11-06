@@ -5,7 +5,7 @@ import type {
   DownloadFromRepositoryRequest,
   DownloadInstance,
 } from '@/api-client/types'
-import { loadModelsForProvider } from './store'
+import { useLlmProviderStore } from './llm-provider-store'
 
 interface LlmModelDownloadState {
   // Download instances array
@@ -216,7 +216,7 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                     providerIds,
                   )
                   for (const providerId of providerIds) {
-                    void loadModelsForProvider(providerId)
+                    void useLlmProviderStore.getState().loadModelsForProvider(providerId)
                   }
                 }
 
@@ -256,7 +256,7 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                   providerIds,
                 )
                 for (const providerId of providerIds) {
-                  void loadModelsForProvider(providerId)
+                  void useLlmProviderStore.getState().loadModelsForProvider(providerId)
                 }
 
                 // Disconnect and reload downloads

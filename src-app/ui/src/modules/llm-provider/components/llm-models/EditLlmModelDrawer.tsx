@@ -2,10 +2,8 @@ import { App, Button, Card, Flex, Form } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import { useEffect, useState } from 'react'
 import {
-  findLlmModelById,
-  updateLlmModelInProvider,
   Stores,
-} from '@/modules/llm-provider/store'
+} from '@/modules/llm-provider/stores'
 import { ApiClient } from '@/api-client'
 import { LlmModelCapabilitiesSection } from './shared/LlmModelCapabilitiesSection'
 import { LlmModelParametersSection } from './shared/LlmModelParametersSection'
@@ -24,7 +22,7 @@ export function EditLlmModelDrawer() {
   const [loading, setLoading] = useState(false)
 
   const { open, modelId } = Stores.EditLlmModelDrawer
-  const currentModel = modelId ? findLlmModelById(modelId) : null
+  const currentModel = modelId ? Stores.LlmProvider.findLlmModelById(modelId) : null
 
   // Find provider that owns this model
   const currentProvider = Stores.LlmProvider.providers.find(p =>
@@ -63,7 +61,7 @@ export function EditLlmModelDrawer() {
       })
 
       // Update in store
-      updateLlmModelInProvider(
+      Stores.LlmProvider.updateLlmModelInProvider(
         currentProvider.id,
         currentModel.id,
         updatedModel,

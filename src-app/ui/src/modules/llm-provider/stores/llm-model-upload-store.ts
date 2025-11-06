@@ -5,7 +5,7 @@ import type {
   ModelEngineSettings,
 } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
-import { loadModelsForProvider } from './store'
+import { useLlmProviderStore } from './llm-provider-store'
 
 /**
  * Upload progress for a single file
@@ -156,7 +156,7 @@ export const useUploadStore = create<UploadState>()(
               currentUploadXhr = null
 
               // Refresh the provider's models list (don't await to avoid blocking)
-              loadModelsForProvider(data.provider_id)
+              void useLlmProviderStore.getState().loadModelsForProvider(data.provider_id)
             },
             onError: (error: string, fileName?: string) => {
               // Handle upload error

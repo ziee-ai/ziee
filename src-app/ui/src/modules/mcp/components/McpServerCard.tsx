@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { App, Button, Card, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
 import { EditOutlined, ToolOutlined } from '@ant-design/icons'
+import { Stores } from '@/core/stores'
 import type { McpServer } from '@/api-client/types'
-import { updateMcpServer, openMcpServerDrawer } from '../store'
 
 const { Text } = Typography
 
@@ -20,18 +20,24 @@ export function McpServerCard({
 
   const handleEdit = () => {
     if (server.is_system) {
-      openMcpServerDrawer(server, 'edit-system')
+      Stores.McpServerDrawer.openMcpServerDrawer(server, 'edit-system')
     } else {
-      openMcpServerDrawer(server, 'edit')
+      Stores.McpServerDrawer.openMcpServerDrawer(server, 'edit')
     }
   }
 
   const handleToggleEnable = async (enabled: boolean) => {
     setEnableLoading(true)
     try {
-      await updateMcpServer(server.id, {
-        enabled,
-      })
+      if (server.is_system) {
+        await Stores.SystemMcpServer.updateSystemServer(server.id, {
+          enabled,
+        })
+      } else {
+        await Stores.McpServer.updateMcpServer(server.id, {
+          enabled,
+        })
+      }
       message.success(`Server ${enabled ? 'enabled' : 'disabled'} successfully`)
     } catch (error) {
       console.error('Failed to toggle server enable state:', error)

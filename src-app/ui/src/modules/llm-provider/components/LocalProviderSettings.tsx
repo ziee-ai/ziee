@@ -1,7 +1,7 @@
 import { App, Flex, Typography } from 'antd'
 import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { clearLlmProviderStoreError, Stores } from '../store'
+import { Stores } from '@/core/stores'
 import { ProviderHeader } from './ProviderHeader'
 import { LlmModelsSection } from './LlmModelsSection'
 import { DownloadsSection } from './downloads/DownloadsSection'
@@ -27,7 +27,7 @@ export function LocalProviderSettings() {
   useEffect(() => {
     if (error) {
       message.error(error)
-      clearLlmProviderStoreError()
+      Stores.LlmProvider.clearLlmProviderStoreError()
     }
   }, [error, message])
 

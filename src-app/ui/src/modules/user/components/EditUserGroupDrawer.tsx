@@ -2,7 +2,7 @@ import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/components/common/Drawer.tsx'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
-import type { UpdateGroupRequest, Group } from '@/api-client/types'
+import type { UpdateGroupRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 
 const { TextArea } = Input
@@ -31,24 +31,12 @@ const validatePermissions = (_: any, value: string) => {
   }
 }
 
-interface EditUserGroupDrawerProps {
-  group: Group | null
-  open: boolean
-  onClose: () => void
-  onSuccess?: () => void
-}
-
-export function EditUserGroupDrawer({
-  group,
-  open,
-  onClose,
-  onSuccess,
-}: EditUserGroupDrawerProps) {
+export function EditUserGroupDrawer() {
   const { message } = App.useApp()
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
-  const { updating } = Stores.UserGroups
+  const { isOpen: open, editingGroup: group } = Stores.UserGroupDrawer
 
   // Load group data when it changes
   useEffect(() => {
@@ -64,7 +52,7 @@ export function EditUserGroupDrawer({
 
   const handleClose = () => {
     form.resetFields()
-    onClose()
+    Stores.UserGroupDrawer.closeUserGroupDrawer()
   }
 
   const handleSubmit = async (values: any) => {
@@ -96,7 +84,6 @@ export function EditUserGroupDrawer({
       await Stores.UserGroups.updateUserGroup(group.id, updateData)
       message.success('User group updated successfully')
       handleClose()
-      onSuccess?.()
     } catch (error) {
       console.error('Failed to update user group:', error)
       message.error('Failed to update user group')
@@ -107,7 +94,7 @@ export function EditUserGroupDrawer({
 
   return (
     <Drawer
-      title="Edit User Group"
+      title={group ? `Edit Group: ${group.name}` : 'Edit User Group'}
       open={open}
       onClose={handleClose}
       footer={null}
@@ -147,17 +134,17 @@ export function EditUserGroupDrawer({
         </Form.Item>
 
         <Form.Item name="is_active" label="Active" valuePropName="checked">
-          <Switch />
+          <Switch aria-label="Set group as active or inactive" />
         </Form.Item>
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button onClick={handleClose} disabled={loading || updating}>
+          <Button onClick={handleClose} disabled={loading}>
             Cancel
           </Button>
           <Button
             type="primary"
             htmlType="submit"
-            loading={loading || updating}
+            loading={loading}
           >
             Update Group
           </Button>

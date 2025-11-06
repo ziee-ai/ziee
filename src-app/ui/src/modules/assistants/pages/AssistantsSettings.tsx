@@ -20,11 +20,7 @@ import {
 } from 'antd'
 import { useEffect } from 'react'
 import {
-  clearTemplateAssistantsStoreError,
-  deleteTemplateAssistant,
-  loadTemplateAssistants,
   Stores,
-  openAssistantDrawer,
 } from '../store'
 import type { Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
@@ -49,13 +45,13 @@ export function AssistantsSettings() {
   useEffect(() => {
     if (error) {
       message.error(error)
-      clearTemplateAssistantsStoreError()
+      Stores.TemplateAssistants.clearTemplateAssistantsStoreError()
     }
   }, [error, message])
 
   const handleDelete = async (assistant: Assistant) => {
     try {
-      await deleteTemplateAssistant(assistant.id)
+      await Stores.TemplateAssistants.deleteTemplateAssistant(assistant.id)
       message.success('Assistant deleted successfully')
     } catch (error) {
       console.error('Failed to delete assistant:', error)
@@ -64,11 +60,11 @@ export function AssistantsSettings() {
   }
 
   const handleEdit = (assistant: Assistant) => {
-    openAssistantDrawer(assistant, true)
+    Stores.AssistantDrawer.openAssistantDrawer(assistant, true)
   }
 
   const handleCreate = () => {
-    openAssistantDrawer(null, true)
+    Stores.AssistantDrawer.openAssistantDrawer(null, true)
   }
 
   const getAssistantActions = (assistant: Assistant) => {
@@ -107,7 +103,7 @@ export function AssistantsSettings() {
     const newPageSize = size || storePageSize
     const newPage = size && size !== storePageSize ? 1 : page // Reset to page 1 if page size changes
 
-    loadTemplateAssistants(newPage, newPageSize)
+    Stores.TemplateAssistants.loadTemplateAssistants(newPage, newPageSize)
   }
 
   return (
