@@ -12,6 +12,9 @@ import {
   useViewDownloadDrawerStore,
   useUploadStore,
   useLlmProviderGroupAssignmentStore,
+  useProviderGroupAssignmentStore,
+  useLlmProviderGroupWidgetStore,
+  useProviderGroupCardStore,
 } from './stores'
 import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
@@ -19,6 +22,7 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const LlmProviderSettings = lazyWithPreload(() => import('./components/LlmProviderSettings').then(m => ({ default: m.LlmProviderSettings })))
 const LLMProviderGroupAssignmentDrawer = lazyWithPreload(() => import('./components/LLMProviderGroupAssignmentDrawer').then(m => ({ default: m.LLMProviderGroupAssignmentDrawer })))
+const ProviderGroupAssignmentDrawer = lazyWithPreload(() => import('./components/ProviderGroupAssignmentDrawer').then(m => ({ default: m.ProviderGroupAssignmentDrawer })))
 const LLMProviderGroupWidget = lazyWithPreload(() => import('./widgets/LLMProviderGroupWidget').then(m => ({ default: m.LLMProviderGroupWidget })))
 
 export default createModule({
@@ -76,6 +80,18 @@ export default createModule({
       name: 'LlmProviderGroupAssignment',
       store: useLlmProviderGroupAssignmentStore,
     },
+    {
+      name: 'ProviderGroupAssignment',
+      store: useProviderGroupAssignmentStore,
+    },
+    {
+      name: 'LlmProviderGroupWidget',
+      store: useLlmProviderGroupWidgetStore,
+    },
+    {
+      name: 'ProviderGroupCard',
+      store: useProviderGroupCardStore,
+    },
   ],
   sidebar: {
     widgets: [
@@ -101,6 +117,10 @@ export default createModule({
     {
       id: 'llm-provider-group-assignment-drawer',
       component: LLMProviderGroupAssignmentDrawer,
+    },
+    {
+      id: 'provider-group-assignment-drawer',
+      component: ProviderGroupAssignmentDrawer,
     },
   ],
   widgets: {

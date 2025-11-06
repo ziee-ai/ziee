@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Button, Space, Tag, Typography, Spin } from 'antd'
 import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
-import type { LlmProvider } from '@/api-client/types'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
 
@@ -10,38 +9,22 @@ const { Text } = Typography
 /**
  * Widget that displays LLM Providers assigned to a group.
  * Shows in GroupListItem below group info.
+ * Uses a dedicated store to prevent duplicate API calls and cache data.
  */
 export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
-  const [providers, setProviders] = useState<LlmProvider[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Get data from store
+  const groupData = Stores.LlmProviderGroupWidget.groupProviders.get(group.id)
+  const providers = groupData?.providers || []
+  const loading = groupData?.loading || false
+  const error = groupData?.error || null
+
   const { lastUpdated } = Stores.LlmProviderGroupAssignment
 
-  const loadProviders = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await Stores.LlmProvider.getProvidersForGroup(group.id)
-      setProviders(result)
-    } catch (err) {
-      console.error('Failed to load providers for group:', err)
-      setError('Failed to load providers')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Load providers on mount
+  // Load providers on mount and when lastUpdated changes
   useEffect(() => {
-    loadProviders()
-  }, [group.id])
-
-  // Reload providers when assignment is updated
-  useEffect(() => {
-    if (lastUpdated) {
-      loadProviders()
-    }
-  }, [lastUpdated])
+    // Force reload when lastUpdated changes, otherwise use cached data
+    Stores.LlmProviderGroupWidget.loadProvidersForGroup(group.id, !!lastUpdated)
+  }, [group.id, lastUpdated])
 
   const handleEdit = () => {
     Stores.LlmProviderGroupAssignment.openDrawer(group)

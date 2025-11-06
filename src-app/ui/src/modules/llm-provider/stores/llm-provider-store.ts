@@ -6,6 +6,7 @@ import type {
   CreateLlmProviderRequest,
   UpdateLlmProviderRequest,
   LlmModel,
+  Group,
 } from '@/api-client/types'
 
 // Extended type that includes models array
@@ -54,6 +55,11 @@ interface LlmProviderState {
   // Group assignment actions
   getProvidersForGroup: (groupId: string) => Promise<BaseLlmProvider[]>
   updateGroupProviders: (groupId: string, providerIds: string[]) => Promise<void>
+
+  // Provider group assignment methods
+  getGroupsForProvider: (providerId: string) => Promise<Group[]>
+  assignGroupToProvider: (providerId: string, groupId: string) => Promise<void>
+  removeGroupFromProvider: (providerId: string, groupId: string) => Promise<void>
 
   __init__: {
     providers: () => Promise<void>
@@ -444,6 +450,41 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           })
         } catch (error) {
           console.error('Failed to update group providers:', error)
+          throw error
+        }
+      },
+
+      // Provider group assignment methods
+      getGroupsForProvider: async (providerId: string) => {
+        try {
+          const groups = await ApiClient.LlmProvider.getGroups({ provider_id: providerId })
+          return groups
+        } catch (error) {
+          console.error('Failed to get groups for provider:', error)
+          throw error
+        }
+      },
+
+      assignGroupToProvider: async (providerId: string, groupId: string) => {
+        try {
+          await ApiClient.LlmProvider.assignGroup({
+            provider_id: providerId,
+            group_id: groupId,
+          })
+        } catch (error) {
+          console.error('Failed to assign group to provider:', error)
+          throw error
+        }
+      },
+
+      removeGroupFromProvider: async (providerId: string, groupId: string) => {
+        try {
+          await ApiClient.LlmProvider.removeGroup({
+            provider_id: providerId,
+            group_id: groupId,
+          })
+        } catch (error) {
+          console.error('Failed to remove group from provider:', error)
           throw error
         }
       },

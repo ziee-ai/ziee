@@ -325,8 +325,9 @@ export const useRouterStore = create<RouterState>((set, get) => ({
     }
 
     // Step 2: Register widgets from all modules
+    // Rebuild from scratch to prevent duplication during HMR
     set(state => {
-      const widgetsMap = new Map(state.widgets)
+      const widgetsMap = new Map<keyof WidgetSlots, any[]>()
 
       for (const module of modules) {
         if (module.registerWidgets) {

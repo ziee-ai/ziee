@@ -161,17 +161,12 @@ pub async fn list_assistants(
 
     // Build query based on is_template flag
     if is_template {
-        // Only templates
-        let count: i64 = sqlx::query_scalar!(
-            "SELECT COUNT(*) FROM assistants WHERE is_template = true AND enabled = true"
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(AppError::database_error)?
-        .unwrap_or(0);
-
+        // Only templates - use window function to get count and records in single query
         let rows = sqlx::query!(
-            r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+            r#"SELECT
+                id, name, description, instructions, parameters, created_by,
+                is_template, is_default, enabled, created_at, updated_at,
+                COUNT(*) OVER() as "total_count!"
              FROM assistants
              WHERE is_template = true AND enabled = true
              ORDER BY created_at DESC
@@ -183,27 +178,24 @@ pub async fn list_assistants(
         .await
         .map_err(AppError::database_error)?;
 
+        let total = rows.first().map(|r| r.total_count).unwrap_or(0);
+
         let assistants = rows.into_iter().map(|r| row_to_assistant(
             r.id, r.name, r.description, r.instructions, r.parameters,
             r.created_by, r.is_template, r.is_default, r.enabled,
             r.created_at, r.updated_at
         )).collect();
 
-        Ok(AssistantListResponse { assistants, total: count })
+        Ok(AssistantListResponse { assistants, total })
     } else {
         // Only user's own assistants (never return templates)
         if let Some(uid) = user_id {
-            let count: i64 = sqlx::query_scalar!(
-                "SELECT COUNT(*) FROM assistants WHERE created_by = $1 AND is_template = false AND enabled = true",
-                uid
-            )
-            .fetch_one(pool)
-            .await
-            .map_err(AppError::database_error)?
-            .unwrap_or(0);
-
+            // Use window function to get count and records in single query
             let rows = sqlx::query!(
-                r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+                r#"SELECT
+                    id, name, description, instructions, parameters, created_by,
+                    is_template, is_default, enabled, created_at, updated_at,
+                    COUNT(*) OVER() as "total_count!"
                  FROM assistants
                  WHERE created_by = $1 AND is_template = false AND enabled = true
                  ORDER BY created_at DESC
@@ -216,13 +208,15 @@ pub async fn list_assistants(
             .await
             .map_err(AppError::database_error)?;
 
+            let total = rows.first().map(|r| r.total_count).unwrap_or(0);
+
             let assistants = rows.into_iter().map(|r| row_to_assistant(
                 r.id, r.name, r.description, r.instructions, r.parameters,
                 r.created_by, r.is_template, r.is_default, r.enabled,
                 r.created_at, r.updated_at
             )).collect();
 
-            Ok(AssistantListResponse { assistants, total: count })
+            Ok(AssistantListResponse { assistants, total })
         } else {
             // No user_id provided but filtering for user assistants - return empty
             Ok(AssistantListResponse { assistants: vec![], total: 0 })

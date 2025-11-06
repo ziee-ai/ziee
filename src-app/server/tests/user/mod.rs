@@ -536,3 +536,203 @@ async fn test_unauthorized_without_token() {
     assert_eq!(response.status(), 401, "Should be unauthorized without token");
 }
 
+// ============================================================================
+// Admin User Protection Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_cannot_disable_admin_user_via_toggle() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle_status", "users::edit"]).await;
+
+    // Create a regular user and set as admin via direct database update
+    let test_user = test_helpers::create_test_user(&server, &admin.token, "adminuser", "password123").await;
+    let user_id = test_user["id"].as_str().expect("Should have user ID");
+
+    // Mark user as admin directly in database
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    sqlx::query("UPDATE users SET is_admin = true WHERE id = $1")
+        .bind(Uuid::parse_str(user_id).unwrap())
+        .execute(&pool)
+        .await
+        .expect("Failed to update user to admin");
+
+    pool.close().await;
+
+    // Attempt to toggle admin user (should fail with 400)
+    let url = server.api_url(&format!("/users/{}/toggle-active", user_id));
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 400, "Should reject disabling admin user");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body.get("error_code").and_then(|v| v.as_str()), Some("CANNOT_DISABLE_ADMIN"), "Should have correct error code");
+    assert!(body.get("error").and_then(|v| v.as_str()).map(|s| s.contains("Cannot disable admin")).unwrap_or(false), "Should have descriptive error message");
+}
+
+#[tokio::test]
+async fn test_cannot_disable_admin_user_via_update() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::edit"]).await;
+
+    // Create a regular user and set as admin via direct database update
+    let test_user = test_helpers::create_test_user(&server, &admin.token, "adminuser2", "password123").await;
+    let user_id = test_user["id"].as_str().expect("Should have user ID");
+
+    // Mark user as admin directly in database
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    sqlx::query("UPDATE users SET is_admin = true WHERE id = $1")
+        .bind(Uuid::parse_str(user_id).unwrap())
+        .execute(&pool)
+        .await
+        .expect("Failed to update user to admin");
+
+    pool.close().await;
+
+    // Attempt to disable admin user via update (should fail with 400)
+    let url = server.api_url(&format!("/users/{}", user_id));
+    let payload = json!({
+        "is_active": false
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 400, "Should reject disabling admin user");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body.get("error_code").and_then(|v| v.as_str()), Some("CANNOT_DISABLE_ADMIN"), "Should have correct error code");
+    assert!(body.get("error").and_then(|v| v.as_str()).map(|s| s.contains("Cannot disable admin")).unwrap_or(false), "Should have descriptive error message");
+}
+
+#[tokio::test]
+async fn test_can_enable_admin_user() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle_status"]).await;
+
+    // Create a regular user, set as admin, and disable via direct database update
+    let test_user = test_helpers::create_test_user(&server, &admin.token, "adminuser3", "password123").await;
+    let user_id = test_user["id"].as_str().expect("Should have user ID");
+
+    // Mark user as admin AND inactive directly in database
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    sqlx::query("UPDATE users SET is_admin = true, is_active = false WHERE id = $1")
+        .bind(Uuid::parse_str(user_id).unwrap())
+        .execute(&pool)
+        .await
+        .expect("Failed to update user");
+
+    pool.close().await;
+
+    // Attempt to enable admin user (should succeed)
+    let url = server.api_url(&format!("/users/{}/toggle-active", user_id));
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should allow enabling admin user");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["is_active"], true, "Admin user should be enabled");
+}
+
+#[tokio::test]
+async fn test_can_disable_non_admin_user() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle_status"]).await;
+
+    // Create a regular user (not admin)
+    let test_user = test_helpers::create_test_user(&server, &admin.token, "regularuser", "password123").await;
+    let user_id = test_user["id"].as_str().expect("Should have user ID");
+    assert_eq!(test_user["is_active"], true);
+
+    // Toggle to disable (should succeed for non-admin users)
+    let url = server.api_url(&format!("/users/{}/toggle-active", user_id));
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should allow disabling non-admin user");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["is_active"], false, "Non-admin user should be disabled");
+}
+
+#[tokio::test]
+async fn test_can_update_admin_user_other_fields() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::edit"]).await;
+
+    // Create a regular user and set as admin via direct database update
+    let test_user = test_helpers::create_test_user(&server, &admin.token, "adminuser4", "password123").await;
+    let user_id = test_user["id"].as_str().expect("Should have user ID");
+
+    // Mark user as admin directly in database
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    sqlx::query("UPDATE users SET is_admin = true WHERE id = $1")
+        .bind(Uuid::parse_str(user_id).unwrap())
+        .execute(&pool)
+        .await
+        .expect("Failed to update user to admin");
+
+    pool.close().await;
+
+    // Update admin user's other fields (should succeed)
+    let url = server.api_url(&format!("/users/{}", user_id));
+    let payload = json!({
+        "display_name": "Updated Admin Display Name",
+        "email": "updatedemail@example.com"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should allow updating admin user's other fields");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["display_name"], "Updated Admin Display Name");
+    assert_eq!(body["email"], "updatedemail@example.com");
+    assert_eq!(body["is_active"], true, "Admin user should remain active");
+}
+

@@ -205,7 +205,7 @@ test.describe('User Assistants - User Page', () => {
       await openCreateAssistantDrawer(page, true)
       await fillAssistantForm(page, { name })
       await submitAssistantForm(page)
-      await page.waitForTimeout(500)
+      await assertSuccessMessage(page, 'Assistant created successfully')
     }
 
     // Search for specific assistant
@@ -282,7 +282,7 @@ test.describe('User Assistants - User Page', () => {
       await openCreateAssistantDrawer(page, true)
       await fillAssistantForm(page, { name })
       await submitAssistantForm(page)
-      await page.waitForTimeout(500)
+      await assertSuccessMessage(page, 'Assistant created successfully')
     }
 
     // Sort by name
@@ -302,16 +302,19 @@ test.describe('User Assistants - User Page', () => {
     await openCreateAssistantDrawer(page, true)
     await fillAssistantForm(page, { name: 'First Assistant' })
     await submitAssistantForm(page)
+    await assertSuccessMessage(page, 'Assistant created successfully')
     await page.waitForTimeout(1000)
 
     await openCreateAssistantDrawer(page, true)
     await fillAssistantForm(page, { name: 'Second Assistant' })
     await submitAssistantForm(page)
+    await assertSuccessMessage(page, 'Assistant created successfully')
     await page.waitForTimeout(1000)
 
     await openCreateAssistantDrawer(page, true)
     await fillAssistantForm(page, { name: 'Third Assistant' })
     await submitAssistantForm(page)
+    await assertSuccessMessage(page, 'Assistant created successfully')
     await page.waitForTimeout(1000)
 
     // Edit the first assistant to make it most recently updated
@@ -336,6 +339,7 @@ test.describe('User Assistants - User Page', () => {
       await openCreateAssistantDrawer(page, true)
       await fillAssistantForm(page, { name })
       await submitAssistantForm(page)
+      await assertSuccessMessage(page, 'Assistant created successfully')
       await page.waitForTimeout(1000) // Ensure different creation times
     }
 
@@ -360,6 +364,10 @@ test.describe('User Assistants - User Page', () => {
     })
     await submitAssistantForm(page)
 
+    // Wait for success message
+    await assertSuccessMessage(page, 'Assistant created successfully')
+    await page.waitForLoadState('networkidle')
+
     await assertAssistantHasTag(page, 'Assistant 1', 'Default')
 
     await openCreateAssistantDrawer(page, true)
@@ -368,6 +376,10 @@ test.describe('User Assistants - User Page', () => {
     })
     await submitAssistantForm(page)
 
+    // Wait for success message
+    await assertSuccessMessage(page, 'Assistant created successfully')
+    await page.waitForLoadState('networkidle')
+
     // Set second assistant as default
     await editAssistantFromCard(page, 'Assistant 2')
 
@@ -375,6 +387,10 @@ test.describe('User Assistants - User Page', () => {
     await defaultSwitch.click()
 
     await submitAssistantForm(page)
+
+    // Wait for success message
+    await assertSuccessMessage(page, 'Assistant updated successfully')
+    await page.waitForLoadState('networkidle')
 
     // Verify Assistant 2 is now default
     await assertAssistantHasTag(page, 'Assistant 2', 'Default')
@@ -393,6 +409,7 @@ test.describe('User Assistants - User Page', () => {
       enabled: true,
     })
     await submitAssistantForm(page)
+    await assertSuccessMessage(page, 'Assistant created successfully')
 
     // Disable it
     await editAssistantFromCard(page, 'Enabled Test Assistant')
@@ -401,6 +418,7 @@ test.describe('User Assistants - User Page', () => {
     await enabledSwitch.click()
 
     await submitAssistantForm(page)
+    await assertSuccessMessage(page, 'Assistant updated successfully')
 
     // Verify Inactive tag appears
     await assertAssistantHasTag(page, 'Enabled Test Assistant', 'Inactive')

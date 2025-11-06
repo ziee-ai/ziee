@@ -60,6 +60,11 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
             const requestPage = page || currentState.currentPage
             const requestPageSize = pageSize || currentState.pageSize
 
+            // Skip if already initialized and loading first page without explicit page parameter
+            if (currentState.isInitialized && currentState.loading && !page) {
+              return
+            }
+
             set({ loading: true, error: null })
 
             const response = await ApiClient.AssistantTemplate.list({

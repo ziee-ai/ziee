@@ -179,13 +179,23 @@ test.describe('Template Assistants - Settings Page', () => {
         name: `Pagination Template ${i}`,
       })
       await submitAssistantForm(page)
+
+      // Wait for success message to confirm creation
+      await assertSuccessMessage(page, 'Assistant created successfully')
     }
+
+    // Wait for final list reload to complete with all 13 templates (12 + Default Assistant)
+    await page.waitForLoadState('networkidle')
+
+    // Wait for the last created assistant to appear in the list (confirms list reloaded)
+    await assertTemplateAssistantExists(page, 'Pagination Template 12')
 
     // Verify pagination controls are visible
     await expect(page.locator('.ant-pagination')).toBeVisible()
 
-    // Verify total count
-    await expect(page.locator('text=/\\d+-\\d+ of \\d+ assistants/')).toBeVisible()
+    // Wait for the correct total count to appear (at least 13 assistants)
+    // Use a more lenient regex that captures the total number
+    await expect(page.locator('.ant-pagination-total-text')).toContainText(/\d+-\d+ of 1[3-9]|[2-9]\d+ assistants/, { timeout: 15000 })
 
     // Go to page 2
     await goToPage(page, 2)
@@ -205,7 +215,19 @@ test.describe('Template Assistants - Settings Page', () => {
         name: `PageSize Template ${i}`,
       })
       await submitAssistantForm(page)
+
+      // Wait for success message to confirm creation
+      await assertSuccessMessage(page, 'Assistant created successfully')
     }
+
+    // Wait for final list reload to complete
+    await page.waitForLoadState('networkidle')
+
+    // Wait for the last created assistant to appear in the list (confirms list reloaded)
+    await assertTemplateAssistantExists(page, 'PageSize Template 15')
+
+    // Wait for the correct total count to appear (at least 16 assistants: 15 + Default)
+    await expect(page.locator('.ant-pagination-total-text')).toContainText(/\d+-\d+ of 1[6-9]|[2-9]\d+ assistants/, { timeout: 15000 })
 
     // Change page size to 20
     await changePageSize(page, 20)
@@ -227,6 +249,10 @@ test.describe('Template Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
 
+    // Wait for success message
+    await assertSuccessMessage(page, 'Assistant created successfully')
+    await page.waitForLoadState('networkidle')
+
     let row1 = await getTemplateAssistantRow(page, 'Template 1')
     await expect(row1.locator('.ant-tag:has-text("Default")')).toBeVisible()
 
@@ -236,6 +262,10 @@ test.describe('Template Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
 
+    // Wait for success message
+    await assertSuccessMessage(page, 'Assistant created successfully')
+    await page.waitForLoadState('networkidle')
+
     // Set second template as default
     await editTemplateAssistant(page, 'Template 2')
 
@@ -243,6 +273,10 @@ test.describe('Template Assistants - Settings Page', () => {
     await defaultSwitch.click()
 
     await submitAssistantForm(page)
+
+    // Wait for success message
+    await assertSuccessMessage(page, 'Assistant updated successfully')
+    await page.waitForLoadState('networkidle')
 
     // Verify Template 2 is now default
     const row2 = await getTemplateAssistantRow(page, 'Template 2')

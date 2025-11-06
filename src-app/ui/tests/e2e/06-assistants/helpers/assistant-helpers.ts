@@ -86,12 +86,8 @@ export async function fillAssistantForm(
 
 export async function submitAssistantForm(page: Page) {
   await page.click('.ant-drawer button[type="submit"]')
-
-  // Wait for success message to appear
-  await page.waitForSelector('.ant-message-success', { state: 'visible', timeout: 5000 })
-
-  // Wait for drawer to close (indicates the operation and reload are complete)
-  await page.waitForSelector('.ant-drawer', { state: 'hidden', timeout: 5000 })
+  // Don't wait for drawer here - let the test verify success message first
+  // The drawer will close automatically after successful submission
 }
 
 export async function cancelAssistantForm(page: Page) {
@@ -214,9 +210,11 @@ export async function goToPage(page: Page, pageNumber: number) {
 }
 
 export async function changePageSize(page: Page, size: number) {
-  await page.locator('.ant-select-selector:has-text("10")').click()
+  // Click the page size selector (find by aria-label or any current value)
+  await page.locator('.ant-select-selector').filter({ hasText: '/ page' }).click()
   await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-  await page.locator('.ant-select-dropdown').getByText(size.toString(), { exact: true }).click()
+  // Match the actual dropdown option text format: "20 / page"
+  await page.locator('.ant-select-dropdown').getByText(`${size} / page`, { exact: true }).click()
   await page.waitForLoadState('networkidle')
 }
 
@@ -253,5 +251,6 @@ export async function assertEmptyState(page: Page, message: string) {
 }
 
 export async function assertSuccessMessage(page: Page, message: string) {
-  await expect(page.locator(`.ant-message-success:has-text("${message}")`)).toBeVisible({ timeout: 5000 })
+  // Use .last() to get the most recent message, in case multiple are visible
+  await expect(page.locator(`.ant-message-success:has-text("${message}")`).last()).toBeVisible({ timeout: 5000 })
 }

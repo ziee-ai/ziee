@@ -159,9 +159,18 @@ pub async fn update_user(
     Json(request): Json<UpdateUserRequest>,
 ) -> ApiResult<Json<User>> {
 
-    // Check if user exists
-    if user_repo.get_by_id(user_id).await?.is_none() {
-        return Err(AppError::not_found("User").into());
+    // Check if user exists and get user data
+    let user = user_repo
+        .get_by_id(user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("User"))?;
+
+    // Prevent disabling admin users
+    if user.is_admin && request.is_active == Some(false) {
+        return Err(AppError::bad_request(
+            "CANNOT_DISABLE_ADMIN",
+            "Cannot disable admin users"
+        ).into());
     }
 
     // Check if new username already exists
@@ -208,7 +217,7 @@ pub fn update_user_docs(op: TransformOperation) -> TransformOperation {
         .tag("Users")
         .summary("Update user")
         .response::<200, Json<User>>()
-        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed or attempting to disable admin user"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("User not found"))
 }
@@ -225,6 +234,14 @@ pub async fn toggle_user_active(
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
+
+    // Prevent disabling admin users
+    if user.is_admin && user.is_active {
+        return Err(AppError::bad_request(
+            "CANNOT_DISABLE_ADMIN",
+            "Cannot disable admin users"
+        ).into());
+    }
 
     // Toggle active status
     let new_status = !user.is_active;
@@ -246,6 +263,7 @@ pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
         .tag("Users")
         .summary("Toggle user active status")
         .response::<200, Json<UserActiveStatusResponse>>()
+        .response_with::<400, (), _>(|res| res.description("Bad request - attempting to disable admin user"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("User not found"))
 }

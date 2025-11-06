@@ -10,6 +10,7 @@ import { Stores } from '@/core/stores'
 import { ProviderProxySettingsForm } from './ProviderProxySettingsForm'
 import { ProviderHeader } from './ProviderHeader'
 import { LlmModelsSection } from './LlmModelsSection'
+import { ProviderGroupAssignmentCard } from './ProviderGroupAssignmentCard'
 import { AddRemoteLlmModelDrawer } from './llm-models/AddRemoteLlmModelDrawer'
 import { EditLlmModelDrawer } from './llm-models/EditLlmModelDrawer'
 import type { ProxySettings } from '@/api-client/types'
@@ -183,6 +184,9 @@ export function RemoteProviderSettings() {
       </Form>
 
       <LlmModelsSection />
+
+      {/* User Groups Assignment */}
+      <ProviderGroupAssignmentCard />
 
       {/* Proxy Settings - For non-Local providers */}
       <ProviderProxySettingsForm

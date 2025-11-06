@@ -10,6 +10,9 @@ import type {
   useViewDownloadDrawerStore,
   useUploadStore,
   useLlmProviderGroupAssignmentStore,
+  useProviderGroupAssignmentStore,
+  useLlmProviderGroupWidgetStore,
+  useProviderGroupCardStore,
 } from './stores'
 
 declare module '@/core/stores' {
@@ -39,6 +42,15 @@ declare module '@/core/stores' {
     LlmModelUpload: StoreProxy<ReturnType<typeof useUploadStore.getState>>
     LlmProviderGroupAssignment: StoreProxy<
       ReturnType<typeof useLlmProviderGroupAssignmentStore.getState>
+    >
+    ProviderGroupAssignment: StoreProxy<
+      ReturnType<typeof useProviderGroupAssignmentStore.getState>
+    >
+    LlmProviderGroupWidget: StoreProxy<
+      ReturnType<typeof useLlmProviderGroupWidgetStore.getState>
+    >
+    ProviderGroupCard: StoreProxy<
+      ReturnType<typeof useProviderGroupCardStore.getState>
     >
   }
 }

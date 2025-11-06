@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { ProviderHeader } from './ProviderHeader'
 import { LlmModelsSection } from './LlmModelsSection'
+import { ProviderGroupAssignmentCard } from './ProviderGroupAssignmentCard'
 import { DownloadsSection } from './downloads/DownloadsSection'
 import { AddLocalLlmModelUploadDrawer } from './llm-models/AddLocalLlmModelUploadDrawer'
 import { AddLocalLlmModelDownloadDrawer } from './llm-models/AddLocalLlmModelDownloadDrawer'
@@ -48,6 +49,9 @@ export function LocalProviderSettings() {
       <DownloadsSection providerId={currentProvider.id} />
 
       <LlmModelsSection />
+
+      {/* User Groups Assignment */}
+      <ProviderGroupAssignmentCard />
 
       {/* Model Management Drawers */}
       <AddLocalLlmModelUploadDrawer />
