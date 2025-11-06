@@ -14,8 +14,8 @@ pub fn llm_provider_router() -> ApiRouter<PgPool> {
         .api_route("/llm-providers/{provider_id}", get_with(get_provider, get_provider_docs))
         .api_route("/llm-providers/{provider_id}", post_with(update_provider, update_provider_docs))
         .api_route("/llm-providers/{provider_id}", delete_with(delete_provider, delete_provider_docs))
-        // Group assignments
+        // Group assignments (RESTful nested resources)
         .api_route("/llm-providers/{provider_id}/groups", get_with(get_provider_groups, get_provider_groups_docs))
-        .api_route("/llm-providers/assign-group", post_with(assign_provider_to_group, assign_provider_to_group_docs))
-        .api_route("/llm-providers/{provider_id}/{group_id}/remove-group", delete_with(remove_provider_from_group, remove_provider_from_group_docs))
+        .api_route("/llm-providers/{provider_id}/groups", post_with(assign_provider_to_group, assign_provider_to_group_docs))
+        .api_route("/llm-providers/{provider_id}/groups/{group_id}", delete_with(remove_provider_from_group, remove_provider_from_group_docs))
 }

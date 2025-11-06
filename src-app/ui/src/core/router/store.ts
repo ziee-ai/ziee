@@ -6,6 +6,7 @@ import type {
   SidebarNavItem,
   SidebarWidget,
   SettingsMenuItem,
+  GlobalComponent,
 } from './types'
 import { createStoreProxy } from '../stores'
 
@@ -20,6 +21,7 @@ interface RouterState {
     widgets: Map<string, SidebarWidget[]>
   }
   settingsItems: SettingsMenuItem[]
+  globalComponents: GlobalComponent[]
   registerModule: (module: AppModule) => void
   initializeModules: () => void
 }
@@ -35,6 +37,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
     widgets: new Map(),
   },
   settingsItems: [],
+  globalComponents: [],
 
   registerModule: (module: AppModule) => {
     set(state => {
@@ -144,12 +147,32 @@ export const useRouterStore = create<RouterState>((set, get) => ({
             newSettingsItems = [...newSettingsItems, ...settings]
           }
 
+          // Re-register global components - remove old ones first
+          const oldGlobalComponents = oldModule.registerGlobalComponents?.()
+          const oldGlobalComponentIds = new Set(
+            oldGlobalComponents?.map(c => c.id) || [],
+          )
+
+          // Filter out old items
+          let newGlobalComponents = state.globalComponents.filter(
+            c => !oldGlobalComponentIds.has(c.id),
+          )
+
+          // Add new global components
+          if (module.registerGlobalComponents) {
+            const globalComponents = module.registerGlobalComponents()
+            newGlobalComponents = [...newGlobalComponents, ...globalComponents]
+            // Sort by order
+            newGlobalComponents.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          }
+
           return {
             modules: newModules,
             routes: newRoutes,
             stores: newStores,
             sidebarItems: newSidebarItems,
             settingsItems: newSettingsItems,
+            globalComponents: newGlobalComponents,
           }
         } else {
           console.warn(`Module ${module.metadata.name} is already registered`)
@@ -207,12 +230,24 @@ export const useRouterStore = create<RouterState>((set, get) => ({
         newSettingsItems.push(...settings)
       }
 
+      // Get global components from the module
+      const newGlobalComponents = [...state.globalComponents]
+      if (module.registerGlobalComponents) {
+        const globalComponents = module.registerGlobalComponents()
+        newGlobalComponents.push(...globalComponents)
+        // Sort by order
+        newGlobalComponents.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      }
+
       console.log(`Registered module: ${module.metadata.name}`, {
         routes: moduleRoutes.length,
         stores: module.registerStores ? module.registerStores().length : 0,
         sidebar: module.registerSidebar ? 'yes' : 'no',
         settings: module.registerSettings
           ? module.registerSettings().length
+          : 0,
+        globalComponents: module.registerGlobalComponents
+          ? module.registerGlobalComponents().length
           : 0,
       })
 
@@ -222,6 +257,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
         stores: newStores,
         sidebarItems: newSidebarItems,
         settingsItems: newSettingsItems,
+        globalComponents: newGlobalComponents,
       }
     })
   },

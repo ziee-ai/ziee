@@ -133,11 +133,12 @@ export function UserAssistantsPage() {
             ) : (
               <Button
                 type={isSearchBoxVisible ? 'primary' : 'text'}
-                icon={<SearchOutlined />}
+                icon={<SearchOutlined aria-hidden="true" />}
                 style={{
                   fontSize: '18px',
                 }}
                 onClick={() => setIsSearchBoxVisible(!isSearchBoxVisible)}
+                aria-label="Search assistants"
               />
             )}
             <div className="flex gap-0">
@@ -166,19 +167,21 @@ export function UserAssistantsPage() {
               >
                 <Button
                   type="text"
-                  icon={<PiSortAscending />}
+                  icon={<PiSortAscending aria-hidden="true" />}
                   style={{
                     fontSize: '20px',
                   }}
+                  aria-label="Sort assistants"
                 />
               </Dropdown>
               <Button
                 type="text"
-                icon={<PlusOutlined />}
+                icon={<PlusOutlined aria-hidden="true" />}
                 onClick={handleCreate}
                 style={{
                   fontSize: '16px',
                 }}
+                aria-label="Create assistant"
               />
             </div>
           </div>

@@ -22,6 +22,10 @@ export const darkTheme: AppThemeConfig = {
     colorLink: '#69b1ff', // Lighter blue for dark mode
     colorLinkHover: '#91caff', // Even lighter on hover
     colorLinkActive: '#4096ff', // Medium blue when active
+    // Fix global success/error colors for WCAG compliance in dark mode
+    // These affect Tag color="success" and color="error"
+    colorSuccess: '#95de64', // Light green for dark mode (good contrast on dark bg)
+    colorError: '#ff7875', // Light red for dark mode (good contrast on dark bg)
   },
   components: {
     ...ComponentOverrides,
@@ -34,6 +38,10 @@ export const darkTheme: AppThemeConfig = {
       // Fix link button colors for dark mode
       colorLink: '#69b1ff',
       colorLinkHover: '#91caff',
+      // Fix danger button text color contrast for dark mode (WCAG AA requires 4.5:1)
+      // Lighter red for dark mode
+      colorError: '#ff7875', // Light red for dark mode
+      colorErrorHover: '#ff4d4f', // Slightly darker on hover
     },
     Modal: {
       contentBg: BaseBackgroundColor,
@@ -49,6 +57,11 @@ export const darkTheme: AppThemeConfig = {
     Statistic: {
       contentFontSize: 18,
       // Statistic inherits colorTextDescription from token
+    },
+    Descriptions: {
+      // Fix color contrast for description labels in dark mode (WCAG AA requires 4.5:1)
+      // Light text on dark background needs sufficient contrast
+      labelColor: 'rgba(255,255,255,0.65)', // Light text with good contrast
     },
     Menu: {
       // Fix color contrast for selected menu items in dark mode (WCAG AA requires 4.5:1)
@@ -70,6 +83,18 @@ export const darkTheme: AppThemeConfig = {
       // Dropdown inherits from Menu, so we set both colorText and colorTextLabel
       colorText: 'rgba(255,255,255,0.85)', // Ensures 4.5:1+ contrast ratio on dark backgrounds
       colorTextLabel: 'rgba(255,255,255,0.85)', // Ant Design 5 uses this for menu item text
+    },
+    Tag: {
+      // Fix color contrast for green tags in dark mode (WCAG AA requires 4.5:1)
+      // Light green text on dark green background
+      colorSuccessText: '#95de64', // Light green for dark mode
+      colorSuccessBg: '#274916', // Dark green background
+      colorSuccessBorder: '#3c6e2f', // Border color
+      // Fix color contrast for red tags in dark mode (WCAG AA requires 4.5:1)
+      // Light red text on dark red background
+      colorErrorText: '#ff7875', // Light red for dark mode
+      colorErrorBg: '#321414', // Dark red background
+      colorErrorBorder: '#58181c', // Border color
     },
   },
   app: {

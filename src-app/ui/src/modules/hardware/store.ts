@@ -27,11 +27,23 @@ interface HardwareState {
   __init__: {
     hardwareInfo: () => Promise<void>
   }
+
+  // Actions
+  loadHardwareInfo: () => Promise<void>
+  clearHardwareError: () => void
+  subscribeToHardwareUsage: () => Promise<void>
+  disconnectHardwareUsage: () => void
 }
+
+// SSE Subscription Management for real-time usage monitoring
+let sseAbortController: AbortController | null = null
+let isIntentionallyDisconnecting = false
+let isCurrentlyConnecting = false // Module-level flag to prevent StrictMode double-mounting issues
+let lastDisconnectTime = 0 // Timestamp of last disconnect to prevent immediate reconnection
 
 export const useHardwareStore = create<HardwareState>()(
   subscribeWithSelector(
-    (): HardwareState => ({
+    (set, get): HardwareState => ({
       // Static hardware info
       hardwareInfo: null,
       hardwareLoading: false,
@@ -49,193 +61,186 @@ export const useHardwareStore = create<HardwareState>()(
       sseError: null,
 
       __init__: {
-        hardwareInfo: () => loadHardwareInfo(),
+        hardwareInfo: async () => {
+          await get().loadHardwareInfo()
+        },
+      },
+
+      // Actions
+      loadHardwareInfo: async () => {
+        const state = get()
+        if (state.hardwareInitialized || state.hardwareLoading) {
+          return
+        }
+
+        set({ hardwareLoading: true, hardwareError: null })
+
+        try {
+          const response: HardwareInfoResponse =
+            await ApiClient.Hardware.info(undefined)
+          set({
+            hardwareInfo: response.hardware,
+            hardwareInitialized: true,
+            hardwareLoading: false,
+            hardwareError: null,
+          })
+        } catch (error) {
+          console.error('Hardware info loading failed:', error)
+          set({
+            hardwareLoading: false,
+            hardwareError: error instanceof Error ? error.message : 'Unknown error',
+            hardwareInitialized: false,
+          })
+          throw error
+        }
+      },
+
+      clearHardwareError: () => {
+        set({
+          hardwareError: null,
+          usageError: null,
+          sseError: null,
+        })
+      },
+
+      subscribeToHardwareUsage: async () => {
+        // Prevent reconnection immediately after disconnect (StrictMode remount protection)
+        const timeSinceDisconnect = Date.now() - lastDisconnectTime
+        if (timeSinceDisconnect < 200 && lastDisconnectTime > 0) {
+          console.log(
+            `Hardware SSE: Skipping connection attempt (disconnected ${timeSinceDisconnect}ms ago)`,
+          )
+          return
+        }
+
+        // Check module-level flag first to prevent StrictMode double-mounting issues
+        if (isCurrentlyConnecting || sseAbortController !== null) {
+          console.log(
+            'Hardware SSE: Skipping connection attempt (already connecting or connected)',
+          )
+          return
+        }
+
+        const state = get()
+
+        // Additional check against store state
+        if (state.sseConnected || state.sseConnecting) {
+          console.log(
+            'Hardware SSE: Skipping connection attempt (store shows connected/connecting)',
+          )
+          return
+        }
+
+        // Mark as connecting immediately (both module-level and store)
+        isCurrentlyConnecting = true
+        set({
+          sseConnecting: true,
+          sseError: null,
+          usageLoading: true,
+        })
+
+        try {
+          console.log('Establishing SSE connection for hardware usage monitoring')
+
+          // Reset disconnection flag
+          isIntentionallyDisconnecting = false
+
+          await ApiClient.Hardware.stream(undefined, {
+            SSE: {
+              __init: data => {
+                sseAbortController = data.abortController
+                isCurrentlyConnecting = false // Connection established
+                console.log('Hardware SSE AbortController initialized')
+                set({
+                  sseConnected: true,
+                  sseConnecting: false,
+                })
+              },
+              connected: data => {
+                console.log(
+                  'Hardware usage monitoring connected:',
+                  data.message || 'Connected',
+                )
+                isCurrentlyConnecting = false
+                set({
+                  usageLoading: false,
+                  sseError: null,
+                  sseConnecting: false,
+                })
+              },
+              update: data => {
+                set({
+                  currentUsage: data,
+                  usageLoading: false,
+                  usageError: null,
+                })
+              },
+              default: (event, data) => {
+                console.log('Unknown hardware SSE event:', event, data)
+              },
+            },
+          })
+        } catch (error) {
+          // Reset connecting flag on error
+          isCurrentlyConnecting = false
+
+          // Ignore AbortErrors as they are expected during cleanup/disconnection
+          if (error instanceof Error && error.name === 'AbortError') {
+            if (isIntentionallyDisconnecting) {
+              console.log(
+                'Hardware SSE connection was intentionally aborted during cleanup',
+              )
+            } else {
+              console.log('Hardware SSE connection was aborted (unexpected)')
+            }
+            set({
+              sseConnected: false,
+              sseConnecting: false,
+              usageLoading: false,
+            })
+            return
+          }
+
+          console.error('Failed to establish hardware SSE connection:', error)
+          set({
+            sseConnected: false,
+            sseConnecting: false,
+            sseError: error instanceof Error ? error.message : 'Failed to connect',
+            usageLoading: false,
+          })
+        }
+      },
+
+      disconnectHardwareUsage: () => {
+        console.log('Disconnecting hardware usage monitoring')
+
+        // Set flag to indicate intentional disconnection
+        isIntentionallyDisconnecting = true
+
+        // Record disconnect time to prevent immediate reconnection
+        lastDisconnectTime = Date.now()
+
+        // Abort the SSE connection if AbortController is available
+        if (sseAbortController) {
+          sseAbortController.abort()
+          sseAbortController = null
+          console.log('Hardware SSE connection aborted')
+        }
+
+        // Reset module-level flags
+        isCurrentlyConnecting = false
+
+        set({
+          sseConnected: false,
+          sseConnecting: false,
+          sseError: null,
+          currentUsage: null,
+          usageLoading: false,
+        })
+
+        // Reset flag after disconnection
+        isIntentionallyDisconnecting = false
       },
     }),
   ),
 )
-
-// Load static hardware information
-export const loadHardwareInfo = async (): Promise<void> => {
-  const state = useHardwareStore.getState()
-  if (state.hardwareInitialized || state.hardwareLoading) {
-    return
-  }
-
-  useHardwareStore.setState({ hardwareLoading: true, hardwareError: null })
-
-  try {
-    const response: HardwareInfoResponse =
-      await ApiClient.Hardware.info(undefined)
-    useHardwareStore.setState({
-      hardwareInfo: response.hardware,
-      hardwareInitialized: true,
-      hardwareLoading: false,
-      hardwareError: null,
-    })
-  } catch (error) {
-    console.error('Hardware info loading failed:', error)
-    useHardwareStore.setState({
-      hardwareLoading: false,
-      hardwareError: error instanceof Error ? error.message : 'Unknown error',
-      hardwareInitialized: false,
-    })
-    throw error
-  }
-}
-
-// Clear hardware errors
-export const clearHardwareError = (): void => {
-  useHardwareStore.setState({
-    hardwareError: null,
-    usageError: null,
-    sseError: null,
-  })
-}
-
-// SSE Subscription Management for real-time usage monitoring
-let sseAbortController: AbortController | null = null
-let isIntentionallyDisconnecting = false
-let isCurrentlyConnecting = false // Module-level flag to prevent StrictMode double-mounting issues
-let lastDisconnectTime = 0 // Timestamp of last disconnect to prevent immediate reconnection
-
-// Subscribe to hardware usage updates via SSE
-export const subscribeToHardwareUsage = async (): Promise<void> => {
-  // Prevent reconnection immediately after disconnect (StrictMode remount protection)
-  const timeSinceDisconnect = Date.now() - lastDisconnectTime
-  if (timeSinceDisconnect < 200 && lastDisconnectTime > 0) {
-    console.log(
-      `Hardware SSE: Skipping connection attempt (disconnected ${timeSinceDisconnect}ms ago)`,
-    )
-    return
-  }
-
-  // Check module-level flag first to prevent StrictMode double-mounting issues
-  if (isCurrentlyConnecting || sseAbortController !== null) {
-    console.log(
-      'Hardware SSE: Skipping connection attempt (already connecting or connected)',
-    )
-    return
-  }
-
-  const state = useHardwareStore.getState()
-
-  // Additional check against store state
-  if (state.sseConnected || state.sseConnecting) {
-    console.log(
-      'Hardware SSE: Skipping connection attempt (store shows connected/connecting)',
-    )
-    return
-  }
-
-  // Mark as connecting immediately (both module-level and store)
-  isCurrentlyConnecting = true
-  useHardwareStore.setState({
-    sseConnecting: true,
-    sseError: null,
-    usageLoading: true,
-  })
-
-  try {
-    console.log('Establishing SSE connection for hardware usage monitoring')
-
-    // Reset disconnection flag
-    isIntentionallyDisconnecting = false
-
-    await ApiClient.Hardware.stream(undefined, {
-      SSE: {
-        __init: data => {
-          sseAbortController = data.abortController
-          isCurrentlyConnecting = false // Connection established
-          console.log('Hardware SSE AbortController initialized')
-          useHardwareStore.setState({
-            sseConnected: true,
-            sseConnecting: false,
-          })
-        },
-        connected: data => {
-          console.log(
-            'Hardware usage monitoring connected:',
-            data.message || 'Connected',
-          )
-          isCurrentlyConnecting = false
-          useHardwareStore.setState({
-            usageLoading: false,
-            sseError: null,
-            sseConnecting: false,
-          })
-        },
-        update: data => {
-          useHardwareStore.setState({
-            currentUsage: data,
-            usageLoading: false,
-            usageError: null,
-          })
-        },
-        default: (event, data) => {
-          console.log('Unknown hardware SSE event:', event, data)
-        },
-      },
-    })
-  } catch (error) {
-    // Reset connecting flag on error
-    isCurrentlyConnecting = false
-
-    // Ignore AbortErrors as they are expected during cleanup/disconnection
-    if (error instanceof Error && error.name === 'AbortError') {
-      if (isIntentionallyDisconnecting) {
-        console.log(
-          'Hardware SSE connection was intentionally aborted during cleanup',
-        )
-      } else {
-        console.log('Hardware SSE connection was aborted (unexpected)')
-      }
-      useHardwareStore.setState({
-        sseConnected: false,
-        sseConnecting: false,
-        usageLoading: false,
-      })
-      return
-    }
-
-    console.error('Failed to establish hardware SSE connection:', error)
-    useHardwareStore.setState({
-      sseConnected: false,
-      sseConnecting: false,
-      sseError: error instanceof Error ? error.message : 'Failed to connect',
-      usageLoading: false,
-    })
-  }
-}
-
-// Disconnect hardware usage SSE connection
-export const disconnectHardwareUsage = (): void => {
-  console.log('Disconnecting hardware usage monitoring')
-
-  // Set flag to indicate intentional disconnection
-  isIntentionallyDisconnecting = true
-
-  // Record disconnect time to prevent immediate reconnection
-  lastDisconnectTime = Date.now()
-
-  // Abort the SSE connection if AbortController is available
-  if (sseAbortController) {
-    sseAbortController.abort()
-    sseAbortController = null
-    console.log('Hardware SSE connection aborted')
-  }
-
-  // Reset module-level flags
-  isCurrentlyConnecting = false
-
-  useHardwareStore.setState({
-    sseConnected: false,
-    sseConnecting: false,
-    sseError: null,
-    currentUsage: null,
-    usageLoading: false,
-  })
-
-  // Reset flag after disconnection
-  isIntentionallyDisconnecting = false
-}

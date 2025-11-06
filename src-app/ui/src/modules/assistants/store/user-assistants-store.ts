@@ -56,7 +56,7 @@ export const loadUserAssistants = async (): Promise<void> => {
   try {
     useUserAssistantsStore.setState({ loading: true, error: null })
 
-    const response = await ApiClient.Assistant.listUser({
+    const response = await ApiClient.Assistant.list({
       page: 1,
       limit: 50,
     })
@@ -84,7 +84,7 @@ export const createUserAssistant = async (
   try {
     useUserAssistantsStore.setState({ creating: true, error: null })
 
-    const assistant = await ApiClient.Assistant.createUser(data)
+    const assistant = await ApiClient.Assistant.create(data)
 
     useUserAssistantsStore.setState(state => {
       if (data.is_default) {
@@ -116,7 +116,7 @@ export const updateUserAssistant = async (
   try {
     useUserAssistantsStore.setState({ updating: true, error: null })
 
-    const assistant = await ApiClient.Assistant.updateUser({
+    const assistant = await ApiClient.Assistant.update({
       id,
       ...data,
     })
@@ -150,7 +150,7 @@ export const deleteUserAssistant = async (id: string): Promise<void> => {
   try {
     useUserAssistantsStore.setState({ deleting: true, error: null })
 
-    await ApiClient.Assistant.deleteUser({ id })
+    await ApiClient.Assistant.delete({ id })
 
     useUserAssistantsStore.setState(state => {
       state.assistants.delete(id)

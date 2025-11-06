@@ -3,9 +3,11 @@ use aide::openapi::OpenApi;
 use axum::http::header::HeaderName;
 use axum::http::Method;
 use sqlx::PgPool;
+use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 use crate::core::config::Config;
+use crate::core::EventBus;
 use crate::module_api::{AppModule, ModuleContext};
 use crate::modules::{AppModule as AppMod, AuthModule, HealthModule, user::UserModule, hardware::HardwareModule, llm_provider::LlmProviderModule, llm_repository::LlmRepositoryModule, llm_model::LlmModelModule, assistant::AssistantModule, mcp::McpModule};
 
@@ -37,6 +39,28 @@ pub fn initialize_modules(
         tracing::info!("Initialized module: {}", module.name());
     }
     Ok(())
+}
+
+/// Register event handlers from all modules
+pub fn register_event_handlers(
+    modules: &[Box<dyn AppModule>],
+    pool: Arc<PgPool>,
+) -> EventBus {
+    let mut event_bus = EventBus::new(pool);
+
+    for module in modules.iter() {
+        for handler in module.register_event_handlers() {
+            tracing::info!(
+                "Registering event handler '{}' for module: {}",
+                handler.handler_name(),
+                module.name()
+            );
+            event_bus.register(handler);
+        }
+    }
+
+    tracing::info!("Registered {} event handlers total", event_bus.handler_count());
+    event_bus
 }
 
 /// Build API router with all module routes

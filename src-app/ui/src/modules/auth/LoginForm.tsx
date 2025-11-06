@@ -1,7 +1,6 @@
 import { Alert, Button, Card, Form, Input, Typography } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
-import { authenticateUser, clearAuthenticationError } from './store'
 import { Stores } from '@/core/stores'
 import type { LoginRequest } from '../../api-client/types'
 
@@ -18,8 +17,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
   const onFinish = async (values: LoginRequest) => {
     try {
-      clearAuthenticationError()
-      await authenticateUser(values)
+      Stores.Auth.clearAuthenticationError()
+      await Stores.Auth.authenticateUser(values)
       // Redirect to home page after successful login
       navigate('/', { replace: true })
     } catch (error) {
@@ -37,7 +36,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
             type="error"
             showIcon
             closable
-            onClose={clearAuthenticationError}
+            onClose={Stores.Auth.clearAuthenticationError}
           />
         </div>
       )}

@@ -5,106 +5,122 @@ interface AddLocalLlmModelUploadDrawerState {
   open: boolean
   loading: boolean
   providerId: string | null
+
+  // Actions
+  openAddLocalLlmModelUploadDrawer: (providerId: string) => void
+  closeAddLocalLlmModelUploadDrawer: () => void
+  setAddLocalLlmModelUploadDrawerLoading: (loading: boolean) => void
 }
 
 export const useAddLocalLlmModelUploadDrawerStore =
-  create<AddLocalLlmModelUploadDrawerState>(() => ({
-    open: false,
-    loading: false,
-    providerId: null,
-  }))
+  create<AddLocalLlmModelUploadDrawerState>(
+    (set): AddLocalLlmModelUploadDrawerState => ({
+      open: false,
+      loading: false,
+      providerId: null,
 
-export const openAddLocalLlmModelUploadDrawer = (providerId: string) => {
-  useAddLocalLlmModelUploadDrawerStore.setState({
-    open: true,
-    providerId,
-  })
-}
+      // Actions
+      openAddLocalLlmModelUploadDrawer: (providerId: string) => {
+        set({
+          open: true,
+          providerId,
+        })
+      },
 
-export const closeAddLocalLlmModelUploadDrawer = () => {
-  useAddLocalLlmModelUploadDrawerStore.setState({
-    open: false,
-    loading: false,
-    providerId: null,
-  })
-}
+      closeAddLocalLlmModelUploadDrawer: () => {
+        set({
+          open: false,
+          loading: false,
+          providerId: null,
+        })
+      },
 
-export const setAddLocalLlmModelUploadDrawerLoading = (loading: boolean) => {
-  useAddLocalLlmModelUploadDrawerStore.setState({
-    loading,
-  })
-}
+      setAddLocalLlmModelUploadDrawerLoading: (loading: boolean) => {
+        set({ loading })
+      },
+    }),
+  )
 
 // ===== Add Local Model Download Drawer =====
 interface AddLocalLlmModelDownloadDrawerState {
   open: boolean
   loading: boolean
   providerId: string | null
+
+  // Actions
+  openAddLocalLlmModelDownloadDrawer: (providerId: string) => void
+  closeAddLocalLlmModelDownloadDrawer: () => void
+  setAddLocalLlmModelDownloadDrawerLoading: (loading: boolean) => void
 }
 
 export const useAddLocalLlmModelDownloadDrawerStore =
-  create<AddLocalLlmModelDownloadDrawerState>(() => ({
-    open: false,
-    loading: false,
-    providerId: null,
-  }))
+  create<AddLocalLlmModelDownloadDrawerState>(
+    (set): AddLocalLlmModelDownloadDrawerState => ({
+      open: false,
+      loading: false,
+      providerId: null,
 
-export const openAddLocalLlmModelDownloadDrawer = (providerId: string) => {
-  useAddLocalLlmModelDownloadDrawerStore.setState({
-    open: true,
-    providerId,
-  })
-}
+      // Actions
+      openAddLocalLlmModelDownloadDrawer: (providerId: string) => {
+        set({
+          open: true,
+          providerId,
+        })
+      },
 
-export const closeAddLocalLlmModelDownloadDrawer = () => {
-  useAddLocalLlmModelDownloadDrawerStore.setState({
-    open: false,
-    loading: false,
-    providerId: null,
-  })
-}
+      closeAddLocalLlmModelDownloadDrawer: () => {
+        set({
+          open: false,
+          loading: false,
+          providerId: null,
+        })
+      },
 
-export const setAddLocalLlmModelDownloadDrawerLoading = (loading: boolean) => {
-  useAddLocalLlmModelDownloadDrawerStore.setState({
-    loading,
-  })
-}
+      setAddLocalLlmModelDownloadDrawerLoading: (loading: boolean) => {
+        set({ loading })
+      },
+    }),
+  )
 
 // ===== Edit LLM Model Drawer (Unified for Local & Remote) =====
 interface EditLlmModelDrawerState {
   open: boolean
   loading: boolean
   modelId: string | null
+
+  // Actions
+  openEditLlmModelDrawer: (modelId: string) => void
+  closeEditLlmModelDrawer: () => void
+  setEditLlmModelDrawerLoading: (loading: boolean) => void
 }
 
 export const useEditLlmModelDrawerStore = create<EditLlmModelDrawerState>(
-  () => ({
+  (set): EditLlmModelDrawerState => ({
     open: false,
     loading: false,
     modelId: null,
+
+    // Actions
+    openEditLlmModelDrawer: (modelId: string) => {
+      set({
+        open: true,
+        modelId,
+      })
+    },
+
+    closeEditLlmModelDrawer: () => {
+      set({
+        open: false,
+        loading: false,
+        modelId: null,
+      })
+    },
+
+    setEditLlmModelDrawerLoading: (loading: boolean) => {
+      set({ loading })
+    },
   }),
 )
-
-export const openEditLlmModelDrawer = (modelId: string) => {
-  useEditLlmModelDrawerStore.setState({
-    open: true,
-    modelId,
-  })
-}
-
-export const closeEditLlmModelDrawer = () => {
-  useEditLlmModelDrawerStore.setState({
-    open: false,
-    loading: false,
-    modelId: null,
-  })
-}
-
-export const setEditLlmModelDrawerLoading = (loading: boolean) => {
-  useEditLlmModelDrawerStore.setState({
-    loading,
-  })
-}
 
 // ===== Add Remote LLM Model Drawer =====
 interface AddRemoteLlmModelDrawerState {
@@ -112,74 +128,81 @@ interface AddRemoteLlmModelDrawerState {
   loading: boolean
   providerId: string | null
   providerType: string | null
+
+  // Actions
+  openAddRemoteLlmModelDrawer: (providerId: string, providerType: string) => void
+  closeAddRemoteLlmModelDrawer: () => void
+  setAddRemoteLlmModelDrawerLoading: (loading: boolean) => void
 }
 
 export const useAddRemoteLlmModelDrawerStore =
-  create<AddRemoteLlmModelDrawerState>(() => ({
-    open: false,
-    loading: false,
-    providerId: null,
-    providerType: null,
-  }))
+  create<AddRemoteLlmModelDrawerState>(
+    (set): AddRemoteLlmModelDrawerState => ({
+      open: false,
+      loading: false,
+      providerId: null,
+      providerType: null,
 
-export const openAddRemoteLlmModelDrawer = (
-  providerId: string,
-  providerType: string,
-) => {
-  useAddRemoteLlmModelDrawerStore.setState({
-    open: true,
-    providerId,
-    providerType,
-  })
-}
+      // Actions
+      openAddRemoteLlmModelDrawer: (providerId: string, providerType: string) => {
+        set({
+          open: true,
+          providerId,
+          providerType,
+        })
+      },
 
-export const closeAddRemoteLlmModelDrawer = () => {
-  useAddRemoteLlmModelDrawerStore.setState({
-    open: false,
-    loading: false,
-    providerId: null,
-    providerType: null,
-  })
-}
+      closeAddRemoteLlmModelDrawer: () => {
+        set({
+          open: false,
+          loading: false,
+          providerId: null,
+          providerType: null,
+        })
+      },
 
-export const setAddRemoteLlmModelDrawerLoading = (loading: boolean) => {
-  useAddRemoteLlmModelDrawerStore.setState({
-    loading,
-  })
-}
+      setAddRemoteLlmModelDrawerLoading: (loading: boolean) => {
+        set({ loading })
+      },
+    }),
+  )
 
 // ===== View Download Drawer =====
 interface ViewDownloadDrawerState {
   open: boolean
   loading: boolean
   downloadId: string | null
+
+  // Actions
+  openViewDownloadDrawer: (downloadId: string) => void
+  closeViewDownloadDrawer: () => void
+  setViewDownloadDrawerLoading: (loading: boolean) => void
 }
 
 export const useViewDownloadDrawerStore = create<ViewDownloadDrawerState>(
-  () => ({
+  (set): ViewDownloadDrawerState => ({
     open: false,
     loading: false,
     downloadId: null,
+
+    // Actions
+    openViewDownloadDrawer: (downloadId: string) => {
+      set({
+        open: true,
+        downloadId,
+      })
+    },
+
+    closeViewDownloadDrawer: () => {
+      set({
+        open: false,
+        loading: false,
+        downloadId: null,
+      })
+    },
+
+    setViewDownloadDrawerLoading: (loading: boolean) => {
+      set({ loading })
+    },
   }),
 )
-
-export const openViewDownloadDrawer = (downloadId: string) => {
-  useViewDownloadDrawerStore.setState({
-    open: true,
-    downloadId,
-  })
-}
-
-export const closeViewDownloadDrawer = () => {
-  useViewDownloadDrawerStore.setState({
-    open: false,
-    loading: false,
-    downloadId: null,
-  })
-}
-
-export const setViewDownloadDrawerLoading = (loading: boolean) => {
-  useViewDownloadDrawerStore.setState({
-    loading,
-  })
-}

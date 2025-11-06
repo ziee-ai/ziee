@@ -1,7 +1,6 @@
 import { Card, Flex, Form, Select, Typography } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
-import { setThemePreference } from '@/modules/config-client/store'
 
 const { Text } = Typography
 
@@ -15,7 +14,7 @@ export function ThemeSettings() {
 
   const handleFormChange = (changedValues: any) => {
     if ('theme' in changedValues) {
-      setThemePreference(changedValues.theme)
+      Stores.ConfigClient.setThemePreference(changedValues.theme)
     }
   }
 

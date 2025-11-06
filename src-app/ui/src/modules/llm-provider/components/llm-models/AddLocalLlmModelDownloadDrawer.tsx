@@ -12,13 +12,6 @@ import {
 } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import {
-  closeAddLocalLlmModelDownloadDrawer,
-  openViewDownloadDrawer,
-  useAddLocalLlmModelDownloadDrawerStore,
-  useViewDownloadDrawerStore,
-  closeViewDownloadDrawer,
-  downloadLlmModelFromRepository,
-  cancelLlmModelDownload,
   clearLlmProviderStoreError,
 } from '@/modules/llm-provider/store'
 import { Stores } from '@/core/stores'
@@ -35,8 +28,8 @@ export function AddLocalLlmModelDownloadDrawer() {
   const [repositories, setRepositories] = useState<LlmRepository[]>([])
   const [loadingRepositories, setLoadingRepositories] = useState(false)
 
-  const { open: addMode, providerId } = useAddLocalLlmModelDownloadDrawerStore()
-  const { open: viewMode, downloadId } = useViewDownloadDrawerStore()
+  const { open: addMode, providerId } = Stores.AddLocalLlmModelDownloadDrawer
+  const { open: viewMode, downloadId } = Stores.ViewDownloadDrawer
   const { downloads } = Stores.LlmModelDownload
 
   const open = viewMode || addMode
@@ -84,8 +77,8 @@ export function AddLocalLlmModelDownloadDrawer() {
 
   // Helper function to close the modal
   const handleCloseModal = () => {
-    closeAddLocalLlmModelDownloadDrawer()
-    closeViewDownloadDrawer()
+    Stores.AddLocalLlmModelDownloadDrawer.closeAddLocalLlmModelDownloadDrawer()
+    Stores.ViewDownloadDrawer.closeViewDownloadDrawer()
     setLoading(false)
     form.resetFields()
   }
@@ -136,7 +129,7 @@ export function AddLocalLlmModelDownloadDrawer() {
 
       // Call the repository download API through store
       try {
-        await downloadLlmModelFromRepository(
+        await Stores.LlmModelDownload.downloadLlmModelFromRepository(
           {
             provider_id: providerId!,
             repository_id: values.repository_id,
@@ -156,7 +149,7 @@ export function AddLocalLlmModelDownloadDrawer() {
             },
             clear_cache: values.clear_cache || false,
           },
-          openViewDownloadDrawer,
+          Stores.ViewDownloadDrawer.openViewDownloadDrawer,
         )
 
         message.success('Download started successfully')
@@ -230,7 +223,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                     danger
                     onClick={async () => {
                       try {
-                        await cancelLlmModelDownload(viewDownload.id)
+                        await Stores.LlmModelDownload.cancelLlmModelDownload(viewDownload.id)
                         message.success('Download cancelled successfully')
                       } catch (error: any) {
                         console.error('Failed to cancel download:', error)

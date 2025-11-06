@@ -33,7 +33,8 @@ test.describe('User Assistants - User Page', () => {
   test('should display empty state when no assistants exist', async ({ page }) => {
     await assertEmptyState(page, 'No assistants yet')
     await assertEmptyState(page, 'Create your first assistant to get started')
-    await expect(page.locator('button:has-text("Create Assistant")')).toBeVisible()
+    // The primary button in the empty state (not the icon button in the header)
+    await expect(page.getByRole('button', { name: 'plus Create Assistant' })).toBeVisible()
   })
 
   test('should create a new assistant with basic info', async ({ page }) => {
@@ -83,7 +84,7 @@ test.describe('User Assistants - User Page', () => {
     await page.click('.ant-drawer button[type="submit"]')
 
     // Verify validation message
-    await expect(page.locator('text=Please enter a name')).toBeVisible()
+    await expect(page.getByText('Please enter a name', { exact: true })).toBeVisible()
 
     // Drawer should still be open
     await expect(page.locator('.ant-drawer')).toBeVisible()
@@ -100,7 +101,7 @@ test.describe('User Assistants - User Page', () => {
     await page.click('.ant-drawer button[type="submit"]')
 
     // Verify JSON validation error
-    await expect(page.locator('text=Please enter valid JSON')).toBeVisible()
+    await expect(page.getByText('Please enter valid JSON', { exact: true })).toBeVisible()
   })
 
   test('should prettify JSON parameters on blur', async ({ page }) => {
@@ -294,6 +295,60 @@ test.describe('User Assistants - User Page', () => {
     expect(cards[0]).toContain('Alpha')
     expect(cards[1]).toContain('Middle')
     expect(cards[2]).toContain('Zebra')
+  })
+
+  test('should sort assistants by activity (most recently updated)', async ({ page }) => {
+    // Create three assistants
+    await openCreateAssistantDrawer(page, true)
+    await fillAssistantForm(page, { name: 'First Assistant' })
+    await submitAssistantForm(page)
+    await page.waitForTimeout(1000)
+
+    await openCreateAssistantDrawer(page, true)
+    await fillAssistantForm(page, { name: 'Second Assistant' })
+    await submitAssistantForm(page)
+    await page.waitForTimeout(1000)
+
+    await openCreateAssistantDrawer(page, true)
+    await fillAssistantForm(page, { name: 'Third Assistant' })
+    await submitAssistantForm(page)
+    await page.waitForTimeout(1000)
+
+    // Edit the first assistant to make it most recently updated
+    await editAssistantFromCard(page, 'First Assistant')
+    await page.fill('[aria-label="Assistant description"]', 'Updated to be most recent')
+    await submitAssistantForm(page)
+    await page.waitForTimeout(500)
+
+    // Sort by activity (default, but click to ensure)
+    await sortAssistantsBy(page, 'Activity')
+
+    // Get all assistant cards
+    const cards = await page.locator('.ant-card .ant-typography').allTextContents()
+
+    // Verify First Assistant is now at the top (most recently updated)
+    expect(cards[0]).toContain('First Assistant')
+  })
+
+  test('should sort assistants by created date', async ({ page }) => {
+    // Create assistants in specific order
+    for (const name of ['Oldest Assistant', 'Middle Assistant', 'Newest Assistant']) {
+      await openCreateAssistantDrawer(page, true)
+      await fillAssistantForm(page, { name })
+      await submitAssistantForm(page)
+      await page.waitForTimeout(1000) // Ensure different creation times
+    }
+
+    // Sort by created date
+    await sortAssistantsBy(page, 'Created')
+
+    // Get all assistant cards
+    const cards = await page.locator('.ant-card .ant-typography').allTextContents()
+
+    // Verify they are in reverse chronological order (newest first)
+    expect(cards[0]).toContain('Newest')
+    expect(cards[1]).toContain('Middle')
+    expect(cards[2]).toContain('Oldest')
   })
 
   test('should toggle assistant as default', async ({ page }) => {

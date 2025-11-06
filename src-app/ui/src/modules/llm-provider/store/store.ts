@@ -427,25 +427,23 @@ export const updateLlmModelInProvider = (
   }))
 }
 
-// Re-export drawer store functions and hooks
-export {
-  useLlmProviderDrawerStore,
-  openLlmProviderDrawer,
-  closeLlmProviderDrawer,
-} from './drawer-store'
+// Re-export drawer store hooks
+export { useLlmProviderDrawerStore } from './drawer-store'
 
-// Re-export llm-model drawer stores
-export * from './llm-model-drawer-store'
-
-// Re-export download store functions
+// Re-export llm-model drawer store hooks
 export {
-  downloadLlmModelFromRepository,
-  cancelLlmModelDownload,
-  deleteLlmModelDownload,
-  clearLlmModelDownload,
-  clearAllLlmModelDownloads,
-  useLlmModelDownloadStore,
-} from './llm-model-download-store'
+  useAddLocalLlmModelUploadDrawerStore,
+  useAddLocalLlmModelDownloadDrawerStore,
+  useEditLlmModelDrawerStore,
+  useAddRemoteLlmModelDrawerStore,
+  useViewDownloadDrawerStore,
+} from './llm-model-drawer-store'
+
+// Re-export download store hook
+export { useLlmModelDownloadStore } from './llm-model-download-store'
+
+// Re-export upload store hook
+export { useUploadStore } from './llm-model-upload-store'
 
 // Re-export for compatibility with Stores pattern
 export { Stores } from '@/core/stores'

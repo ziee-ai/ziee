@@ -42,7 +42,6 @@ pub struct UpdateLlmProviderRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AssignProviderToGroupRequest {
-    pub provider_id: Uuid,
     pub group_id: Uuid,
 }
 

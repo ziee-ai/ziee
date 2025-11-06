@@ -49,8 +49,8 @@ impl LlmProviderRepository {
         get_llm_provider_groups(&self.pool, provider_id).await
     }
 
-    pub async fn assign_to_group(&self, request: AssignProviderToGroupRequest) -> Result<(), sqlx::Error> {
-        assign_provider_to_group(&self.pool, request).await
+    pub async fn assign_to_group(&self, provider_id: Uuid, group_id: Uuid) -> Result<(), sqlx::Error> {
+        assign_provider_to_group(&self.pool, provider_id, group_id).await
     }
 
     pub async fn remove_from_group(&self, group_id: Uuid, provider_id: Uuid) -> Result<bool, sqlx::Error> {
@@ -307,13 +307,14 @@ pub async fn get_llm_provider_groups(
 /// Assign a provider to a user group
 pub async fn assign_provider_to_group(
     pool: &PgPool,
-    request: AssignProviderToGroupRequest,
+    provider_id: Uuid,
+    group_id: Uuid,
 ) -> Result<(), sqlx::Error> {
     // Check if the relationship already exists
     let existing = sqlx::query!(
         "SELECT id FROM user_group_llm_providers WHERE group_id = $1 AND provider_id = $2",
-        request.group_id,
-        request.provider_id
+        group_id,
+        provider_id
     )
     .fetch_optional(pool)
     .await?;
@@ -327,8 +328,8 @@ pub async fn assign_provider_to_group(
     sqlx::query!(
         "INSERT INTO user_group_llm_providers (id, group_id, provider_id) VALUES ($1, $2, $3)",
         relationship_id,
-        request.group_id,
-        request.provider_id
+        group_id,
+        provider_id
     )
     .execute(pool)
     .await?;

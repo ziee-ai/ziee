@@ -13,7 +13,7 @@ export async function getDatabasePool(workerId: number) {
 
   return new Pool({
     host: 'localhost',
-    port: 54320,
+    port: 54321,
     user: 'postgres',
     password: 'password',
     database: worker.databaseName,

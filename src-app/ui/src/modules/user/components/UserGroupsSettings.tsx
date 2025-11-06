@@ -26,13 +26,6 @@ import {
 import { Drawer } from '@/components/common/Drawer.tsx'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
-import {
-  clearUserGroupsStoreError,
-  createUserGroup,
-  deleteUserGroup,
-  loadUserGroupMembers,
-  loadUserGroups,
-} from '../store.ts'
 import type { CreateGroupRequest, Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
@@ -89,7 +82,7 @@ export function UserGroupsSettings() {
   useEffect(() => {
     if (error) {
       message.error(error)
-      clearUserGroupsStoreError()
+      Stores.UserGroups.clearError()
     }
   }, [error, message])
 
@@ -100,7 +93,7 @@ export function UserGroupsSettings() {
         description: values.description,
         permissions: values.permissions ? JSON.parse(values.permissions) : [],
       }
-      await createUserGroup(groupData)
+      await Stores.UserGroups.createUserGroup(groupData)
       message.success('User group created successfully')
       setCreateModalVisible(false)
       createForm.resetFields()
@@ -117,7 +110,7 @@ export function UserGroupsSettings() {
 
   const handleDeleteGroup = async (groupId: string) => {
     try {
-      await deleteUserGroup(groupId)
+      await Stores.UserGroups.deleteUserGroup(groupId)
       message.success('User group deleted successfully')
     } catch (error) {
       console.error('Failed to delete user group:', error)
@@ -130,7 +123,7 @@ export function UserGroupsSettings() {
     setMembersDrawerVisible(true)
 
     try {
-      await loadUserGroupMembers(group.id)
+      await Stores.UserGroups.loadUserGroupMembers(group.id)
     } catch (error) {
       console.error('Failed to fetch group members:', error)
       // Error is handled by the store
@@ -188,7 +181,7 @@ export function UserGroupsSettings() {
     const newPageSize = size || storePageSize
     const newPage = size && size !== storePageSize ? 1 : page // Reset to page 1 if page size changes
 
-    loadUserGroups(newPage, newPageSize)
+    Stores.UserGroups.loadUserGroups(newPage, newPageSize)
   }
 
   return (
@@ -243,8 +236,10 @@ export function UserGroupsSettings() {
                         size="small"
                         column={{ xs: 1, sm: 2, md: 3 }}
                         colon={false}
-                        labelStyle={{ fontSize: '12px', color: '#8c8c8c' }}
-                        contentStyle={{ fontSize: '12px' }}
+                        styles={{
+                          label: { fontSize: '12px', color: '#8c8c8c' },
+                          content: { fontSize: '12px' }
+                        }}
                       >
                         <Descriptions.Item label="Description">
                           {group.description || 'No description'}

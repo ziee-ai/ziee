@@ -128,13 +128,13 @@ async fn test_assign_provider_to_group_requires_assign_groups_permission() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read"]).await;
 
+    let provider_id = Uuid::new_v4();
     let payload = json!({
-        "provider_id": Uuid::new_v4().to_string(),
         "group_id": Uuid::new_v4().to_string()
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers/assign-group"))
+        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -691,12 +691,11 @@ async fn test_assign_provider_to_group() {
 
     // Assign provider to group
     let payload = json!({
-        "provider_id": provider_id,
         "group_id": admin_group_id
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers/assign-group"))
+        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -736,13 +735,12 @@ async fn test_assign_provider_to_group_idempotent() {
     let admin_group_id = get_admin_group_id(&server, &user.token).await;
 
     let payload = json!({
-        "provider_id": provider_id,
         "group_id": admin_group_id
     });
 
     // Assign twice - should be idempotent
     let response1 = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers/assign-group"))
+        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -752,7 +750,7 @@ async fn test_assign_provider_to_group_idempotent() {
     assert_eq!(response1.status(), StatusCode::NO_CONTENT);
 
     let response2 = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers/assign-group"))
+        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -792,12 +790,11 @@ async fn test_remove_provider_from_group() {
 
     // Assign provider to group
     let payload = json!({
-        "provider_id": provider_id,
         "group_id": &admin_group_id
     });
 
     reqwest::Client::new()
-        .post(&server.api_url("/llm-providers/assign-group"))
+        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -806,7 +803,7 @@ async fn test_remove_provider_from_group() {
 
     // Remove assignment
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-providers/{}/{}/remove-group", provider_id, admin_group_id)))
+        .delete(&server.api_url(&format!("/llm-providers/{}/groups/{}", provider_id, admin_group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -838,7 +835,7 @@ async fn test_remove_provider_from_group_not_found() {
     let group_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-providers/{}/{}/remove-group", provider_id, group_id)))
+        .delete(&server.api_url(&format!("/llm-providers/{}/groups/{}", provider_id, group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

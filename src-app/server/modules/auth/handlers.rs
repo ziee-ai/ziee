@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 
 use crate::common::{ApiResult, AppError};
+use crate::core::{AppEvent, EventBus};
 use crate::modules::user::{User, UserRepository, GroupRepository, UserService};
 
 use super::jwt::{JwtService, TokenPair};
@@ -27,6 +28,7 @@ use super::types::{
 pub async fn register(
     State(pool): State<PgPool>,
     Extension(jwt_service): Extension<Arc<JwtService>>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(req): Json<RegisterRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
     // Validate input fields
@@ -80,6 +82,9 @@ pub async fn register(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
     }
+
+    // Emit UserCreated event asynchronously
+    event_bus.emit_async(AppEvent::UserCreated { user: user.clone() });
 
     // Generate JWT tokens
     let tokens = jwt_service

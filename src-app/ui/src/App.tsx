@@ -10,6 +10,7 @@ import { Spin } from 'antd'
 import { useRouterStore } from './core'
 import { AuthGuard } from './modules/auth'
 import { ThemeProvider } from './components/ThemeProvider'
+import { GlobalComponentRenderer } from './core/components/GlobalComponentRenderer'
 import { loadModules } from './modules/loader'
 import { setupAccessibilityFixes } from './utils/accessibilityFixes'
 import { usePrefetchModules } from './hooks/usePrefetchModules'
@@ -179,6 +180,9 @@ function App() {
             }
           />
         </Routes>
+
+        {/* Global components from all modules */}
+        <GlobalComponentRenderer />
       </BrowserRouter>
     </ThemeProvider>
   )

@@ -7,13 +7,14 @@ import { Page, expect } from '@playwright/test'
 export async function goToUserAssistantsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/assistants`)
   await page.waitForLoadState('networkidle')
-  await page.waitForSelector('text=Assistants', { timeout: 10000 })
+  // Wait for the page title (h4 heading in title bar) specifically, not the empty state heading (h3)
+  await page.locator('h4:has-text("Assistants")').first().waitFor({ timeout: 10000 })
 }
 
 export async function goToTemplateAssistantsSettings(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/assistants`)
   await page.waitForLoadState('networkidle')
-  await page.waitForSelector('text=Template Assistants', { timeout: 10000 })
+  await page.locator('.ant-card-head-title:has-text("Template Assistants")').waitFor({ timeout: 10000 })
 }
 
 /**
@@ -21,13 +22,8 @@ export async function goToTemplateAssistantsSettings(page: Page, baseURL: string
  */
 
 export async function openCreateAssistantDrawer(page: Page, isUserPage = true) {
-  if (isUserPage) {
-    // On user assistants page, click the + button in header
-    await page.locator('button:has-text("")[has(svg)]').last().click()
-  } else {
-    // On template settings page, click the + button in card header
-    await page.locator('.ant-card-head button:has(svg)').click()
-  }
+  // Both pages now use the same aria-label for the create button
+  await page.click('button[aria-label="Create assistant"]')
   await page.waitForSelector('.ant-drawer', { state: 'visible' })
 }
 
@@ -42,6 +38,9 @@ export async function fillAssistantForm(
     isDefault?: boolean
   }
 ) {
+  // Wait for drawer to be fully loaded by waiting for first input field
+  await page.waitForSelector('[aria-label="Assistant name"]', { state: 'visible' })
+
   // Fill name
   await page.fill('[aria-label="Assistant name"]', data.name)
 
@@ -62,7 +61,10 @@ export async function fillAssistantForm(
 
   // Set enabled toggle
   if (data.enabled !== undefined) {
-    const enabledSwitch = page.locator('form >> text=Enabled').locator('..').locator('.ant-switch')
+    // Find the Form.Item containing "Enabled" label, then find the switch within it
+    const enabledFormItem = page.locator('.ant-form-item').filter({ hasText: /^Enabled/ })
+    const enabledSwitch = enabledFormItem.locator('.ant-switch')
+    await enabledSwitch.waitFor({ state: 'visible', timeout: 5000 })
     const isEnabled = await enabledSwitch.getAttribute('aria-checked')
     if ((isEnabled === 'true') !== data.enabled) {
       await enabledSwitch.click()
@@ -71,7 +73,10 @@ export async function fillAssistantForm(
 
   // Set default toggle
   if (data.isDefault !== undefined) {
-    const defaultSwitch = page.locator('form >> text=Set as Default').locator('..').locator('.ant-switch')
+    // Find the Form.Item containing "Set as Default" label, then find the switch within it
+    const defaultFormItem = page.locator('.ant-form-item').filter({ hasText: /^Set as Default/ })
+    const defaultSwitch = defaultFormItem.locator('.ant-switch')
+    await defaultSwitch.waitFor({ state: 'visible', timeout: 5000 })
     const isDefault = await defaultSwitch.getAttribute('aria-checked')
     if ((isDefault === 'true') !== data.isDefault) {
       await defaultSwitch.click()
@@ -81,11 +86,12 @@ export async function fillAssistantForm(
 
 export async function submitAssistantForm(page: Page) {
   await page.click('.ant-drawer button[type="submit"]')
-  await page.waitForSelector('.ant-drawer', { state: 'hidden', timeout: 10000 })
+  // Wait for drawer to be removed from DOM after successful submission
+  await page.waitForSelector('.ant-drawer', { state: 'detached', timeout: 15000 })
 }
 
 export async function cancelAssistantForm(page: Page) {
-  await page.click('.ant-drawer button:has-text("Cancel")')
+  await page.locator('.ant-drawer').getByRole('button', { name: 'Cancel' }).click()
   await page.waitForSelector('.ant-drawer', { state: 'hidden', timeout: 5000 })
 }
 
@@ -107,7 +113,7 @@ export async function editAssistantFromCard(page: Page, assistantName: string) {
   await page.waitForSelector('.ant-dropdown-menu', { state: 'visible' })
 
   // Click Edit
-  await page.click('.ant-dropdown-menu >> text=Edit')
+  await page.locator('.ant-dropdown-menu').getByText('Edit', { exact: true }).click()
 
   // Wait for drawer to open
   await page.waitForSelector('.ant-drawer', { state: 'visible' })
@@ -123,11 +129,11 @@ export async function deleteAssistantFromCard(page: Page, assistantName: string)
   await page.waitForSelector('.ant-dropdown-menu', { state: 'visible' })
 
   // Click Delete
-  await page.click('.ant-dropdown-menu >> text=Delete')
+  await page.locator('.ant-dropdown-menu').getByText('Delete', { exact: true }).click()
 
   // Confirm deletion in modal
   await page.waitForSelector('.ant-modal', { state: 'visible' })
-  await page.click('.ant-modal button:has-text("Delete")')
+  await page.locator('.ant-modal').getByRole('button', { name: 'Delete' }).click()
 
   // Wait for modal to close
   await page.waitForSelector('.ant-modal', { state: 'hidden' })
@@ -149,17 +155,17 @@ export async function getTemplateAssistantRow(page: Page, assistantName: string)
 
 export async function editTemplateAssistant(page: Page, assistantName: string) {
   const row = await getTemplateAssistantRow(page, assistantName)
-  await row.locator('button:has-text("Edit")').click()
+  await row.getByRole('button', { name: 'Edit' }).click()
   await page.waitForSelector('.ant-drawer', { state: 'visible' })
 }
 
 export async function deleteTemplateAssistant(page: Page, assistantName: string) {
   const row = await getTemplateAssistantRow(page, assistantName)
-  await row.locator('button:has-text("Delete")').click()
+  await row.getByRole('button', { name: 'Delete' }).click()
 
   // Confirm in popconfirm
   await page.waitForSelector('.ant-popconfirm', { state: 'visible' })
-  await page.click('.ant-popconfirm button:has-text("Yes")')
+  await page.locator('.ant-popconfirm').getByRole('button', { name: 'Yes' }).click()
 
   // Wait for popconfirm to close
   await page.waitForSelector('.ant-popconfirm', { state: 'hidden' })
@@ -187,7 +193,7 @@ export async function sortAssistantsBy(page: Page, sortType: 'Activity' | 'Name'
   await page.waitForSelector('.ant-dropdown-menu', { state: 'visible' })
 
   // Click sort option
-  await page.click(`.ant-dropdown-menu >> text=${sortType}`)
+  await page.locator('.ant-dropdown-menu').getByText(sortType, { exact: true }).click()
 
   // Wait for dropdown to close
   await page.waitForSelector('.ant-dropdown-menu', { state: 'hidden' })
@@ -203,9 +209,9 @@ export async function goToPage(page: Page, pageNumber: number) {
 }
 
 export async function changePageSize(page: Page, size: number) {
-  await page.click('.ant-select-selector:has-text("10")')
+  await page.locator('.ant-select-selector:has-text("10")').click()
   await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-  await page.click(`.ant-select-dropdown >> text=${size}`)
+  await page.locator('.ant-select-dropdown').getByText(size.toString(), { exact: true }).click()
   await page.waitForLoadState('networkidle')
 }
 
@@ -238,7 +244,7 @@ export async function assertAssistantHasTag(page: Page, assistantName: string, t
 }
 
 export async function assertEmptyState(page: Page, message: string) {
-  await expect(page.locator(`text=${message}`)).toBeVisible()
+  await expect(page.getByText(message, { exact: true })).toBeVisible()
 }
 
 export async function assertSuccessMessage(page: Page, message: string) {

@@ -1,7 +1,6 @@
 import { Layout, Spin } from 'antd'
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { initAuth } from './store'
 import { Stores } from '@/core/stores'
 import { AuthPage } from './AuthPage'
 
@@ -19,7 +18,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
   useEffect(() => {
     // Initialize auth (setup status already checked by app module)
-    initAuth()
+    Stores.Auth.initAuth()
   }, [])
 
   useEffect(() => {

@@ -56,9 +56,17 @@ CREATE INDEX idx_mcp_servers_transport_type ON mcp_servers(transport_type);
 CREATE INDEX idx_group_mcp_servers_group_id ON user_group_mcp_servers(group_id);
 CREATE INDEX idx_group_mcp_servers_server_id ON user_group_mcp_servers(mcp_server_id);
 
--- Insert default system servers (disabled by default)
+-- Insert default system servers (disabled by default except fetch which is assigned to default group)
 INSERT INTO mcp_servers (name, display_name, description, transport_type, is_system, enabled, command, args, environment_variables) VALUES
 ('filesystem', 'Filesystem Access', 'Access local filesystem operations', 'stdio', true, false, 'npx', '["-y", "@modelcontextprotocol/server-filesystem"]', '{}'),
-('fetch', 'Web Fetch', 'Fetch content from web URLs', 'stdio', true, false, 'uvx', '["mcp-server-fetch"]', '{}'),
+('fetch', 'Web Fetch', 'Fetch content from web URLs', 'stdio', true, true, 'uvx', '["mcp-server-fetch"]', '{}'),
 ('browser', 'Browser Automation', 'Automate browser interactions', 'stdio', true, false, 'npx', '["@browsermcp/mcp"]', '{}'),
 ('git', 'Git Operations', 'Git repository operations', 'stdio', true, false, 'npx', '["-y", "mcp-git-server"]', '{}');
+
+-- Assign fetch MCP server to default user group
+INSERT INTO user_group_mcp_servers (group_id, mcp_server_id)
+SELECT g.id, s.id
+FROM groups g, mcp_servers s
+WHERE g.is_default = true
+  AND s.name = 'fetch'
+  AND s.is_system = true;

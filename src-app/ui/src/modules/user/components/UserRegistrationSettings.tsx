@@ -1,11 +1,6 @@
 import { App, Card, Form, Switch, Typography } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
-import {
-  clearUsersStoreError,
-  loadUserRegistrationSettings,
-  updateUserRegistrationSettings,
-} from '../store'
 
 const { Text } = Typography
 
@@ -18,14 +13,14 @@ export function UserRegistrationSettings() {
     Stores.Users
 
   useEffect(() => {
-    loadUserRegistrationSettings()
+    Stores.Users.loadUserRegistrationSettings()
   }, [])
 
   // Show errors
   useEffect(() => {
     if (error) {
       message.error(error)
-      clearUsersStoreError()
+      Stores.Users.clearError()
     }
   }, [error, message])
 
@@ -39,7 +34,7 @@ export function UserRegistrationSettings() {
       const newValue = changedValues.enabled
 
       try {
-        await updateUserRegistrationSettings(newValue)
+        await Stores.Users.updateUserRegistrationSettings(newValue)
         message.success(
           `User registration ${newValue ? 'enabled' : 'disabled'} successfully`,
         )

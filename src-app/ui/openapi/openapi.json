@@ -1599,9 +1599,7 @@
             "bearerAuth": []
           }
         ]
-      }
-    },
-    "/api/llm-providers/assign-group": {
+      },
       "post": {
         "tags": [
           "LLM Providers"
@@ -1657,7 +1655,7 @@
         ]
       }
     },
-    "/api/llm-providers/{provider_id}/{group_id}/remove-group": {
+    "/api/llm-providers/{provider_id}/groups/{group_id}": {
       "delete": {
         "tags": [
           "LLM Providers"
@@ -3637,11 +3635,11 @@
     "/api/mcp/system-servers": {
       "get": {
         "tags": [
-          "Admin - MCP Servers"
+          "MCP Servers - System"
         ],
         "summary": "List system MCP servers",
-        "description": "List all system MCP servers (admin only)",
-        "operationId": "McpServerAdmin.list",
+        "description": "List all system MCP servers",
+        "operationId": "McpServerSystem.list",
         "parameters": [
           {
             "in": "query",
@@ -3710,11 +3708,11 @@
       },
       "post": {
         "tags": [
-          "Admin - MCP Servers"
+          "MCP Servers - System"
         ],
         "summary": "Create system MCP server",
-        "description": "Create a new system MCP server configuration (admin only)",
-        "operationId": "McpServerAdmin.create",
+        "description": "Create a new system MCP server configuration",
+        "operationId": "McpServerSystem.create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3779,11 +3777,11 @@
     "/api/mcp/system-servers/{id}": {
       "get": {
         "tags": [
-          "Admin - MCP Servers"
+          "MCP Servers - System"
         ],
         "summary": "Get system MCP server",
-        "description": "Get a system MCP server by ID (admin only)",
-        "operationId": "McpServerAdmin.get",
+        "description": "Get a system MCP server by ID",
+        "operationId": "McpServerSystem.get",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -3833,11 +3831,11 @@
       },
       "put": {
         "tags": [
-          "Admin - MCP Servers"
+          "MCP Servers - System"
         ],
         "summary": "Update system MCP server",
-        "description": "Update a system MCP server configuration (admin only)",
-        "operationId": "McpServerAdmin.update",
+        "description": "Update a system MCP server configuration",
+        "operationId": "McpServerSystem.update",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3903,11 +3901,11 @@
       },
       "delete": {
         "tags": [
-          "Admin - MCP Servers"
+          "MCP Servers - System"
         ],
         "summary": "Delete system MCP server",
-        "description": "Delete a system MCP server configuration (admin only)",
-        "operationId": "McpServerAdmin.delete",
+        "description": "Delete a system MCP server configuration",
+        "operationId": "McpServerSystem.delete",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -3949,14 +3947,14 @@
         ]
       }
     },
-    "/api/mcp/groups/{group_id}/servers": {
+    "/api/mcp/system-servers/{id}/groups": {
       "get": {
         "tags": [
-          "Admin - MCP Servers"
+          "MCP Servers - System"
         ],
-        "summary": "Get group's MCP servers",
-        "description": "Get MCP servers assigned to a group (admin only)",
-        "operationId": "McpServerAdmin.getGroupServers",
+        "summary": "Get server's assigned groups",
+        "description": "Get groups assigned to an MCP server",
+        "operationId": "McpServerSystem.getServerGroups",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -3997,6 +3995,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
           }
         },
         "security": [
@@ -4005,18 +4006,18 @@
           }
         ]
       },
-      "put": {
+      "post": {
         "tags": [
-          "Admin - MCP Servers"
+          "MCP Servers - System"
         ],
-        "summary": "Set group's MCP servers",
-        "description": "Set MCP servers for a group (replaces all assignments, admin only)",
-        "operationId": "McpServerAdmin.setGroupServers",
+        "summary": "Assign server to groups",
+        "description": "Assign MCP server to groups (replaces all assignments)",
+        "operationId": "McpServerSystem.assignServerToGroups",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GroupMcpServersRequest"
+                "$ref": "#/components/schemas/ServerGroupsRequest"
               }
             }
           },
@@ -4047,10 +4048,10 @@
             }
           },
           "204": {
-            "description": "Servers assigned successfully"
+            "description": "Server assigned successfully"
           },
           "400": {
-            "description": "Bad request - only system servers can be assigned"
+            "description": "Bad request - only system servers can be assigned to groups"
           },
           "401": {
             "description": "Unauthorized"
@@ -4066,14 +4067,14 @@
         ]
       }
     },
-    "/api/mcp/groups/{group_id}/servers/{server_id}": {
+    "/api/mcp/system-servers/{id}/groups/{group_id}": {
       "delete": {
         "tags": [
-          "Admin - MCP Servers"
+          "MCP Servers - System"
         ],
-        "summary": "Remove MCP server from group",
-        "description": "Remove an MCP server from a group (admin only)",
-        "operationId": "McpServerAdmin.removeGroupServer",
+        "summary": "Remove server from group",
+        "description": "Remove an MCP server from a specific group",
+        "operationId": "McpServerSystem.removeServerFromGroup",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -4124,14 +4125,9 @@
           "group_id": {
             "type": "string",
             "format": "uuid"
-          },
-          "provider_id": {
-            "type": "string",
-            "format": "uuid"
           }
         },
         "required": [
-          "provider_id",
           "group_id"
         ]
       },
@@ -4365,7 +4361,7 @@
             ]
           },
           "is_template": {
-            "description": "Whether this is a system-wide template\n - true: Requires assistant-templates::create permission, created_by will be NULL\n - false/omitted: Requires assistants::create permission, created_by will be set to current user\n This field is IMMUTABLE after creation",
+            "description": "Whether this is a system-wide template\n - true: Requires assistant_templates::create permission, created_by will be NULL\n - false/omitted: Requires assistants::create permission, created_by will be set to current user\n This field is IMMUTABLE after creation",
             "type": [
               "boolean",
               "null"
@@ -5426,21 +5422,6 @@
           "page",
           "per_page",
           "total_pages"
-        ]
-      },
-      "GroupMcpServersRequest": {
-        "type": "object",
-        "properties": {
-          "server_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        },
-        "required": [
-          "server_ids"
         ]
       },
       "HardwareInfo": {
@@ -7063,6 +7044,21 @@
               "update"
             ]
           }
+        ]
+      },
+      "ServerGroupsRequest": {
+        "type": "object",
+        "properties": {
+          "group_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "group_ids"
         ]
       },
       "SetupAdminRequest": {

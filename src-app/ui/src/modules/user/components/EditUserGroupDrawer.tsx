@@ -2,7 +2,6 @@ import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/components/common/Drawer.tsx'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
-import { updateUserGroup } from '../store'
 import type { UpdateGroupRequest, Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 
@@ -94,7 +93,7 @@ export function EditUserGroupDrawer({
         is_active: values.is_active,
       }
 
-      await updateUserGroup(group.id, updateData)
+      await Stores.UserGroups.updateUserGroup(group.id, updateData)
       message.success('User group updated successfully')
       handleClose()
       onSuccess?.()

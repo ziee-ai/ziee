@@ -5,6 +5,7 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import pg from 'pg'
 import crypto from 'crypto'
+import { findAvailablePorts, releasePortLock } from './port-manager'
 
 const { Pool } = pg
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -23,28 +24,15 @@ interface TestFixtures {
   testInfra: TestInfrastructure
 }
 
-// Fixed port assignment per worker
-// Each worker always uses the same 2 ports (vite + backend)
-// Worker 0: vite 9000, backend 9100
-// Worker 1: vite 9001, backend 9101
-// Worker 2: vite 9002, backend 9102
-// Worker 3: vite 9003, backend 9103
-// etc.
-function getWorkerPorts(workerIndex: number): { backend: number; vite: number } {
-  return {
-    vite: 9000 + workerIndex,
-    backend: 9100 + workerIndex,
-  }
-}
-
 export const test = base.extend<TestFixtures>({
   testInfra: async ({}, use, testInfo) => {
     const testId = crypto.randomBytes(4).toString('hex')
     const databaseName = `ziee_test_${testId}`
     const workerIndex = testInfo.workerIndex
 
-    // Each worker always uses the same 2 ports
-    const ports = getWorkerPorts(workerIndex)
+    // Dynamically find and lock available ports for this worker
+    // Automatically cleans up stale locks from crashed processes
+    const ports = await findAvailablePorts(workerIndex)
     const backendPort = ports.backend
     const vitePort = ports.vite
 
@@ -56,7 +44,7 @@ export const test = base.extend<TestFixtures>({
     // 1. Create database
     const pool = new Pool({
       host: 'localhost',
-      port: 54320,
+      port: 54321,
       user: 'postgres',
       password: 'password',
       database: 'postgres',
@@ -84,7 +72,7 @@ export const test = base.extend<TestFixtures>({
 
   external:
     host: "localhost"
-    port: 54320
+    port: 54321
     username: "postgres"
     password: "password"
     database: "${databaseName}"
@@ -131,27 +119,27 @@ jwt:
     // 3. Start backend server
     console.log(`🚀 Starting backend server on port ${backendPort}...`)
 
-    // Get cargo path (try symlink first, then resolved path)
-    const cargoSymlink = process.env.CARGO_HOME
-      ? `${process.env.CARGO_HOME}/bin/cargo`
+    // Spawn cargo directly without shell to ensure we can kill the process properly
+    // Using shell: true creates a shell parent that orphans child processes when killed
+    console.log(`Using cargo from PATH (cross-platform)`)
+
+    const cargoPath = process.platform === 'win32'
+      ? `${process.env.USERPROFILE}\\.cargo\\bin\\cargo`
       : `${process.env.HOME}/.cargo/bin/cargo`
-
-    console.log(`Cargo symlink: ${cargoSymlink}`)
-    console.log(`Symlink exists: ${existsSync(cargoSymlink)}`)
-
-    // Try using symlink directly instead of realpath
-    const cargoPath = cargoSymlink
-
-    console.log(`Using cargo at: ${cargoPath}`)
 
     const serverProcess = spawn(
       cargoPath,
       ['run', '--bin', 'ziee-chat', '--', '--config-file', configPath],
       {
-        cwd: resolve(__dirname, '../../server'),
+        cwd: resolve(__dirname, '../../../server'),
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
-        env: process.env,
+        env: {
+          ...process.env,
+          PATH: process.platform === 'win32'
+            ? `${process.env.USERPROFILE}\\.cargo\\bin;${process.env.PATH}`
+            : `${process.env.HOME}/.cargo/bin:${process.env.PATH}`,
+        },
       }
     )
 
@@ -261,20 +249,35 @@ export default defineConfig({
     // Cleanup after test
     console.log(`\n🧹 Cleaning up test infrastructure for: ${testInfo.title}`)
 
+    // Kill backend server process (cargo and rust binary)
+    try {
+      serverProcess.kill('SIGTERM')
+    } catch {}
+
+    // Kill Vite process
     try {
       viteProcess.kill('SIGTERM')
-      setTimeout(() => viteProcess.kill('SIGKILL'), 2000)
+    } catch {}
+
+    // Wait for graceful shutdown
+    await new Promise(resolve => setTimeout(resolve, 1500))
+
+    // Force kill if still running
+    try {
+      serverProcess.kill('SIGKILL')
     } catch {}
 
     try {
-      serverProcess.kill('SIGTERM')
-      setTimeout(() => serverProcess.kill('SIGKILL'), 2000)
+      viteProcess.kill('SIGKILL')
     } catch {}
+
+    // Wait for ports to be fully released
+    await new Promise(resolve => setTimeout(resolve, 1500))
 
     // Drop database
     const cleanupPool = new Pool({
       host: 'localhost',
-      port: 54320,
+      port: 54321,
       user: 'postgres',
       password: 'password',
       database: 'postgres',
@@ -302,8 +305,8 @@ export default defineConfig({
       rmSync(viteConfigPath, { force: true })
     } catch {}
 
-    // Note: Ports are fixed per worker and will be reused automatically
-    // for the next test assigned to this worker
+    // Release port lock so other test runs can use these ports
+    releasePortLock(vitePort, backendPort)
 
     console.log(`✅ Cleanup complete\n`)
   },

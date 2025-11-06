@@ -68,11 +68,15 @@ pub async fn start_server(config: Config) -> Result<SocketAddr, Box<dyn std::err
     tracing::info!("Database initialized with {} connections", pool.num_idle());
 
     // Initialize modules
-    let module_context = ModuleContext::new(pool);
+    let module_context = ModuleContext::new(pool.clone());
     let mut modules = core::app_builder::create_modules();
 
     // Initialize all modules
     core::app_builder::initialize_modules(&mut modules, &module_context)?;
+
+    // Register event handlers from all modules
+    let event_bus = Arc::new(core::app_builder::register_event_handlers(&modules, pool.clone()));
+    tracing::info!("Event bus initialized with {} handlers", event_bus.handler_count());
 
     // Setup CORS from config
     let cors = core::app_builder::create_cors_layer(&config);
@@ -92,6 +96,7 @@ pub async fn start_server(config: Config) -> Result<SocketAddr, Box<dyn std::err
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::disable())
+        .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service))
         .layer(cors);
 

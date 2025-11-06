@@ -40,14 +40,22 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
       }
 
       const isInit = propInitCheck.get(prop) || false
+      let state = useStore.getState()
       if (!isInit) {
-        let state = useStore.getState()
         if (state.__init__ && typeof state.__init__[prop] === 'function') {
           state.__init__[prop]()
         }
         propInitCheck.set(prop, true)
       }
 
+      // If the property is a function, return it directly without using the hook
+      // This allows calling action functions outside of React components
+      const value = (state as any)[prop]
+      if (typeof value === 'function') {
+        return value
+      }
+
+      // For non-function values, use the hook for reactivity
       return useStore(
         useShallow((state: ExtractZustandState<T>) => (state as any)[prop]),
       )

@@ -5,9 +5,8 @@ import { Drawer } from '@/components/common/Drawer.tsx'
 import {
   createLlmProvider,
   updateLlmProvider,
-  useLlmProviderDrawerStore,
-  closeLlmProviderDrawer,
 } from '../store'
+import { Stores } from '@/core/stores'
 import type {
   CreateLlmProviderRequest,
   UpdateLlmProviderRequest,
@@ -32,8 +31,7 @@ export function LlmProviderDrawer() {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
-  const { isOpen: open, editingProvider: provider } =
-    useLlmProviderDrawerStore()
+  const { isOpen: open, editingProvider: provider } = Stores.LlmProviderDrawer
 
   // Update form when editing provider
   useEffect(() => {
@@ -55,7 +53,7 @@ export function LlmProviderDrawer() {
 
   const handleClose = () => {
     form.resetFields()
-    closeLlmProviderDrawer()
+    Stores.LlmProviderDrawer.closeLlmProviderDrawer()
   }
 
   const handleSubmit = async (values: any) => {

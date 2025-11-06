@@ -121,8 +121,9 @@ export function AssistantsSettings() {
           extra={
             <Button
               type="text"
-              icon={<PlusOutlined />}
+              icon={<PlusOutlined aria-hidden="true" />}
               onClick={handleCreate}
+              aria-label="Create assistant"
             />
           }
         >
@@ -149,10 +150,10 @@ export function AssistantsSettings() {
                               {assistant.name}
                             </Text>
                             {assistant.is_default && (
-                              <Tag color="green">Default</Tag>
+                              <Tag color="success">Default</Tag>
                             )}
                             {!assistant.enabled && (
-                              <Tag color="red">Inactive</Tag>
+                              <Tag color="error">Inactive</Tag>
                             )}
                           </Flex>
                         </div>
@@ -165,8 +166,10 @@ export function AssistantsSettings() {
                         size="small"
                         column={{ xs: 1, sm: 2, md: 3 }}
                         colon={false}
-                        labelStyle={{ fontSize: '12px', color: '#8c8c8c' }}
-                        contentStyle={{ fontSize: '12px' }}
+                        styles={{
+                          label: { fontSize: '12px' },
+                          content: { fontSize: '12px' }
+                        }}
                       >
                         <Descriptions.Item label="Description">
                           {assistant.description || 'No description'}

@@ -164,3 +164,8 @@ pub struct McpServerListResponse {
 pub struct GroupMcpServersRequest {
     pub server_ids: Vec<Uuid>,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ServerGroupsRequest {
+    pub group_ids: Vec<Uuid>,
+}

@@ -6,6 +6,10 @@ export type ThemePreference = 'light' | 'dark' | 'system'
 
 interface ConfigClientState {
   themePreference: ThemePreference
+
+  // Actions
+  setThemePreference: (preference: ThemePreference) => void
+  getThemePreference: () => ThemePreference
 }
 
 // Augment RegisteredStores for IntelliSense
@@ -15,24 +19,29 @@ declare module '../../core/stores' {
   }
 }
 
-const defaultState: ConfigClientState = {
-  themePreference: 'system',
+const defaultState = {
+  themePreference: 'system' as ThemePreference,
 }
 
 export const useConfigClientStore = create<ConfigClientState>()(
   subscribeWithSelector(
-    persist((): ConfigClientState => defaultState, {
-      name: 'config-client-storage',
-      partialize: state => ({ themePreference: state.themePreference }),
-    }),
+    persist(
+      (set, get): ConfigClientState => ({
+        ...defaultState,
+
+        // Actions
+        setThemePreference: (preference: ThemePreference) => {
+          set({ themePreference: preference })
+        },
+
+        getThemePreference: () => {
+          return get().themePreference
+        },
+      }),
+      {
+        name: 'config-client-storage',
+        partialize: state => ({ themePreference: state.themePreference }),
+      },
+    ),
   ),
 )
-
-// Config actions
-export const setThemePreference = (preference: ThemePreference): void => {
-  useConfigClientStore.setState({ themePreference: preference })
-}
-
-export const getThemePreference = (): ThemePreference => {
-  return useConfigClientStore.getState().themePreference
-}

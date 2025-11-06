@@ -13,7 +13,6 @@ import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   clearLlmProviderStoreError,
-  openLlmProviderDrawer,
   Stores,
 } from '../store'
 import { PROVIDER_ICONS } from '../constants'
@@ -103,7 +102,7 @@ export function LlmProviderSettings() {
       items={menuItems}
       onClick={({ key }) => {
         if (key === 'add-provider') {
-          openLlmProviderDrawer()
+          Stores.LlmProviderDrawer.openLlmProviderDrawer()
         } else {
           navigate(`/settings/llm-providers/${key}`)
         }
@@ -174,7 +173,7 @@ export function LlmProviderSettings() {
                         })),
                         onClick: ({ key }) => {
                           if (key === 'add-provider') {
-                            openLlmProviderDrawer()
+                            Stores.LlmProviderDrawer.openLlmProviderDrawer()
                           } else {
                             navigate(`/settings/llm-providers/${key}`)
                           }

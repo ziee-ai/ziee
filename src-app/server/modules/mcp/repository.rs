@@ -82,8 +82,10 @@ pub async fn create_user_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
+            .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
+        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
+            .ok_or_else(|| AppError::internal_error("Invalid updated_at timestamp"))?,
     };
 
     Ok(server)
@@ -268,15 +270,17 @@ pub async fn update_user_mcp_server(
         description: row.description,
         enabled: row.enabled,
         is_system: row.is_system,
-        transport_type: TransportType::from_str(&row.transport_type).unwrap(),
+        transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
         environment_variables: row.environment_variables.unwrap_or_else(|| serde_json::json!({})),
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
+            .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
+        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
+            .ok_or_else(|| AppError::internal_error("Invalid updated_at timestamp"))?,
     };
 
     Ok(server)
@@ -376,8 +380,10 @@ pub async fn create_system_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
+            .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
+        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
+            .ok_or_else(|| AppError::internal_error("Invalid updated_at timestamp"))?,
     };
 
     Ok(server)
@@ -550,15 +556,17 @@ pub async fn update_system_mcp_server(
         description: row.description,
         enabled: row.enabled,
         is_system: row.is_system,
-        transport_type: TransportType::from_str(&row.transport_type).unwrap(),
+        transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
         environment_variables: row.environment_variables.unwrap_or_else(|| serde_json::json!({})),
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
+            .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
+        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
+            .ok_or_else(|| AppError::internal_error("Invalid updated_at timestamp"))?,
     };
 
     Ok(server)
@@ -702,6 +710,67 @@ pub async fn set_group_mcp_servers(
     Ok(())
 }
 
+/// Get groups assigned to an MCP server (server-centric)
+pub async fn get_server_groups(pool: &PgPool, server_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+    let group_ids = sqlx::query!(
+        "SELECT group_id FROM user_group_mcp_servers WHERE mcp_server_id = $1",
+        server_id
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|row| row.group_id)
+    .collect();
+
+    Ok(group_ids)
+}
+
+/// Set groups for an MCP server (server-centric, replaces all assignments)
+pub async fn set_server_groups(
+    pool: &PgPool,
+    server_id: Uuid,
+    group_ids: Vec<Uuid>,
+) -> Result<(), AppError> {
+    // Verify server is a system server
+    let server = sqlx::query!(
+        "SELECT is_system FROM mcp_servers WHERE id = $1",
+        server_id
+    )
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::not_found("Server"))?;
+
+    if !server.is_system {
+        return Err(AppError::bad_request(
+            "INVALID_SERVER",
+            "Only system servers can be assigned to groups",
+        ));
+    }
+
+    // Start transaction
+    let mut tx = pool.begin().await?;
+
+    // Delete all existing assignments for this server
+    sqlx::query!("DELETE FROM user_group_mcp_servers WHERE mcp_server_id = $1", server_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Insert new assignments
+    for group_id in group_ids {
+        sqlx::query!(
+            "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id) VALUES ($1, $2)",
+            group_id,
+            server_id
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+
+    Ok(())
+}
+
 // =====================================================
 // Combined View (Accessible Servers)
 // =====================================================
@@ -797,7 +866,7 @@ fn validate_transport_config(
 ) -> Result<(), AppError> {
     match transport_type {
         TransportType::Stdio => {
-            if request.command.is_none() || request.command.as_ref().unwrap().is_empty() {
+            if request.command.is_none() || request.command.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
                 return Err(AppError::bad_request(
                     "INVALID_TRANSPORT",
                     "command is required for stdio transport",
@@ -805,7 +874,7 @@ fn validate_transport_config(
             }
         }
         TransportType::Http | TransportType::Sse => {
-            if request.url.is_none() || request.url.as_ref().unwrap().is_empty() {
+            if request.url.is_none() || request.url.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
                 return Err(AppError::bad_request(
                     "INVALID_TRANSPORT",
                     "url is required for http/sse transport",

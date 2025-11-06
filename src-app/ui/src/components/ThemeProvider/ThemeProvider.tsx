@@ -6,7 +6,6 @@ import { themes } from '../../themes'
 import { AppThemeConfig } from '@/themes/light'
 import { resolveSystemTheme } from './resolveTheme'
 import { Stores } from '@/core/stores'
-import { setThemePreference } from '@/modules/config-client/store'
 
 interface ThemeProviderProps {
   children: React.ReactNode
@@ -61,7 +60,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       value={{
         currentTheme,
         selectedTheme,
-        setTheme: setThemePreference,
+        setTheme: Stores.ConfigClient.setThemePreference,
         isDarkMode,
         resolvedTheme,
       }}

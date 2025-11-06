@@ -4,7 +4,7 @@ This directory contains end-to-end tests for the Ziee Chat UI using Playwright.
 
 ## Architecture
 
-- **Shared PostgreSQL**: Docker container on port 54320
+- **Shared PostgreSQL**: Docker container on port 54321
 - **Parallel Workers**: Each worker gets its own backend server and database
 - **Isolated Tests**: Tests run in complete isolation with fresh data
 - **Accessibility**: Every test includes accessibility checks with axe-core
@@ -249,9 +249,9 @@ cargo build
 
 ### PostgreSQL port conflict
 
-Check if port 54320 is already in use:
+Check if port 54321 is already in use:
 ```bash
-lsof -i :54320
+lsof -i :54321
 ```
 
 Clean up and restart:

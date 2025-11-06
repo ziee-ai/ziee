@@ -1,7 +1,17 @@
 import { createModule } from '@/core'
 import { CloudServerOutlined } from '@ant-design/icons'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
-import { useLlmProviderStore, useLlmModelDownloadStore } from './store'
+import {
+  useLlmProviderStore,
+  useLlmModelDownloadStore,
+  useLlmProviderDrawerStore,
+  useAddLocalLlmModelUploadDrawerStore,
+  useAddLocalLlmModelDownloadDrawerStore,
+  useEditLlmModelDrawerStore,
+  useAddRemoteLlmModelDrawerStore,
+  useViewDownloadDrawerStore,
+  useUploadStore,
+} from './store'
 import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -30,6 +40,34 @@ export default createModule({
     {
       name: 'LlmModelDownload',
       store: useLlmModelDownloadStore,
+    },
+    {
+      name: 'LlmProviderDrawer',
+      store: useLlmProviderDrawerStore,
+    },
+    {
+      name: 'AddLocalLlmModelUploadDrawer',
+      store: useAddLocalLlmModelUploadDrawerStore,
+    },
+    {
+      name: 'AddLocalLlmModelDownloadDrawer',
+      store: useAddLocalLlmModelDownloadDrawerStore,
+    },
+    {
+      name: 'EditLlmModelDrawer',
+      store: useEditLlmModelDrawerStore,
+    },
+    {
+      name: 'AddRemoteLlmModelDrawer',
+      store: useAddRemoteLlmModelDrawerStore,
+    },
+    {
+      name: 'ViewDownloadDrawer',
+      store: useViewDownloadDrawerStore,
+    },
+    {
+      name: 'LlmModelUpload',
+      store: useUploadStore,
     },
   ],
   sidebar: {

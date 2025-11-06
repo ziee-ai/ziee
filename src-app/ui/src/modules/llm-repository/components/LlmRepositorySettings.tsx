@@ -15,7 +15,6 @@ import {
   Switch,
   Typography,
 } from 'antd'
-import { useState } from 'react'
 import { Stores } from '@/core/stores'
 import {
   deleteLlmRepository,
@@ -25,7 +24,6 @@ import {
 } from '../store'
 import type { LlmRepository } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
-import { LlmRepositoryDrawer } from './LlmRepositoryDrawer'
 
 const { Text } = Typography
 
@@ -34,11 +32,6 @@ export function LlmRepositorySettings() {
 
   // Stores
   const { repositories, testing } = Stores.LlmRepository
-
-  // Drawer state
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [editingRepository, setEditingRepository] =
-    useState<LlmRepository | null>(null)
 
   const testRepositoryConnection = async (repository: LlmRepository) => {
     // Check if repository has credentials configured
@@ -76,18 +69,11 @@ export function LlmRepositorySettings() {
 
   // Repository management functions
   const handleAddRepository = () => {
-    setEditingRepository(null)
-    setDrawerOpen(true)
+    Stores.LlmRepositoryDrawer.openDrawer()
   }
 
   const handleEditRepository = (repository: LlmRepository) => {
-    setEditingRepository(repository)
-    setDrawerOpen(true)
-  }
-
-  const handleCloseDrawer = () => {
-    setDrawerOpen(false)
-    setEditingRepository(null)
+    Stores.LlmRepositoryDrawer.openDrawer(repository)
   }
 
   const handleDeleteRepository = async (repositoryId: string) => {
@@ -267,12 +253,6 @@ export function LlmRepositorySettings() {
           </div>
         </Flex>
       </Card>
-
-      <LlmRepositoryDrawer
-        repository={editingRepository}
-        open={drawerOpen}
-        onClose={handleCloseDrawer}
-      />
     </SettingsPageContainer>
   )
 }

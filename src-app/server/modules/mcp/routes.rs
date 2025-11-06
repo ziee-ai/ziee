@@ -64,15 +64,15 @@ pub fn admin_routes() -> ApiRouter<PgPool> {
             delete_with(delete_system_server, delete_system_server_docs),
         )
         .api_route(
-            "/mcp/groups/{group_id}/servers",
-            get_with(get_group_servers, get_group_servers_docs),
+            "/mcp/system-servers/{id}/groups",
+            get_with(get_server_groups, get_server_groups_docs),
         )
         .api_route(
-            "/mcp/groups/{group_id}/servers",
-            put_with(set_group_servers, set_group_servers_docs),
+            "/mcp/system-servers/{id}/groups",
+            post_with(assign_server_to_groups, assign_server_to_groups_docs),
         )
         .api_route(
-            "/mcp/groups/{group_id}/servers/{server_id}",
-            delete_with(remove_group_server, remove_group_server_docs),
+            "/mcp/system-servers/{id}/groups/{group_id}",
+            delete_with(remove_server_from_group, remove_server_from_group_docs),
         )
 }

@@ -3,9 +3,9 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::Path,
+    extract::{Path, State},
     http::StatusCode,
-    Extension, Json,
+    Json,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -16,77 +16,78 @@ use crate::{
 };
 
 use super::super::{
-    models::GroupMcpServersRequest,
+    models::ServerGroupsRequest,
     permissions::*,
     repository,
 };
 
 // =====================================================
-// Group Assignment Handlers
+// Group Assignment Handlers (Server-Centric)
 // =====================================================
 
-/// Get MCP servers assigned to a group
-pub async fn get_group_servers(
+/// Get groups assigned to an MCP server
+pub async fn get_server_groups(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
-    Path(group_id): Path<Uuid>,
-    Extension(pool): Extension<PgPool>,
+    Path(id): Path<Uuid>,
+    State(pool): State<PgPool>,
 ) -> ApiResult<Json<Vec<Uuid>>> {
-    let server_ids = repository::get_group_mcp_servers(&pool, group_id).await?;
+    let group_ids = repository::get_server_groups(&pool, id).await?;
 
-    Ok((StatusCode::OK, Json(server_ids)))
+    Ok((StatusCode::OK, Json(group_ids)))
 }
 
-pub fn get_group_servers_docs(op: TransformOperation) -> TransformOperation {
+pub fn get_server_groups_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(McpServersAdminRead,)>(op)
-        .id("McpServerAdmin.getGroupServers")
-        .tag("Admin - MCP Servers")
-        .summary("Get group's MCP servers")
-        .description("Get MCP servers assigned to a group")
+        .id("McpServerSystem.getServerGroups")
+        .tag("MCP Servers - System")
+        .summary("Get server's assigned groups")
+        .description("Get groups assigned to an MCP server")
         .response::<200, Json<Vec<Uuid>>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Server not found"))
 }
 
-/// Set MCP servers for a group (replaces all assignments)
-pub async fn set_group_servers(
+/// Assign MCP server to groups (replaces all assignments)
+pub async fn assign_server_to_groups(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
-    Path(group_id): Path<Uuid>,
-    Extension(pool): Extension<PgPool>,
-    Json(request): Json<GroupMcpServersRequest>,
+    Path(id): Path<Uuid>,
+    State(pool): State<PgPool>,
+    Json(request): Json<ServerGroupsRequest>,
 ) -> ApiResult<StatusCode> {
-    repository::set_group_mcp_servers(&pool, group_id, request.server_ids).await?;
+    repository::set_server_groups(&pool, id, request.group_ids).await?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
-pub fn set_group_servers_docs(op: TransformOperation) -> TransformOperation {
+pub fn assign_server_to_groups_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(McpServersAdminEdit,)>(op)
-        .id("McpServerAdmin.setGroupServers")
-        .tag("Admin - MCP Servers")
-        .summary("Set group's MCP servers")
-        .description("Set MCP servers for a group (replaces all assignments)")
-        .response_with::<204, (), _>(|res| res.description("Servers assigned successfully"))
-        .response_with::<400, (), _>(|res| res.description("Bad request - only system servers can be assigned"))
+        .id("McpServerSystem.assignServerToGroups")
+        .tag("MCP Servers - System")
+        .summary("Assign server to groups")
+        .description("Assign MCP server to groups (replaces all assignments)")
+        .response_with::<204, (), _>(|res| res.description("Server assigned successfully"))
+        .response_with::<400, (), _>(|res| res.description("Bad request - only system servers can be assigned to groups"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }
 
 /// Remove MCP server from group
-pub async fn remove_group_server(
+pub async fn remove_server_from_group(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
-    Path((group_id, server_id)): Path<(Uuid, Uuid)>,
-    Extension(pool): Extension<PgPool>,
+    Path((id, group_id)): Path<(Uuid, Uuid)>,
+    State(pool): State<PgPool>,
 ) -> ApiResult<StatusCode> {
-    repository::remove_mcp_server_from_group(&pool, group_id, server_id).await?;
+    repository::remove_mcp_server_from_group(&pool, group_id, id).await?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
-pub fn remove_group_server_docs(op: TransformOperation) -> TransformOperation {
+pub fn remove_server_from_group_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(McpServersAdminEdit,)>(op)
-        .id("McpServerAdmin.removeGroupServer")
-        .tag("Admin - MCP Servers")
-        .summary("Remove MCP server from group")
-        .description("Remove an MCP server from a group")
+        .id("McpServerSystem.removeServerFromGroup")
+        .tag("MCP Servers - System")
+        .summary("Remove server from group")
+        .description("Remove an MCP server from a specific group")
         .response_with::<204, (), _>(|res| res.description("Server removed successfully"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Server assignment not found"))

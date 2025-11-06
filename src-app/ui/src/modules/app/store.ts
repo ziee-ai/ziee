@@ -8,6 +8,11 @@ interface AppState {
   isCheckingSetup: boolean
   isSettingUpAdmin: boolean
   setupError: string | null
+
+  // Actions
+  checkSetupStatus: () => Promise<void>
+  setupAdmin: (request: SetupAdminRequest) => Promise<void>
+  clearSetupError: () => void
 }
 
 // Augment the RegisteredStores interface for IntelliSense
@@ -17,68 +22,66 @@ declare module '../../core/stores' {
   }
 }
 
-const defaultState: AppState = {
+export const useAppStore = create<AppState>((set, get) => ({
   needsSetup: null,
   isCheckingSetup: false,
   isSettingUpAdmin: false,
   setupError: null,
-}
 
-export const useAppStore = create<AppState>(() => defaultState)
+  // Actions
+  checkSetupStatus: async () => {
+    const state = get()
+    if (state.isCheckingSetup) {
+      return
+    }
 
-// App actions
-export const checkSetupStatus = async (): Promise<void> => {
-  const state = useAppStore.getState()
-  if (state.isCheckingSetup) {
-    return
-  }
+    set({ isCheckingSetup: true })
 
-  useAppStore.setState({ isCheckingSetup: true })
+    try {
+      const response = await ApiClient.App.getSetupStatus(undefined, undefined)
+      set({
+        needsSetup: response.needs_setup,
+        isCheckingSetup: false,
+      })
+    } catch (error) {
+      console.error('Failed to check setup status:', error)
+      // If we can't check setup status, assume it's not needed
+      set({
+        needsSetup: false,
+        isCheckingSetup: false,
+      })
+    }
+  },
 
-  try {
-    const response = await ApiClient.App.getSetupStatus(undefined, undefined)
-    useAppStore.setState({
-      needsSetup: response.needs_setup,
-      isCheckingSetup: false,
-    })
-  } catch (error) {
-    console.error('Failed to check setup status:', error)
-    // If we can't check setup status, assume it's not needed
-    useAppStore.setState({
-      needsSetup: false,
-      isCheckingSetup: false,
-    })
-  }
-}
+  setupAdmin: async (request: SetupAdminRequest) => {
+    const state = get()
+    if (state.isSettingUpAdmin) {
+      return
+    }
 
-export const setupAdmin = async (request: SetupAdminRequest): Promise<void> => {
-  const state = useAppStore.getState()
-  if (state.isSettingUpAdmin) {
-    return
-  }
+    set({ isSettingUpAdmin: true, setupError: null })
 
-  useAppStore.setState({ isSettingUpAdmin: true, setupError: null })
+    try {
+      await ApiClient.App.setupAdmin(request, undefined)
+      set({
+        isSettingUpAdmin: false,
+        needsSetup: false,
+        setupError: null,
+      })
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Setup failed. Please try again.'
+      set({
+        isSettingUpAdmin: false,
+        setupError: message,
+      })
+      throw error
+    }
+  },
 
-  try {
-    await ApiClient.App.setupAdmin(request, undefined)
-    useAppStore.setState({
-      isSettingUpAdmin: false,
-      needsSetup: false,
-      setupError: null,
-    })
-  } catch (error: any) {
-    const message =
-      error?.response?.data?.message ||
-      error?.message ||
-      'Setup failed. Please try again.'
-    useAppStore.setState({
-      isSettingUpAdmin: false,
-      setupError: message,
-    })
-    throw error
-  }
-}
-
-export const clearSetupError = (): void => {
-  useAppStore.setState({ setupError: null })
-}
+  clearSetupError: () => {
+    set({ setupError: null })
+  },
+}))

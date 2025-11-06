@@ -1,5 +1,5 @@
 import { createModule, Stores } from '@/core'
-import { useAppStore, checkSetupStatus } from './store'
+import { useAppStore } from './store'
 import { BlankLayout } from '@/components/Layout/BlankLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
@@ -27,7 +27,7 @@ export default createModule({
   ],
   initialize: async () => {
     // Check setup status on app initialization
-    await checkSetupStatus()
+    await Stores.App.checkSetupStatus()
     if (Stores.App.__state.needsSetup) {
       console.log('Application needs setup')
       if (window.location.pathname !== '/setup') window.location.href = '/setup'

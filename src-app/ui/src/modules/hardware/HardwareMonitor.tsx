@@ -1,7 +1,6 @@
 import { Alert, App, Button, Card, Progress, Spin, Tag, Typography } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
-import { disconnectHardwareUsage, subscribeToHardwareUsage } from './store'
 import { formatBytes } from './utils/formatBytes'
 
 const { Text } = Typography
@@ -24,11 +23,11 @@ export function HardwareMonitor() {
   // Initialize hardware monitoring on component mount
   useEffect(() => {
     // Load hardware info first, then start monitoring
-    subscribeToHardwareUsage().catch(console.error)
+    Stores.Hardware.subscribeToHardwareUsage().catch(console.error)
 
     // Cleanup on component unmount
     return () => {
-      disconnectHardwareUsage()
+      Stores.Hardware.disconnectHardwareUsage()
     }
   }, [])
 
@@ -47,7 +46,7 @@ export function HardwareMonitor() {
 
   const handleManualConnect = async () => {
     try {
-      await subscribeToHardwareUsage()
+      await Stores.Hardware.subscribeToHardwareUsage()
       message.success('Connecting to hardware monitoring...')
     } catch (_error) {
       message.error('Failed to connect to hardware monitoring')

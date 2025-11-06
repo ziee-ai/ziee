@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = resolve(__dirname, '..')
-const COMPOSE_FILE = join(PROJECT_ROOT, 'docker-compose.test.yml')
+const COMPOSE_FILE = resolve(PROJECT_ROOT, '../docker-compose.yaml')
 
 const command = process.argv[2]
 
@@ -55,7 +55,7 @@ switch (command) {
     }
 
     if (ready) {
-      console.log('✅ Test PostgreSQL is ready on port 54320')
+      console.log('✅ Test PostgreSQL is ready on port 54321')
     } else {
       console.log('⚠️  PostgreSQL started but health check timed out')
     }

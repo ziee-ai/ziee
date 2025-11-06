@@ -2,10 +2,12 @@ import { createModule } from '@/core'
 import { CloudDownloadOutlined } from '@ant-design/icons'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
 import { useLlmRepositoryStore } from './store'
+import { useLlmRepositoryDrawerStore } from './drawer-store'
 import './types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const LlmRepositorySettings = lazyWithPreload(() => import('./components/LlmRepositorySettings').then(m => ({ default: m.LlmRepositorySettings })))
+const LlmRepositoryDrawer = lazyWithPreload(() => import('./components/LlmRepositoryDrawer').then(m => ({ default: m.LlmRepositoryDrawer })))
 
 export default createModule({
   metadata: {
@@ -26,6 +28,10 @@ export default createModule({
       name: 'LlmRepository',
       store: useLlmRepositoryStore,
     },
+    {
+      name: 'LlmRepositoryDrawer',
+      store: useLlmRepositoryDrawerStore,
+    },
   ],
   settings: [
     {
@@ -35,6 +41,12 @@ export default createModule({
       path: 'llm-repositories',
       section: 'admin',
       order: 20,
+    },
+  ],
+  globalComponents: [
+    {
+      id: 'llm-repository-drawer',
+      component: LlmRepositoryDrawer,
     },
   ],
   initialize: () => {

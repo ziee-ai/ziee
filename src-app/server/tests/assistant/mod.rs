@@ -542,6 +542,82 @@ async fn test_get_assistant_not_found() {
 }
 
 // =====================================================
+// Event System Tests
+// =====================================================
+
+#[tokio::test]
+async fn test_default_template_cloned_on_user_registration() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create an admin user to create a default template
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin_template",
+        &["assistant_templates::create", "assistant_templates::set_default"]
+    ).await;
+
+    // Create a default enabled template
+    let template_payload = json!({
+        "name": "Default Test Template",
+        "description": "A template that should be cloned to new users",
+        "instructions": "You are a helpful assistant",
+        "is_default": true
+    });
+
+    let create_template_response = reqwest::Client::new()
+        .post(&server.api_url("/assistant-templates"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&template_payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(create_template_response.status(), StatusCode::CREATED);
+    let template: serde_json::Value = create_template_response.json().await.unwrap();
+    assert_eq!(template["name"], "Default Test Template");
+    assert_eq!(template["is_default"], true);
+    assert_eq!(template["enabled"], true);
+
+    // Create a new user with read assistants permission (this should trigger the UserCreated event)
+    let new_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "newuser_event",
+        &["assistants::read"]
+    ).await;
+
+    // Wait a moment for the async event to process
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+    // List the new user's assistants to verify the template was cloned
+    let list_response = reqwest::Client::new()
+        .get(&server.api_url("/assistants"))
+        .header("Authorization", format!("Bearer {}", new_user.token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_result: serde_json::Value = list_response.json().await.unwrap();
+
+    // Verify the cloned assistant exists
+    let assistants = list_result["assistants"].as_array().unwrap();
+    assert!(assistants.len() >= 1,
+        "New user should have at least one assistant (cloned from template). Found {} assistants",
+        assistants.len());
+
+    // Find the cloned assistant
+    let cloned_assistant = assistants.iter()
+        .find(|a| a["name"] == "Default Test Template")
+        .expect("Cloned template assistant should exist");
+
+    assert_eq!(cloned_assistant["name"], "Default Test Template");
+    assert_eq!(cloned_assistant["description"], "A template that should be cloned to new users");
+    assert_eq!(cloned_assistant["is_template"], false); // It's a user assistant, not a template
+    assert_eq!(cloned_assistant["is_default"], true);   // Preserves is_default flag
+    assert_eq!(cloned_assistant["enabled"], true);
+}
+
+// =====================================================
 // Helper Functions
 // =====================================================
 

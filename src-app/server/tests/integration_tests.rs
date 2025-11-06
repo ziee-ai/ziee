@@ -9,3 +9,4 @@ mod llm_repository;
 mod llm_provider;
 mod llm_model;
 mod assistant;
+mod mcp;

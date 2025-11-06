@@ -38,7 +38,7 @@ impl TestServer {
         let url = url::Url::parse(&db_url).expect("Invalid DATABASE_URL");
 
         let host = url.host_str().unwrap_or("127.0.0.1");
-        let port = url.port().unwrap_or(5432);
+        let port = url.port().unwrap_or(54321);
         let username = url.username();
         let password = url.password().unwrap_or("");
 
@@ -264,7 +264,7 @@ pub mod test_helpers {
             .await
             .expect("Failed to create test group");
 
-            // Assign user to group
+            // Assign user to custom permissions group
             let user_uuid = Uuid::parse_str(&user_id).expect("Invalid user ID");
             sqlx::query(
                 "INSERT INTO user_groups (user_id, group_id, assigned_at)
@@ -274,7 +274,28 @@ pub mod test_helpers {
             .bind(group_id)
             .execute(&pool)
             .await
-            .expect("Failed to assign user to group");
+            .expect("Failed to assign user to custom group");
+
+            // Also assign user to default group (like real registration does)
+            let default_group_result = sqlx::query!(
+                "SELECT id FROM groups WHERE is_default = true LIMIT 1"
+            )
+            .fetch_optional(&pool)
+            .await
+            .expect("Failed to query default group");
+
+            if let Some(default_group) = default_group_result {
+                sqlx::query(
+                    "INSERT INTO user_groups (user_id, group_id, assigned_at)
+                     VALUES ($1, $2, NOW())
+                     ON CONFLICT DO NOTHING"
+                )
+                .bind(user_uuid)
+                .bind(default_group.id)
+                .execute(&pool)
+                .await
+                .expect("Failed to assign user to default group");
+            }
 
             pool.close().await;
         }

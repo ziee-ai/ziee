@@ -3,6 +3,8 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::core::EventHandler;
+
 /// Core trait that all app modules must implement
 pub trait AppModule: Send + Sync {
     /// Unique module name
@@ -13,6 +15,12 @@ pub trait AppModule: Send + Sync {
 
     /// Register API routes
     fn register_routes(&self, router: ApiRouter) -> ApiRouter;
+
+    /// Register event handlers
+    /// Returns list of handlers that will receive application events
+    fn register_event_handlers(&self) -> Vec<Arc<dyn EventHandler>> {
+        vec![]  // Default: no handlers
+    }
 
     /// Shutdown cleanup
     #[allow(dead_code)]

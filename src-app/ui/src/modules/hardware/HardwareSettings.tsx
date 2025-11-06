@@ -12,7 +12,6 @@ import {
 import { useEffect } from 'react'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { Stores } from '@/core/stores'
-import { disconnectHardwareUsage, subscribeToHardwareUsage } from './store'
 import { formatBytes } from './utils/formatBytes'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
@@ -36,11 +35,11 @@ export default function HardwareSettings() {
   // Initialize hardware monitoring on component mount
   useEffect(() => {
     // TODO: Check hardware::monitor permission before auto-connecting
-    subscribeToHardwareUsage().catch(console.error)
+    Stores.Hardware.subscribeToHardwareUsage().catch(console.error)
 
     // Cleanup on component unmount
     return () => {
-      disconnectHardwareUsage()
+      Stores.Hardware.disconnectHardwareUsage()
     }
   }, [])
 
@@ -568,7 +567,7 @@ export default function HardwareSettings() {
 
   const handleManualConnect = async () => {
     try {
-      await subscribeToHardwareUsage()
+      await Stores.Hardware.subscribeToHardwareUsage()
       message.success('Connecting to hardware monitoring...')
     } catch (_error) {
       message.error('Failed to connect to hardware monitoring')

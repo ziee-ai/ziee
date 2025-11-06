@@ -28,18 +28,6 @@ import {
 import { Drawer } from '@/components/common/Drawer.tsx'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
-import {
-  assignUserToUserGroup,
-  clearUserGroupsStoreError,
-  clearUsersStoreError,
-  createUser,
-  loadUserGroupMembers,
-  loadUsers,
-  removeUserFromUserGroup,
-  resetUserPassword,
-  toggleUserActiveStatus,
-  updateUser,
-} from '../store.ts'
 import type { CreateUserRequest, UpdateUserRequest, User } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
@@ -105,11 +93,11 @@ export function UsersSettings() {
   useEffect(() => {
     if (usersError) {
       message.error(usersError)
-      clearUsersStoreError()
+      Stores.Users.clearError()
     }
     if (groupsError) {
       message.error(groupsError)
-      clearUserGroupsStoreError()
+      Stores.UserGroups.clearError()
     }
   }, [usersError, groupsError, message])
 
@@ -123,7 +111,7 @@ export function UsersSettings() {
         permissions: values.permissions ? JSON.parse(values.permissions) : undefined,
       }
 
-      await createUser(userData)
+      await Stores.Users.createUser(userData)
 
       message.success('User created successfully')
       setCreateModalVisible(false)
@@ -145,7 +133,7 @@ export function UsersSettings() {
         permissions: values.permissions ? JSON.parse(values.permissions) : undefined,
       }
 
-      await updateUser(selectedUser.id, updateData)
+      await Stores.Users.updateUser(selectedUser.id, updateData)
 
       message.success('User updated successfully')
       setEditModalVisible(false)
@@ -161,7 +149,7 @@ export function UsersSettings() {
     if (!selectedUser) return
 
     try {
-      await resetUserPassword(selectedUser.id, values.new_password)
+      await Stores.Users.resetUserPassword(selectedUser.id, values.new_password)
 
       message.success('Password reset successfully')
       setPasswordModalVisible(false)
@@ -175,7 +163,7 @@ export function UsersSettings() {
 
   const handleToggleActive = async (userId: string) => {
     try {
-      await toggleUserActiveStatus(userId)
+      await Stores.Users.toggleUserActiveStatus(userId)
       message.success('User status updated successfully')
     } catch (error) {
       console.error('Failed to update user status:', error)
@@ -187,7 +175,7 @@ export function UsersSettings() {
     if (!selectedUser) return
 
     try {
-      await assignUserToUserGroup(selectedUser.id, values.group_id)
+      await Stores.UserGroups.assignUserToUserGroup(selectedUser.id, values.group_id)
       message.success('User assigned to group successfully')
       setAssignGroupModalVisible(false)
       assignGroupForm.resetFields()
@@ -204,7 +192,7 @@ export function UsersSettings() {
     if (!selectedUser) return
 
     try {
-      await removeUserFromUserGroup(selectedUser.id, groupId)
+      await Stores.UserGroups.removeUserFromUserGroup(selectedUser.id, groupId)
       message.success('User removed from group successfully')
 
       // Update user groups list
@@ -244,7 +232,7 @@ export function UsersSettings() {
       // Load members for each group to determine user's memberships
       const membershipPromises = groups.map(async group => {
         try {
-          await loadUserGroupMembers(group.id)
+          await Stores.UserGroups.loadUserGroupMembers(group.id)
           return { groupId: group.id, isMember: false } // Will update based on members
         } catch {
           return { groupId: group.id, isMember: false }
@@ -257,7 +245,7 @@ export function UsersSettings() {
       // Note: This is a workaround since we don't have a direct API to get user's groups
       const userGroups = new Set<string>()
       for (const group of groups) {
-        await loadUserGroupMembers(group.id)
+        await Stores.UserGroups.loadUserGroupMembers(group.id)
         const members = Stores.UserGroups.currentGroupMembers
         if (members.some(m => m.id === user.id)) {
           userGroups.add(group.id)
@@ -333,7 +321,7 @@ export function UsersSettings() {
     const newPageSize = size || storePageSize
     const newPage = size && size !== storePageSize ? 1 : page // Reset to page 1 if page size changes
 
-    loadUsers(newPage, newPageSize)
+    Stores.Users.loadUsers(newPage, newPageSize)
   }
 
   return (
@@ -393,8 +381,10 @@ export function UsersSettings() {
                           size="small"
                           column={{ xs: 1, sm: 2, md: 3 }}
                           colon={false}
-                          labelStyle={{ fontSize: '12px', color: '#8c8c8c' }}
-                          contentStyle={{ fontSize: '12px' }}
+                          styles={{
+                            label: { fontSize: '12px', color: '#8c8c8c' },
+                            content: { fontSize: '12px' }
+                          }}
                         >
                           <Descriptions.Item label="Email">
                             {user.email}
@@ -717,7 +707,7 @@ export function UsersSettings() {
                           size="small"
                           onClick={async () => {
                             try {
-                              await assignUserToUserGroup(
+                              await Stores.UserGroups.assignUserToUserGroup(
                                 selectedUser!.id,
                                 group.id,
                               )

@@ -128,6 +128,23 @@ pub async fn setup_admin(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
 
+    // Also assign to Users group (for access to default resources like MCP servers)
+    let users_group = sqlx::query!(
+        r#"SELECT id FROM groups WHERE name = 'Users' LIMIT 1"#
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+
+    sqlx::query!(
+        r#"INSERT INTO user_groups (user_id, group_id) VALUES ($1, $2)"#,
+        user.id,
+        users_group.id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+
     // Commit transaction
     tx.commit().await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;

@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::core::EventHandler;
 use crate::module_api::AppModule;
 use crate::ModuleContext;
 
@@ -14,9 +15,7 @@ pub mod permissions;
 pub mod repository;
 pub mod handlers;
 pub mod routes;
-
-#[cfg(test)]
-pub mod tests;
+pub mod event_handlers;
 
 // Re-export database entities from models
 pub use models::{Assistant, CreateAssistantRequest, UpdateAssistantRequest, AssistantListResponse, ModelParameters};
@@ -64,6 +63,12 @@ impl AppModule for AssistantModule {
             tracing::error!("AssistantModule: Pool not initialized during route registration");
             router
         }
+    }
+
+    fn register_event_handlers(&self) -> Vec<Arc<dyn EventHandler>> {
+        vec![
+            event_handlers::CloneTemplateAssistantsHandler::new(),
+        ]
     }
 }
 

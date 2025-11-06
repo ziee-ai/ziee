@@ -2,8 +2,6 @@ import { App, Button, Card, Flex, Form } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import { useEffect, useState } from 'react'
 import {
-  closeEditLlmModelDrawer,
-  useEditLlmModelDrawerStore,
   findLlmModelById,
   updateLlmModelInProvider,
   Stores,
@@ -25,7 +23,7 @@ export function EditLlmModelDrawer() {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
-  const { open, modelId } = useEditLlmModelDrawerStore()
+  const { open, modelId } = Stores.EditLlmModelDrawer
   const currentModel = modelId ? findLlmModelById(modelId) : null
 
   // Find provider that owns this model
@@ -71,7 +69,7 @@ export function EditLlmModelDrawer() {
         updatedModel,
       )
 
-      closeEditLlmModelDrawer()
+      Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
       message.success('Model updated successfully')
     } catch (error) {
       console.error('Failed to update model:', error)
@@ -83,7 +81,7 @@ export function EditLlmModelDrawer() {
 
   const handleCancel = () => {
     form.resetFields()
-    closeEditLlmModelDrawer()
+    Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
   }
 
   return (

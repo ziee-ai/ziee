@@ -215,12 +215,13 @@ pub fn get_provider_groups_docs(op: aide::transform::TransformOperation) -> aide
 /// Assign a provider to a user group (requires llm_providers::assign_groups permission)
 pub async fn assign_provider_to_group(
     _auth: RequirePermissions<(LlmProvidersAssignGroups,)>,
+    Path(provider_id): Path<Uuid>,
     Extension(repo): Extension<LlmProviderRepository>,
     Json(request): Json<AssignProviderToGroupRequest>,
 ) -> ApiResult<StatusCode> {
-    repo.assign_to_group(request).await
+    repo.assign_to_group(provider_id, request.group_id).await
         .map_err(|e| {
-            eprintln!("Failed to assign provider to group: {}", e);
+            eprintln!("Failed to assign provider {} to group {}: {}", provider_id, request.group_id, e);
             AppError::internal_error("Database operation failed")
         })?;
 

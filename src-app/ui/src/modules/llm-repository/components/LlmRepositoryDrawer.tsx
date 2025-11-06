@@ -13,31 +13,19 @@ import {
   updateLlmRepository,
 } from '../store'
 import type {
-  LlmRepository,
   CreateLlmRepositoryRequest,
   UpdateLlmRepositoryRequest,
 } from '@/api-client/types'
 
 const { Text } = Typography
 
-interface LlmRepositoryDrawerProps {
-  repository: LlmRepository | null
-  open: boolean
-  onClose: () => void
-  onSuccess?: () => void
-}
-
-export function LlmRepositoryDrawer({
-  repository,
-  open,
-  onClose,
-  onSuccess,
-}: LlmRepositoryDrawerProps) {
+export function LlmRepositoryDrawer() {
   const { message } = App.useApp()
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
   const { creating, updating, testing } = Stores.LlmRepository
+  const { open, editingRepository: repository } = Stores.LlmRepositoryDrawer
 
   // Update form when editing repository
   useEffect(() => {
@@ -122,7 +110,7 @@ export function LlmRepositoryDrawer({
 
   const handleClose = () => {
     form.resetFields()
-    onClose()
+    Stores.LlmRepositoryDrawer.closeDrawer()
   }
 
   const handleSubmit = async (values: any) => {
@@ -183,7 +171,6 @@ export function LlmRepositoryDrawer({
       }
 
       handleClose()
-      onSuccess?.()
     } catch (error: any) {
       console.error('Failed to save repository:', error)
       message.error(error?.message || 'Failed to save repository')

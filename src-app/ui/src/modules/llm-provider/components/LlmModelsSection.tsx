@@ -18,10 +18,6 @@ import {
 } from 'antd'
 import { useParams } from 'react-router-dom'
 import {
-  openAddLocalLlmModelDownloadDrawer,
-  openAddLocalLlmModelUploadDrawer,
-  openAddRemoteLlmModelDrawer,
-  openEditLlmModelDrawer,
   deleteLlmModel,
   disableLlmModel,
   enableLlmModel,
@@ -116,9 +112,9 @@ export function LlmModelsSection() {
     if (!currentProvider) return
     if (currentProvider.provider_type === 'local') {
       // For local providers, open the upload drawer by default
-      openAddLocalLlmModelUploadDrawer(currentProvider.id)
+      Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(currentProvider.id)
     } else {
-      openAddRemoteLlmModelDrawer(
+      Stores.AddRemoteLlmModelDrawer.openAddRemoteLlmModelDrawer(
         currentProvider.id,
         currentProvider.provider_type,
       )
@@ -127,7 +123,7 @@ export function LlmModelsSection() {
 
   const handleEditLlmModel = (modelId: string) => {
     if (!currentProvider) return
-    openEditLlmModelDrawer(modelId)
+    Stores.EditLlmModelDrawer.openEditLlmModelDrawer(modelId)
   }
 
   const getLlmModelActions = (llmModel: LlmModel) => {
@@ -205,14 +201,14 @@ export function LlmModelsSection() {
                 label: 'Upload from Files',
                 icon: <UploadOutlined />,
                 onClick: () =>
-                  openAddLocalLlmModelUploadDrawer(currentProvider.id),
+                  Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(currentProvider.id),
               },
               {
                 key: 'download',
                 label: 'Download from Repository',
                 icon: <PlusOutlined />,
                 onClick: () =>
-                  openAddLocalLlmModelDownloadDrawer(currentProvider.id),
+                  Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(currentProvider.id),
               },
             ],
           }}

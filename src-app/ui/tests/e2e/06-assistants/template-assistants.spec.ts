@@ -26,13 +26,13 @@ test.describe('Template Assistants - Settings Page', () => {
   })
 
   test('should display template assistants card', async ({ page }) => {
-    await expect(page.locator('text=Template Assistants')).toBeVisible()
-    await expect(page.locator('text=Manage template assistants')).toBeVisible()
+    await expect(page.locator('.ant-card-head-title:has-text("Template Assistants")')).toBeVisible()
+    await expect(page.getByText('Manage template assistants. Default assistants are automatically cloned for new users.')).toBeVisible()
   })
 
   test('should display empty state when no templates exist', async ({ page }) => {
     // Check for empty state
-    const emptyDescription = page.locator('text=No assistants found')
+    const emptyDescription = page.getByText('No assistants found', { exact: true })
     if (await emptyDescription.isVisible()) {
       await expect(emptyDescription).toBeVisible()
     }
@@ -161,13 +161,13 @@ test.describe('Template Assistants - Settings Page', () => {
     const row = page.locator(`.ant-card-body >> text=Info Template Test`).locator('..')
 
     // Verify description is displayed
-    await expect(row.locator('text=Test description for display')).toBeVisible()
+    await expect(row.getByText('Test description for display', { exact: true })).toBeVisible()
 
     // Verify "Created By" is displayed
-    await expect(row.locator('text=Created By')).toBeVisible()
+    await expect(row.getByText('Created By', { exact: true })).toBeVisible()
 
     // Verify "Created" date is displayed
-    await expect(row.locator('text=Created')).toBeVisible()
+    await expect(row.getByText('Created', { exact: true })).toBeVisible()
   })
 
   test('should handle pagination when many templates exist', async ({ page }) => {
@@ -261,7 +261,7 @@ test.describe('Template Assistants - Settings Page', () => {
     await page.click('.ant-drawer button[type="submit"]')
 
     // Verify validation message
-    await expect(page.locator('text=Please enter a name')).toBeVisible()
+    await expect(page.getByText('Please enter a name', { exact: true })).toBeVisible()
 
     // Drawer should still be open
     await expect(page.locator('.ant-drawer')).toBeVisible()
@@ -278,7 +278,7 @@ test.describe('Template Assistants - Settings Page', () => {
     await page.click('.ant-drawer button[type="submit"]')
 
     // Verify JSON validation error
-    await expect(page.locator('text=Please enter valid JSON')).toBeVisible()
+    await expect(page.getByText('Please enter valid JSON', { exact: true })).toBeVisible()
   })
 
   test('should handle long template names and descriptions', async ({ page }) => {
@@ -303,24 +303,24 @@ test.describe('Template Assistants - Settings Page', () => {
   test('should show tooltip for Set as Default switch', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    const defaultLabel = page.locator('form >> text=Set as Default')
+    const defaultLabel = page.locator('form').getByText('Set as Default', { exact: true })
 
     // Hover to show tooltip
     await defaultLabel.hover()
 
     // Verify tooltip text for templates
-    await expect(page.locator('text=Set as the default template assistant for all users')).toBeVisible({ timeout: 2000 })
+    await expect(page.getByText('Set as the default template assistant for all users', { exact: true })).toBeVisible({ timeout: 2000 })
   })
 
   test('should show enabled tooltip', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    const enabledLabel = page.locator('form >> text=Enabled').first()
+    const enabledLabel = page.locator('form').getByText('Enabled', { exact: true }).first()
 
     // Hover to show tooltip
     await enabledLabel.hover()
 
     // Verify tooltip
-    await expect(page.locator('text=Whether this assistant is enabled')).toBeVisible({ timeout: 2000 })
+    await expect(page.getByText('Whether this assistant is enabled', { exact: true })).toBeVisible({ timeout: 2000 })
   })
 })

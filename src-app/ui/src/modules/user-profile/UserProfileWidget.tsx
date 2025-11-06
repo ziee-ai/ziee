@@ -1,6 +1,5 @@
 import { Dropdown } from 'antd'
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
-import { logoutUser } from '../auth'
 import { Stores } from '@/core/stores'
 
 // Import SidebarItem from LeftSidebar - we'll need to extract this to a shared location
@@ -45,7 +44,7 @@ export function UserProfileWidget() {
             key: 'logout',
             icon: <LogoutOutlined />,
             label: 'Logout',
-            onClick: async () => await logoutUser(),
+            onClick: async () => await Stores.Auth.logoutUser(),
           },
         ].filter(Boolean),
       }}

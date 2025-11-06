@@ -1,11 +1,11 @@
-// Admin MCP server handlers
+// System MCP server handlers
 // These handlers manage system-wide MCP servers
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
-    Extension, Json,
+    Json,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -22,14 +22,14 @@ use super::super::{
 };
 
 // =====================================================
-// Admin Handlers
+// System Handlers
 // =====================================================
 
 /// List all system MCP servers
 pub async fn list_system_servers(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Query(params): Query<PaginationQuery>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
 ) -> ApiResult<Json<McpServerListResponse>> {
     let (servers, total) =
         repository::list_system_mcp_servers(&pool, params.page as i64, params.per_page as i64).await?;
@@ -50,8 +50,8 @@ pub async fn list_system_servers(
 
 pub fn list_system_servers_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(McpServersAdminRead,)>(op)
-        .id("McpServerAdmin.list")
-        .tag("Admin - MCP Servers")
+        .id("McpServerSystem.list")
+        .tag("MCP Servers - System")
         .summary("List system MCP servers")
         .description("List all system MCP servers")
         .response::<200, Json<McpServerListResponse>>()
@@ -61,7 +61,7 @@ pub fn list_system_servers_docs(op: TransformOperation) -> TransformOperation {
 /// Create a new system MCP server
 pub async fn create_system_server(
     _auth: RequirePermissions<(McpServersAdminCreate,)>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
     Json(request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
     let server = repository::create_system_mcp_server(&pool, request).await?;
@@ -71,8 +71,8 @@ pub async fn create_system_server(
 
 pub fn create_system_server_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(McpServersAdminCreate,)>(op)
-        .id("McpServerAdmin.create")
-        .tag("Admin - MCP Servers")
+        .id("McpServerSystem.create")
+        .tag("MCP Servers - System")
         .summary("Create system MCP server")
         .description("Create a new system MCP server configuration")
         .response::<201, Json<McpServer>>()
@@ -85,7 +85,7 @@ pub fn create_system_server_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_system_server(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Path(id): Path<Uuid>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
 ) -> ApiResult<Json<McpServer>> {
     let server = repository::get_system_mcp_server(&pool, id)
         .await?
@@ -96,8 +96,8 @@ pub async fn get_system_server(
 
 pub fn get_system_server_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(McpServersAdminRead,)>(op)
-        .id("McpServerAdmin.get")
-        .tag("Admin - MCP Servers")
+        .id("McpServerSystem.get")
+        .tag("MCP Servers - System")
         .summary("Get system MCP server")
         .description("Get a system MCP server by ID")
         .response::<200, Json<McpServer>>()
@@ -109,7 +109,7 @@ pub fn get_system_server_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_system_server(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
     Path(id): Path<Uuid>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
     let server = repository::update_system_mcp_server(&pool, id, request).await?;
@@ -119,8 +119,8 @@ pub async fn update_system_server(
 
 pub fn update_system_server_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(McpServersAdminEdit,)>(op)
-        .id("McpServerAdmin.update")
-        .tag("Admin - MCP Servers")
+        .id("McpServerSystem.update")
+        .tag("MCP Servers - System")
         .summary("Update system MCP server")
         .description("Update a system MCP server configuration")
         .response::<200, Json<McpServer>>()
@@ -134,7 +134,7 @@ pub fn update_system_server_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_system_server(
     _auth: RequirePermissions<(McpServersAdminDelete,)>,
     Path(id): Path<Uuid>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
 ) -> ApiResult<StatusCode> {
     repository::delete_system_mcp_server(&pool, id).await?;
 
@@ -143,8 +143,8 @@ pub async fn delete_system_server(
 
 pub fn delete_system_server_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(McpServersAdminDelete,)>(op)
-        .id("McpServerAdmin.delete")
-        .tag("Admin - MCP Servers")
+        .id("McpServerSystem.delete")
+        .tag("MCP Servers - System")
         .summary("Delete system MCP server")
         .description("Delete a system MCP server configuration")
         .response_with::<204, (), _>(|res| res.description("Server deleted successfully"))

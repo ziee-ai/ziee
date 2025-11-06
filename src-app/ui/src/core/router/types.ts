@@ -63,12 +63,20 @@ export interface SettingsMenuItem {
   order?: number
 }
 
+// Global Components types
+export interface GlobalComponent {
+  id: string                          // Unique identifier (e.g., 'model-download-drawer')
+  component: ReactElement | LazyExoticComponent<ComponentType<any>> | (() => Promise<{ default: ComponentType<any> }>)  // Lazy or eager component
+  order?: number                      // Optional: Mount order (default: 0)
+}
+
 export interface AppModule {
   metadata: ModuleMetadata
   registerRoutes: () => RouteConfig[]
   registerStores?: () => StoreRegistration[]
   registerSidebar?: () => SidebarRegistration
   registerSettings?: () => SettingsMenuItem[]
+  registerGlobalComponents?: () => GlobalComponent[]
   initialize?: () => void | Promise<void>
   cleanup?: () => void | Promise<void>
 }

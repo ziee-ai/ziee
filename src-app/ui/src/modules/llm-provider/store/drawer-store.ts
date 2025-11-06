@@ -4,20 +4,27 @@ import type { LlmProvider } from '@/api-client/types'
 interface LlmProviderDrawerState {
   isOpen: boolean
   editingProvider: LlmProvider | null
+
+  // Actions
+  openLlmProviderDrawer: (provider?: LlmProvider) => void
+  closeLlmProviderDrawer: () => void
 }
 
-export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>(() => ({
-  isOpen: false,
-  editingProvider: null,
-}))
+export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>(
+  (set): LlmProviderDrawerState => ({
+    isOpen: false,
+    editingProvider: null,
 
-export const openLlmProviderDrawer = (provider?: LlmProvider) => {
-  useLlmProviderDrawerStore.setState({
-    isOpen: true,
-    editingProvider: provider ?? null,
-  })
-}
+    // Actions
+    openLlmProviderDrawer: (provider?: LlmProvider) => {
+      set({
+        isOpen: true,
+        editingProvider: provider ?? null,
+      })
+    },
 
-export const closeLlmProviderDrawer = () => {
-  useLlmProviderDrawerStore.setState({ isOpen: false, editingProvider: null })
-}
+    closeLlmProviderDrawer: () => {
+      set({ isOpen: false, editingProvider: null })
+    },
+  }),
+)

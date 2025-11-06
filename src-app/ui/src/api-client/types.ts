@@ -12,7 +12,6 @@
 
 export interface AssignProviderToGroupRequest {
   group_id: string
-  provider_id: string
 }
 
 export interface AssignUserToGroupRequest {
@@ -272,10 +271,6 @@ export interface GroupListResponse {
   per_page: number
   total: number
   total_pages: number
-}
-
-export interface GroupMcpServersRequest {
-  server_ids: string[]
 }
 
 export interface HardwareInfo {
@@ -612,6 +607,10 @@ export type SSEHardwareUsageEvent = {
   update: HardwareUsageUpdate
 }
 
+export interface ServerGroupsRequest {
+  group_ids: string[]
+}
+
 export interface SetupAdminRequest {
   display_name?: string
   email: string
@@ -860,13 +859,13 @@ export const ApiEndpoints = {
   'LlmModel.subscribeDownloadProgress': 'GET /api/llm-models/downloads/subscribe',
   'LlmModel.update': 'POST /api/llm-models/{model_id}',
   'LlmModel.upload': 'POST /api/llm-models/upload',
-  'LlmProvider.assignGroup': 'POST /api/llm-providers/assign-group',
+  'LlmProvider.assignGroup': 'POST /api/llm-providers/{provider_id}/groups',
   'LlmProvider.create': 'POST /api/llm-providers',
   'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
   'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
   'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
   'LlmProvider.list': 'GET /api/llm-providers',
-  'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/{group_id}/remove-group',
+  'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
   'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
   'LlmRepository.create': 'POST /api/llm-repositories',
   'LlmRepository.delete': 'DELETE /api/llm-repositories/{repository_id}',
@@ -879,14 +878,14 @@ export const ApiEndpoints = {
   'McpServer.get': 'GET /api/mcp/servers/{id}',
   'McpServer.listAccessible': 'GET /api/mcp/servers',
   'McpServer.update': 'PUT /api/mcp/servers/{id}',
-  'McpServerAdmin.create': 'POST /api/mcp/system-servers',
-  'McpServerAdmin.delete': 'DELETE /api/mcp/system-servers/{id}',
-  'McpServerAdmin.get': 'GET /api/mcp/system-servers/{id}',
-  'McpServerAdmin.getGroupServers': 'GET /api/mcp/groups/{group_id}/servers',
-  'McpServerAdmin.list': 'GET /api/mcp/system-servers',
-  'McpServerAdmin.removeGroupServer': 'DELETE /api/mcp/groups/{group_id}/servers/{server_id}',
-  'McpServerAdmin.setGroupServers': 'PUT /api/mcp/groups/{group_id}/servers',
-  'McpServerAdmin.update': 'PUT /api/mcp/system-servers/{id}',
+  'McpServerSystem.assignServerToGroups': 'POST /api/mcp/system-servers/{id}/groups',
+  'McpServerSystem.create': 'POST /api/mcp/system-servers',
+  'McpServerSystem.delete': 'DELETE /api/mcp/system-servers/{id}',
+  'McpServerSystem.get': 'GET /api/mcp/system-servers/{id}',
+  'McpServerSystem.getServerGroups': 'GET /api/mcp/system-servers/{id}/groups',
+  'McpServerSystem.list': 'GET /api/mcp/system-servers',
+  'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
+  'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -942,7 +941,7 @@ export type ApiEndpointParameters = {
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
   'LlmModel.upload': FormData
-  'LlmProvider.assignGroup': AssignProviderToGroupRequest
+  'LlmProvider.assignGroup': { provider_id: string } & AssignProviderToGroupRequest
   'LlmProvider.create': CreateLlmProviderRequest
   'LlmProvider.delete': { provider_id: string }
   'LlmProvider.get': { provider_id: string }
@@ -961,14 +960,14 @@ export type ApiEndpointParameters = {
   'McpServer.get': { id: string }
   'McpServer.listAccessible': PaginationQuery
   'McpServer.update': { id: string } & UpdateMcpServerRequest
-  'McpServerAdmin.create': CreateMcpServerRequest
-  'McpServerAdmin.delete': { id: string }
-  'McpServerAdmin.get': { id: string }
-  'McpServerAdmin.getGroupServers': { group_id: string }
-  'McpServerAdmin.list': PaginationQuery
-  'McpServerAdmin.removeGroupServer': { group_id: string; server_id: string }
-  'McpServerAdmin.setGroupServers': { group_id: string } & GroupMcpServersRequest
-  'McpServerAdmin.update': { id: string } & UpdateMcpServerRequest
+  'McpServerSystem.assignServerToGroups': { id: string } & ServerGroupsRequest
+  'McpServerSystem.create': CreateMcpServerRequest
+  'McpServerSystem.delete': { id: string }
+  'McpServerSystem.get': { id: string }
+  'McpServerSystem.getServerGroups': { id: string }
+  'McpServerSystem.list': PaginationQuery
+  'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
+  'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -1043,14 +1042,14 @@ export type ApiEndpointResponses = {
   'McpServer.get': McpServer
   'McpServer.listAccessible': McpServerListResponse
   'McpServer.update': McpServer
-  'McpServerAdmin.create': McpServer
-  'McpServerAdmin.delete': void
-  'McpServerAdmin.get': McpServer
-  'McpServerAdmin.getGroupServers': string[]
-  'McpServerAdmin.list': McpServerListResponse
-  'McpServerAdmin.removeGroupServer': void
-  'McpServerAdmin.setGroupServers': void
-  'McpServerAdmin.update': McpServer
+  'McpServerSystem.assignServerToGroups': void
+  'McpServerSystem.create': McpServer
+  'McpServerSystem.delete': void
+  'McpServerSystem.get': McpServer
+  'McpServerSystem.getServerGroups': string[]
+  'McpServerSystem.list': McpServerListResponse
+  'McpServerSystem.removeServerFromGroup': void
+  'McpServerSystem.update': McpServer
   'User.create': User
   'User.delete': void
   'User.get': User

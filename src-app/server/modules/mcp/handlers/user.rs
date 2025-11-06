@@ -3,9 +3,9 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
-    Extension, Json,
+    Json,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -29,7 +29,7 @@ use super::super::{
 pub async fn list_accessible_servers(
     auth: RequirePermissions<(McpServersRead,)>,
     Query(params): Query<PaginationQuery>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
 ) -> ApiResult<Json<McpServerListResponse>> {
     let (servers, total) =
         repository::list_accessible_mcp_servers(&pool, auth.user.id, params.page as i64, params.per_page as i64)
@@ -62,7 +62,7 @@ pub fn list_accessible_servers_docs(op: TransformOperation) -> TransformOperatio
 /// Create a new user MCP server
 pub async fn create_user_server(
     auth: RequirePermissions<(McpServersCreate,)>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
     Json(request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
     let server = repository::create_user_mcp_server(&pool, auth.user.id, request).await?;
@@ -86,7 +86,7 @@ pub fn create_user_server_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_user_server(
     auth: RequirePermissions<(McpServersRead,)>,
     Path(id): Path<Uuid>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
 ) -> ApiResult<Json<McpServer>> {
     let server = repository::get_user_mcp_server(&pool, id, auth.user.id)
         .await?
@@ -110,7 +110,7 @@ pub fn get_user_server_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_user_server(
     auth: RequirePermissions<(McpServersEdit,)>,
     Path(id): Path<Uuid>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
     let server = repository::update_user_mcp_server(&pool, id, auth.user.id, request).await?;
@@ -135,7 +135,7 @@ pub fn update_user_server_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_user_server(
     auth: RequirePermissions<(McpServersDelete,)>,
     Path(id): Path<Uuid>,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
 ) -> ApiResult<StatusCode> {
     repository::delete_user_mcp_server(&pool, id, auth.user.id).await?;
 

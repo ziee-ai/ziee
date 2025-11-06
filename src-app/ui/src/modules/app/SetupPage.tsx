@@ -1,8 +1,6 @@
 import React from 'react'
 import { Card, Form, Input, Button, Typography, Alert } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { setupAdmin, clearSetupError } from './store'
-import { authenticateUser } from '../auth/store'
 import { Stores } from '@/core'
 
 const { Title, Paragraph } = Typography
@@ -24,7 +22,7 @@ export default function SetupPage() {
 
   const onFinish = async (values: any) => {
     try {
-      await setupAdmin({
+      await Stores.App.setupAdmin({
         username: values.username,
         email: values.email,
         password: values.password,
@@ -32,7 +30,7 @@ export default function SetupPage() {
       })
 
       // Use the login credentials to authenticate
-      await authenticateUser({
+      await Stores.Auth.authenticateUser({
         username: values.username,
         password: values.password,
       })
@@ -73,7 +71,7 @@ export default function SetupPage() {
             message={setupError}
             className="mb-4"
             closable
-            onClose={clearSetupError}
+            onClose={Stores.App.clearSetupError}
           />
         )}
 

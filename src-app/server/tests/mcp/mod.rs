@@ -1,0 +1,770 @@
+use serde_json::json;
+use uuid::Uuid;
+use crate::common::test_helpers::{self, TestUser};
+
+// ============================================================================
+// User MCP Server Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_user_mcp_server() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+
+    let payload = json!({
+        "name": "my_local_server",
+        "display_name": "My Local Server",
+        "description": "My personal MCP server",
+        "enabled": true,
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["server.js"],
+        "environment_variables": {"NODE_ENV": "production"},
+        "timeout_seconds": 30
+    });
+
+    let url = server.api_url("/mcp/servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    let body_text = response.text().await.expect("Failed to get response text");
+
+    if status != 201 {
+        eprintln!("Error response (status {}): {}", status, body_text);
+    }
+
+    assert_eq!(status, 201, "Should create user server");
+
+    let body: serde_json::Value = serde_json::from_str(&body_text).expect("Failed to parse JSON");
+    assert_eq!(body["name"], "my_local_server");
+    assert_eq!(body["display_name"], "My Local Server");
+    assert_eq!(body["transport_type"], "stdio");
+    assert_eq!(body["is_system"], false);
+    assert_eq!(body["user_id"], user.user_id);
+}
+
+#[tokio::test]
+async fn test_create_user_server_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let payload = json!({
+        "name": "my_server",
+        "display_name": "My Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["server.js"]
+    });
+
+    let url = server.api_url("/mcp/servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should require permission");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+}
+
+#[tokio::test]
+async fn test_list_accessible_servers() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read", "mcp_servers::create"]).await;
+
+    // Create a personal server
+    let payload = json!({
+        "name": "personal_server",
+        "display_name": "Personal Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["server.js"]
+    });
+
+    let create_url = server.api_url("/mcp/servers");
+    reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    // List accessible servers (should include personal + system servers from groups)
+    let list_url = server.api_url("/mcp/servers");
+    let response = reqwest::Client::new()
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should list accessible servers");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let servers = body["servers"].as_array().expect("Should have servers array");
+
+    // Debug: Print what servers we got
+    println!("Found {} servers:", servers.len());
+    for server in servers.iter() {
+        println!("  - {} (name: {})", server["display_name"], server["name"]);
+    }
+
+    // Should have at least the personal server + fetch (assigned to default group)
+    assert!(servers.len() >= 2, "Should have personal server and fetch server from default group. Found {} servers", servers.len());
+
+    // Verify personal server is in the list
+    let has_personal = servers.iter().any(|s| s["name"] == "personal_server");
+    assert!(has_personal, "Should include personal server");
+
+    // Verify fetch server from default group is in the list
+    let has_fetch = servers.iter().any(|s| s["name"] == "fetch");
+    assert!(has_fetch, "Should include fetch server from default group");
+}
+
+#[tokio::test]
+async fn test_get_user_server() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read", "mcp_servers::create"]).await;
+
+    // Create a server
+    let payload = json!({
+        "name": "test_server",
+        "display_name": "Test Server",
+        "transport_type": "http",
+        "url": "http://localhost:3000",
+        "headers": {"Authorization": "Bearer token"}
+    });
+
+    let create_url = server.api_url("/mcp/servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // Get the server
+    let get_url = server.api_url(&format!("/mcp/servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should get server");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["id"], server_id);
+    assert_eq!(body["name"], "test_server");
+    assert_eq!(body["transport_type"], "http");
+}
+
+#[tokio::test]
+async fn test_update_user_server() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read", "mcp_servers::create", "mcp_servers::edit"]).await;
+
+    // Create a server
+    let payload = json!({
+        "name": "original_server",
+        "display_name": "Original Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["original.js"]
+    });
+
+    let create_url = server.api_url("/mcp/servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // Update the server
+    let update_payload = json!({
+        "display_name": "Updated Server",
+        "description": "Updated description",
+        "enabled": false,
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["updated.js"]
+    });
+
+    let update_url = server.api_url(&format!("/mcp/servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should update server");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["display_name"], "Updated Server");
+    assert_eq!(body["description"], "Updated description");
+    assert_eq!(body["enabled"], false);
+}
+
+#[tokio::test]
+async fn test_delete_user_server() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read", "mcp_servers::create", "mcp_servers::delete"]).await;
+
+    // Create a server
+    let payload = json!({
+        "name": "temp_server",
+        "display_name": "Temporary Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["temp.js"]
+    });
+
+    let create_url = server.api_url("/mcp/servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // Delete the server
+    let delete_url = server.api_url(&format!("/mcp/servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .delete(&delete_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 204, "Should delete server");
+
+    // Verify it's deleted
+    let get_url = server.api_url(&format!("/mcp/servers/{}", server_id));
+    let get_response = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(get_response.status(), 404, "Server should be deleted");
+}
+
+#[tokio::test]
+async fn test_user_cannot_access_other_user_server() {
+    let server = crate::common::TestServer::start().await;
+    let user1 = test_helpers::create_user_with_permissions(&server, "user1", &["mcp_servers::read", "mcp_servers::create"]).await;
+    let user2 = test_helpers::create_user_with_permissions(&server, "user2", &["mcp_servers::read"]).await;
+
+    // User1 creates a server
+    let payload = json!({
+        "name": "user1_server",
+        "display_name": "User1 Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["server.js"]
+    });
+
+    let create_url = server.api_url("/mcp/servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // User2 tries to get User1's server
+    let get_url = server.api_url(&format!("/mcp/servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 404, "User should not access other user's server");
+}
+
+// ============================================================================
+// Admin System Server Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_system_server() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::create"]).await;
+
+    let payload = json!({
+        "name": "system_server",
+        "display_name": "System Server",
+        "description": "System-wide MCP server",
+        "enabled": true,
+        "transport_type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+        "environment_variables": {},
+        "timeout_seconds": 60
+    });
+
+    let url = server.api_url("/mcp/system-servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201, "Should create system server");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["name"], "system_server");
+    assert_eq!(body["is_system"], true);
+    assert!(body["user_id"].is_null(), "System server should not have user_id");
+}
+
+#[tokio::test]
+async fn test_create_system_server_requires_admin_permission() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+
+    let payload = json!({
+        "name": "system_server",
+        "display_name": "System Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["server.js"]
+    });
+
+    let url = server.api_url("/mcp/system-servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should require admin permission");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+}
+
+#[tokio::test]
+async fn test_list_system_servers() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read"]).await;
+
+    let url = server.api_url("/mcp/system-servers");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should list system servers");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let servers = body["servers"].as_array().expect("Should have servers array");
+
+    // Should have the 4 default system servers (filesystem, fetch, browser, git)
+    assert!(servers.len() >= 4, "Should have default system servers");
+
+    // Verify all are system servers
+    for server in servers {
+        assert_eq!(server["is_system"], true, "All should be system servers");
+        assert!(server["user_id"].is_null(), "System servers should not have user_id");
+    }
+}
+
+#[tokio::test]
+async fn test_get_system_server() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create"]).await;
+
+    // Create a system server
+    let payload = json!({
+        "name": "test_system_server",
+        "display_name": "Test System Server",
+        "transport_type": "sse",
+        "url": "http://localhost:3000/sse",
+        "headers": {"Authorization": "Bearer token"}
+    });
+
+    let create_url = server.api_url("/mcp/system-servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // Get the system server
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should get system server");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["id"], server_id);
+    assert_eq!(body["name"], "test_system_server");
+    assert_eq!(body["transport_type"], "sse");
+    assert_eq!(body["is_system"], true);
+}
+
+#[tokio::test]
+async fn test_update_system_server() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create", "mcp_servers_admin::edit"]).await;
+
+    // Create a system server
+    let payload = json!({
+        "name": "original_system_server",
+        "display_name": "Original System Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["original.js"]
+    });
+
+    let create_url = server.api_url("/mcp/system-servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // Update the system server
+    let update_payload = json!({
+        "display_name": "Updated System Server",
+        "description": "Updated system description",
+        "enabled": false,
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["updated.js"]
+    });
+
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should update system server");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["display_name"], "Updated System Server");
+    assert_eq!(body["description"], "Updated system description");
+    assert_eq!(body["enabled"], false);
+}
+
+#[tokio::test]
+async fn test_delete_system_server() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create", "mcp_servers_admin::delete"]).await;
+
+    // Create a system server
+    let payload = json!({
+        "name": "temp_system_server",
+        "display_name": "Temporary System Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["temp.js"]
+    });
+
+    let create_url = server.api_url("/mcp/system-servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // Delete the system server
+    let delete_url = server.api_url(&format!("/mcp/system-servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .delete(&delete_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 204, "Should delete system server");
+
+    // Verify it's deleted
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}", server_id));
+    let get_response = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(get_response.status(), 404, "System server should be deleted");
+}
+
+// ============================================================================
+// Group Assignment Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_assign_server_to_groups() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::edit"]).await;
+
+    // Get group IDs
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let default_group = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to get default group");
+    let default_group_id = default_group.id;
+
+    // Get filesystem server ID
+    let filesystem_server = sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'filesystem' AND is_system = true")
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to get filesystem server");
+    let filesystem_server_id = filesystem_server.id;
+
+    pool.close().await;
+
+    // Assign filesystem server to default group
+    let payload = json!({
+        "group_ids": [default_group_id]
+    });
+
+    let url = server.api_url(&format!("/mcp/system-servers/{}/groups", filesystem_server_id));
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 204, "Should assign server to groups");
+
+    // Get server's assigned groups
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}/groups", filesystem_server_id));
+    let get_response = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(get_response.status(), 200, "Should get server groups");
+
+    let body: serde_json::Value = get_response.json().await.expect("Failed to parse JSON");
+    let group_ids = body.as_array().expect("Should be array of group IDs");
+    assert_eq!(group_ids.len(), 1, "Should have 1 assigned group");
+}
+
+#[tokio::test]
+async fn test_remove_server_from_group() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::edit"]).await;
+
+    // Get the default group ID and fetch server ID
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let group = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to get default group");
+    let group_id = group.id;
+
+    let fetch_server = sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'fetch' AND is_system = true")
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to get fetch server");
+    let fetch_server_id = fetch_server.id;
+
+    pool.close().await;
+
+    // Remove fetch server from group (it was assigned in migration)
+    let url = server.api_url(&format!("/mcp/system-servers/{}/groups/{}", fetch_server_id, group_id));
+    let response = reqwest::Client::new()
+        .delete(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 204, "Should remove server from group");
+
+    // Verify it's removed
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}/groups", fetch_server_id));
+    let get_response = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let body: serde_json::Value = get_response.json().await.expect("Failed to parse JSON");
+    let group_ids = body.as_array().expect("Should be array of group IDs");
+
+    // Should not contain the default group
+    let has_group = group_ids.iter().any(|id| {
+        id.as_str() == Some(&group_id.to_string())
+    });
+    assert!(!has_group, "Should not have default group after removal");
+}
+
+// ============================================================================
+// Validation Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_stdio_transport_requires_command() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+
+    // Try to create stdio server without command
+    let payload = json!({
+        "name": "invalid_stdio",
+        "display_name": "Invalid Stdio",
+        "transport_type": "stdio",
+        "args": ["server.js"]
+        // Missing command
+    });
+
+    let url = server.api_url("/mcp/servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 400, "Should reject stdio without command");
+}
+
+#[tokio::test]
+async fn test_http_transport_requires_url() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+
+    // Try to create http server without url
+    let payload = json!({
+        "name": "invalid_http",
+        "display_name": "Invalid HTTP",
+        "transport_type": "http",
+        "headers": {"Authorization": "Bearer token"}
+        // Missing url
+    });
+
+    let url = server.api_url("/mcp/servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 400, "Should reject http without url");
+}
+
+#[tokio::test]
+async fn test_duplicate_server_name() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+
+    let payload = json!({
+        "name": "duplicate_server",
+        "display_name": "Duplicate Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["server.js"]
+    });
+
+    let url = server.api_url("/mcp/servers");
+
+    // Create first server
+    let response1 = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response1.status(), 201, "First server should be created");
+
+    // Try to create second server with same name
+    let response2 = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response2.status(), 409, "Should reject duplicate name");
+}

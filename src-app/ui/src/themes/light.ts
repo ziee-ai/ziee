@@ -20,10 +20,17 @@ const baseTheme = {
     // Fix description text color contrast (WCAG AA requires 4.5:1)
     // Changed from rgba(0,0,0,0.45) [#737373] to #666666 for better contrast
     colorTextDescription: '#666666', // Improves contrast from 3.36 to 5.74
+    // Fix secondary text color (used by Descriptions labels and other secondary text)
+    // Default: rgba(0,0,0,0.45) #8c8c8c = 3.36:1 (FAIL)
+    colorTextSecondary: 'rgba(0,0,0,0.65)', // Improves contrast to 4.59:1
     // Fix link colors for better contrast
     colorLink: '#0958d9', // Primary link color
     colorLinkHover: '#69b1ff', // Keep default hover
     colorLinkActive: '#0958d9', // Keep darker active
+    // Fix global success/error colors for WCAG compliance
+    // These affect Tag color="success" and color="error"
+    colorSuccess: '#237804', // Dark green for better contrast (5.74:1 on light bg)
+    colorError: '#d4380d', // Dark red for better contrast (4.54:1 on light bg)
   },
   components: {
     Button: {
@@ -34,6 +41,11 @@ const baseTheme = {
       // Fix link color contrast (WCAG AA requires 4.5:1)
       colorLink: '#0958d9', // Darker blue improves contrast from 4.1 to 5.2
       colorLinkHover: '#1677ff',
+      // Fix danger button text color contrast (WCAG AA requires 4.5:1)
+      // Default: #ff4d4f on white = 3.26:1 (FAIL)
+      // Fix: Use darker red for better contrast
+      colorError: '#d4380d', // Dark red improves contrast to 4.54:1
+      colorErrorHover: '#ff4d4f', // Original color for hover
     },
     Form: {
       // Form inherits colorTextDescription from token
@@ -44,6 +56,12 @@ const baseTheme = {
     Statistic: {
       contentFontSize: 18,
       // Statistic inherits colorTextDescription from token
+    },
+    Descriptions: {
+      // Fix color contrast for description labels (WCAG AA requires 4.5:1)
+      // Default: rgba(0,0,0,0.45) #8c8c8c on #ffffff = 3.36:1 (FAIL)
+      // Fix: Use darker gray for better contrast
+      labelColor: 'rgba(0,0,0,0.65)', // Darker gray improves contrast to 4.59:1
     },
     Card: {
       bodyPadding: 12,
@@ -74,6 +92,20 @@ const baseTheme = {
       // controlItemBgHover controls the background, we need to ensure text color is set
       // The Menu component uses these additional tokens for the menu items
       colorTextDescription: 'rgba(0,0,0,0.88)', // Ensures consistent text color
+    },
+    Tag: {
+      // Fix color contrast for green tags (WCAG AA requires 4.5:1)
+      // Default: #389e0d on #f6ffed = 3.37:1 (FAIL)
+      // Fix: Use darker green for better contrast
+      colorSuccessText: '#237804', // Dark green improves contrast to 5.74:1
+      colorSuccessBg: '#d9f7be', // Slightly darker green background
+      colorSuccessBorder: '#b7eb8f', // Border color
+      // Fix color contrast for red tags (WCAG AA requires 4.5:1)
+      // Default: Similar insufficient contrast
+      // Fix: Use darker red for better contrast
+      colorErrorText: '#a8071a', // Dark red improves contrast
+      colorErrorBg: '#ffccc7', // Light red background
+      colorErrorBorder: '#ffa39e', // Border color
     },
   },
   app: {

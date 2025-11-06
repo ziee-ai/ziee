@@ -5,9 +5,8 @@ import {
   addLlmModelToProvider,
   loadLlmProviders,
   clearLlmProviderStoreError,
-  closeAddRemoteLlmModelDrawer,
-  useAddRemoteLlmModelDrawerStore,
 } from '@/modules/llm-provider/store'
+import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import { LlmModelParametersSection } from './shared/LlmModelParametersSection'
 import { BASIC_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
@@ -18,7 +17,7 @@ export function AddRemoteLlmModelDrawer() {
   const [loading, setLoading] = useState(false)
 
   // Get modal state from drawer store
-  const { open, providerId } = useAddRemoteLlmModelDrawerStore()
+  const { open, providerId } = Stores.AddRemoteLlmModelDrawer
 
   const handleSubmit = async () => {
     if (!providerId) return
@@ -54,7 +53,7 @@ export function AddRemoteLlmModelDrawer() {
       await loadLlmProviders()
 
       form.resetFields()
-      closeAddRemoteLlmModelDrawer()
+      Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()
 
       message.success('Model added successfully')
     } catch (error) {
@@ -67,7 +66,7 @@ export function AddRemoteLlmModelDrawer() {
 
   const handleCancel = () => {
     form.resetFields()
-    closeAddRemoteLlmModelDrawer()
+    Stores.AddRemoteLlmModelDrawer.closeAddRemoteLlmModelDrawer()
   }
 
   return (

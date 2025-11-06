@@ -1,10 +1,5 @@
 import { Card } from 'antd'
 import { DownloadItem } from './DownloadItem'
-import {
-  cancelLlmModelDownload,
-  deleteLlmModelDownload,
-  openViewDownloadDrawer,
-} from '@/modules/llm-provider/store'
 import { Stores } from '@/core/stores'
 import type { DownloadInstance } from '@/api-client/types'
 
@@ -26,7 +21,7 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
 
   const handleCancelDownload = async (downloadId: string) => {
     try {
-      await cancelLlmModelDownload(downloadId)
+      await Stores.LlmModelDownload.cancelLlmModelDownload(downloadId)
     } catch (error) {
       console.error('Failed to cancel download:', error)
     }
@@ -34,14 +29,14 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
 
   const handleCloseDownload = async (downloadId: string) => {
     try {
-      await deleteLlmModelDownload(downloadId)
+      await Stores.LlmModelDownload.deleteLlmModelDownload(downloadId)
     } catch (error) {
       console.error('Failed to delete download:', error)
     }
   }
 
   const handleViewDetails = (downloadId: string) => {
-    openViewDownloadDrawer(downloadId)
+    Stores.ViewDownloadDrawer.openViewDownloadDrawer(downloadId)
   }
 
   return (

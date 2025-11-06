@@ -6,10 +6,12 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
+    core::{AppEvent, EventBus},
     modules::permissions::{RequirePermissions, with_permission},
 };
 
@@ -89,6 +91,7 @@ pub async fn create_user(
     _auth: RequirePermissions<(UsersCreate,)>,
     Extension(user_repo): Extension<UserRepository>,
     Extension(group_repo): Extension<GroupRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateUserRequest>,
 ) -> ApiResult<Json<User>> {
     // Validate username and email format
@@ -130,6 +133,9 @@ pub async fn create_user(
         let _ = user_repo.assign_to_group(user.id, default_group.id, None).await;
         // Note: We ignore errors here to not fail user creation if group assignment fails
     }
+
+    // Emit UserCreated event asynchronously
+    event_bus.emit_async(AppEvent::UserCreated { user: user.clone() });
 
     Ok((StatusCode::CREATED, Json(user)))
 }

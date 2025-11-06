@@ -14,13 +14,7 @@ import {
 import { Drawer } from '@/components/common/Drawer'
 import { useEffect, useState } from 'react'
 import { LOCAL_FILE_TYPE_OPTIONS } from '../../constants'
-import {
-  cancelUpload,
-  clearUploadError,
-  uploadLocalModel,
-  useAddLocalLlmModelUploadDrawerStore,
-  useUploadStore,
-} from '../../store'
+import { Stores } from '@/core/stores'
 import { formatBytes } from '@/utils/downloadUtils'
 import { LocalLlmModelCommonFields } from './shared/LocalLlmModelCommonFields'
 
@@ -42,8 +36,8 @@ export function AddLocalLlmModelUploadDrawer() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [filteredFiles, setFilteredFiles] = useState<FilteredFile[]>([])
 
-  const { uploading, uploadProgress, overallUploadProgress } = useUploadStore()
-  const { open, providerId } = useAddLocalLlmModelUploadDrawerStore()
+  const { uploading, uploadProgress, overallUploadProgress } = Stores.LlmModelUpload
+  const { open, providerId } = Stores.AddLocalLlmModelUploadDrawer
 
   /**
    * Generate a unique model ID from display name
@@ -226,7 +220,7 @@ export function AddLocalLlmModelUploadDrawer() {
   const handleSubmit = async () => {
     try {
       setLoading(true)
-      clearUploadError()
+      Stores.LlmModelUpload.clearUploadError()
 
       // Validate that files were selected (form validation doesn't catch this since we set a display string)
       if (selectedFiles.length === 0) {
@@ -293,7 +287,7 @@ export function AddLocalLlmModelUploadDrawer() {
       }
 
       // Upload and auto-commit the files as a model in a single request
-      await uploadLocalModel({
+      await Stores.LlmModelUpload.uploadLocalModel({
         name: modelId,
         provider_id: providerId!,
         display_name: values.display_name,
@@ -313,11 +307,8 @@ export function AddLocalLlmModelUploadDrawer() {
       setSelectedFiles([])
       setFilteredFiles([])
 
-      // Close drawer (imported from drawer-store)
-      const { closeAddLocalLlmModelUploadDrawer } = await import(
-        '../../store/llm-model-drawer-store'
-      )
-      closeAddLocalLlmModelUploadDrawer()
+      // Close drawer
+      Stores.AddLocalLlmModelUploadDrawer.closeAddLocalLlmModelUploadDrawer()
 
       // Note: Model will be added to provider automatically by the component's parent
       // when the drawer closes and the provider detail page refreshes
@@ -335,7 +326,7 @@ export function AddLocalLlmModelUploadDrawer() {
    * Handle upload cancellation
    */
   const handleCancelUpload = () => {
-    cancelUpload()
+    Stores.LlmModelUpload.cancelUpload()
   }
 
   /**
@@ -353,10 +344,7 @@ export function AddLocalLlmModelUploadDrawer() {
     setSelectedFiles([])
     setFilteredFiles([])
 
-    const { closeAddLocalLlmModelUploadDrawer } = await import(
-      '../../store/llm-model-drawer-store'
-    )
-    closeAddLocalLlmModelUploadDrawer()
+    Stores.AddLocalLlmModelUploadDrawer.closeAddLocalLlmModelUploadDrawer()
   }
 
   // Update filtered files when format changes
