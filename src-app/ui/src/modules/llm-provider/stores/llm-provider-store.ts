@@ -51,6 +51,10 @@ interface LlmProviderState {
   addLlmModelToProvider: (providerId: string, model: LlmModel) => void
   updateLlmModelInProvider: (providerId: string, modelId: string, updatedModel: LlmModel) => void
 
+  // Group assignment actions
+  getProvidersForGroup: (groupId: string) => Promise<BaseLlmProvider[]>
+  updateGroupProviders: (groupId: string, providerIds: string[]) => Promise<void>
+
   __init__: {
     providers: () => Promise<void>
   }
@@ -419,6 +423,29 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             return p
           }),
         }))
+      },
+
+      // Group assignment actions
+      getProvidersForGroup: async (groupId: string) => {
+        try {
+          const response = await ApiClient.Group.getProviders({ group_id: groupId })
+          return response.providers
+        } catch (error) {
+          console.error('Failed to get providers for group:', error)
+          throw error
+        }
+      },
+
+      updateGroupProviders: async (groupId: string, providerIds: string[]) => {
+        try {
+          await ApiClient.Group.updateProviders({
+            group_id: groupId,
+            provider_ids: providerIds,
+          })
+        } catch (error) {
+          console.error('Failed to update group providers:', error)
+          throw error
+        }
       },
 
       __init__: {

@@ -86,8 +86,12 @@ export async function fillAssistantForm(
 
 export async function submitAssistantForm(page: Page) {
   await page.click('.ant-drawer button[type="submit"]')
-  // Don't wait for drawer here - let the test verify success message first
-  // The drawer will close automatically after successful submission
+
+  // Wait for success message to appear
+  await page.waitForSelector('.ant-message-success', { state: 'visible', timeout: 5000 })
+
+  // Wait for drawer to close (indicates the operation and reload are complete)
+  await page.waitForSelector('.ant-drawer', { state: 'hidden', timeout: 5000 })
 }
 
 export async function cancelAssistantForm(page: Page) {
@@ -150,8 +154,8 @@ export async function clickAssistantCard(page: Page, assistantName: string) {
  */
 
 export async function getTemplateAssistantRow(page: Page, assistantName: string) {
-  // Find the assistant name text, then navigate up to the parent flex container that has the actions
-  return page.locator(`.ant-card-body`).locator(`text=${assistantName}`).locator('..').locator('..').locator('..')
+  // Find the assistant name text, then navigate up to the parent container that has the actions AND descriptions
+  return page.locator(`.ant-card-body`).locator(`text=${assistantName}`).locator('..').locator('..').locator('..').locator('..')
 }
 
 export async function editTemplateAssistant(page: Page, assistantName: string) {

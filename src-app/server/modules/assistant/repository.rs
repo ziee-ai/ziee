@@ -48,6 +48,7 @@ pub async fn create_assistant(
     let assistant_id = Uuid::new_v4();
     let is_default = request.is_default.unwrap_or(false);
     let is_template = request.is_template.unwrap_or(false);
+    let enabled = request.enabled.unwrap_or(true);
     let parameters_json = request.parameters_to_json();
 
     // Start a transaction to handle default assistant logic
@@ -74,8 +75,8 @@ pub async fn create_assistant(
     }
 
     let row = sqlx::query!(
-        r#"INSERT INTO assistants (id, name, description, instructions, parameters, created_by, is_template, is_default)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        r#"INSERT INTO assistants (id, name, description, instructions, parameters, created_by, is_template, is_default, enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at"#,
         assistant_id,
         &request.name,
@@ -84,7 +85,8 @@ pub async fn create_assistant(
         parameters_json,
         user_id,
         is_template,
-        is_default
+        is_default,
+        enabled
     )
     .fetch_one(&mut *tx)
     .await

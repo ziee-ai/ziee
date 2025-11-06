@@ -6,6 +6,7 @@ import type {
   SidebarRegistration,
   SettingsMenuItem,
   GlobalComponent,
+  WidgetRegistration,
 } from './router/types'
 
 export interface CreateModuleOptions {
@@ -15,6 +16,7 @@ export interface CreateModuleOptions {
   sidebar?: SidebarRegistration
   settings?: SettingsMenuItem[]
   globalComponents?: GlobalComponent[]
+  widgets?: WidgetRegistration
   initialize?: () => void | Promise<void>
   cleanup?: () => void | Promise<void>
 }
@@ -27,6 +29,7 @@ export function createModule(options: CreateModuleOptions): AppModule {
     registerSidebar: options.sidebar ? () => options.sidebar! : undefined,
     registerSettings: options.settings ? () => options.settings! : undefined,
     registerGlobalComponents: options.globalComponents ? () => options.globalComponents! : undefined,
+    registerWidgets: options.widgets ? () => options.widgets! : undefined,
     initialize: options.initialize,
     cleanup: options.cleanup,
   }

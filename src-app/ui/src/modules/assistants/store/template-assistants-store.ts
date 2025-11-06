@@ -60,11 +60,6 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
             const requestPage = page || currentState.currentPage
             const requestPageSize = pageSize || currentState.pageSize
 
-            // Skip if already initialized and loading first page without explicit page parameter
-            if (currentState.isInitialized && currentState.loading && !page) {
-              return
-            }
-
             set({ loading: true, error: null })
 
             const response = await ApiClient.AssistantTemplate.list({
@@ -105,15 +100,10 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
 
             const assistant = await ApiClient.AssistantTemplate.create(data)
 
-            set(state => ({
-              assistants: data.is_default
-                ? [
-                    ...state.assistants.map((a: Assistant) => ({ ...a, is_default: false })),
-                    assistant,
-                  ]
-                : [...state.assistants, assistant],
-              creating: false,
-            }))
+            // Reload the list to maintain pagination consistency
+            await get().loadTemplateAssistants()
+
+            set({ creating: false })
 
             return assistant
           } catch (error) {
@@ -145,14 +135,10 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
               ...data,
             })
 
-            set(state => ({
-              assistants: data.is_default
-                ? state.assistants.map((a: Assistant) =>
-                    a.id === id ? assistant : { ...a, is_default: false },
-                  )
-                : state.assistants.map((a: Assistant) => (a.id === id ? assistant : a)),
-              updating: false,
-            }))
+            // Reload the list to maintain pagination consistency
+            await get().loadTemplateAssistants()
+
+            set({ updating: false })
 
             return assistant
           } catch (error) {
@@ -178,10 +164,10 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
 
             await ApiClient.AssistantTemplate.delete({ id })
 
-            set(state => ({
-              assistants: state.assistants.filter((a: Assistant) => a.id !== id),
-              deleting: false,
-            }))
+            // Reload the list to maintain pagination consistency
+            await get().loadTemplateAssistants()
+
+            set({ deleting: false })
           } catch (error) {
             set({
               error:

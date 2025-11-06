@@ -4,6 +4,7 @@ export * from './llm-provider-store'
 // Drawer stores
 export * from './llm-provider-drawer-store'
 export * from './llm-model-drawer-store'
+export * from './llm-provider-group-assignment-store'
 
 // Download store
 export * from './llm-model-download-store'

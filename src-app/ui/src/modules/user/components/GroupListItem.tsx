@@ -15,6 +15,9 @@ import {
   Typography,
 } from 'antd'
 import type { Group } from '@/api-client/types'
+import { Stores } from '@/core/stores'
+import { WidgetRenderer } from '@/core/components/WidgetRenderer'
+import type { GroupWidget } from '../types/GroupWidget'
 
 const { Text } = Typography
 
@@ -33,6 +36,13 @@ export function GroupListItem({
   onDelete,
   onViewMembers,
 }: GroupListItemProps) {
+  // Get widgets for the userGroup slot from global registry
+  const { widgets } = Stores.Router
+  const userGroupWidgets = (widgets.get('userGroup') || []) as GroupWidget[]
+
+  // Sort widgets by order
+  const registeredWidgets = [...userGroupWidgets].sort((a, b) => a.order - b.order)
+
   const getGroupActions = () => {
     const actions: React.ReactNode[] = []
 
@@ -127,6 +137,20 @@ export function GroupListItem({
           </Descriptions>
         </div>
       </div>
+
+      {/* Render registered widgets */}
+      {registeredWidgets.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {registeredWidgets.map((widget, index) => (
+            <WidgetRenderer
+              key={index}
+              widget={widget}
+              props={{ group }}
+            />
+          ))}
+        </div>
+      )}
+
       {showDivider && <Divider className="my-0" />}
     </div>
   )

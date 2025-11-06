@@ -1704,6 +1704,120 @@
         ]
       }
     },
+    "/api/groups/{group_id}/providers": {
+      "get": {
+        "tags": [
+          "Admin - Groups"
+        ],
+        "summary": "Get all providers assigned to a group",
+        "description": "\n\n**Required Permission:** `llm_providers::read`\n\nView LLM providers and list available providers",
+        "operationId": "Group.getProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM providers and list available providers",
+                        "name": "LlmProvidersRead",
+                        "value": "llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin - Groups"
+        ],
+        "summary": "Update providers assigned to a group",
+        "description": "Atomically updates provider assignments. Adds new providers and removes unspecified ones.",
+        "operationId": "Group.updateProviders",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGroupProvidersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Assign LLM providers to user groups",
+                        "name": "LlmProvidersAssignGroups",
+                        "value": "llm_providers::assign_groups"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_providers::assign_groups",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-repositories": {
       "get": {
         "tags": [
@@ -4346,6 +4460,13 @@
               "null"
             ]
           },
+          "enabled": {
+            "description": "Whether this assistant is enabled\n Defaults to true if not specified",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "instructions": {
             "description": "System instructions for the AI assistant",
             "type": [
@@ -5422,6 +5543,20 @@
           "page",
           "per_page",
           "total_pages"
+        ]
+      },
+      "GroupProvidersResponse": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmProvider"
+            }
+          }
+        },
+        "required": [
+          "providers"
         ]
       },
       "HardwareInfo": {
@@ -7255,6 +7390,21 @@
             ]
           }
         }
+      },
+      "UpdateGroupProvidersRequest": {
+        "type": "object",
+        "properties": {
+          "provider_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "provider_ids"
+        ]
       },
       "UpdateGroupRequest": {
         "type": "object",

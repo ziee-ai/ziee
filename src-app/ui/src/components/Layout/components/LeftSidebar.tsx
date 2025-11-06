@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { theme, Typography, Divider } from 'antd'
 import { useWindowMinSize } from '@/hooks/useWindowMinSize'
-import { useRouterStore } from '@/core/router'
+import { Stores } from '@/core/stores'
 
 const { Text } = Typography
 
@@ -75,7 +75,7 @@ export function LeftSidebar() {
   const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
 
-  const { sidebarItems } = useRouterStore()
+  const { sidebarItems } = Stores.Router
 
   const isActive = (path: string) => {
     return location.pathname.startsWith(path)

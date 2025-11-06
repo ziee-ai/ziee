@@ -1,5 +1,5 @@
 import { Suspense, useEffect, isValidElement, lazy, useMemo } from 'react'
-import { useRouterStore } from '@/core/router/store'
+import { Stores } from '@/core/stores'
 import type { GlobalComponent } from '@/core/router/types'
 
 /**
@@ -88,7 +88,7 @@ function useGlobalComponentPreloading(components: GlobalComponent[]) {
  * Mount this component at the app root level.
  */
 export function GlobalComponentRenderer() {
-  const { globalComponents } = useRouterStore()
+  const { globalComponents } = Stores.Router
 
   // Handle automatic preloading when idle
   useGlobalComponentPreloading(globalComponents)

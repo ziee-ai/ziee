@@ -11,12 +11,15 @@ import {
   useAddRemoteLlmModelDrawerStore,
   useViewDownloadDrawerStore,
   useUploadStore,
+  useLlmProviderGroupAssignmentStore,
 } from './stores'
 import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const LlmProviderSettings = lazyWithPreload(() => import('./components/LlmProviderSettings').then(m => ({ default: m.LlmProviderSettings })))
+const LLMProviderGroupAssignmentDrawer = lazyWithPreload(() => import('./components/LLMProviderGroupAssignmentDrawer').then(m => ({ default: m.LLMProviderGroupAssignmentDrawer })))
+const LLMProviderGroupWidget = lazyWithPreload(() => import('./widgets/LLMProviderGroupWidget').then(m => ({ default: m.LLMProviderGroupWidget })))
 
 export default createModule({
   metadata: {
@@ -69,6 +72,10 @@ export default createModule({
       name: 'LlmModelUpload',
       store: useUploadStore,
     },
+    {
+      name: 'LlmProviderGroupAssignment',
+      store: useLlmProviderGroupAssignmentStore,
+    },
   ],
   sidebar: {
     widgets: [
@@ -90,6 +97,20 @@ export default createModule({
       order: 21,
     },
   ],
+  globalComponents: [
+    {
+      id: 'llm-provider-group-assignment-drawer',
+      component: LLMProviderGroupAssignmentDrawer,
+    },
+  ],
+  widgets: {
+    userGroup: [
+      {
+        order: 10,
+        component: LLMProviderGroupWidget,
+      },
+    ],
+  },
   initialize: () => {
     console.log('LLM Provider module initialized')
   },

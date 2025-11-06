@@ -7,7 +7,7 @@ import {
   Outlet,
 } from 'react-router-dom'
 import { Spin } from 'antd'
-import { useRouterStore } from './core'
+import { Stores } from './core/stores'
 import { AuthGuard } from './modules/auth'
 import { ThemeProvider } from './components/ThemeProvider'
 import { GlobalComponentRenderer } from './core/components/GlobalComponentRenderer'
@@ -42,7 +42,7 @@ function wrapWithSuspense(element: RouteConfig['element']) {
 }
 
 function App() {
-  const { routes } = useRouterStore()
+  const { routes } = Stores.Router
 
   // Setup global accessibility fixes
   useEffect(() => {

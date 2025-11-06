@@ -845,6 +845,191 @@ async fn test_remove_provider_from_group_not_found() {
 }
 
 // =====================================================
+// Group-Centric Provider Assignment Tests
+// =====================================================
+
+#[tokio::test]
+async fn test_get_group_providers() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
+        "llm_providers::read",
+        "groups::read"
+    ]).await;
+
+    // Get admin group
+    let admin_group_id = get_admin_group_id(&server, &user.token).await;
+
+    // Get providers for group (should be empty initially)
+    let response = reqwest::Client::new()
+        .get(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert!(body["providers"].is_array());
+    assert_eq!(body["providers"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_update_group_providers_bulk() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
+        "llm_providers::read",
+        "llm_providers::create",
+        "llm_providers::assign_groups",
+        "groups::read"
+    ]).await;
+
+    // Create multiple providers
+    let provider1 = create_test_provider(&server, &user.token).await;
+    let provider2 = create_test_provider(&server, &user.token).await;
+    let provider3 = create_test_provider(&server, &user.token).await;
+
+    let provider_id1 = provider1["id"].as_str().unwrap();
+    let provider_id2 = provider2["id"].as_str().unwrap();
+    let provider_id3 = provider3["id"].as_str().unwrap();
+
+    // Get admin group
+    let admin_group_id = get_admin_group_id(&server, &user.token).await;
+
+    // Assign two providers to group
+    let payload = json!({
+        "provider_ids": [provider_id1, provider_id2]
+    });
+
+    let response = reqwest::Client::new()
+        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["providers"].as_array().unwrap().len(), 2);
+
+    // Update assignment - remove provider1, keep provider2, add provider3
+    let payload = json!({
+        "provider_ids": [provider_id2, provider_id3]
+    });
+
+    let response = reqwest::Client::new()
+        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    let providers = body["providers"].as_array().unwrap();
+    assert_eq!(providers.len(), 2);
+
+    // Verify correct providers are assigned
+    let provider_ids: Vec<String> = providers.iter()
+        .map(|p| p["id"].as_str().unwrap().to_string())
+        .collect();
+    assert!(provider_ids.contains(&provider_id2.to_string()));
+    assert!(provider_ids.contains(&provider_id3.to_string()));
+    assert!(!provider_ids.contains(&provider_id1.to_string()));
+}
+
+#[tokio::test]
+async fn test_update_group_providers_empty_list() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
+        "llm_providers::read",
+        "llm_providers::create",
+        "llm_providers::assign_groups",
+        "groups::read"
+    ]).await;
+
+    // Create a provider
+    let provider = create_test_provider(&server, &user.token).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Get admin group
+    let admin_group_id = get_admin_group_id(&server, &user.token).await;
+
+    // Assign provider
+    let payload = json!({
+        "provider_ids": [provider_id]
+    });
+
+    reqwest::Client::new()
+        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    // Clear all assignments with empty list
+    let payload = json!({
+        "provider_ids": []
+    });
+
+    let response = reqwest::Client::new()
+        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["providers"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_update_group_providers_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
+        "llm_providers::read",
+        "groups::read"
+    ]).await;
+
+    // Get admin group
+    let admin_group_id = get_admin_group_id(&server, &user.token).await;
+
+    let payload = json!({
+        "provider_ids": []
+    });
+
+    let response = reqwest::Client::new()
+        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_get_group_providers_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let group_id = Uuid::new_v4();
+    let response = reqwest::Client::new()
+        .get(&server.api_url(&format!("/groups/{}/providers", group_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+// =====================================================
 // Built-in Provider Tests
 // =====================================================
 

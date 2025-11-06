@@ -1,5 +1,5 @@
 import { useEffect, isValidElement } from 'react'
-import { useRouterStore } from '@/core'
+import { Stores } from '@/core/stores'
 import type { AppModule } from '@/core/router/types'
 
 /**
@@ -7,7 +7,7 @@ import type { AppModule } from '@/core/router/types'
  * Uses requestIdleCallback to prefetch when browser is idle
  */
 export function usePrefetchModules() {
-  const modules = useRouterStore(state => state.modules)
+  const { modules } = Stores.Router
 
   useEffect(() => {
     // Check if requestIdleCallback is supported (not available in Safari < 16)

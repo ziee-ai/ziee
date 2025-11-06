@@ -179,7 +179,6 @@ test.describe('Template Assistants - Settings Page', () => {
         name: `Pagination Template ${i}`,
       })
       await submitAssistantForm(page)
-      await page.waitForTimeout(300)
     }
 
     // Verify pagination controls are visible
@@ -206,7 +205,6 @@ test.describe('Template Assistants - Settings Page', () => {
         name: `PageSize Template ${i}`,
       })
       await submitAssistantForm(page)
-      await page.waitForTimeout(300)
     }
 
     // Change page size to 20
@@ -304,10 +302,12 @@ test.describe('Template Assistants - Settings Page', () => {
   test('should show tooltip for Set as Default switch', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    const defaultLabel = page.locator('form').getByText('Set as Default', { exact: true })
+    // Find the Form.Item containing "Set as Default", then hover the question-circle icon
+    const defaultFormItem = page.locator('.ant-form-item').filter({ hasText: /^Set as Default/ })
+    const tooltipIcon = defaultFormItem.locator('.anticon-question-circle')
 
-    // Hover to show tooltip
-    await defaultLabel.hover()
+    // Hover the tooltip icon to show tooltip
+    await tooltipIcon.hover()
 
     // Verify tooltip text for templates
     await expect(page.getByText('Set as the default template assistant for all users', { exact: true })).toBeVisible({ timeout: 2000 })
@@ -316,10 +316,12 @@ test.describe('Template Assistants - Settings Page', () => {
   test('should show enabled tooltip', async ({ page }) => {
     await openCreateAssistantDrawer(page, false)
 
-    const enabledLabel = page.locator('form').getByText('Enabled', { exact: true }).first()
+    // Find the Form.Item containing "Enabled", then hover the question-circle icon
+    const enabledFormItem = page.locator('.ant-form-item').filter({ hasText: /^Enabled/ })
+    const tooltipIcon = enabledFormItem.locator('.anticon-question-circle')
 
-    // Hover to show tooltip
-    await enabledLabel.hover()
+    // Hover the tooltip icon to show tooltip
+    await tooltipIcon.hover()
 
     // Verify tooltip
     await expect(page.getByText('Whether this assistant is enabled', { exact: true })).toBeVisible({ timeout: 2000 })

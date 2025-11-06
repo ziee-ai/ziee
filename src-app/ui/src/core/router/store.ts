@@ -7,8 +7,10 @@ import type {
   SidebarWidget,
   SettingsMenuItem,
   GlobalComponent,
+  WidgetSlots,
 } from './types'
 import { createStoreProxy } from '../stores'
+import './types-store' // Register Router store type
 
 interface RouterState {
   routes: RouteConfig[]
@@ -22,6 +24,7 @@ interface RouterState {
   }
   settingsItems: SettingsMenuItem[]
   globalComponents: GlobalComponent[]
+  widgets: Map<keyof WidgetSlots, any[]> // General widget registry by slot (e.g., 'userGroup', 'dashboard')
   registerModule: (module: AppModule) => void
   initializeModules: () => void
 }
@@ -38,6 +41,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
   },
   settingsItems: [],
   globalComponents: [],
+  widgets: new Map(),
 
   registerModule: (module: AppModule) => {
     set(state => {
@@ -166,6 +170,23 @@ export const useRouterStore = create<RouterState>((set, get) => ({
             newGlobalComponents.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
           }
 
+          // Re-register widgets - rebuild from all modules
+          // Since widgets don't have IDs, we can't selectively remove them
+          // Instead, rebuild the entire widget registry from all modules
+          const newWidgets = new Map<keyof WidgetSlots, any[]>()
+
+          // Register widgets from all modules (including the updated one)
+          for (const mod of newModules) {
+            if (mod.registerWidgets) {
+              const widgets = mod.registerWidgets()
+              for (const [slotName, widgetArray] of Object.entries(widgets)) {
+                const slot = slotName as keyof WidgetSlots
+                const existing = newWidgets.get(slot) || []
+                newWidgets.set(slot, [...existing, ...widgetArray])
+              }
+            }
+          }
+
           return {
             modules: newModules,
             routes: newRoutes,
@@ -173,6 +194,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
             sidebarItems: newSidebarItems,
             settingsItems: newSettingsItems,
             globalComponents: newGlobalComponents,
+            widgets: newWidgets,
           }
         } else {
           console.warn(`Module ${module.metadata.name} is already registered`)
@@ -265,6 +287,15 @@ export const useRouterStore = create<RouterState>((set, get) => ({
   initializeModules: () => {
     const { modules } = get()
 
+    // Step 0: Register the Router store itself in the stores registry
+    set(state => ({
+      stores: {
+        ...state.stores,
+        Router: createStoreProxy(useRouterStore),
+      },
+    }))
+
+    // Step 1: Run module initialize functions first (creates widget slots/registries)
     for (const module of modules) {
       if (module.initialize) {
         try {
@@ -292,5 +323,33 @@ export const useRouterStore = create<RouterState>((set, get) => ({
         }
       }
     }
+
+    // Step 2: Register widgets from all modules
+    set(state => {
+      const widgetsMap = new Map(state.widgets)
+
+      for (const module of modules) {
+        if (module.registerWidgets) {
+          try {
+            const widgets = module.registerWidgets()
+
+            // Register widgets for each slot
+            for (const [slotName, widgetArray] of Object.entries(widgets)) {
+              const slot = slotName as keyof WidgetSlots
+              const existing = widgetsMap.get(slot) || []
+              widgetsMap.set(slot, [...existing, ...widgetArray])
+              console.log(`✅ Registered ${widgetArray.length} widget(s) for slot: ${slotName}`)
+            }
+          } catch (error) {
+            console.error(
+              `Failed to register widgets for module ${module.metadata.name}:`,
+              error,
+            )
+          }
+        }
+      }
+
+      return { widgets: widgetsMap }
+    })
   },
 }))

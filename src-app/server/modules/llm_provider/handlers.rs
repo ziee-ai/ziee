@@ -17,7 +17,7 @@ use super::{
     permissions::*,
     repository::LlmProviderRepository,
     utils,
-    types::{AssignProviderToGroupRequest, CreateLlmProviderRequest, LlmProviderListResponse, UpdateLlmProviderRequest},
+    types::{AssignProviderToGroupRequest, CreateLlmProviderRequest, GroupProvidersResponse, LlmProviderListResponse, UpdateGroupProvidersRequest, UpdateLlmProviderRequest},
 };
 
 // =====================================================
@@ -264,4 +264,94 @@ pub fn remove_provider_from_group_docs(op: aide::transform::TransformOperation) 
         .response_with::<204, (), _>(|res| res.description("Provider removed from group successfully"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Assignment not found"))
+}
+
+// =====================================================
+// Group-Centric Handlers (for UI widgets)
+// =====================================================
+
+/// Get all providers assigned to a group (requires llm_providers::read permission)
+/// This is a group-centric endpoint for the UI widget
+pub async fn get_group_providers(
+    _auth: RequirePermissions<(LlmProvidersRead,)>,
+    Path(group_id): Path<Uuid>,
+    Extension(repo): Extension<LlmProviderRepository>,
+) -> ApiResult<Json<GroupProvidersResponse>> {
+    let providers = repo.get_for_group(group_id).await
+        .map_err(|e| {
+            eprintln!("Failed to get providers for group {}: {}", group_id, e);
+            AppError::internal_error("Database operation failed")
+        })?;
+
+    Ok((StatusCode::OK, Json(GroupProvidersResponse { providers })))
+}
+
+pub fn get_group_providers_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    with_permission::<(LlmProvidersRead,)>(op)
+        .id("Group.getProviders")
+        .tag("Admin - Groups")
+        .summary("Get all providers assigned to a group")
+        .response::<200, Json<GroupProvidersResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+}
+
+/// Bulk update providers for a group (requires llm_providers::assign_groups permission)
+/// Atomically updates provider assignments - adds new providers and removes unspecified ones
+pub async fn update_group_providers(
+    _auth: RequirePermissions<(LlmProvidersAssignGroups,)>,
+    Path(group_id): Path<Uuid>,
+    Extension(repo): Extension<LlmProviderRepository>,
+    Json(request): Json<UpdateGroupProvidersRequest>,
+) -> ApiResult<Json<GroupProvidersResponse>> {
+    use std::collections::HashSet;
+
+    // Get current assignments
+    let current = repo.get_for_group(group_id).await
+        .map_err(|e| {
+            eprintln!("Failed to get current providers for group {}: {}", group_id, e);
+            AppError::internal_error("Database operation failed")
+        })?;
+
+    let current_ids: HashSet<Uuid> = current.iter().map(|p| p.id).collect();
+    let new_ids: HashSet<Uuid> = request.provider_ids.iter().copied().collect();
+
+    // Calculate diff
+    let to_add: Vec<Uuid> = new_ids.difference(&current_ids).copied().collect();
+    let to_remove: Vec<Uuid> = current_ids.difference(&new_ids).copied().collect();
+
+    // Apply changes - remove first, then add
+    for provider_id in to_remove {
+        repo.remove_from_group(group_id, provider_id).await
+            .map_err(|e| {
+                eprintln!("Failed to remove provider {} from group {}: {}", provider_id, group_id, e);
+                AppError::internal_error("Database operation failed")
+            })?;
+    }
+
+    for provider_id in to_add {
+        repo.assign_to_group(provider_id, group_id).await
+            .map_err(|e| {
+                eprintln!("Failed to assign provider {} to group {}: {}", provider_id, group_id, e);
+                AppError::internal_error("Database operation failed")
+            })?;
+    }
+
+    // Return updated list
+    let providers = repo.get_for_group(group_id).await
+        .map_err(|e| {
+            eprintln!("Failed to get updated providers for group {}: {}", group_id, e);
+            AppError::internal_error("Database operation failed")
+        })?;
+
+    Ok((StatusCode::OK, Json(GroupProvidersResponse { providers })))
+}
+
+pub fn update_group_providers_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    with_permission::<(LlmProvidersAssignGroups,)>(op)
+        .id("Group.updateProviders")
+        .tag("Admin - Groups")
+        .summary("Update providers assigned to a group")
+        .description("Atomically updates provider assignments. Adds new providers and removes unspecified ones.")
+        .response::<200, Json<GroupProvidersResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }

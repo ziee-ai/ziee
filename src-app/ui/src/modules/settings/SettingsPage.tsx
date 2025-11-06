@@ -4,7 +4,7 @@ import { useWindowMinSize } from '../../hooks/useWindowMinSize'
 import { TitleBarWrapper } from '../../components/TitleBarWrapper'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect } from 'react'
-import { useRouterStore } from '../../core/router'
+import { Stores } from '@/core/stores'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -12,7 +12,7 @@ export default function SettingsPage() {
   const windowMinSize = useWindowMinSize()
   const { token } = theme.useToken()
 
-  const { settingsItems } = useRouterStore()
+  const { settingsItems } = Stores.Router
 
   // Filter and sort user settings
   const userSettingsItems = settingsItems

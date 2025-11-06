@@ -5,6 +5,7 @@ import { useUsersStore, useUserGroupsStore } from './stores'
 import { useUserGroupDrawerStore } from './stores/user-group-drawer-store'
 import { useGroupMembersDrawerStore } from './stores/group-members-drawer-store'
 import './types' // Import type augmentation
+import './types/GroupWidget' // Register userGroup widget slot
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const UsersSettings = lazyWithPreload(() => import('./components/UsersSettings').then(m => ({ default: m.UsersSettings })))

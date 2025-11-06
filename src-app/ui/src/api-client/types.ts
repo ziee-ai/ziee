@@ -63,6 +63,7 @@ export interface CPUUsage {
 
 export interface CreateAssistantRequest {
   description?: string
+  enabled?: boolean
   instructions?: string
   is_default?: boolean
   is_template?: boolean
@@ -271,6 +272,10 @@ export interface GroupListResponse {
   per_page: number
   total: number
   total_pages: number
+}
+
+export interface GroupProvidersResponse {
+  providers: LlmProvider[]
 }
 
 export interface HardwareInfo {
@@ -659,6 +664,10 @@ export interface UpdateAssistantRequest {
   parameters?: ModelParameters
 }
 
+export interface UpdateGroupProvidersRequest {
+  provider_ids: string[]
+}
+
 export interface UpdateGroupRequest {
   description?: string
   is_active?: boolean
@@ -842,6 +851,8 @@ export const ApiEndpoints = {
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'Group.getProviders': 'GET /api/groups/{group_id}/providers',
+  'Group.updateProviders': 'PUT /api/groups/{group_id}/providers',
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
@@ -924,6 +935,8 @@ export type ApiEndpointParameters = {
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'Group.getProviders': { group_id: string }
+  'Group.updateProviders': { group_id: string } & UpdateGroupProvidersRequest
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
@@ -1006,6 +1019,8 @@ export type ApiEndpointResponses = {
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'Group.getProviders': GroupProvidersResponse
+  'Group.updateProviders': GroupProvidersResponse
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse

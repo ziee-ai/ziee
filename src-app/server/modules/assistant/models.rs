@@ -60,6 +60,10 @@ pub struct CreateAssistantRequest {
     /// Whether this is the default assistant
     /// Setting to true will unset other defaults in the same context
     pub is_default: Option<bool>,
+
+    /// Whether this assistant is enabled
+    /// Defaults to true if not specified
+    pub enabled: Option<bool>,
 }
 
 /// Request structure for updating an existing assistant

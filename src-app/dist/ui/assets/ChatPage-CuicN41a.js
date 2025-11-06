@@ -1,1 +1,0 @@
-import{j as a,T as t}from"./index-l-rTNRIC.js";const{Title:s,Paragraph:e}=t;function r(){return a.jsxs("div",{className:"p-8",children:[a.jsx(s,{level:2,children:"Chat"}),a.jsx(e,{children:"Chat functionality coming soon..."})]})}export{r as default};

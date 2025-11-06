@@ -56,3 +56,17 @@ pub struct LlmProviderListResponse {
     pub page: i32,
     pub per_page: i32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GroupProvidersResponse {
+    pub providers: Vec<LlmProvider>,
+}
+
+// =====================================================
+// Group-centric Request Types
+// =====================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateGroupProvidersRequest {
+    pub provider_ids: Vec<Uuid>,
+}
