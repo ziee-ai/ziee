@@ -8,6 +8,7 @@ import {
   emitAssistantTemplateUpdated,
   emitAssistantTemplateDeleted,
 } from '../events'
+import { Stores } from '@/core/stores'
 
 interface TemplateAssistantsState {
   // Data
@@ -27,6 +28,7 @@ interface TemplateAssistantsState {
   error: string | null
 
   __init__: {
+    __store__?: () => void
     assistants: () => Promise<void>
   }
 
@@ -55,6 +57,27 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
         deleting: false,
         error: null,
         __init__: {
+          __store__: () => {
+            const eventBus = Stores.EventBus
+
+            // Subscribe to assistant_template.created
+            eventBus.on('assistant_template.created', async () => {
+              // Reload the list to maintain pagination consistency
+              await get().loadTemplateAssistants()
+            })
+
+            // Subscribe to assistant_template.updated
+            eventBus.on('assistant_template.updated', async () => {
+              // Reload the list to ensure fresh data
+              await get().loadTemplateAssistants()
+            })
+
+            // Subscribe to assistant_template.deleted
+            eventBus.on('assistant_template.deleted', async () => {
+              // Reload the list to maintain pagination consistency
+              await get().loadTemplateAssistants()
+            })
+          },
           assistants: () => get().loadTemplateAssistants(),
         },
 

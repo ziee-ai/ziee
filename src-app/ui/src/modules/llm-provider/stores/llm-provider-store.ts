@@ -18,6 +18,7 @@ import {
   emitLlmModelDeleted,
   emitLlmProviderGroupsChanged,
 } from '../events'
+import { Stores } from '@/core/stores'
 
 // Extended type that includes models array
 // TODO: Backend should include llm_models in LlmProvider response
@@ -72,6 +73,7 @@ interface LlmProviderState {
   removeGroupFromProvider: (providerId: string, groupId: string) => Promise<void>
 
   __init__: {
+    __store__?: () => void
     providers: () => Promise<void>
   }
 }
@@ -580,6 +582,93 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       },
 
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+
+          // Subscribe to llm_provider.created
+          eventBus.on('llm_provider.created', async event => {
+            const { provider } = event.data
+            const providerWithModels: LlmProviderWithModels = {
+              ...provider,
+              llm_models: [],
+            }
+            set(state => ({
+              providers: [...state.providers, providerWithModels],
+            }))
+          })
+
+          // Subscribe to llm_provider.updated
+          eventBus.on('llm_provider.updated', async event => {
+            const { provider } = event.data
+            set(state => {
+              // Find existing provider to preserve llm_models
+              const existingProvider = state.providers.find(p => p.id === provider.id)
+              const updatedProvider: LlmProviderWithModels = {
+                ...provider,
+                llm_models: existingProvider?.llm_models || [],
+              }
+              return {
+                providers: state.providers.map(p =>
+                  p.id === provider.id ? updatedProvider : p,
+                ),
+              }
+            })
+          })
+
+          // Subscribe to llm_provider.deleted
+          eventBus.on('llm_provider.deleted', async event => {
+            const { providerId } = event.data
+            set(state => {
+              // Clean up loading and error states for this provider
+              const { [providerId]: _loading, ...remainingLoading } =
+                state.llmModelsLoading
+              const { [providerId]: _error, ...remainingErrors } = state.modelError
+
+              return {
+                providers: state.providers.filter(p => p.id !== providerId),
+                llmModelsLoading: remainingLoading,
+                modelError: remainingErrors,
+              }
+            })
+          })
+
+          // Subscribe to llm_model.enabled
+          eventBus.on('llm_model.enabled', async event => {
+            const { modelId } = event.data
+            set(state => ({
+              providers: state.providers.map(p => ({
+                ...p,
+                llm_models: p.llm_models?.map(m =>
+                  m.id === modelId ? { ...m, enabled: true } : m,
+                ),
+              })),
+            }))
+          })
+
+          // Subscribe to llm_model.disabled
+          eventBus.on('llm_model.disabled', async event => {
+            const { modelId } = event.data
+            set(state => ({
+              providers: state.providers.map(p => ({
+                ...p,
+                llm_models: p.llm_models?.map(m =>
+                  m.id === modelId ? { ...m, enabled: false } : m,
+                ),
+              })),
+            }))
+          })
+
+          // Subscribe to llm_model.deleted
+          eventBus.on('llm_model.deleted', async event => {
+            const { modelId } = event.data
+            set(state => ({
+              providers: state.providers.map(p => ({
+                ...p,
+                llm_models: p.llm_models?.filter(m => m.id !== modelId),
+              })),
+            }))
+          })
+        },
         providers: () => get().loadLlmProviders(),
       },
     }),

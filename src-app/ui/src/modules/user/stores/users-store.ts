@@ -11,6 +11,7 @@ import {
   emitUserUpdated,
   emitUserDeleted,
 } from '../events'
+import { Stores } from '@/core/stores'
 
 interface UsersState {
   // Data
@@ -46,6 +47,7 @@ interface UsersState {
   updateUserRegistrationSettings: (enabled: boolean) => Promise<void>
 
   __init__: {
+    __store__?: () => void
     users: () => Promise<void>
   }
 }
@@ -353,6 +355,26 @@ export const useUsersStore = create<UsersState>()(
       },
 
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+
+          // Subscribe to user.updated
+          eventBus.on('user.updated', async event => {
+            const { user } = event.data
+            set(state => ({
+              users: state.users.map(u => (u.id === user.id ? user : u)),
+            }))
+          })
+
+          // Subscribe to user.deleted
+          eventBus.on('user.deleted', async event => {
+            const { userId } = event.data
+            set(state => ({
+              users: state.users.filter(u => u.id !== userId),
+              total: state.total - 1,
+            }))
+          })
+        },
         users: () => get().loadUsers(),
       },
     }),

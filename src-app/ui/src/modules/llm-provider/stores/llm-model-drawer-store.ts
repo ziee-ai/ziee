@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { Stores } from '@/core/stores'
 
 // ===== Add Local Model Upload Drawer =====
 interface AddLocalLlmModelUploadDrawerState {
@@ -92,34 +94,57 @@ interface EditLlmModelDrawerState {
   openEditLlmModelDrawer: (modelId: string) => void
   closeEditLlmModelDrawer: () => void
   setEditLlmModelDrawerLoading: (loading: boolean) => void
+
+  // Initialization
+  __init__: {
+    __store__: () => void
+  }
 }
 
-export const useEditLlmModelDrawerStore = create<EditLlmModelDrawerState>(
-  (set): EditLlmModelDrawerState => ({
-    open: false,
-    loading: false,
-    modelId: null,
+export const useEditLlmModelDrawerStore = create<EditLlmModelDrawerState>()(
+  subscribeWithSelector(
+    (set, get): EditLlmModelDrawerState => ({
+      open: false,
+      loading: false,
+      modelId: null,
 
-    // Actions
-    openEditLlmModelDrawer: (modelId: string) => {
-      set({
-        open: true,
-        modelId,
-      })
-    },
+      __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
 
-    closeEditLlmModelDrawer: () => {
-      set({
-        open: false,
-        loading: false,
-        modelId: null,
-      })
-    },
+          // Subscribe to llm_model.deleted
+          eventBus.on('llm_model.deleted', async event => {
+            const { modelId } = event.data
+            const state = get()
 
-    setEditLlmModelDrawerLoading: (loading: boolean) => {
-      set({ loading })
-    },
-  }),
+            if (state.modelId === modelId) {
+              get().closeEditLlmModelDrawer()
+            }
+          })
+        },
+      },
+
+      // Actions
+      openEditLlmModelDrawer: (modelId: string) => {
+        set({
+          open: true,
+          modelId,
+        })
+      },
+
+      closeEditLlmModelDrawer: () => {
+        set({
+          open: false,
+          loading: false,
+          modelId: null,
+        })
+      },
+
+      setEditLlmModelDrawerLoading: (loading: boolean) => {
+        set({ loading })
+      },
+    }),
+  ),
 )
 
 // ===== Add Remote LLM Model Drawer =====

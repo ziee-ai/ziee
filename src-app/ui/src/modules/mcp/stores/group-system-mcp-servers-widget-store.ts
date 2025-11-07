@@ -73,6 +73,50 @@ export const useGroupSystemMcpServersWidgetStore = create<GroupSystemMcpServersW
                 })
               })
             })
+
+            // Subscribe to mcp_server.created
+            eventBus.on('mcp_server.created', async event => {
+              const { server } = event.data
+              // Only handle system servers
+              if (server.is_system) {
+                set(state => {
+                  state.serversInitialized = false
+                })
+                await get().loadAllServers()
+              }
+            })
+
+            // Subscribe to mcp_server.updated
+            eventBus.on('mcp_server.updated', async event => {
+              const { server } = event.data
+              // Only handle system servers
+              if (server.is_system) {
+                set(state => {
+                  const index = state.allServers.findIndex(s => s.id === server.id)
+                  if (index !== -1) {
+                    state.allServers[index] = server
+                  }
+                })
+              }
+            })
+
+            // Subscribe to mcp_server.deleted
+            eventBus.on('mcp_server.deleted', async event => {
+              const { serverId } = event.data
+              set(state => {
+                // Remove from allServers cache
+                state.allServers = state.allServers.filter(s => s.id !== serverId)
+
+                // Clear it from all groupServers maps
+                state.groupServers.forEach((groupData, groupId) => {
+                  const updatedServers = groupData.servers.filter(s => s.id !== serverId)
+                  state.groupServers.set(groupId, {
+                    ...groupData,
+                    servers: updatedServers,
+                  })
+                })
+              })
+            })
           },
 
           // Property-specific initialization - runs when allServers is first accessed

@@ -73,6 +73,43 @@ export const useLlmProviderGroupWidgetStore = create<LlmProviderGroupWidgetState
                 })
               })
             })
+
+            // Subscribe to llm_provider.created
+            eventBus.on('llm_provider.created', async () => {
+              set(state => {
+                state.providersInitialized = false
+              })
+              await get().loadAllProviders()
+            })
+
+            // Subscribe to llm_provider.updated
+            eventBus.on('llm_provider.updated', async event => {
+              const { provider } = event.data
+              set(state => {
+                const index = state.allProviders.findIndex(p => p.id === provider.id)
+                if (index !== -1) {
+                  state.allProviders[index] = provider
+                }
+              })
+            })
+
+            // Subscribe to llm_provider.deleted
+            eventBus.on('llm_provider.deleted', async event => {
+              const { providerId } = event.data
+              set(state => {
+                // Remove from allProviders cache
+                state.allProviders = state.allProviders.filter(p => p.id !== providerId)
+
+                // Clear it from all groupProviders maps
+                state.groupProviders.forEach((groupData, groupId) => {
+                  const updatedProviders = groupData.providers.filter(p => p.id !== providerId)
+                  state.groupProviders.set(groupId, {
+                    ...groupData,
+                    providers: updatedProviders,
+                  })
+                })
+              })
+            })
           },
 
           // Property-specific initialization - runs when allProviders is first accessed

@@ -1,5 +1,7 @@
 import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
 import type { Assistant } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 
 interface AssistantDrawerState {
   open: boolean
@@ -11,35 +13,88 @@ interface AssistantDrawerState {
   openAssistantDrawer: (assistant?: Assistant | null, isTemplate?: boolean) => void
   closeAssistantDrawer: () => void
   setAssistantDrawerLoading: (loading: boolean) => void
+
+  // Initialization
+  __init__: {
+    __store__: () => void
+  }
 }
 
-export const useAssistantDrawerStore = create<AssistantDrawerState>(
-  (set): AssistantDrawerState => ({
-    open: false,
-    loading: false,
-    editingAssistant: null,
-    isTemplate: false,
+export const useAssistantDrawerStore = create<AssistantDrawerState>()(
+  subscribeWithSelector(
+    (set, get): AssistantDrawerState => ({
+      open: false,
+      loading: false,
+      editingAssistant: null,
+      isTemplate: false,
 
-    // Actions
-    openAssistantDrawer: (assistant?: Assistant | null, isTemplate = false) => {
-      set({
-        open: true,
-        editingAssistant: assistant || null,
-        isTemplate,
-      })
-    },
+      __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
 
-    closeAssistantDrawer: () => {
-      set({
-        open: false,
-        loading: false,
-        editingAssistant: null,
-        isTemplate: false,
-      })
-    },
+          // Subscribe to assistant.updated (user assistants)
+          eventBus.on('assistant.updated', async event => {
+            const { assistant } = event.data
+            const state = get()
 
-    setAssistantDrawerLoading: (loading: boolean) => {
-      set({ loading })
-    },
-  }),
+            if (!state.isTemplate && state.editingAssistant?.id === assistant.id) {
+              set({ editingAssistant: assistant })
+            }
+          })
+
+          // Subscribe to assistant.deleted (user assistants)
+          eventBus.on('assistant.deleted', async event => {
+            const { assistantId } = event.data
+            const state = get()
+
+            if (!state.isTemplate && state.editingAssistant?.id === assistantId) {
+              get().closeAssistantDrawer()
+            }
+          })
+
+          // Subscribe to assistant_template.updated (template assistants)
+          eventBus.on('assistant_template.updated', async event => {
+            const { template } = event.data
+            const state = get()
+
+            if (state.isTemplate && state.editingAssistant?.id === template.id) {
+              set({ editingAssistant: template })
+            }
+          })
+
+          // Subscribe to assistant_template.deleted (template assistants)
+          eventBus.on('assistant_template.deleted', async event => {
+            const { templateId } = event.data
+            const state = get()
+
+            if (state.isTemplate && state.editingAssistant?.id === templateId) {
+              get().closeAssistantDrawer()
+            }
+          })
+        },
+      },
+
+      // Actions
+      openAssistantDrawer: (assistant?: Assistant | null, isTemplate = false) => {
+        set({
+          open: true,
+          editingAssistant: assistant || null,
+          isTemplate,
+        })
+      },
+
+      closeAssistantDrawer: () => {
+        set({
+          open: false,
+          loading: false,
+          editingAssistant: null,
+          isTemplate: false,
+        })
+      },
+
+      setAssistantDrawerLoading: (loading: boolean) => {
+        set({ loading })
+      },
+    }),
+  ),
 )

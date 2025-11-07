@@ -12,6 +12,7 @@ import {
   emitMcpServerUpdated,
   emitMcpServerDeleted,
 } from '../events'
+import { Stores } from '@/core/stores'
 
 interface SystemMcpServersState {
   // System servers data
@@ -35,6 +36,7 @@ interface SystemMcpServersState {
 
   // Initialization methods
   __init__: {
+    __store__?: () => void
     systemServers: () => Promise<void>
   }
 
@@ -80,6 +82,43 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
 
       // Initialization methods
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+
+          // Subscribe to mcp_server.created
+          eventBus.on('mcp_server.created', async event => {
+            const { server } = event.data
+            // Only add if it's a system server
+            if (server.is_system) {
+              set(state => ({
+                systemServers: [...state.systemServers, server],
+                systemServersTotal: state.systemServersTotal + 1,
+              }))
+            }
+          })
+
+          // Subscribe to mcp_server.updated
+          eventBus.on('mcp_server.updated', async event => {
+            const { server } = event.data
+            // Only update if it's a system server
+            if (server.is_system) {
+              set(state => ({
+                systemServers: state.systemServers.map(s =>
+                  s.id === server.id ? server : s,
+                ),
+              }))
+            }
+          })
+
+          // Subscribe to mcp_server.deleted
+          eventBus.on('mcp_server.deleted', async event => {
+            const { serverId } = event.data
+            set(state => ({
+              systemServers: state.systemServers.filter(s => s.id !== serverId),
+              systemServersTotal: state.systemServersTotal - 1,
+            }))
+          })
+        },
         systemServers: () => get().loadSystemServers(),
       },
 

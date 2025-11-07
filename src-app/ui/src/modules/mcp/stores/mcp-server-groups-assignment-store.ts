@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { Stores } from '@/core/stores'
 
 interface McpServerGroupsAssignmentState {
   isOpen: boolean
@@ -8,13 +9,33 @@ interface McpServerGroupsAssignmentState {
 
   openDrawer: (serverId: string) => void
   closeDrawer: () => void
+
+  __init__: {
+    __store__: () => void
+  }
 }
 
 export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmentState>()(
   subscribeWithSelector(
-    immer(set => ({
+    immer((set, get) => ({
       isOpen: false,
       selectedServerId: null,
+
+      __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+
+          // Subscribe to mcp_server.deleted
+          eventBus.on('mcp_server.deleted', async event => {
+            const { serverId } = event.data
+            const state = get()
+
+            if (state.selectedServerId === serverId) {
+              get().closeDrawer()
+            }
+          })
+        },
+      },
 
       openDrawer: (serverId: string) => {
         set(state => {

@@ -13,6 +13,7 @@ import {
   emitGroupMemberAdded,
   emitGroupMemberRemoved,
 } from '../events'
+import { Stores } from '@/core/stores'
 
 interface GroupMember {
   id: string
@@ -54,6 +55,7 @@ interface UserGroupsState {
   clearError: () => void
 
   __init__: {
+    __store__?: () => void
     groups: () => Promise<void>
   }
 }
@@ -345,6 +347,69 @@ export const useUserGroupsStore = create<UserGroupsState>()(
       },
 
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+
+          // Subscribe to group.created
+          eventBus.on('group.created', async event => {
+            const { group } = event.data
+            set(state => ({
+              groups: [...state.groups, group],
+              total: state.total + 1,
+            }))
+          })
+
+          // Subscribe to group.updated
+          eventBus.on('group.updated', async event => {
+            const { group } = event.data
+            set(state => ({
+              groups: state.groups.map(g => (g.id === group.id ? group : g)),
+            }))
+          })
+
+          // Subscribe to group.deleted
+          eventBus.on('group.deleted', async event => {
+            const { groupId } = event.data
+            set(state => ({
+              groups: state.groups.filter(g => g.id !== groupId),
+              total: state.total - 1,
+            }))
+          })
+
+          // Subscribe to group.member_added
+          eventBus.on('group.member_added', async event => {
+            const { groupId } = event.data
+            const state = get()
+            // If currentGroupId matches, reload group members
+            if (state.currentGroupId === groupId) {
+              await get().loadUserGroupMembers(groupId)
+            }
+          })
+
+          // Subscribe to group.member_removed
+          eventBus.on('group.member_removed', async event => {
+            const { groupId, userId } = event.data
+            const state = get()
+            // If currentGroupId matches, remove member from currentGroupMembers
+            if (state.currentGroupId === groupId) {
+              set(state => ({
+                currentGroupMembers: state.currentGroupMembers.filter(
+                  m => m.id !== userId,
+                ),
+              }))
+            }
+          })
+
+          // Subscribe to user.deleted
+          eventBus.on('user.deleted', async event => {
+            const { userId } = event.data
+            set(state => ({
+              currentGroupMembers: state.currentGroupMembers.filter(
+                m => m.id !== userId,
+              ),
+            }))
+          })
+        },
         groups: () => get().loadUserGroups(),
       },
     }),

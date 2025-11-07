@@ -9,6 +9,7 @@ import {
   emitAssistantUpdated,
   emitAssistantDeleted,
 } from '../events'
+import { Stores } from '@/core/stores'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -28,6 +29,7 @@ interface UserAssistantsState {
   error: string | null
 
   __init__: {
+    __store__?: () => void
     assistants: () => Promise<void>
   }
 
@@ -53,6 +55,33 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
         deleting: false,
         error: null,
         __init__: {
+          __store__: () => {
+            const eventBus = Stores.EventBus
+
+            // Subscribe to assistant.created
+            eventBus.on('assistant.created', async event => {
+              const { assistant } = event.data
+              set(state => {
+                state.assistants.set(assistant.id, assistant)
+              })
+            })
+
+            // Subscribe to assistant.updated
+            eventBus.on('assistant.updated', async event => {
+              const { assistant } = event.data
+              set(state => {
+                state.assistants.set(assistant.id, assistant)
+              })
+            })
+
+            // Subscribe to assistant.deleted
+            eventBus.on('assistant.deleted', async event => {
+              const { assistantId } = event.data
+              set(state => {
+                state.assistants.delete(assistantId)
+              })
+            })
+          },
           assistants: () => get().loadUserAssistants(),
         },
 

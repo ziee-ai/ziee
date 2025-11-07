@@ -14,6 +14,7 @@ import {
   emitMcpServerUpdated,
   emitMcpServerDeleted,
 } from '../events'
+import { Stores } from '@/core/stores'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -37,6 +38,7 @@ interface McpState {
 
   // Initialization methods
   __init__: {
+    __store__?: () => void
     servers: () => Promise<void>
   }
 
@@ -76,6 +78,54 @@ export const useMcpStore = create<McpState>()(
 
         // Initialization methods
         __init__: {
+          __store__: () => {
+            const eventBus = Stores.EventBus
+
+            // Subscribe to mcp_server.created
+            eventBus.on('mcp_server.created', async event => {
+              const { server } = event.data
+              set(draft => {
+                draft.servers.push(server)
+              })
+            })
+
+            // Subscribe to mcp_server.updated
+            eventBus.on('mcp_server.updated', async event => {
+              const { server } = event.data
+              set(draft => {
+                const index = draft.servers.findIndex(s => s.id === server.id)
+                if (index !== -1) {
+                  draft.servers[index] = server
+                }
+              })
+            })
+
+            // Subscribe to mcp_server.deleted
+            eventBus.on('mcp_server.deleted', async event => {
+              const { serverId } = event.data
+              set(draft => {
+                draft.servers = draft.servers.filter(s => s.id !== serverId)
+              })
+            })
+
+            // Subscribe to mcp_server.groups_changed
+            eventBus.on('mcp_server.groups_changed', async () => {
+              // Reload servers list to get fresh accessible servers
+              await get().loadMcpServers()
+            })
+
+            // Subscribe to group.member_added
+            eventBus.on('group.member_added', async () => {
+              // Reload servers list (user might gain access to system servers)
+              await get().loadMcpServers()
+            })
+
+            // Subscribe to group.member_removed
+            eventBus.on('group.member_removed', async () => {
+              // Reload servers list (user might lose access to system servers)
+              await get().loadMcpServers()
+            })
+          },
           servers: () => get().loadMcpServers(),
         },
 

@@ -12,6 +12,7 @@ import {
   emitLlmRepositoryUpdated,
   emitLlmRepositoryDeleted,
 } from '../events'
+import { Stores } from '@/core/stores'
 
 interface LlmRepositoryState {
   // Data
@@ -39,6 +40,7 @@ interface LlmRepositoryState {
   llmRepositoryHasCredentials: (repository: LlmRepository) => boolean
 
   __init__: {
+    __store__?: () => void
     repositories: () => Promise<void>
   }
 }
@@ -262,6 +264,35 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
       },
 
       __init__: {
+        __store__: () => {
+          const eventBus = Stores.EventBus
+
+          // Subscribe to llm_repository.created
+          eventBus.on('llm_repository.created', async event => {
+            const { repository } = event.data
+            set(state => ({
+              repositories: [...state.repositories, repository],
+            }))
+          })
+
+          // Subscribe to llm_repository.updated
+          eventBus.on('llm_repository.updated', async event => {
+            const { repository } = event.data
+            set(state => ({
+              repositories: state.repositories.map(r =>
+                r.id === repository.id ? repository : r,
+              ),
+            }))
+          })
+
+          // Subscribe to llm_repository.deleted
+          eventBus.on('llm_repository.deleted', async event => {
+            const { repositoryId } = event.data
+            set(state => ({
+              repositories: state.repositories.filter(r => r.id !== repositoryId),
+            }))
+          })
+        },
         repositories: () => get().loadLlmRepositories(),
       },
     }),
