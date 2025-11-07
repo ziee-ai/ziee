@@ -102,7 +102,7 @@ export function UserGroupsSettings() {
   }
 
   const openEditModal = (group: Group) => {
-    Stores.UserGroupDrawer.openUserGroupDrawer(group)
+    Stores.EditUserGroupDrawer.openUserGroupDrawer(group)
   }
 
   const handlePageChange = (page: number, size?: number) => {

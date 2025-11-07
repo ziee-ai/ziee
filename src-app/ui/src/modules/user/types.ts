@@ -8,7 +8,7 @@ declare module '@/core/stores' {
   interface RegisteredStores {
     Users: StoreProxy<ReturnType<typeof useUsersStore.getState>>
     UserGroups: StoreProxy<ReturnType<typeof useUserGroupsStore.getState>>
-    UserGroupDrawer: StoreProxy<ReturnType<typeof useUserGroupDrawerStore.getState>>
+    EditUserGroupDrawer: StoreProxy<ReturnType<typeof useUserGroupDrawerStore.getState>>
     GroupMembersDrawer: StoreProxy<ReturnType<typeof useGroupMembersDrawerStore.getState>>
   }
 }

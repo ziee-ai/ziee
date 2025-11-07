@@ -3,7 +3,7 @@ import { RobotOutlined } from '@ant-design/icons'
 import AppLayout from '@/components/Layout/AppLayout'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
 import { useUserAssistantsStore, useTemplateAssistantsStore } from './stores'
-import { useAssistantDrawerStore } from './components/AssistantFormDrawer.store'
+import { useAssistantDrawerStore } from './components/AssistantDrawer.store'
 import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 

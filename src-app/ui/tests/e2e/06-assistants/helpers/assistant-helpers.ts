@@ -94,17 +94,12 @@ export async function cancelAssistantForm(page: Page) {
   // Find the Cancel button within any visible drawer
   await page.locator('.ant-drawer').getByRole('button', { name: 'Cancel' }).click()
 
-  // Wait for all drawers to be hidden (checks that no visible drawers remain)
-  await page.waitForFunction(
-    () => {
-      const drawers = document.querySelectorAll('.ant-drawer')
-      return Array.from(drawers).every(drawer => {
-        const computedStyle = window.getComputedStyle(drawer)
-        return computedStyle.display === 'none' || computedStyle.visibility === 'hidden'
-      })
-    },
-    { timeout: 10000 }
-  )
+  // Wait for the drawer to close by checking that no visible drawers remain
+  // We check the drawer wrapper class that Ant Design uses when drawer is open
+  await page.waitForSelector('.ant-drawer.ant-drawer-open', {
+    state: 'hidden',
+    timeout: 10000
+  })
 }
 
 /**

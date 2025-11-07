@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useLlmRepositoryStore } from './stores/llm-repository-store'
+import type { useLlmRepositoryStore } from './stores/LlmRepository.store'
 import type { useLlmRepositoryDrawerStore } from './components/LlmRepositoryDrawer.store'
 
 // Augment the RegisteredStores interface to add LlmRepository stores

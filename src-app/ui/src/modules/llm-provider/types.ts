@@ -49,7 +49,7 @@ declare module '@/core/stores' {
     LlmProviderGroupWidget: StoreProxy<
       ReturnType<typeof useLlmProviderGroupWidgetStore.getState>
     >
-    ProviderGroupCard: StoreProxy<
+    ProviderGroupAssignmentCard: StoreProxy<
       ReturnType<typeof useProviderGroupCardStore.getState>
     >
   }

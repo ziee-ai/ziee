@@ -1,7 +1,7 @@
 import { createModule } from '@/core'
 import { CloudDownloadOutlined } from '@ant-design/icons'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
-import { useLlmRepositoryStore } from './stores/llm-repository-store'
+import { useLlmRepositoryStore } from './stores/LlmRepository.store'
 import { useLlmRepositoryDrawerStore } from './components/LlmRepositoryDrawer.store'
 import './types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

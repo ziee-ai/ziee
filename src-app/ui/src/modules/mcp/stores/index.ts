@@ -1,7 +1,7 @@
 // Only export hooks, not action functions
-export { useMcpStore } from './mcp-store'
-export { useSystemMcpServersStore } from './system-mcp-servers-store'
-export { useMcpServerDrawerStore } from './mcp-drawer-store'
+export { useMcpStore } from './McpServer.store'
+export { useSystemMcpServersStore } from './SystemMcpServer.store'
+export { useMcpServerDrawerStore } from './McpServerDrawer.store'
 
 // Re-export for compatibility with Stores pattern
 export { Stores } from '@/core/stores'

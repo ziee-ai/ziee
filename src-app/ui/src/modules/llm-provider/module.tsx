@@ -89,7 +89,7 @@ export default createModule({
       store: useLlmProviderGroupWidgetStore,
     },
     {
-      name: 'ProviderGroupCard',
+      name: 'ProviderGroupAssignmentCard',
       store: useProviderGroupCardStore,
     },
   ],

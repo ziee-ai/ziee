@@ -36,7 +36,7 @@ export function EditUserGroupDrawer() {
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
 
-  const { isOpen: open, editingGroup: group } = Stores.UserGroupDrawer
+  const { isOpen: open, editingGroup: group } = Stores.EditUserGroupDrawer
 
   // Load group data when it changes
   useEffect(() => {
@@ -52,7 +52,7 @@ export function EditUserGroupDrawer() {
 
   const handleClose = () => {
     form.resetFields()
-    Stores.UserGroupDrawer.closeUserGroupDrawer()
+    Stores.EditUserGroupDrawer.closeUserGroupDrawer()
   }
 
   const handleSubmit = async (values: any) => {

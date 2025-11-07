@@ -8,7 +8,7 @@ import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
 } from '@/api-client/types'
-import { useSystemMcpServersStore } from './system-mcp-servers-store'
+import { useSystemMcpServersStore } from './SystemMcpServer.store'
 import {
   emitMcpServerCreated,
   emitMcpServerUpdated,

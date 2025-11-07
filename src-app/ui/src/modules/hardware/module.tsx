@@ -1,7 +1,7 @@
 import { createModule } from '@/core'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
-import { useHardwareStore } from './store'
+import { useHardwareStore } from './Hardware.store'
 import './types'
 import { BlankLayout } from '@/components/Layout/BlankLayout.tsx' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

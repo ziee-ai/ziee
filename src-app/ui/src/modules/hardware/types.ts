@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useHardwareStore } from './store'
+import type { useHardwareStore } from './Hardware.store'
 
 // Augment the RegisteredStores interface to add Hardware store
 declare module '@/core/stores' {

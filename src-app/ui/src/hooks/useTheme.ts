@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import { AppThemeConfig } from '@/themes/light'
-import type { ThemePreference } from '@/modules/config-client/store'
+import type { ThemePreference } from '@/modules/config-client/ConfigClient.store'
 
 export type ThemeName = 'light' | 'dark'
 

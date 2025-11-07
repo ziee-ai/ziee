@@ -5,7 +5,7 @@ import type {
   ModelEngineSettings,
 } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
-import { useLlmProviderStore } from './llm-provider-store'
+import { useLlmProviderStore } from './LlmProvider.store'
 
 /**
  * Upload progress for a single file

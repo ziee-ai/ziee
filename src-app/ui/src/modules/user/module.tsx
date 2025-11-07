@@ -41,7 +41,7 @@ export default createModule({
       store: useUserGroupsStore,
     },
     {
-      name: 'UserGroupDrawer',
+      name: 'EditUserGroupDrawer',
       store: useUserGroupDrawerStore,
     },
     {
