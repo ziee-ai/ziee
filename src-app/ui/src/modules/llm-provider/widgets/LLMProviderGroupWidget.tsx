@@ -28,7 +28,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   }
 
   return (
-    <Card>
+    <Card data-widget="llm-providers" data-group-id={group.id}>
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -66,7 +66,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
             No providers assigned
           </Text>
         ) : (
-          <Space wrap size="small">
+          <Space wrap size="small" data-testid="provider-tags-container">
             {providers.map(provider => (
               <Tag
                 key={provider.id}

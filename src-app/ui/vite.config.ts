@@ -7,8 +7,22 @@ import path from 'node:path'
 const host = process.env.TAURI_DEV_HOST
 
 // https://vitejs.dev/config/
-export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss()],
+export default defineConfig(async () => {
+  const isDev = process.env.NODE_ENV !== 'production'
+  const isTest = process.env.NODE_ENV === 'test'
+
+  return {
+    plugins: [
+      react({
+        babel: {
+          plugins: [
+            // Add data-component-name attributes in development and test modes
+            ...(isDev || isTest ? ['./babel-plugin-add-component-name.cjs'] : []),
+          ],
+        },
+      }),
+      tailwindcss(),
+    ],
 
   // Vite options tailored for Tauri development
   clearScreen: false,
@@ -51,4 +65,5 @@ export default defineConfig(async () => ({
   build: {
     outDir: '../../dist/ui',
   },
-}))
+  }
+})

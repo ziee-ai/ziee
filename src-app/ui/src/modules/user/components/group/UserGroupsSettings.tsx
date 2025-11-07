@@ -3,7 +3,6 @@ import {
   App,
   Button,
   Card,
-  Divider,
   Empty,
   Flex,
   Form,
@@ -135,12 +134,11 @@ export function UserGroupsSettings() {
               <Empty description="No user groups found" />
             </div>
           ) : (
-            <div>
-              {groups.map((group, index) => (
+            <div className="flex flex-col gap-3">
+              {groups.map((group) => (
                 <GroupListItem
                   key={group.id}
                   group={group}
-                  showDivider={index < groups.length - 1}
                   onEdit={openEditModal}
                   onDelete={handleDeleteGroup}
                   onViewMembers={handleViewMembers}
@@ -151,8 +149,7 @@ export function UserGroupsSettings() {
 
           {groups.length > 0 && (
             <>
-              <Divider className="mb-4" />
-              <div className="flex justify-end">
+              <div className="flex justify-end mt-4">
                 <Pagination
                   current={storePage}
                   total={totalGroups}

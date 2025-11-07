@@ -28,7 +28,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   }
 
   return (
-    <Card>
+    <Card data-widget="system-mcp-servers" data-group-id={group.id}>
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
         {/* Header */}
         <div className="flex items-center justify-between">

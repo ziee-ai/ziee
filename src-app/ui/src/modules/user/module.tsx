@@ -2,14 +2,19 @@ import { createModule } from '@/core'
 import { UserOutlined, TeamOutlined } from '@ant-design/icons'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
 import { useUsersStore, useUserGroupsStore } from './stores'
-import { useUserGroupDrawerStore } from './components/EditUserGroupDrawer.store'
-import { useGroupMembersDrawerStore } from './components/GroupMembersDrawer.store'
+import { useUserGroupDrawerStore } from './components/group/EditUserGroupDrawer.store'
+import { useGroupMembersDrawerStore } from './components/group/GroupMembersDrawer.store'
+import { useCreateUserDrawerStore } from './components/user/CreateUserDrawer.store'
+import { useEditUserDrawerStore } from './components/user/EditUserDrawer.store'
+import { useResetPasswordDrawerStore } from './components/user/ResetPasswordDrawer.store'
+import { useUserGroupsDrawerStore } from './components/user/UserGroupsDrawer.store'
+import { useAssignGroupDrawerStore } from './components/user/AssignGroupDrawer.store'
 import './types' // Import type augmentation
 import './types/GroupWidget' // Register userGroup widget slot
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
-const UsersSettings = lazyWithPreload(() => import('./components/UsersSettings').then(m => ({ default: m.UsersSettings })))
-const UserGroupsSettings = lazyWithPreload(() => import('./components/UserGroupsSettings').then(m => ({ default: m.UserGroupsSettings })))
+const UsersSettings = lazyWithPreload(() => import('./components/user/UsersSettings').then(m => ({ default: m.UsersSettings })))
+const UserGroupsSettings = lazyWithPreload(() => import('./components/group/UserGroupsSettings').then(m => ({ default: m.UserGroupsSettings })))
 
 export default createModule({
   metadata: {
@@ -47,6 +52,26 @@ export default createModule({
     {
       name: 'GroupMembersDrawer',
       store: useGroupMembersDrawerStore,
+    },
+    {
+      name: 'CreateUserDrawer',
+      store: useCreateUserDrawerStore,
+    },
+    {
+      name: 'EditUserDrawer',
+      store: useEditUserDrawerStore,
+    },
+    {
+      name: 'ResetPasswordDrawer',
+      store: useResetPasswordDrawerStore,
+    },
+    {
+      name: 'UserGroupsDrawer',
+      store: useUserGroupsDrawerStore,
+    },
+    {
+      name: 'AssignGroupDrawer',
+      store: useAssignGroupDrawerStore,
     },
   ],
   settings: [

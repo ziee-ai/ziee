@@ -28,7 +28,8 @@ export async function clickGroupItem(page: Page, groupName: string) {
   const groupText = page.locator(`text="${groupName}"`).first()
   await groupText.waitFor({ state: 'visible', timeout: 10000 })
   // No need to click - widgets are already visible
-  await page.waitForTimeout(500) // Wait for any rendering
+  // Wait longer for lazy-loaded widgets to render (LLM Providers widget is lazy-loaded)
+  await page.waitForTimeout(2000)
 }
 
 // =====================================================
@@ -89,6 +90,12 @@ export async function saveProviderAssignment(page: Page) {
     state: 'hidden',
     timeout: 5000,
   })
+
+  // CRITICAL: Wait for event propagation and widget cache update
+  // The save operation triggers an event that the widget store subscribes to.
+  // The widget store then fetches all providers and updates the cache.
+  // This is async and takes time, so we need to wait for it to complete.
+  await page.waitForTimeout(2000)
 }
 
 export async function cancelProviderAssignment(page: Page) {
@@ -107,6 +114,8 @@ export async function assignProviderToGroup(
   groupName: string,
   providerName: string
 ) {
+  // Ensure we're on the right page first
+  await waitForUserGroupsPageLoad(page)
   await openProviderAssignmentDrawerFromGroup(page, groupName)
   await toggleProviderInDrawer(page, providerName, true)
   await saveProviderAssignment(page)
@@ -117,6 +126,8 @@ export async function removeProviderFromGroup(
   groupName: string,
   providerName: string
 ) {
+  // Ensure we're on the right page first
+  await waitForUserGroupsPageLoad(page)
   await openProviderAssignmentDrawerFromGroup(page, groupName)
   await toggleProviderInDrawer(page, providerName, false)
   await saveProviderAssignment(page)
@@ -127,16 +138,19 @@ export async function assertProviderInGroupWidget(
   groupName: string,
   providerName: string
 ) {
+  // Ensure page has loaded
+  await waitForUserGroupsPageLoad(page)
+
   // Expand the group if needed
   await clickGroupItem(page, groupName)
 
-  // Find the group container that contains the group name
-  // Then find the LLM Providers widget within that group
-  const groupContainer = page.locator(`[role="listitem"]:has-text("${groupName}")`).first()
-  const widget = groupContainer.locator('div:has(strong:has-text("LLM Providers"))')
-  await widget.waitFor({ state: 'visible', timeout: 5000 })
+  // Wait for the LLM Providers widget to be visible
+  const widget = page.locator('[data-widget="llm-providers"]')
+  await widget.waitFor({ state: 'visible', timeout: 10000 })
 
-  const providerTag = widget.locator(`.ant-tag:has-text("${providerName}")`)
+  // Use data-widget attribute to uniquely identify the LLM Providers widget
+  // This avoids conflicts with parent group cards or other widgets
+  const providerTag = widget.locator(`[data-testid="provider-tags-container"] .ant-tag:has-text("${providerName}")`)
   await expect(providerTag).toBeVisible()
 }
 
@@ -145,16 +159,18 @@ export async function assertProviderNotInGroupWidget(
   groupName: string,
   providerName: string
 ) {
+  // Ensure page has loaded
+  await waitForUserGroupsPageLoad(page)
+
   // Expand the group if needed
   await clickGroupItem(page, groupName)
 
-  // Find the group container that contains the group name
-  // Then find the LLM Providers widget within that group
-  const groupContainer = page.locator(`[role="listitem"]:has-text("${groupName}")`).first()
-  const widget = groupContainer.locator('div:has(strong:has-text("LLM Providers"))')
-  await widget.waitFor({ state: 'visible', timeout: 5000 })
+  // Wait for the LLM Providers widget to be visible
+  const widget = page.locator('[data-widget="llm-providers"]')
+  await widget.waitFor({ state: 'visible', timeout: 10000 })
 
-  const providerTag = widget.locator(`.ant-tag:has-text("${providerName}")`)
+  // Use data-widget attribute to uniquely identify the LLM Providers widget
+  const providerTag = widget.locator(`[data-testid="provider-tags-container"] .ant-tag:has-text("${providerName}")`)
   await expect(providerTag).not.toBeVisible()
 }
 
@@ -163,20 +179,24 @@ export async function assertGroupWidgetShowsCount(
   groupName: string,
   expectedCount: number
 ) {
+  // Ensure page has loaded
+  await waitForUserGroupsPageLoad(page)
+
   // Expand the group if needed
   await clickGroupItem(page, groupName)
 
-  // Find the group container that contains the group name
-  // Then find the LLM Providers widget within that group
-  const groupContainer = page.locator(`[role="listitem"]:has-text("${groupName}")`).first()
-  const widget = groupContainer.locator('div:has(strong:has-text("LLM Providers"))')
-  await widget.waitFor({ state: 'visible', timeout: 5000 })
+  // Wait for the LLM Providers widget to be visible (not just the button)
+  const widget = page.locator('[data-widget="llm-providers"]')
+  await widget.waitFor({ state: 'visible', timeout: 10000 })
 
   if (expectedCount === 0) {
-    // Check for "No providers assigned" text
-    await expect(widget.locator('text=No providers assigned')).toBeVisible()
+    // Use data-widget attribute to target the specific widget
+    const noProvidersText = widget.locator('text=No providers assigned')
+    await expect(noProvidersText).toBeVisible()
   } else {
-    const tags = widget.locator('.ant-tag')
+    // Use data-widget attribute to uniquely identify the LLM Providers widget
+    // This ensures we only count tags in the LLM Providers widget, not other widgets
+    const tags = widget.locator('[data-testid="provider-tags-container"] .ant-tag')
     await expect(tags).toHaveCount(expectedCount)
   }
 }
@@ -354,7 +374,7 @@ export async function createUserGroup(
   })
 
   // Verify group appears in list
-  await expect(page.locator(`text=${groupName}`)).toBeVisible()
+  await expect(page.locator(`text=${groupName}`).first()).toBeVisible()
 }
 
 export async function deleteUserGroup(

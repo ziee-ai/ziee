@@ -62,8 +62,8 @@ export async function createProvider(
   // Wait for success message - actual message is "Provider added successfully"
   await page.waitForSelector('text=Provider added successfully', { timeout: 15000 })
 
-  // Verify provider appears in list
-  await expect(page.locator(`text=${data.name}`)).toBeVisible()
+  // Verify provider appears in list (use .first() since name might appear in multiple places)
+  await expect(page.locator(`text=${data.name}`).first()).toBeVisible()
 }
 
 export async function createLocalProvider(

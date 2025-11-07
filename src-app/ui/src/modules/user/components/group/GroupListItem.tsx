@@ -7,8 +7,8 @@ import {
 import {
   Badge,
   Button,
+  Card,
   Descriptions,
-  Divider,
   Flex,
   Popconfirm,
   Tag,
@@ -17,7 +17,7 @@ import {
 import type { Group } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { WidgetRenderer } from '@/core/components/WidgetRenderer'
-import type { GroupWidget } from '../types/GroupWidget'
+import type { GroupWidget } from '../../types/GroupWidget'
 
 const { Text } = Typography
 
@@ -31,7 +31,6 @@ interface GroupListItemProps {
 
 export function GroupListItem({
   group,
-  showDivider = false,
   onEdit,
   onDelete,
   onViewMembers,
@@ -93,7 +92,7 @@ export function GroupListItem({
   }
 
   return (
-    <div>
+    <Card>
       <div className="flex items-start gap-3 flex-wrap">
         {/* Group Info */}
         <div className="flex-1">
@@ -151,7 +150,6 @@ export function GroupListItem({
         </div>
       )}
 
-      {showDivider && <Divider className="my-0" />}
-    </div>
+    </Card>
   )
 }

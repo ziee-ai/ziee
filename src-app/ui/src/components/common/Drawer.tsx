@@ -48,7 +48,7 @@ export const Drawer: React.FC<DrawerProps> = props => {
       {...restProps}
       closable={false}
       classNames={{
-        body: `!pl-3 !pr-0 !pt-0`,
+        body: `!pl-3 !pr-0 !pt-0 overflow-x-visible`,
         wrapper: '!overflow-hidden !bg-transparent',
         ...(restProps.classNames || {}),
       }}

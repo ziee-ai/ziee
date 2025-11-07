@@ -120,8 +120,6 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                 return (
                   <Card
                     key={server.id}
-                    hoverable
-                    onClick={() => handleToggle(server.id, !isChecked)}
                   >
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
