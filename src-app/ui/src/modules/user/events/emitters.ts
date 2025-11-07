@@ -50,3 +50,33 @@ export const emitUserUpdated = async (user: User) => {
     data: { user },
   })
 }
+
+/**
+ * Emit user deleted event
+ */
+export const emitUserDeleted = async (userId: string) => {
+  await Stores.EventBus.emit({
+    type: 'user.deleted',
+    data: { userId },
+  })
+}
+
+/**
+ * Emit group member added event
+ */
+export const emitGroupMemberAdded = async (groupId: string, userId: string) => {
+  await Stores.EventBus.emit({
+    type: 'group.member_added',
+    data: { groupId, userId },
+  })
+}
+
+/**
+ * Emit group member removed event
+ */
+export const emitGroupMemberRemoved = async (groupId: string, userId: string) => {
+  await Stores.EventBus.emit({
+    type: 'group.member_removed',
+    data: { groupId, userId },
+  })
+}

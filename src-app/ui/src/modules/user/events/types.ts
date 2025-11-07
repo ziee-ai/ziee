@@ -37,6 +37,29 @@ export interface UserUpdatedEvent extends BaseEvent {
   }
 }
 
+export interface UserDeletedEvent extends BaseEvent {
+  type: 'user.deleted'
+  data: {
+    userId: string
+  }
+}
+
+export interface GroupMemberAddedEvent extends BaseEvent {
+  type: 'group.member_added'
+  data: {
+    groupId: string
+    userId: string
+  }
+}
+
+export interface GroupMemberRemovedEvent extends BaseEvent {
+  type: 'group.member_removed'
+  data: {
+    groupId: string
+    userId: string
+  }
+}
+
 // Union of all user module events
 export type UserModuleEvent =
   | GroupCreatedEvent
@@ -44,6 +67,9 @@ export type UserModuleEvent =
   | GroupDeletedEvent
   | UserCreatedEvent
   | UserUpdatedEvent
+  | UserDeletedEvent
+  | GroupMemberAddedEvent
+  | GroupMemberRemovedEvent
 
 // Register events in global registry via declaration merging
 declare module '@/core/events' {
@@ -53,5 +79,8 @@ declare module '@/core/events' {
     'group.deleted': GroupDeletedEvent
     'user.created': UserCreatedEvent
     'user.updated': UserUpdatedEvent
+    'user.deleted': UserDeletedEvent
+    'group.member_added': GroupMemberAddedEvent
+    'group.member_removed': GroupMemberRemovedEvent
   }
 }

@@ -4,6 +4,11 @@ import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import type { Assistant, CreateAssistantRequest, UpdateAssistantRequest } from '@/api-client/types'
+import {
+  emitAssistantCreated,
+  emitAssistantUpdated,
+  emitAssistantDeleted,
+} from '../events'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -90,6 +95,13 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
 
             const assistant = await ApiClient.Assistant.create(data)
 
+            // Emit event after successful API call
+            try {
+              await emitAssistantCreated(assistant)
+            } catch (eventError) {
+              console.error('Failed to emit assistant created event:', eventError)
+            }
+
             set(state => {
               if (data.is_default) {
                 // Set all other assistants' is_default to false
@@ -125,6 +137,13 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
               ...data,
             })
 
+            // Emit event after successful API call
+            try {
+              await emitAssistantUpdated(assistant)
+            } catch (eventError) {
+              console.error('Failed to emit assistant updated event:', eventError)
+            }
+
             set(state => {
               if (data.is_default) {
                 // Set all other assistants' is_default to false
@@ -155,6 +174,13 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             set({ deleting: true, error: null })
 
             await ApiClient.Assistant.delete({ id })
+
+            // Emit event after successful API call
+            try {
+              await emitAssistantDeleted(id)
+            } catch (eventError) {
+              console.error('Failed to emit assistant deleted event:', eventError)
+            }
 
             set(state => {
               state.assistants.delete(id)

@@ -6,7 +6,12 @@ import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
 } from '@/api-client/types'
-import { emitGroupSystemMcpServersChanged } from '../events'
+import {
+  emitGroupSystemMcpServersChanged,
+  emitMcpServerCreated,
+  emitMcpServerUpdated,
+  emitMcpServerDeleted,
+} from '../events'
 
 interface SystemMcpServersState {
   // System servers data
@@ -131,6 +136,13 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
 
           const newServer = await ApiClient.McpServerSystem.create(data)
 
+          // Emit event after successful API call
+          try {
+            await emitMcpServerCreated(newServer)
+          } catch (eventError) {
+            console.error('Failed to emit mcp server created event:', eventError)
+          }
+
           set(state => ({
             systemServers: [...state.systemServers, newServer],
             systemServersTotal: state.systemServersTotal + 1,
@@ -163,6 +175,13 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
 
           const updatedServer = await ApiClient.McpServerSystem.update({ id, ...data })
 
+          // Emit event after successful API call
+          try {
+            await emitMcpServerUpdated(updatedServer)
+          } catch (eventError) {
+            console.error('Failed to emit mcp server updated event:', eventError)
+          }
+
           set(state => ({
             systemServers: state.systemServers.map(server =>
               server.id === id ? updatedServer : server,
@@ -192,6 +211,13 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           })
 
           await ApiClient.McpServerSystem.delete({ id })
+
+          // Emit event after successful API call
+          try {
+            await emitMcpServerDeleted(id)
+          } catch (eventError) {
+            console.error('Failed to emit mcp server deleted event:', eventError)
+          }
 
           set(state => ({
             systemServers: state.systemServers.filter(server => server.id !== id),

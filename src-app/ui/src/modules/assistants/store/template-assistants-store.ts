@@ -3,6 +3,11 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type { Assistant, CreateAssistantRequest, UpdateAssistantRequest } from '@/api-client/types'
+import {
+  emitAssistantTemplateCreated,
+  emitAssistantTemplateUpdated,
+  emitAssistantTemplateDeleted,
+} from '../events'
 
 interface TemplateAssistantsState {
   // Data
@@ -105,6 +110,13 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
 
             const assistant = await ApiClient.AssistantTemplate.create(data)
 
+            // Emit event after successful API call
+            try {
+              await emitAssistantTemplateCreated(assistant)
+            } catch (eventError) {
+              console.error('Failed to emit assistant template created event:', eventError)
+            }
+
             // Reload the list to maintain pagination consistency
             await get().loadTemplateAssistants()
 
@@ -140,6 +152,13 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
               ...data,
             })
 
+            // Emit event after successful API call
+            try {
+              await emitAssistantTemplateUpdated(assistant)
+            } catch (eventError) {
+              console.error('Failed to emit assistant template updated event:', eventError)
+            }
+
             // Reload the list to maintain pagination consistency
             await get().loadTemplateAssistants()
 
@@ -168,6 +187,13 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
             set({ deleting: true, error: null })
 
             await ApiClient.AssistantTemplate.delete({ id })
+
+            // Emit event after successful API call
+            try {
+              await emitAssistantTemplateDeleted(id)
+            } catch (eventError) {
+              console.error('Failed to emit assistant template deleted event:', eventError)
+            }
 
             // Reload the list to maintain pagination consistency
             await get().loadTemplateAssistants()

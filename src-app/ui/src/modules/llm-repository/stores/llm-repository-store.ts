@@ -7,6 +7,11 @@ import type {
   UpdateLlmRepositoryRequest,
   TestRepositoryConnectionRequest,
 } from '@/api-client/types'
+import {
+  emitLlmRepositoryCreated,
+  emitLlmRepositoryUpdated,
+  emitLlmRepositoryDeleted,
+} from '../events'
 
 interface LlmRepositoryState {
   // Data
@@ -91,6 +96,13 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
 
           const repository = await ApiClient.LlmRepository.create(data)
 
+          // Emit event after successful API call
+          try {
+            await emitLlmRepositoryCreated(repository)
+          } catch (eventError) {
+            console.error('Failed to emit llm repository created event:', eventError)
+          }
+
           set(state => ({
             repositories: [...state.repositories, repository],
             creating: false,
@@ -121,6 +133,13 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
             ...data,
           })
 
+          // Emit event after successful API call
+          try {
+            await emitLlmRepositoryUpdated(repository)
+          } catch (eventError) {
+            console.error('Failed to emit llm repository updated event:', eventError)
+          }
+
           set(state => ({
             repositories: state.repositories.map(r => (r.id === id ? repository : r)),
             updating: false,
@@ -147,6 +166,13 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           set({ deleting: true, error: null })
 
           await ApiClient.LlmRepository.delete({ repository_id: id })
+
+          // Emit event after successful API call
+          try {
+            await emitLlmRepositoryDeleted(id)
+          } catch (eventError) {
+            console.error('Failed to emit llm repository deleted event:', eventError)
+          }
 
           set(state => ({
             repositories: state.repositories.filter(r => r.id !== id),

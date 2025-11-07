@@ -6,6 +6,13 @@ import type {
   CreateGroupRequest,
   UpdateGroupRequest,
 } from '@/api-client/types'
+import {
+  emitGroupCreated,
+  emitGroupUpdated,
+  emitGroupDeleted,
+  emitGroupMemberAdded,
+  emitGroupMemberRemoved,
+} from '../events'
 
 interface GroupMember {
   id: string
@@ -117,6 +124,13 @@ export const useUserGroupsStore = create<UserGroupsState>()(
 
           const group = await ApiClient.UserGroup.create(data)
 
+          // Emit event after successful API call
+          try {
+            await emitGroupCreated(group)
+          } catch (eventError) {
+            console.error('Failed to emit group created event:', eventError)
+          }
+
           set(state => ({
             groups: [...state.groups, group],
             total: state.total + 1,
@@ -147,6 +161,13 @@ export const useUserGroupsStore = create<UserGroupsState>()(
             ...data,
           })
 
+          // Emit event after successful API call
+          try {
+            await emitGroupUpdated(group)
+          } catch (eventError) {
+            console.error('Failed to emit group updated event:', eventError)
+          }
+
           set(state => ({
             groups: state.groups.map(g => (g.id === id ? group : g)),
             updating: false,
@@ -174,6 +195,13 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           await ApiClient.UserGroup.delete({
             group_id: id,
           })
+
+          // Emit event after successful API call
+          try {
+            await emitGroupDeleted(id)
+          } catch (eventError) {
+            console.error('Failed to emit group deleted event:', eventError)
+          }
 
           set(state => ({
             groups: state.groups.filter(g => g.id !== id),
@@ -247,6 +275,13 @@ export const useUserGroupsStore = create<UserGroupsState>()(
             group_id: groupId,
           })
 
+          // Emit event after successful API call
+          try {
+            await emitGroupMemberAdded(groupId, userId)
+          } catch (eventError) {
+            console.error('Failed to emit group member added event:', eventError)
+          }
+
           // Reload group members if we're viewing this group
           if (state.currentGroupId === groupId) {
             await get().loadUserGroupMembers(groupId)
@@ -278,6 +313,13 @@ export const useUserGroupsStore = create<UserGroupsState>()(
             user_id: userId,
             group_id: groupId,
           })
+
+          // Emit event after successful API call
+          try {
+            await emitGroupMemberRemoved(groupId, userId)
+          } catch (eventError) {
+            console.error('Failed to emit group member removed event:', eventError)
+          }
 
           // Remove from current group members list
           set(state => ({

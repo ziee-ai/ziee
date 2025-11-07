@@ -9,6 +9,11 @@ import type {
   UpdateMcpServerRequest,
 } from '@/api-client/types'
 import { useSystemMcpServersStore } from './system-mcp-servers-store'
+import {
+  emitMcpServerCreated,
+  emitMcpServerUpdated,
+  emitMcpServerDeleted,
+} from '../events'
 
 // Enable Map and Set support in Immer
 enableMapSet()
@@ -119,6 +124,13 @@ export const useMcpStore = create<McpState>()(
 
             const newServer = await ApiClient.McpServer.create(data)
 
+            // Emit event after successful API call
+            try {
+              await emitMcpServerCreated(newServer)
+            } catch (eventError) {
+              console.error('Failed to emit mcp server created event:', eventError)
+            }
+
             set(draft => {
               draft.servers.push(newServer)
               draft.creating = false
@@ -151,6 +163,13 @@ export const useMcpStore = create<McpState>()(
               id: serverId,
               ...data,
             })
+
+            // Emit event after successful API call
+            try {
+              await emitMcpServerUpdated(updatedServer)
+            } catch (eventError) {
+              console.error('Failed to emit mcp server updated event:', eventError)
+            }
 
             // Update main MCP store (uses immer)
             set(draft => {
@@ -199,6 +218,13 @@ export const useMcpStore = create<McpState>()(
 
           try {
             await ApiClient.McpServer.delete({ id: serverId })
+
+            // Emit event after successful API call
+            try {
+              await emitMcpServerDeleted(serverId)
+            } catch (eventError) {
+              console.error('Failed to emit mcp server deleted event:', eventError)
+            }
 
             // Remove from main MCP store (uses immer)
             set(draft => {

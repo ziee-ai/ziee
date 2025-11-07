@@ -8,7 +8,16 @@ import type {
   LlmModel,
   Group,
 } from '@/api-client/types'
-import { emitGroupLlmProvidersChanged } from '../events'
+import {
+  emitGroupLlmProvidersChanged,
+  emitLlmProviderCreated,
+  emitLlmProviderUpdated,
+  emitLlmProviderDeleted,
+  emitLlmModelEnabled,
+  emitLlmModelDisabled,
+  emitLlmModelDeleted,
+  emitLlmProviderGroupsChanged,
+} from '../events'
 
 // Extended type that includes models array
 // TODO: Backend should include llm_models in LlmProvider response
@@ -189,6 +198,13 @@ export const useLlmProviderStore = create<LlmProviderState>()(
 
           const provider = await ApiClient.LlmProvider.create(data)
 
+          // Emit event after successful API call
+          try {
+            await emitLlmProviderCreated(provider)
+          } catch (eventError) {
+            console.error('Failed to emit llm provider created event:', eventError)
+          }
+
           // Add llm_models array to provider
           const providerWithModels: LlmProviderWithModels = {
             ...provider,
@@ -225,6 +241,13 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             ...data,
           })
 
+          // Emit event after successful API call
+          try {
+            await emitLlmProviderUpdated(provider)
+          } catch (eventError) {
+            console.error('Failed to emit llm provider updated event:', eventError)
+          }
+
           // Find existing provider to preserve llm_models
           const existingProvider = state.providers.find(p => p.id === id)
           const updatedProvider: LlmProviderWithModels = {
@@ -258,6 +281,13 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           set({ deleting: true, error: null })
 
           await ApiClient.LlmProvider.delete({ provider_id: id })
+
+          // Emit event after successful API call
+          try {
+            await emitLlmProviderDeleted(id)
+          } catch (eventError) {
+            console.error('Failed to emit llm provider deleted event:', eventError)
+          }
 
           set(state => {
             // Clean up loading and error states for this provider
@@ -317,6 +347,20 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             enabled: true,
           })
 
+          // Find provider ID for this model
+          const providerId = get().providers.find(p =>
+            p.llm_models?.some(m => m.id === modelId)
+          )?.id
+
+          // Emit event after successful API call
+          if (providerId) {
+            try {
+              await emitLlmModelEnabled(modelId, providerId)
+            } catch (eventError) {
+              console.error('Failed to emit llm model enabled event:', eventError)
+            }
+          }
+
           // Update the model in the provider's llm_models array
           set(state => ({
             providers: state.providers.map(p => ({
@@ -348,6 +392,20 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             enabled: false,
           })
 
+          // Find provider ID for this model
+          const providerId = get().providers.find(p =>
+            p.llm_models?.some(m => m.id === modelId)
+          )?.id
+
+          // Emit event after successful API call
+          if (providerId) {
+            try {
+              await emitLlmModelDisabled(modelId, providerId)
+            } catch (eventError) {
+              console.error('Failed to emit llm model disabled event:', eventError)
+            }
+          }
+
           // Update the model in the provider's llm_models array
           set(state => ({
             providers: state.providers.map(p => ({
@@ -374,7 +432,21 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             error: null,
           }))
 
+          // Find provider ID for this model before deletion
+          const providerId = get().providers.find(p =>
+            p.llm_models?.some(m => m.id === modelId)
+          )?.id
+
           await ApiClient.LlmModel.delete({ model_id: modelId })
+
+          // Emit event after successful API call
+          if (providerId) {
+            try {
+              await emitLlmModelDeleted(modelId, providerId)
+            } catch (eventError) {
+              console.error('Failed to emit llm model deleted event:', eventError)
+            }
+          }
 
           // Remove the model from the provider's llm_models array
           set(state => ({
@@ -473,6 +545,14 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             provider_id: providerId,
             group_id: groupId,
           })
+
+          // Fetch updated group list and emit event
+          try {
+            const groups = await ApiClient.LlmProvider.getGroups({ provider_id: providerId })
+            await emitLlmProviderGroupsChanged(providerId, groups.map(g => g.id))
+          } catch (eventError) {
+            console.error('Failed to emit llm provider groups changed event:', eventError)
+          }
         } catch (error) {
           console.error('Failed to assign group to provider:', error)
           throw error
@@ -485,6 +565,14 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             provider_id: providerId,
             group_id: groupId,
           })
+
+          // Fetch updated group list and emit event
+          try {
+            const groups = await ApiClient.LlmProvider.getGroups({ provider_id: providerId })
+            await emitLlmProviderGroupsChanged(providerId, groups.map(g => g.id))
+          } catch (eventError) {
+            console.error('Failed to emit llm provider groups changed event:', eventError)
+          }
         } catch (error) {
           console.error('Failed to remove group from provider:', error)
           throw error

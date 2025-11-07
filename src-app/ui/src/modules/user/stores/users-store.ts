@@ -6,6 +6,11 @@ import type {
   CreateUserRequest,
   UpdateUserRequest,
 } from '@/api-client/types'
+import {
+  emitUserCreated,
+  emitUserUpdated,
+  emitUserDeleted,
+} from '../events'
 
 interface UsersState {
   // Data
@@ -110,6 +115,13 @@ export const useUsersStore = create<UsersState>()(
 
           const user = await ApiClient.User.create(data)
 
+          // Emit event after successful API call
+          try {
+            await emitUserCreated(user)
+          } catch (eventError) {
+            console.error('Failed to emit user created event:', eventError)
+          }
+
           set(state => ({
             users: [...state.users, user],
             total: state.total + 1,
@@ -140,6 +152,13 @@ export const useUsersStore = create<UsersState>()(
             ...data,
           })
 
+          // Emit event after successful API call
+          try {
+            await emitUserUpdated(user)
+          } catch (eventError) {
+            console.error('Failed to emit user updated event:', eventError)
+          }
+
           set(state => ({
             users: state.users.map(u => (u.id === id ? user : u)),
             updating: false,
@@ -169,6 +188,17 @@ export const useUsersStore = create<UsersState>()(
             new_password: newPassword,
           })
 
+          // Emit event after successful API call
+          // Find the user and emit update event
+          const user = get().users.find(u => u.id === id)
+          if (user) {
+            try {
+              await emitUserUpdated(user)
+            } catch (eventError) {
+              console.error('Failed to emit user updated event:', eventError)
+            }
+          }
+
           set({ updating: false })
         } catch (error) {
           set({
@@ -192,12 +222,27 @@ export const useUsersStore = create<UsersState>()(
             user_id: id,
           })
 
+          // Update local state
+          let updatedUser: User | undefined
           set(state => ({
-            users: state.users.map(u =>
-              u.id === id ? { ...u, is_active: !u.is_active } : u,
-            ),
+            users: state.users.map(u => {
+              if (u.id === id) {
+                updatedUser = { ...u, is_active: !u.is_active }
+                return updatedUser
+              }
+              return u
+            }),
             updating: false,
           }))
+
+          // Emit event after successful API call
+          if (updatedUser) {
+            try {
+              await emitUserUpdated(updatedUser)
+            } catch (eventError) {
+              console.error('Failed to emit user updated event:', eventError)
+            }
+          }
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : 'Failed to toggle user status',
@@ -219,6 +264,13 @@ export const useUsersStore = create<UsersState>()(
           await ApiClient.User.delete({
             user_id: id,
           })
+
+          // Emit event after successful API call
+          try {
+            await emitUserDeleted(id)
+          } catch (eventError) {
+            console.error('Failed to emit user deleted event:', eventError)
+          }
 
           set(state => ({
             users: state.users.filter(u => u.id !== id),
