@@ -91,8 +91,20 @@ export async function submitAssistantForm(page: Page) {
 }
 
 export async function cancelAssistantForm(page: Page) {
+  // Find the Cancel button within any visible drawer
   await page.locator('.ant-drawer').getByRole('button', { name: 'Cancel' }).click()
-  await page.waitForSelector('.ant-drawer', { state: 'hidden', timeout: 10000 })
+
+  // Wait for all drawers to be hidden (checks that no visible drawers remain)
+  await page.waitForFunction(
+    () => {
+      const drawers = document.querySelectorAll('.ant-drawer')
+      return Array.from(drawers).every(drawer => {
+        const computedStyle = window.getComputedStyle(drawer)
+        return computedStyle.display === 'none' || computedStyle.visibility === 'hidden'
+      })
+    },
+    { timeout: 10000 }
+  )
 }
 
 /**

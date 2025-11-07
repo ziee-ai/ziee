@@ -2,18 +2,18 @@ import type { StoreProxy } from '@/core/stores'
 import type {
   useLlmProviderStore,
   useLlmModelDownloadStore,
-  useLlmProviderDrawerStore,
   useAddLocalLlmModelUploadDrawerStore,
   useAddLocalLlmModelDownloadDrawerStore,
   useEditLlmModelDrawerStore,
   useAddRemoteLlmModelDrawerStore,
   useViewDownloadDrawerStore,
   useUploadStore,
-  useGroupLlmProvidersAssignmentStore,
-  useLlmProviderGroupsAssignmentStore,
-  useLlmProviderGroupWidgetStore,
-  useProviderGroupCardStore,
 } from './stores'
+import type { useProviderGroupCardStore } from './components/ProviderGroupAssignmentCard.store'
+import type { useLlmProviderGroupWidgetStore } from './widgets/LLMProviderGroupWidget.store'
+import type { useLlmProviderDrawerStore } from './components/LlmProviderDrawer.store'
+import type { useGroupLlmProvidersAssignmentStore } from './components/GroupLlmProvidersAssignmentDrawer.store'
+import type { useLlmProviderGroupsAssignmentStore } from './components/LlmProviderGroupsAssignmentDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

@@ -21,7 +21,7 @@ import {
 import { useEffect } from 'react'
 import {
   Stores,
-} from '../store'
+} from '../stores'
 import type { Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '../components/AssistantFormDrawer'

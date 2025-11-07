@@ -1,5 +1,6 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useUserAssistantsStore, useTemplateAssistantsStore, useAssistantDrawerStore } from './store'
+import type { useUserAssistantsStore, useTemplateAssistantsStore } from './stores'
+import type { useAssistantDrawerStore } from './components/AssistantFormDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

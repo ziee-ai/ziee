@@ -4,18 +4,18 @@ import SettingsLayout from '@/modules/settings/SettingsLayout'
 import {
   useLlmProviderStore,
   useLlmModelDownloadStore,
-  useLlmProviderDrawerStore,
   useAddLocalLlmModelUploadDrawerStore,
   useAddLocalLlmModelDownloadDrawerStore,
   useEditLlmModelDrawerStore,
   useAddRemoteLlmModelDrawerStore,
   useViewDownloadDrawerStore,
   useUploadStore,
-  useGroupLlmProvidersAssignmentStore,
-  useLlmProviderGroupsAssignmentStore,
-  useLlmProviderGroupWidgetStore,
-  useProviderGroupCardStore,
 } from './stores'
+import { useProviderGroupCardStore } from './components/ProviderGroupAssignmentCard.store'
+import { useLlmProviderGroupWidgetStore } from './widgets/LLMProviderGroupWidget.store'
+import { useLlmProviderDrawerStore } from './components/LlmProviderDrawer.store'
+import { useGroupLlmProvidersAssignmentStore } from './components/GroupLlmProvidersAssignmentDrawer.store'
+import { useLlmProviderGroupsAssignmentStore } from './components/LlmProviderGroupsAssignmentDrawer.store'
 import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

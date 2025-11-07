@@ -2,8 +2,8 @@ import { createModule } from '@/core'
 import { UserOutlined, TeamOutlined } from '@ant-design/icons'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
 import { useUsersStore, useUserGroupsStore } from './stores'
-import { useUserGroupDrawerStore } from './stores/user-group-drawer-store'
-import { useGroupMembersDrawerStore } from './stores/group-members-drawer-store'
+import { useUserGroupDrawerStore } from './components/EditUserGroupDrawer.store'
+import { useGroupMembersDrawerStore } from './components/GroupMembersDrawer.store'
 import './types' // Import type augmentation
 import './types/GroupWidget' // Register userGroup widget slot
 import { lazyWithPreload } from '@/utils/lazyWithPreload'

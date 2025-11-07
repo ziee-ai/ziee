@@ -8,7 +8,7 @@ import {
 import { PiSortAscending } from 'react-icons/pi'
 import {
   Stores,
-} from '../store'
+} from '../stores'
 import type { Assistant } from '@/api-client/types'
 import { AssistantCard } from '../components/AssistantCard'
 import { AssistantFormDrawer } from '../components/AssistantFormDrawer'

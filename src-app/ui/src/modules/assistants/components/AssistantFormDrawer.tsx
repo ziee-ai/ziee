@@ -3,7 +3,7 @@ import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import {
   Stores,
-} from '../store'
+} from '../stores'
 
 const { TextArea } = Input
 

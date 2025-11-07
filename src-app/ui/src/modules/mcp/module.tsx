@@ -5,11 +5,11 @@ import {
   useMcpStore,
   useSystemMcpServersStore,
   useMcpServerDrawerStore,
-  useGroupSystemMcpServersWidgetStore,
-  useGroupSystemMcpServersAssignmentStore,
-  useSystemMcpServerGroupCardStore,
-  useMcpServerGroupsAssignmentStore,
 } from './stores'
+import { useSystemMcpServerGroupCardStore } from './components/McpServerGroupsAssignmentCard.store'
+import { useGroupSystemMcpServersWidgetStore } from './widgets/GroupSystemMcpServersWidget.store'
+import { useGroupSystemMcpServersAssignmentStore } from './components/GroupSystemMcpServersAssignmentDrawer.store'
+import { useMcpServerGroupsAssignmentStore } from './components/McpServerGroupsAssignmentDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types' // CRITICAL: Import to enable type declaration merging
 

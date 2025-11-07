@@ -386,7 +386,8 @@ test.describe('User Assistants - User Page', () => {
     // Set second assistant as default
     await editAssistantFromCard(page, 'Assistant 2')
 
-    const defaultSwitch = page.locator('form >> text=Set as Default').locator('..').locator('.ant-switch')
+    // Find the switch within the Form.Item that has label "Set as Default"
+    const defaultSwitch = page.locator('.ant-form-item:has-text("Set as Default") .ant-switch')
     await defaultSwitch.waitFor({ state: 'visible', timeout: 10000 })
     await defaultSwitch.click()
 
@@ -418,7 +419,8 @@ test.describe('User Assistants - User Page', () => {
     // Disable it
     await editAssistantFromCard(page, 'Enabled Test Assistant')
 
-    const enabledSwitch = page.locator('form >> text=Enabled').locator('..').locator('.ant-switch')
+    // Find the switch within the Form.Item that has label "Enabled"
+    const enabledSwitch = page.locator('.ant-form-item:has-text("Enabled") .ant-switch')
     await enabledSwitch.waitFor({ state: 'visible', timeout: 10000 })
     await enabledSwitch.click()
 
