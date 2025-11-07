@@ -3,6 +3,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
+import { componentTypesPlugin } from './plugins/vite-plugin-component-types.js'
+import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -17,11 +19,20 @@ export default defineConfig(async () => {
         babel: {
           plugins: [
             // Add data-component-name attributes in development and test modes
-            ...(isDev || isTest ? ['./babel-plugin-add-component-name.cjs'] : []),
+            ...(isDev || isTest ? ['./plugins/babel-plugin-add-component-name.cjs'] : []),
           ],
         },
       }),
       tailwindcss(),
+      // Auto-generate component types for test selectors
+      componentTypesPlugin({
+        srcDir: 'src',
+        outputFile: 'tests/helpers/component-names.generated.ts',
+      }),
+      // Detect duplicate form names
+      formNamesPlugin({
+        srcDir: 'src',
+      }),
     ],
 
   // Vite options tailored for Tauri development

@@ -6,15 +6,19 @@
  */
 
 import { type Page, type Locator } from '@playwright/test'
+import type { ComponentName } from './component-names.generated'
 
 /**
  * Get a component by its name
+ *
+ * Provides IntelliSense for all available component names in the application.
+ * The component names are auto-generated from your codebase.
  *
  * @example
  * const userList = getComponent(page, 'UsersList')
  * await expect(userList).toBeVisible()
  */
-export function getComponent(page: Page, componentName: string): Locator {
+export function getComponent(page: Page, componentName: ComponentName): Locator {
   return page.locator(`[data-component-name="${componentName}"]`)
 }
 
@@ -26,7 +30,7 @@ export function getComponent(page: Page, componentName: string): Locator {
  * const listItems = getAllComponents(page, 'UserListItem')
  * await expect(listItems).toHaveCount(5)
  */
-export function getAllComponents(page: Page, componentName: string): Locator {
+export function getAllComponents(page: Page, componentName: ComponentName): Locator {
   return page.locator(`[data-component-name="${componentName}"]`)
 }
 
@@ -37,7 +41,7 @@ export function getAllComponents(page: Page, componentName: string): Locator {
  * const modal = getComponent(page, 'CreateUserDrawer')
  * const submitButton = getComponentWithin(modal, 'SubmitButton')
  */
-export function getComponentWithin(parent: Locator, componentName: string): Locator {
+export function getComponentWithin(parent: Locator, componentName: ComponentName): Locator {
   return parent.locator(`[data-component-name="${componentName}"]`)
 }
 
@@ -49,7 +53,7 @@ export function getComponentWithin(parent: Locator, componentName: string): Loca
  */
 export async function waitForComponent(
   page: Page,
-  componentName: string,
+  componentName: ComponentName,
   options?: { timeout?: number }
 ): Promise<Locator> {
   const component = getComponent(page, componentName)
@@ -67,7 +71,7 @@ export async function waitForComponent(
  */
 export async function isComponentVisible(
   page: Page,
-  componentName: string
+  componentName: ComponentName
 ): Promise<boolean> {
   return await getComponent(page, componentName).isVisible()
 }
@@ -80,7 +84,7 @@ export async function isComponentVisible(
  */
 export async function clickComponent(
   page: Page,
-  componentName: string,
+  componentName: ComponentName,
   options?: { timeout?: number }
 ): Promise<void> {
   await getComponent(page, componentName).click(options)
@@ -94,7 +98,7 @@ export async function clickComponent(
  */
 export async function getComponentText(
   page: Page,
-  componentName: string
+  componentName: ComponentName
 ): Promise<string | null> {
   return await getComponent(page, componentName).textContent()
 }

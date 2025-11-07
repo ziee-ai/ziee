@@ -101,7 +101,7 @@ export function EditUserGroupDrawer() {
       width={600}
       maskClosable={false}
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form name="edit-user-group-form" form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item
           name="name"
           label="Group Name"

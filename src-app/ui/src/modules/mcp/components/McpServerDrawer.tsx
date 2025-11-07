@@ -199,7 +199,7 @@ export function McpServerDrawer() {
   return (
     <Drawer open={open} onClose={handleClose} title={getTitle()} width={600}>
       <div className="flex flex-col gap-4">
-        <Form form={form} layout="vertical">
+        <Form name="mcp-server-form" form={form} layout="vertical">
           {/* Name (only for create mode) */}
           {(mode === 'create' || mode === 'create-system') && (
             <Form.Item

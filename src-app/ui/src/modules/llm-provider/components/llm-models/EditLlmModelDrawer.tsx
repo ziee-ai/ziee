@@ -103,7 +103,7 @@ export function EditLlmModelDrawer() {
       width={600}
       maskClosable={false}
     >
-      <Form form={form} layout="vertical">
+      <Form name="edit-llm-model-form" form={form} layout="vertical">
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />
 
         <Flex className={`flex-col gap-3`}>

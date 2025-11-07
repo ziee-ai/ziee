@@ -84,7 +84,7 @@ export function EditUserDrawer() {
       width={600}
       maskClosable={false}
     >
-      <Form form={editForm} layout="vertical" onFinish={handleEditUser}>
+      <Form name="edit-user-form" form={editForm} layout="vertical" onFinish={handleEditUser}>
         <Form.Item
           name="username"
           label="Username"
