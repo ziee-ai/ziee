@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
-import { App, Button, Card, Empty, Space, Tag, Typography } from 'antd'
+import { Button, Card, Flex, Spin, Tag, Typography } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
+import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 
@@ -8,37 +8,30 @@ const { Text } = Typography
 
 /**
  * Card for managing which user groups have access to an LLM provider.
- * Displays assigned groups and opens a drawer for management.
- * Uses a dedicated store to prevent duplicate API calls and cache data.
+ * Shows assigned groups and allows opening a drawer to modify assignments.
  */
 export function ProviderGroupAssignmentCard() {
-  const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
 
-  // Get data from store
-  const providerData = providerId
-    ? Stores.ProviderGroupCard.providerGroups.get(providerId)
-    : undefined
-  const assignedGroups = providerData?.groups || []
-  const loading = providerData?.loading || false
+  // ✅ CORRECT: Destructure all needed values at top level
+  const { providerGroups, loadGroupsForProvider } = Stores.ProviderGroupCard
+  const { lastUpdated, openDrawer } = Stores.LlmProviderGroupsAssignment
 
-  // Get lastUpdated from drawer store to watch for changes
-  const { lastUpdated } = Stores.ProviderGroupAssignment
+  const providerData = providerId ? providerGroups.get(providerId) : undefined
 
-  // Load assigned groups when provider changes or drawer updates
+  // Load groups for this provider on mount and when lastUpdated changes
   useEffect(() => {
     if (providerId) {
-      // Force reload when lastUpdated changes, otherwise use cached data
-      Stores.ProviderGroupCard.loadGroupsForProvider(providerId, !!lastUpdated).catch(err => {
-        console.error('Failed to load assigned groups:', err)
-        message.error('Failed to load assigned groups')
-      })
+      loadGroupsForProvider(providerId)
     }
-  }, [providerId, lastUpdated, message])
+  }, [providerId, loadGroupsForProvider, lastUpdated])
+
+  if (!providerId) {
+    return null
+  }
 
   const handleManageGroups = () => {
-    if (!providerId) return
-    Stores.ProviderGroupAssignment.openDrawer(providerId)
+    openDrawer(providerId)
   }
 
   return (
@@ -47,35 +40,28 @@ export function ProviderGroupAssignmentCard() {
       extra={
         <Button
           type="text"
-          icon={<EditOutlined aria-hidden="true" />}
+          icon={<EditOutlined />}
           onClick={handleManageGroups}
           aria-label="Manage user groups"
         />
       }
-      loading={loading}
     >
-      {assignedGroups.length === 0 ? (
-        <Empty
-          description="No groups assigned"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-        />
+      {providerData?.loading ? (
+        <Flex justify="center" align="center" style={{ padding: '20px' }}>
+          <Spin />
+        </Flex>
+      ) : providerData?.error ? (
+        <Text type="danger">{providerData.error}</Text>
+      ) : providerData?.groups && providerData.groups.length > 0 ? (
+        <Flex gap={8} wrap="wrap">
+          {providerData.groups.map(group => (
+            <Tag key={group.id} color="blue">
+              {group.name}
+            </Tag>
+          ))}
+        </Flex>
       ) : (
-        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-          <Text type="secondary">
-            User groups that have access to this LLM provider
-          </Text>
-          <Space wrap size="small">
-            {assignedGroups.map((group: { id: string; name: string }) => (
-              <Tag
-                key={group.id}
-                color="blue"
-                style={{ fontSize: '13px', padding: '4px 8px' }}
-              >
-                {group.name}
-              </Tag>
-            ))}
-          </Space>
-        </Space>
+        <Text type="secondary">No groups assigned</Text>
       )}
     </Card>
   )

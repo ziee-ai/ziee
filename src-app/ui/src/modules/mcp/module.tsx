@@ -1,7 +1,15 @@
 import { createModule } from '@/core'
 import { ApiOutlined } from '@ant-design/icons'
 import SettingsLayout from '@/modules/settings/SettingsLayout'
-import { useMcpStore, useSystemMcpServersStore, useMcpServerDrawerStore } from './stores'
+import {
+  useMcpStore,
+  useSystemMcpServersStore,
+  useMcpServerDrawerStore,
+  useGroupSystemMcpServersWidgetStore,
+  useGroupSystemMcpServersAssignmentStore,
+  useServerGroupCardStore,
+  useMcpServerGroupsAssignmentStore,
+} from './stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types' // CRITICAL: Import to enable type declaration merging
 
@@ -14,6 +22,24 @@ const McpServersSettings = lazyWithPreload(() =>
 const SystemMcpServersPage = lazyWithPreload(() =>
   import('./components/admin/SystemMcpServersPage').then(m => ({
     default: m.SystemMcpServersPage,
+  })),
+)
+
+const GroupSystemMcpServersWidget = lazyWithPreload(() =>
+  import('./widgets/GroupSystemMcpServersWidget').then(m => ({
+    default: m.GroupSystemMcpServersWidget,
+  })),
+)
+
+const GroupSystemMcpServersAssignmentDrawer = lazyWithPreload(() =>
+  import('./components/GroupSystemMcpServersAssignmentDrawer').then(m => ({
+    default: m.GroupSystemMcpServersAssignmentDrawer,
+  })),
+)
+
+const McpServerGroupsAssignmentDrawer = lazyWithPreload(() =>
+  import('./components/McpServerGroupsAssignmentDrawer').then(m => ({
+    default: m.McpServerGroupsAssignmentDrawer,
   })),
 )
 
@@ -50,7 +76,41 @@ export default createModule({
       name: 'McpServerDrawer',
       store: useMcpServerDrawerStore,
     },
+    {
+      name: 'GroupSystemMcpServersWidget',
+      store: useGroupSystemMcpServersWidgetStore,
+    },
+    {
+      name: 'GroupSystemMcpServersAssignment',
+      store: useGroupSystemMcpServersAssignmentStore,
+    },
+    {
+      name: 'ServerGroupCard',
+      store: useServerGroupCardStore,
+    },
+    {
+      name: 'McpServerGroupsAssignment',
+      store: useMcpServerGroupsAssignmentStore,
+    },
   ],
+  globalComponents: [
+    {
+      id: 'group-system-mcp-servers-assignment-drawer',
+      component: GroupSystemMcpServersAssignmentDrawer,
+    },
+    {
+      id: 'mcp-server-groups-assignment-drawer',
+      component: McpServerGroupsAssignmentDrawer,
+    },
+  ],
+  widgets: {
+    userGroup: [
+      {
+        order: 20,
+        component: GroupSystemMcpServersWidget,
+      },
+    ],
+  },
   settings: [
     {
       id: 'mcp-servers',

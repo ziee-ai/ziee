@@ -4,6 +4,7 @@ import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { McpServerCard } from '../McpServerCard'
 import { McpServerDrawer } from '../McpServerDrawer'
+import { McpServerGroupsAssignmentCard } from '../McpServerGroupsAssignmentCard'
 
 const { Text } = Typography
 
@@ -131,11 +132,13 @@ export function SystemServersTab() {
       {/* Servers List */}
       <div className="flex flex-col gap-3">
         {filteredServers.map(server => (
-          <McpServerCard
-            key={server.id}
-            server={server}
-            isEditable={true}
-          />
+          <div key={server.id} className="flex flex-col gap-3">
+            <McpServerCard
+              server={server}
+              isEditable={true}
+            />
+            <McpServerGroupsAssignmentCard serverId={server.id} />
+          </div>
         ))}
       </div>
 

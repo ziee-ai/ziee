@@ -13,6 +13,7 @@ import { EditLlmModelDrawer } from './llm-models/EditLlmModelDrawer'
 const { Text } = Typography
 
 export function LocalProviderSettings() {
+  console.log('[LocalProviderSettings] Component rendering')
   const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
 
@@ -50,7 +51,7 @@ export function LocalProviderSettings() {
 
       <LlmModelsSection />
 
-      {/* User Groups Assignment */}
+      {/* User Groups Assignment - After Models */}
       <ProviderGroupAssignmentCard />
 
       {/* Model Management Drawers */}

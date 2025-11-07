@@ -43,6 +43,12 @@ export async function clickProviderCard(page: Page, providerName: string) {
 
   // Wait for page to load - use 'load' instead of 'networkidle' to avoid issues with SSE connections
   await page.waitForLoadState('load')
+
+  // Wait for provider detail content to render (wait for any card to appear as indicator)
+  await page.waitForSelector('.ant-card', { timeout: 10000 })
+
+  // Additional wait for all cards to render, including ones that might be lower on the page
+  await page.waitForTimeout(1000)
 }
 
 // =====================================================

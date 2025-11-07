@@ -11,8 +11,8 @@ import {
   useAddRemoteLlmModelDrawerStore,
   useViewDownloadDrawerStore,
   useUploadStore,
-  useLlmProviderGroupAssignmentStore,
-  useProviderGroupAssignmentStore,
+  useGroupLlmProvidersAssignmentStore,
+  useLlmProviderGroupsAssignmentStore,
   useLlmProviderGroupWidgetStore,
   useProviderGroupCardStore,
 } from './stores'
@@ -21,8 +21,8 @@ import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const LlmProviderSettings = lazyWithPreload(() => import('./components/LlmProviderSettings').then(m => ({ default: m.LlmProviderSettings })))
-const LLMProviderGroupAssignmentDrawer = lazyWithPreload(() => import('./components/LLMProviderGroupAssignmentDrawer').then(m => ({ default: m.LLMProviderGroupAssignmentDrawer })))
-const ProviderGroupAssignmentDrawer = lazyWithPreload(() => import('./components/ProviderGroupAssignmentDrawer').then(m => ({ default: m.ProviderGroupAssignmentDrawer })))
+const GroupLlmProvidersAssignmentDrawer = lazyWithPreload(() => import('./components/GroupLlmProvidersAssignmentDrawer').then(m => ({ default: m.GroupLlmProvidersAssignmentDrawer })))
+const LlmProviderGroupsAssignmentDrawer = lazyWithPreload(() => import('./components/LlmProviderGroupsAssignmentDrawer').then(m => ({ default: m.LlmProviderGroupsAssignmentDrawer })))
 const LLMProviderGroupWidget = lazyWithPreload(() => import('./widgets/LLMProviderGroupWidget').then(m => ({ default: m.LLMProviderGroupWidget })))
 
 export default createModule({
@@ -77,12 +77,12 @@ export default createModule({
       store: useUploadStore,
     },
     {
-      name: 'LlmProviderGroupAssignment',
-      store: useLlmProviderGroupAssignmentStore,
+      name: 'GroupLlmProvidersAssignment',
+      store: useGroupLlmProvidersAssignmentStore,
     },
     {
-      name: 'ProviderGroupAssignment',
-      store: useProviderGroupAssignmentStore,
+      name: 'LlmProviderGroupsAssignment',
+      store: useLlmProviderGroupsAssignmentStore,
     },
     {
       name: 'LlmProviderGroupWidget',
@@ -115,12 +115,12 @@ export default createModule({
   ],
   globalComponents: [
     {
-      id: 'llm-provider-group-assignment-drawer',
-      component: LLMProviderGroupAssignmentDrawer,
+      id: 'group-llm-providers-assignment-drawer',
+      component: GroupLlmProvidersAssignmentDrawer,
     },
     {
-      id: 'provider-group-assignment-drawer',
-      component: ProviderGroupAssignmentDrawer,
+      id: 'llm-provider-groups-assignment-drawer',
+      component: LlmProviderGroupsAssignmentDrawer,
     },
   ],
   widgets: {

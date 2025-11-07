@@ -70,7 +70,14 @@ export const test = base.extend<TestFixtures>({
       await pool.end()
     }
 
-    // 2. Create backend config file
+    // 2. Clear Vite cache to ensure fresh builds
+    const viteCacheDir = resolve(__dirname, '../../node_modules/.vite')
+    if (existsSync(viteCacheDir)) {
+      console.log(`🗑️  Clearing Vite cache...`)
+      rmSync(viteCacheDir, { recursive: true, force: true })
+    }
+
+    // 3. Create backend config file
     const configDir = resolve(__dirname, '../../.test-configs')
     if (!existsSync(configDir)) {
       mkdirSync(configDir, { recursive: true })
@@ -126,7 +133,7 @@ jwt:
 
     writeFileSync(configPath, configContent)
 
-    // 3. Start backend server
+    // 4. Start backend server
     console.log(`🚀 Starting backend server on port ${backendPort}...`)
 
     // Spawn cargo directly without shell to ensure we can kill the process properly
@@ -183,7 +190,7 @@ jwt:
     }
     console.log(`✅ Backend server ready on port ${backendPort}`)
 
-    // 4. Create Vite config file
+    // 5. Create Vite config file
     const viteConfigPath = resolve(configDir, `vite-${testId}.ts`)
     const projectRoot = resolve(__dirname, '../..')
     const srcRoot = resolve(projectRoot, 'src')
@@ -220,7 +227,7 @@ export default defineConfig({
 
     writeFileSync(viteConfigPath, viteConfigContent)
 
-    // 5. Start Vite server
+    // 6. Start Vite server
     console.log(`🎨 Starting Vite server on port ${vitePort}...`)
     const viteProcess = spawn(
       'npx',

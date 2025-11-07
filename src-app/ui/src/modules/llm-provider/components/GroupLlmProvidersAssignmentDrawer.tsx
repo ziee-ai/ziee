@@ -9,9 +9,9 @@ const { Text, Title } = Typography
  * Drawer for assigning/removing LLM Providers to/from a group.
  * Self-contained - owned by LLM Provider module.
  */
-export function LLMProviderGroupAssignmentDrawer() {
+export function GroupLlmProvidersAssignmentDrawer() {
   const { message } = App.useApp()
-  const { isOpen, selectedGroup } = Stores.LlmProviderGroupAssignment
+  const { isOpen, selectedGroup } = Stores.GroupLlmProvidersAssignment
   const { providers } = Stores.LlmProvider
 
   const [assignedIds, setAssignedIds] = useState<string[]>([])
@@ -52,8 +52,8 @@ export function LLMProviderGroupAssignmentDrawer() {
         assignedIds,
       )
       message.success('Provider assignments updated')
-      Stores.LlmProviderGroupAssignment.markUpdated()
-      Stores.LlmProviderGroupAssignment.closeDrawer()
+      Stores.GroupLlmProvidersAssignment.markUpdated()
+      Stores.GroupLlmProvidersAssignment.closeDrawer()
     } catch (error) {
       console.error('Failed to update provider assignments:', error)
       message.error('Failed to update provider assignments')
@@ -63,7 +63,7 @@ export function LLMProviderGroupAssignmentDrawer() {
   }
 
   const handleClose = () => {
-    Stores.LlmProviderGroupAssignment.closeDrawer()
+    Stores.GroupLlmProvidersAssignment.closeDrawer()
   }
 
   const handleToggle = (providerId: string, checked: boolean) => {

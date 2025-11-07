@@ -1,33 +1,33 @@
 import { useEffect } from 'react'
 import { Button, Space, Tag, Typography, Spin } from 'antd'
-import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
+import { ApiOutlined, EditOutlined } from '@ant-design/icons'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
 
 const { Text } = Typography
 
 /**
- * Widget that displays LLM Providers assigned to a group.
+ * Widget that displays System MCP Servers assigned to a group.
  * Shows in GroupListItem below group info.
  * Uses a dedicated store to prevent duplicate API calls and cache data.
  */
-export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
+export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   // Get data from store
-  const groupData = Stores.LlmProviderGroupWidget.groupProviders.get(group.id)
-  const providers = groupData?.providers || []
-  const loading = groupData?.loading || false
-  const error = groupData?.error || null
+  const serverData = Stores.GroupSystemMcpServersWidget.groupServers.get(group.id)
+  const servers = serverData?.servers || []
+  const loading = serverData?.loading || false
+  const error = serverData?.error || null
 
-  const { lastUpdated } = Stores.GroupLlmProvidersAssignment
+  const { lastUpdated } = Stores.GroupSystemMcpServersAssignment
 
-  // Load providers on mount and when lastUpdated changes
+  // Load servers on mount and when lastUpdated changes
   useEffect(() => {
     // Force reload when lastUpdated changes, otherwise use cached data
-    Stores.LlmProviderGroupWidget.loadProvidersForGroup(group.id, !!lastUpdated)
+    Stores.GroupSystemMcpServersWidget.loadServersForGroup(group.id, !!lastUpdated)
   }, [group.id, lastUpdated])
 
   const handleEdit = () => {
-    Stores.GroupLlmProvidersAssignment.openDrawer(group)
+    Stores.GroupSystemMcpServersAssignment.openDrawer(group)
   }
 
   return (
@@ -36,12 +36,12 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <Space size="small">
-            <DatabaseOutlined className="text-blue-500" aria-hidden="true" />
-            <Text strong>LLM Providers</Text>
+            <ApiOutlined className="text-blue-500" aria-hidden="true" />
+            <Text strong>System MCP Servers</Text>
             {loading ? (
               <Spin size="small" />
             ) : (
-              <Text type="secondary">({providers.length})</Text>
+              <Text type="secondary">({servers.length})</Text>
             )}
           </Space>
           <Button
@@ -49,7 +49,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
             type="link"
             icon={<EditOutlined aria-hidden="true" />}
             onClick={handleEdit}
-            aria-label={`Edit LLM Providers for ${group.name}`}
+            aria-label={`Edit System MCP Servers for ${group.name}`}
           >
             Edit
           </Button>
@@ -62,22 +62,21 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
           </Text>
         ) : loading ? (
           <Text type="secondary" style={{ fontSize: '12px' }}>
-            Loading providers...
+            Loading servers...
           </Text>
-        ) : providers.length === 0 ? (
+        ) : servers.length === 0 ? (
           <Text type="secondary" style={{ fontSize: '12px' }}>
-            No providers assigned
+            No servers assigned
           </Text>
         ) : (
           <Space wrap size="small">
-            {providers.map(provider => (
+            {servers.map(server => (
               <Tag
-                key={provider.id}
-                color={provider.enabled ? 'blue' : 'default'}
+                key={server.id}
+                color={server.enabled ? 'blue' : 'default'}
                 style={{ fontSize: '11px' }}
               >
-                {provider.name}
-                {provider.built_in && ' (Built-in)'}
+                {server.display_name}
               </Tag>
             ))}
           </Space>

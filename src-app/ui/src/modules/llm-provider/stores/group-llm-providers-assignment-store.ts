@@ -3,10 +3,10 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import type { Group } from '@/api-client/types'
 
 /**
- * Store for managing the LLM Provider Group Assignment Drawer state.
+ * Store for managing the Group LLM Providers Assignment Drawer state.
  * This drawer allows assigning/removing LLM Providers to/from a user group.
  */
-interface LlmProviderGroupAssignmentState {
+interface GroupLlmProvidersAssignmentState {
   isOpen: boolean
   selectedGroup: Group | null
   lastUpdated: number | null
@@ -15,10 +15,10 @@ interface LlmProviderGroupAssignmentState {
   markUpdated: () => void
 }
 
-export const useLlmProviderGroupAssignmentStore =
-  create<LlmProviderGroupAssignmentState>()(
+export const useGroupLlmProvidersAssignmentStore =
+  create<GroupLlmProvidersAssignmentState>()(
     subscribeWithSelector(
-      (set): LlmProviderGroupAssignmentState => ({
+      (set): GroupLlmProvidersAssignmentState => ({
         isOpen: false,
         selectedGroup: null,
         lastUpdated: null,

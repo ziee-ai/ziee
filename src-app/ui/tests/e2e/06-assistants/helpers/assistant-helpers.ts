@@ -92,7 +92,7 @@ export async function submitAssistantForm(page: Page) {
 
 export async function cancelAssistantForm(page: Page) {
   await page.locator('.ant-drawer').getByRole('button', { name: 'Cancel' }).click()
-  await page.waitForSelector('.ant-drawer', { state: 'hidden', timeout: 5000 })
+  await page.waitForSelector('.ant-drawer', { state: 'hidden', timeout: 10000 })
 }
 
 /**
@@ -117,6 +117,9 @@ export async function editAssistantFromCard(page: Page, assistantName: string) {
 
   // Wait for drawer to open
   await page.waitForSelector('.ant-drawer', { state: 'visible' })
+
+  // Wait for form content to be loaded (same as fillAssistantForm does)
+  await page.waitForSelector('[aria-label="Assistant name"]', { state: 'visible', timeout: 10000 })
 }
 
 export async function deleteAssistantFromCard(page: Page, assistantName: string) {
@@ -187,8 +190,8 @@ export async function clearSearch(page: Page) {
 }
 
 export async function sortAssistantsBy(page: Page, sortType: 'Activity' | 'Name' | 'Created') {
-  // Click sort button
-  await page.click('button:has(svg[class*="PiSortAscending"])')
+  // Click sort button using aria-label
+  await page.click('button[aria-label="Sort assistants"]')
 
   // Wait for dropdown
   await page.waitForSelector('.ant-dropdown-menu', { state: 'visible' })

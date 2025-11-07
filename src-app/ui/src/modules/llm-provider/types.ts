@@ -9,8 +9,8 @@ import type {
   useAddRemoteLlmModelDrawerStore,
   useViewDownloadDrawerStore,
   useUploadStore,
-  useLlmProviderGroupAssignmentStore,
-  useProviderGroupAssignmentStore,
+  useGroupLlmProvidersAssignmentStore,
+  useLlmProviderGroupsAssignmentStore,
   useLlmProviderGroupWidgetStore,
   useProviderGroupCardStore,
 } from './stores'
@@ -40,11 +40,11 @@ declare module '@/core/stores' {
       ReturnType<typeof useViewDownloadDrawerStore.getState>
     >
     LlmModelUpload: StoreProxy<ReturnType<typeof useUploadStore.getState>>
-    LlmProviderGroupAssignment: StoreProxy<
-      ReturnType<typeof useLlmProviderGroupAssignmentStore.getState>
+    GroupLlmProvidersAssignment: StoreProxy<
+      ReturnType<typeof useGroupLlmProvidersAssignmentStore.getState>
     >
-    ProviderGroupAssignment: StoreProxy<
-      ReturnType<typeof useProviderGroupAssignmentStore.getState>
+    LlmProviderGroupsAssignment: StoreProxy<
+      ReturnType<typeof useLlmProviderGroupsAssignmentStore.getState>
     >
     LlmProviderGroupWidget: StoreProxy<
       ReturnType<typeof useLlmProviderGroupWidgetStore.getState>

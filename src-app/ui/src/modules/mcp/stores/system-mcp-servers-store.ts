@@ -40,6 +40,8 @@ interface SystemMcpServersState {
   getServerGroups: (serverId: string) => Promise<string[]>
   assignServerToGroups: (serverId: string, groupIds: string[]) => Promise<void>
   removeServerFromGroup: (serverId: string, groupId: string) => Promise<void>
+  updateGroupServers: (groupId: string, serverIds: string[]) => Promise<void>
+  getServersForGroup: (groupId: string) => Promise<McpServer[]>
   clearSystemMcpErrors: () => void
   refreshSystemServers: () => Promise<void>
   isServerOperationLoading: (serverId: string, operation?: string) => boolean
@@ -246,6 +248,70 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           })
         } catch (error) {
           console.error('Failed to remove server from group:', error)
+          throw error
+        }
+      },
+
+      updateGroupServers: async (
+        groupId: string,
+        serverIds: string[],
+      ): Promise<void> => {
+        try {
+          // Get all system servers
+          const allServers = get().systemServers
+
+          // For each server, determine if it should be assigned to this group
+          for (const server of allServers) {
+            // Get current groups for this server
+            const currentGroupIds = await ApiClient.McpServerSystem.getServerGroups({
+              id: server.id,
+            })
+
+            const shouldBeAssigned = serverIds.includes(server.id)
+            const isCurrentlyAssigned = currentGroupIds.includes(groupId)
+
+            // Calculate new group list
+            let newGroupIds = [...currentGroupIds]
+            if (shouldBeAssigned && !isCurrentlyAssigned) {
+              // Add group
+              newGroupIds.push(groupId)
+            } else if (!shouldBeAssigned && isCurrentlyAssigned) {
+              // Remove group
+              newGroupIds = newGroupIds.filter(id => id !== groupId)
+            } else {
+              // No change needed
+              continue
+            }
+
+            // Update server groups
+            await ApiClient.McpServerSystem.assignServerToGroups({
+              id: server.id,
+              group_ids: newGroupIds,
+            })
+          }
+        } catch (error) {
+          console.error('Failed to update group servers:', error)
+          throw error
+        }
+      },
+
+      getServersForGroup: async (groupId: string): Promise<McpServer[]> => {
+        try {
+          const allServers = get().systemServers
+          const assignedServers: McpServer[] = []
+
+          for (const server of allServers) {
+            const groupIds = await ApiClient.McpServerSystem.getServerGroups({
+              id: server.id,
+            })
+            if (groupIds.includes(groupId)) {
+              assignedServers.push(server)
+            }
+          }
+
+          return assignedServers
+        } catch (error) {
+          console.error('Failed to get servers for group:', error)
           throw error
         }
       },

@@ -30,6 +30,8 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
   useStore: T,
 ): Readonly<ExtractZustandState<T>> => {
   const propInitCheck = new Map<string | symbol, boolean>()
+  let storeInitialized = false
+
   return new Proxy({} as Readonly<ExtractZustandState<T>>, {
     get: (_, prop) => {
       if (prop === '__state') {
@@ -39,8 +41,18 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
         return useStore.setState.bind(useStore)
       }
 
+      const state = useStore.getState()
+
+      // Store-level initialization (call __init__.__store__ once on first access)
+      if (!storeInitialized && state.__init__?.__store__) {
+        if (typeof state.__init__.__store__ === 'function') {
+          state.__init__.__store__()
+        }
+        storeInitialized = true
+      }
+
+      // Property-specific initialization
       const isInit = propInitCheck.get(prop) || false
-      let state = useStore.getState()
       if (!isInit) {
         if (state.__init__ && typeof state.__init__[prop] === 'function') {
           state.__init__[prop]()

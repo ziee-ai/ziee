@@ -288,13 +288,14 @@ test.describe('User Assistants - User Page', () => {
     // Sort by name
     await sortAssistantsBy(page, 'Name')
 
-    // Get all assistant cards
-    const cards = await page.locator('.ant-card .ant-typography').allTextContents()
+    // Get all assistant card names (first strong text in each card)
+    const cards = await page.locator('.ant-card').all()
+    const names = await Promise.all(cards.map(card => card.locator('.ant-typography strong').first().textContent()))
 
     // Verify they are in alphabetical order
-    expect(cards[0]).toContain('Alpha')
-    expect(cards[1]).toContain('Middle')
-    expect(cards[2]).toContain('Zebra')
+    expect(names[0]).toContain('Alpha')
+    expect(names[1]).toContain('Middle')
+    expect(names[2]).toContain('Zebra')
   })
 
   test('should sort assistants by activity (most recently updated)', async ({ page }) => {
@@ -326,11 +327,12 @@ test.describe('User Assistants - User Page', () => {
     // Sort by activity (default, but click to ensure)
     await sortAssistantsBy(page, 'Activity')
 
-    // Get all assistant cards
-    const cards = await page.locator('.ant-card .ant-typography').allTextContents()
+    // Get all assistant card names (first strong text in each card)
+    const cards = await page.locator('.ant-card').all()
+    const names = await Promise.all(cards.map(card => card.locator('.ant-typography strong').first().textContent()))
 
     // Verify First Assistant is now at the top (most recently updated)
-    expect(cards[0]).toContain('First Assistant')
+    expect(names[0]).toContain('First Assistant')
   })
 
   test('should sort assistants by created date', async ({ page }) => {
@@ -346,13 +348,14 @@ test.describe('User Assistants - User Page', () => {
     // Sort by created date
     await sortAssistantsBy(page, 'Created')
 
-    // Get all assistant cards
-    const cards = await page.locator('.ant-card .ant-typography').allTextContents()
+    // Get all assistant card names (first strong text in each card)
+    const cards = await page.locator('.ant-card').all()
+    const names = await Promise.all(cards.map(card => card.locator('.ant-typography strong').first().textContent()))
 
     // Verify they are in reverse chronological order (newest first)
-    expect(cards[0]).toContain('Newest')
-    expect(cards[1]).toContain('Middle')
-    expect(cards[2]).toContain('Oldest')
+    expect(names[0]).toContain('Newest')
+    expect(names[1]).toContain('Middle')
+    expect(names[2]).toContain('Oldest')
   })
 
   test('should toggle assistant as default', async ({ page }) => {
@@ -384,6 +387,7 @@ test.describe('User Assistants - User Page', () => {
     await editAssistantFromCard(page, 'Assistant 2')
 
     const defaultSwitch = page.locator('form >> text=Set as Default').locator('..').locator('.ant-switch')
+    await defaultSwitch.waitFor({ state: 'visible', timeout: 10000 })
     await defaultSwitch.click()
 
     await submitAssistantForm(page)
@@ -415,6 +419,7 @@ test.describe('User Assistants - User Page', () => {
     await editAssistantFromCard(page, 'Enabled Test Assistant')
 
     const enabledSwitch = page.locator('form >> text=Enabled').locator('..').locator('.ant-switch')
+    await enabledSwitch.waitFor({ state: 'visible', timeout: 10000 })
     await enabledSwitch.click()
 
     await submitAssistantForm(page)

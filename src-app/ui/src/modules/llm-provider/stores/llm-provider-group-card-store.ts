@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import type { Group } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
+import { Stores } from '@/core/stores'
 
 interface ProviderGroups {
   providerId: string
@@ -16,10 +17,20 @@ interface ProviderGroupCardState {
   // Map of providerId -> group data
   providerGroups: Map<string, ProviderGroups>
 
+  // Cached user groups
+  allGroups: Group[]
+  groupsLoading: boolean
+  groupsError: string | null
+  groupsInitialized: boolean
+
   // Initialization
-  __init__: Record<string, never>
+  __init__: {
+    __store__: () => void
+    allGroups: () => Promise<void>
+  }
 
   // Actions
+  loadAllGroups: () => Promise<void>
   loadGroupsForProvider: (providerId: string, force?: boolean) => Promise<void>
   clearProviderGroups: (providerId: string) => void
   clearAllProviderGroups: () => void
@@ -31,11 +42,99 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
     immer(
       (set, get): ProviderGroupCardState => ({
         providerGroups: new Map(),
-        __init__: {},
+        allGroups: [],
+        groupsLoading: false,
+        groupsError: null,
+        groupsInitialized: false,
+        __init__: {
+          // Store-level initialization - runs once on first access (any property)
+          __store__: () => {
+            // Subscribe to group events for cache invalidation
+            const eventBus = Stores.EventBus
+
+            // Common handler to invalidate cache and reload groups
+            const handleGroupChange = () => {
+              set({ groupsInitialized: false })
+              get().loadAllGroups()
+            }
+
+            // Type-safe - TypeScript infers event types automatically
+            eventBus.on('group.created', handleGroupChange)
+            eventBus.on('group.updated', handleGroupChange)
+            eventBus.on('group.deleted', handleGroupChange)
+
+            // Subscribe to provider group assignment changes
+            // When groups are assigned to a provider, update the cache directly
+            eventBus.on('llm_provider.groups_changed', async event => {
+              const { providerId, groupIds } = event.data
+              await get().loadAllGroups()
+              const allGroups = get().allGroups
+              const assignedGroups = allGroups.filter(g => groupIds.includes(g.id))
+
+              set(state => {
+                state.providerGroups.set(providerId, {
+                  providerId,
+                  groups: assignedGroups,
+                  loading: false,
+                  error: null,
+                  lastFetched: Date.now(),
+                })
+              })
+            })
+          },
+
+          // Property-specific initialization - runs when allGroups is first accessed
+          allGroups: async () => {
+            await get().loadAllGroups()
+          },
+        },
+
+        /**
+         * Load all user groups (cached)
+         * Only fetches if not already initialized
+         */
+        loadAllGroups: async (): Promise<void> => {
+          const state = get()
+
+          // If already loading, don't start another fetch
+          if (state.groupsLoading) {
+            return
+          }
+
+          // If already initialized, use cached data
+          if (state.groupsInitialized && !state.groupsError) {
+            return
+          }
+
+          set(state => {
+            state.groupsLoading = true
+            state.groupsError = null
+          })
+
+          try {
+            const response = await ApiClient.UserGroup.list({ page: 1, per_page: 1000 })
+
+            set(state => {
+              state.allGroups = response.groups
+              state.groupsLoading = false
+              state.groupsError = null
+              state.groupsInitialized = true
+            })
+          } catch (error) {
+            console.error('Failed to load user groups:', error)
+
+            set(state => {
+              state.groupsLoading = false
+              state.groupsError = error instanceof Error ? error.message : 'Failed to load groups'
+            })
+
+            throw error
+          }
+        },
 
         /**
          * Load groups for a specific provider
-         * Caches results and prevents duplicate fetches
+         * Uses cached groups instead of fetching every time
          */
         loadGroupsForProvider: async (providerId: string, force = false): Promise<void> => {
           const state = get()
@@ -68,6 +167,7 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
           })
 
           try {
+            // Get groups for this provider (API returns full Group objects)
             const groups = await ApiClient.LlmProvider.getGroups({ provider_id: providerId })
 
             set(state => {

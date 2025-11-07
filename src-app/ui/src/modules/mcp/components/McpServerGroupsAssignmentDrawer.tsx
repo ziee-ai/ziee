@@ -2,43 +2,40 @@ import { useEffect, useState } from 'react'
 import { App, Button, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import { Stores } from '@/core/stores'
+import { ApiClient } from '@/api-client'
+import type { McpServer } from '@/api-client/types'
 
 const { Text, Title } = Typography
 
 /**
- * Drawer for assigning/removing user groups to/from an LLM provider.
- * Self-contained - owned by LLM Provider module.
+ * Drawer for assigning/removing user groups to/from a system MCP server.
+ * Matches ProviderGroupAssignmentDrawer pattern exactly.
  */
-export function ProviderGroupAssignmentDrawer() {
+export function McpServerGroupsAssignmentDrawer() {
   const { message } = App.useApp()
-  const { isOpen, selectedProviderId } = Stores.ProviderGroupAssignment
+  const { isOpen, selectedServerId } = Stores.McpServerGroupsAssignment
   const { groups } = Stores.UserGroups
 
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Get the current provider name for display
-  const currentProvider = Stores.LlmProvider.providers.find(
-    p => p.id === selectedProviderId
-  )
-
   // Load assigned groups when drawer opens
   useEffect(() => {
-    if (isOpen && selectedProviderId) {
+    if (isOpen && selectedServerId) {
       loadAssignedGroups()
     }
-  }, [isOpen, selectedProviderId])
+  }, [isOpen, selectedServerId])
 
   const loadAssignedGroups = async () => {
-    if (!selectedProviderId) return
+    if (!selectedServerId) return
 
     setLoading(true)
     try {
-      const assigned = await Stores.LlmProvider.getGroupsForProvider(
-        selectedProviderId,
-      )
-      setAssignedIds(assigned.map(g => g.id))
+      const groupIds = await ApiClient.McpServerSystem.getServerGroups({
+        id: selectedServerId,
+      })
+      setAssignedIds(groupIds)
     } catch (error) {
       console.error('Failed to load assigned groups:', error)
       message.error('Failed to load assigned groups')
@@ -48,32 +45,19 @@ export function ProviderGroupAssignmentDrawer() {
   }
 
   const handleSave = async () => {
-    if (!selectedProviderId) return
+    if (!selectedServerId) return
 
     setSaving(true)
     try {
-      // Get current assignments
-      const currentGroups = await Stores.LlmProvider.getGroupsForProvider(selectedProviderId)
-      const currentIds = new Set(currentGroups.map(g => g.id))
-      const newIds = new Set(assignedIds)
-
-      // Determine what to add and remove
-      const toAdd = assignedIds.filter(id => !currentIds.has(id))
-      const toRemove = Array.from(currentIds).filter(id => !newIds.has(id))
-
-      // Add new groups
-      for (const groupId of toAdd) {
-        await Stores.LlmProvider.assignGroupToProvider(selectedProviderId, groupId)
-      }
-
-      // Remove unassigned groups
-      for (const groupId of toRemove) {
-        await Stores.LlmProvider.removeGroupFromProvider(selectedProviderId, groupId)
-      }
+      // Use POST endpoint to replace all groups
+      await ApiClient.McpServerSystem.assignServerToGroups({
+        id: selectedServerId,
+        group_ids: assignedIds,
+      })
 
       message.success('Group assignments updated')
-      Stores.ProviderGroupAssignment.markUpdated()
-      Stores.ProviderGroupAssignment.closeDrawer()
+      Stores.McpServerGroupsAssignment.markUpdated()
+      Stores.McpServerGroupsAssignment.closeDrawer()
     } catch (error) {
       console.error('Failed to update group assignments:', error)
       message.error('Failed to update group assignments')
@@ -83,7 +67,7 @@ export function ProviderGroupAssignmentDrawer() {
   }
 
   const handleClose = () => {
-    Stores.ProviderGroupAssignment.closeDrawer()
+    Stores.McpServerGroupsAssignment.closeDrawer()
   }
 
   const handleToggle = (groupId: string, checked: boolean) => {
@@ -92,9 +76,13 @@ export function ProviderGroupAssignmentDrawer() {
     )
   }
 
+  const selectedServer = Stores.SystemMcpServer.systemServers.find(
+    (s: McpServer) => s.id === selectedServerId,
+  )
+
   return (
     <Drawer
-      title={`Assign User Groups - ${currentProvider?.name || ''}`}
+      title={`Assign User Groups - ${selectedServer?.display_name || ''}`}
       open={isOpen}
       onClose={handleClose}
       width={600}
@@ -125,7 +113,7 @@ export function ProviderGroupAssignmentDrawer() {
               Available Groups
             </Title>
             <Text type="secondary">
-              Select which groups can access this provider
+              Select which groups can access this server
             </Text>
           </div>
 
@@ -156,18 +144,9 @@ export function ProviderGroupAssignmentDrawer() {
                           <Text strong style={{ fontSize: '14px' }}>
                             {group.name}
                           </Text>
-                          {group.is_system && (
-                            <Tag color="orange" style={{ fontSize: '11px', margin: 0 }}>
-                              System
-                            </Tag>
-                          )}
-                          {group.is_active ? (
-                            <Tag color="green" style={{ fontSize: '11px', margin: 0 }}>
-                              Active
-                            </Tag>
-                          ) : (
-                            <Tag color="default" style={{ fontSize: '11px', margin: 0 }}>
-                              Inactive
+                          {group.is_default && (
+                            <Tag color="blue" style={{ fontSize: '11px', margin: 0 }}>
+                              Default
                             </Tag>
                           )}
                         </div>

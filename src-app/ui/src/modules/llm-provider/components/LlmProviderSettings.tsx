@@ -128,10 +128,13 @@ export function LlmProviderSettings() {
     }
 
     // Render appropriate provider settings component based on type
+    console.log('[LlmProviderSettings] Provider type:', currentProvider.provider_type)
     if (currentProvider.provider_type === 'local') {
+      console.log('[LlmProviderSettings] Rendering LocalProviderSettings')
       return <LocalProviderSettings />
     }
 
+    console.log('[LlmProviderSettings] Rendering RemoteProviderSettings')
     return <RemoteProviderSettings />
   }
 

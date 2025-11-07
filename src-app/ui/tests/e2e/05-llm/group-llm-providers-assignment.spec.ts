@@ -58,6 +58,14 @@ test.describe('User Group Assignment in LLM Providers', () => {
     const { baseURL } = testInfra
     const providerName = `test-provider-card-${Date.now()}`
 
+    // Capture ALL console messages from browser
+    const consoleMessages: string[] = []
+    page.on('console', msg => {
+      const text = `[${msg.type()}] ${msg.text()}`
+      consoleMessages.push(text)
+      console.log('Browser console:', text)
+    })
+
     await loginAsAdmin(page, baseURL)
     await createLocalProvider(page, baseURL, providerName, 'Card display test')
 
@@ -65,9 +73,17 @@ test.describe('User Group Assignment in LLM Providers', () => {
     await goToProvidersPage(page, baseURL)
     await clickProviderCard(page, providerName)
 
+    // Log what cards exist on the page
+    const allCardTitles = await page.locator('.ant-card .ant-card-head-title').allTextContents()
+    console.log('Card titles found:', allCardTitles)
+
+    // Log all captured console messages
+    console.log('\nAll browser console messages:')
+    consoleMessages.forEach(msg => console.log(msg))
+
     // Verify the card exists
     const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
-    await expect(card).toBeVisible()
+    await expect(card).toBeVisible({ timeout: 15000 })
 
     // Verify edit button exists
     const editButton = card.locator('button[aria-label="Manage user groups"]')

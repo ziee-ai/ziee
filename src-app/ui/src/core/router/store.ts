@@ -10,6 +10,7 @@ import type {
   WidgetSlots,
 } from './types'
 import { createStoreProxy } from '../stores'
+import { useEventBusStore } from '../events'
 import './types-store' // Register Router store type
 
 interface RouterState {
@@ -287,11 +288,12 @@ export const useRouterStore = create<RouterState>((set, get) => ({
   initializeModules: () => {
     const { modules } = get()
 
-    // Step 0: Register the Router store itself in the stores registry
+    // Step 0: Register core stores in the stores registry
     set(state => ({
       stores: {
         ...state.stores,
         Router: createStoreProxy(useRouterStore),
+        EventBus: createStoreProxy(useEventBusStore),
       },
     }))
 
@@ -326,7 +328,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
 
     // Step 2: Register widgets from all modules
     // Rebuild from scratch to prevent duplication during HMR
-    set(state => {
+    set(() => {
       const widgetsMap = new Map<keyof WidgetSlots, any[]>()
 
       for (const module of modules) {
