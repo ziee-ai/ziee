@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Space, Spin, Switch, Tag, Typography } from 'antd'
+import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import { Stores } from '@/core/stores'
 import { emitLlmProviderGroupsChanged } from '../events'
@@ -142,9 +142,9 @@ export function LlmProviderGroupsAssignmentDrawer() {
               {groups.map(group => {
                 const isChecked = assignedIds.includes(group.id)
                 return (
-                  <div
+                  <Card
                     key={group.id}
-                    className="p-3 rounded border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-600 transition-colors cursor-pointer"
+                    hoverable
                     onClick={() => handleToggle(group.id, !isChecked)}
                   >
                     <div className="flex items-start gap-3">
@@ -182,7 +182,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </Card>
                 )
               })}
             </Space>

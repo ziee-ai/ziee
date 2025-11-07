@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Button, Space, Tag, Typography, Spin } from 'antd'
+import { Button, Card, Space, Tag, Typography, Spin } from 'antd'
 import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
@@ -28,7 +28,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   }
 
   return (
-    <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+    <Card>
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -80,6 +80,6 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
           </Space>
         )}
       </Space>
-    </div>
+    </Card>
   )
 }

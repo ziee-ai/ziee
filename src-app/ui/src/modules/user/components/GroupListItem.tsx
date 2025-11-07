@@ -140,7 +140,7 @@ export function GroupListItem({
 
       {/* Render registered widgets */}
       {registeredWidgets.length > 0 && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 flex gap-2 flex-col">
           {registeredWidgets.map((widget, index) => (
             <WidgetRenderer
               key={index}

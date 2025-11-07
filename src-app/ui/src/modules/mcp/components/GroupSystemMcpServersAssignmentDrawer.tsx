@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Space, Spin, Switch, Tag, Typography } from 'antd'
+import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/components/common/Drawer'
 import { Stores } from '@/core/stores'
 import type { McpServer } from '@/api-client/types'
@@ -118,9 +118,9 @@ export function GroupSystemMcpServersAssignmentDrawer() {
               {systemServers.map((server: McpServer) => {
                 const isChecked = assignedIds.includes(server.id)
                 return (
-                  <div
+                  <Card
                     key={server.id}
-                    className="p-3 rounded border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-600 transition-colors cursor-pointer"
+                    hoverable
                     onClick={() => handleToggle(server.id, !isChecked)}
                   >
                     <div className="flex items-start gap-3">
@@ -156,7 +156,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </Card>
                 )
               })}
             </Space>
