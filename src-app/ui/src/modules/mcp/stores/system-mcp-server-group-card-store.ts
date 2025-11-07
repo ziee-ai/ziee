@@ -13,7 +13,7 @@ interface ServerGroups {
   lastFetched: number | null
 }
 
-interface ServerGroupCardState {
+interface SystemMcpServerGroupCardState {
   // Map of serverId -> group data
   serverGroups: Map<string, ServerGroups>
 
@@ -37,10 +37,10 @@ interface ServerGroupCardState {
   getServerGroupsData: (serverId: string) => ServerGroups | undefined
 }
 
-export const useServerGroupCardStore = create<ServerGroupCardState>()(
+export const useSystemMcpServerGroupCardStore = create<SystemMcpServerGroupCardState>()(
   subscribeWithSelector(
     immer(
-      (set, get): ServerGroupCardState => ({
+      (set, get): SystemMcpServerGroupCardState => ({
         serverGroups: new Map(),
         allGroups: [],
         groupsLoading: false,
@@ -64,6 +64,28 @@ export const useServerGroupCardStore = create<ServerGroupCardState>()(
             eventBus.on('group.created', handleGroupChange)
             eventBus.on('group.updated', handleGroupChange)
             eventBus.on('group.deleted', handleGroupChange)
+
+            // When groups are assigned to a server, update the cache directly
+            eventBus.on('mcp_server.groups_changed', async event => {
+              const { serverId, groupIds } = event.data
+
+              // Ensure groups are loaded
+              await get().loadAllGroups()
+
+              // Use cached groups to build the assigned list
+              const allGroups = get().allGroups
+              const assignedGroups = allGroups.filter(g => groupIds.includes(g.id))
+
+              set(state => {
+                state.serverGroups.set(serverId, {
+                  serverId,
+                  groups: assignedGroups,
+                  loading: false,
+                  error: null,
+                  lastFetched: Date.now(),
+                })
+              })
+            })
           },
 
           // Property-specific initialization - runs when allGroups is first accessed

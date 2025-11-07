@@ -52,7 +52,6 @@ export function GroupLlmProvidersAssignmentDrawer() {
         assignedIds,
       )
       message.success('Provider assignments updated')
-      Stores.GroupLlmProvidersAssignment.markUpdated()
       Stores.GroupLlmProvidersAssignment.closeDrawer()
     } catch (error) {
       console.error('Failed to update provider assignments:', error)

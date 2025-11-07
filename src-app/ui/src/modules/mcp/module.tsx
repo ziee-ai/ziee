@@ -7,7 +7,7 @@ import {
   useMcpServerDrawerStore,
   useGroupSystemMcpServersWidgetStore,
   useGroupSystemMcpServersAssignmentStore,
-  useServerGroupCardStore,
+  useSystemMcpServerGroupCardStore,
   useMcpServerGroupsAssignmentStore,
 } from './stores'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -85,8 +85,8 @@ export default createModule({
       store: useGroupSystemMcpServersAssignmentStore,
     },
     {
-      name: 'ServerGroupCard',
-      store: useServerGroupCardStore,
+      name: 'SystemMcpServerGroupCard',
+      store: useSystemMcpServerGroupCardStore,
     },
     {
       name: 'McpServerGroupsAssignment',

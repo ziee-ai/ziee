@@ -6,11 +6,9 @@ import type { Group } from '@/api-client/types'
 interface GroupSystemMcpServersAssignmentState {
   isOpen: boolean
   selectedGroup: Group | null
-  lastUpdated: number | null
 
   openDrawer: (group: Group) => void
   closeDrawer: () => void
-  markUpdated: () => void
 }
 
 export const useGroupSystemMcpServersAssignmentStore = create<GroupSystemMcpServersAssignmentState>()(
@@ -18,7 +16,6 @@ export const useGroupSystemMcpServersAssignmentStore = create<GroupSystemMcpServ
     immer(set => ({
       isOpen: false,
       selectedGroup: null,
-      lastUpdated: null,
 
       openDrawer: (group: Group) => {
         set(state => {
@@ -31,12 +28,6 @@ export const useGroupSystemMcpServersAssignmentStore = create<GroupSystemMcpServ
         set(state => {
           state.isOpen = false
           state.selectedGroup = null
-        })
-      },
-
-      markUpdated: () => {
-        set(state => {
-          state.lastUpdated = Date.now()
         })
       },
     })),

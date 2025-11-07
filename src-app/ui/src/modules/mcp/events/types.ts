@@ -30,11 +30,20 @@ export interface McpServerGroupsChangedEvent extends BaseEvent {
   }
 }
 
+export interface GroupSystemMcpServersChangedEvent extends BaseEvent {
+  type: 'mcp_server.group_servers_changed'
+  data: {
+    groupId: string
+    serverIds: string[]
+  }
+}
+
 export type McpModuleEvent =
   | McpServerCreatedEvent
   | McpServerUpdatedEvent
   | McpServerDeletedEvent
   | McpServerGroupsChangedEvent
+  | GroupSystemMcpServersChangedEvent
 
 declare module '@/core/events' {
   interface AppEvents {
@@ -42,5 +51,6 @@ declare module '@/core/events' {
     'mcp_server.updated': McpServerUpdatedEvent
     'mcp_server.deleted': McpServerDeletedEvent
     'mcp_server.groups_changed': McpServerGroupsChangedEvent
+    'mcp_server.group_servers_changed': GroupSystemMcpServersChangedEvent
   }
 }

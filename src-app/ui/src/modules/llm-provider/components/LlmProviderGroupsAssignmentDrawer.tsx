@@ -77,7 +77,6 @@ export function LlmProviderGroupsAssignmentDrawer() {
       // Emit event to invalidate provider group cache
       await emitLlmProviderGroupsChanged(selectedProviderId, assignedIds)
 
-      Stores.LlmProviderGroupsAssignment.markUpdated()
       Stores.LlmProviderGroupsAssignment.closeDrawer()
     } catch (error) {
       console.error('Failed to update group assignments:', error)

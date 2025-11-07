@@ -6,6 +6,7 @@ import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
 } from '@/api-client/types'
+import { emitGroupSystemMcpServersChanged } from '../events'
 
 interface SystemMcpServersState {
   // System servers data
@@ -289,6 +290,9 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
               group_ids: newGroupIds,
             })
           }
+
+          // Emit event to invalidate cache
+          await emitGroupSystemMcpServersChanged(groupId, serverIds)
         } catch (error) {
           console.error('Failed to update group servers:', error)
           throw error

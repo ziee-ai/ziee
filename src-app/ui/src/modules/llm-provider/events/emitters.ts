@@ -9,3 +9,13 @@ export const emitLlmProviderGroupsChanged = async (
     data: { providerId, groupIds },
   })
 }
+
+export const emitGroupLlmProvidersChanged = async (
+  groupId: string,
+  providerIds: string[],
+) => {
+  await Stores.EventBus.emit({
+    type: 'llm_provider.group_providers_changed',
+    data: { groupId, providerIds },
+  })
+}

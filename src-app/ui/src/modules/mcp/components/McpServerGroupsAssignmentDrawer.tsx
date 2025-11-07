@@ -4,6 +4,7 @@ import { Drawer } from '@/components/common/Drawer'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import type { McpServer } from '@/api-client/types'
+import { emitMcpServerGroupsChanged } from '../events'
 
 const { Text, Title } = Typography
 
@@ -56,7 +57,10 @@ export function McpServerGroupsAssignmentDrawer() {
       })
 
       message.success('Group assignments updated')
-      Stores.McpServerGroupsAssignment.markUpdated()
+
+      // Emit event to invalidate cache
+      await emitMcpServerGroupsChanged(selectedServerId, assignedIds)
+
       Stores.McpServerGroupsAssignment.closeDrawer()
     } catch (error) {
       console.error('Failed to update group assignments:', error)

@@ -8,10 +8,21 @@ export interface LlmProviderGroupsChangedEvent extends BaseEvent {
   }
 }
 
-export type LlmProviderModuleEvent = LlmProviderGroupsChangedEvent
+export interface GroupLlmProvidersChangedEvent extends BaseEvent {
+  type: 'llm_provider.group_providers_changed'
+  data: {
+    groupId: string
+    providerIds: string[]
+  }
+}
+
+export type LlmProviderModuleEvent =
+  | LlmProviderGroupsChangedEvent
+  | GroupLlmProvidersChangedEvent
 
 declare module '@/core/events' {
   interface AppEvents {
     'llm_provider.groups_changed': LlmProviderGroupsChangedEvent
+    'llm_provider.group_providers_changed': GroupLlmProvidersChangedEvent
   }
 }

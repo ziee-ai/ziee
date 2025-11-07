@@ -18,21 +18,17 @@ export function McpServerGroupsAssignmentCard({ serverId }: McpServerGroupsAssig
   const { message } = App.useApp()
 
   // Get data from store
-  const serverData = Stores.ServerGroupCard.serverGroups.get(serverId)
+  const serverData = Stores.SystemMcpServerGroupCard.serverGroups.get(serverId)
   const assignedGroups = serverData?.groups || []
   const loading = serverData?.loading || false
 
-  // Get lastUpdated from drawer store to watch for changes
-  const { lastUpdated } = Stores.McpServerGroupsAssignment
-
-  // Load assigned groups when server changes or drawer updates
+  // Load assigned groups when server changes
   useEffect(() => {
-    // Force reload when lastUpdated changes, otherwise use cached data
-    Stores.ServerGroupCard.loadGroupsForServer(serverId, !!lastUpdated).catch(err => {
+    Stores.SystemMcpServerGroupCard.loadGroupsForServer(serverId).catch(err => {
       console.error('Failed to load assigned groups:', err)
       message.error('Failed to load assigned groups')
     })
-  }, [serverId, lastUpdated, message])
+  }, [serverId, message])
 
   const handleManageGroups = () => {
     Stores.McpServerGroupsAssignment.openDrawer(serverId)

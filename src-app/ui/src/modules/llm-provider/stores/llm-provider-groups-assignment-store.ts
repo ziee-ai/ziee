@@ -8,10 +8,8 @@ import { subscribeWithSelector } from 'zustand/middleware'
 interface LlmProviderGroupsAssignmentState {
   isOpen: boolean
   selectedProviderId: string | null
-  lastUpdated: number | null
   openDrawer: (providerId: string) => void
   closeDrawer: () => void
-  markUpdated: () => void
 }
 
 export const useLlmProviderGroupsAssignmentStore =
@@ -20,7 +18,6 @@ export const useLlmProviderGroupsAssignmentStore =
       (set): LlmProviderGroupsAssignmentState => ({
         isOpen: false,
         selectedProviderId: null,
-        lastUpdated: null,
 
         openDrawer: (providerId: string) => {
           set({ isOpen: true, selectedProviderId: providerId })
@@ -28,10 +25,6 @@ export const useLlmProviderGroupsAssignmentStore =
 
         closeDrawer: () => {
           set({ isOpen: false, selectedProviderId: null })
-        },
-
-        markUpdated: () => {
-          set({ lastUpdated: Date.now() })
         },
       }),
     ),

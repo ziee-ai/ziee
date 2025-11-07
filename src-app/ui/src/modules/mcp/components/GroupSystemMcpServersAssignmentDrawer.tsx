@@ -53,7 +53,6 @@ export function GroupSystemMcpServersAssignmentDrawer() {
         assignedIds,
       )
       message.success('Server assignments updated')
-      Stores.GroupSystemMcpServersAssignment.markUpdated()
       Stores.GroupSystemMcpServersAssignment.closeDrawer()
     } catch (error) {
       console.error('Failed to update server assignments:', error)

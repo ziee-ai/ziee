@@ -18,13 +18,10 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   const loading = groupData?.loading || false
   const error = groupData?.error || null
 
-  const { lastUpdated } = Stores.GroupLlmProvidersAssignment
-
-  // Load providers on mount and when lastUpdated changes
+  // Load providers on mount
   useEffect(() => {
-    // Force reload when lastUpdated changes, otherwise use cached data
-    Stores.LlmProviderGroupWidget.loadProvidersForGroup(group.id, !!lastUpdated)
-  }, [group.id, lastUpdated])
+    Stores.LlmProviderGroupWidget.loadProvidersForGroup(group.id)
+  }, [group.id])
 
   const handleEdit = () => {
     Stores.GroupLlmProvidersAssignment.openDrawer(group)

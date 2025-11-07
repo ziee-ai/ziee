@@ -18,13 +18,10 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   const loading = serverData?.loading || false
   const error = serverData?.error || null
 
-  const { lastUpdated } = Stores.GroupSystemMcpServersAssignment
-
-  // Load servers on mount and when lastUpdated changes
+  // Load servers on mount
   useEffect(() => {
-    // Force reload when lastUpdated changes, otherwise use cached data
-    Stores.GroupSystemMcpServersWidget.loadServersForGroup(group.id, !!lastUpdated)
-  }, [group.id, lastUpdated])
+    Stores.GroupSystemMcpServersWidget.loadServersForGroup(group.id)
+  }, [group.id])
 
   const handleEdit = () => {
     Stores.GroupSystemMcpServersAssignment.openDrawer(group)

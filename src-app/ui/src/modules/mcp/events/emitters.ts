@@ -31,3 +31,13 @@ export const emitMcpServerGroupsChanged = async (
     data: { serverId, groupIds },
   })
 }
+
+export const emitGroupSystemMcpServersChanged = async (
+  groupId: string,
+  serverIds: string[],
+) => {
+  await Stores.EventBus.emit({
+    type: 'mcp_server.group_servers_changed',
+    data: { groupId, serverIds },
+  })
+}

@@ -5,7 +5,7 @@ import type {
   useMcpServerDrawerStore,
   useGroupSystemMcpServersWidgetStore,
   useGroupSystemMcpServersAssignmentStore,
-  useServerGroupCardStore,
+  useSystemMcpServerGroupCardStore,
   useMcpServerGroupsAssignmentStore,
 } from './stores'
 
@@ -20,7 +20,9 @@ declare module '@/core/stores' {
     GroupSystemMcpServersAssignment: StoreProxy<
       ReturnType<typeof useGroupSystemMcpServersAssignmentStore.getState>
     >
-    ServerGroupCard: StoreProxy<ReturnType<typeof useServerGroupCardStore.getState>>
+    SystemMcpServerGroupCard: StoreProxy<
+      ReturnType<typeof useSystemMcpServerGroupCardStore.getState>
+    >
     McpServerGroupsAssignment: StoreProxy<
       ReturnType<typeof useMcpServerGroupsAssignmentStore.getState>
     >

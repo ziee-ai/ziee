@@ -5,11 +5,9 @@ import { immer } from 'zustand/middleware/immer'
 interface McpServerGroupsAssignmentState {
   isOpen: boolean
   selectedServerId: string | null
-  lastUpdated: number | null
 
   openDrawer: (serverId: string) => void
   closeDrawer: () => void
-  markUpdated: () => void
 }
 
 export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmentState>()(
@@ -17,7 +15,6 @@ export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmen
     immer(set => ({
       isOpen: false,
       selectedServerId: null,
-      lastUpdated: null,
 
       openDrawer: (serverId: string) => {
         set(state => {
@@ -30,12 +27,6 @@ export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmen
         set(state => {
           state.isOpen = false
           state.selectedServerId = null
-        })
-      },
-
-      markUpdated: () => {
-        set(state => {
-          state.lastUpdated = Date.now()
         })
       },
     })),

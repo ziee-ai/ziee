@@ -193,14 +193,15 @@ export async function sortAssistantsBy(page: Page, sortType: 'Activity' | 'Name'
   // Click sort button using aria-label
   await page.click('button[aria-label="Sort assistants"]')
 
-  // Wait for dropdown
-  await page.waitForSelector('.ant-dropdown-menu', { state: 'visible' })
+  // Wait for the sort dropdown to appear (identify it by looking for one that contains "Activity")
+  const sortDropdown = page.locator('.ant-dropdown-menu:has-text("Activity")')
+  await sortDropdown.waitFor({ state: 'visible', timeout: 10000 })
 
-  // Click sort option
-  await page.locator('.ant-dropdown-menu').getByText(sortType, { exact: true }).click()
+  // Click the sort option within the specific dropdown
+  await sortDropdown.getByText(sortType, { exact: true }).click()
 
   // Wait for dropdown to close
-  await page.waitForSelector('.ant-dropdown-menu', { state: 'hidden' })
+  await page.waitForTimeout(500)
 }
 
 /**

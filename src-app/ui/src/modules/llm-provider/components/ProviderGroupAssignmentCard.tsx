@@ -15,16 +15,16 @@ export function ProviderGroupAssignmentCard() {
 
   // ✅ CORRECT: Destructure all needed values at top level
   const { providerGroups, loadGroupsForProvider } = Stores.ProviderGroupCard
-  const { lastUpdated, openDrawer } = Stores.LlmProviderGroupsAssignment
+  const { openDrawer } = Stores.LlmProviderGroupsAssignment
 
   const providerData = providerId ? providerGroups.get(providerId) : undefined
 
-  // Load groups for this provider on mount and when lastUpdated changes
+  // Load groups for this provider on mount
   useEffect(() => {
     if (providerId) {
       loadGroupsForProvider(providerId)
     }
-  }, [providerId, loadGroupsForProvider, lastUpdated])
+  }, [providerId, loadGroupsForProvider])
 
   if (!providerId) {
     return null

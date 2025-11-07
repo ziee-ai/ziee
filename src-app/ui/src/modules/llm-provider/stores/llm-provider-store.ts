@@ -8,6 +8,7 @@ import type {
   LlmModel,
   Group,
 } from '@/api-client/types'
+import { emitGroupLlmProvidersChanged } from '../events'
 
 // Extended type that includes models array
 // TODO: Backend should include llm_models in LlmProvider response
@@ -448,6 +449,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             group_id: groupId,
             provider_ids: providerIds,
           })
+          await emitGroupLlmProvidersChanged(groupId, providerIds)
         } catch (error) {
           console.error('Failed to update group providers:', error)
           throw error
