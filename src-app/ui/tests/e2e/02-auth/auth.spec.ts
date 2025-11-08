@@ -8,12 +8,12 @@ test.describe('Authentication', () => {
 
     // First create an admin user so we can access auth page
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -24,7 +24,7 @@ test.describe('Authentication', () => {
 
     // Navigate to auth page (this will trigger a fresh page load without auth state)
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Check accessibility
     await assertNoAccessibilityViolations(page)
@@ -35,12 +35,12 @@ test.describe('Authentication', () => {
 
     // First create an admin user so we can access auth page
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
@@ -51,11 +51,11 @@ test.describe('Authentication', () => {
 
     // Navigate to auth page
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Switch to dark mode
     await setTheme(page, 'dark')
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Verify dark mode is active
     const darkModeActive = await isDarkMode(page)
@@ -70,12 +70,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
@@ -86,15 +86,15 @@ test.describe('Authentication', () => {
 
     // Visit auth page
     await page.goto(`${baseURL}/auth`)
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Should show Welcome title
-    await expect(page.locator('h2')).toContainText('Welcome')
+    await expect(page.getByRole('heading', { level: 2, name: /welcome/i })).toBeVisible()
 
     // Should show login form fields
-    await expect(page.locator('#login_username')).toBeVisible()
-    await expect(page.locator('#login_password')).toBeVisible()
-    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible()
+    await expect(page.getByLabel('Username or Email')).toBeVisible()
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^sign in$/i })).toBeVisible()
 
     // Should show switch to register link
     await expect(page.getByRole('button', { name: /sign up/i })).toBeVisible()
@@ -105,12 +105,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
@@ -121,14 +121,14 @@ test.describe('Authentication', () => {
 
     // Visit auth page
     await page.goto(`${baseURL}/auth`)
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Try to submit without filling form
-    await page.click('button:has-text("Sign In")')
+    await page.getByRole('button', { name: /^sign in$/i }).click()
 
     // Should show validation errors
-    await expect(page.locator('text=Please input your username or email!')).toBeVisible()
-    await expect(page.locator('text=Please input your password!')).toBeVisible()
+    await expect(page.getByText('Please input your username or email!')).toBeVisible()
+    await expect(page.getByText('Please input your password!')).toBeVisible()
   })
 
   test('should switch to register form', async ({ page, testInfra }) => {
@@ -136,12 +136,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
@@ -152,16 +152,16 @@ test.describe('Authentication', () => {
 
     // Visit auth page
     await page.goto(`${baseURL}/auth`)
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Click Sign Up link
-    await page.click('button:has-text("Sign Up")')
+    await page.getByRole('button', { name: /sign up/i }).click()
 
     // Should show registration form
-    await expect(page.locator('h3')).toContainText('Create Account')
-    await expect(page.locator('#register_email')).toBeVisible()
-    await expect(page.locator('#register_confirmPassword')).toBeVisible()
-    await expect(page.getByRole('button', { name: /sign up/i })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
+    await expect(page.getByLabel('Email')).toBeVisible()
+    await expect(page.getByLabel('Confirm Password')).toBeVisible()
+    await expect(page.getByRole('button', { name: /^sign up$/i })).toBeVisible()
   })
 
   test('should display registration form fields', async ({ page, testInfra }) => {
@@ -169,12 +169,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -185,23 +185,23 @@ test.describe('Authentication', () => {
 
     // Visit auth page and switch to register
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
 
     // Wait for registration form
-    await expect(page.locator('h3')).toContainText('Create Account')
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
 
-    // Check all fields are present
-    await expect(page.locator('#register_username')).toBeVisible()
-    await expect(page.locator('#register_email')).toBeVisible()
-    await expect(page.locator('#register_password')).toBeVisible()
-    await expect(page.locator('#register_confirmPassword')).toBeVisible()
+    // Check all fields are present using semantic selectors
+    await expect(page.getByLabel('Username')).toBeVisible()
+    await expect(page.getByLabel('Email')).toBeVisible()
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Confirm Password')).toBeVisible()
 
-    // Check labels
-    await expect(page.locator('label[for="register_username"]')).toBeVisible()
-    await expect(page.locator('label[for="register_email"]')).toBeVisible()
-    await expect(page.locator('label[for="register_password"]')).toBeVisible()
-    await expect(page.locator('label[for="register_confirmPassword"]')).toBeVisible()
+    // Check labels via getByText
+    await expect(page.getByText('Username')).toBeVisible()
+    await expect(page.getByText('Email')).toBeVisible()
+    await expect(page.getByText('Password').first()).toBeVisible()
+    await expect(page.getByText('Confirm Password')).toBeVisible()
   })
 
   test('should validate username minimum length on registration', async ({ page, testInfra }) => {
@@ -209,12 +209,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -225,20 +225,20 @@ test.describe('Authentication', () => {
 
     // Visit auth page and switch to register
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
 
     // Fill with short username
-    await page.fill('#register_username', 'ab')
-    await page.fill('#register_email', 'test@example.com')
-    await page.fill('#register_password', 'password123')
+    await page.getByLabel('Username').fill('ab')
+    await page.getByLabel('Email').fill('test@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
 
     // Trigger validation
-    await page.click('#register_email')
+    await page.getByLabel('Email').click()
 
     // Should show validation error
-    await expect(page.locator('text=Username must be at least 3 characters long!')).toBeVisible()
+    await expect(page.getByText('Username must be at least 3 characters long!')).toBeVisible()
   })
 
   test('should validate email format on registration', async ({ page, testInfra }) => {
@@ -246,12 +246,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -262,20 +262,20 @@ test.describe('Authentication', () => {
 
     // Visit auth page and switch to register
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
 
     // Fill with invalid email
-    await page.fill('#register_username', 'testuser')
-    await page.fill('#register_email', 'not-an-email')
-    await page.fill('#register_password', 'password123')
+    await page.getByLabel('Username').fill('testuser')
+    await page.getByLabel('Email').fill('not-an-email')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
 
     // Trigger validation
-    await page.click('#register_password')
+    await page.getByLabel('Password', { exact: true }).click()
 
     // Should show validation error
-    await expect(page.locator('text=Please enter a valid email address!')).toBeVisible()
+    await expect(page.getByText('Please enter a valid email address!')).toBeVisible()
   })
 
   test('should validate password minimum length on registration', async ({ page, testInfra }) => {
@@ -283,12 +283,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -299,21 +299,21 @@ test.describe('Authentication', () => {
 
     // Visit auth page and switch to register
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
 
     // Fill with short password
-    await page.fill('#register_username', 'testuser')
-    await page.fill('#register_email', 'test@example.com')
-    await page.fill('#register_password', 'pass')
-    await page.fill('#register_confirmPassword', 'pass')
+    await page.getByLabel('Username').fill('testuser')
+    await page.getByLabel('Email').fill('test@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('pass')
+    await page.getByLabel('Confirm Password').fill('pass')
 
     // Trigger validation
-    await page.click('#register_confirmPassword')
+    await page.getByLabel('Confirm Password').click()
 
     // Should show validation error
-    await expect(page.locator('text=Password must be at least 6 characters long!')).toBeVisible()
+    await expect(page.getByText('Password must be at least 6 characters long!')).toBeVisible()
   })
 
   test('should validate password confirmation match', async ({ page, testInfra }) => {
@@ -321,12 +321,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -337,21 +337,21 @@ test.describe('Authentication', () => {
 
     // Visit auth page and switch to register
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
 
     // Fill with mismatched passwords
-    await page.fill('#register_username', 'testuser')
-    await page.fill('#register_email', 'test@example.com')
-    await page.fill('#register_password', 'password123')
-    await page.fill('#register_confirmPassword', 'password456')
+    await page.getByLabel('Username').fill('testuser')
+    await page.getByLabel('Email').fill('test@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password456')
 
     // Trigger validation by blurring the field
-    await page.click('#register_username')
+    await page.getByLabel('Username').click()
 
     // Should show validation error
-    await expect(page.locator('text=Passwords do not match!')).toBeVisible()
+    await expect(page.getByText('Passwords do not match!')).toBeVisible()
   })
 
   test('should switch back to login form', async ({ page, testInfra }) => {
@@ -359,12 +359,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -375,15 +375,15 @@ test.describe('Authentication', () => {
 
     // Visit auth page and switch to register
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
 
     // Click Sign In link
-    await page.click('button:has-text("Sign In")')
+    await page.getByRole('button', { name: /^sign in$/i }).click()
 
     // Should show login form
-    await expect(page.locator('label:has-text("Username or Email")')).toBeVisible()
+    await expect(page.getByText('Username or Email')).toBeVisible()
     await expect(page.getByRole('button', { name: /^sign in$/i })).toBeVisible()
   })
 
@@ -392,12 +392,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -408,18 +408,18 @@ test.describe('Authentication', () => {
 
     // Visit auth page and switch to register
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
 
     // Fill registration form
-    await page.fill('#register_username', 'testuser')
-    await page.fill('#register_email', 'test@example.com')
-    await page.fill('#register_password', 'password123')
-    await page.fill('#register_confirmPassword', 'password123')
+    await page.getByLabel('Username').fill('testuser')
+    await page.getByLabel('Email').fill('test@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
 
     // Submit form
-    await page.click('button:has-text("Sign Up")')
+    await page.getByRole('button', { name: /^sign up$/i }).click()
 
     // Should redirect to home page after successful registration
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
@@ -430,12 +430,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -446,14 +446,14 @@ test.describe('Authentication', () => {
 
     // Register a regular user
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
-    await page.fill('#register_username', 'testuser')
-    await page.fill('#register_email', 'test@example.com')
-    await page.fill('#register_password', 'password123')
-    await page.fill('#register_confirmPassword', 'password123')
-    await page.click('button:has-text("Sign Up")')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
+    await page.getByLabel('Username').fill('testuser')
+    await page.getByLabel('Email').fill('test@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /^sign up$/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out after registration and navigate directly to auth
@@ -464,14 +464,14 @@ test.describe('Authentication', () => {
 
     // Navigate to auth page (this will trigger a fresh page load without auth state)
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Fill login form
-    await page.fill('#login_username', 'testuser')
-    await page.fill('#login_password', 'password123')
+    await page.getByLabel('Username or Email').fill('testuser')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
 
     // Submit form
-    await page.click('button:has-text("Sign In")')
+    await page.getByRole('button', { name: /^sign in$/i }).click()
 
     // Should redirect to home page after successful login
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
@@ -482,12 +482,12 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
@@ -498,26 +498,32 @@ test.describe('Authentication', () => {
 
     // Register a regular user
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
-    await page.fill('#register_username', 'testuser')
-    await page.fill('#register_email', 'test@example.com')
-    await page.fill('#register_password', 'password123')
-    await page.fill('#register_confirmPassword', 'password123')
-    await page.click('button:has-text("Sign Up")')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
+    await page.getByLabel('Username').fill('testuser')
+    await page.getByLabel('Email').fill('test@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /^sign up$/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
+    // Clear localStorage/sessionStorage to log out
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+
     // Now visit auth page and login with email
-    await page.goto(`${baseURL}/auth`)
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 
     // Fill login form with email
-    await page.fill('#login_username', 'test@example.com')
-    await page.fill('#login_password', 'password123')
+    await page.getByLabel('Username or Email').fill('test@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
 
     // Submit form
-    await page.click('button:has-text("Sign In")')
+    await page.getByRole('button', { name: /^sign in$/i }).click()
 
     // Should redirect to home page after successful login
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
@@ -528,15 +534,30 @@ test.describe('Authentication', () => {
 
     // Create admin first
     await page.goto(`${baseURL}/setup`)
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.click('button[type="submit"]')
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
 
-    // Clear localStorage/sessionStorage to log out and navigate directly to auth
+    // Wait for authentication token to be stored
+    await page.waitForFunction(
+      () => {
+        const authStorage = localStorage.getItem('auth-storage')
+        if (!authStorage) return false
+        try {
+          const parsed = JSON.parse(authStorage)
+          return parsed.state?.token !== null && parsed.state?.token !== undefined
+        } catch {
+          return false
+        }
+      },
+      { timeout: 10000 }
+    )
+
+    // Clear localStorage/sessionStorage to log out
     await page.evaluate(() => {
       localStorage.clear()
       sessionStorage.clear()
@@ -544,17 +565,17 @@ test.describe('Authentication', () => {
 
     // Visit auth page and switch to register
     await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-    await page.waitForSelector('#login_username', { timeout: 30000 })
-    await page.click('button:has-text("Sign Up")')
-    await expect(page.locator('h3')).toContainText('Create Account')
+    await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
+    await page.getByRole('button', { name: /sign up/i }).click()
+    await expect(page.getByRole('heading', { level: 3, name: /create account/i })).toBeVisible()
 
     // Try to submit without filling form
-    await page.click('button:has-text("Sign Up")')
+    await page.getByRole('button', { name: /^sign up$/i }).click()
 
     // Should show validation errors
-    await expect(page.locator('text=Please input your username!')).toBeVisible()
-    await expect(page.locator('text=Please input your email!')).toBeVisible()
-    await expect(page.locator('text=Please input your password!')).toBeVisible()
-    await expect(page.locator('text=Please confirm your password!')).toBeVisible()
+    await expect(page.getByText('Please input your username!')).toBeVisible()
+    await expect(page.getByText('Please input your email!')).toBeVisible()
+    await expect(page.getByText('Please input your password!')).toBeVisible()
+    await expect(page.getByText('Please confirm your password!')).toBeVisible()
   })
 })

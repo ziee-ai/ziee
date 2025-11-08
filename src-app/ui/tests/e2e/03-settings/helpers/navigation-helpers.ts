@@ -16,5 +16,6 @@ export async function goToSettingsPage(
 }
 
 export async function waitForSettingsPageLoad(page: Page, expectedText: string) {
-  await page.waitForSelector(`text=${expectedText}`, { timeout: 30000 })
+  // Wait for the heading specifically to avoid strict mode violations
+  await page.getByRole('heading', { name: expectedText }).waitFor({ timeout: 30000 })
 }

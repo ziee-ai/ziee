@@ -21,6 +21,7 @@ export function ThemeSettings() {
   return (
     <Card title="Appearance">
       <Form
+        name="theme-form"
         form={form}
         onValuesChange={handleFormChange}
         initialValues={{ theme: themePreference }}
@@ -41,8 +42,12 @@ export function ThemeSettings() {
             </div>
           </div>
           <div className="flex-shrink-0">
-            <Form.Item name="theme" style={{ margin: 0 }}>
+            <Form.Item
+              name="theme"
+              style={{ margin: 0 }}
+            >
               <Select
+                aria-label="Theme"
                 style={{ minWidth: 120 }}
                 options={[
                   { value: 'light', label: 'Light' },

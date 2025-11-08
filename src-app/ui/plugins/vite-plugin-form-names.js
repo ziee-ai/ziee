@@ -125,6 +125,7 @@ export function formNamesPlugin(options = {}) {
 
   let config
   let srcPath
+  let debounceTimer
 
   return {
     name: 'vite-plugin-form-names',
@@ -143,8 +144,8 @@ export function formNamesPlugin(options = {}) {
       // Re-check when .tsx files change
       if (file.endsWith('.tsx') && !file.includes('node_modules')) {
         // Debounce check (avoid multiple triggers)
-        clearTimeout(this._debounceTimer)
-        this._debounceTimer = setTimeout(() => {
+        clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(() => {
           checkFormNames(srcPath, config.logger)
         }, 1000)
       }

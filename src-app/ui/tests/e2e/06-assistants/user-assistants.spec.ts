@@ -34,14 +34,14 @@ test.describe('User Assistants - User Page', () => {
     await assertEmptyState(page, 'No assistants yet')
     await assertEmptyState(page, 'Create your first assistant to get started')
     // The primary button in the empty state (not the icon button in the header)
-    await expect(page.getByRole('button', { name: 'plus Create Assistant' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Create Assistant' })).toBeVisible()
   })
 
   test('should create a new assistant with basic info', async ({ page }) => {
     await openCreateAssistantDrawer(page, true)
 
-    // Verify drawer title
-    await expect(page.locator('.ant-drawer-title:has-text("Create Assistant")')).toBeVisible()
+    // Verify drawer title - use heading role with dialog scope
+    await expect(page.getByRole('dialog').or(page.locator('.ant-drawer')).getByText('Create Assistant')).toBeVisible()
 
     await fillAssistantForm(page, {
       name: 'Test Assistant',
@@ -81,13 +81,13 @@ test.describe('User Assistants - User Page', () => {
     await openCreateAssistantDrawer(page, true)
 
     // Try to submit without filling required fields
-    await page.click('.ant-drawer button[type="submit"]')
+    await page.getByRole('dialog').or(page.locator('.ant-drawer')).getByRole('button', { name: 'Create' }).click()
 
     // Verify validation message
     await expect(page.getByText('Please enter a name', { exact: true })).toBeVisible()
 
     // Drawer should still be open
-    await expect(page.locator('.ant-drawer')).toBeVisible()
+    await expect(page.getByRole('dialog').or(page.locator('.ant-drawer'))).toBeVisible()
   })
 
   test('should validate JSON parameters', async ({ page }) => {
@@ -98,7 +98,7 @@ test.describe('User Assistants - User Page', () => {
       parameters: 'invalid json',
     })
 
-    await page.click('.ant-drawer button[type="submit"]')
+    await page.getByRole('dialog').or(page.locator('.ant-drawer')).getByRole('button', { name: 'Create' }).click()
 
     // Verify JSON validation error
     await expect(page.getByText('Please enter valid JSON', { exact: true })).toBeVisible()
@@ -107,7 +107,8 @@ test.describe('User Assistants - User Page', () => {
   test('should prettify JSON parameters on blur', async ({ page }) => {
     await openCreateAssistantDrawer(page, true)
 
-    const parametersField = page.locator('[aria-label="Model parameters in JSON format"]')
+    // Use semantic selector - getByLabel with the exact label text from the form
+    const parametersField = page.getByLabel('Model parameters in JSON format')
 
     // Fill with compact JSON
     await parametersField.fill('{"temperature":0.7,"max_tokens":2048}')
@@ -137,14 +138,14 @@ test.describe('User Assistants - User Page', () => {
     await editAssistantFromCard(page, 'Edit Test Assistant')
 
     // Verify drawer title
-    await expect(page.locator('.ant-drawer-title:has-text("Edit Assistant")')).toBeVisible()
+    await expect(page.getByRole('dialog').or(page.locator('.ant-drawer')).getByText('Edit Assistant')).toBeVisible()
 
-    // Verify form is populated
-    await expect(page.locator('[aria-label="Assistant name"]')).toHaveValue('Edit Test Assistant')
-    await expect(page.locator('[aria-label="Assistant description"]')).toHaveValue('Original description')
+    // Verify form is populated - use semantic selectors
+    await expect(page.getByLabel('Assistant name')).toHaveValue('Edit Test Assistant')
+    await expect(page.getByLabel('Assistant description')).toHaveValue('Original description')
 
     // Update the description
-    await page.fill('[aria-label="Assistant description"]', 'Updated description')
+    await page.getByLabel('Assistant description').fill('Updated description')
 
     await submitAssistantForm(page)
 
@@ -182,7 +183,7 @@ test.describe('User Assistants - User Page', () => {
     await clickAssistantCard(page, 'Click Test Assistant')
 
     // Verify edit drawer opens
-    await expect(page.locator('.ant-drawer-title:has-text("Edit Assistant")')).toBeVisible()
+    await expect(page.getByRole('dialog').or(page.locator('.ant-drawer')).getByText('Edit Assistant')).toBeVisible()
   })
 
   test('should cancel assistant creation', async ({ page }) => {
@@ -288,9 +289,9 @@ test.describe('User Assistants - User Page', () => {
     // Sort by name
     await sortAssistantsBy(page, 'Name')
 
-    // Get all assistant card names (first strong text in each card)
-    const cards = await page.locator('.ant-card').all()
-    const names = await Promise.all(cards.map(card => card.locator('.ant-typography strong').first().textContent()))
+    // Get all assistant card names using data-test attribute
+    const cards = await page.locator('[data-test-assistant-name]').all()
+    const names = await Promise.all(cards.map(card => card.getAttribute('data-test-assistant-name')))
 
     // Verify they are in alphabetical order
     expect(names[0]).toContain('Alpha')
@@ -320,16 +321,16 @@ test.describe('User Assistants - User Page', () => {
 
     // Edit the first assistant to make it most recently updated
     await editAssistantFromCard(page, 'First Assistant')
-    await page.fill('[aria-label="Assistant description"]', 'Updated to be most recent')
+    await page.getByLabel('Assistant description').fill('Updated to be most recent')
     await submitAssistantForm(page)
     await page.waitForTimeout(500)
 
     // Sort by activity (default, but click to ensure)
     await sortAssistantsBy(page, 'Activity')
 
-    // Get all assistant card names (first strong text in each card)
-    const cards = await page.locator('.ant-card').all()
-    const names = await Promise.all(cards.map(card => card.locator('.ant-typography strong').first().textContent()))
+    // Get all assistant card names using data-test attribute
+    const cards = await page.locator('[data-test-assistant-name]').all()
+    const names = await Promise.all(cards.map(card => card.getAttribute('data-test-assistant-name')))
 
     // Verify First Assistant is now at the top (most recently updated)
     expect(names[0]).toContain('First Assistant')
@@ -348,9 +349,9 @@ test.describe('User Assistants - User Page', () => {
     // Sort by created date
     await sortAssistantsBy(page, 'Created')
 
-    // Get all assistant card names (first strong text in each card)
-    const cards = await page.locator('.ant-card').all()
-    const names = await Promise.all(cards.map(card => card.locator('.ant-typography strong').first().textContent()))
+    // Get all assistant card names using data-test attribute
+    const cards = await page.locator('[data-test-assistant-name]').all()
+    const names = await Promise.all(cards.map(card => card.getAttribute('data-test-assistant-name')))
 
     // Verify they are in reverse chronological order (newest first)
     expect(names[0]).toContain('Newest')
@@ -401,8 +402,8 @@ test.describe('User Assistants - User Page', () => {
     await assertAssistantHasTag(page, 'Assistant 2', 'Default')
 
     // Verify Assistant 1 is no longer default (should not have Default tag visible)
-    const assistant1Card = page.locator('.ant-card:has-text("Assistant 1")')
-    const defaultTag = assistant1Card.locator('.ant-tag:has-text("Default")')
+    const assistant1Card = page.locator('[data-test-assistant-name="Assistant 1"]')
+    const defaultTag = assistant1Card.getByText('Default', { exact: true })
     await expect(defaultTag).not.toBeVisible()
   })
 
@@ -436,9 +437,9 @@ test.describe('User Assistants - User Page', () => {
     await fillAssistantForm(page, { name: 'Date Test Assistant' })
     await submitAssistantForm(page)
 
-    const card = page.locator('.ant-card:has-text("Date Test Assistant")')
+    const card = page.locator('[data-test-assistant-name="Date Test Assistant"]')
 
     // Verify "Updated" text is visible (with relative time)
-    await expect(card.locator('text=/Updated/')).toBeVisible()
+    await expect(card.getByText(/Updated/)).toBeVisible()
   })
 })

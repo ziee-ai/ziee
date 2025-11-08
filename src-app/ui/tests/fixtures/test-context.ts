@@ -5,10 +5,41 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import pg from 'pg'
 import crypto from 'crypto'
-import { findAvailablePorts, releasePortLock } from './port-manager'
+import { findAvailablePorts, releasePortLock, updatePortLockHeartbeat } from './port-manager'
 
 const { Pool } = pg
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Simple HTML prettifier for test debugging
+function prettifyHTML(html: string): string {
+  let formatted = ''
+  let indent = 0
+  const indentStr = '  '
+
+  // Split by tags
+  const tokens = html.split(/(<[^>]+>)/g).filter(Boolean)
+
+  for (const token of tokens) {
+    if (token.startsWith('</')) {
+      // Closing tag - decrease indent first
+      indent = Math.max(0, indent - 1)
+      formatted += indentStr.repeat(indent) + token + '\n'
+    } else if (token.startsWith('<')) {
+      // Opening or self-closing tag
+      formatted += indentStr.repeat(indent) + token + '\n'
+
+      // Increase indent for non-self-closing tags
+      if (!token.endsWith('/>') && !token.match(/<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)/i)) {
+        indent++
+      }
+    } else if (token.trim()) {
+      // Text content (only if not just whitespace)
+      formatted += indentStr.repeat(indent) + token.trim() + '\n'
+    }
+  }
+
+  return formatted
+}
 
 interface TestInfrastructure {
   databaseName: string
@@ -18,6 +49,7 @@ interface TestInfrastructure {
   apiURL: string
   serverProcess: ChildProcess
   viteProcess: ChildProcess
+  heartbeatInterval: NodeJS.Timeout
 }
 
 interface TestFixtures {
@@ -25,6 +57,24 @@ interface TestFixtures {
 }
 
 export const test = base.extend<TestFixtures>({
+  // Auto-capture HTML snapshot on test failure
+  page: async ({ page }, use, testInfo) => {
+    await use(page)
+
+    // After test completes, save HTML if it failed
+    if (testInfo.status !== testInfo.expectedStatus) {
+      const htmlContent = await page.content()
+      const prettifiedHTML = prettifyHTML(htmlContent)
+      const htmlPath = testInfo.outputPath('page.html')
+      writeFileSync(htmlPath, prettifiedHTML)
+      testInfo.attachments.push({
+        name: 'page.html',
+        path: htmlPath,
+        contentType: 'text/html',
+      })
+    }
+  },
+
   testInfra: async ({}, use, testInfo) => {
     const testId = crypto.randomBytes(4).toString('hex')
     const databaseName = `ziee_test_${testId}`
@@ -51,7 +101,11 @@ export const test = base.extend<TestFixtures>({
     console.log(`   Backend: http://localhost:${backendPort}`)
     console.log(`   Vite: http://localhost:${vitePort}\n`)
 
-    // 1. Create database
+    // 1. Kill any orphaned processes still on our ports (even though lock was freed)
+    await killProcessOnPort(vitePort)
+    await killProcessOnPort(backendPort)
+
+    // 2. Create database
     const pool = new Pool({
       host: 'localhost',
       port: postgresPort,
@@ -71,14 +125,14 @@ export const test = base.extend<TestFixtures>({
     }
 
     // 2. Clear Vite cache to ensure fresh builds
-    const viteCacheDir = resolve(__dirname, '../../node_modules/.vite')
-    if (existsSync(viteCacheDir)) {
-      console.log(`🗑️  Clearing Vite cache...`)
-      rmSync(viteCacheDir, { recursive: true, force: true })
-    }
+    // const viteCacheDir = resolve(__dirname, '../../node_modules/.vite')
+    // if (existsSync(viteCacheDir)) {
+    //   console.log(`🗑️  Clearing Vite cache...`)
+    //   rmSync(viteCacheDir, { recursive: true, force: true })
+    // }
 
     // 3. Create backend config file
-    const configDir = resolve(__dirname, '../../.test-configs')
+    const configDir = resolve(__dirname, '../.test-configs')
     if (!existsSync(configDir)) {
       mkdirSync(configDir, { recursive: true })
     }
@@ -231,7 +285,7 @@ export default defineConfig({
     console.log(`🎨 Starting Vite server on port ${vitePort}...`)
     const viteProcess = spawn(
       'npx',
-      ['vite', '--config', viteConfigPath, '--clearScreen', 'false'],
+      ['vite', '--config', viteConfigPath, '--clearScreen', 'false', '--force'],
       {
         cwd: projectRoot,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -252,6 +306,16 @@ export default defineConfig({
     }
     console.log(`✅ Vite server ready on port ${vitePort}`)
 
+    // Start heartbeat to keep lock alive
+    // Update lock every 5 seconds with process PIDs and timestamp
+    const heartbeatInterval = setInterval(() => {
+      updatePortLockHeartbeat(vitePort, backendPort, viteProcess.pid, serverProcess.pid)
+    }, 5000) // HEARTBEAT_INTERVAL_MS
+
+    // Initial heartbeat with PIDs
+    updatePortLockHeartbeat(vitePort, backendPort, viteProcess.pid, serverProcess.pid)
+    console.log(`💓 Heartbeat started for ports ${vitePort}/${backendPort}`)
+
     const infrastructure: TestInfrastructure = {
       databaseName,
       backendPort,
@@ -260,6 +324,7 @@ export default defineConfig({
       apiURL: `http://localhost:${backendPort}`,
       serverProcess,
       viteProcess,
+      heartbeatInterval,
     }
 
     console.log(`✅ Test infrastructure ready!\n`)
@@ -269,6 +334,10 @@ export default defineConfig({
 
     // Cleanup after test
     console.log(`\n🧹 Cleaning up test infrastructure for: ${testInfo.title}`)
+
+    // Stop heartbeat
+    clearInterval(infrastructure.heartbeatInterval)
+    console.log(`💔 Heartbeat stopped`)
 
     // Kill backend server process (cargo and rust binary)
     try {
@@ -292,8 +361,13 @@ export default defineConfig({
       viteProcess.kill('SIGKILL')
     } catch {}
 
-    // Wait for ports to be fully released
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    // Wait a bit for process cleanup
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // Kill any remaining processes on our ports (handles orphaned processes)
+    console.log(`🔪 Ensuring all processes on ports ${vitePort} and ${backendPort} are killed...`)
+    await killProcessOnPort(vitePort)
+    await killProcessOnPort(backendPort)
 
     // Drop database
     const cleanupPool = new Pool({
@@ -348,4 +422,46 @@ async function waitForServer(url: string, maxAttempts: number): Promise<boolean>
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
   return false
+}
+
+async function killProcessOnPort(port: number): Promise<void> {
+  try {
+    const { execSync } = await import('child_process')
+    // Find process using the port
+    const cmd = process.platform === 'win32'
+      ? `netstat -ano | findstr :${port}`
+      : `lsof -ti :${port}`
+
+    const output = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' }).trim()
+
+    if (!output) return
+
+    if (process.platform === 'win32') {
+      // Windows: extract PID from netstat output
+      const lines = output.split('\n')
+      const pids = new Set<string>()
+      for (const line of lines) {
+        const match = line.trim().match(/\s+(\d+)$/)
+        if (match) pids.add(match[1])
+      }
+      for (const pid of pids) {
+        try {
+          execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' })
+        } catch {}
+      }
+    } else {
+      // Unix: lsof returns PIDs directly
+      const pids = output.split('\n').filter(Boolean)
+      for (const pid of pids) {
+        try {
+          execSync(`kill -9 ${pid}`, { stdio: 'ignore' })
+        } catch {}
+      }
+    }
+
+    // Wait for port to be released
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  } catch (error) {
+    // No process on port or command failed - that's ok
+  }
 }

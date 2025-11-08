@@ -70,16 +70,16 @@ export interface GlobalComponent {
   order?: number                      // Optional: Mount order (default: 0)
 }
 
-// Widget types - extensible slot system with declaration merging
-// Modules can declare widget slots using declaration merging:
+// Slot types - extensible slot system with declaration merging
+// Modules can declare slots using declaration merging:
 // declare module '@/core/router/types' {
-//   interface WidgetSlots {
+//   interface Slots {
 //     userGroup: GroupWidget[]
 //   }
 // }
-export interface WidgetSlots {}
+export interface Slots {}
 
-export type WidgetRegistration = Partial<WidgetSlots>
+export type SlotRegistration = Partial<Slots>
 
 export interface AppModule {
   metadata: ModuleMetadata
@@ -88,7 +88,7 @@ export interface AppModule {
   registerSidebar?: () => SidebarRegistration
   registerSettings?: () => SettingsMenuItem[]
   registerGlobalComponents?: () => GlobalComponent[]
-  registerWidgets?: () => WidgetRegistration
+  registerSlots?: () => SlotRegistration
   initialize?: () => void | Promise<void>
   cleanup?: () => void | Promise<void>
 }

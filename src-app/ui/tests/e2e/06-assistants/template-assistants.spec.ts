@@ -147,6 +147,12 @@ test.describe('Template Assistants - Settings Page', () => {
     })
     await submitAssistantForm(page)
 
+    // Wait for success message and list reload
+    await assertSuccessMessage(page, 'Assistant created successfully')
+
+    // Wait for the assistant to appear in the reloaded list
+    await assertTemplateAssistantExists(page, 'Inactive Template Test')
+
     const row = await getTemplateAssistantRow(page, 'Inactive Template Test')
     await expect(row.locator('.ant-tag:has-text("Inactive")')).toBeVisible()
   })
@@ -203,8 +209,11 @@ test.describe('Template Assistants - Settings Page', () => {
     // Verify we're on page 2
     await expect(page.locator('.ant-pagination-item-active:has-text("2")')).toBeVisible()
 
-    // Verify page 2 templates are visible
-    await assertTemplateAssistantExists(page, 'Pagination Template 11')
+    // Verify page 2 templates are visible (sorted newest first, so older templates on page 2)
+    await assertTemplateAssistantExists(page, 'Pagination Template 2')
+
+    // Verify the Default Assistant is also on page 2
+    await assertTemplateAssistantExists(page, 'Default Assistant')
   })
 
   test('should change page size', async ({ page }) => {
@@ -269,7 +278,8 @@ test.describe('Template Assistants - Settings Page', () => {
     // Set second template as default
     await editTemplateAssistant(page, 'Template 2')
 
-    const defaultSwitch = page.locator('form >> text=Set as Default').locator('..').locator('.ant-switch')
+    // Toggle the "Set as Default" switch using the form field ID
+    const defaultSwitch = page.locator('#assistant-form_is_default')
     await defaultSwitch.click()
 
     await submitAssistantForm(page)

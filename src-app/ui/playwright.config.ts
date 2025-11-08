@@ -1,7 +1,22 @@
 import { defineConfig, devices } from '@playwright/test'
+import crypto from 'crypto'
+
+// Organize test results by test run ID to avoid conflicts between parallel test runs
+// Generate a unique ID for this test run if not set by global-setup
+const testRunId = process.env.TEST_RUN_ID || crypto.randomBytes(4).toString('hex')
+const outputDir = `test-results/${testRunId}`
+const reportDir = `playwright-report/${testRunId}`
+
+// Make test run ID available to global-setup
+if (!process.env.TEST_RUN_ID) {
+  process.env.TEST_RUN_ID = testRunId
+}
 
 export default defineConfig({
   testDir: './tests/e2e',
+
+  // Organize test artifacts by test run ID
+  outputDir,
 
   // Run tests in files in parallel
   // Each test gets its own worker with isolated backend server, Vite server, and database
@@ -18,8 +33,8 @@ export default defineConfig({
 
   // Reporter to use
   reporter: [
-    ['html', { outputFolder: 'playwright-report', open: 'never' }],
-    ['junit', { outputFile: 'playwright-report/results.xml' }],
+    ['html', { outputFolder: reportDir, open: 'never' }],
+    ['junit', { outputFile: `${reportDir}/results.xml` }],
     ['list'],
   ],
 

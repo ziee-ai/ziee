@@ -123,7 +123,7 @@ export default createModule({
       component: LlmProviderGroupsAssignmentDrawer,
     },
   ],
-  widgets: {
+  slots: {
     userGroup: [
       {
         order: 10,

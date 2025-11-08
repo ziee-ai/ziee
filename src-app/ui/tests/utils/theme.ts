@@ -19,7 +19,7 @@ export async function setTheme(page: Page, theme: ThemePreference): Promise<void
   }, theme)
 
   // Reload to apply theme change
-  await page.reload({ waitUntil: 'networkidle' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
 }
 
 /**

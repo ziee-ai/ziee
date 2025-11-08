@@ -35,11 +35,12 @@ export async function goToProviderDetail(
 
 export async function clickProviderCard(page: Page, providerName: string) {
   // Wait for provider to be visible in the sidebar menu
-  const providerMenuItem = page.locator(`[role="menu"] [role="menuitem"]:has-text("${providerName}")`)
-  await providerMenuItem.waitFor({ state: 'visible', timeout: 10000 })
+  // Use exact text match and first() to avoid strict mode violations when provider appears in multiple places
+  const providerMenuItem = page.locator('[role="menu"]').getByRole('menuitem').filter({ hasText: new RegExp(`^${providerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) })
+  await providerMenuItem.first().waitFor({ state: 'visible', timeout: 10000 })
 
   // Click the provider
-  await providerMenuItem.click()
+  await providerMenuItem.first().click()
 
   // Wait for page to load - use 'load' instead of 'networkidle' to avoid issues with SSE connections
   await page.waitForLoadState('load')

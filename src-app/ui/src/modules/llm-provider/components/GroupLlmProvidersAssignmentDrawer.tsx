@@ -119,6 +119,9 @@ export function GroupLlmProvidersAssignmentDrawer() {
                 return (
                   <Card
                     key={provider.id}
+                    onClick={() => handleToggle(provider.id, !isChecked)}
+                    style={{ cursor: 'pointer' }}
+                    hoverable
                   >
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>

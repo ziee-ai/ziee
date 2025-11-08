@@ -103,7 +103,7 @@ export default createModule({
       component: McpServerGroupsAssignmentDrawer,
     },
   ],
-  widgets: {
+  slots: {
     userGroup: [
       {
         order: 20,

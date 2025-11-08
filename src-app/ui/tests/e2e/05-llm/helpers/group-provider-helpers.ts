@@ -11,6 +11,8 @@ import { Page, expect } from '@playwright/test'
 export async function goToUserGroupsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/user-groups`)
   await page.waitForLoadState('load')
+  // Wait for page to fully load before proceeding
+  await waitForUserGroupsPageLoad(page)
 }
 
 export async function waitForUserGroupsPageLoad(page: Page) {
@@ -24,12 +26,16 @@ export async function waitForUserGroupsPageLoad(page: Page) {
 
 export async function clickGroupItem(page: Page, groupName: string) {
   // Note: Groups don't need to be "clicked" to expand - widgets are always visible
-  // This function just waits for the group to be visible in the page
+  // This function just waits for the group to be visible and scrolls it into view
   const groupText = page.locator(`text="${groupName}"`).first()
   await groupText.waitFor({ state: 'visible', timeout: 10000 })
-  // No need to click - widgets are already visible
-  // Wait longer for lazy-loaded widgets to render (LLM Providers widget is lazy-loaded)
-  await page.waitForTimeout(2000)
+
+  // Scroll the group into view to ensure widgets can render
+  await groupText.scrollIntoViewIfNeeded()
+
+  // Wait for lazy-loaded widgets to render (LLM Providers widget is lazy-loaded)
+  // Increased to 6 seconds to give more time for lazy component loading and API calls
+  await page.waitForTimeout(6000)
 }
 
 // =====================================================
@@ -62,7 +68,7 @@ export async function toggleProviderInDrawer(
 ) {
   // Find the provider card in the drawer
   const providerCard = page.locator(
-    `.ant-drawer:visible .ant-drawer-body .p-3:has-text("${providerName}")`
+    `.ant-drawer:visible .ant-drawer-body .ant-card:has-text("${providerName}")`
   )
   await providerCard.waitFor({ state: 'visible', timeout: 5000 })
 
@@ -144,12 +150,13 @@ export async function assertProviderInGroupWidget(
   // Expand the group if needed
   await clickGroupItem(page, groupName)
 
-  // Wait for the LLM Providers widget to be visible
-  const widget = page.locator('[data-widget="llm-providers"]')
+  // Find the specific widget by using the unique button as a locator
+  // The widget contains the button, so we find the widget that has this specific button
+  // Use .first() to handle potential duplicate widgets
+  const widget = page.locator(`[data-widget="llm-providers"]:has(button[aria-label="Edit LLM Providers for ${groupName}"])`).first()
   await widget.waitFor({ state: 'visible', timeout: 10000 })
 
-  // Use data-widget attribute to uniquely identify the LLM Providers widget
-  // This avoids conflicts with parent group cards or other widgets
+  // Now find the provider tag within this specific widget
   const providerTag = widget.locator(`[data-testid="provider-tags-container"] .ant-tag:has-text("${providerName}")`)
   await expect(providerTag).toBeVisible()
 }
@@ -165,11 +172,12 @@ export async function assertProviderNotInGroupWidget(
   // Expand the group if needed
   await clickGroupItem(page, groupName)
 
-  // Wait for the LLM Providers widget to be visible
-  const widget = page.locator('[data-widget="llm-providers"]')
+  // Find the specific widget by using the unique button as a locator
+  // Use .first() to handle potential duplicate widgets
+  const widget = page.locator(`[data-widget="llm-providers"]:has(button[aria-label="Edit LLM Providers for ${groupName}"])`).first()
   await widget.waitFor({ state: 'visible', timeout: 10000 })
 
-  // Use data-widget attribute to uniquely identify the LLM Providers widget
+  // Now find the provider tag within this specific widget
   const providerTag = widget.locator(`[data-testid="provider-tags-container"] .ant-tag:has-text("${providerName}")`)
   await expect(providerTag).not.toBeVisible()
 }
@@ -185,17 +193,18 @@ export async function assertGroupWidgetShowsCount(
   // Expand the group if needed
   await clickGroupItem(page, groupName)
 
-  // Wait for the LLM Providers widget to be visible (not just the button)
-  const widget = page.locator('[data-widget="llm-providers"]')
+  // Find the specific widget by using the unique button as a locator
+  // This ensures we're looking at the right widget even when multiple groups are on the page
+  // Use .first() to handle potential duplicate widgets
+  const widget = page.locator(`[data-widget="llm-providers"]:has(button[aria-label="Edit LLM Providers for ${groupName}"])`).first()
   await widget.waitFor({ state: 'visible', timeout: 10000 })
 
   if (expectedCount === 0) {
-    // Use data-widget attribute to target the specific widget
+    // Look for "No providers assigned" text within this specific widget
     const noProvidersText = widget.locator('text=No providers assigned')
     await expect(noProvidersText).toBeVisible()
   } else {
-    // Use data-widget attribute to uniquely identify the LLM Providers widget
-    // This ensures we only count tags in the LLM Providers widget, not other widgets
+    // Count tags within this specific widget only
     const tags = widget.locator('[data-testid="provider-tags-container"] .ant-tag')
     await expect(tags).toHaveCount(expectedCount)
   }
@@ -230,7 +239,7 @@ export async function toggleGroupInDrawer(
 ) {
   // Find the group card in the drawer
   const groupCard = page.locator(
-    `.ant-drawer:visible .ant-drawer-body .p-3:has-text("${groupName}")`
+    `.ant-drawer:visible .ant-drawer-body .ant-card:has-text("${groupName}")`
   )
   await groupCard.waitFor({ state: 'visible', timeout: 5000 })
 
@@ -385,7 +394,8 @@ export async function deleteUserGroup(
   await clickGroupItem(page, groupName)
 
   // Click delete button using aria-label
-  const deleteButton = page.locator(`button[aria-label="Delete ${groupName}"]`)
+  // Use .first() to handle potential duplicates
+  const deleteButton = page.locator(`button[aria-label="Delete ${groupName}"]`).first()
   await deleteButton.waitFor({ state: 'visible', timeout: 10000 })
   await deleteButton.click()
 

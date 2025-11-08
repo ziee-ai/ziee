@@ -7,8 +7,8 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for the form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for the form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Check accessibility on the setup page
     await assertNoAccessibilityViolations(page)
@@ -18,12 +18,12 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for the form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for the form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Switch to dark mode
     await setTheme(page, 'dark')
-    await page.waitForSelector('#username', { timeout: 30000 })
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Verify dark mode is active
     const darkModeActive = await isDarkMode(page)
@@ -38,30 +38,30 @@ test.describe('App Setup', () => {
     // Navigate directly to setup page
     await page.goto(`${baseURL}`)
 
-    // Wait for the form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for the form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Should show welcome message
-    await expect(page.locator('h2')).toContainText('Welcome to Ziee Chat')
-    await expect(page.locator('text=No administrator account exists')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: /welcome to ziee chat/i })).toBeVisible()
+    await expect(page.getByText('No administrator account exists')).toBeVisible()
   })
 
   test('should create admin account successfully', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
-    // Fill in the form
-    await page.fill('#username', 'admin')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
-    await page.fill('#display_name', 'System Administrator')
+    // Fill in the form using semantic selectors
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByLabel(/display name.*optional/i).fill('System Administrator')
 
-    // Submit the form
-    await page.click('button[type="submit"]')
+    // Submit the form using role-based selector
+    await page.getByRole('button', { name: /create admin account/i }).click()
 
     // Should redirect to home after successful setup
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
@@ -72,20 +72,20 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Fill with short username
-    await page.fill('#username', 'ab')
-    await page.fill('#email', 'admin@example.com')
-    await page.fill('#password', 'password123')
-    await page.fill('#confirm_password', 'password123')
+    await page.getByLabel('Username').fill('ab')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
 
     // Trigger validation by clicking another field
-    await page.click('#email')
+    await page.getByLabel('Email').click()
 
     // Should show validation error
-    await expect(page.locator('text=Username must be at least 3 characters')).toBeVisible()
+    await expect(page.getByText('Username must be at least 3 characters')).toBeVisible()
 
   })
 
@@ -93,19 +93,19 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Fill with invalid email
-    await page.fill('#username','admin')
-    await page.fill('#email','not-an-email')
-    await page.fill('#password','password123')
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('not-an-email')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
 
     // Trigger validation
-    await page.click('#password')
+    await page.getByLabel('Password', { exact: true }).click()
 
     // Should show validation error
-    await expect(page.locator('text=Invalid email format')).toBeVisible()
+    await expect(page.getByText('Invalid email format')).toBeVisible()
 
   })
 
@@ -113,23 +113,23 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Fill with short password
-    await page.fill('#username','admin')
-    await page.fill('#email','admin@example.com')
-    await page.fill('#password','pass123')
-    await page.fill('#confirm_password','pass123')
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('pass123')
+    await page.getByLabel('Confirm Password').fill('pass123')
 
     // Try to submit the form
-    await page.click('button[type="submit"]')
+    await page.getByRole('button', { name: /create admin account/i }).click()
 
     // Should still be on setup page (submission failed due to validation)
     await expect(page).toHaveURL(`${baseURL}/setup`)
 
     // Password help text should be visible
-    await expect(page.locator('text=Must be at least 8 characters')).toBeVisible()
+    await expect(page.getByText('Must be at least 8 characters')).toBeVisible()
 
   })
 
@@ -137,20 +137,20 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Fill with mismatched passwords
-    await page.fill('#username','admin')
-    await page.fill('#email','admin@example.com')
-    await page.fill('#password','password123')
-    await page.fill('#confirm_password','password456')
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password456')
 
     // Trigger validation
-    await page.click('#display_name')
+    await page.getByLabel(/display name.*optional/i).click()
 
     // Should show validation error
-    await expect(page.locator('text=Passwords do not match')).toBeVisible()
+    await expect(page.getByText('Passwords do not match')).toBeVisible()
 
   })
 
@@ -158,19 +158,19 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Fill with invalid username (contains special characters)
-    await page.fill('#username','admin@user')
-    await page.fill('#email','admin@example.com')
-    await page.fill('#password','password123')
+    await page.getByLabel('Username').fill('admin@user')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
 
     // Trigger validation
-    await page.click('#email')
+    await page.getByLabel('Email').click()
 
     // Should show validation error
-    await expect(page.locator('text=Username can only contain letters, numbers, hyphens, and underscores')).toBeVisible()
+    await expect(page.getByText('Username can only contain letters, numbers, hyphens, and underscores')).toBeVisible()
 
   })
 
@@ -178,8 +178,8 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Tab to username field
     await page.keyboard.press('Tab')
@@ -214,18 +214,18 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Fill form without display name
-    await page.fill('#username','admin')
-    await page.fill('#email','admin@example.com')
-    await page.fill('#password','password123')
-    await page.fill('#confirm_password','password123')
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
     // Skip display_name
 
     // Submit
-    await page.click('button[type="submit"]')
+    await page.getByRole('button', { name: /create admin account/i }).click()
 
     // Should redirect to home
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
@@ -236,23 +236,23 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
-    // Check all fields are present
-    await expect(page.locator('#username')).toBeVisible()
-    await expect(page.locator('#email')).toBeVisible()
-    await expect(page.locator('#password')).toBeVisible()
-    await expect(page.locator('#confirm_password')).toBeVisible()
-    await expect(page.locator('#display_name')).toBeVisible()
+    // Check all fields are present using semantic selectors
+    await expect(page.getByLabel('Username')).toBeVisible()
+    await expect(page.getByLabel('Email')).toBeVisible()
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Confirm Password')).toBeVisible()
+    await expect(page.getByLabel(/display name.*optional/i)).toBeVisible()
     await expect(page.getByRole('button', { name: /create admin account/i })).toBeVisible()
 
-    // Check labels (using exact text to avoid conflicts)
-    await expect(page.locator('label:has-text("Username")')).toBeVisible()
-    await expect(page.locator('label:has-text("Email")')).toBeVisible()
-    await expect(page.locator('label[for="password"]:has-text("Password")')).toBeVisible()
-    await expect(page.locator('label:has-text("Confirm Password")')).toBeVisible()
-    await expect(page.locator('label:has-text("Display Name (Optional)")')).toBeVisible()
+    // Check labels are visible
+    await expect(page.getByText('Username', { exact: false })).toBeVisible()
+    await expect(page.getByText('Email', { exact: false })).toBeVisible()
+    await expect(page.getByText('Password', { exact: false }).first()).toBeVisible()
+    await expect(page.getByText('Confirm Password')).toBeVisible()
+    await expect(page.getByText(/display name.*optional/i)).toBeVisible()
 
   })
 
@@ -260,11 +260,11 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Check that password help text is visible
-    await expect(page.locator('text=Must be at least 8 characters')).toBeVisible()
+    await expect(page.getByText('Must be at least 8 characters')).toBeVisible()
 
   })
 
@@ -272,17 +272,17 @@ test.describe('App Setup', () => {
     const { baseURL } = testInfra
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
 
     // Try to submit without filling form
-    await page.click('button[type="submit"]')
+    await page.getByRole('button', { name: /create admin account/i }).click()
 
     // Should still be on setup page
     await expect(page).toHaveURL(`${baseURL}/setup`)
 
     // Should show validation errors
-    await expect(page.locator('text=Username is required')).toBeVisible()
+    await expect(page.getByText('Username is required')).toBeVisible()
 
   })
 
@@ -291,13 +291,13 @@ test.describe('App Setup', () => {
     // First, create an admin user
     await page.goto(`${baseURL}/setup`)
 
-    // Wait for form to be visible
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username','admin')
-    await page.fill('#email','admin@example.com')
-    await page.fill('#password','password123')
-    await page.fill('#confirm_password','password123')
-    await page.click('button[type="submit"]')
+    // Wait for form to be visible using semantic selector
+    await page.getByLabel('Username').waitFor({ timeout: 30000 })
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Email').fill('admin@example.com')
+    await page.getByLabel('Password', { exact: true }).fill('password123')
+    await page.getByLabel('Confirm Password').fill('password123')
+    await page.getByRole('button', { name: /create admin account/i }).click()
 
     // Wait for setup to complete - should redirect to home page
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })

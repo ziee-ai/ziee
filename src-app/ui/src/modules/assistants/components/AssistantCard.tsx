@@ -38,6 +38,7 @@ export function AssistantCard({ assistant, onEdit, onDelete }: AssistantCardProp
       }}
       hoverable
       onClick={handleCardClick}
+      data-test-assistant-name={assistant.name}
     >
       <Flex className="h-full flex-col flex-1">
         {/* Header with name and tags */}

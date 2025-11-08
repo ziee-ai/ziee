@@ -2,19 +2,21 @@ import { Page, expect } from '@playwright/test'
 
 /**
  * Navigation helpers for assistants pages
+ *
+ * Uses semantic selectors following CLAUDE.md best practices
  */
 
 export async function goToUserAssistantsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/assistants`)
   await page.waitForLoadState('networkidle')
   // Wait for the page title (h4 heading in title bar) specifically, not the empty state heading (h3)
-  await page.locator('h4:has-text("Assistants")').first().waitFor({ timeout: 10000 })
+  await page.getByRole('heading', { level: 4, name: /assistants/i }).first().waitFor({ timeout: 10000 })
 }
 
 export async function goToTemplateAssistantsSettings(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/assistants`)
   await page.waitForLoadState('networkidle')
-  await page.locator('.ant-card-head-title:has-text("Template Assistants")').waitFor({ timeout: 10000 })
+  await page.getByText('Template Assistants').or(page.locator('.ant-card-head-title:has-text("Template Assistants")')).waitFor({ timeout: 10000 })
 }
 
 /**
@@ -23,8 +25,8 @@ export async function goToTemplateAssistantsSettings(page: Page, baseURL: string
 
 export async function openCreateAssistantDrawer(page: Page, _isUserPage = true) {
   // Both pages now use the same aria-label for the create button
-  await page.click('button[aria-label="Create assistant"]')
-  await page.waitForSelector('.ant-drawer', { state: 'visible' })
+  await page.getByRole('button', { name: /create assistant/i }).click()
+  await page.getByRole('dialog').or(page.locator('.ant-drawer')).waitFor({ state: 'visible' })
 }
 
 export async function fillAssistantForm(
@@ -39,31 +41,30 @@ export async function fillAssistantForm(
   }
 ) {
   // Wait for drawer to be fully loaded by waiting for first input field
-  await page.waitForSelector('[aria-label="Assistant name"]', { state: 'visible' })
+  await page.getByLabel('Name').waitFor({ state: 'visible' })
 
   // Fill name
-  await page.fill('[aria-label="Assistant name"]', data.name)
+  await page.getByLabel('Name').fill(data.name)
 
   // Fill description if provided
   if (data.description !== undefined) {
-    await page.fill('[aria-label="Assistant description"]', data.description)
+    await page.getByLabel('Description').fill(data.description)
   }
 
   // Fill instructions if provided
   if (data.instructions !== undefined) {
-    await page.fill('[aria-label="Assistant instructions"]', data.instructions)
+    await page.getByLabel('Instructions').fill(data.instructions)
   }
 
   // Fill parameters if provided
   if (data.parameters !== undefined) {
-    await page.fill('[aria-label="Model parameters in JSON format"]', data.parameters)
+    await page.getByLabel('Parameters').fill(data.parameters)
   }
 
   // Set enabled toggle
   if (data.enabled !== undefined) {
-    // Find the Form.Item containing "Enabled" label, then find the switch within it
-    const enabledFormItem = page.locator('.ant-form-item').filter({ hasText: /^Enabled/ })
-    const enabledSwitch = enabledFormItem.locator('.ant-switch')
+    // Use semantic selector with fallback to ID
+    const enabledSwitch = page.getByLabel('Enabled').or(page.locator('#assistant-form_enabled'))
     await enabledSwitch.waitFor({ state: 'visible', timeout: 5000 })
     const isEnabled = await enabledSwitch.getAttribute('aria-checked')
     if ((isEnabled === 'true') !== data.enabled) {
@@ -73,9 +74,8 @@ export async function fillAssistantForm(
 
   // Set default toggle
   if (data.isDefault !== undefined) {
-    // Find the Form.Item containing "Set as Default" label, then find the switch within it
-    const defaultFormItem = page.locator('.ant-form-item').filter({ hasText: /^Set as Default/ })
-    const defaultSwitch = defaultFormItem.locator('.ant-switch')
+    // Use semantic selector with fallback to ID
+    const defaultSwitch = page.getByLabel(/default/i).or(page.locator('#assistant-form_is_default'))
     await defaultSwitch.waitFor({ state: 'visible', timeout: 5000 })
     const isDefault = await defaultSwitch.getAttribute('aria-checked')
     if ((isDefault === 'true') !== data.isDefault) {
@@ -85,18 +85,18 @@ export async function fillAssistantForm(
 }
 
 export async function submitAssistantForm(page: Page) {
-  await page.click('.ant-drawer button[type="submit"]')
+  await page.getByRole('dialog').or(page.locator('.ant-drawer')).getByRole('button', { name: /submit|create|save/i }).click()
   // Don't wait for drawer here - let the test verify success message first
   // The drawer will close automatically after successful submission
 }
 
 export async function cancelAssistantForm(page: Page) {
   // Find the Cancel button within any visible drawer
-  await page.locator('.ant-drawer').getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('dialog').or(page.locator('.ant-drawer')).getByRole('button', { name: 'Cancel' }).click()
 
   // Wait for the drawer to close by checking that no visible drawers remain
   // We check the drawer wrapper class that Ant Design uses when drawer is open
-  await page.waitForSelector('.ant-drawer.ant-drawer-open', {
+  await page.locator('.ant-drawer.ant-drawer-open').waitFor({
     state: 'hidden',
     timeout: 10000
   })
@@ -107,26 +107,26 @@ export async function cancelAssistantForm(page: Page) {
  */
 
 export async function getAssistantCard(page: Page, assistantName: string) {
-  return page.locator(`.ant-card:has-text("${assistantName}")`)
+  return page.locator(`[data-test-assistant-name="${assistantName}"]`)
 }
 
 export async function editAssistantFromCard(page: Page, assistantName: string) {
   const card = await getAssistantCard(page, assistantName)
 
-  // Click the menu button
+  // Click the menu button (last button with an SVG)
   await card.locator('button:has(svg)').last().click()
 
   // Wait for dropdown menu
-  await page.waitForSelector('.ant-dropdown-menu', { state: 'visible' })
+  await page.getByRole('menu').or(page.locator('.ant-dropdown-menu')).waitFor({ state: 'visible' })
 
   // Click Edit
-  await page.locator('.ant-dropdown-menu').getByText('Edit', { exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Edit' }).or(page.locator('.ant-dropdown-menu').getByText('Edit', { exact: true })).click()
 
   // Wait for drawer to open
-  await page.waitForSelector('.ant-drawer', { state: 'visible' })
+  await page.getByRole('dialog').or(page.locator('.ant-drawer')).waitFor({ state: 'visible' })
 
   // Wait for form content to be loaded (same as fillAssistantForm does)
-  await page.waitForSelector('[aria-label="Assistant name"]', { state: 'visible', timeout: 10000 })
+  await page.getByLabel('Name').waitFor({ state: 'visible', timeout: 10000 })
 }
 
 export async function deleteAssistantFromCard(page: Page, assistantName: string) {
@@ -136,23 +136,23 @@ export async function deleteAssistantFromCard(page: Page, assistantName: string)
   await card.locator('button:has(svg)').last().click()
 
   // Wait for dropdown menu
-  await page.waitForSelector('.ant-dropdown-menu', { state: 'visible' })
+  await page.getByRole('menu').or(page.locator('.ant-dropdown-menu')).waitFor({ state: 'visible' })
 
   // Click Delete
-  await page.locator('.ant-dropdown-menu').getByText('Delete', { exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Delete' }).or(page.locator('.ant-dropdown-menu').getByText('Delete', { exact: true })).click()
 
   // Confirm deletion in modal
-  await page.waitForSelector('.ant-modal', { state: 'visible' })
-  await page.locator('.ant-modal').getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('dialog').or(page.locator('.ant-modal')).waitFor({ state: 'visible' })
+  await page.getByRole('dialog').or(page.locator('.ant-modal')).getByRole('button', { name: 'Delete' }).click()
 
   // Wait for modal to close
-  await page.waitForSelector('.ant-modal', { state: 'hidden' })
+  await page.getByRole('dialog').or(page.locator('.ant-modal')).waitFor({ state: 'hidden' })
 }
 
 export async function clickAssistantCard(page: Page, assistantName: string) {
   const card = await getAssistantCard(page, assistantName)
   await card.click()
-  await page.waitForSelector('.ant-drawer', { state: 'visible' })
+  await page.getByRole('dialog').or(page.locator('.ant-drawer')).waitFor({ state: 'visible' })
 }
 
 /**
@@ -160,14 +160,15 @@ export async function clickAssistantCard(page: Page, assistantName: string) {
  */
 
 export async function getTemplateAssistantRow(page: Page, assistantName: string) {
-  // Find the assistant name text, then navigate up to the parent container that has the actions AND descriptions
-  return page.locator(`.ant-card-body`).locator(`text=${assistantName}`).locator('..').locator('..').locator('..').locator('..')
+  // Find the template assistant row by data-test-assistant-id and text content
+  // Use >> to drill down: find divs with test ID that contain the exact text
+  return page.locator(`[data-test-assistant-id^="template-assistant-"]:has-text("${assistantName}")`)
 }
 
 export async function editTemplateAssistant(page: Page, assistantName: string) {
   const row = await getTemplateAssistantRow(page, assistantName)
   await row.getByRole('button', { name: 'Edit' }).click()
-  await page.waitForSelector('.ant-drawer', { state: 'visible' })
+  await page.getByRole('dialog').or(page.locator('.ant-drawer')).waitFor({ state: 'visible' })
 }
 
 export async function deleteTemplateAssistant(page: Page, assistantName: string) {
@@ -175,11 +176,11 @@ export async function deleteTemplateAssistant(page: Page, assistantName: string)
   await row.getByRole('button', { name: 'Delete' }).click()
 
   // Confirm in popconfirm
-  await page.waitForSelector('.ant-popconfirm', { state: 'visible' })
+  await page.locator('.ant-popconfirm').waitFor({ state: 'visible' })
   await page.locator('.ant-popconfirm').getByRole('button', { name: 'Yes' }).click()
 
   // Wait for popconfirm to close
-  await page.waitForSelector('.ant-popconfirm', { state: 'hidden' })
+  await page.locator('.ant-popconfirm').waitFor({ state: 'hidden' })
 }
 
 /**
@@ -187,21 +188,22 @@ export async function deleteTemplateAssistant(page: Page, assistantName: string)
  */
 
 export async function searchAssistants(page: Page, query: string) {
-  const searchInput = page.locator('input[placeholder="Search assistants"]')
+  const searchInput = page.getByPlaceholder('Search assistants').or(page.locator('input[placeholder="Search assistants"]'))
   await searchInput.fill(query)
 }
 
 export async function clearSearch(page: Page) {
-  const clearButton = page.locator('input[placeholder="Search assistants"]').locator('..').locator('.ant-input-clear-icon')
+  const clearButton = page.getByRole('button', { name: /clear.*search/i })
+    .or(page.locator('input[placeholder="Search assistants"]').locator('..').locator('.ant-input-clear-icon'))
   await clearButton.click()
 }
 
 export async function sortAssistantsBy(page: Page, sortType: 'Activity' | 'Name' | 'Created') {
   // Click sort button using aria-label
-  await page.click('button[aria-label="Sort assistants"]')
+  await page.getByRole('button', { name: /sort assistants/i }).click()
 
   // Wait for the sort dropdown to appear (identify it by looking for one that contains "Activity")
-  const sortDropdown = page.locator('.ant-dropdown-menu:has-text("Activity")')
+  const sortDropdown = page.getByRole('menu').or(page.locator('.ant-dropdown-menu:has-text("Activity")'))
   await sortDropdown.waitFor({ state: 'visible', timeout: 10000 })
 
   // Click the sort option within the specific dropdown
@@ -216,14 +218,14 @@ export async function sortAssistantsBy(page: Page, sortType: 'Activity' | 'Name'
  */
 
 export async function goToPage(page: Page, pageNumber: number) {
-  await page.click(`.ant-pagination-item-${pageNumber}`)
+  await page.getByRole('button', { name: `${pageNumber}` }).or(page.locator(`.ant-pagination-item-${pageNumber}`)).click()
   await page.waitForLoadState('networkidle')
 }
 
 export async function changePageSize(page: Page, size: number) {
   // Click the page size selector (find by aria-label or any current value)
   await page.locator('.ant-select-selector').filter({ hasText: '/ page' }).click()
-  await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
+  await page.locator('.ant-select-dropdown').waitFor({ state: 'visible' })
   // Match the actual dropdown option text format: "20 / page"
   await page.locator('.ant-select-dropdown').getByText(`${size} / page`, { exact: true }).click()
   await page.waitForLoadState('networkidle')
@@ -234,7 +236,7 @@ export async function changePageSize(page: Page, size: number) {
  */
 
 export async function assertAssistantExists(page: Page, assistantName: string, shouldExist = true) {
-  const card = page.locator(`.ant-card:has-text("${assistantName}")`)
+  const card = page.locator(`[data-test-assistant-name="${assistantName}"]`)
   if (shouldExist) {
     await expect(card).toBeVisible()
   } else {
@@ -243,9 +245,10 @@ export async function assertAssistantExists(page: Page, assistantName: string, s
 }
 
 export async function assertTemplateAssistantExists(page: Page, assistantName: string, shouldExist = true) {
-  const row = page.locator(`.ant-card-body >> text=${assistantName}`)
+  // Find the template assistant row using data-test-assistant-id and text content
+  const row = page.locator(`[data-test-assistant-id^="template-assistant-"]:has-text("${assistantName}")`)
   if (shouldExist) {
-    await expect(row).toBeVisible()
+    await expect(row.first()).toBeVisible()
   } else {
     await expect(row).not.toBeVisible()
   }
@@ -253,7 +256,7 @@ export async function assertTemplateAssistantExists(page: Page, assistantName: s
 
 export async function assertAssistantHasTag(page: Page, assistantName: string, tagText: string) {
   const card = await getAssistantCard(page, assistantName)
-  const tag = card.locator(`.ant-tag:has-text("${tagText}")`)
+  const tag = card.getByText(tagText, { exact: true })
   await expect(tag).toBeVisible()
 }
 
@@ -263,5 +266,5 @@ export async function assertEmptyState(page: Page, message: string) {
 
 export async function assertSuccessMessage(page: Page, message: string) {
   // Use .last() to get the most recent message, in case multiple are visible
-  await expect(page.locator(`.ant-message-success:has-text("${message}")`).last()).toBeVisible({ timeout: 5000 })
+  await expect(page.getByText(message).or(page.locator(`.ant-message-success:has-text("${message}")`)).last()).toBeVisible({ timeout: 5000 })
 }

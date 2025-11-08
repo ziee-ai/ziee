@@ -12,7 +12,6 @@ test.describe('Hardware Settings', () => {
 
     // Navigate to hardware settings
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForLoadState('networkidle')
 
     // Wait for hardware page to load (title or some content)
     await page.waitForSelector('text=Hardware', { timeout: 30000 })
@@ -29,7 +28,6 @@ test.describe('Hardware Settings', () => {
 
     // Navigate to hardware settings
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForLoadState('networkidle')
     await page.waitForSelector('text=Hardware', { timeout: 30000 })
 
     // Switch to dark mode
@@ -52,10 +50,14 @@ test.describe('Hardware Settings', () => {
 
     // Navigate to hardware settings
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForSelector('text=Hardware', { timeout: 30000 })
 
-    // Check for hardware cards (at least operating system should be present)
-    await expect(page.locator('text=Operating System').or(page.locator('text=Hardware'))).toBeVisible()
+    // Wait for hardware data to load by checking for specific content
+    await page.waitForSelector('text=Operating System', { timeout: 30000 })
+
+    // Check that hardware cards exist (they may be below viewport)
+    const cardCount = await page.locator('.ant-card').count()
+    expect(cardCount).toBeGreaterThan(0)
   })
 
   test('should display hardware cards with proper styling in dark mode', async ({ page, testInfra }) => {
@@ -66,7 +68,7 @@ test.describe('Hardware Settings', () => {
 
     // Navigate to hardware settings
     await page.goto(`${baseURL}/settings/hardware`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForSelector('text=Hardware', { timeout: 30000 })
 
     // Switch to dark mode
     await setTheme(page, 'dark')
@@ -76,7 +78,10 @@ test.describe('Hardware Settings', () => {
     const darkModeActive = await isDarkMode(page)
     expect(darkModeActive).toBe(true)
 
-    // Check that cards are visible in dark mode
+    // Wait for hardware data to load by checking for specific content
+    await page.waitForSelector('text=Operating System', { timeout: 30000 })
+
+    // Check that cards exist in dark mode (they may be below viewport)
     const cards = await page.locator('.ant-card').count()
     expect(cards).toBeGreaterThan(0)
   })

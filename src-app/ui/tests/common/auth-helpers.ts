@@ -48,12 +48,12 @@ export async function loginAsAdmin(
   const needsSetup = currentURL.includes('/setup')
 
   if (needsSetup) {
-    // Admin doesn't exist - create it via setup form
-    await page.waitForSelector('#username', { timeout: 30000 })
-    await page.fill('#username', username)
-    await page.fill('#email', email)
-    await page.fill('#password', password)
-    await page.fill('#confirm_password', password)
+    // Admin doesn't exist - create it via setup form (form name: setup-form)
+    await page.waitForSelector('#setup-form_username', { timeout: 30000 })
+    await page.fill('#setup-form_username', username)
+    await page.fill('#setup-form_email', email)
+    await page.fill('#setup-form_password', password)
+    await page.fill('#setup-form_confirm_password', password)
     await page.click('button[type="submit"]')
 
     // Wait for navigation to home

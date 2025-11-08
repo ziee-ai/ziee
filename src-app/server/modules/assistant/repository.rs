@@ -162,13 +162,14 @@ pub async fn list_assistants(
     // Build query based on is_template flag
     if is_template {
         // Only templates - use window function to get count and records in single query
+        // Note: Template list shows ALL templates (enabled and disabled) for admin management
         let rows = sqlx::query!(
             r#"SELECT
                 id, name, description, instructions, parameters, created_by,
                 is_template, is_default, enabled, created_at, updated_at,
                 COUNT(*) OVER() as "total_count!"
              FROM assistants
-             WHERE is_template = true AND enabled = true
+             WHERE is_template = true
              ORDER BY created_at DESC
              LIMIT $1 OFFSET $2"#,
             limit,

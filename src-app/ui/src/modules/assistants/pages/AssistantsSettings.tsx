@@ -134,7 +134,7 @@ export function AssistantsSettings() {
           ) : (
             <div>
               {assistants.map((assistant, index) => (
-                <div key={assistant.id}>
+                <div key={assistant.id} data-test-assistant-id={`template-assistant-${assistant.id}`}>
                   <div className="flex items-start gap-3 flex-wrap">
                     {/* Assistant Info */}
                     <div className="flex-1">

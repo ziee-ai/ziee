@@ -3,11 +3,13 @@ import { clearAuthState } from '../../../common/auth-helpers'
 
 /**
  * Auth-specific navigation helpers
+ *
+ * Uses semantic selectors following CLAUDE.md best practices
  */
 
 export async function goToAuthPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/auth`, { waitUntil: 'networkidle' })
-  await page.waitForSelector('#login_username', { timeout: 30000 })
+  await page.getByLabel('Username or Email').waitFor({ timeout: 30000 })
 }
 
 export async function logoutAndGoToAuth(page: Page, baseURL: string) {

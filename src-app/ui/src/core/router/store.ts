@@ -7,7 +7,7 @@ import type {
   SidebarWidget,
   SettingsMenuItem,
   GlobalComponent,
-  WidgetSlots,
+  Slots,
 } from './types'
 import { createStoreProxy } from '../stores'
 import { useEventBusStore } from '../events'
@@ -25,7 +25,7 @@ interface RouterState {
   }
   settingsItems: SettingsMenuItem[]
   globalComponents: GlobalComponent[]
-  widgets: Map<keyof WidgetSlots, any[]> // General widget registry by slot (e.g., 'userGroup', 'dashboard')
+  slots: Map<keyof Slots, any[]> // General slot registry (e.g., 'userGroup', 'dashboard')
   registerModule: (module: AppModule) => void
   initializeModules: () => void
 }
@@ -42,7 +42,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
   },
   settingsItems: [],
   globalComponents: [],
-  widgets: new Map(),
+  slots: new Map(),
 
   registerModule: (module: AppModule) => {
     set(state => {
@@ -171,19 +171,19 @@ export const useRouterStore = create<RouterState>((set, get) => ({
             newGlobalComponents.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
           }
 
-          // Re-register widgets - rebuild from all modules
-          // Since widgets don't have IDs, we can't selectively remove them
-          // Instead, rebuild the entire widget registry from all modules
-          const newWidgets = new Map<keyof WidgetSlots, any[]>()
+          // Re-register slots - rebuild from all modules
+          // Since slot items don't have IDs, we can't selectively remove them
+          // Instead, rebuild the entire slot registry from all modules
+          const newSlots = new Map<keyof Slots, any[]>()
 
-          // Register widgets from all modules (including the updated one)
+          // Register slots from all modules (including the updated one)
           for (const mod of newModules) {
-            if (mod.registerWidgets) {
-              const widgets = mod.registerWidgets()
-              for (const [slotName, widgetArray] of Object.entries(widgets)) {
-                const slot = slotName as keyof WidgetSlots
-                const existing = newWidgets.get(slot) || []
-                newWidgets.set(slot, [...existing, ...widgetArray])
+            if (mod.registerSlots) {
+              const slots = mod.registerSlots()
+              for (const [slotName, slotArray] of Object.entries(slots)) {
+                const slot = slotName as keyof Slots
+                const existing = newSlots.get(slot) || []
+                newSlots.set(slot, [...existing, ...slotArray])
               }
             }
           }
@@ -195,7 +195,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
             sidebarItems: newSidebarItems,
             settingsItems: newSettingsItems,
             globalComponents: newGlobalComponents,
-            widgets: newWidgets,
+            slots: newSlots,
           }
         } else {
           console.warn(`Module ${module.metadata.name} is already registered`)
@@ -272,6 +272,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
         globalComponents: module.registerGlobalComponents
           ? module.registerGlobalComponents().length
           : 0,
+        slots: module.registerSlots ? 'yes' : 'no',
       })
 
       return {
@@ -297,7 +298,7 @@ export const useRouterStore = create<RouterState>((set, get) => ({
       },
     }))
 
-    // Step 1: Run module initialize functions first (creates widget slots/registries)
+    // Step 1: Run module initialize functions first (creates slot registries)
     for (const module of modules) {
       if (module.initialize) {
         try {
@@ -326,33 +327,33 @@ export const useRouterStore = create<RouterState>((set, get) => ({
       }
     }
 
-    // Step 2: Register widgets from all modules
+    // Step 2: Register slots from all modules
     // Rebuild from scratch to prevent duplication during HMR
     set(() => {
-      const widgetsMap = new Map<keyof WidgetSlots, any[]>()
+      const slotsMap = new Map<keyof Slots, any[]>()
 
       for (const module of modules) {
-        if (module.registerWidgets) {
+        if (module.registerSlots) {
           try {
-            const widgets = module.registerWidgets()
+            const slots = module.registerSlots()
 
-            // Register widgets for each slot
-            for (const [slotName, widgetArray] of Object.entries(widgets)) {
-              const slot = slotName as keyof WidgetSlots
-              const existing = widgetsMap.get(slot) || []
-              widgetsMap.set(slot, [...existing, ...widgetArray])
-              console.log(`✅ Registered ${widgetArray.length} widget(s) for slot: ${slotName}`)
+            // Register items for each slot
+            for (const [slotName, slotArray] of Object.entries(slots)) {
+              const slot = slotName as keyof Slots
+              const existing = slotsMap.get(slot) || []
+              slotsMap.set(slot, [...existing, ...slotArray])
+              console.log(`✅ Registered ${slotArray.length} item(s) for slot: ${slotName}`)
             }
           } catch (error) {
             console.error(
-              `Failed to register widgets for module ${module.metadata.name}:`,
+              `Failed to register slots for module ${module.metadata.name}:`,
               error,
             )
           }
         }
       }
 
-      return { widgets: widgetsMap }
+      return { slots: slotsMap }
     })
   },
 }))

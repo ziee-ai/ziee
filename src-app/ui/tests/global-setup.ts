@@ -7,7 +7,7 @@ import { tmpdir } from 'os'
 import crypto from 'crypto'
 import pg from 'pg'
 import dotenv from 'dotenv'
-import { cleanupStaleLocks, allocatePostgresPort } from './fixtures/port-manager'
+import { cleanupStaleLocks, cleanupStaleConfigFiles, allocatePostgresPort } from './fixtures/port-manager'
 
 const { Pool } = pg
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -20,6 +20,10 @@ export default async function globalSetup(_config: FullConfig) {
 
   // Clean up stale port locks from previous crashed/killed test runs
   cleanupStaleLocks()
+
+  // Clean up stale config files from previous crashed/killed test runs
+  const configDir = resolve(__dirname, '.test-configs')
+  cleanupStaleConfigFiles(configDir)
 
   // Clean up any stale PostgreSQL test containers
   // Only remove containers whose lock files are missing or stale
@@ -81,17 +85,19 @@ export default async function globalSetup(_config: FullConfig) {
     console.log('✅ No stale containers found\n')
   }
 
-  // 1. Generate unique test run ID
-  const runId = crypto.randomBytes(4).toString('hex')
+  // 1. Get or generate unique test run ID (config may have already set it)
+  const runId = process.env.TEST_RUN_ID || crypto.randomBytes(4).toString('hex')
   console.log(`🆔 Test run ID: ${runId}`)
+
+  // Store runId in environment for teardown and test-context
+  process.env.TEST_RUN_ID = runId
 
   // 2. Allocate PostgreSQL port with file lock
   console.log('🔍 Allocating PostgreSQL port...')
   const postgresPort = await allocatePostgresPort(runId)
   console.log(`✅ Allocated PostgreSQL port: ${postgresPort}\n`)
 
-  // 3. Create .test-configs directory if it doesn't exist
-  const configDir = resolve(__dirname, '.test-configs')
+  // 3. Create .test-configs directory if it doesn't exist (already created above)
   if (!existsSync(configDir)) {
     mkdirSync(configDir, { recursive: true })
   }
@@ -114,9 +120,6 @@ export default async function globalSetup(_config: FullConfig) {
   }
   const configPath = resolve(configDir, `postgres-${runId}.json`)
   writeFileSync(configPath, JSON.stringify(configData, null, 2))
-
-  // Store runId in environment for teardown
-  process.env.TEST_RUN_ID = runId
 
   // 6. Start Docker PostgreSQL for this test run
   console.log(`🐘 Starting PostgreSQL container for run ${runId}...`)

@@ -25,7 +25,7 @@ export interface GroupWidgetProps {
  * const LLMProviderGroupWidgetComponent = lazyWithPreload(() => import('./widgets/LLMProviderGroupWidget').then(m => ({ default: m.LLMProviderGroupWidget })))
  *
  * export default createModule({
- *   widgets: {
+ *   slots: {
  *     userGroup: [
  *       { order: 10, component: LLMProviderGroupWidgetComponent }
  *     ]
@@ -49,11 +49,11 @@ export interface GroupWidget {
 }
 
 /**
- * Register the 'userGroup' widget slot.
+ * Register the 'userGroup' slot.
  * Other modules can register widgets for this slot to display in group list items.
  */
 declare module '@/core/router/types' {
-  interface WidgetSlots {
+  interface Slots {
     userGroup: GroupWidget[]
   }
 }
