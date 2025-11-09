@@ -4,10 +4,10 @@ import type {
   useSystemMcpServersStore,
   useMcpServerDrawerStore,
 } from './stores'
-import type { useSystemMcpServerGroupCardStore } from './components/McpServerGroupsAssignmentCard.store'
+import type { useSystemMcpServerGroupCardStore } from './components/system/McpServerGroupsAssignmentCard.store'
 import type { useGroupSystemMcpServersWidgetStore } from './widgets/GroupSystemMcpServersWidget.store'
-import type { useGroupSystemMcpServersAssignmentStore } from './components/GroupSystemMcpServersAssignmentDrawer.store'
-import type { useMcpServerGroupsAssignmentStore } from './components/McpServerGroupsAssignmentDrawer.store'
+import type { useGroupSystemMcpServersAssignmentStore } from './components/system/GroupSystemMcpServersAssignmentDrawer.store'
+import type { useMcpServerGroupsAssignmentStore } from './components/system/McpServerGroupsAssignmentDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

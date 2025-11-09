@@ -12,10 +12,6 @@ export function UserRegistrationSettings() {
   const { userRegistrationEnabled, loadingRegistrationSettings, error } =
     Stores.Users
 
-  useEffect(() => {
-    Stores.Users.loadUserRegistrationSettings()
-  }, [])
-
   // Show errors
   useEffect(() => {
     if (error) {

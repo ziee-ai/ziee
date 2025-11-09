@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Button, Card, Space, Tag, Typography, Spin } from 'antd'
 import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
@@ -17,11 +16,6 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   const providers = groupData?.providers || []
   const loading = groupData?.loading || false
   const error = groupData?.error || null
-
-  // Load providers on mount
-  useEffect(() => {
-    Stores.LlmProviderGroupWidget.loadProvidersForGroup(group.id)
-  }, [group.id])
 
   const handleEdit = () => {
     Stores.GroupLlmProvidersAssignment.openDrawer(group)

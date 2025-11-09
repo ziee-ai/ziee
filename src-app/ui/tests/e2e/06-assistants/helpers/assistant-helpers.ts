@@ -16,7 +16,10 @@ export async function goToUserAssistantsPage(page: Page, baseURL: string) {
 export async function goToTemplateAssistantsSettings(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/settings/assistants`)
   await page.waitForLoadState('networkidle')
-  await page.getByText('Template Assistants').or(page.locator('.ant-card-head-title:has-text("Template Assistants")')).waitFor({ timeout: 10000 })
+  // Wait for the Assistants heading to be visible first
+  await page.getByRole('heading', { name: 'Assistants', level: 4 }).waitFor({ timeout: 10000 })
+  // Then wait for the Template Assistants card title specifically
+  await page.locator('.ant-card-head-title:has-text("Template Assistants")').waitFor({ timeout: 10000 })
 }
 
 /**
@@ -26,7 +29,8 @@ export async function goToTemplateAssistantsSettings(page: Page, baseURL: string
 export async function openCreateAssistantDrawer(page: Page, _isUserPage = true) {
   // Both pages now use the same aria-label for the create button
   await page.getByRole('button', { name: /create assistant/i }).click()
-  await page.getByRole('dialog').or(page.locator('.ant-drawer')).waitFor({ state: 'visible' })
+  // Wait for the drawer to appear - use the outer drawer container which is unique
+  await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
 }
 
 export async function fillAssistantForm(
@@ -85,14 +89,14 @@ export async function fillAssistantForm(
 }
 
 export async function submitAssistantForm(page: Page) {
-  await page.getByRole('dialog').or(page.locator('.ant-drawer')).getByRole('button', { name: /submit|create|save/i }).click()
+  await page.locator('.ant-drawer.ant-drawer-open').getByRole('button', { name: /submit|create|save|update/i }).click()
   // Don't wait for drawer here - let the test verify success message first
   // The drawer will close automatically after successful submission
 }
 
 export async function cancelAssistantForm(page: Page) {
   // Find the Cancel button within any visible drawer
-  await page.getByRole('dialog').or(page.locator('.ant-drawer')).getByRole('button', { name: 'Cancel' }).click()
+  await page.locator('.ant-drawer.ant-drawer-open').getByRole('button', { name: 'Cancel' }).click()
 
   // Wait for the drawer to close by checking that no visible drawers remain
   // We check the drawer wrapper class that Ant Design uses when drawer is open
@@ -117,13 +121,13 @@ export async function editAssistantFromCard(page: Page, assistantName: string) {
   await card.locator('button:has(svg)').last().click()
 
   // Wait for dropdown menu
-  await page.getByRole('menu').or(page.locator('.ant-dropdown-menu')).waitFor({ state: 'visible' })
+  await page.locator('.ant-dropdown-menu').waitFor({ state: 'visible' })
 
   // Click Edit
-  await page.getByRole('menuitem', { name: 'Edit' }).or(page.locator('.ant-dropdown-menu').getByText('Edit', { exact: true })).click()
+  await page.locator('.ant-dropdown-menu').getByText('Edit', { exact: true }).click()
 
   // Wait for drawer to open
-  await page.getByRole('dialog').or(page.locator('.ant-drawer')).waitFor({ state: 'visible' })
+  await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
 
   // Wait for form content to be loaded (same as fillAssistantForm does)
   await page.getByLabel('Name').waitFor({ state: 'visible', timeout: 10000 })
@@ -136,23 +140,23 @@ export async function deleteAssistantFromCard(page: Page, assistantName: string)
   await card.locator('button:has(svg)').last().click()
 
   // Wait for dropdown menu
-  await page.getByRole('menu').or(page.locator('.ant-dropdown-menu')).waitFor({ state: 'visible' })
+  await page.locator('.ant-dropdown-menu').waitFor({ state: 'visible' })
 
   // Click Delete
-  await page.getByRole('menuitem', { name: 'Delete' }).or(page.locator('.ant-dropdown-menu').getByText('Delete', { exact: true })).click()
+  await page.locator('.ant-dropdown-menu').getByText('Delete', { exact: true }).click()
 
   // Confirm deletion in modal
-  await page.getByRole('dialog').or(page.locator('.ant-modal')).waitFor({ state: 'visible' })
-  await page.getByRole('dialog').or(page.locator('.ant-modal')).getByRole('button', { name: 'Delete' }).click()
+  await page.locator('.ant-modal').waitFor({ state: 'visible' })
+  await page.locator('.ant-modal').getByRole('button', { name: 'Delete' }).click()
 
   // Wait for modal to close
-  await page.getByRole('dialog').or(page.locator('.ant-modal')).waitFor({ state: 'hidden' })
+  await page.locator('.ant-modal').waitFor({ state: 'hidden' })
 }
 
 export async function clickAssistantCard(page: Page, assistantName: string) {
   const card = await getAssistantCard(page, assistantName)
   await card.click()
-  await page.getByRole('dialog').or(page.locator('.ant-drawer')).waitFor({ state: 'visible' })
+  await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
 }
 
 /**
@@ -168,7 +172,8 @@ export async function getTemplateAssistantRow(page: Page, assistantName: string)
 export async function editTemplateAssistant(page: Page, assistantName: string) {
   const row = await getTemplateAssistantRow(page, assistantName)
   await row.getByRole('button', { name: 'Edit' }).click()
-  await page.getByRole('dialog').or(page.locator('.ant-drawer')).waitFor({ state: 'visible' })
+  // Wait for the edit drawer to appear
+  await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
 }
 
 export async function deleteTemplateAssistant(page: Page, assistantName: string) {

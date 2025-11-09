@@ -34,13 +34,6 @@ export function UserAssistantsPage() {
   // Convert Map to Array
   const assistants = Array.from(assistantsMap.values())
 
-  // Load data on mount
-  useEffect(() => {
-    Stores.UserAssistants.loadUserAssistants().catch(err => {
-      console.error('Failed to load user assistants:', err)
-    })
-  }, [])
-
   // Show errors
   useEffect(() => {
     if (error) {

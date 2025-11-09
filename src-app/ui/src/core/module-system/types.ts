@@ -18,6 +18,7 @@ export interface ComponentRegistration {
   id: string
   component: ReactElement | LazyExoticComponent<ComponentType<any>> | (() => Promise<{ default: ComponentType<any> }>)
   order?: number  // Rendering order in App.tsx (lower = earlier)
+  shouldMount?: () => boolean  // React hook to determine if component should be mounted (default: true)
 }
 
 // Slot types - extensible slot system with declaration merging

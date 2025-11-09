@@ -34,11 +34,20 @@ interface SystemMcpServersState {
   // Error states
   systemServersError: string | null
 
+  // Private: Store event unsubscribers for cleanup
+  _eventUnsubscribers?: (() => void)[]
+
   // Initialization methods
   __init__: {
     __store__?: () => void
     systemServers: () => Promise<void>
   }
+
+  // Cleanup hook
+  __destroy__?: () => void
+
+  // Custom delay (10 seconds for system stores)
+  __destroyDelay__?: number
 
   // Actions
   loadSystemServers: (page?: number, pageSize?: number) => Promise<void>
@@ -83,41 +92,55 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
       // Initialization methods
       __init__: {
         __store__: () => {
+          console.log('🚀 SystemMcpServer store initializing...')
+
           const eventBus = Stores.EventBus
+          const unsubscribers: (() => void)[] = []
 
-          // Subscribe to mcp_server.created
-          eventBus.on('mcp_server.created', async event => {
-            const { server } = event.data
-            // Only add if it's a system server
-            if (server.is_system) {
+          // Subscribe to mcp_server.created and track unsubscriber
+          unsubscribers.push(
+            eventBus.on('mcp_server.created', async event => {
+              const { server } = event.data
+              // Only add if it's a system server
+              if (server.is_system) {
+                set(state => ({
+                  systemServers: [...state.systemServers, server],
+                  systemServersTotal: state.systemServersTotal + 1,
+                }))
+              }
+            }),
+          )
+
+          // Subscribe to mcp_server.updated and track unsubscriber
+          unsubscribers.push(
+            eventBus.on('mcp_server.updated', async event => {
+              const { server } = event.data
+              // Only update if it's a system server
+              if (server.is_system) {
+                set(state => ({
+                  systemServers: state.systemServers.map(s =>
+                    s.id === server.id ? server : s,
+                  ),
+                }))
+              }
+            }),
+          )
+
+          // Subscribe to mcp_server.deleted and track unsubscriber
+          unsubscribers.push(
+            eventBus.on('mcp_server.deleted', async event => {
+              const { serverId } = event.data
               set(state => ({
-                systemServers: [...state.systemServers, server],
-                systemServersTotal: state.systemServersTotal + 1,
+                systemServers: state.systemServers.filter(s => s.id !== serverId),
+                systemServersTotal: state.systemServersTotal - 1,
               }))
-            }
-          })
+            }),
+          )
 
-          // Subscribe to mcp_server.updated
-          eventBus.on('mcp_server.updated', async event => {
-            const { server } = event.data
-            // Only update if it's a system server
-            if (server.is_system) {
-              set(state => ({
-                systemServers: state.systemServers.map(s =>
-                  s.id === server.id ? server : s,
-                ),
-              }))
-            }
-          })
+          // Store unsubscribers for cleanup
+          set({ _eventUnsubscribers: unsubscribers })
 
-          // Subscribe to mcp_server.deleted
-          eventBus.on('mcp_server.deleted', async event => {
-            const { serverId } = event.data
-            set(state => ({
-              systemServers: state.systemServers.filter(s => s.id !== serverId),
-              systemServersTotal: state.systemServersTotal - 1,
-            }))
-          })
+          console.log(`✅ Subscribed to ${unsubscribers.length} events`)
         },
         systemServers: () => get().loadSystemServers(),
       },
@@ -429,6 +452,40 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
             server.transport_type.toLowerCase().includes(searchTerm),
         )
       },
+
+      // Auto-cleanup when no components use this store (after delay)
+      __destroy__: () => {
+        const { _eventUnsubscribers } = get()
+
+        console.log('🗑️ Destroying SystemMcpServer store')
+        console.log(
+          `   Unsubscribing from ${_eventUnsubscribers?.length || 0} events`,
+        )
+
+        // Unsubscribe from all events
+        _eventUnsubscribers?.forEach(unsub => unsub())
+
+        // Reset to initial state
+        set({
+          systemServers: [],
+          systemServersTotal: 0,
+          systemServersPage: 1,
+          systemServersPageSize: 20,
+          systemServersInitialized: false,
+          systemServersLoading: false,
+          creating: false,
+          updating: false,
+          deleting: false,
+          operationsLoading: new Map(),
+          systemServersError: null,
+          _eventUnsubscribers: [],
+        })
+
+        console.log('✅ SystemMcpServer store cleaned up')
+      },
+
+      // Wait 10 seconds before destroying (users might come back)
+      __destroyDelay__: 10000,
     }),
   ),
 )

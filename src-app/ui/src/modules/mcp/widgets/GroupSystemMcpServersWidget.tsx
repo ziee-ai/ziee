@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Button, Card, Space, Tag, Typography, Spin } from 'antd'
 import { ApiOutlined, EditOutlined } from '@ant-design/icons'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
@@ -17,11 +16,6 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   const servers = serverData?.servers || []
   const loading = serverData?.loading || false
   const error = serverData?.error || null
-
-  // Load servers on mount
-  useEffect(() => {
-    Stores.GroupSystemMcpServersWidget.loadServersForGroup(group.id)
-  }, [group.id])
 
   const handleEdit = () => {
     Stores.GroupSystemMcpServersAssignment.openDrawer(group)

@@ -1,4 +1,5 @@
 import { createModule } from '@/core'
+import { Stores } from '@/core/stores'
 import { CloudServerOutlined } from '@ant-design/icons'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
@@ -19,6 +20,7 @@ import { useLlmProviderGroupsAssignmentStore } from './components/LlmProviderGro
 import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const LlmProviderSettings = lazyWithPreload(() => import('./components/LlmProviderSettings').then(m => ({ default: m.LlmProviderSettings })))
@@ -99,11 +101,15 @@ export default createModule({
     {
       id: 'group-llm-providers-assignment-drawer',
       component: GroupLlmProvidersAssignmentDrawer,
+      shouldMount: () =>
+        useDelayedFalse(() => Stores.GroupLlmProvidersAssignment.isOpen),
       order: 100,
     },
     {
       id: 'llm-provider-groups-assignment-drawer',
       component: LlmProviderGroupsAssignmentDrawer,
+      shouldMount: () =>
+        useDelayedFalse(() => Stores.LlmProviderGroupsAssignment.isOpen),
       order: 101,
     },
   ],

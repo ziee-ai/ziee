@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-import { App, Button, Card, Empty, Space, Tag, Typography } from 'antd'
+import { Button, Card, Empty, Space, Tag, Typography } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 
@@ -15,20 +14,10 @@ interface McpServerGroupsAssignmentCardProps {
  * Uses a dedicated store to prevent duplicate API calls and cache data.
  */
 export function McpServerGroupsAssignmentCard({ serverId }: McpServerGroupsAssignmentCardProps) {
-  const { message } = App.useApp()
-
   // Get data from store
   const serverData = Stores.SystemMcpServerGroupCard.serverGroups.get(serverId)
   const assignedGroups = serverData?.groups || []
   const loading = serverData?.loading || false
-
-  // Load assigned groups when server changes
-  useEffect(() => {
-    Stores.SystemMcpServerGroupCard.loadGroupsForServer(serverId).catch(err => {
-      console.error('Failed to load assigned groups:', err)
-      message.error('Failed to load assigned groups')
-    })
-  }, [serverId, message])
 
   const handleManageGroups = () => {
     Stores.McpServerGroupsAssignment.openDrawer(serverId)

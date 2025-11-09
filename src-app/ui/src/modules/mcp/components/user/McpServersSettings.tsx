@@ -2,24 +2,18 @@ import { useEffect, useState } from 'react'
 import { App, Button, Flex, Input, Select, Spin, Typography } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { McpServerCard } from './McpServerCard'
-import { McpServerDrawer } from './McpServerDrawer'
+import { McpServerCard } from '../common/McpServerCard'
+import { McpServerDrawer } from '../common/McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
 const { Text } = Typography
 
 export function McpServersSettings() {
   const { message } = App.useApp()
-  const { servers, loading, error, isInitialized } = Stores.McpServer
+  const { servers, loading, error } = Stores.McpServer
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [sortBy, setSortBy] = useState('name')
-
-  useEffect(() => {
-    if (!isInitialized) {
-      Stores.McpServer.loadMcpServers()
-    }
-  }, [isInitialized])
 
   useEffect(() => {
     if (error) {
@@ -69,7 +63,7 @@ export function McpServersSettings() {
     })
 
   // Show loading state
-  if (loading && !isInitialized) {
+  if (loading && servers.length === 0) {
     return (
       <SettingsPageContainer
         title="MCP Servers"
@@ -84,7 +78,7 @@ export function McpServersSettings() {
   }
 
   // Show error state
-  if (error && !isInitialized) {
+  if (error && servers.length === 0) {
     return (
       <SettingsPageContainer
         title="MCP Servers"

@@ -1,4 +1,5 @@
 import { createModule } from '@/core'
+import { Stores } from '@/core/stores'
 import { ApiOutlined } from '@ant-design/icons'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
@@ -6,22 +7,23 @@ import {
   useSystemMcpServersStore,
   useMcpServerDrawerStore,
 } from './stores'
-import { useSystemMcpServerGroupCardStore } from './components/McpServerGroupsAssignmentCard.store'
+import { useSystemMcpServerGroupCardStore } from './components/system/McpServerGroupsAssignmentCard.store'
 import { useGroupSystemMcpServersWidgetStore } from './widgets/GroupSystemMcpServersWidget.store'
-import { useGroupSystemMcpServersAssignmentStore } from './components/GroupSystemMcpServersAssignmentDrawer.store'
-import { useMcpServerGroupsAssignmentStore } from './components/McpServerGroupsAssignmentDrawer.store'
+import { useGroupSystemMcpServersAssignmentStore } from './components/system/GroupSystemMcpServersAssignmentDrawer.store'
+import { useMcpServerGroupsAssignmentStore } from './components/system/McpServerGroupsAssignmentDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import './types' // CRITICAL: Import to enable type declaration merging
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const McpServersSettings = lazyWithPreload(() =>
-  import('./components/McpServersSettings').then(m => ({
+  import('./components/user/McpServersSettings').then(m => ({
     default: m.McpServersSettings,
   })),
 )
 
 const SystemMcpServersPage = lazyWithPreload(() =>
-  import('./components/admin/SystemMcpServersPage').then(m => ({
+  import('./components/system/SystemMcpServersPage').then(m => ({
     default: m.SystemMcpServersPage,
   })),
 )
@@ -33,13 +35,13 @@ const GroupSystemMcpServersWidget = lazyWithPreload(() =>
 )
 
 const GroupSystemMcpServersAssignmentDrawer = lazyWithPreload(() =>
-  import('./components/GroupSystemMcpServersAssignmentDrawer').then(m => ({
+  import('./components/system/GroupSystemMcpServersAssignmentDrawer').then(m => ({
     default: m.GroupSystemMcpServersAssignmentDrawer,
   })),
 )
 
 const McpServerGroupsAssignmentDrawer = lazyWithPreload(() =>
-  import('./components/McpServerGroupsAssignmentDrawer').then(m => ({
+  import('./components/system/McpServerGroupsAssignmentDrawer').then(m => ({
     default: m.McpServerGroupsAssignmentDrawer,
   })),
 )
@@ -99,11 +101,15 @@ export default createModule({
     {
       id: 'group-system-mcp-servers-assignment-drawer',
       component: GroupSystemMcpServersAssignmentDrawer,
+      shouldMount: () => 
+        useDelayedFalse(() => Stores.GroupSystemMcpServersAssignment.isOpen),
       order: 100,
     },
     {
       id: 'mcp-server-groups-assignment-drawer',
       component: McpServerGroupsAssignmentDrawer,
+      shouldMount: () =>
+        useDelayedFalse(() => Stores.McpServerGroupsAssignment.isOpen),
       order: 101,
     },
   ],

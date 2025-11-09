@@ -94,7 +94,6 @@ export function loadModules(): void {
   for (const [path, moduleExports] of Object.entries(moduleFiles)) {
     const module = moduleExports.default
     if (module) {
-      console.log(`📦 Discovered module: ${module.metadata.name} from ${path}`)
       allModules.push(module)
     }
   }
@@ -102,19 +101,15 @@ export function loadModules(): void {
   for (const [path, moduleExports] of Object.entries(coreModuleFiles)) {
     const module = moduleExports.default
     if (module) {
-      console.log(`📦 Discovered core module: ${module.metadata.name} from ${path}`)
       allModules.push(module)
     }
   }
 
   // Phase 1: Meta-Framework - Sort by dependencies
-  console.log('🔄 Resolving module dependencies...')
   const sortedModules = resolveDependencies(allModules)
 
   // Register modules in dependency order
-  console.log('📦 Registering modules in dependency order...')
   for (const module of sortedModules) {
-    console.log(`✅ Registering module: ${module.metadata.name}`)
     registerModule(module)
 
     // Phase 1: Meta-Framework - Call onModuleRegister hooks on all previously registered modules

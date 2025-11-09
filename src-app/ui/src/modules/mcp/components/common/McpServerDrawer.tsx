@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import {
   useMcpServerDrawerStore,
-} from '../stores'
+} from '../../stores'
 import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,

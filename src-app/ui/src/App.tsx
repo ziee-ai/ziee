@@ -5,9 +5,30 @@ import { setupAccessibilityFixes } from './utils/accessibilityFixes'
 import { usePrefetchModules } from './hooks/usePrefetchModules'
 import { Stores } from './core/stores'
 import { LazyComponentRenderer } from './core/components/LazyComponentRenderer'
+import type { ComponentRegistration } from './core/module-system/types'
 
 // Load all modules before rendering
 loadModules()
+
+/**
+ * ConditionalComponent - Wrapper that checks shouldMount hook before rendering
+ */
+function ConditionalComponent({ registration }: { registration: ComponentRegistration }) {
+  // Call shouldMount hook if provided, default to true
+  const shouldMount = registration.shouldMount?.() ?? true
+
+  // Memoize the component renderer to prevent recreating it when shouldMount changes
+  const renderer = useMemo(
+    () => <LazyComponentRenderer component={registration.component} fallback={null} />,
+    [registration.component]
+  )
+
+  if (!shouldMount) {
+    return null
+  }
+
+  return renderer
+}
 
 /**
  * App - Main application component
@@ -26,8 +47,6 @@ function App() {
     return cleanup
   }, [])
 
-  console.log({components})
-
   // Prefetch lazy-loaded modules when browser is idle
   usePrefetchModules()
 
@@ -40,7 +59,7 @@ function App() {
     <ThemeProvider>
       {/* Render components from modules (sorted by order) */}
       {sortedComponents.map(comp => (
-        <LazyComponentRenderer  key={comp.id} component={comp.component} fallback={null} />
+        <ConditionalComponent key={comp.id} registration={comp} />
       ))}
     </ThemeProvider>
   )

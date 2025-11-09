@@ -125,12 +125,6 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
         })
       }
 
-      console.log(`Registered module: ${module.metadata.name}`, {
-        stores: module.registerStores ? module.registerStores().length : 0,
-        components: module.registerComponents ? module.registerComponents().length : 0,
-        slots: module.registerSlots ? 'yes' : 'no',
-      })
-
       return {
         modules: newModules,
         stores: newStores,
@@ -158,18 +152,12 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
           const result = module.initialize()
           // If initialize returns a promise, handle it but don't await
           if (result instanceof Promise) {
-            result
-              .then(() =>
-                console.log(`Initialized module: ${module.metadata.name}`),
-              )
-              .catch(error =>
-                console.error(
-                  `Failed to initialize module ${module.metadata.name}:`,
-                  error,
-                ),
-              )
-          } else {
-            console.log(`Initialized module: ${module.metadata.name}`)
+            result.catch(error =>
+              console.error(
+                `Failed to initialize module ${module.metadata.name}:`,
+                error,
+              ),
+            )
           }
         } catch (error) {
           console.error(
@@ -195,7 +183,6 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
               const slot = slotName as keyof Slots
               const existing = slotsMap.get(slot) || []
               slotsMap.set(slot, [...existing, ...slotArray])
-              console.log(`✅ Registered ${slotArray.length} item(s) for slot: ${slotName}`)
             }
           } catch (error) {
             console.error(

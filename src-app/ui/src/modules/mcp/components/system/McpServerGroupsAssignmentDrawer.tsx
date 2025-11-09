@@ -4,7 +4,7 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import type { McpServer } from '@/api-client/types'
-import { emitMcpServerGroupsChanged } from '../events'
+import { emitMcpServerGroupsChanged } from '../../events'
 
 const { Text, Title } = Typography
 
