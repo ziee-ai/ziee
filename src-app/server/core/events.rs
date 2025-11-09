@@ -1,31 +1,31 @@
 // Event system for inter-module communication
 // Allows modules to react to events without tight coupling
+//
+// Each module defines its own events in modules/{module}/events.rs
+// This core file aggregates all module events into a single AppEvent enum
 
 use async_trait::async_trait;
 use sqlx::PgPool;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::user::User;
 
-/// Events that can be emitted throughout the application
+/// Main application event enum
+/// Each module contributes a variant containing its module-specific events
 #[derive(Debug, Clone)]
 pub enum AppEvent {
-    // User lifecycle events
-    UserCreated { user: User },
-    UserUpdated { user: User },
-    UserDeleted { user_id: Uuid },
+    /// User module events (user lifecycle, authentication)
+    User(crate::modules::user::events::UserEvent),
 
-    // Authentication events
-    UserLoggedIn { user_id: Uuid },
-    UserLoggedOut { user_id: Uuid },
+    /// Auth module events (authentication, authorization)
+    Auth(crate::modules::auth::events::AuthEvent),
 
-    // Assistant events (for future use)
-    AssistantCreated { assistant_id: Uuid, user_id: Option<Uuid> },
-    AssistantDeleted { assistant_id: Uuid, user_id: Option<Uuid> },
+    /// Assistant module events (assistant lifecycle)
+    Assistant(crate::modules::assistant::events::AssistantEvent),
 
-    // Add more events as needed...
+    // Add new module events here as the application grows
+    // Example:
+    // LlmProvider(crate::modules::llm_provider::events::LlmProviderEvent),
 }
 
 /// Trait for handling application events

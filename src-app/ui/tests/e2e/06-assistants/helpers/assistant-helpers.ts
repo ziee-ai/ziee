@@ -28,7 +28,8 @@ export async function goToTemplateAssistantsSettings(page: Page, baseURL: string
 
 export async function openCreateAssistantDrawer(page: Page, _isUserPage = true) {
   // Both pages now use the same aria-label for the create button
-  await page.getByRole('button', { name: /create assistant/i }).click()
+  // Use .first() to handle user page which may have both header button and empty state button
+  await page.getByRole('button', { name: /create assistant/i }).first().click()
   // Wait for the drawer to appear - use the outer drawer container which is unique
   await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
 }

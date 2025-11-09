@@ -1,6 +1,7 @@
 // Auth module - JWT-based authentication
 pub mod backend;
 mod errors;
+pub mod events;
 pub mod handlers;
 pub mod jwt;
 pub mod jwt_extractor;
@@ -12,6 +13,7 @@ pub mod types;
 // Re-exports
 pub use backend::{AuthBackend, AuthSession, AuthSessionWrapper, Credentials};
 pub use errors::*;
+pub use events::AuthEvent;
 pub use jwt::{Claims, JwtService, TokenPair};
 pub use jwt_extractor::{JwtAuth, OptionalJwtAuth};
 pub use providers::{AuthError as ProvidersAuthError, AuthProviderTrait, AuthResult, OAuthResult, UserAttributes};

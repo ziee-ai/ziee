@@ -15,6 +15,7 @@ pub mod permissions;
 pub mod repository;
 pub mod handlers;
 pub mod routes;
+pub mod events;
 pub mod event_handlers;
 
 // Re-export database entities from models
@@ -28,6 +29,9 @@ pub use repository::*;
 
 // Re-export router
 pub use routes::assistant_router;
+
+// Re-export events
+pub use events::AssistantEvent;
 
 /// Assistant Module
 /// Manages user-created assistants and system-wide template assistants

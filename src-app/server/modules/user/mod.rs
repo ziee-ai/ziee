@@ -3,6 +3,7 @@ pub mod models;
 pub mod types;
 pub mod permissions;
 pub mod repository;
+pub mod events;
 mod handlers;
 mod routes;
 mod group_routes;
@@ -15,6 +16,7 @@ pub use repository::{GroupRepository, UserRepository};
 pub use routes::user_router;
 pub use group_routes::group_router;
 pub use service::{GroupService, UserService};
+pub use events::UserEvent;
 
 use aide::axum::ApiRouter;
 use sqlx::PgPool;

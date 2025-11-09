@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::common::{ApiResult, AppError};
 use crate::core::{AppEvent, EventBus};
 use crate::modules::user::{User, UserRepository, GroupRepository, UserService};
+use crate::modules::user::events::UserEvent;
 
 use super::jwt::{JwtService, TokenPair};
 use super::jwt_extractor::JwtAuth;
@@ -84,7 +85,7 @@ pub async fn register(
     }
 
     // Emit UserCreated event asynchronously
-    event_bus.emit_async(AppEvent::UserCreated { user: user.clone() });
+    event_bus.emit_async(UserEvent::created(user.clone()));
 
     // Generate JWT tokens
     let tokens = jwt_service

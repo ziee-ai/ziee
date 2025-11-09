@@ -23,6 +23,7 @@ use super::{
     },
     permissions::*,
     repository::{UserRepository, GroupRepository},
+    events::UserEvent,
 };
 
 // =====================================================
@@ -135,7 +136,7 @@ pub async fn create_user(
     }
 
     // Emit UserCreated event asynchronously
-    event_bus.emit_async(AppEvent::UserCreated { user: user.clone() });
+    event_bus.emit_async(UserEvent::created(user.clone()));
 
     Ok((StatusCode::CREATED, Json(user)))
 }

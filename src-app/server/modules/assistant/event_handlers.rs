@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use crate::common::AppError;
 use crate::core::events::{AppEvent, EventHandler};
+use crate::modules::user::events::UserEvent;
 use super::{repository, models};
 
 /// Clones enabled default template assistants to newly created users
@@ -22,7 +23,7 @@ impl CloneTemplateAssistantsHandler {
 impl EventHandler for CloneTemplateAssistantsHandler {
     async fn handle(&self, event: &AppEvent, pool: &PgPool) -> Result<(), AppError> {
         match event {
-            AppEvent::UserCreated { user } => {
+            AppEvent::User(UserEvent::Created { user }) => {
                 tracing::info!(
                     "Cloning default template assistants for new user: {} ({})",
                     user.username,

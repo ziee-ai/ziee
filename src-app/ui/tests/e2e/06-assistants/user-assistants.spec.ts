@@ -33,15 +33,15 @@ test.describe('User Assistants - User Page', () => {
   test('should display empty state when no assistants exist', async ({ page }) => {
     await assertEmptyState(page, 'No assistants yet')
     await assertEmptyState(page, 'Create your first assistant to get started')
-    // The primary button in the empty state (not the icon button in the header)
-    await expect(page.getByRole('button', { name: 'Create Assistant' })).toBeVisible()
+    // The primary button in the empty state (with the plus icon)
+    await expect(page.getByRole('button', { name: 'plus Create Assistant' })).toBeVisible()
   })
 
   test('should create a new assistant with basic info', async ({ page }) => {
     await openCreateAssistantDrawer(page, true)
 
     // Verify drawer title - use heading role with dialog scope
-    await expect(page.getByRole('dialog').or(page.locator('.ant-drawer')).getByText('Create Assistant')).toBeVisible()
+    await expect(page.locator('.ant-drawer.ant-drawer-open').getByText('Create Assistant')).toBeVisible()
 
     await fillAssistantForm(page, {
       name: 'Test Assistant',
@@ -81,13 +81,13 @@ test.describe('User Assistants - User Page', () => {
     await openCreateAssistantDrawer(page, true)
 
     // Try to submit without filling required fields
-    await page.getByRole('dialog').or(page.locator('.ant-drawer')).getByRole('button', { name: 'Create' }).click()
+    await page.locator('.ant-drawer.ant-drawer-open').getByRole('button', { name: 'Create' }).click()
 
     // Verify validation message
     await expect(page.getByText('Please enter a name', { exact: true })).toBeVisible()
 
     // Drawer should still be open
-    await expect(page.getByRole('dialog').or(page.locator('.ant-drawer'))).toBeVisible()
+    await expect(page.locator('.ant-drawer.ant-drawer-open')).toBeVisible()
   })
 
   test('should validate JSON parameters', async ({ page }) => {
@@ -98,7 +98,7 @@ test.describe('User Assistants - User Page', () => {
       parameters: 'invalid json',
     })
 
-    await page.getByRole('dialog').or(page.locator('.ant-drawer')).getByRole('button', { name: 'Create' }).click()
+    await page.locator('.ant-drawer.ant-drawer-open').getByRole('button', { name: 'Create' }).click()
 
     // Verify JSON validation error
     await expect(page.getByText('Please enter valid JSON', { exact: true })).toBeVisible()
@@ -138,7 +138,7 @@ test.describe('User Assistants - User Page', () => {
     await editAssistantFromCard(page, 'Edit Test Assistant')
 
     // Verify drawer title
-    await expect(page.getByRole('dialog').or(page.locator('.ant-drawer')).getByText('Edit Assistant')).toBeVisible()
+    await expect(page.locator('.ant-drawer.ant-drawer-open').getByText('Edit Assistant')).toBeVisible()
 
     // Verify form is populated - use semantic selectors
     await expect(page.getByLabel('Assistant name')).toHaveValue('Edit Test Assistant')
@@ -183,7 +183,7 @@ test.describe('User Assistants - User Page', () => {
     await clickAssistantCard(page, 'Click Test Assistant')
 
     // Verify edit drawer opens
-    await expect(page.getByRole('dialog').or(page.locator('.ant-drawer')).getByText('Edit Assistant')).toBeVisible()
+    await expect(page.locator('.ant-drawer.ant-drawer-open').getByText('Edit Assistant')).toBeVisible()
   })
 
   test('should cancel assistant creation', async ({ page }) => {
