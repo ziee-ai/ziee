@@ -1,5 +1,5 @@
 import { App, Button, Flex, Form, Select } from 'antd'
-import { Drawer } from '@/components/common/Drawer.tsx'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 
 const { Option } = Select

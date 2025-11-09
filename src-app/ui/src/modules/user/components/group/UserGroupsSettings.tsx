@@ -10,7 +10,7 @@ import {
   Pagination,
   Spin,
 } from 'antd'
-import { Drawer } from '@/components/common/Drawer.tsx'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import type { CreateGroupRequest, Group } from '@/api-client/types'

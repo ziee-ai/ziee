@@ -1,5 +1,5 @@
 import { App, Button, Form } from 'antd'
-import { Drawer } from '@/components/common/Drawer'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useState } from 'react'
 import {
 } from '@/modules/llm-provider/stores'

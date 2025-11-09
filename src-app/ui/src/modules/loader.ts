@@ -1,5 +1,5 @@
-import type { AppModule } from '@/core/router/types'
-import { useRouterStore } from '@/core'
+import type { AppModule } from '@/core/module-system/types'
+import { useModuleSystemStore } from '@/core'
 
 /**
  * Auto-discovers and registers all modules from the modules directory.
@@ -16,10 +16,64 @@ import { useRouterStore } from '@/core'
  *   metadata: { name: 'mymodule', version: '1.0.0' },
  *   routes: [...],
  *   stores: [...],
+ *   dependencies: ['router', 'auth'],  // Optional: modules to load first
  * })
  */
+
+/**
+ * Phase 1: Meta-Framework - Dependency resolution
+ * Sorts modules in dependency order using topological sort
+ */
+function resolveDependencies(modules: AppModule[]): AppModule[] {
+  const graph = new Map<string, string[]>()
+  const moduleMap = new Map<string, AppModule>()
+
+  // Build dependency graph
+  modules.forEach(module => {
+    const deps = module.registerDependencies?.() || []
+    graph.set(module.metadata.name, deps)
+    moduleMap.set(module.metadata.name, module)
+  })
+
+  // Topological sort using DFS
+  const sorted: string[] = []
+  const visited = new Set<string>()
+  const visiting = new Set<string>() // For cycle detection
+
+  function visit(name: string, path: string[] = []) {
+    if (visited.has(name)) return
+
+    // Detect circular dependencies
+    if (visiting.has(name)) {
+      const cycle = [...path, name].join(' -> ')
+      throw new Error(`Circular dependency detected: ${cycle}`)
+    }
+
+    visiting.add(name)
+
+    const deps = graph.get(name) || []
+    deps.forEach(dep => {
+      if (!moduleMap.has(dep)) {
+        console.warn(`Module "${name}" depends on "${dep}" which is not loaded. Skipping dependency.`)
+        return
+      }
+      visit(dep, [...path, name])
+    })
+
+    visiting.delete(name)
+    visited.add(name)
+    sorted.push(name)
+  }
+
+  // Visit all modules
+  graph.forEach((_, name) => visit(name))
+
+  // Return modules in dependency order
+  return sorted.map(name => moduleMap.get(name)!)
+}
+
 export function loadModules(): void {
-  const { registerModule, initializeModules } = useRouterStore.getState()
+  const { registerModule, initializeModules } = useModuleSystemStore.getState()
 
   // Auto-discover all module.tsx files in the modules directory
   const moduleFiles = import.meta.glob<{ default: AppModule }>(
@@ -33,21 +87,51 @@ export function loadModules(): void {
     { eager: true },
   )
 
-  // Register each discovered module
+  // Collect all modules
+  const allModules: AppModule[] = []
+
+  // Phase 2: Router module is now in modules/router, so it will be discovered automatically
   for (const [path, moduleExports] of Object.entries(moduleFiles)) {
     const module = moduleExports.default
     if (module) {
-      console.log(`📦 Loading module: ${module.metadata.name} from ${path}`)
-      registerModule(module)
+      console.log(`📦 Discovered module: ${module.metadata.name} from ${path}`)
+      allModules.push(module)
     }
   }
 
-  // Register core modules
   for (const [path, moduleExports] of Object.entries(coreModuleFiles)) {
     const module = moduleExports.default
     if (module) {
-      console.log(`📦 Loading core module: ${module.metadata.name} from ${path}`)
-      registerModule(module)
+      console.log(`📦 Discovered core module: ${module.metadata.name} from ${path}`)
+      allModules.push(module)
+    }
+  }
+
+  // Phase 1: Meta-Framework - Sort by dependencies
+  console.log('🔄 Resolving module dependencies...')
+  const sortedModules = resolveDependencies(allModules)
+
+  // Register modules in dependency order
+  console.log('📦 Registering modules in dependency order...')
+  for (const module of sortedModules) {
+    console.log(`✅ Registering module: ${module.metadata.name}`)
+    registerModule(module)
+
+    // Phase 1: Meta-Framework - Call onModuleRegister hooks on all previously registered modules
+    const { modules: registeredModules } = useModuleSystemStore.getState()
+    registeredModules.forEach(registeredModule => {
+      if (registeredModule.metadata.name !== module.metadata.name && registeredModule.onModuleRegister) {
+        registeredModule.onModuleRegister(module)
+      }
+    })
+
+    // Also call the new module's hook for all previously registered modules
+    if (module.onModuleRegister) {
+      registeredModules.forEach(registeredModule => {
+        if (registeredModule.metadata.name !== module.metadata.name) {
+          module.onModuleRegister!(registeredModule)
+        }
+      })
     }
   }
 

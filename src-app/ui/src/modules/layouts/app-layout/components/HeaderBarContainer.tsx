@@ -1,17 +1,17 @@
 import { theme } from 'antd'
 import { Stores } from '@/core/stores'
 
-interface TitleBarWrapperProps {
+interface HeaderBarContainerProps {
   children?: React.ReactNode
   className?: string
   style?: React.CSSProperties
 }
 
-export const TitleBarWrapper = ({
+export const HeaderBarContainer = ({
   children,
   className = '',
   style = {},
-}: TitleBarWrapperProps) => {
+}: HeaderBarContainerProps) => {
   const { token } = theme.useToken()
   const { isSidebarCollapsed } = Stores.AppLayout
 

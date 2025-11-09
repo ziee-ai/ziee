@@ -1,5 +1,5 @@
 import { App, Button, Form, Input, Switch } from 'antd'
-import { Drawer } from '@/components/common/Drawer.tsx'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import type { UpdateGroupRequest } from '@/api-client/types'

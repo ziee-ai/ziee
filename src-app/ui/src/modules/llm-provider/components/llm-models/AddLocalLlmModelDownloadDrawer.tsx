@@ -10,7 +10,7 @@ import {
   Switch,
   Typography,
 } from 'antd'
-import { Drawer } from '@/components/common/Drawer'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {
 } from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'

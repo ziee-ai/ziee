@@ -3,7 +3,7 @@ import { Layout, Typography } from 'antd'
 import { Stores } from '@/core/stores'
 import { LoginForm } from './LoginForm'
 import { RegisterForm } from './RegisterForm'
-import { BlankLayout } from '@/components/Layout/BlankLayout.tsx'
+import { BlankLayoutComponent } from '@/modules/layouts/blank'
 
 const { Content } = Layout
 const { Title } = Typography
@@ -24,7 +24,7 @@ export const AuthPage: React.FC = () => {
   }
 
   return (
-    <BlankLayout>
+    <BlankLayoutComponent>
       <Layout className="min-h-screen">
         <Content className="flex items-center justify-center p-4">
           <div className="w-full max-w-md">
@@ -42,6 +42,6 @@ export const AuthPage: React.FC = () => {
           </div>
         </Content>
       </Layout>
-    </BlankLayout>
+    </BlankLayoutComponent>
   )
 }

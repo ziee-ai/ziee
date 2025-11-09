@@ -1,5 +1,6 @@
 import { createModule } from '@/core'
 import { SettingOutlined } from '@ant-design/icons'
+import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const SettingsLayout = lazyWithPreload(() => import('./SettingsLayout'))
@@ -10,15 +11,17 @@ export default createModule({
     version: '1.0.0',
     description: 'Settings module for user preferences',
   },
+  dependencies: ['router'],
   routes: [
     {
       path: '/settings',
       element: SettingsLayout,
       requiresAuth: true,
+      layout: AppLayoutDef,
     },
   ],
-  sidebar: {
-    tools: [
+  slots: {
+    sidebarTools: [
       {
         id: 'settings',
         icon: <SettingOutlined />,

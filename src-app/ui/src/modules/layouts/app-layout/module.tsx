@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { useAppLayoutStore } from './appLayoutStore'
+import { useAppLayoutStore } from './AppLayout.store'
 import './types'
 
 export default createModule({

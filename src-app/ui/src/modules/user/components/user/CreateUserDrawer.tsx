@@ -1,5 +1,5 @@
 import { App, Button, Flex, Form, Input } from 'antd'
-import { Drawer } from '@/components/common/Drawer.tsx'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import type { CreateUserRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'

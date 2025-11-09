@@ -1,7 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
 import { theme, Typography, Divider } from 'antd'
-import { useWindowMinSize } from '@/hooks/useWindowMinSize'
+import { useWindowMinSize } from '../hooks/useWindowMinSize'
 import { Stores } from '@/core/stores'
+import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import type { SidebarNavItem, SidebarToolItem, SidebarActionItem } from '../types'
 
 const { Text } = Typography
 
@@ -74,21 +76,27 @@ export function LeftSidebar() {
   const location = useLocation()
   const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
-
-  const { sidebarItems } = Stores.Router
+  const { slots } = Stores.ModuleSystem
 
   const isActive = (path: string) => {
     return location.pathname.startsWith(path)
   }
 
-  // Sort items by order
-  const sortedPrimaryActions = [...sidebarItems.primaryActions].sort(
+  // Get and sort items from slots
+  const primaryActions = (slots.get('sidebarPrimaryActions') || []) as SidebarActionItem[]
+  const navigation = (slots.get('sidebarNavigation') || []) as SidebarNavItem[]
+  const tools = (slots.get('sidebarTools') || []) as SidebarToolItem[]
+  const contentWidgets = slots.get('sidebarContent') || []
+  const bottomWidgets = slots.get('sidebarBottom') || []
+  const footerWidgets = slots.get('sidebarFooter') || []
+
+  const sortedPrimaryActions = [...primaryActions].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
-  const sortedNavigation = [...sidebarItems.navigation].sort(
+  const sortedNavigation = [...navigation].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
-  const sortedTools = [...sidebarItems.tools].sort(
+  const sortedTools = [...tools].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
 
@@ -139,16 +147,14 @@ export function LeftSidebar() {
         </div>
       )}
 
-      {/* Recent Section - Widget Slot */}
+      {/* Content Section - Widget Slot */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {sidebarItems.widgets.has('recent') && (
-          <SectionHeader>Recent</SectionHeader>
-        )}
-        {sidebarItems.widgets
-          .get('recent')
-          ?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        {contentWidgets
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
           .map(widget => (
-            <div key={widget.id}>{widget.component}</div>
+            <div key={widget.id}>
+              <LazyComponentRenderer component={widget.component} />
+            </div>
           ))}
       </div>
 
@@ -169,30 +175,33 @@ export function LeftSidebar() {
           </div>
 
           {/* Bottom Widgets */}
-          <div className="px-2">
-            {sidebarItems.widgets
-              .get('bottom')
-              ?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-              .map(widget => (
-                <div key={widget.id}>{widget.component}</div>
-              ))}
-          </div>
+          {bottomWidgets.length > 0 && (
+            <div className="px-2">
+              {bottomWidgets
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                .map(widget => (
+                  <div key={widget.id}>
+                    <LazyComponentRenderer component={widget.component} />
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* Footer Slot */}
-      {sidebarItems.widgets.has('footer') &&
-        sidebarItems.widgets.get('footer')!.length > 0 && (
-          <>
-            <Divider className="!m-0" />
-            {sidebarItems.widgets
-              .get('footer')
-              ?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-              .map(widget => (
-                <div key={widget.id}>{widget.component}</div>
-              ))}
-          </>
-        )}
+      {footerWidgets.length > 0 && (
+        <>
+          <Divider className="!m-0" />
+          {footerWidgets
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            .map(widget => (
+              <div key={widget.id}>
+                <LazyComponentRenderer component={widget.component} />
+              </div>
+            ))}
+        </>
+      )}
     </div>
   )
 }

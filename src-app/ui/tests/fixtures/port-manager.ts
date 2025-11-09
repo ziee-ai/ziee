@@ -5,7 +5,8 @@ import { execSync } from 'child_process'
 
 const LOCK_DIR = resolve(tmpdir(), 'ziee-test-locks')
 const LOCK_TIMEOUT_MS = 180000 // 3 minutes - max test duration
-const HEARTBEAT_INTERVAL_MS = 5000 // 5 seconds - heartbeat update frequency
+// @ts-ignore - Reserved for future use
+const _HEARTBEAT_INTERVAL_MS = 5000 // 5 seconds - heartbeat update frequency (reserved for future use)
 const HEARTBEAT_STALE_MS = 10000 // 10 seconds - consider stale if no heartbeat
 const CONFIG_STALE_MS = 300000 // 5 minutes - clean up config files older than this
 
@@ -44,8 +45,10 @@ function isProcessAlive(pid: number): boolean {
 /**
  * Kill a process by PID
  * Works on both Linux and Windows
+ * Note: Currently unused in favor of killProcessOnPort for better reliability
  */
-function killProcess(pid: number): void {
+// @ts-ignore - Reserved for future use
+function _killProcess(pid: number): void {
   try {
     if (process.platform === 'win32') {
       execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' })

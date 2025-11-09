@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
-import { Drawer } from '@/components/common/Drawer'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { emitLlmProviderGroupsChanged } from '../events'
 

@@ -1,0 +1,212 @@
+import { create } from 'zustand'
+import type {
+  AppModule,
+  Slots,
+  ComponentRegistration,
+} from './types'
+import { createStoreProxy } from '../stores'
+import { useEventBusStore } from '../events'
+import './types-store' // Register ModuleSystem store type
+
+interface ModuleSystemState {
+  modules: AppModule[]
+  stores: Record<string, any>
+  slots: Map<keyof Slots, any[]>
+  components: ComponentRegistration[]
+  addComponents: (components: ComponentRegistration[]) => void
+  registerModule: (module: AppModule) => void
+  initializeModules: () => void
+}
+
+export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
+  modules: [],
+  stores: {},
+  slots: new Map(),
+  components: [],
+
+  addComponents: (components: ComponentRegistration[]) => {
+    set(state => ({
+      components: [...state.components, ...components],
+    }))
+  },
+
+  registerModule: (module: AppModule) => {
+    set(state => {
+      // Check if module is already registered
+      const existingIndex = state.modules.findIndex(
+        m => m.metadata.name === module.metadata.name,
+      )
+
+      if (existingIndex !== -1) {
+        // In development, allow re-registration for HMR
+        if (import.meta.env.DEV) {
+          console.log(
+            `🔄 Re-registering module for HMR: ${module.metadata.name}`,
+          )
+
+          const oldModule = state.modules[existingIndex]
+          const newModules = [...state.modules]
+          newModules[existingIndex] = module
+
+          // Re-register stores
+          const newStores = { ...state.stores }
+          if (module.registerStores) {
+            const storeRegistrations = module.registerStores()
+            storeRegistrations.forEach(reg => {
+              newStores[reg.name] = createStoreProxy(reg.store)
+            })
+          }
+
+          // Re-register components - remove old ones first
+          const oldComponents = oldModule.registerComponents?.()
+          const oldComponentIds = new Set(oldComponents?.map(c => c.id) || [])
+          let newComponents = state.components.filter(c => !oldComponentIds.has(c.id))
+
+          if (module.registerComponents) {
+            const components = module.registerComponents()
+            newComponents = [...newComponents, ...components]
+            newComponents.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          }
+
+          // Re-register slots - rebuild from all modules
+          const newSlots = new Map<keyof Slots, any[]>()
+          for (const mod of newModules) {
+            if (mod.registerSlots) {
+              const slots = mod.registerSlots()
+              for (const [slotName, slotArray] of Object.entries(slots)) {
+                const slot = slotName as keyof Slots
+                const existing = newSlots.get(slot) || []
+                newSlots.set(slot, [...existing, ...slotArray])
+              }
+            }
+          }
+
+          return {
+            modules: newModules,
+            stores: newStores,
+            components: newComponents,
+            slots: newSlots,
+          }
+        } else {
+          console.warn(`Module ${module.metadata.name} is already registered`)
+          return state
+        }
+      }
+
+      // Register new module
+      const newModules = [...state.modules, module]
+
+      // Register stores
+      const newStores = { ...state.stores }
+      if (module.registerStores) {
+        const storeRegistrations = module.registerStores()
+        storeRegistrations.forEach(reg => {
+          newStores[reg.name] = createStoreProxy(reg.store)
+        })
+      }
+
+      // Register components
+      const newComponents = [...state.components]
+      if (module.registerComponents) {
+        const components = module.registerComponents()
+        newComponents.push(...components)
+        newComponents.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      }
+
+      // Call onModuleRegister hook for all existing modules
+      state.modules.forEach(existingModule => {
+        existingModule.onModuleRegister?.(module)
+      })
+
+      // Call new module's hook for all existing modules (catch up)
+      if (module.onModuleRegister) {
+        state.modules.forEach(existingModule => {
+          module.onModuleRegister!(existingModule)
+        })
+      }
+
+      console.log(`Registered module: ${module.metadata.name}`, {
+        stores: module.registerStores ? module.registerStores().length : 0,
+        components: module.registerComponents ? module.registerComponents().length : 0,
+        slots: module.registerSlots ? 'yes' : 'no',
+      })
+
+      return {
+        modules: newModules,
+        stores: newStores,
+        components: newComponents,
+      }
+    })
+  },
+
+  initializeModules: () => {
+    const { modules } = get()
+
+    // Step 0: Register core stores in the stores registry
+    set(state => ({
+      stores: {
+        ...state.stores,
+        ModuleSystem: createStoreProxy(useModuleSystemStore),
+        EventBus: createStoreProxy(useEventBusStore),
+      },
+    }))
+
+    // Step 1: Run module initialize functions first (creates slot registries)
+    for (const module of modules) {
+      if (module.initialize) {
+        try {
+          const result = module.initialize()
+          // If initialize returns a promise, handle it but don't await
+          if (result instanceof Promise) {
+            result
+              .then(() =>
+                console.log(`Initialized module: ${module.metadata.name}`),
+              )
+              .catch(error =>
+                console.error(
+                  `Failed to initialize module ${module.metadata.name}:`,
+                  error,
+                ),
+              )
+          } else {
+            console.log(`Initialized module: ${module.metadata.name}`)
+          }
+        } catch (error) {
+          console.error(
+            `Failed to initialize module ${module.metadata.name}:`,
+            error,
+          )
+        }
+      }
+    }
+
+    // Step 2: Register slots from all modules
+    // Rebuild from scratch to prevent duplication during HMR
+    set(() => {
+      const slotsMap = new Map<keyof Slots, any[]>()
+
+      for (const module of modules) {
+        if (module.registerSlots) {
+          try {
+            const slots = module.registerSlots()
+
+            // Register items for each slot
+            for (const [slotName, slotArray] of Object.entries(slots)) {
+              const slot = slotName as keyof Slots
+              const existing = slotsMap.get(slot) || []
+              slotsMap.set(slot, [...existing, ...slotArray])
+              console.log(`✅ Registered ${slotArray.length} item(s) for slot: ${slotName}`)
+            }
+          } catch (error) {
+            console.error(
+              `Failed to register slots for module ${module.metadata.name}:`,
+              error,
+            )
+          }
+        }
+      }
+
+      return { slots: slotsMap }
+    })
+  },
+}))

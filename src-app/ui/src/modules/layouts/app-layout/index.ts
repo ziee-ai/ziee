@@ -1,0 +1,22 @@
+import type { LayoutDefinition } from '@/modules/router/types'
+import { AppLayout } from './AppLayout'
+
+/**
+ * AppLayoutDef - Layout definition for the main application layout
+ *
+ * Sidebar items are registered via the slot system:
+ * - sidebarNavigation: Main navigation items
+ * - sidebarTools: Tools/settings items
+ * - sidebarPrimaryActions: Action buttons at top
+ * - sidebarContent: Content widgets (middle section, flex-1)
+ * - sidebarBottom: Below tools (e.g., download indicator)
+ * - sidebarFooter: Footer section (e.g., user profile)
+ */
+export const AppLayoutDef: LayoutDefinition<undefined> = {
+  component: AppLayout as any,
+  mergeOptions: () => undefined,
+}
+
+// Re-export for convenience
+export { AppLayout }
+export type { SidebarNavItem, SidebarToolItem, SidebarActionItem } from './types'

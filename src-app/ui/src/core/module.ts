@@ -1,35 +1,32 @@
 import type {
   AppModule,
   ModuleMetadata,
-  RouteConfig,
   StoreRegistration,
-  SidebarRegistration,
-  SettingsMenuItem,
-  GlobalComponent,
   SlotRegistration,
-} from './router/types'
+  ComponentRegistration,
+} from './module-system/types'
 
+// Base interface - infrastructure modules extend this via declaration merging
 export interface CreateModuleOptions {
   metadata: ModuleMetadata
-  routes: RouteConfig[]
   stores?: StoreRegistration[]
-  sidebar?: SidebarRegistration
-  settings?: SettingsMenuItem[]
-  globalComponents?: GlobalComponent[]
+  components?: ComponentRegistration[]
+  dependencies?: string[]
   slots?: SlotRegistration
+  onModuleRegister?: (module: AppModule) => void
   initialize?: () => void | Promise<void>
   cleanup?: () => void | Promise<void>
 }
 
 export function createModule(options: CreateModuleOptions): AppModule {
   return {
+    ...options, // Spread all fields (including routes added via declaration merging)
     metadata: options.metadata,
-    registerRoutes: () => options.routes,
     registerStores: options.stores ? () => options.stores! : undefined,
-    registerSidebar: options.sidebar ? () => options.sidebar! : undefined,
-    registerSettings: options.settings ? () => options.settings! : undefined,
-    registerGlobalComponents: options.globalComponents ? () => options.globalComponents! : undefined,
+    registerComponents: options.components ? () => options.components! : undefined,
+    registerDependencies: options.dependencies ? () => options.dependencies! : undefined,
     registerSlots: options.slots ? () => options.slots! : undefined,
+    onModuleRegister: options.onModuleRegister,
     initialize: options.initialize,
     cleanup: options.cleanup,
   }

@@ -1,6 +1,6 @@
 import { createModule } from '@/core'
 import { ApiOutlined } from '@ant-design/icons'
-import SettingsLayout from '@/modules/settings/SettingsLayout'
+import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useMcpStore,
   useSystemMcpServersStore,
@@ -12,6 +12,7 @@ import { useGroupSystemMcpServersAssignmentStore } from './components/GroupSyste
 import { useMcpServerGroupsAssignmentStore } from './components/McpServerGroupsAssignmentDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types' // CRITICAL: Import to enable type declaration merging
+import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const McpServersSettings = lazyWithPreload(() =>
   import('./components/McpServersSettings').then(m => ({
@@ -49,18 +50,19 @@ export default createModule({
     version: '1.0.0',
     description: 'Model Context Protocol (MCP) server management',
   },
+  dependencies: ['router'],
   routes: [
     {
       path: '/settings/mcp-servers',
       element: McpServersSettings,
       requiresAuth: true,
-      layout: SettingsLayout,
+      layout: SettingsLayoutDef,
     },
     {
       path: '/settings/mcp-admin',
       element: SystemMcpServersPage,
       requiresAuth: true,
-      layout: SettingsLayout,
+      layout: SettingsLayoutDef,
     },
   ],
   stores: [
@@ -93,17 +95,37 @@ export default createModule({
       store: useMcpServerGroupsAssignmentStore,
     },
   ],
-  globalComponents: [
+  components: [
     {
       id: 'group-system-mcp-servers-assignment-drawer',
       component: GroupSystemMcpServersAssignmentDrawer,
+      order: 100,
     },
     {
       id: 'mcp-server-groups-assignment-drawer',
       component: McpServerGroupsAssignmentDrawer,
+      order: 101,
     },
   ],
   slots: {
+    settingsUserPages: [
+      {
+        id: 'mcp-servers',
+        icon: <ApiOutlined />,
+        label: 'MCP Servers',
+        path: 'mcp-servers',
+        order: 25,
+      },
+    ],
+    settingsAdminPages: [
+      {
+        id: 'mcp-admin',
+        icon: <ApiOutlined />,
+        label: 'System MCP Servers',
+        path: 'mcp-admin',
+        order: 25,
+      },
+    ],
     userGroup: [
       {
         order: 20,
@@ -111,24 +133,6 @@ export default createModule({
       },
     ],
   },
-  settings: [
-    {
-      id: 'mcp-servers',
-      icon: <ApiOutlined />,
-      label: 'MCP Servers',
-      path: 'mcp-servers',
-      section: 'user',
-      order: 25,
-    },
-    {
-      id: 'mcp-admin',
-      icon: <ApiOutlined />,
-      label: 'System MCP Servers',
-      path: 'mcp-admin',
-      section: 'admin',
-      order: 25,
-    },
-  ],
   initialize: () => {
     console.log('MCP module initialized')
   },

@@ -6,11 +6,11 @@ import {
   Typography,
 } from 'antd'
 import React, { useRef } from 'react'
-import { ResizeHandle } from './ResizeHandle.tsx'
+import { ResizeHandle } from './ResizeHandle'
 import tinycolor from 'tinycolor2'
-import { useWindowMinSize } from '@/hooks/useWindowMinSize.ts'
+import { useWindowMinSize } from '../hooks/useWindowMinSize'
 import { IoIosArrowBack } from 'react-icons/io'
-import { DivScrollY } from './DivScrollY.tsx'
+import { DivScrollY } from '@/components/common/DivScrollY'
 
 export interface DrawerProps extends AntDrawerProps {
   children?: React.ReactNode

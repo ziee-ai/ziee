@@ -21,4 +21,4 @@ export { AuthGuard } from './modules/auth'
 export * from './api-client'
 
 // Re-export types for consumers
-export type { AppModule } from './core/router/types'
+export type { AppModule } from './core/module-system/types'

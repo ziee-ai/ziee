@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
-import { Drawer } from '@/components/common/Drawer'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import type { McpServer } from '@/api-client/types'
 
@@ -120,6 +120,8 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                 return (
                   <Card
                     key={server.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => handleToggle(server.id, !isChecked)}
                   >
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>

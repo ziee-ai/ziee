@@ -1,9 +1,9 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useRouterStore } from './store'
+import type { useRoutesStore } from './routes-store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
-    Router: StoreProxy<ReturnType<typeof useRouterStore.getState>>
+    Routes: StoreProxy<ReturnType<typeof useRoutesStore.getState>>
   }
 }
 

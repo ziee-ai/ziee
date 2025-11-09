@@ -1,10 +1,11 @@
 import { createModule } from '@/core'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
-import SettingsLayout from '@/modules/settings/SettingsLayout'
+import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { useHardwareStore } from './Hardware.store'
 import './types'
-import { BlankLayout } from '@/components/Layout/BlankLayout.tsx' // Import type augmentation
+import { BlankLayout } from '@/modules/layouts/blank' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const HardwareSettings = lazyWithPreload(() => import('./HardwareSettings'))
 const HardwareMonitor = lazyWithPreload(() => import('./HardwareMonitor').then(m => ({ default: m.HardwareMonitor })))
@@ -20,7 +21,7 @@ export default createModule({
       path: '/settings/hardware',
       element: HardwareSettings,
       requiresAuth: true,
-      layout: SettingsLayout,
+      layout: SettingsLayoutDef,
     },
     {
       path: '/hardware-monitor',
@@ -35,16 +36,17 @@ export default createModule({
       store: useHardwareStore,
     },
   ],
-  settings: [
-    {
-      id: 'hardware',
-      icon: <MdOutlineMonitorHeart />,
-      label: 'Hardware',
-      path: 'hardware',
-      section: 'admin',
-      order: 30,
-    },
-  ],
+  slots: {
+    settingsAdminPages: [
+      {
+        id: 'hardware',
+        icon: <MdOutlineMonitorHeart />,
+        label: 'Hardware',
+        path: 'hardware',
+        order: 30,
+      },
+    ],
+  },
   initialize: () => {
     console.log('Hardware module initialized')
   },

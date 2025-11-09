@@ -10,6 +10,7 @@ export default createModule({
     version: '1.0.0',
     description: 'Authentication module with login and registration',
   },
+  dependencies: ['router'],
   routes: [
     {
       path: '/login',

@@ -52,7 +52,7 @@ export interface GroupWidget {
  * Register the 'userGroup' slot.
  * Other modules can register widgets for this slot to display in group list items.
  */
-declare module '@/core/router/types' {
+declare module '@/core/module-system/types' {
   interface Slots {
     userGroup: GroupWidget[]
   }

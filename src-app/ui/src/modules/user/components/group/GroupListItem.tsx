@@ -16,7 +16,7 @@ import {
 } from 'antd'
 import type { Group } from '@/api-client/types'
 import { Stores } from '@/core/stores'
-import { WidgetRenderer } from '@/core/components/WidgetRenderer'
+import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
 import type { GroupWidget } from '../../types/GroupWidget'
 
 const { Text } = Typography
@@ -37,7 +37,7 @@ export function GroupListItem({
 }: GroupListItemProps) {
 
   // Get items for the userGroup slot from global registry
-  const { slots } = Stores.Router
+  const { slots } = Stores.ModuleSystem
   const userGroupWidgets = (slots.get('userGroup') || []) as GroupWidget[]
 
   // Sort items by order

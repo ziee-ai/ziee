@@ -1,6 +1,6 @@
 import { createModule } from '@/core'
 import { FolderOutlined, FolderAddOutlined } from '@ant-design/icons'
-import AppLayout from '@/components/Layout/AppLayout'
+import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const ProjectsPage = lazyWithPreload(() => import('./ProjectsPage'))
@@ -11,16 +11,17 @@ export default createModule({
     version: '1.0.0',
     description: 'Projects module',
   },
+  dependencies: ['router'],
   routes: [
     {
       path: '/projects',
       element: ProjectsPage,
       requiresAuth: true,
-      layout: AppLayout,
+      layout: AppLayoutDef,
     },
   ],
-  sidebar: {
-    primaryActions: [
+  slots: {
+    sidebarPrimaryActions: [
       {
         id: 'new-project',
         icon: <FolderAddOutlined />,
@@ -29,7 +30,7 @@ export default createModule({
         order: 20,
       },
     ],
-    navigation: [
+    sidebarNavigation: [
       {
         id: 'projects',
         icon: <FolderOutlined />,

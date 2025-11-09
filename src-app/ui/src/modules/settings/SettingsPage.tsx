@@ -1,7 +1,7 @@
 import { Button, Dropdown, Flex, Menu, theme, Typography } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useWindowMinSize } from '../../hooks/useWindowMinSize'
-import { TitleBarWrapper } from '../../components/TitleBarWrapper'
+import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
@@ -12,16 +12,14 @@ export default function SettingsPage() {
   const windowMinSize = useWindowMinSize()
   const { token } = theme.useToken()
 
-  const { settingsItems } = Stores.Router
+  const { slots } = Stores.ModuleSystem
 
-  // Filter and sort user settings
-  const userSettingsItems = settingsItems
-    .filter(item => item.section === 'user')
+  // Get and sort user settings from slots
+  const userSettingsItems = (slots.get('settingsUserPages') || [])
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
-  // Filter and sort admin settings
-  const adminSettingsItems = settingsItems
-    .filter(item => item.section === 'admin')
+  // Get and sort admin settings from slots
+  const adminSettingsItems = (slots.get('settingsAdminPages') || [])
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   // Build final menu
@@ -111,7 +109,7 @@ export default function SettingsPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Page Header */}
-      <TitleBarWrapper>
+      <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
           <Typography.Title level={4} className="!m-0 !leading-tight truncate">
             Settings
@@ -171,7 +169,7 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-      </TitleBarWrapper>
+      </HeaderBarContainer>
 
       {/* Page Content */}
       <div className="flex flex-1 overflow-hidden">

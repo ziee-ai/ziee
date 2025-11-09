@@ -1,7 +1,7 @@
 import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
 import { App, Button, Form, Input, Select, Switch, Typography } from 'antd'
 import { useEffect, useState } from 'react'
-import { Drawer } from '@/components/common/Drawer.tsx'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import type {
   CreateLlmProviderRequest,

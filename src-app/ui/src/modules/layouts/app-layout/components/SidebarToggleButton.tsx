@@ -1,7 +1,6 @@
 import { Button } from 'antd'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import { Stores } from '@/core/stores'
-import { toggleSidebar } from '../appLayoutStore'
 
 export function SidebarToggleButton() {
   const { isSidebarCollapsed } = Stores.AppLayout
@@ -16,7 +15,7 @@ export function SidebarToggleButton() {
     >
       <Button
         type="text"
-        onClick={toggleSidebar}
+        onClick={Stores.AppLayout.toggleSidebar}
         className="flex items-center justify-center"
         style={{
           width: '24px',

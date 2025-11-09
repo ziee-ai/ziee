@@ -1,6 +1,6 @@
 import type { StoreApi, UseBoundStore } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import { useRouterStore } from './router'
+import { useModuleSystemStore } from './module-system'
 
 // ============================================================================
 // Store Proxy - Creates typed store accessors with IntelliSense
@@ -101,8 +101,8 @@ export interface RegisteredStores {
 // But typed via RegisteredStores interface for IntelliSense
 export const Stores = new Proxy({} as RegisteredStores, {
   get: (_, prop) => {
-    const routerState = useRouterStore.getState()
-    return routerState.stores[prop as string]
+    const moduleSystemState = useModuleSystemStore.getState()
+    return moduleSystemState.stores[prop as string]
   },
 })
 

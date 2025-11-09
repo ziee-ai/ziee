@@ -12,8 +12,8 @@ import {
 import type { Assistant } from '@/api-client/types'
 import { AssistantCard } from '../components/AssistantCard'
 import { AssistantFormDrawer } from '../components/AssistantFormDrawer'
-import { TitleBarWrapper } from '@/components/TitleBarWrapper'
-import { useMainContentMinSize } from '@/hooks/useWindowMinSize'
+import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
+import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 const { Title, Text } = Typography
 
@@ -118,7 +118,7 @@ export function UserAssistantsPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Page Header */}
-      <TitleBarWrapper>
+      <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
           <Typography.Title level={4} className="!m-0 !leading-tight">
             Assistants
@@ -182,7 +182,7 @@ export function UserAssistantsPage() {
             </div>
           </div>
         </div>
-      </TitleBarWrapper>
+      </HeaderBarContainer>
 
       {/* Page Content */}
       <div className="flex-1 flex flex-col overflow-hidden items-center">

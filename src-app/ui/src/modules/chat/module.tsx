@@ -1,6 +1,6 @@
 import { createModule } from '@/core'
 import { PlusOutlined, HistoryOutlined } from '@ant-design/icons'
-import AppLayout from '@/components/Layout/AppLayout'
+import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const ChatPage = lazyWithPreload(() => import('./ChatPage.tsx'))
@@ -11,16 +11,17 @@ export default createModule({
     version: '1.0.0',
     description: 'Chat module for conversations',
   },
+  dependencies: ['router'],
   routes: [
     {
       path: '/chat',
       element: ChatPage,
       requiresAuth: true,
-      layout: AppLayout,
+      layout: AppLayoutDef,
     },
   ],
-  sidebar: {
-    primaryActions: [
+  slots: {
+    sidebarPrimaryActions: [
       {
         id: 'new-chat',
         icon: <PlusOutlined />,
@@ -29,7 +30,7 @@ export default createModule({
         order: 10,
       },
     ],
-    navigation: [
+    sidebarNavigation: [
       {
         id: 'chats',
         icon: <HistoryOutlined />,

@@ -18,7 +18,7 @@ import { PROVIDER_ICONS } from '../constants'
 import { LlmProviderDrawer } from './LlmProviderDrawer'
 import { LocalProviderSettings } from './LocalProviderSettings'
 import { RemoteProviderSettings } from './RemoteProviderSettings'
-import { useWindowMinSize } from '@/hooks/useWindowMinSize'
+import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowDown } from 'react-icons/io'
 
 const { Title } = Typography

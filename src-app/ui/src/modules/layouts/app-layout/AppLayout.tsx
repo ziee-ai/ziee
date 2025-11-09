@@ -1,20 +1,24 @@
 import React, { useCallback, useEffect, useRef } from 'react'
-import { LeftSidebar, SidebarToggleButton } from './components'
+import { LeftSidebar } from './components/LeftSidebar'
+import { SidebarToggleButton } from './components/SidebarToggleButton'
 import { theme } from 'antd'
-import { useWindowMinSize } from '@/hooks/useWindowMinSize.ts'
+import { useWindowMinSize } from './hooks/useWindowMinSize'
 import tinycolor from 'tinycolor2'
 import 'overlayscrollbars/overlayscrollbars.css'
-import {
-  setMainContentWidth,
-  setSidebarCollapsed,
-} from './appLayoutStore'
 import { Stores } from '@/core/stores'
 
-interface AppLayoutProps {
-  children: React.ReactNode
-}
-
-export function AppLayout({ children }: AppLayoutProps) {
+/**
+ * AppLayout - Main application layout with sidebar
+ *
+ * Sidebar items are registered via the slot system:
+ * - sidebarNavigation: Main navigation items
+ * - sidebarTools: Tools/settings items
+ * - sidebarPrimaryActions: Action buttons at top
+ * - sidebarRecent: Recent items (middle section)
+ * - sidebarBottom: Below tools (e.g., download indicator)
+ * - sidebarFooter: Footer section (e.g., user profile)
+ */
+export function AppLayout({ children }: { children: React.ReactNode }) {
   const { isSidebarCollapsed } = Stores.AppLayout
   const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
@@ -42,7 +46,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           if (spacerRef.current) {
             spacerRef.current.style.transition = 'all 200ms ease-out'
           }
-          setSidebarCollapsed(true)
+          Stores.AppLayout.setSidebarCollapsed(true)
         } else if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
           // If coming from collapsed state, re-enable transition for smooth expand
           if (isSidebarCollapsed) {
@@ -51,7 +55,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             }
 
             setTimeout(() => {
-              setSidebarCollapsed(false)
+              Stores.AppLayout.setSidebarCollapsed(false)
               currentWidth.current = newWidth
               if (sidebarRef.current) {
                 sidebarRef.current.style.width = `${newWidth}px`
@@ -72,7 +76,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             }, 10)
           } else {
             // Disable the transition for smooth dragging
-            setSidebarCollapsed(false)
+            Stores.AppLayout.setSidebarCollapsed(false)
             currentWidth.current = newWidth
             if (sidebarRef.current) {
               sidebarRef.current.style.width = `${newWidth}px`
@@ -110,10 +114,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     if (windowMinSize.xs) {
       if (!isSidebarCollapsed) {
-        setSidebarCollapsed(true)
+        Stores.AppLayout.setSidebarCollapsed(true)
       }
     }
-  }, [windowMinSize.xs])
+  }, [windowMinSize.xs, isSidebarCollapsed])
 
   // ResizeObserver to listen to main content width changes
   useEffect(() => {
@@ -123,7 +127,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     const resizeObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
         const { width } = entry.contentRect
-        setMainContentWidth(Math.round(width))
+        Stores.AppLayout.setMainContentWidth(Math.round(width))
       }
     })
 
@@ -170,7 +174,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (sidebarRef.current) {
       sidebarRef.current.style.transition = 'transform 200ms ease-out'
     }
-    setSidebarCollapsed(true)
+    Stores.AppLayout.setSidebarCollapsed(true)
     setTimeout(() => {
       if (sidebarRef.current) {
         sidebarRef.current.style.transition = 'none'

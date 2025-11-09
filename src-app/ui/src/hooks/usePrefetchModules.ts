@@ -1,25 +1,21 @@
 import { useEffect, isValidElement } from 'react'
 import { Stores } from '@/core/stores'
-import type { AppModule } from '@/core/router/types'
 
 /**
  * Hook to prefetch lazy-loaded modules after initial render
  * Uses requestIdleCallback to prefetch when browser is idle
  */
 export function usePrefetchModules() {
-  const { modules } = Stores.Router
+  const { routes } = Stores.Routes
 
   useEffect(() => {
     // Check if requestIdleCallback is supported (not available in Safari < 16)
     const prefetch = () => {
-      modules.forEach((module: AppModule) => {
-        const routes = module.registerRoutes()
-        routes.forEach(route => {
-          // If element is a function (preload function), call it to trigger the import
-          if (typeof route.element === 'function' && !isValidElement(route.element)) {
-            ;(route.element as () => Promise<{ default: React.ComponentType<any> }>)()
-          }
-        })
+      routes.forEach(route => {
+        // If element is a function (preload function), call it to trigger the import
+        if (typeof route.element === 'function' && !isValidElement(route.element)) {
+          ;(route.element as () => Promise<{ default: React.ComponentType<any> }>)()
+        }
       })
     }
 
@@ -31,5 +27,5 @@ export function usePrefetchModules() {
       const timer = setTimeout(prefetch, 1000)
       return () => clearTimeout(timer)
     }
-  }, [modules])
+  }, [routes])
 }

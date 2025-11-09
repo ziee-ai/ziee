@@ -1,5 +1,5 @@
 import { Button, Form, Input, Select, Switch, App } from 'antd'
-import { Drawer } from '@/components/common/Drawer'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import {

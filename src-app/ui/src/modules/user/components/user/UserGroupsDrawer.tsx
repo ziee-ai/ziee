@@ -1,6 +1,6 @@
 import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
 import { App, Button, Empty, List, Popconfirm, Spin, Tag } from 'antd'
-import { Drawer } from '@/components/common/Drawer.tsx'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { useEffect, useState } from 'react'
 

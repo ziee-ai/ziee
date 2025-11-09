@@ -1,6 +1,6 @@
 import { createModule } from '@/core'
 import { CloudServerOutlined } from '@ant-design/icons'
-import SettingsLayout from '@/modules/settings/SettingsLayout'
+import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useLlmProviderStore,
   useLlmModelDownloadStore,
@@ -19,6 +19,7 @@ import { useLlmProviderGroupsAssignmentStore } from './components/LlmProviderGro
 import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const LlmProviderSettings = lazyWithPreload(() => import('./components/LlmProviderSettings').then(m => ({ default: m.LlmProviderSettings })))
 const GroupLlmProvidersAssignmentDrawer = lazyWithPreload(() => import('./components/GroupLlmProvidersAssignmentDrawer').then(m => ({ default: m.GroupLlmProvidersAssignmentDrawer })))
@@ -31,12 +32,13 @@ export default createModule({
     version: '1.0.0',
     description: 'LLM provider management',
   },
+  dependencies: ['router'],
   routes: [
     {
       path: '/settings/llm-providers/:providerId?',
       element: LlmProviderSettings,
       requiresAuth: true,
-      layout: SettingsLayout,
+      layout: SettingsLayoutDef,
     },
   ],
   stores: [
@@ -93,37 +95,35 @@ export default createModule({
       store: useProviderGroupCardStore,
     },
   ],
-  sidebar: {
-    widgets: [
-      {
-        id: 'download-indicator',
-        slot: 'bottom',
-        component: <DownloadIndicatorWidget />,
-        order: 10,
-      },
-    ],
-  },
-  settings: [
-    {
-      id: 'llm-providers',
-      icon: <CloudServerOutlined />,
-      label: 'LLM Providers',
-      path: 'llm-providers',
-      section: 'admin',
-      order: 21,
-    },
-  ],
-  globalComponents: [
+  components: [
     {
       id: 'group-llm-providers-assignment-drawer',
       component: GroupLlmProvidersAssignmentDrawer,
+      order: 100,
     },
     {
       id: 'llm-provider-groups-assignment-drawer',
       component: LlmProviderGroupsAssignmentDrawer,
+      order: 101,
     },
   ],
   slots: {
+    sidebarBottom: [
+      {
+        id: 'download-indicator',
+        component: DownloadIndicatorWidget,
+        order: 10,
+      },
+    ],
+    settingsAdminPages: [
+      {
+        id: 'llm-providers',
+        icon: <CloudServerOutlined />,
+        label: 'LLM Providers',
+        path: 'llm-providers',
+        order: 21,
+      },
+    ],
     userGroup: [
       {
         order: 10,

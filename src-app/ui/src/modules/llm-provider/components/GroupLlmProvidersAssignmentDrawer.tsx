@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
-import { Drawer } from '@/components/common/Drawer'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 
 const { Text, Title } = Typography
@@ -121,7 +121,6 @@ export function GroupLlmProvidersAssignmentDrawer() {
                     key={provider.id}
                     onClick={() => handleToggle(provider.id, !isChecked)}
                     style={{ cursor: 'pointer' }}
-                    hoverable
                   >
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>

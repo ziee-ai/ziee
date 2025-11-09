@@ -11,7 +11,7 @@ import {
   Typography,
   Upload,
 } from 'antd'
-import { Drawer } from '@/components/common/Drawer'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { LOCAL_FILE_TYPE_OPTIONS } from '../../constants'
 import { Stores } from '@/core/stores'

@@ -1,5 +1,5 @@
 import { App, Button, Card, Flex, Form } from 'antd'
-import { Drawer } from '@/components/common/Drawer'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import {
   Stores,
