@@ -596,3 +596,435 @@ async fn test_hub_endpoints_require_authentication() {
         );
     }
 }
+
+// ============================================================================
+// Hub Entity Tracking Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_assistant_from_hub() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user with necessary permissions
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::create", "hub::assistants::read"]
+    ).await;
+
+    // Get available hub assistants
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(assistants.as_array().unwrap().len() > 0, "Should have at least one hub assistant");
+
+    // Get first assistant hub_id
+    let first_assistant = &assistants.as_array().unwrap()[0];
+    let hub_id = first_assistant.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Verify created_ids is initially empty
+    let created_ids = first_assistant.get("created_ids").and_then(|v| v.as_array());
+    assert!(created_ids.is_none() || created_ids.unwrap().is_empty(),
+        "Created IDs should be empty initially");
+
+    // Create assistant from hub
+    let url = server.api_url("/hub/assistants/create");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "is_default": false,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201, "Should create assistant successfully");
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    // Verify response structure
+    assert!(body.get("assistant").is_some(), "Response should contain assistant");
+    assert!(body.get("hub_tracking").is_some(), "Response should contain hub_tracking");
+
+    let assistant_id = body.get("assistant")
+        .and_then(|a| a.get("id"))
+        .and_then(|v| v.as_str())
+        .expect("Should have assistant ID");
+
+    // Verify hub tracking
+    let hub_tracking = body.get("hub_tracking").unwrap();
+    assert_eq!(
+        hub_tracking.get("entity_type").and_then(|v| v.as_str()).unwrap(),
+        "assistant"
+    );
+    assert_eq!(
+        hub_tracking.get("hub_id").and_then(|v| v.as_str()).unwrap(),
+        hub_id
+    );
+    assert_eq!(
+        hub_tracking.get("hub_category").and_then(|v| v.as_str()).unwrap(),
+        "assistant"
+    );
+
+    // Get hub assistants again and verify created_ids is populated
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    let updated_assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .expect("Should find the hub assistant");
+
+    let created_ids = updated_assistant.get("created_ids")
+        .and_then(|v| v.as_array())
+        .expect("Should have created_ids");
+
+    assert_eq!(created_ids.len(), 1, "Should have exactly one created ID");
+    assert_eq!(
+        created_ids[0].as_str().unwrap(),
+        assistant_id,
+        "Created ID should match the assistant we just created"
+    );
+}
+
+#[tokio::test]
+async fn test_create_mcp_server_from_hub() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user with necessary permissions
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::mcp_servers::create", "hub::mcp_servers::read"]
+    ).await;
+
+    // Get available hub MCP servers
+    let url = server.api_url("/hub/mcp-servers?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(servers.as_array().unwrap().len() > 0, "Should have at least one hub MCP server");
+
+    // Get first server hub_id
+    let first_server = &servers.as_array().unwrap()[0];
+    let hub_id = first_server.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Verify created_ids is initially empty
+    let created_ids = first_server.get("created_ids").and_then(|v| v.as_array());
+    assert!(created_ids.is_none() || created_ids.unwrap().is_empty(),
+        "Created IDs should be empty initially");
+
+    // Create MCP server from hub
+    let url = server.api_url("/hub/mcp-servers/create");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201, "Should create MCP server successfully");
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    // Verify response structure
+    assert!(body.get("server").is_some(), "Response should contain server");
+    assert!(body.get("hub_tracking").is_some(), "Response should contain hub_tracking");
+
+    let server_id = body.get("server")
+        .and_then(|s| s.get("id"))
+        .and_then(|v| v.as_str())
+        .expect("Should have server ID");
+
+    // Verify server is created as user server (not system server)
+    let is_system = body.get("server")
+        .and_then(|s| s.get("is_system"))
+        .and_then(|v| v.as_bool())
+        .expect("Should have is_system field");
+    assert!(!is_system, "Hub-created servers should be user servers, not system servers");
+
+    // Verify hub tracking
+    let hub_tracking = body.get("hub_tracking").unwrap();
+    assert_eq!(
+        hub_tracking.get("entity_type").and_then(|v| v.as_str()).unwrap(),
+        "mcp_server"
+    );
+    assert_eq!(
+        hub_tracking.get("hub_id").and_then(|v| v.as_str()).unwrap(),
+        hub_id
+    );
+    assert_eq!(
+        hub_tracking.get("hub_category").and_then(|v| v.as_str()).unwrap(),
+        "mcp_server"
+    );
+
+    // Get hub MCP servers again and verify created_ids is populated
+    let url = server.api_url("/hub/mcp-servers?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    let updated_server = servers.as_array().unwrap()
+        .iter()
+        .find(|s| s.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .expect("Should find the hub MCP server");
+
+    let created_ids = updated_server.get("created_ids")
+        .and_then(|v| v.as_array())
+        .expect("Should have created_ids");
+
+    assert_eq!(created_ids.len(), 1, "Should have exactly one created ID");
+    assert_eq!(
+        created_ids[0].as_str().unwrap(),
+        server_id,
+        "Created ID should match the server we just created"
+    );
+}
+
+#[tokio::test]
+async fn test_created_ids_are_user_specific() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create two users with necessary permissions
+    let user1 = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user1",
+        &["hub::assistants::create", "hub::assistants::read"]
+    ).await;
+
+    let user2 = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user2",
+        &["hub::assistants::create", "hub::assistants::read"]
+    ).await;
+
+    // Get hub assistants for user1
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let hub_id = assistants.as_array().unwrap()[0]
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // User1 creates an assistant from hub
+    let url = server.api_url("/hub/assistants/create");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "is_default": false,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201);
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let user1_assistant_id = body.get("assistant")
+        .and_then(|a| a.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // User2 creates an assistant from the same hub
+    let response = reqwest::Client::new()
+        .post(server.api_url("/hub/assistants/create"))
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201);
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let user2_assistant_id = body.get("assistant")
+        .and_then(|a| a.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Verify different assistant IDs
+    assert_ne!(user1_assistant_id, user2_assistant_id, "Each user should get their own assistant instance");
+
+    // User1 sees only their own created assistant
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = assistant.get("created_ids")
+        .and_then(|v| v.as_array())
+        .unwrap();
+
+    assert_eq!(created_ids.len(), 1);
+    assert_eq!(created_ids[0].as_str().unwrap(), user1_assistant_id);
+
+    // User2 sees only their own created assistant
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = assistant.get("created_ids")
+        .and_then(|v| v.as_array())
+        .unwrap();
+
+    assert_eq!(created_ids.len(), 1);
+    assert_eq!(created_ids[0].as_str().unwrap(), user2_assistant_id);
+}
+
+#[tokio::test]
+async fn test_multiple_creations_from_same_hub_item() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::create", "hub::assistants::read"]
+    ).await;
+
+    // Get hub assistants
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let hub_id = assistants.as_array().unwrap()[0]
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Create multiple assistants from the same hub item
+    let mut assistant_ids = Vec::new();
+
+    for i in 0..3 {
+        let url = server.api_url("/hub/assistants/create");
+        let request_body = serde_json::json!({
+            "hub_id": hub_id,
+            "name": format!("Custom Assistant {}", i),
+            "is_default": false,
+            "enabled": true
+        });
+
+        let response = reqwest::Client::new()
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", user.token))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .expect("Request failed");
+
+        assert_eq!(response.status(), 201, "Should create assistant successfully");
+        let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+        let assistant_id = body.get("assistant")
+            .and_then(|a| a.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap();
+
+        assistant_ids.push(assistant_id.to_string());
+    }
+
+    // Verify all three assistant IDs are tracked
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = assistant.get("created_ids")
+        .and_then(|v| v.as_array())
+        .unwrap();
+
+    assert_eq!(created_ids.len(), 3, "Should track all three created assistants");
+
+    // Verify all IDs are present
+    for assistant_id in assistant_ids {
+        assert!(
+            created_ids.iter().any(|id| id.as_str() == Some(&assistant_id)),
+            "Created ID {} should be in the list",
+            assistant_id
+        );
+    }
+}

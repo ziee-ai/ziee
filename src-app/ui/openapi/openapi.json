@@ -4233,6 +4233,121 @@
         ]
       }
     },
+    "/api/groups/{group_id}/system-servers": {
+      "get": {
+        "tags": [
+          "Admin - Groups"
+        ],
+        "summary": "Get all system servers assigned to a group",
+        "description": "Get all system MCP servers assigned to a group (for UI widgets)",
+        "operationId": "Group.getSystemServers",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View system MCP servers",
+                        "name": "McpServersAdminRead",
+                        "value": "mcp_servers_admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for getting system MCP servers assigned to a group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSystemServersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Admin - Groups"
+        ],
+        "summary": "Update system servers assigned to a group",
+        "description": "Atomically updates system server assignments. Adds new servers and removes unspecified ones.",
+        "operationId": "Group.updateSystemServers",
+        "requestBody": {
+          "description": "Request to update system MCP servers for a group",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGroupSystemServersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit system MCP servers and manage group assignments",
+                        "name": "McpServersAdminEdit",
+                        "value": "mcp_servers_admin::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers_admin::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for getting system MCP servers assigned to a group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupSystemServersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -4766,6 +4881,210 @@
           }
         ]
       }
+    },
+    "/api/hub/assistants/create": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Create assistant from hub catalog",
+        "description": "\n\n**Required Permission:** `hub::assistants::create`\n\nCreate assistants from hub",
+        "operationId": "Hub.createAssistantFromHub",
+        "requestBody": {
+          "description": "Request to create assistant from hub catalog",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssistantFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create assistants from hub",
+                        "name": "HubAssistantsCreate",
+                        "value": "hub::assistants::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::assistants::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response for assistant created from hub",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub assistant not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/mcp-servers/create": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Create MCP server from hub catalog",
+        "description": "\n\n**Required Permission:** `hub::mcp_servers::create`\n\nCreate MCP servers from hub",
+        "operationId": "Hub.createMcpServerFromHub",
+        "requestBody": {
+          "description": "Request to create MCP server from hub catalog\n Note: Hub interface always creates user MCP servers, not system servers",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMcpServerFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create MCP servers from hub",
+                        "name": "HubMcpServersCreate",
+                        "value": "hub::mcp_servers::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::mcp_servers::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response for MCP server created from hub",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub MCP server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/models/download": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Download model from hub catalog",
+        "description": "\n\n**Required Permission:** `hub::models::download`\n\nDownload models from hub",
+        "operationId": "Hub.createModelFromHub",
+        "requestBody": {
+          "description": "Request to create LLM model from hub catalog (triggers download)",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModelFromHubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Download models from hub",
+                        "name": "HubModelsCreate",
+                        "value": "hub::models::download"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::download",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Response for model download initiated from hub",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelFromHubResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Hub model not found"
+          },
+          "501": {
+            "description": "Not yet implemented"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4863,6 +5182,32 @@
           "enabled",
           "created_at",
           "updated_at"
+        ]
+      },
+      "AssistantFromHubResponse": {
+        "description": "Response for assistant created from hub",
+        "type": "object",
+        "properties": {
+          "assistant": {
+            "description": "Created assistant",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Assistant"
+              }
+            ]
+          },
+          "hub_tracking": {
+            "description": "Hub tracking record",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HubEntity"
+              }
+            ]
+          }
+        },
+        "required": [
+          "assistant",
+          "hub_tracking"
         ]
       },
       "AssistantListResponse": {
@@ -4984,6 +5329,53 @@
         },
         "required": [
           "usage_percentage"
+        ]
+      },
+      "CreateAssistantFromHubRequest": {
+        "description": "Request to create assistant from hub catalog",
+        "type": "object",
+        "properties": {
+          "description": {
+            "description": "Optional: Override description",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "description": "Whether this assistant is enabled",
+            "type": "boolean",
+            "default": true
+          },
+          "hub_id": {
+            "description": "Hub assistant ID",
+            "type": "string"
+          },
+          "instructions": {
+            "description": "Optional: Override instructions",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_default": {
+            "description": "Whether this should be the default assistant",
+            "type": "boolean",
+            "default": false
+          },
+          "name": {
+            "description": "Optional: Override name (defaults to hub assistant name)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parameters": {
+            "description": "Optional: Override parameters"
+          }
+        },
+        "required": [
+          "hub_id"
         ]
       },
       "CreateAssistantRequest": {
@@ -5130,16 +5522,6 @@
           "provider_id": {
             "type": "string",
             "format": "uuid"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceInfo"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "additionalProperties": false,
@@ -5231,6 +5613,38 @@
           "auth_type"
         ]
       },
+      "CreateMcpServerFromHubRequest": {
+        "description": "Request to create MCP server from hub catalog\n Note: Hub interface always creates user MCP servers, not system servers",
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "description": "Optional: Override display name",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "description": "Optional: Override enabled",
+            "type": "boolean",
+            "default": true
+          },
+          "hub_id": {
+            "description": "Hub MCP server ID",
+            "type": "string"
+          },
+          "name": {
+            "description": "Optional: Override name",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "hub_id"
+        ]
+      },
       "CreateMcpServerRequest": {
         "type": "object",
         "properties": {
@@ -5306,6 +5720,44 @@
           "name",
           "display_name",
           "transport_type"
+        ]
+      },
+      "CreateModelFromHubRequest": {
+        "description": "Request to create LLM model from hub catalog (triggers download)",
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "description": "Optional: Override display name",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "description": "Whether this model is enabled",
+            "type": "boolean",
+            "default": true
+          },
+          "hub_id": {
+            "description": "Hub model ID",
+            "type": "string"
+          },
+          "provider_id": {
+            "description": "Provider ID to associate model with",
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantization_name": {
+            "description": "Optional: Select quantization option (defaults to main file)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "hub_id",
+          "provider_id"
         ]
       },
       "CreateUserRequest": {
@@ -5466,9 +5918,6 @@
           },
           "repository_path": {
             "type": "string"
-          },
-          "source": {
-            "$ref": "#/components/schemas/SourceInfo"
           }
         },
         "required": [
@@ -5478,8 +5927,7 @@
           "name",
           "display_name",
           "file_format",
-          "main_filename",
-          "source"
+          "main_filename"
         ]
       },
       "DownloadInstance": {
@@ -5826,16 +6274,6 @@
               "string",
               "null"
             ]
-          },
-          "source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceInfo"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "required": [
@@ -6104,6 +6542,21 @@
           "providers"
         ]
       },
+      "GroupSystemServersResponse": {
+        "description": "Response for getting system MCP servers assigned to a group",
+        "type": "object",
+        "properties": {
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServer"
+            }
+          }
+        },
+        "required": [
+          "servers"
+        ]
+      },
       "HardwareInfo": {
         "type": "object",
         "properties": {
@@ -6209,6 +6662,15 @@
               "null"
             ]
           },
+          "created_ids": {
+            "description": "Array of entity IDs created by current user from this hub assistant",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "display_name": {
             "type": "string"
           },
@@ -6236,7 +6698,8 @@
           "parameters": true,
           "popularity_score": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "default": 0
           },
           "recommended_models": {
             "type": [
@@ -6249,6 +6712,7 @@
           },
           "tags": {
             "type": "array",
+            "default": [],
             "items": {
               "type": "string"
             }
@@ -6267,9 +6731,49 @@
           "id",
           "name",
           "display_name",
-          "parameters",
-          "tags",
-          "popularity_score"
+          "parameters"
+        ]
+      },
+      "HubEntity": {
+        "description": "Hub entity tracking record",
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "hub_category": {
+            "type": "string"
+          },
+          "hub_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "entity_type",
+          "entity_id",
+          "hub_id",
+          "hub_category",
+          "created_at"
         ]
       },
       "HubMCPServer": {
@@ -6308,6 +6812,15 @@
               "string",
               "null"
             ]
+          },
+          "created_ids": {
+            "description": "Array of entity IDs created by current user from this hub server",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "display_name": {
             "type": "string"
@@ -6386,7 +6899,8 @@
           },
           "popularity_score": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "default": 0.0
           },
           "rating": {
             "type": [
@@ -6409,6 +6923,7 @@
           },
           "tags": {
             "type": "array",
+            "default": [],
             "items": {
               "type": "string"
             }
@@ -6460,9 +6975,7 @@
         "required": [
           "id",
           "name",
-          "display_name",
-          "tags",
-          "popularity_score"
+          "display_name"
         ]
       },
       "HubModel": {
@@ -6497,6 +7010,15 @@
               "null"
             ],
             "format": "int32"
+          },
+          "created_ids": {
+            "description": "Array of model IDs downloaded by ANYONE from this hub model (system-wide)",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "display_name": {
             "type": "string"
@@ -6539,7 +7061,8 @@
             "format": "int32"
           },
           "public": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "quantization_options": {
             "type": [
@@ -6570,6 +7093,7 @@
           },
           "tags": {
             "type": "array",
+            "default": [],
             "items": {
               "type": "string"
             }
@@ -6584,9 +7108,7 @@
           "main_filename",
           "file_format",
           "size_gb",
-          "tags",
-          "popularity_score",
-          "public"
+          "popularity_score"
         ]
       },
       "HubModelQuantizationOption": {
@@ -6946,16 +7468,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceInfo"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
@@ -7280,6 +7792,32 @@
           "timeout_seconds",
           "created_at",
           "updated_at"
+        ]
+      },
+      "McpServerFromHubResponse": {
+        "description": "Response for MCP server created from hub",
+        "type": "object",
+        "properties": {
+          "hub_tracking": {
+            "description": "Hub tracking record",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HubEntity"
+              }
+            ]
+          },
+          "server": {
+            "description": "Created MCP server",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/McpServer"
+              }
+            ]
+          }
+        },
+        "required": [
+          "server",
+          "hub_tracking"
         ]
       },
       "McpServerListResponse": {
@@ -7750,36 +8288,34 @@
         "type": "object",
         "properties": {
           "audio": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "chat": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "code_interpreter": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "image_generator": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "text_embedding": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "tools": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "vision": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           }
-        },
-        "required": [
-          "vision",
-          "audio",
-          "tools",
-          "code_interpreter",
-          "chat",
-          "text_embedding",
-          "image_generator"
-        ]
+        }
       },
       "ModelEngineSettings": {
         "description": "Engine-specific settings for model configuration",
@@ -7806,6 +8342,32 @@
             ]
           }
         }
+      },
+      "ModelFromHubResponse": {
+        "description": "Response for model download initiated from hub",
+        "type": "object",
+        "properties": {
+          "download": {
+            "description": "Created download instance",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DownloadInstance"
+              }
+            ]
+          },
+          "hub_tracking": {
+            "description": "Hub tracking record",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HubEntity"
+              }
+            ]
+          }
+        },
+        "required": [
+          "download",
+          "hub_tracking"
+        ]
       },
       "ModelParameters": {
         "description": "Model parameters for inference configuration",
@@ -8296,26 +8858,6 @@
           "version"
         ]
       },
-      "SourceInfo": {
-        "description": "Source information for download tracking",
-        "type": "object",
-        "properties": {
-          "type": {
-            "description": "Type of download source: \"manual\" or \"hub\"",
-            "type": "string"
-          },
-          "id": {
-            "description": "Model ID from hub (for hub downloads) or null for manual downloads",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
       "TestRepositoryConnectionRequest": {
         "type": "object",
         "properties": {
@@ -8493,6 +9035,22 @@
             }
           }
         }
+      },
+      "UpdateGroupSystemServersRequest": {
+        "description": "Request to update system MCP servers for a group",
+        "type": "object",
+        "properties": {
+          "server_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "server_ids"
+        ]
       },
       "UpdateLlmModelRequest": {
         "description": "Request to update an existing LLM model",

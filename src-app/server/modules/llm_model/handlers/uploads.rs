@@ -20,7 +20,7 @@ use super::super::{
     models::{
         DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData,
         DownloadStatus, EngineType, FileFormat, LlmModel, ModelCapabilities, ModelEngineSettings,
-        ModelParameters, SourceInfo,
+        ModelParameters,
     },
     permissions::*,
     repository,
@@ -128,7 +128,6 @@ pub struct CreateModelWithFilesRequest {
     pub parameters: Option<ModelParameters>,
     pub engine_type: Option<EngineType>,
     pub engine_settings: Option<ModelEngineSettings>,
-    pub source: Option<SourceInfo>,
 }
 
 /// Shared model creation and file processing logic
@@ -275,7 +274,6 @@ async fn create_model_with_files(
         engine_type: request.engine_type.unwrap_or(EngineType::Mistralrs),
         engine_settings: request.engine_settings,
         file_format: request.file_format,
-        source: request.source,
     };
 
     // Create the model record - it will generate its own ID
@@ -495,7 +493,6 @@ pub struct DownloadFromRepositoryRequest {
     pub parameters: Option<ModelParameters>,
     pub engine_type: Option<EngineType>,
     pub engine_settings: Option<ModelEngineSettings>,
-    pub source: SourceInfo,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(description = "Clear cached repository before downloading (for testing)")]
     pub clear_cache: Option<bool>,
@@ -781,7 +778,6 @@ pub async fn upload_multiple_files_and_commit(
             parameters: None,
             engine_type,
             engine_settings,
-            source: None,
         },
     )
     .await
@@ -956,7 +952,6 @@ pub async fn initiate_repository_download(
             parameters: request.parameters.clone(),
             engine_type: request.engine_type.clone(),
             engine_settings: request.engine_settings.clone(),
-            source: Some(request.source.clone()),
         },
     };
 
@@ -1293,7 +1288,6 @@ pub async fn initiate_repository_download(
                         parameters: request.parameters,
                         engine_type: request.engine_type,
                         engine_settings: request.engine_settings,
-                        source: Some(request.source.clone()),
                     },
                 )
                 .await

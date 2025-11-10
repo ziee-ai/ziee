@@ -676,6 +676,266 @@ async fn test_remove_server_from_group() {
 }
 
 // ============================================================================
+// Group-Centric Assignment Tests (for UI Widgets)
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_group_system_servers() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read"]).await;
+
+    // Get default group ID
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let group = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to get default group");
+    let group_id = group.id;
+
+    pool.close().await;
+
+    // Get system servers for group (should include fetch server from migration)
+    let url = server.api_url(&format!("/groups/{}/system-servers", group_id));
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should get group system servers");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let servers = body["servers"].as_array().expect("Should have servers array");
+
+    // Should have fetch server (assigned in migration)
+    let has_fetch = servers.iter().any(|s| s["name"] == "fetch");
+    assert!(has_fetch, "Should include fetch server assigned in migration");
+}
+
+#[tokio::test]
+async fn test_update_group_system_servers_bulk() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create", "mcp_servers_admin::edit"]).await;
+
+    // Get default group ID and create test system servers
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let group = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to get default group");
+    let group_id = group.id;
+
+    pool.close().await;
+
+    // Create three test system servers
+    let server1 = create_test_system_server(&server, &admin.token, "test_server_1").await;
+    let server2 = create_test_system_server(&server, &admin.token, "test_server_2").await;
+    let server3 = create_test_system_server(&server, &admin.token, "test_server_3").await;
+
+    let server_id1 = server1["id"].as_str().unwrap();
+    let server_id2 = server2["id"].as_str().unwrap();
+    let server_id3 = server3["id"].as_str().unwrap();
+
+    // Assign two servers to group
+    let payload = json!({
+        "server_ids": [server_id1, server_id2]
+    });
+
+    let url = server.api_url(&format!("/groups/{}/system-servers", group_id));
+    let response = reqwest::Client::new()
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should update group system servers");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let servers = body["servers"].as_array().expect("Should have servers array");
+
+    // Should have 2 assigned servers (plus fetch from migration = 3 total)
+    assert!(servers.len() >= 2, "Should have at least 2 assigned servers");
+
+    // Verify correct servers are assigned
+    let server_names: Vec<String> = servers.iter()
+        .map(|s| s["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(server_names.contains(&"test_server_1".to_string()));
+    assert!(server_names.contains(&"test_server_2".to_string()));
+
+    // Update assignment - remove server1, keep server2, add server3
+    let payload = json!({
+        "server_ids": [server_id2, server_id3]
+    });
+
+    let response = reqwest::Client::new()
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should update group system servers");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let servers = body["servers"].as_array().expect("Should have servers array");
+
+    // Verify correct servers are now assigned
+    let server_names: Vec<String> = servers.iter()
+        .map(|s| s["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(server_names.contains(&"test_server_2".to_string()));
+    assert!(server_names.contains(&"test_server_3".to_string()));
+    assert!(!server_names.contains(&"test_server_1".to_string()));
+}
+
+#[tokio::test]
+async fn test_update_group_system_servers_empty_list() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create", "mcp_servers_admin::edit"]).await;
+
+    // Get default group ID
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let group = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to get default group");
+    let group_id = group.id;
+
+    pool.close().await;
+
+    // Create and assign a server
+    let test_server = create_test_system_server(&server, &admin.token, "temp_server").await;
+    let server_id = test_server["id"].as_str().unwrap();
+
+    let payload = json!({
+        "server_ids": [server_id]
+    });
+
+    let url = server.api_url(&format!("/groups/{}/system-servers", group_id));
+    reqwest::Client::new()
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    // Clear all assignments with empty list (except the ones from migration)
+    let payload = json!({
+        "server_ids": []
+    });
+
+    let response = reqwest::Client::new()
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should clear group assignments");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let servers = body["servers"].as_array().expect("Should have servers array");
+
+    // Should not contain the test server
+    let has_temp = servers.iter().any(|s| s["name"] == "temp_server");
+    assert!(!has_temp, "Should not have temp_server after clearing");
+}
+
+#[tokio::test]
+async fn test_update_group_system_servers_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers_admin::read"]).await;
+
+    let group_id = Uuid::new_v4();
+    let payload = json!({
+        "server_ids": []
+    });
+
+    let url = server.api_url(&format!("/groups/{}/system-servers", group_id));
+    let response = reqwest::Client::new()
+        .put(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should require edit permission");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+}
+
+#[tokio::test]
+async fn test_get_group_system_servers_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let group_id = Uuid::new_v4();
+    let url = server.api_url(&format!("/groups/{}/system-servers", group_id));
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should require read permission");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+async fn create_test_system_server(server: &crate::common::TestServer, token: &str, name: &str) -> serde_json::Value {
+    let payload = json!({
+        "name": name,
+        "display_name": format!("Test Server {}", name),
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["server.js"],
+        "enabled": true
+    });
+
+    let url = server.api_url("/mcp/system-servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201, "Should create test system server");
+    response.json().await.expect("Failed to parse JSON")
+}
+
+// ============================================================================
 // Validation Tests
 // ============================================================================
 

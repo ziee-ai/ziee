@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::models::{
     DownloadProgressData, DownloadRequestData, DownloadStatus, EngineType, FileFormat,
-    ModelCapabilities, ModelEngineSettings, ModelParameters, SourceInfo,
+    ModelCapabilities, ModelEngineSettings, ModelParameters,
 };
 
 // =====================================================
@@ -33,8 +33,6 @@ pub struct CreateLlmModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub engine_settings: Option<ModelEngineSettings>,
     pub file_format: FileFormat,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<SourceInfo>,
 }
 
 /// Request to update an existing LLM model

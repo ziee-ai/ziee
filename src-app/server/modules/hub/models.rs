@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
 
 /// Hub model entry
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -28,6 +30,10 @@ pub struct HubModel {
     pub language_support: Option<Vec<String>>,
     pub recommended_engine: Option<String>,
     pub recommended_engine_settings: Option<serde_json::Value>,
+
+    /// Array of model IDs downloaded by ANYONE from this hub model (system-wide)
+    #[serde(default)]
+    pub created_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -90,6 +96,10 @@ pub struct HubAssistant {
     pub author: Option<String>,
     #[serde(default)]
     pub popularity_score: i32,
+
+    /// Array of entity IDs created by current user from this hub assistant
+    #[serde(default)]
+    pub created_ids: Vec<Uuid>,
 }
 
 /// Hub MCP server entry
@@ -128,6 +138,64 @@ pub struct HubMCPServer {
     pub example_tools: Option<Vec<String>>,
     pub use_cases: Option<Vec<String>>,
     pub example_prompts: Option<Vec<String>>,
+
+    /// Array of entity IDs created by current user from this hub server
+    #[serde(default)]
+    pub created_ids: Vec<Uuid>,
+}
+
+// =====================================================
+// HUB ENTITY TRACKING
+// =====================================================
+
+/// Hub entity tracking record
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
+pub struct HubEntity {
+    pub id: Uuid,
+    pub entity_type: String,
+    pub entity_id: Uuid,
+    pub hub_id: String,
+    pub hub_category: String,
+    pub created_at: DateTime<Utc>,
+    pub created_by: Option<Uuid>,
+}
+
+/// Entity type enum for type safety
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum HubEntityType {
+    Assistant,
+    McpServer,
+    LlmModel,
+}
+
+impl HubEntityType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HubEntityType::Assistant => "assistant",
+            HubEntityType::McpServer => "mcp_server",
+            HubEntityType::LlmModel => "llm_model",
+        }
+    }
+}
+
+/// Hub category enum
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum HubCategory {
+    Assistant,
+    McpServer,
+    Model,
+}
+
+impl HubCategory {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HubCategory::Assistant => "assistant",
+            HubCategory::McpServer => "mcp_server",
+            HubCategory::Model => "model",
+        }
+    }
 }
 
 /// Combined hub data structure (for file storage)

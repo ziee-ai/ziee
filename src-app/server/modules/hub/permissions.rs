@@ -89,3 +89,33 @@ impl PermissionCheck for HubMCPServersVersionRead {
     const DESCRIPTION: &'static str = "View hub MCP servers version information";
     const MODULE: &'static str = "hub";
 }
+
+/// Create assistants from hub permission
+pub struct HubAssistantsCreate;
+
+impl PermissionCheck for HubAssistantsCreate {
+    const NAME: &'static str = "HubAssistantsCreate";
+    const PERMISSION: &'static str = "hub::assistants::create";
+    const DESCRIPTION: &'static str = "Create assistants from hub";
+    const MODULE: &'static str = "hub";
+}
+
+/// Create MCP servers from hub permission
+pub struct HubMcpServersCreate;
+
+impl PermissionCheck for HubMcpServersCreate {
+    const NAME: &'static str = "HubMcpServersCreate";
+    const PERMISSION: &'static str = "hub::mcp_servers::create";
+    const DESCRIPTION: &'static str = "Create MCP servers from hub";
+    const MODULE: &'static str = "hub";
+}
+
+/// Download models from hub permission
+pub struct HubModelsCreate;
+
+impl PermissionCheck for HubModelsCreate {
+    const NAME: &'static str = "HubModelsCreate";
+    const PERMISSION: &'static str = "hub::models::download";
+    const DESCRIPTION: &'static str = "Download models from hub";
+    const MODULE: &'static str = "hub";
+}

@@ -687,20 +687,6 @@ pub struct ModelEngineSettings {
 }
 
 // =====================================================
-// SOURCE INFO
-// =====================================================
-
-/// Source information for download tracking
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SourceInfo {
-    /// Type of download source: "manual" or "hub"
-    pub r#type: String,
-    /// Model ID from hub (for hub downloads) or null for manual downloads
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-}
-
-// =====================================================
 // DATABASE ENTITIES
 // =====================================================
 
@@ -734,8 +720,6 @@ pub struct LlmModel {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub engine_settings: Option<ModelEngineSettings>,
     pub file_format: FileFormat,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<SourceInfo>,
 }
 
 /// Model file database entity
@@ -859,7 +843,6 @@ pub struct DownloadRequestData {
     pub parameters: Option<ModelParameters>,
     pub engine_type: Option<EngineType>,
     pub engine_settings: Option<ModelEngineSettings>,
-    pub source: Option<SourceInfo>,
 }
 
 /// Download instance database entity

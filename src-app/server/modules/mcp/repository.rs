@@ -29,20 +29,19 @@ pub async fn create_user_mcp_server(
     let headers = serde_json::to_value(request.headers.clone().unwrap_or_default())
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
 
-    let source_json = request.source_to_json();
 
     let row = sqlx::query!(
         r#"
         INSERT INTO mcp_servers (
             user_id, name, display_name, description,
             transport_type, command, args, environment_variables,
-            url, headers, timeout_seconds, enabled, is_system, source
+            url, headers, timeout_seconds, enabled, is_system
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false)
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, transport_type,
-            command, args, environment_variables, url, headers, timeout_seconds, source,
+            command, args, environment_variables, url, headers, timeout_seconds,
             created_at, updated_at
         "#,
         user_id,
@@ -57,7 +56,6 @@ pub async fn create_user_mcp_server(
         headers,
         request.timeout_seconds.unwrap_or(30) as i32,
         request.enabled.unwrap_or(true),
-        source_json
     )
     .fetch_one(pool)
     .await
@@ -85,7 +83,6 @@ pub async fn create_user_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
-        source: row.source,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -106,7 +103,7 @@ pub async fn get_user_mcp_server(
         SELECT
             id, user_id, name, display_name, description,
             enabled, is_system, transport_type,
-            command, args, environment_variables, url, headers, timeout_seconds, source,
+            command, args, environment_variables, url, headers, timeout_seconds,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1 AND user_id = $2 AND is_system = false
@@ -132,7 +129,6 @@ pub async fn get_user_mcp_server(
         url: r.url,
         headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: r.timeout_seconds,
-        source: r.source,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
     }))
@@ -152,7 +148,7 @@ pub async fn list_user_mcp_servers(
         SELECT
             id, user_id, name, display_name, description,
             enabled, is_system, transport_type,
-            command, args, environment_variables, url, headers, timeout_seconds, source,
+            command, args, environment_variables, url, headers, timeout_seconds,
             created_at, updated_at
         FROM mcp_servers
         WHERE user_id = $1 AND is_system = false
@@ -183,7 +179,6 @@ pub async fn list_user_mcp_servers(
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
-            source: r.source,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
@@ -238,7 +233,7 @@ pub async fn update_user_mcp_server(
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, transport_type,
-            command, args, environment_variables, url, headers, timeout_seconds, source,
+            command, args, environment_variables, url, headers, timeout_seconds,
             created_at, updated_at
         "#,
         id,
@@ -283,7 +278,6 @@ pub async fn update_user_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
-        source: row.source,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -335,20 +329,19 @@ pub async fn create_system_mcp_server(
     let headers = serde_json::to_value(request.headers.clone().unwrap_or_default())
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
 
-    let source_json = request.source_to_json();
 
     let row = sqlx::query!(
         r#"
         INSERT INTO mcp_servers (
             name, display_name, description,
             transport_type, command, args, environment_variables,
-            url, headers, timeout_seconds, enabled, is_system, source
+            url, headers, timeout_seconds, enabled, is_system
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, transport_type,
-            command, args, environment_variables, url, headers, timeout_seconds, source,
+            command, args, environment_variables, url, headers, timeout_seconds,
             created_at, updated_at
         "#,
         request.name,
@@ -362,7 +355,6 @@ pub async fn create_system_mcp_server(
         headers,
         request.timeout_seconds.unwrap_or(30) as i32,
         request.enabled.unwrap_or(true),
-        source_json
     )
     .fetch_one(pool)
     .await
@@ -390,7 +382,6 @@ pub async fn create_system_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
-        source: row.source,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -407,7 +398,7 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
         SELECT
             id, user_id, name, display_name, description,
             enabled, is_system, transport_type,
-            command, args, environment_variables, url, headers, timeout_seconds, source,
+            command, args, environment_variables, url, headers, timeout_seconds,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1 AND is_system = true
@@ -432,7 +423,6 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
         url: r.url,
         headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: r.timeout_seconds,
-        source: r.source,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
     }))
@@ -451,7 +441,7 @@ pub async fn list_system_mcp_servers(
         SELECT
             id, user_id, name, display_name, description,
             enabled, is_system, transport_type,
-            command, args, environment_variables, url, headers, timeout_seconds, source,
+            command, args, environment_variables, url, headers, timeout_seconds,
             created_at, updated_at
         FROM mcp_servers
         WHERE is_system = true
@@ -481,7 +471,6 @@ pub async fn list_system_mcp_servers(
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
-            source: r.source,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
@@ -532,7 +521,7 @@ pub async fn update_system_mcp_server(
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, transport_type,
-            command, args, environment_variables, url, headers, timeout_seconds, source,
+            command, args, environment_variables, url, headers, timeout_seconds,
             created_at, updated_at
         "#,
         id,
@@ -576,7 +565,6 @@ pub async fn update_system_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
-        source: row.source,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -616,6 +604,49 @@ pub async fn get_group_mcp_servers(pool: &PgPool, group_id: Uuid) -> Result<Vec<
     .collect();
 
     Ok(server_ids)
+}
+
+/// Get full system MCP server details for a group (for UI widgets)
+pub async fn get_system_servers_for_group(pool: &PgPool, group_id: Uuid) -> Result<Vec<McpServer>, AppError> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT s.id, s.user_id, s.name, s.display_name, s.description,
+               s.enabled, s.is_system, s.transport_type,
+               s.command, s.args, s.environment_variables, s.url, s.headers, s.timeout_seconds,
+               s.created_at, s.updated_at
+        FROM mcp_servers s
+        INNER JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
+        WHERE ugms.group_id = $1 AND s.is_system = true
+        ORDER BY s.display_name ASC
+        "#,
+        group_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let servers = rows
+        .into_iter()
+        .map(|r| McpServer {
+            id: r.id,
+            user_id: r.user_id,
+            name: r.name,
+            display_name: r.display_name,
+            description: r.description,
+            enabled: r.enabled,
+            is_system: r.is_system,
+            transport_type: TransportType::from_str(&r.transport_type).unwrap(),
+            command: r.command,
+            args: r.args.unwrap_or_else(|| serde_json::json!([])),
+            environment_variables: r.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+            url: r.url,
+            headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
+            timeout_seconds: r.timeout_seconds,
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        })
+        .collect();
+
+    Ok(servers)
 }
 
 /// Assign MCP server to group
@@ -803,7 +834,7 @@ pub async fn list_accessible_mcp_servers(
         SELECT DISTINCT
             s.id, s.user_id, s.name, s.display_name, s.description,
             s.enabled, s.is_system, s.transport_type,
-            s.command, s.args, s.environment_variables, s.url, s.headers, s.timeout_seconds, s.source,
+            s.command, s.args, s.environment_variables, s.url, s.headers, s.timeout_seconds,
             s.created_at, s.updated_at
         FROM mcp_servers s
         LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
@@ -841,7 +872,6 @@ pub async fn list_accessible_mcp_servers(
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
-            source: r.source,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })

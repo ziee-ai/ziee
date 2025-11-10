@@ -1,59 +1,104 @@
 use aide::transform::TransformOperation;
 use axum::{
-    extract::Query,
+    extract::{Query, State},
     http::StatusCode,
     Json,
 };
+use sqlx::PgPool;
 
 use crate::{
     common::{ApiResult, AppError},
-    modules::permissions::{RequirePermissions, with_permission},
+    modules::{
+        permissions::{RequirePermissions, with_permission},
+        llm_model::ModelParameters,
+    },
 };
 
 use super::{
     permissions::*,
     types::*,
     hub_manager::HubManager,
+    repository,
+    models::{HubEntityType, HubCategory},
 };
 
 // =====================================================
 // Route Handlers
 // =====================================================
 
-/// Get hub models with locale support
+/// Get hub models with locale support and created_ids (system-wide)
 pub async fn get_hub_models(
     _auth: RequirePermissions<(HubModelsRead,)>,
+    State(pool): State<PgPool>,
     Query(query): Query<HubQuery>,
 ) -> ApiResult<Json<HubModelsResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale(&query.lang).await?;
 
-    Ok((StatusCode::OK, Json(hub_data.models)))
+    // Get created model IDs (system-wide, no user filter)
+    let created_map = repository::get_created_model_ids(&pool).await?;
+
+    // Merge created_ids into models
+    let mut models = hub_data.models;
+    for model in &mut models {
+        model.created_ids = created_map
+            .get(&model.id)
+            .cloned()
+            .unwrap_or_default();
+    }
+
+    Ok((StatusCode::OK, Json(models)))
 }
 
-/// Get hub assistants with locale support
+/// Get hub assistants with locale support and created_ids for current user
 pub async fn get_hub_assistants(
-    _auth: RequirePermissions<(HubAssistantsRead,)>,
+    auth: RequirePermissions<(HubAssistantsRead,)>,
+    State(pool): State<PgPool>,
     Query(query): Query<HubQuery>,
 ) -> ApiResult<Json<HubAssistantsResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale(&query.lang).await?;
 
-    Ok((StatusCode::OK, Json(hub_data.assistants)))
+    // Get created assistant IDs for current user
+    let created_map = repository::get_created_assistant_ids(&pool, auth.user.id).await?;
+
+    // Merge created_ids into assistants
+    let mut assistants = hub_data.assistants;
+    for assistant in &mut assistants {
+        assistant.created_ids = created_map
+            .get(&assistant.id)
+            .cloned()
+            .unwrap_or_default();
+    }
+
+    Ok((StatusCode::OK, Json(assistants)))
 }
 
-/// Get hub MCP servers with locale support
+/// Get hub MCP servers with locale support and created_ids for current user
 pub async fn get_hub_mcp_servers(
-    _auth: RequirePermissions<(HubMCPServersRead,)>,
+    auth: RequirePermissions<(HubMCPServersRead,)>,
+    State(pool): State<PgPool>,
     Query(query): Query<HubQuery>,
 ) -> ApiResult<Json<HubMCPServersResponse>> {
     let app_data_dir = crate::core::get_app_data_dir();
     let hub_manager = HubManager::new(app_data_dir)?;
     let hub_data = hub_manager.load_hub_data_with_locale(&query.lang).await?;
 
-    Ok((StatusCode::OK, Json(hub_data.mcp_servers)))
+    // Get created MCP server IDs for current user
+    let created_map = repository::get_created_mcp_server_ids(&pool, auth.user.id).await?;
+
+    // Merge created_ids into servers
+    let mut mcp_servers = hub_data.mcp_servers;
+    for server in &mut mcp_servers {
+        server.created_ids = created_map
+            .get(&server.id)
+            .cloned()
+            .unwrap_or_default();
+    }
+
+    Ok((StatusCode::OK, Json(mcp_servers)))
 }
 
 /// Get hub models version
@@ -150,6 +195,151 @@ pub async fn refresh_hub_mcp_servers(
 }
 
 // =====================================================
+// ASSISTANT FROM HUB
+// =====================================================
+
+/// Create assistant from hub catalog
+pub async fn create_assistant_from_hub(
+    auth: RequirePermissions<(HubAssistantsCreate,)>,
+    State(pool): State<PgPool>,
+    Json(request): Json<CreateAssistantFromHubRequest>,
+) -> ApiResult<Json<AssistantFromHubResponse>> {
+    // 1. Load hub assistant
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
+
+    let hub_assistant = hub_data.assistants
+        .into_iter()
+        .find(|a| a.id == request.hub_id)
+        .ok_or_else(|| AppError::not_found(&format!("Hub assistant '{}'", request.hub_id)))?;
+
+    // 2. Build create assistant request (WITHOUT source field)
+    let create_request = crate::modules::assistant::models::CreateAssistantRequest {
+        name: request.name.unwrap_or(hub_assistant.name.clone()),
+        description: request.description.or(hub_assistant.description.clone()),
+        instructions: request.instructions.or(hub_assistant.instructions.clone()),
+        parameters: request.parameters
+            .and_then(|p| serde_json::from_value::<ModelParameters>(p).ok())
+            .or_else(|| serde_json::from_value::<ModelParameters>(hub_assistant.parameters.clone()).ok()),
+        is_template: Some(false),
+        is_default: Some(request.is_default),
+        enabled: Some(request.enabled),
+    };
+
+    // 3. Create assistant via assistant module
+    let assistant = crate::modules::assistant::repository::create_assistant(
+        &pool,
+        Some(auth.user.id),
+        create_request,
+    ).await?;
+
+    // 4. Track in hub_entities
+    let hub_tracking = repository::track_hub_entity(
+        &pool,
+        HubEntityType::Assistant,
+        assistant.id,
+        &request.hub_id,
+        HubCategory::Assistant,
+        Some(auth.user.id),
+    ).await?;
+
+    // 5. Return combined response
+    Ok((
+        StatusCode::CREATED,
+        Json(AssistantFromHubResponse {
+            assistant,
+            hub_tracking,
+        }),
+    ))
+}
+
+// =====================================================
+// MCP SERVER FROM HUB
+// =====================================================
+
+/// Create MCP server from hub catalog
+pub async fn create_mcp_server_from_hub(
+    auth: RequirePermissions<(HubMcpServersCreate,)>,
+    State(pool): State<PgPool>,
+    Json(request): Json<CreateMcpServerFromHubRequest>,
+) -> ApiResult<Json<McpServerFromHubResponse>> {
+    // 1. Load hub MCP server
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
+
+    let hub_server = hub_data.mcp_servers
+        .into_iter()
+        .find(|s| s.id == request.hub_id)
+        .ok_or_else(|| AppError::not_found(&format!("Hub MCP server '{}'", request.hub_id)))?;
+
+    // 2. Determine transport type
+    let transport_type = hub_server.transport_type
+        .as_ref()
+        .and_then(|t| match t.as_str() {
+            "stdio" => Some(crate::modules::mcp::TransportType::Stdio),
+            "sse" => Some(crate::modules::mcp::TransportType::Sse),
+            _ => None,
+        })
+        .unwrap_or(crate::modules::mcp::TransportType::Stdio);
+
+    // 3. Build create MCP server request (WITHOUT source field)
+    let create_request = crate::modules::mcp::CreateMcpServerRequest {
+        name: request.name.unwrap_or(hub_server.name.clone()),
+        display_name: request.display_name.unwrap_or(hub_server.display_name.clone()),
+        description: hub_server.description.clone(),
+        enabled: Some(request.enabled),
+        transport_type,
+        command: hub_server.command.clone(),
+        args: hub_server.args.clone(),
+        environment_variables: hub_server.environment_variables.as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok()),
+        url: hub_server.url.clone(),
+        headers: hub_server.headers.as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok()),
+        timeout_seconds: Some(30),
+    };
+
+    // 4. Create user MCP server (hub interface only creates user servers, not system servers)
+    let server = crate::modules::mcp::create_user_mcp_server(&pool, auth.user.id, create_request).await?;
+
+    // 5. Track in hub_entities
+    let hub_tracking = repository::track_hub_entity(
+        &pool,
+        HubEntityType::McpServer,
+        server.id,
+        &request.hub_id,
+        HubCategory::McpServer,
+        Some(auth.user.id),
+    ).await?;
+
+    // 6. Return combined response
+    Ok((
+        StatusCode::CREATED,
+        Json(McpServerFromHubResponse {
+            server,
+            hub_tracking,
+        }),
+    ))
+}
+
+// =====================================================
+// MODEL FROM HUB
+// =====================================================
+
+/// Create model download from hub catalog
+pub async fn create_model_from_hub(
+    auth: RequirePermissions<(HubModelsCreate,)>,
+    State(pool): State<PgPool>,
+    Json(request): Json<CreateModelFromHubRequest>,
+) -> ApiResult<Json<ModelFromHubResponse>> {
+    // Implementation for model download
+    // TODO: Implement full model download logic
+    Err((StatusCode::INTERNAL_SERVER_ERROR, AppError::internal_error("Model download from hub not yet implemented")))
+}
+
+// =====================================================
 // OpenAPI Documentation
 // =====================================================
 
@@ -235,4 +425,35 @@ pub fn refresh_hub_mcp_servers_docs(op: TransformOperation) -> TransformOperatio
         .response::<200, Json<HubRefreshResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<500, (), _>(|res| res.description("Failed to refresh hub data"))
+}
+
+pub fn create_assistant_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubAssistantsCreate,)>(op)
+        .id("Hub.createAssistantFromHub")
+        .tag("Hub")
+        .summary("Create assistant from hub catalog")
+        .response::<201, Json<AssistantFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub assistant not found"))
+}
+
+pub fn create_mcp_server_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubMcpServersCreate,)>(op)
+        .id("Hub.createMcpServerFromHub")
+        .tag("Hub")
+        .summary("Create MCP server from hub catalog")
+        .response::<201, Json<McpServerFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub MCP server not found"))
+}
+
+pub fn create_model_from_hub_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubModelsCreate,)>(op)
+        .id("Hub.createModelFromHub")
+        .tag("Hub")
+        .summary("Download model from hub catalog")
+        .response::<201, Json<ModelFromHubResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Hub model not found"))
+        .response_with::<501, (), _>(|res| res.description("Not yet implemented"))
 }

@@ -10,7 +10,6 @@ use crate::common::AppError;
 use super::models::{
     DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData, DownloadStatus,
     EngineType, FileFormat, LlmModel, ModelCapabilities, ModelEngineSettings, ModelParameters,
-    SourceInfo,
 };
 use super::types::{
     CreateDownloadInstanceRequest, CreateLlmModelRequest, DownloadInstanceListResponse,
@@ -326,16 +325,10 @@ pub async fn create_llm_model(
     let parameters_json =
         serde_json::to_value(&request.parameters.unwrap_or_default()).unwrap_or(serde_json::json!({}));
     let engine_settings_json = request.engine_settings.as_ref().map(|s| serde_json::to_value(s).unwrap());
-        serde_json::to_value(SourceInfo {
-            r#type: "manual".to_string(),
-            id: None,
-        })
-        .unwrap(),
-    );
 
     let row = sqlx::query!(
         r#"INSERT INTO llm_models (id, provider_id, name, display_name, description, enabled, capabilities, parameters, engine_type, engine_settings, file_format)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id, provider_id, name, display_name, description, enabled, is_deprecated, is_active,
                    capabilities, parameters,
                    created_at, updated_at, file_size_bytes, validation_status, validation_issues,

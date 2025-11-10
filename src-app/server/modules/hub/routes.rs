@@ -47,4 +47,17 @@ pub fn hub_router() -> ApiRouter<PgPool> {
             "/hub/mcp-servers/refresh",
             post_with(refresh_hub_mcp_servers, refresh_hub_mcp_servers_docs),
         )
+        // Hub entity creation endpoints
+        .api_route(
+            "/hub/assistants/create",
+            post_with(create_assistant_from_hub, create_assistant_from_hub_docs),
+        )
+        .api_route(
+            "/hub/mcp-servers/create",
+            post_with(create_mcp_server_from_hub, create_mcp_server_from_hub_docs),
+        )
+        .api_route(
+            "/hub/models/download",
+            post_with(create_model_from_hub, create_model_from_hub_docs),
+        )
 }

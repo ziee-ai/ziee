@@ -23,7 +23,7 @@ pub use models::{
     DeviceType, DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData,
     DownloadStatus, EngineType, FileFormat, LlamaCppSettings, LlmModel, LlmRepository,
     MistralRsCommand, MistralRsSettings, ModelCapabilities, ModelEngineSettings, ModelFile,
-    ModelParameters, SourceInfo,
+    ModelParameters,
 };
 
 // Re-export API types from types module

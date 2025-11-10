@@ -74,14 +74,6 @@ impl TransportType {
 // Database Models
 // =====================================================
 
-/// Source information for tracking where the MCP server came from
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum McpServerSource {
-    Manual,
-    Hub { id: String },
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct McpServer {
     pub id: Uuid,
@@ -104,10 +96,6 @@ pub struct McpServer {
 
     // Runtime configuration
     pub timeout_seconds: i32,
-
-    // Source tracking (manual, hub)
-    #[serde(default)]
-    pub source: Option<serde_json::Value>,
 
     // Metadata
     pub created_at: DateTime<Utc>,
@@ -137,9 +125,6 @@ pub struct CreateMcpServerRequest {
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
-
-    // Source tracking
-    pub source: Option<McpServerSource>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -160,15 +145,6 @@ pub struct UpdateMcpServerRequest {
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
-}
-
-impl CreateMcpServerRequest {
-    /// Convert source to JSON value for database storage
-    pub fn source_to_json(&self) -> Option<serde_json::Value> {
-        self.source.as_ref().map(|source| {
-            serde_json::to_value(source).unwrap_or(serde_json::json!({"type": "manual"}))
-        })
-    }
 }
 
 // =====================================================
@@ -192,4 +168,16 @@ pub struct GroupMcpServersRequest {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ServerGroupsRequest {
     pub group_ids: Vec<Uuid>,
+}
+
+/// Response for getting system MCP servers assigned to a group
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GroupSystemServersResponse {
+    pub servers: Vec<McpServer>,
+}
+
+/// Request to update system MCP servers for a group
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateGroupSystemServersRequest {
+    pub server_ids: Vec<Uuid>,
 }

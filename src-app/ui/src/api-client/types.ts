@@ -30,14 +30,13 @@ export interface Assistant {
   is_template: boolean
   name: string
   parameters?: any
-  source?: AssistantSource
   updated_at: string
 }
 
-export type AssistantSource =
-  | { type: 'manual' }
-  | { type: 'template'; id: string }
-  | { type: 'hub'; id: string }
+export interface AssistantFromHubResponse {
+  assistant: Assistant
+  hub_tracking: HubEntity
+}
 
 export interface AssistantListResponse {
   assistants: Assistant[]
@@ -67,6 +66,16 @@ export interface CPUUsage {
   usage_percentage: number
 }
 
+export interface CreateAssistantFromHubRequest {
+  description?: string
+  enabled?: boolean
+  hub_id: string
+  instructions?: string
+  is_default?: boolean
+  name?: string
+  parameters?: any
+}
+
 export interface CreateAssistantRequest {
   description?: string
   enabled?: boolean
@@ -75,7 +84,6 @@ export interface CreateAssistantRequest {
   is_template?: boolean
   name?: string
   parameters?: ModelParameters
-  source?: AssistantSource
 }
 
 export interface CreateGroupRequest {
@@ -95,7 +103,6 @@ export interface CreateLlmModelRequest {
   name: string
   parameters?: ModelParameters
   provider_id: string
-  source?: SourceInfo
 }
 
 export interface CreateLlmProviderRequest {
@@ -115,6 +122,13 @@ export interface CreateLlmRepositoryRequest {
   url: string
 }
 
+export interface CreateMcpServerFromHubRequest {
+  display_name?: string
+  enabled?: boolean
+  hub_id: string
+  name?: string
+}
+
 export interface CreateMcpServerRequest {
   description?: string
   args?: string[]
@@ -124,10 +138,17 @@ export interface CreateMcpServerRequest {
   environment_variables?: any
   headers?: any
   name: string
-  source?: McpServerSource
   timeout_seconds?: number
   transport_type: TransportType
   url?: string
+}
+
+export interface CreateModelFromHubRequest {
+  display_name?: string
+  enabled?: boolean
+  hub_id: string
+  provider_id: string
+  quantization_name?: string
 }
 
 export interface CreateUserRequest {
@@ -155,7 +176,6 @@ export interface DownloadFromRepositoryRequest {
   repository_branch?: string
   repository_id: string
   repository_path: string
-  source: SourceInfo
 }
 
 export interface DownloadInstance {
@@ -225,7 +245,6 @@ export interface DownloadRequestData {
   quantization?: string
   repository_path?: string
   revision?: string
-  source?: SourceInfo
 }
 
 export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
@@ -288,6 +307,10 @@ export interface GroupProvidersResponse {
   providers: LlmProvider[]
 }
 
+export interface GroupSystemServersResponse {
+  servers: McpServer[]
+}
+
 export interface HardwareInfo {
   cpu: CPUInfo
   gpu_devices: GPUDevice[]
@@ -315,16 +338,27 @@ export interface HubAssistant {
   author?: string
   capabilities_required?: string[]
   category?: string
+  created_ids?: string[]
   display_name: string
   example_prompts?: string[]
   id: string
   instructions?: string
   name: string
   parameters: any
-  popularity_score: number
+  popularity_score?: number
   recommended_models?: string[]
-  tags: string[]
+  tags?: string[]
   use_cases?: string[]
+}
+
+export interface HubEntity {
+  created_at: string
+  created_by?: string
+  entity_id: string
+  entity_type: string
+  hub_category: string
+  hub_id: string
+  id: string
 }
 
 export interface HubMCPServer {
@@ -333,6 +367,7 @@ export interface HubMCPServer {
   author?: string
   category?: string
   command?: string
+  created_ids?: string[]
   display_name: string
   documentation_url?: string
   download_count?: number
@@ -347,11 +382,11 @@ export interface HubMCPServer {
   minimum_version?: string
   name: string
   platform_support?: string[]
-  popularity_score: number
+  popularity_score?: number
   rating?: number
   repository_url?: string
   requires_desktop?: boolean
-  tags: string[]
+  tags?: string[]
   tool_categories?: string[]
   tool_count?: number
   transport_type?: string
@@ -365,6 +400,7 @@ export interface HubModel {
   author?: string
   capabilities?: ModelCapabilities2
   context_length?: number
+  created_ids?: string[]
   display_name: string
   file_format: FileFormat2
   homepage_url?: string
@@ -374,7 +410,7 @@ export interface HubModel {
   main_filename: string
   name: string
   popularity_score: number
-  public: boolean
+  public?: boolean
   quantization_options?: HubModelQuantizationOption[]
   recommended_engine?: string
   recommended_engine_settings?: any
@@ -382,7 +418,7 @@ export interface HubModel {
   repository_path: string
   repository_url: string
   size_gb: number
-  tags: string[]
+  tags?: string[]
 }
 
 export interface HubModelQuantizationOption {
@@ -457,7 +493,6 @@ export interface LlmModel {
   pid?: number
   port?: number
   provider_id: string
-  source?: SourceInfo
   updated_at: string
   validation_issues?: string[]
   validation_status?: string
@@ -527,7 +562,6 @@ export interface McpServer {
   id: string
   is_system: boolean
   name: string
-  source?: McpServerSource
   timeout_seconds: number
   transport_type: TransportType
   updated_at: string
@@ -535,9 +569,10 @@ export interface McpServer {
   user_id?: string
 }
 
-export type McpServerSource =
-  | { type: 'manual' }
-  | { type: 'hub'; id: string }
+export interface McpServerFromHubResponse {
+  hub_tracking: HubEntity
+  server: McpServer
+}
 
 export interface McpServerListResponse {
   page: number
@@ -618,18 +653,23 @@ export interface ModelCapabilities {
 }
 
 export interface ModelCapabilities2 {
-  audio: boolean
-  chat: boolean
-  code_interpreter: boolean
-  image_generator: boolean
-  text_embedding: boolean
-  tools: boolean
-  vision: boolean
+  audio?: boolean
+  chat?: boolean
+  code_interpreter?: boolean
+  image_generator?: boolean
+  text_embedding?: boolean
+  tools?: boolean
+  vision?: boolean
 }
 
 export interface ModelEngineSettings {
   llamacpp?: LlamaCppSettings
   mistralrs?: MistralRsSettings
+}
+
+export interface ModelFromHubResponse {
+  download: DownloadInstance
+  hub_tracking: HubEntity
 }
 
 export interface ModelParameters {
@@ -749,11 +789,6 @@ export interface SetupStatusResponse {
   version: string
 }
 
-export interface SourceInfo {
-  type: string
-  id?: string
-}
-
 export interface TestRepositoryConnectionRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -793,6 +828,10 @@ export interface UpdateGroupRequest {
   is_active?: boolean
   name?: string
   permissions?: string[]
+}
+
+export interface UpdateGroupSystemServersRequest {
+  server_ids: string[]
 }
 
 export interface UpdateLlmModelRequest {
@@ -882,12 +921,15 @@ export enum Permissions {
   GroupsDelete = 'groups::delete',
   GroupsEdit = 'groups::edit',
   GroupsRead = 'groups::read',
+  HubAssistantsCreate = 'hub::assistants::create',
   HubAssistantsRead = 'hub::assistants::read',
   HubAssistantsRefresh = 'hub::assistants::refresh',
   HubAssistantsVersionRead = 'hub::assistants::read_version',
+  HubMcpServersCreate = 'hub::mcp_servers::create',
   HubMCPServersRead = 'hub::mcp_servers::read',
   HubMCPServersRefresh = 'hub::mcp_servers::refresh',
   HubMCPServersVersionRead = 'hub::mcp_servers::read_version',
+  HubModelsCreate = 'hub::models::download',
   HubModelsRead = 'hub::models::read',
   HubModelsRefresh = 'hub::models::refresh',
   HubModelsVersionRead = 'hub::models::read_version',
@@ -926,12 +968,15 @@ export const PermissionDescriptions: Record<string, string> = {
   GroupsDelete: 'Delete non-system groups',
   GroupsEdit: 'Edit existing group information and permissions',
   GroupsRead: 'View groups and group information',
+  HubAssistantsCreate: 'Create assistants from hub',
   HubAssistantsRead: 'View hub assistants',
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
   HubAssistantsVersionRead: 'View hub assistants version information',
+  HubMcpServersCreate: 'Create MCP servers from hub',
   HubMCPServersRead: 'View hub MCP servers',
   HubMCPServersRefresh: 'Refresh hub MCP servers from GitHub',
   HubMCPServersVersionRead: 'View hub MCP servers version information',
+  HubModelsCreate: 'Download models from hub',
   HubModelsRead: 'View hub models',
   HubModelsRefresh: 'Refresh hub models from GitHub',
   HubModelsVersionRead: 'View hub models version information',
@@ -990,10 +1035,15 @@ export const ApiEndpoints = {
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
   'Group.getProviders': 'GET /api/groups/{group_id}/providers',
+  'Group.getSystemServers': 'GET /api/groups/{group_id}/system-servers',
   'Group.updateProviders': 'PUT /api/groups/{group_id}/providers',
+  'Group.updateSystemServers': 'PUT /api/groups/{group_id}/system-servers',
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'Hub.createAssistantFromHub': 'POST /api/hub/assistants/create',
+  'Hub.createMcpServerFromHub': 'POST /api/hub/mcp-servers/create',
+  'Hub.createModelFromHub': 'POST /api/hub/models/download',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
@@ -1083,10 +1133,15 @@ export type ApiEndpointParameters = {
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
   'Group.getProviders': { group_id: string }
+  'Group.getSystemServers': { group_id: string }
   'Group.updateProviders': { group_id: string } & UpdateGroupProvidersRequest
+  'Group.updateSystemServers': { group_id: string } & UpdateGroupSystemServersRequest
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'Hub.createAssistantFromHub': CreateAssistantFromHubRequest
+  'Hub.createMcpServerFromHub': CreateMcpServerFromHubRequest
+  'Hub.createModelFromHub': CreateModelFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
   'Hub.getMCPServers': { lang?: string }
@@ -1176,10 +1231,15 @@ export type ApiEndpointResponses = {
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
   'Group.getProviders': GroupProvidersResponse
+  'Group.getSystemServers': GroupSystemServersResponse
   'Group.updateProviders': GroupProvidersResponse
+  'Group.updateSystemServers': GroupSystemServersResponse
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'Hub.createAssistantFromHub': AssistantFromHubResponse
+  'Hub.createMcpServerFromHub': McpServerFromHubResponse
+  'Hub.createModelFromHub': ModelFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
   'Hub.getMCPServers': HubMCPServer[]

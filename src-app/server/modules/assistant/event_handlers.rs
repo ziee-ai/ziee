@@ -65,9 +65,6 @@ impl EventHandler for CloneTemplateAssistantsHandler {
                             is_template: Some(false),
                             is_default: Some(template.is_default),
                             enabled: Some(template.enabled),
-                            source: Some(models::AssistantSource::Template {
-                                id: template.id.to_string()
-                            }),
                         };
 
                         match repository::create_assistant(

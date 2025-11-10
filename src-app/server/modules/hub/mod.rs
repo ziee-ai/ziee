@@ -15,6 +15,7 @@ pub mod handlers;
 pub mod routes;
 pub mod permissions;
 pub mod hub_manager;
+pub mod repository;
 
 // Re-export models
 pub use models::{HubModel, HubAssistant, HubMCPServer};
