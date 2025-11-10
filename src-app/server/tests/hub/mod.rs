@@ -229,6 +229,166 @@ async fn test_refresh_hub_models_requires_permission() {
 }
 
 // ============================================================================
+// Hub Models Auth Required Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_hub_models_have_auth_required_field() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::models::read"]
+    ).await;
+
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    if status != 200 {
+        let error_body = response.text().await.unwrap_or_else(|_| "Could not read error".to_string());
+        panic!("Expected 200, got {}: {}", status, error_body);
+    }
+
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(models.is_array(), "Response should be an array");
+
+    let models_array = models.as_array().unwrap();
+    assert!(models_array.len() > 0, "Should have at least one model");
+
+    // Verify all models have auth_required field
+    for model in models_array {
+        let model_id = model.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+        assert!(
+            model.get("auth_required").is_some(),
+            "Model {} should have auth_required field",
+            model_id
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_hub_models_auth_required_defaults_to_true() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::models::read"]
+    ).await;
+
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let models_array = models.as_array().unwrap();
+
+    // Verify all current models have auth_required set to true
+    // (as per configuration in base.json)
+    for model in models_array {
+        let model_id = model.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let auth_required = model.get("auth_required").and_then(|v| v.as_bool());
+
+        assert_eq!(
+            auth_required,
+            Some(true),
+            "Model {} should have auth_required: true",
+            model_id
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_hub_models_auth_required_field_type() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::models::read"]
+    ).await;
+
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let first_model = models.as_array().unwrap().first().expect("Should have at least one model");
+
+    // Verify auth_required is a boolean
+    let auth_required = first_model.get("auth_required");
+    assert!(auth_required.is_some(), "Model should have auth_required field");
+    assert!(
+        auth_required.unwrap().is_boolean(),
+        "auth_required should be a boolean type"
+    );
+}
+
+#[tokio::test]
+async fn test_hub_models_auth_required_in_all_locales() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::models::read"]
+    ).await;
+
+    let locales = vec!["en", "zh", "vi"];
+
+    for locale in locales {
+        let url = server.api_url(&format!("/hub/models?lang={}", locale));
+        let response = reqwest::Client::new()
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .expect("Request failed");
+
+        assert_eq!(response.status(), 200, "Should succeed for locale {}", locale);
+
+        let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+        let models_array = models.as_array().unwrap();
+
+        // Verify all models in this locale have auth_required field
+        for model in models_array {
+            let model_id = model.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            assert!(
+                model.get("auth_required").is_some(),
+                "Model {} in locale {} should have auth_required field",
+                model_id,
+                locale
+            );
+
+            // All current models should have auth_required: true
+            let auth_required = model.get("auth_required").and_then(|v| v.as_bool());
+            assert_eq!(
+                auth_required,
+                Some(true),
+                "Model {} in locale {} should have auth_required: true",
+                model_id,
+                locale
+            );
+        }
+    }
+}
+
+// ============================================================================
 // Hub Assistants Tests
 // ============================================================================
 

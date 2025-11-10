@@ -16,7 +16,7 @@ import { useState } from 'react'
 import { ModelDetailsDrawer } from './ModelDetailsDrawer'
 import { Stores } from '@/core/stores'
 
-const { Text } = Typography
+const { Text, Paragraph } = Typography
 
 interface ModelHubCardProps {
   model: HubModel
@@ -68,6 +68,35 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         `Repository "${repo.name}" is disabled. Please enable it in settings first.`,
       )
       return
+    }
+
+    // Check if model requires authentication
+    if (model.auth_required) {
+      const hasCredentials = Stores.LlmRepository.llmRepositoryHasCredentials(repo)
+
+      if (!hasCredentials || repo.auth_type === 'none') {
+        // Show modal prompting user to configure authentication
+        modal.confirm({
+          title: 'Authentication Required',
+          content: (
+            <div>
+              <Paragraph>
+                The model <strong>{model.display_name}</strong> requires authentication
+                to download from <strong>{repo.name}</strong>.
+              </Paragraph>
+              <Paragraph>
+                Please configure authentication credentials for this repository.
+              </Paragraph>
+            </div>
+          ),
+          okText: 'Configure Authentication',
+          cancelText: 'Cancel',
+          onOk: () => {
+            Stores.LlmRepositoryDrawer.openDrawer(repo)
+          },
+        })
+        return
+      }
     }
 
     const localProviders = providers.filter(p => p.provider_type === 'local')
@@ -297,6 +326,11 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   )}
                   {isModelDownloaded && (
                     <Tag color="geekblue-inverse">Downloaded</Tag>
+                  )}
+                  {model.auth_required && (
+                    <Tag color="orange" icon={<LockOutlined />}>
+                      Auth Required
+                    </Tag>
                   )}
                 </Flex>
               </div>

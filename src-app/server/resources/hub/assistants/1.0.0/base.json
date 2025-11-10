@@ -33,7 +33,8 @@
       "Review this Python function for security issues",
       "Check this React component for performance problems",
       "Suggest improvements for this API design"
-    ]
+    ],
+    "display_name": "Code Reviewer"
   },
   {
     "id": "creative-writer",
@@ -67,7 +68,8 @@
       "Write a short story about time travel",
       "Create an engaging blog post about productivity",
       "Draft creative marketing copy for a new product"
-    ]
+    ],
+    "display_name": "Creative Writer"
   },
   {
     "id": "vision-analyst",
@@ -102,6 +104,7 @@
       "Describe what you see in this image",
       "Analyze the composition of this photograph",
       "Extract text from this document image"
-    ]
+    ],
+    "display_name": "Vision Analyst"
   }
 ]

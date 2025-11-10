@@ -58,6 +58,8 @@ interface UserGroupsState {
     __store__?: () => void
     groups: () => Promise<void>
   }
+
+  __destroy__?: () => void
 }
 
 export const useUserGroupsStore = create<UserGroupsState>()(
@@ -127,17 +129,14 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           const group = await ApiClient.UserGroup.create(data)
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitGroupCreated(group)
           } catch (eventError) {
             console.error('Failed to emit group created event:', eventError)
           }
 
-          set(state => ({
-            groups: [...state.groups, group],
-            total: state.total + 1,
-            creating: false,
-          }))
+          set({ creating: false })
 
           return group
         } catch (error) {
@@ -164,16 +163,14 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitGroupUpdated(group)
           } catch (eventError) {
             console.error('Failed to emit group updated event:', eventError)
           }
 
-          set(state => ({
-            groups: state.groups.map(g => (g.id === id ? group : g)),
-            updating: false,
-          }))
+          set({ updating: false })
 
           return group
         } catch (error) {
@@ -199,17 +196,14 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitGroupDeleted(id)
           } catch (eventError) {
             console.error('Failed to emit group deleted event:', eventError)
           }
 
-          set(state => ({
-            groups: state.groups.filter(g => g.id !== id),
-            total: state.total - 1,
-            deleting: false,
-          }))
+          set({ deleting: false })
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : 'Failed to delete group',
@@ -317,19 +311,14 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitGroupMemberRemoved(groupId, userId)
           } catch (eventError) {
             console.error('Failed to emit group member removed event:', eventError)
           }
 
-          // Remove from current group members list
-          set(state => ({
-            currentGroupMembers: state.currentGroupMembers.filter(
-              m => m.id !== userId,
-            ),
-            updating: false,
-          }))
+          set({ updating: false })
         } catch (error) {
           set({
             error:
@@ -349,6 +338,7 @@ export const useUserGroupsStore = create<UserGroupsState>()(
       __init__: {
         __store__: () => {
           const eventBus = Stores.EventBus
+          const GROUP = 'UserGroupsStore'
 
           // Subscribe to group.created
           eventBus.on('group.created', async event => {
@@ -357,7 +347,7 @@ export const useUserGroupsStore = create<UserGroupsState>()(
               groups: [...state.groups, group],
               total: state.total + 1,
             }))
-          })
+          }, GROUP)
 
           // Subscribe to group.updated
           eventBus.on('group.updated', async event => {
@@ -365,7 +355,7 @@ export const useUserGroupsStore = create<UserGroupsState>()(
             set(state => ({
               groups: state.groups.map(g => (g.id === group.id ? group : g)),
             }))
-          })
+          }, GROUP)
 
           // Subscribe to group.deleted
           eventBus.on('group.deleted', async event => {
@@ -374,7 +364,7 @@ export const useUserGroupsStore = create<UserGroupsState>()(
               groups: state.groups.filter(g => g.id !== groupId),
               total: state.total - 1,
             }))
-          })
+          }, GROUP)
 
           // Subscribe to group.member_added
           eventBus.on('group.member_added', async event => {
@@ -384,7 +374,7 @@ export const useUserGroupsStore = create<UserGroupsState>()(
             if (state.currentGroupId === groupId) {
               await get().loadUserGroupMembers(groupId)
             }
-          })
+          }, GROUP)
 
           // Subscribe to group.member_removed
           eventBus.on('group.member_removed', async event => {
@@ -398,7 +388,7 @@ export const useUserGroupsStore = create<UserGroupsState>()(
                 ),
               }))
             }
-          })
+          }, GROUP)
 
           // Subscribe to user.deleted
           eventBus.on('user.deleted', async event => {
@@ -408,9 +398,13 @@ export const useUserGroupsStore = create<UserGroupsState>()(
                 m => m.id !== userId,
               ),
             }))
-          })
+          }, GROUP)
         },
         groups: () => get().loadUserGroups(),
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('UserGroupsStore')
       },
     }),
   ),

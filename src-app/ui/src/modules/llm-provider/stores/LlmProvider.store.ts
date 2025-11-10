@@ -76,6 +76,8 @@ interface LlmProviderState {
     __store__?: () => void
     providers: () => Promise<void>
   }
+
+  __destroy__?: () => void
 }
 
 export const useLlmProviderStore = create<LlmProviderState>()(
@@ -201,24 +203,20 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           const provider = await ApiClient.LlmProvider.create(data)
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitLlmProviderCreated(provider)
           } catch (eventError) {
             console.error('Failed to emit llm provider created event:', eventError)
           }
 
-          // Add llm_models array to provider
-          const providerWithModels: LlmProviderWithModels = {
+          set({ creating: false })
+
+          // Return provider with llm_models for caller
+          return {
             ...provider,
             llm_models: [],
           }
-
-          set(state => ({
-            providers: [...state.providers, providerWithModels],
-            creating: false,
-          }))
-
-          return providerWithModels
         } catch (error) {
           set({
             error:
@@ -244,25 +242,21 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitLlmProviderUpdated(provider)
           } catch (eventError) {
             console.error('Failed to emit llm provider updated event:', eventError)
           }
 
-          // Find existing provider to preserve llm_models
+          set({ updating: false })
+
+          // Return provider with llm_models preserved for caller
           const existingProvider = state.providers.find(p => p.id === id)
-          const updatedProvider: LlmProviderWithModels = {
+          return {
             ...provider,
             llm_models: existingProvider?.llm_models || [],
           }
-
-          set(state => ({
-            providers: state.providers.map(p => (p.id === id ? updatedProvider : p)),
-            updating: false,
-          }))
-
-          return updatedProvider
         } catch (error) {
           set({
             error:
@@ -285,24 +279,14 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           await ApiClient.LlmProvider.delete({ provider_id: id })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitLlmProviderDeleted(id)
           } catch (eventError) {
             console.error('Failed to emit llm provider deleted event:', eventError)
           }
 
-          set(state => {
-            // Clean up loading and error states for this provider
-            const { [id]: _loading, ...remainingLoading } = state.llmModelsLoading
-            const { [id]: _error, ...remainingErrors } = state.modelError
-
-            return {
-              providers: state.providers.filter(p => p.id !== id),
-              llmModelsLoading: remainingLoading,
-              modelError: remainingErrors,
-              deleting: false,
-            }
-          })
+          set({ deleting: false })
         } catch (error) {
           set({
             error:
@@ -355,6 +339,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           )?.id
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           if (providerId) {
             try {
               await emitLlmModelEnabled(modelId, providerId)
@@ -363,12 +348,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             }
           }
 
-          // Update the model in the provider's llm_models array
           set(state => ({
-            providers: state.providers.map(p => ({
-              ...p,
-              llm_models: p.llm_models?.map(m => (m.id === modelId ? model : m)),
-            })),
             llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
           }))
 
@@ -400,6 +380,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           )?.id
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           if (providerId) {
             try {
               await emitLlmModelDisabled(modelId, providerId)
@@ -408,12 +389,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             }
           }
 
-          // Update the model in the provider's llm_models array
           set(state => ({
-            providers: state.providers.map(p => ({
-              ...p,
-              llm_models: p.llm_models?.map(m => (m.id === modelId ? model : m)),
-            })),
             llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
           }))
 
@@ -442,6 +418,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           await ApiClient.LlmModel.delete({ model_id: modelId })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           if (providerId) {
             try {
               await emitLlmModelDeleted(modelId, providerId)
@@ -450,12 +427,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             }
           }
 
-          // Remove the model from the provider's llm_models array
           set(state => ({
-            providers: state.providers.map(p => ({
-              ...p,
-              llm_models: p.llm_models?.filter(m => m.id !== modelId),
-            })),
             llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
           }))
         } catch (error) {
@@ -584,6 +556,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       __init__: {
         __store__: () => {
           const eventBus = Stores.EventBus
+          const GROUP = 'LlmProviderStore'
 
           // Subscribe to llm_provider.created
           eventBus.on('llm_provider.created', async event => {
@@ -595,7 +568,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             set(state => ({
               providers: [...state.providers, providerWithModels],
             }))
-          })
+          }, GROUP)
 
           // Subscribe to llm_provider.updated
           eventBus.on('llm_provider.updated', async event => {
@@ -613,7 +586,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
                 ),
               }
             })
-          })
+          }, GROUP)
 
           // Subscribe to llm_provider.deleted
           eventBus.on('llm_provider.deleted', async event => {
@@ -630,7 +603,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
                 modelError: remainingErrors,
               }
             })
-          })
+          }, GROUP)
 
           // Subscribe to llm_model.enabled
           eventBus.on('llm_model.enabled', async event => {
@@ -643,7 +616,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
                 ),
               })),
             }))
-          })
+          }, GROUP)
 
           // Subscribe to llm_model.disabled
           eventBus.on('llm_model.disabled', async event => {
@@ -656,7 +629,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
                 ),
               })),
             }))
-          })
+          }, GROUP)
 
           // Subscribe to llm_model.deleted
           eventBus.on('llm_model.deleted', async event => {
@@ -667,9 +640,13 @@ export const useLlmProviderStore = create<LlmProviderState>()(
                 llm_models: p.llm_models?.filter(m => m.id !== modelId),
               })),
             }))
-          })
+          }, GROUP)
         },
         providers: () => get().loadLlmProviders(),
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('LlmProviderStore')
       },
     }),
   ),

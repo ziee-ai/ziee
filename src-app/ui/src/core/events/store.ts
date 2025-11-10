@@ -7,10 +7,15 @@ interface EventBusState {
   // Map of event type to set of handlers (use any for storage, type-safe at call site)
   handlers: Map<string, Set<EventHandler<any>>>
 
+  // Map of group name + event type to handler (for deduplication)
+  groupHandlers: Map<string, EventHandler<any>>
+
   // Subscribe to specific event type (type-safe)
+  // If groupName provided, automatically replaces any existing handler for same group+event
   on: <K extends keyof AppEvents>(
     eventType: K,
     handler: EventHandler<AppEvents[K]>,
+    groupName?: string,
   ) => Unsubscribe
 
   // Emit event to all subscribed handlers (type-safe)
@@ -20,6 +25,9 @@ interface EventBusState {
 
   // Remove specific handler
   off: (eventType: string, handler: EventHandler<any>) => void
+
+  // Remove all handlers for a specific group
+  removeGroupListeners: (groupName: string) => void
 
   // Clear all handlers (for testing)
   clear: () => void
@@ -32,9 +40,28 @@ export const useEventBusStore = create<EventBusState>()(
   subscribeWithSelector(
     immer((set, get): EventBusState => ({
       handlers: new Map(),
+      groupHandlers: new Map(),
 
-      on: (eventType, handler) => {
+      on: (eventType, handler, groupName) => {
         set(state => {
+          // If group name provided, implement deduplication
+          if (groupName) {
+            const groupKey = `${groupName}::${eventType}`
+
+            // Remove old handler for this group+event if it exists
+            const oldHandler = state.groupHandlers.get(groupKey)
+            if (oldHandler) {
+              const eventHandlers = state.handlers.get(eventType)
+              if (eventHandlers) {
+                eventHandlers.delete(oldHandler)
+              }
+            }
+
+            // Track new handler for this group+event
+            state.groupHandlers.set(groupKey, handler)
+          }
+
+          // Add handler to main handlers map
           if (!state.handlers.has(eventType)) {
             state.handlers.set(eventType, new Set())
           }
@@ -66,8 +93,6 @@ export const useEventBusStore = create<EventBusState>()(
           return
         }
 
-        console.debug(`[EventBus] Emitting: ${eventType}`, fullEvent)
-
         // Execute all handlers (non-blocking)
         const promises = Array.from(eventHandlers).map(handler => {
           try {
@@ -93,12 +118,53 @@ export const useEventBusStore = create<EventBusState>()(
               state.handlers.delete(eventType)
             }
           }
+
+          // Also remove from groupHandlers if present
+          const keysToDelete: string[] = []
+          state.groupHandlers.forEach((groupHandler, key) => {
+            if (groupHandler === handler) {
+              keysToDelete.push(key)
+            }
+          })
+          keysToDelete.forEach(key => state.groupHandlers.delete(key))
+        })
+      },
+
+      removeGroupListeners: (groupName: string) => {
+        set(state => {
+          const prefix = `${groupName}::`
+          const keysToDelete: string[] = []
+
+          // Find all group handlers for this group
+          state.groupHandlers.forEach((handler, key) => {
+            if (key.startsWith(prefix)) {
+              keysToDelete.push(key)
+
+              // Extract event type from key (format: "groupName::eventType")
+              const eventType = key.substring(prefix.length)
+
+              // Remove handler from main handlers map
+              const eventHandlers = state.handlers.get(eventType)
+              if (eventHandlers) {
+                eventHandlers.delete(handler)
+                if (eventHandlers.size === 0) {
+                  state.handlers.delete(eventType)
+                }
+              }
+            }
+          })
+
+          // Remove all group handler entries
+          keysToDelete.forEach(key => state.groupHandlers.delete(key))
+
+          console.debug(`[EventBus] Removed ${keysToDelete.length} listeners for group: ${groupName}`)
         })
       },
 
       clear: () => {
         set(state => {
           state.handlers.clear()
+          state.groupHandlers.clear()
         })
       },
 

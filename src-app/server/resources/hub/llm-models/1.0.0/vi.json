@@ -2,55 +2,46 @@
   {
     "id": "llama-3-8b-instruct",
     "display_name": "Llama 3 8B Instruct",
-    "description": "Mô hình được điều chỉnh hướng dẫn Llama 3 8B của Meta",
-    "auth_required": true
+    "description": "Mô hình được điều chỉnh hướng dẫn Llama 3 8B của Meta"
   },
   {
     "id": "llama-3-1-8b-instruct",
     "display_name": "Llama 3.1 8B Instruct",
-    "description": "Mô hình được điều chỉnh hướng dẫn Llama 3.1 8B mới nhất của Meta với khả năng cải tiến",
-    "auth_required": true
+    "description": "Mô hình được điều chỉnh hướng dẫn Llama 3.1 8B mới nhất của Meta với khả năng cải tiến"
   },
   {
     "id": "phi-3-mini-4k-instruct",
     "display_name": "Phi-3 Mini 4K Instruct",
-    "description": "Mô hình được điều chỉnh hướng dẫn nhỏ nhưng mạnh mẽ của Microsoft",
-    "auth_required": true
+    "description": "Mô hình được điều chỉnh hướng dẫn nhỏ nhưng mạnh mẽ của Microsoft"
   },
   {
     "id": "llava-v1.6-vicuna-7b",
     "display_name": "LLaVA v1.6 Vicuna 7B",
-    "description": "Trợ lý Ngôn ngữ và Thị giác Lớn với cơ sở Vicuna 7B",
-    "auth_required": true
+    "description": "Trợ lý Ngôn ngữ và Thị giác Lớn với cơ sở Vicuna 7B"
   },
   {
     "id": "qwen2.5-vl-3b-instruct",
     "display_name": "Qwen2.5-VL 3B Instruct",
-    "description": "Mô hình ngôn ngữ-thị giác được điều chỉnh hướng dẫn Qwen2.5-VL 3B",
-    "auth_required": true
+    "description": "Mô hình ngôn ngữ-thị giác được điều chỉnh hướng dẫn Qwen2.5-VL 3B"
   },
   {
     "id": "tinyllama-1.1b-chat-gguf",
     "display_name": "TinyLlama 1.1B Chat",
-    "description": "Mô hình chat nhỏ gọn, hiệu quả ở định dạng GGUF - hoàn hảo cho thử nghiệm",
-    "auth_required": true
+    "description": "Mô hình chat nhỏ gọn, hiệu quả ở định dạng GGUF - hoàn hảo cho thử nghiệm"
   },
   {
     "id": "llama-3-2-3b-instruct-gguf",
     "display_name": "Llama 3.2 3B Instruct",
-    "description": "Mô hình được điều chỉnh hướng dẫn Llama 3.2 3B của Meta ở định dạng GGUF, được tối ưu hóa về hiệu suất",
-    "auth_required": true
+    "description": "Mô hình được điều chỉnh hướng dẫn Llama 3.2 3B của Meta ở định dạng GGUF, được tối ưu hóa về hiệu suất"
   },
   {
     "id": "bge-m3",
     "display_name": "BGE-M3 Multilingual Embedding",
-    "description": "Mô hình nhúng đa ngôn ngữ BGE-M3 của BAAI hỗ trợ hơn 100 ngôn ngữ với khả năng truy xuất dense, sparse và multi-vector",
-    "auth_required": true
+    "description": "Mô hình nhúng đa ngôn ngữ BGE-M3 của BAAI hỗ trợ hơn 100 ngôn ngữ với khả năng truy xuất dense, sparse và multi-vector"
   },
   {
     "id": "bge-m3-gguf",
     "display_name": "BGE-M3 GGUF Multilingual",
-    "description": "Mô hình nhúng đa ngôn ngữ BGE-M3 của BAAI ở định dạng GGUF, được tối ưu hóa cho suy luận hiệu quả",
-    "auth_required": true
+    "description": "Mô hình nhúng đa ngôn ngữ BGE-M3 của BAAI ở định dạng GGUF, được tối ưu hóa cho suy luận hiệu quả"
   }
 ]

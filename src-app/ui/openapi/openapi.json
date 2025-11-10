@@ -6988,6 +6988,11 @@
               "null"
             ]
           },
+          "auth_required": {
+            "description": "Whether authentication is required to download/use this model",
+            "type": "boolean",
+            "default": false
+          },
           "author": {
             "type": [
               "string",
@@ -7057,8 +7062,8 @@
             "type": "string"
           },
           "popularity_score": {
-            "type": "integer",
-            "format": "int32"
+            "type": "number",
+            "format": "double"
           },
           "public": {
             "type": "boolean",

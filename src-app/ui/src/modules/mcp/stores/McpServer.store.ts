@@ -42,6 +42,8 @@ interface McpState {
     servers: () => Promise<void>
   }
 
+  __destroy__?: () => void
+
   // Actions
   loadMcpServers: () => Promise<void>
   createMcpServer: (data: CreateMcpServerRequest) => Promise<McpServer>
@@ -80,6 +82,7 @@ export const useMcpStore = create<McpState>()(
         __init__: {
           __store__: () => {
             const eventBus = Stores.EventBus
+            const GROUP = 'McpServerStore'
 
             // Subscribe to mcp_server.created
             eventBus.on('mcp_server.created', async event => {
@@ -87,7 +90,7 @@ export const useMcpStore = create<McpState>()(
               set(draft => {
                 draft.servers.push(server)
               })
-            })
+            }, GROUP)
 
             // Subscribe to mcp_server.updated
             eventBus.on('mcp_server.updated', async event => {
@@ -98,7 +101,7 @@ export const useMcpStore = create<McpState>()(
                   draft.servers[index] = server
                 }
               })
-            })
+            }, GROUP)
 
             // Subscribe to mcp_server.deleted
             eventBus.on('mcp_server.deleted', async event => {
@@ -106,25 +109,25 @@ export const useMcpStore = create<McpState>()(
               set(draft => {
                 draft.servers = draft.servers.filter(s => s.id !== serverId)
               })
-            })
+            }, GROUP)
 
             // Subscribe to mcp_server.groups_changed
             eventBus.on('mcp_server.groups_changed', async () => {
               // Reload servers list to get fresh accessible servers
               await get().loadMcpServers()
-            })
+            }, GROUP)
 
             // Subscribe to group.member_added
             eventBus.on('group.member_added', async () => {
               // Reload servers list (user might gain access to system servers)
               await get().loadMcpServers()
-            })
+            }, GROUP)
 
             // Subscribe to group.member_removed
             eventBus.on('group.member_removed', async () => {
               // Reload servers list (user might lose access to system servers)
               await get().loadMcpServers()
-            })
+            }, GROUP)
           },
           servers: () => get().loadMcpServers(),
         },
@@ -175,16 +178,14 @@ export const useMcpStore = create<McpState>()(
             const newServer = await ApiClient.McpServer.create(data)
 
             // Emit event after successful API call
+            // Event handler will update state (no manual state update here)
             try {
               await emitMcpServerCreated(newServer)
             } catch (eventError) {
               console.error('Failed to emit mcp server created event:', eventError)
             }
 
-            set(draft => {
-              draft.servers.push(newServer)
-              draft.creating = false
-            })
+            set({ creating: false })
 
             return newServer
           } catch (error) {
@@ -215,20 +216,15 @@ export const useMcpStore = create<McpState>()(
             })
 
             // Emit event after successful API call
+            // Event handler will update state (no manual state update here)
             try {
               await emitMcpServerUpdated(updatedServer)
             } catch (eventError) {
               console.error('Failed to emit mcp server updated event:', eventError)
             }
 
-            // Update main MCP store (uses immer)
+            // Clear operation loading state
             set(draft => {
-              const index = draft.servers.findIndex(
-                server => server.id === updatedServer.id,
-              )
-              if (index >= 0) {
-                draft.servers[index] = updatedServer
-              }
               draft.operationsLoading.delete(serverId)
             })
 
@@ -270,15 +266,15 @@ export const useMcpStore = create<McpState>()(
             await ApiClient.McpServer.delete({ id: serverId })
 
             // Emit event after successful API call
+            // Event handler will update state (no manual state update here)
             try {
               await emitMcpServerDeleted(serverId)
             } catch (eventError) {
               console.error('Failed to emit mcp server deleted event:', eventError)
             }
 
-            // Remove from main MCP store (uses immer)
+            // Clear operation loading state
             set(draft => {
-              draft.servers = draft.servers.filter(server => server.id !== serverId)
               draft.operationsLoading.delete(serverId)
             })
 
@@ -380,6 +376,10 @@ export const useMcpStore = create<McpState>()(
               server.description?.toLowerCase().includes(searchTerm) ||
               server.transport_type.toLowerCase().includes(searchTerm),
           )
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('McpServerStore')
         },
       }),
     ),

@@ -53,6 +53,18 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
           if (module.registerStores) {
             const storeRegistrations = module.registerStores()
             storeRegistrations.forEach(reg => {
+              // Destroy old store instance before replacing (HMR cleanup)
+              const oldStoreProxy = state.stores[reg.name]
+              if (oldStoreProxy?.__state?.__destroy__) {
+                console.log(`🗑️ Destroying old store for HMR: ${reg.name}`)
+                try {
+                  oldStoreProxy.__state.__destroy__()
+                } catch (error) {
+                  console.error(`Failed to destroy old store ${reg.name}:`, error)
+                }
+              }
+
+              // Create new store proxy
               newStores[reg.name] = createStoreProxy(reg.store)
             })
           }

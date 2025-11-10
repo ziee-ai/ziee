@@ -20,7 +20,7 @@ pub struct HubModel {
     pub tags: Vec<String>,
     pub recommended_parameters: Option<serde_json::Value>,
     pub quantization_options: Option<Vec<HubModelQuantizationOption>>,
-    pub popularity_score: i32,
+    pub popularity_score: f64,
     pub author: Option<String>,
     pub license: Option<String>,
     pub homepage_url: Option<String>,
@@ -77,8 +77,8 @@ impl Default for ModelCapabilities {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HubModelQuantizationOption {
     pub name: String,
-    pub filename: String,
-    pub size_gb: f64,
+    pub main_filename: String,
+    pub size_gb: Option<f64>,
 }
 
 /// Hub assistant entry
@@ -99,7 +99,7 @@ pub struct HubAssistant {
     pub example_prompts: Option<Vec<String>>,
     pub author: Option<String>,
     #[serde(default)]
-    pub popularity_score: i32,
+    pub popularity_score: f64,
 
     /// Array of entity IDs created by current user from this hub assistant
     #[serde(default)]

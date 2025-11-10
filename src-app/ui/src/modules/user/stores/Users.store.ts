@@ -50,6 +50,8 @@ interface UsersState {
     __store__?: () => void
     users: () => Promise<void>
   }
+
+  __destroy__?: () => void
 }
 
 export const useUsersStore = create<UsersState>()(
@@ -155,16 +157,14 @@ export const useUsersStore = create<UsersState>()(
           })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitUserUpdated(user)
           } catch (eventError) {
             console.error('Failed to emit user updated event:', eventError)
           }
 
-          set(state => ({
-            users: state.users.map(u => (u.id === id ? user : u)),
-            updating: false,
-          }))
+          set({ updating: false })
 
           return user
         } catch (error) {
@@ -224,27 +224,21 @@ export const useUsersStore = create<UsersState>()(
             user_id: id,
           })
 
-          // Update local state
-          let updatedUser: User | undefined
-          set(state => ({
-            users: state.users.map(u => {
-              if (u.id === id) {
-                updatedUser = { ...u, is_active: !u.is_active }
-                return updatedUser
-              }
-              return u
-            }),
-            updating: false,
-          }))
+          // Get current user state to emit event
+          const currentUser = get().users.find(u => u.id === id)
+          if (currentUser) {
+            const updatedUser = { ...currentUser, is_active: !currentUser.is_active }
 
-          // Emit event after successful API call
-          if (updatedUser) {
+            // Emit event after successful API call
+            // Event handler will update state (no manual state update here)
             try {
               await emitUserUpdated(updatedUser)
             } catch (eventError) {
               console.error('Failed to emit user updated event:', eventError)
             }
           }
+
+          set({ updating: false })
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : 'Failed to toggle user status',
@@ -268,17 +262,14 @@ export const useUsersStore = create<UsersState>()(
           })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitUserDeleted(id)
           } catch (eventError) {
             console.error('Failed to emit user deleted event:', eventError)
           }
 
-          set(state => ({
-            users: state.users.filter(u => u.id !== id),
-            total: state.total - 1,
-            deleting: false,
-          }))
+          set({ deleting: false })
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : 'Failed to delete user',
@@ -357,6 +348,7 @@ export const useUsersStore = create<UsersState>()(
       __init__: {
         __store__: () => {
           const eventBus = Stores.EventBus
+          const GROUP = 'UsersStore'
 
           // Subscribe to user.updated
           eventBus.on('user.updated', async event => {
@@ -364,7 +356,7 @@ export const useUsersStore = create<UsersState>()(
             set(state => ({
               users: state.users.map(u => (u.id === user.id ? user : u)),
             }))
-          })
+          }, GROUP)
 
           // Subscribe to user.deleted
           eventBus.on('user.deleted', async event => {
@@ -373,9 +365,13 @@ export const useUsersStore = create<UsersState>()(
               users: state.users.filter(u => u.id !== userId),
               total: state.total - 1,
             }))
-          })
+          }, GROUP)
         },
         users: () => get().loadUsers(),
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('UsersStore')
       },
     }),
   ),

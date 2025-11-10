@@ -397,6 +397,7 @@ export interface HubMCPServer {
 
 export interface HubModel {
   description?: string
+  auth_required?: boolean
   author?: string
   capabilities?: ModelCapabilities2
   context_length?: number

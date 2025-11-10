@@ -43,6 +43,8 @@ interface LlmRepositoryState {
     __store__?: () => void
     repositories: () => Promise<void>
   }
+
+  __destroy__?: () => void
 }
 
 export const useLlmRepositoryStore = create<LlmRepositoryState>()(
@@ -99,16 +101,14 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           const repository = await ApiClient.LlmRepository.create(data)
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitLlmRepositoryCreated(repository)
           } catch (eventError) {
             console.error('Failed to emit llm repository created event:', eventError)
           }
 
-          set(state => ({
-            repositories: [...state.repositories, repository],
-            creating: false,
-          }))
+          set({ creating: false })
 
           return repository
         } catch (error) {
@@ -136,16 +136,14 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitLlmRepositoryUpdated(repository)
           } catch (eventError) {
             console.error('Failed to emit llm repository updated event:', eventError)
           }
 
-          set(state => ({
-            repositories: state.repositories.map(r => (r.id === id ? repository : r)),
-            updating: false,
-          }))
+          set({ updating: false })
 
           return repository
         } catch (error) {
@@ -170,16 +168,14 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           await ApiClient.LlmRepository.delete({ repository_id: id })
 
           // Emit event after successful API call
+          // Event handler will update state (no manual state update here)
           try {
             await emitLlmRepositoryDeleted(id)
           } catch (eventError) {
             console.error('Failed to emit llm repository deleted event:', eventError)
           }
 
-          set(state => ({
-            repositories: state.repositories.filter(r => r.id !== id),
-            deleting: false,
-          }))
+          set({ deleting: false })
         } catch (error) {
           set({
             error:
@@ -266,6 +262,7 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
       __init__: {
         __store__: () => {
           const eventBus = Stores.EventBus
+          const GROUP = 'LlmRepositoryStore'
 
           // Subscribe to llm_repository.created
           eventBus.on('llm_repository.created', async event => {
@@ -273,7 +270,7 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
             set(state => ({
               repositories: [...state.repositories, repository],
             }))
-          })
+          }, GROUP)
 
           // Subscribe to llm_repository.updated
           eventBus.on('llm_repository.updated', async event => {
@@ -283,7 +280,7 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
                 r.id === repository.id ? repository : r,
               ),
             }))
-          })
+          }, GROUP)
 
           // Subscribe to llm_repository.deleted
           eventBus.on('llm_repository.deleted', async event => {
@@ -291,9 +288,13 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
             set(state => ({
               repositories: state.repositories.filter(r => r.id !== repositoryId),
             }))
-          })
+          }, GROUP)
         },
         repositories: () => get().loadLlmRepositories(),
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('LlmRepositoryStore')
       },
     }),
   ),

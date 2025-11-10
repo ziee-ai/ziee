@@ -33,6 +33,8 @@ interface UserAssistantsState {
     assistants: () => Promise<void>
   }
 
+  __destroy__?: () => void
+
   // Actions
   loadUserAssistants: () => Promise<void>
   createUserAssistant: (data: CreateAssistantRequest) => Promise<Assistant>
@@ -57,6 +59,7 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
         __init__: {
           __store__: () => {
             const eventBus = Stores.EventBus
+            const GROUP = 'UserAssistantsStore'
 
             // Subscribe to assistant.created
             eventBus.on('assistant.created', async event => {
@@ -64,7 +67,7 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
               set(state => {
                 state.assistants.set(assistant.id, assistant)
               })
-            })
+            }, GROUP)
 
             // Subscribe to assistant.updated
             eventBus.on('assistant.updated', async event => {
@@ -72,7 +75,7 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
               set(state => {
                 state.assistants.set(assistant.id, assistant)
               })
-            })
+            }, GROUP)
 
             // Subscribe to assistant.deleted
             eventBus.on('assistant.deleted', async event => {
@@ -80,7 +83,7 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
               set(state => {
                 state.assistants.delete(assistantId)
               })
-            })
+            }, GROUP)
           },
           assistants: () => get().loadUserAssistants(),
         },
@@ -125,23 +128,14 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             const assistant = await ApiClient.Assistant.create(data)
 
             // Emit event after successful API call
+            // Event handler will update state (no manual state update here)
             try {
               await emitAssistantCreated(assistant)
             } catch (eventError) {
               console.error('Failed to emit assistant created event:', eventError)
             }
 
-            set(state => {
-              if (data.is_default) {
-                // Set all other assistants' is_default to false
-                state.assistants.forEach((a: Assistant) => {
-                  a.is_default = false
-                })
-              }
-              // Add the new assistant
-              state.assistants.set(assistant.id, assistant)
-              state.creating = false
-            })
+            set({ creating: false })
 
             return assistant
           } catch (error) {
@@ -167,25 +161,14 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             })
 
             // Emit event after successful API call
+            // Event handler will update state (no manual state update here)
             try {
               await emitAssistantUpdated(assistant)
             } catch (eventError) {
               console.error('Failed to emit assistant updated event:', eventError)
             }
 
-            set(state => {
-              if (data.is_default) {
-                // Set all other assistants' is_default to false
-                state.assistants.forEach((a: Assistant, assistantId: string) => {
-                  if (assistantId !== id) {
-                    a.is_default = false
-                  }
-                })
-              }
-              // Update the assistant
-              state.assistants.set(id, assistant)
-              state.updating = false
-            })
+            set({ updating: false })
 
             return assistant
           } catch (error) {
@@ -205,16 +188,14 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             await ApiClient.Assistant.delete({ id })
 
             // Emit event after successful API call
+            // Event handler will update state (no manual state update here)
             try {
               await emitAssistantDeleted(id)
             } catch (eventError) {
               console.error('Failed to emit assistant deleted event:', eventError)
             }
 
-            set(state => {
-              state.assistants.delete(id)
-              state.deleting = false
-            })
+            set({ deleting: false })
           } catch (error) {
             set({
               error:
@@ -232,6 +213,10 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
         getUserDefaultAssistant: (): Assistant | undefined => {
           return Array.from(get().assistants.values())
             .find(a => a.is_default)
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('UserAssistantsStore')
         },
       }),
     ),
