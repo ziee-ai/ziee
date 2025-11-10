@@ -42,7 +42,6 @@ CREATE TABLE llm_models (
     engine_type VARCHAR(50) NOT NULL DEFAULT 'mistralrs',
     engine_settings JSONB DEFAULT NULL, -- Consolidated engine settings
     file_format VARCHAR(20) NOT NULL DEFAULT 'safetensors',
-    source JSONB DEFAULT NULL,
     -- Port number where the model server is running (for local models)
     port INTEGER,
     -- Process ID of the running model server (for local models)
@@ -52,13 +51,7 @@ CREATE TABLE llm_models (
     CONSTRAINT llm_models_display_name_not_empty CHECK (display_name != ''),
     CONSTRAINT llm_models_provider_id_name_unique UNIQUE (provider_id, name),
     CONSTRAINT check_engine_type CHECK (engine_type IN ('mistralrs', 'llamacpp', 'none')),
-    CONSTRAINT check_file_format CHECK (file_format IN ('safetensors', 'pytorch', 'gguf')),
-    CONSTRAINT check_source_structure CHECK (
-        source IS NULL OR (
-            source ? 'type' AND
-            (source->>'type' = 'manual' OR source->>'type' = 'hub')
-        )
-    )
+    CONSTRAINT check_file_format CHECK (file_format IN ('safetensors', 'pytorch', 'gguf'))
 );
 
 -- ===============================

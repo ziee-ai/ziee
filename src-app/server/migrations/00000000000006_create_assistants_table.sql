@@ -15,7 +15,6 @@ CREATE TABLE assistants (
     is_template BOOLEAN DEFAULT false NOT NULL,
     is_default BOOLEAN DEFAULT false NOT NULL,
     enabled BOOLEAN DEFAULT true NOT NULL,
-    source JSONB DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
 
@@ -23,12 +22,6 @@ CREATE TABLE assistants (
     CONSTRAINT template_must_have_no_owner CHECK (
         (is_template = true AND created_by IS NULL) OR
         (is_template = false)
-    ),
-    CONSTRAINT check_source_structure CHECK (
-        source IS NULL OR (
-            source ? 'type' AND
-            (source->>'type' = 'manual' OR source->>'type' = 'template' OR source->>'type' = 'hub')
-        )
     )
 );
 

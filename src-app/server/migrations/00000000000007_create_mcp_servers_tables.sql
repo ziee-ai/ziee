@@ -23,9 +23,6 @@ CREATE TABLE mcp_servers (
     -- Runtime configuration
     timeout_seconds INTEGER DEFAULT 30 NOT NULL,
 
-    -- Source tracking (manual, hub)
-    source JSONB DEFAULT NULL,
-
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
@@ -38,12 +35,6 @@ CREATE TABLE mcp_servers (
     CONSTRAINT valid_transport_config CHECK (
         (transport_type = 'stdio' AND command IS NOT NULL) OR
         (transport_type IN ('http', 'sse') AND url IS NOT NULL)
-    ),
-    CONSTRAINT check_source_structure CHECK (
-        source IS NULL OR (
-            source ? 'type' AND
-            (source->>'type' = 'manual' OR source->>'type' = 'hub')
-        )
     )
 );
 
