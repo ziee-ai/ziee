@@ -34,7 +34,7 @@ export function AssistantFormDrawer() {
   const [form] = Form.useForm<FormValues>()
 
   // Use drawer store
-  const { open, loading, editingAssistant, isTemplate } = Stores.AssistantDrawer
+  const { open, loading, editingAssistant, isTemplate, isCloning } = Stores.AssistantDrawer
 
   // Initialize form when drawer opens or editing assistant changes
   useEffect(() => {
@@ -105,7 +105,9 @@ export function AssistantFormDrawer() {
 
     Stores.AssistantDrawer.setAssistantDrawerLoading(true)
     try {
-      if (editingAssistant) {
+      // If cloning or creating new, always create (not update)
+      if (editingAssistant && !isCloning) {
+        // Update existing assistant
         if (isTemplate) {
           await Stores.TemplateAssistants.updateTemplateAssistant(editingAssistant.id, payload)
         } else {
@@ -113,6 +115,7 @@ export function AssistantFormDrawer() {
         }
         message.success('Assistant updated successfully')
       } else {
+        // Create new assistant (including when cloning from template)
         if (isTemplate) {
           await Stores.TemplateAssistants.createTemplateAssistant(payload)
         } else {
@@ -130,6 +133,9 @@ export function AssistantFormDrawer() {
   }
 
   const getTitle = () => {
+    if (isCloning) {
+      return 'Create from Template'
+    }
     if (editingAssistant) {
       return isTemplate ? 'Edit Template Assistant' : 'Edit Assistant'
     }

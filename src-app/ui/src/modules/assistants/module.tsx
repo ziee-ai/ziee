@@ -4,12 +4,15 @@ import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { useUserAssistantsStore, useTemplateAssistantsStore } from './stores'
 import { useAssistantDrawerStore } from './components/AssistantDrawer.store'
+import { useHubAssistantsStore } from './stores/hub-assistants-store'
 import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
+import '@/modules/hub/types/HubTabSlot' // Register hub slot types
 
 const UserAssistantsPage = lazyWithPreload(() => import('./pages/UserAssistantsPage').then(m => ({ default: m.UserAssistantsPage })))
 const AssistantsSettings = lazyWithPreload(() => import('./pages/AssistantsSettings').then(m => ({ default: m.AssistantsSettings })))
+const AssistantsHubTab = lazyWithPreload(() => import('./components/hub/AssistantsHubTab').then(m => ({ default: m.AssistantsHubTab })))
 
 export default createModule({
   metadata: {
@@ -45,6 +48,10 @@ export default createModule({
       name: 'AssistantDrawer',
       store: useAssistantDrawerStore,
     },
+    {
+      name: 'HubAssistants',
+      store: useHubAssistantsStore,
+    },
   ],
   slots: {
     sidebarTools: [
@@ -63,6 +70,19 @@ export default createModule({
         label: 'Assistants',
         path: 'assistants',
         order: 25,
+      },
+    ],
+    hubTabs: [
+      {
+        id: 'assistants',
+        label: 'Assistants',
+        icon: <RobotOutlined />,
+        component: AssistantsHubTab,
+        order: 20,
+        permission: 'hub::assistants::read',
+        refresh: async () => {
+          await useHubAssistantsStore.getState().refreshFromGitHub()
+        },
       },
     ],
   },

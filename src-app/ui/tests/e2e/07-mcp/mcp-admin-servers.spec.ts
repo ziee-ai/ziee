@@ -48,8 +48,8 @@ test.describe('MCP - Admin System Servers', () => {
   test('should open Add System Server drawer', async ({ page }) => {
     await openAddServerDrawer(page, true)
     await expect(page.locator('.ant-drawer-title:has-text("Add System Server")')).toBeVisible()
-    await expect(page.locator('input#name')).toBeVisible()
-    await expect(page.locator('input#display_name')).toBeVisible()
+    await expect(page.getByLabel('Name', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Display Name')).toBeVisible()
   })
 
   test('should create system HTTP server successfully', async ({ page }) => {
@@ -102,10 +102,10 @@ test.describe('MCP - Admin System Servers', () => {
 
     // Verify drawer opens with pre-filled data
     await expect(page.locator('.ant-drawer-title:has-text("Edit System Server")')).toBeVisible()
-    await expect(page.locator('input#display_name')).toHaveValue('Web Fetch')
+    await expect(page.getByLabel('Display Name')).toHaveValue('Web Fetch')
 
     // Update description
-    await page.fill('textarea#description', 'Updated description for Web Fetch server')
+    await page.getByLabel('Description').fill('Updated description for Web Fetch server')
 
     await submitMcpServerForm(page, 'update', true)
 
@@ -233,7 +233,8 @@ test.describe('MCP - Admin System Servers', () => {
     await clickEditServerButton(page, 'Web Fetch', true)
 
     // Transport type dropdown should be disabled in edit mode
-    const transportSelect = page.locator('.ant-select:has(input#transport_type)')
+    // Find the Form.Item that contains "Transport Type" label and get its select
+    const transportSelect = page.locator('.ant-form-item:has-text("Transport Type") .ant-select')
 
     // Check if the select is disabled
     const isDisabled = await transportSelect.evaluate((el) => {

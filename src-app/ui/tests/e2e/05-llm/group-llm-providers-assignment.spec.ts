@@ -145,10 +145,10 @@ test.describe('User Group Assignment in LLM Providers', () => {
     await expect(page.locator(`.ant-drawer:visible:has-text("${groupName}")`)).toBeVisible()
 
     // Verify switch exists
-    const groupCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .p-3:has-text("${groupName}")`
+    const groupContainer = page.locator(
+      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
     )
-    const switchElement = groupCard.locator('.ant-switch')
+    const switchElement = groupContainer.locator('.ant-switch')
     await expect(switchElement).toBeVisible()
 
     // Close drawer
@@ -321,14 +321,14 @@ test.describe('User Group Assignment in LLM Providers', () => {
     await openGroupAssignmentDrawerFromProvider(page)
 
     // Look for "All Users" (which is a system group)
-    const allUsersCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .p-3:has-text("All Users")`
+    const allUsersContainer = page.locator(
+      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("All Users"))`
     )
 
     // If All Users exists, verify it has System tag
-    const allUsersCount = await allUsersCard.count()
+    const allUsersCount = await allUsersContainer.count()
     if (allUsersCount > 0) {
-      await expect(allUsersCard.locator('.ant-tag:has-text("System")')).toBeVisible()
+      await expect(allUsersContainer.locator('.ant-tag:has-text("System")')).toBeVisible()
     }
 
     // Close drawer
@@ -358,14 +358,14 @@ test.describe('User Group Assignment in LLM Providers', () => {
     // Open drawer
     await openGroupAssignmentDrawerFromProvider(page)
 
-    // Find the group card
-    const groupCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .p-3:has-text("${groupName}")`
+    // Find the group container
+    const groupContainer = page.locator(
+      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
     )
-    await expect(groupCard).toBeVisible()
+    await expect(groupContainer).toBeVisible()
 
     // Verify it shows "Active" tag (groups are active by default)
-    await expect(groupCard.locator('.ant-tag:has-text("Active")')).toBeVisible()
+    await expect(groupContainer.locator('.ant-tag:has-text("Active")')).toBeVisible()
 
     // Close drawer
     await cancelGroupAssignment(page)
@@ -478,24 +478,24 @@ test.describe('User Group Assignment in LLM Providers', () => {
     // Open drawer
     await openGroupAssignmentDrawerFromProvider(page)
 
-    // Get the group card and switch
-    const groupCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .p-3:has-text("${groupName}")`
+    // Get the group container and switch
+    const groupContainer = page.locator(
+      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
     )
-    const switchElement = groupCard.locator('.ant-switch')
+    const switchElement = groupContainer.locator('.ant-switch')
 
     // Verify initially unchecked
     await expect(switchElement).toHaveAttribute('aria-checked', 'false')
 
-    // Click the card (not the switch)
-    await groupCard.click()
+    // Click the container (not the switch)
+    await groupContainer.click()
     await page.waitForTimeout(300)
 
     // Verify switch is now checked
     await expect(switchElement).toHaveAttribute('aria-checked', 'true')
 
-    // Click card again
-    await groupCard.click()
+    // Click container again
+    await groupContainer.click()
     await page.waitForTimeout(300)
 
     // Verify switch is back to unchecked
@@ -531,14 +531,14 @@ test.describe('User Group Assignment in LLM Providers', () => {
     // Open drawer
     await openGroupAssignmentDrawerFromProvider(page)
 
-    // Find the group card
-    const groupCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .p-3:has-text("${groupName}")`
+    // Find the group container
+    const groupContainer = page.locator(
+      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
     )
-    await expect(groupCard).toBeVisible()
+    await expect(groupContainer).toBeVisible()
 
     // Verify description is shown
-    await expect(groupCard.locator(`text=${groupDescription}`)).toBeVisible()
+    await expect(groupContainer.locator(`text=${groupDescription}`)).toBeVisible()
 
     // Close drawer
     await cancelGroupAssignment(page)

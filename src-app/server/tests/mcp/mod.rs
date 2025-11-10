@@ -732,7 +732,7 @@ async fn test_http_transport_requires_url() {
 }
 
 #[tokio::test]
-async fn test_duplicate_server_name() {
+async fn test_duplicate_server_name_allowed() {
     let server = crate::common::TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
@@ -757,7 +757,7 @@ async fn test_duplicate_server_name() {
 
     assert_eq!(response1.status(), 201, "First server should be created");
 
-    // Try to create second server with same name
+    // Create second server with same name (should now be allowed)
     let response2 = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user.token))
@@ -766,5 +766,5 @@ async fn test_duplicate_server_name() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response2.status(), 409, "Should reject duplicate name");
+    assert_eq!(response2.status(), 201, "Second server with duplicate name should be allowed");
 }

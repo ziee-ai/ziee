@@ -9,11 +9,13 @@ import type {
   useViewDownloadDrawerStore,
   useUploadStore,
 } from './stores'
+import type { useHubModelsStore } from './stores/hub-models-store'
 import type { useProviderGroupCardStore } from './components/ProviderGroupAssignmentCard.store'
 import type { useLlmProviderGroupWidgetStore } from './widgets/LLMProviderGroupWidget.store'
 import type { useLlmProviderDrawerStore } from './components/LlmProviderDrawer.store'
 import type { useGroupLlmProvidersAssignmentStore } from './components/GroupLlmProvidersAssignmentDrawer.store'
 import type { useLlmProviderGroupsAssignmentStore } from './components/LlmProviderGroupsAssignmentDrawer.store'
+import type { useModelDetailsDrawerStore } from './components/hub/ModelDetailsDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -51,6 +53,10 @@ declare module '@/core/stores' {
     >
     ProviderGroupAssignmentCard: StoreProxy<
       ReturnType<typeof useProviderGroupCardStore.getState>
+    >
+    HubModels: StoreProxy<ReturnType<typeof useHubModelsStore.getState>>
+    ModelDetailsDrawer: StoreProxy<
+      ReturnType<typeof useModelDetailsDrawerStore.getState>
     >
   }
 }

@@ -75,4 +75,13 @@ pub fn admin_routes() -> ApiRouter<PgPool> {
             "/mcp/system-servers/{id}/groups/{group_id}",
             delete_with(remove_server_from_group, remove_server_from_group_docs),
         )
+        // Group-centric endpoints (for UI widgets)
+        .api_route(
+            "/groups/{group_id}/system-servers",
+            get_with(get_group_system_servers, get_group_system_servers_docs),
+        )
+        .api_route(
+            "/groups/{group_id}/system-servers",
+            put_with(update_group_system_servers, update_group_system_servers_docs),
+        )
 }

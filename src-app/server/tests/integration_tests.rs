@@ -5,6 +5,7 @@ mod common;
 mod auth;
 mod user;
 mod hardware;
+mod hub;
 mod llm_repository;
 mod llm_provider;
 mod llm_model;

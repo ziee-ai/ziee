@@ -177,7 +177,7 @@ pub async fn get_llm_model_by_id(
                 capabilities, parameters,
                 created_at, updated_at,
                 file_size_bytes, validation_status, validation_issues,
-                port, pid, engine_type, engine_settings, file_format, source
+                port, pid, engine_type, engine_settings, file_format
          FROM llm_models
          WHERE id = $1"#,
         model_id
@@ -212,7 +212,6 @@ pub async fn get_llm_model_by_id(
         engine_type: EngineType::from_str(&r.engine_type).unwrap(),
         engine_settings: r.engine_settings.and_then(|v| serde_json::from_value(v).ok()),
         file_format: FileFormat::from_str(&r.file_format).unwrap(),
-        source: r.source.and_then(|v| serde_json::from_value(v).ok()),
     }))
 }
 
@@ -224,7 +223,7 @@ pub async fn list_all_llm_models(pool: &PgPool) -> Result<Vec<LlmModel>, sqlx::E
                 capabilities, parameters,
                 created_at, updated_at,
                 file_size_bytes, validation_status, validation_issues,
-                port, pid, engine_type, engine_settings, file_format, source
+                port, pid, engine_type, engine_settings, file_format
          FROM llm_models
          ORDER BY created_at ASC"#
     )
@@ -260,7 +259,6 @@ pub async fn list_all_llm_models(pool: &PgPool) -> Result<Vec<LlmModel>, sqlx::E
             engine_type: EngineType::from_str(&r.engine_type).unwrap(),
             engine_settings: r.engine_settings.and_then(|v| serde_json::from_value(v).ok()),
             file_format: FileFormat::from_str(&r.file_format).unwrap(),
-            source: r.source.and_then(|v| serde_json::from_value(v).ok()),
         })
         .collect())
 }
@@ -276,7 +274,7 @@ pub async fn list_llm_models_by_provider(
                 capabilities, parameters,
                 created_at, updated_at,
                 file_size_bytes, validation_status, validation_issues,
-                port, pid, engine_type, engine_settings, file_format, source
+                port, pid, engine_type, engine_settings, file_format
          FROM llm_models
          WHERE provider_id = $1
          ORDER BY created_at ASC"#,
@@ -314,7 +312,6 @@ pub async fn list_llm_models_by_provider(
             engine_type: EngineType::from_str(&r.engine_type).unwrap(),
             engine_settings: r.engine_settings.and_then(|v| serde_json::from_value(v).ok()),
             file_format: FileFormat::from_str(&r.file_format).unwrap(),
-            source: r.source.and_then(|v| serde_json::from_value(v).ok()),
         })
         .collect())
 }
@@ -329,7 +326,6 @@ pub async fn create_llm_model(
     let parameters_json =
         serde_json::to_value(&request.parameters.unwrap_or_default()).unwrap_or(serde_json::json!({}));
     let engine_settings_json = request.engine_settings.as_ref().map(|s| serde_json::to_value(s).unwrap());
-    let source_json = request.source.as_ref().map(|s| serde_json::to_value(s).unwrap()).unwrap_or(
         serde_json::to_value(SourceInfo {
             r#type: "manual".to_string(),
             id: None,
@@ -338,12 +334,12 @@ pub async fn create_llm_model(
     );
 
     let row = sqlx::query!(
-        r#"INSERT INTO llm_models (id, provider_id, name, display_name, description, enabled, capabilities, parameters, engine_type, engine_settings, file_format, source)
+        r#"INSERT INTO llm_models (id, provider_id, name, display_name, description, enabled, capabilities, parameters, engine_type, engine_settings, file_format)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id, provider_id, name, display_name, description, enabled, is_deprecated, is_active,
                    capabilities, parameters,
                    created_at, updated_at, file_size_bytes, validation_status, validation_issues,
-                   port, pid, engine_type, engine_settings, file_format, source"#,
+                   port, pid, engine_type, engine_settings, file_format"#,
         model_id,
         request.provider_id,
         &request.name,
@@ -355,7 +351,6 @@ pub async fn create_llm_model(
         request.engine_type.as_str(),
         engine_settings_json,
         request.file_format.as_str(),
-        source_json
     )
     .fetch_one(pool)
     .await?;
@@ -387,7 +382,6 @@ pub async fn create_llm_model(
         engine_type: EngineType::from_str(&row.engine_type).unwrap(),
         engine_settings: row.engine_settings.and_then(|v| serde_json::from_value(v).ok()),
         file_format: FileFormat::from_str(&row.file_format).unwrap(),
-        source: row.source.and_then(|v| serde_json::from_value(v).ok()),
     })
 }
 

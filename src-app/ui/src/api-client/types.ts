@@ -30,8 +30,14 @@ export interface Assistant {
   is_template: boolean
   name: string
   parameters?: any
+  source?: AssistantSource
   updated_at: string
 }
+
+export type AssistantSource =
+  | { type: 'manual' }
+  | { type: 'template'; id: string }
+  | { type: 'hub'; id: string }
 
 export interface AssistantListResponse {
   assistants: Assistant[]
@@ -69,6 +75,7 @@ export interface CreateAssistantRequest {
   is_template?: boolean
   name?: string
   parameters?: ModelParameters
+  source?: AssistantSource
 }
 
 export interface CreateGroupRequest {
@@ -117,6 +124,7 @@ export interface CreateMcpServerRequest {
   environment_variables?: any
   headers?: any
   name: string
+  source?: McpServerSource
   timeout_seconds?: number
   transport_type: TransportType
   url?: string
@@ -226,6 +234,8 @@ export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
 export type FileFormat = 'safetensors' | 'pytorch' | 'gguf'
 
+export type FileFormat2 = 'gguf' | 'safetensors' | 'pytorch'
+
 export interface GPUComputeCapabilities {
   cuda_support: boolean
   cuda_version?: string
@@ -298,6 +308,101 @@ export interface HardwareUsageUpdate {
 
 export interface HealthResponse {
   status: string
+}
+
+export interface HubAssistant {
+  description?: string
+  author?: string
+  capabilities_required?: string[]
+  category?: string
+  display_name: string
+  example_prompts?: string[]
+  id: string
+  instructions?: string
+  name: string
+  parameters: any
+  popularity_score: number
+  recommended_models?: string[]
+  tags: string[]
+  use_cases?: string[]
+}
+
+export interface HubMCPServer {
+  description?: string
+  args?: string[]
+  author?: string
+  category?: string
+  command?: string
+  display_name: string
+  documentation_url?: string
+  download_count?: number
+  environment_variables?: any
+  example_prompts?: string[]
+  example_tools?: string[]
+  headers?: any
+  homepage?: string
+  icon_url?: string
+  id: string
+  license?: string
+  minimum_version?: string
+  name: string
+  platform_support?: string[]
+  popularity_score: number
+  rating?: number
+  repository_url?: string
+  requires_desktop?: boolean
+  tags: string[]
+  tool_categories?: string[]
+  tool_count?: number
+  transport_type?: string
+  url?: string
+  use_cases?: string[]
+  version?: string
+}
+
+export interface HubModel {
+  description?: string
+  author?: string
+  capabilities?: ModelCapabilities2
+  context_length?: number
+  display_name: string
+  file_format: FileFormat2
+  homepage_url?: string
+  id: string
+  language_support?: string[]
+  license?: string
+  main_filename: string
+  name: string
+  popularity_score: number
+  public: boolean
+  quantization_options?: HubModelQuantizationOption[]
+  recommended_engine?: string
+  recommended_engine_settings?: any
+  recommended_parameters?: any
+  repository_path: string
+  repository_url: string
+  size_gb: number
+  tags: string[]
+}
+
+export interface HubModelQuantizationOption {
+  filename: string
+  name: string
+  size_gb: number
+}
+
+export interface HubQuery {
+  lang?: string
+}
+
+export interface HubRefreshResponse {
+  updated: boolean
+  version: string
+}
+
+export interface HubVersionResponse {
+  last_updated?: string
+  version: string
 }
 
 export interface ListModelsQuery {
@@ -422,12 +527,17 @@ export interface McpServer {
   id: string
   is_system: boolean
   name: string
+  source?: McpServerSource
   timeout_seconds: number
   transport_type: TransportType
   updated_at: string
   url?: string
   user_id?: string
 }
+
+export type McpServerSource =
+  | { type: 'manual' }
+  | { type: 'hub'; id: string }
 
 export interface McpServerListResponse {
   page: number
@@ -505,6 +615,16 @@ export interface ModelCapabilities {
   text_embedding?: boolean
   tools?: boolean
   vision?: boolean
+}
+
+export interface ModelCapabilities2 {
+  audio: boolean
+  chat: boolean
+  code_interpreter: boolean
+  image_generator: boolean
+  text_embedding: boolean
+  tools: boolean
+  vision: boolean
 }
 
 export interface ModelEngineSettings {
@@ -762,6 +882,15 @@ export enum Permissions {
   GroupsDelete = 'groups::delete',
   GroupsEdit = 'groups::edit',
   GroupsRead = 'groups::read',
+  HubAssistantsRead = 'hub::assistants::read',
+  HubAssistantsRefresh = 'hub::assistants::refresh',
+  HubAssistantsVersionRead = 'hub::assistants::read_version',
+  HubMCPServersRead = 'hub::mcp_servers::read',
+  HubMCPServersRefresh = 'hub::mcp_servers::refresh',
+  HubMCPServersVersionRead = 'hub::mcp_servers::read_version',
+  HubModelsRead = 'hub::models::read',
+  HubModelsRefresh = 'hub::models::refresh',
+  HubModelsVersionRead = 'hub::models::read_version',
   LlmModelsCreate = 'llm_models::create',
   LlmModelsDelete = 'llm_models::delete',
   LlmModelsEdit = 'llm_models::edit',
@@ -797,6 +926,15 @@ export const PermissionDescriptions: Record<string, string> = {
   GroupsDelete: 'Delete non-system groups',
   GroupsEdit: 'Edit existing group information and permissions',
   GroupsRead: 'View groups and group information',
+  HubAssistantsRead: 'View hub assistants',
+  HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
+  HubAssistantsVersionRead: 'View hub assistants version information',
+  HubMCPServersRead: 'View hub MCP servers',
+  HubMCPServersRefresh: 'Refresh hub MCP servers from GitHub',
+  HubMCPServersVersionRead: 'View hub MCP servers version information',
+  HubModelsRead: 'View hub models',
+  HubModelsRefresh: 'Refresh hub models from GitHub',
+  HubModelsVersionRead: 'View hub models version information',
   LlmModelsCreate: 'Create new LLM models',
   LlmModelsDelete: 'Delete LLM models',
   LlmModelsEdit: 'Edit existing LLM models',
@@ -856,6 +994,15 @@ export const ApiEndpoints = {
   'Hardware.info': 'GET /api/hardware',
   'Hardware.stream': 'GET /api/hardware/usage-stream',
   'Health.check': 'GET /api/health',
+  'Hub.getAssistants': 'GET /api/hub/assistants',
+  'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
+  'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
+  'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
+  'Hub.getModels': 'GET /api/hub/models',
+  'Hub.getModelsVersion': 'GET /api/hub/models/version',
+  'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
+  'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
+  'Hub.refreshModels': 'POST /api/hub/models/refresh',
   'LlmModel.cancelDownload': 'POST /api/llm-models/downloads/{download_id}/cancel',
   'LlmModel.create': 'POST /api/llm-models',
   'LlmModel.delete': 'DELETE /api/llm-models/{model_id}',
@@ -940,6 +1087,15 @@ export type ApiEndpointParameters = {
   'Hardware.info': void
   'Hardware.stream': void
   'Health.check': void
+  'Hub.getAssistants': { lang?: string }
+  'Hub.getAssistantsVersion': void
+  'Hub.getMCPServers': { lang?: string }
+  'Hub.getMCPServersVersion': void
+  'Hub.getModels': { lang?: string }
+  'Hub.getModelsVersion': void
+  'Hub.refreshAssistants': void
+  'Hub.refreshMCPServers': void
+  'Hub.refreshModels': void
   'LlmModel.cancelDownload': { download_id: string }
   'LlmModel.create': CreateLlmModelRequest
   'LlmModel.delete': { model_id: string }
@@ -1024,6 +1180,15 @@ export type ApiEndpointResponses = {
   'Hardware.info': HardwareInfoResponse
   'Hardware.stream': SSEHardwareUsageEvent
   'Health.check': HealthResponse
+  'Hub.getAssistants': HubAssistant[]
+  'Hub.getAssistantsVersion': HubVersionResponse
+  'Hub.getMCPServers': HubMCPServer[]
+  'Hub.getMCPServersVersion': HubVersionResponse
+  'Hub.getModels': HubModel[]
+  'Hub.getModelsVersion': HubVersionResponse
+  'Hub.refreshAssistants': HubRefreshResponse
+  'Hub.refreshMCPServers': HubRefreshResponse
+  'Hub.refreshModels': HubRefreshResponse
   'LlmModel.cancelDownload': void
   'LlmModel.create': LlmModel
   'LlmModel.delete': void

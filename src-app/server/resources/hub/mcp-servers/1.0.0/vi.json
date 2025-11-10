@@ -1,0 +1,12 @@
+[
+  {
+    "id": "filesystem-server",
+    "display_name": "Máy Chủ Hệ Thống Tệp",
+    "description": "Máy chủ MCP cho các thao tác hệ thống tệp - đọc, ghi và quản lý tệp"
+  },
+  {
+    "id": "git-server",
+    "display_name": "Máy Chủ Git",
+    "description": "Máy chủ MCP cho các thao tác Git - commit, push, pull và quản lý nhánh"
+  }
+]

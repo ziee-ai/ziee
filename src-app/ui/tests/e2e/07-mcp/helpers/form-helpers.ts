@@ -18,58 +18,59 @@ export interface McpServerFormData {
   enabled?: boolean
 }
 
-export async function openAddServerDrawer(page: Page, isSystemServer = false) {
+export async function openAddServerDrawer(page: Page, _isSystemServer = false) {
   await page.click('button:has-text("Add Server")')
-  // Wait for specific drawer title, not generic .ant-drawer-open class
-  const drawerTitle = isSystemServer ? 'Add System Server' : 'Add MCP Server'
-  await page.waitForSelector(`.ant-drawer-title:has-text("${drawerTitle}")`, { timeout: 5000 })
+  // Wait for drawer to be fully open
+  await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible', timeout: 5000 })
+  // Wait for the first form field to be ready using semantic selector
+  await page.getByLabel('Display Name').waitFor({ state: 'visible', timeout: 5000 })
 }
 
 export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
   // Name field (only visible in create mode)
-  const nameField = page.locator('input#name')
+  const nameField = page.getByLabel('Name', { exact: true })
   if (await nameField.isVisible()) {
     await nameField.fill(data.name)
   }
 
   // Display name
-  await page.fill('input#display_name', data.displayName)
+  await page.getByLabel('Display Name').fill(data.displayName)
 
   // Description (optional)
   if (data.description) {
-    await page.fill('textarea#description', data.description)
+    await page.getByLabel('Description').fill(data.description)
   }
 
-  // Transport type
-  await page.click('.ant-select:has(input#transport_type)')
+  // Transport type - use force: true because Ant Design Select has overlay span
+  await page.getByLabel('Transport Type').click({ force: true })
   await page.click(`.ant-select-item-option:has-text("${data.transportType === 'stdio' ? 'Standard I/O' : data.transportType === 'http' ? 'HTTP' : 'Server-Sent Events'}")`)
 
   // Wait for transport-specific fields to appear and be ready
   if (data.transportType === 'stdio') {
     // Wait for command field to be visible
-    await page.waitForSelector('input#command', { state: 'visible', timeout: 5000 })
+    await page.getByLabel('Command').waitFor({ state: 'visible', timeout: 5000 })
 
     // Command
     if (data.command) {
-      await page.fill('input#command', data.command)
+      await page.getByLabel('Command').fill(data.command)
     }
 
     // Arguments (JSON array)
     if (data.args) {
-      await page.fill('textarea#args', JSON.stringify(data.args))
+      await page.getByLabel('Arguments').fill(JSON.stringify(data.args))
     }
 
     // Environment variables (JSON object)
     if (data.env) {
-      await page.fill('textarea#env', JSON.stringify(data.env, null, 2))
+      await page.getByLabel('Environment Variables').fill(JSON.stringify(data.env, null, 2))
     }
   } else {
     // Wait for URL field to be visible and ready
-    await page.waitForSelector('input#url', { state: 'visible', timeout: 5000 })
+    await page.getByLabel('URL').waitFor({ state: 'visible', timeout: 5000 })
 
     // URL for http/sse
     if (data.url) {
-      await page.fill('input#url', data.url)
+      await page.getByLabel('URL').fill(data.url)
     }
   }
 
@@ -107,7 +108,7 @@ export async function submitMcpServerForm(page: Page, action: 'create' | 'update
 }
 
 export async function clickEditServerButton(page: Page, serverName: string, isSystemServer = false) {
-  const serverCard = page.locator(`.ant-card:has-text("${serverName}")`)
+  const serverCard = page.locator(`.ant-card:has-text("${serverName}")`).first()
   await serverCard.locator('button:has-text("Edit")').click()
   // Wait for specific Edit drawer title, not generic .ant-drawer-open class
   const drawerTitle = isSystemServer ? 'Edit System Server' : 'Edit MCP Server'
@@ -120,7 +121,7 @@ export async function deleteServer(_page: Page, _serverName: string) {
 }
 
 export async function verifyServerExists(page: Page, serverName: string) {
-  await expect(page.locator(`.ant-card:has-text("${serverName}")`)).toBeVisible()
+  await expect(page.locator(`.ant-card:has-text("${serverName}")`).first()).toBeVisible()
 }
 
 export async function verifyServerNotExists(page: Page, serverName: string) {
@@ -128,7 +129,7 @@ export async function verifyServerNotExists(page: Page, serverName: string) {
 }
 
 export async function toggleServerEnabled(page: Page, serverName: string) {
-  const serverCard = page.locator(`.ant-card:has-text("${serverName}")`)
+  const serverCard = page.locator(`.ant-card:has-text("${serverName}")`).first()
   const switchButton = serverCard.locator('.ant-switch').first()
   await switchButton.click()
   // Wait for success message to appear
@@ -136,7 +137,7 @@ export async function toggleServerEnabled(page: Page, serverName: string) {
 }
 
 export async function verifyServerEnabled(page: Page, serverName: string, enabled: boolean) {
-  const serverCard = page.locator(`.ant-card:has-text("${serverName}")`)
+  const serverCard = page.locator(`.ant-card:has-text("${serverName}")`).first()
   const switchButton = serverCard.locator('.ant-switch').first()
   const isChecked = await switchButton.evaluate((el) =>
     el.classList.contains('ant-switch-checked')

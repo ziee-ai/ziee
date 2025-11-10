@@ -4,10 +4,12 @@ import type {
   useSystemMcpServersStore,
   useMcpServerDrawerStore,
 } from './stores'
+import type { useHubMcpServersStore } from './stores/hub-mcp-servers-store'
 import type { useSystemMcpServerGroupCardStore } from './components/system/McpServerGroupsAssignmentCard.store'
 import type { useGroupSystemMcpServersWidgetStore } from './widgets/GroupSystemMcpServersWidget.store'
 import type { useGroupSystemMcpServersAssignmentStore } from './components/system/GroupSystemMcpServersAssignmentDrawer.store'
 import type { useMcpServerGroupsAssignmentStore } from './components/system/McpServerGroupsAssignmentDrawer.store'
+import type { useMcpServerDetailsDrawerStore } from './components/hub/McpServerDetailsDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {
@@ -25,6 +27,10 @@ declare module '@/core/stores' {
     >
     McpServerGroupsAssignment: StoreProxy<
       ReturnType<typeof useMcpServerGroupsAssignmentStore.getState>
+    >
+    HubMcpServers: StoreProxy<ReturnType<typeof useHubMcpServersStore.getState>>
+    McpServerDetailsDrawer: StoreProxy<
+      ReturnType<typeof useMcpServerDetailsDrawerStore.getState>
     >
   }
 }

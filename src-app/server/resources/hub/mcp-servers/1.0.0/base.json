@@ -1,0 +1,353 @@
+[
+  {
+    "id": "filesystem-mcp",
+    "name": "filesystem",
+    "display_name": "Filesystem MCP Server",
+    "description": "Provides file system access capabilities including reading, writing, and searching files",
+    "category": "utilities",
+    "tags": [
+      "filesystem",
+      "files",
+      "io"
+    ],
+    "transport_type": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "/path/to/allowed/files"
+    ],
+    "environment_variables": {},
+    "url": null,
+    "headers": null,
+    "author": "Anthropic",
+    "homepage": "https://github.com/modelcontextprotocol/servers",
+    "repository_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+    "documentation_url": "https://github.com/modelcontextprotocol/servers/blob/main/src/filesystem/README.md",
+    "icon_url": null,
+    "version": "1.0.0",
+    "license": "MIT",
+    "popularity_score": 95.0,
+    "download_count": 15000,
+    "rating": 4.8,
+    "requires_desktop": true,
+    "platform_support": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "minimum_version": null,
+    "tool_count": 8,
+    "tool_categories": [
+      "file-operations",
+      "search"
+    ],
+    "example_tools": [
+      "read_file",
+      "write_file",
+      "search_files",
+      "list_directory"
+    ],
+    "use_cases": [
+      "Reading and writing files",
+      "Searching through file contents",
+      "Managing file system operations"
+    ],
+    "example_prompts": null
+  },
+  {
+    "id": "github-mcp",
+    "name": "github",
+    "display_name": "GitHub MCP Server",
+    "description": "Access GitHub repositories, issues, pull requests, and more through the GitHub API",
+    "category": "development",
+    "tags": [
+      "github",
+      "git",
+      "version-control",
+      "api"
+    ],
+    "transport_type": "http",
+    "command": null,
+    "args": null,
+    "environment_variables": {
+      "GITHUB_TOKEN": ""
+    },
+    "url": "https://api.github.com/mcp",
+    "headers": {
+      "Authorization": "Bearer ${GITHUB_TOKEN}",
+      "Accept": "application/vnd.github.v3+json"
+    },
+    "author": "Anthropic",
+    "homepage": "https://github.com/modelcontextprotocol/servers",
+    "repository_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+    "documentation_url": "https://github.com/modelcontextprotocol/servers/blob/main/src/github/README.md",
+    "icon_url": null,
+    "version": "1.0.0",
+    "license": "MIT",
+    "popularity_score": 92.0,
+    "download_count": 12500,
+    "rating": 4.7,
+    "requires_desktop": false,
+    "platform_support": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "minimum_version": null,
+    "tool_count": 15,
+    "tool_categories": [
+      "repository-management",
+      "issue-tracking",
+      "code-review"
+    ],
+    "example_tools": [
+      "create_issue",
+      "list_pull_requests",
+      "search_repositories",
+      "get_file_contents"
+    ],
+    "use_cases": [
+      "Creating and managing GitHub issues",
+      "Reviewing pull requests",
+      "Searching repositories and code",
+      "Managing repository settings"
+    ],
+    "example_prompts": null
+  },
+  {
+    "id": "brave-search-mcp",
+    "name": "brave-search",
+    "display_name": "Brave Search MCP Server",
+    "description": "Perform web searches using the Brave Search API for up-to-date information",
+    "category": "search",
+    "tags": [
+      "search",
+      "web",
+      "api",
+      "research"
+    ],
+    "transport_type": "http",
+    "command": null,
+    "args": null,
+    "environment_variables": {
+      "BRAVE_API_KEY": ""
+    },
+    "url": "https://api.search.brave.com/mcp",
+    "headers": {
+      "X-Subscription-Token": "${BRAVE_API_KEY}"
+    },
+    "author": "Brave Software",
+    "homepage": "https://brave.com/search/api/",
+    "repository_url": "https://github.com/brave/brave-search-mcp",
+    "documentation_url": "https://api.search.brave.com/docs",
+    "icon_url": null,
+    "version": "1.2.0",
+    "license": "Apache-2.0",
+    "popularity_score": 88.0,
+    "download_count": 9800,
+    "rating": 4.6,
+    "requires_desktop": false,
+    "platform_support": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "minimum_version": null,
+    "tool_count": 5,
+    "tool_categories": [
+      "web-search",
+      "research"
+    ],
+    "example_tools": [
+      "web_search",
+      "news_search",
+      "image_search",
+      "video_search"
+    ],
+    "use_cases": [
+      "Finding current information on the web",
+      "Researching topics with privacy-focused search",
+      "Gathering news and updates",
+      "Image and video discovery"
+    ],
+    "example_prompts": null
+  },
+  {
+    "id": "postgres-mcp",
+    "name": "postgres",
+    "display_name": "PostgreSQL MCP Server",
+    "description": "Connect to PostgreSQL databases and execute queries, manage schemas, and analyze data",
+    "category": "database",
+    "tags": [
+      "database",
+      "sql",
+      "postgresql",
+      "data"
+    ],
+    "transport_type": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-postgres"
+    ],
+    "environment_variables": {
+      "POSTGRES_CONNECTION_STRING": "postgresql://user:password@localhost:5432/dbname"
+    },
+    "url": null,
+    "headers": null,
+    "author": "Anthropic",
+    "homepage": "https://github.com/modelcontextprotocol/servers",
+    "repository_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres",
+    "documentation_url": "https://github.com/modelcontextprotocol/servers/blob/main/src/postgres/README.md",
+    "icon_url": null,
+    "version": "1.0.0",
+    "license": "MIT",
+    "popularity_score": 90.0,
+    "download_count": 11200,
+    "rating": 4.7,
+    "requires_desktop": true,
+    "platform_support": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "minimum_version": null,
+    "tool_count": 12,
+    "tool_categories": [
+      "database-operations",
+      "query-execution",
+      "schema-management"
+    ],
+    "example_tools": [
+      "execute_query",
+      "list_tables",
+      "describe_table",
+      "create_backup"
+    ],
+    "use_cases": [
+      "Querying database information",
+      "Analyzing data and generating reports",
+      "Managing database schemas",
+      "Data migration and backup operations"
+    ],
+    "example_prompts": null
+  },
+  {
+    "id": "slack-mcp",
+    "name": "slack",
+    "display_name": "Slack MCP Server",
+    "description": "Interact with Slack workspaces, send messages, manage channels, and more",
+    "category": "productivity",
+    "tags": [
+      "slack",
+      "communication",
+      "team",
+      "api"
+    ],
+    "transport_type": "http",
+    "command": null,
+    "args": null,
+    "environment_variables": {
+      "SLACK_BOT_TOKEN": "",
+      "SLACK_APP_TOKEN": ""
+    },
+    "url": "https://slack.com/api/mcp",
+    "headers": {
+      "Authorization": "Bearer ${SLACK_BOT_TOKEN}"
+    },
+    "author": "Slack Technologies",
+    "homepage": "https://api.slack.com",
+    "repository_url": "https://github.com/slackapi/slack-mcp-server",
+    "documentation_url": "https://api.slack.com/docs",
+    "icon_url": null,
+    "version": "2.1.0",
+    "license": "MIT",
+    "popularity_score": 85.0,
+    "download_count": 8500,
+    "rating": 4.5,
+    "requires_desktop": false,
+    "platform_support": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "minimum_version": null,
+    "tool_count": 18,
+    "tool_categories": [
+      "messaging",
+      "channel-management",
+      "user-management"
+    ],
+    "example_tools": [
+      "send_message",
+      "create_channel",
+      "list_users",
+      "upload_file"
+    ],
+    "use_cases": [
+      "Sending automated messages and notifications",
+      "Managing Slack channels and users",
+      "Integrating with team workflows",
+      "Searching message history"
+    ],
+    "example_prompts": null
+  },
+  {
+    "id": "memory-mcp",
+    "name": "memory",
+    "display_name": "Memory & Context MCP Server",
+    "description": "Store and retrieve conversation context, notes, and knowledge for continuity across sessions",
+    "category": "ai-tools",
+    "tags": [
+      "memory",
+      "context",
+      "notes",
+      "knowledge"
+    ],
+    "transport_type": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-memory"
+    ],
+    "environment_variables": {},
+    "url": null,
+    "headers": null,
+    "author": "Anthropic",
+    "homepage": "https://github.com/modelcontextprotocol/servers",
+    "repository_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+    "documentation_url": "https://github.com/modelcontextprotocol/servers/blob/main/src/memory/README.md",
+    "icon_url": null,
+    "version": "1.0.0",
+    "license": "MIT",
+    "popularity_score": 93.0,
+    "download_count": 13800,
+    "rating": 4.8,
+    "requires_desktop": true,
+    "platform_support": [
+      "windows",
+      "macos",
+      "linux"
+    ],
+    "minimum_version": null,
+    "tool_count": 6,
+    "tool_categories": [
+      "knowledge-management",
+      "context-storage"
+    ],
+    "example_tools": [
+      "store_memory",
+      "retrieve_memory",
+      "search_memories",
+      "delete_memory"
+    ],
+    "use_cases": [
+      "Maintaining conversation context across sessions",
+      "Storing important facts and preferences",
+      "Building a knowledge base from interactions",
+      "Remembering user preferences and history"
+    ],
+    "example_prompts": null
+  }
+]

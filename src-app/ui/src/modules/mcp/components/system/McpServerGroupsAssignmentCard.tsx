@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Button, Card, Empty, Space, Tag, Typography } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
@@ -12,12 +13,21 @@ interface McpServerGroupsAssignmentCardProps {
  * Card for managing which user groups have access to a system MCP server.
  * Displays assigned groups and opens a drawer for management.
  * Uses a dedicated store to prevent duplicate API calls and cache data.
+ *
+ * IMPORTANT: Card fetches data on mount AND listens to events for real-time updates.
+ * This ensures data is loaded even after page reloads.
  */
 export function McpServerGroupsAssignmentCard({ serverId }: McpServerGroupsAssignmentCardProps) {
   // Get data from store
   const serverData = Stores.SystemMcpServerGroupCard.serverGroups.get(serverId)
   const assignedGroups = serverData?.groups || []
   const loading = serverData?.loading || false
+
+  // CRITICAL: Load data on mount
+  // The store has 30-second caching, so this won't cause excessive API calls
+  useEffect(() => {
+    Stores.SystemMcpServerGroupCard.loadGroupsForServer(serverId)
+  }, [serverId])
 
   const handleManageGroups = () => {
     Stores.McpServerGroupsAssignment.openDrawer(serverId)

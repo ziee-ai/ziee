@@ -8,9 +8,10 @@ interface AssistantDrawerState {
   loading: boolean
   editingAssistant: Assistant | null
   isTemplate: boolean
+  isCloning: boolean
 
   // Actions
-  openAssistantDrawer: (assistant?: Assistant | null, isTemplate?: boolean) => void
+  openAssistantDrawer: (assistant?: Assistant | null, isTemplate?: boolean, isCloning?: boolean) => void
   closeAssistantDrawer: () => void
   setAssistantDrawerLoading: (loading: boolean) => void
 
@@ -27,6 +28,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
       loading: false,
       editingAssistant: null,
       isTemplate: false,
+      isCloning: false,
 
       __init__: {
         __store__: () => {
@@ -37,7 +39,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
             const { assistant } = event.data
             const state = get()
 
-            if (!state.isTemplate && state.editingAssistant?.id === assistant.id) {
+            if (!state.isTemplate && !state.isCloning && state.editingAssistant?.id === assistant.id) {
               set({ editingAssistant: assistant })
             }
           })
@@ -47,7 +49,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
             const { assistantId } = event.data
             const state = get()
 
-            if (!state.isTemplate && state.editingAssistant?.id === assistantId) {
+            if (!state.isTemplate && !state.isCloning && state.editingAssistant?.id === assistantId) {
               get().closeAssistantDrawer()
             }
           })
@@ -57,7 +59,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
             const { template } = event.data
             const state = get()
 
-            if (state.isTemplate && state.editingAssistant?.id === template.id) {
+            if (state.isTemplate && !state.isCloning && state.editingAssistant?.id === template.id) {
               set({ editingAssistant: template })
             }
           })
@@ -67,7 +69,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
             const { templateId } = event.data
             const state = get()
 
-            if (state.isTemplate && state.editingAssistant?.id === templateId) {
+            if (state.isTemplate && !state.isCloning && state.editingAssistant?.id === templateId) {
               get().closeAssistantDrawer()
             }
           })
@@ -75,11 +77,12 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
       },
 
       // Actions
-      openAssistantDrawer: (assistant?: Assistant | null, isTemplate = false) => {
+      openAssistantDrawer: (assistant?: Assistant | null, isTemplate = false, isCloning = false) => {
         set({
           open: true,
           editingAssistant: assistant || null,
           isTemplate,
+          isCloning,
         })
       },
 
@@ -89,6 +92,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
           loading: false,
           editingAssistant: null,
           isTemplate: false,
+          isCloning: false,
         })
       },
 

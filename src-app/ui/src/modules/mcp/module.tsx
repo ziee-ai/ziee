@@ -7,14 +7,17 @@ import {
   useSystemMcpServersStore,
   useMcpServerDrawerStore,
 } from './stores'
+import { useHubMcpServersStore } from './stores/hub-mcp-servers-store'
 import { useSystemMcpServerGroupCardStore } from './components/system/McpServerGroupsAssignmentCard.store'
 import { useGroupSystemMcpServersWidgetStore } from './widgets/GroupSystemMcpServersWidget.store'
 import { useGroupSystemMcpServersAssignmentStore } from './components/system/GroupSystemMcpServersAssignmentDrawer.store'
 import { useMcpServerGroupsAssignmentStore } from './components/system/McpServerGroupsAssignmentDrawer.store'
+import { useMcpServerDetailsDrawerStore } from './components/hub/McpServerDetailsDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import './types' // CRITICAL: Import to enable type declaration merging
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
+import '@/modules/hub/types/HubTabSlot' // Register hub slot types
 
 const McpServersSettings = lazyWithPreload(() =>
   import('./components/user/McpServersSettings').then(m => ({
@@ -43,6 +46,18 @@ const GroupSystemMcpServersAssignmentDrawer = lazyWithPreload(() =>
 const McpServerGroupsAssignmentDrawer = lazyWithPreload(() =>
   import('./components/system/McpServerGroupsAssignmentDrawer').then(m => ({
     default: m.McpServerGroupsAssignmentDrawer,
+  })),
+)
+
+const McpServersHubTab = lazyWithPreload(() =>
+  import('./components/hub/McpServersHubTab').then(m => ({
+    default: m.McpServersHubTab,
+  })),
+)
+
+const McpServerDetailsDrawer = lazyWithPreload(() =>
+  import('./components/hub/McpServerDetailsDrawer').then(m => ({
+    default: m.McpServerDetailsDrawer,
   })),
 )
 
@@ -96,12 +111,20 @@ export default createModule({
       name: 'McpServerGroupsAssignment',
       store: useMcpServerGroupsAssignmentStore,
     },
+    {
+      name: 'HubMcpServers',
+      store: useHubMcpServersStore,
+    },
+    {
+      name: 'McpServerDetailsDrawer',
+      store: useMcpServerDetailsDrawerStore,
+    },
   ],
   components: [
     {
       id: 'group-system-mcp-servers-assignment-drawer',
       component: GroupSystemMcpServersAssignmentDrawer,
-      shouldMount: () => 
+      shouldMount: () =>
         useDelayedFalse(() => Stores.GroupSystemMcpServersAssignment.isOpen),
       order: 100,
     },
@@ -111,6 +134,13 @@ export default createModule({
       shouldMount: () =>
         useDelayedFalse(() => Stores.McpServerGroupsAssignment.isOpen),
       order: 101,
+    },
+    {
+      id: 'mcp-server-details-drawer',
+      component: McpServerDetailsDrawer,
+      shouldMount: () =>
+        useDelayedFalse(() => Stores.McpServerDetailsDrawer.isOpen),
+      order: 102,
     },
   ],
   slots: {
@@ -136,6 +166,19 @@ export default createModule({
       {
         order: 20,
         component: GroupSystemMcpServersWidget,
+      },
+    ],
+    hubTabs: [
+      {
+        id: 'mcp-servers',
+        label: 'MCP Servers',
+        icon: <ApiOutlined />,
+        component: McpServersHubTab,
+        order: 30,
+        permission: 'hub::mcp_servers::read',
+        refresh: async () => {
+          await useHubMcpServersStore.getState().refreshFromGitHub()
+        },
       },
     ],
   },

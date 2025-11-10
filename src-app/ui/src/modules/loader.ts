@@ -91,14 +91,14 @@ export function loadModules(): void {
   const allModules: AppModule[] = []
 
   // Phase 2: Router module is now in modules/router, so it will be discovered automatically
-  for (const [path, moduleExports] of Object.entries(moduleFiles)) {
+  for (const [_path, moduleExports] of Object.entries(moduleFiles)) {
     const module = moduleExports.default
     if (module) {
       allModules.push(module)
     }
   }
 
-  for (const [path, moduleExports] of Object.entries(coreModuleFiles)) {
+  for (const [_path, moduleExports] of Object.entries(coreModuleFiles)) {
     const module = moduleExports.default
     if (module) {
       allModules.push(module)

@@ -1,0 +1,598 @@
+// ============================================================================
+// Hub Module Tests with Permission Checks and Locale Support
+// ============================================================================
+
+// ============================================================================
+// Hub Models Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_hub_models_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user with hub::models::read permission
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::models::read"]
+    ).await;
+
+    // Create user without permission
+    let no_perm_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "regular",
+        &[]
+    ).await;
+
+    // User with permission should succeed
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "User with permission should get models");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(body.is_array(), "Response should be an array of models");
+    assert!(body.as_array().unwrap().len() > 0, "Should have at least one model");
+
+    // User without permission should get 403
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", no_perm_user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "User without permission should be forbidden");
+}
+
+#[tokio::test]
+async fn test_get_hub_models_with_locale() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::models::read"]
+    ).await;
+
+    // Test English locale (default)
+    let url_en = server.api_url("/hub/models?lang=en");
+    let response_en = reqwest::Client::new()
+        .get(&url_en)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response_en.status(), 200);
+    let body_en: serde_json::Value = response_en.json().await.expect("Failed to parse JSON");
+
+    // Test Vietnamese locale
+    let url_vi = server.api_url("/hub/models?lang=vi");
+    let response_vi = reqwest::Client::new()
+        .get(&url_vi)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response_vi.status(), 200);
+    let body_vi: serde_json::Value = response_vi.json().await.expect("Failed to parse JSON");
+
+    // Both should have same number of models
+    assert_eq!(
+        body_en.as_array().unwrap().len(),
+        body_vi.as_array().unwrap().len(),
+        "Both locales should have same number of models"
+    );
+
+    // Verify that locale files are being loaded (check for translated content if available)
+    // Find a model that has translations in vi.json (e.g., llama-3-1-8b-instruct)
+    let models_en = body_en.as_array().unwrap();
+    let models_vi = body_vi.as_array().unwrap();
+
+    // Find llama-3-1-8b-instruct in both arrays
+    let llama_en = models_en.iter().find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"));
+    let llama_vi = models_vi.iter().find(|m| m.get("id").and_then(|v| v.as_str()) == Some("llama-3-1-8b-instruct"));
+
+    if let (Some(model_en), Some(model_vi)) = (llama_en, llama_vi) {
+        let desc_en = model_en.get("description").and_then(|v| v.as_str());
+        let desc_vi = model_vi.get("description").and_then(|v| v.as_str());
+
+        // If both have descriptions, they should be different (Vietnamese translation)
+        if desc_en.is_some() && desc_vi.is_some() {
+            assert_ne!(desc_en, desc_vi, "Descriptions should be translated for llama-3-1-8b-instruct");
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_get_hub_models_response_structure() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::models::read"]
+    ).await;
+
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(models.is_array(), "Response should be an array");
+
+    let first_model = models.as_array().unwrap().first().expect("Should have at least one model");
+
+    // Verify model structure
+    assert!(first_model.get("id").and_then(|v| v.as_str()).is_some(), "Model should have id");
+    assert!(first_model.get("name").and_then(|v| v.as_str()).is_some(), "Model should have name");
+    assert!(first_model.get("display_name").and_then(|v| v.as_str()).is_some(), "Model should have display_name");
+    assert!(first_model.get("repository_url").and_then(|v| v.as_str()).is_some(), "Model should have repository_url");
+    assert!(first_model.get("file_format").and_then(|v| v.as_str()).is_some(), "Model should have file_format");
+    assert!(first_model.get("size_gb").and_then(|v| v.as_f64()).is_some(), "Model should have size_gb");
+    assert!(first_model.get("tags").and_then(|v| v.as_array()).is_some(), "Model should have tags array");
+    assert!(first_model.get("popularity_score").and_then(|v| v.as_i64()).is_some(), "Model should have popularity_score");
+}
+
+#[tokio::test]
+async fn test_get_hub_models_version_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::models::read_version"]
+    ).await;
+
+    let no_perm_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "regular",
+        &[]
+    ).await;
+
+    // User with permission should succeed
+    let url = server.api_url("/hub/models/version");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "User with permission should get version");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(body.get("version").and_then(|v| v.as_str()).is_some(), "Should have version string");
+
+    // User without permission should get 403
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", no_perm_user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "User without permission should be forbidden");
+}
+
+#[tokio::test]
+async fn test_refresh_hub_models_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_admin",
+        &["hub::models::refresh"]
+    ).await;
+
+    let no_perm_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "regular",
+        &[]
+    ).await;
+
+    // User with permission should succeed (though may fail due to GitHub)
+    let url = server.api_url("/hub/models/refresh");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    // Could be 200 (success) or 500 (GitHub fetch failed), both acceptable
+    assert!(
+        response.status() == 200 || response.status() == 500,
+        "Should return 200 or 500 for refresh attempt"
+    );
+
+    // User without permission should get 403
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", no_perm_user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "User without permission should be forbidden");
+}
+
+// ============================================================================
+// Hub Assistants Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_hub_assistants_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::read"]
+    ).await;
+
+    let no_perm_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "regular",
+        &[]
+    ).await;
+
+    // User with permission should succeed
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "User with permission should get assistants");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(body.is_array(), "Response should be an array of assistants");
+    assert!(body.as_array().unwrap().len() > 0, "Should have at least one assistant");
+
+    // User without permission should get 403
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", no_perm_user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "User without permission should be forbidden");
+}
+
+#[tokio::test]
+async fn test_get_hub_assistants_response_structure() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::read"]
+    ).await;
+
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(assistants.is_array(), "Response should be an array");
+
+    let first_assistant = assistants.as_array().unwrap().first().expect("Should have at least one assistant");
+
+    // Verify assistant structure
+    assert!(first_assistant.get("id").and_then(|v| v.as_str()).is_some(), "Assistant should have id");
+    assert!(first_assistant.get("name").and_then(|v| v.as_str()).is_some(), "Assistant should have name");
+    assert!(first_assistant.get("display_name").and_then(|v| v.as_str()).is_some(), "Assistant should have display_name");
+    assert!(first_assistant.get("parameters").is_some(), "Assistant should have parameters");
+    assert!(first_assistant.get("tags").and_then(|v| v.as_array()).is_some(), "Assistant should have tags array");
+    assert!(first_assistant.get("popularity_score").and_then(|v| v.as_i64()).is_some(), "Assistant should have popularity_score");
+}
+
+#[tokio::test]
+async fn test_get_hub_assistants_with_locale() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::read"]
+    ).await;
+
+    // Test Chinese locale
+    let url_zh = server.api_url("/hub/assistants?lang=zh");
+    let response_zh = reqwest::Client::new()
+        .get(&url_zh)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response_zh.status(), 200);
+    let body_zh: serde_json::Value = response_zh.json().await.expect("Failed to parse JSON");
+    assert!(body_zh.is_array(), "Response should be an array");
+    assert!(body_zh.as_array().unwrap().len() > 0, "Should have assistants");
+}
+
+#[tokio::test]
+async fn test_get_hub_assistants_version_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::read_version"]
+    ).await;
+
+    let url = server.api_url("/hub/assistants/version");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "User with permission should get version");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(body.get("version").and_then(|v| v.as_str()).is_some(), "Should have version string");
+}
+
+#[tokio::test]
+async fn test_refresh_hub_assistants_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_admin",
+        &["hub::assistants::refresh"]
+    ).await;
+
+    let no_perm_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "regular",
+        &[]
+    ).await;
+
+    // User with permission should succeed (though may fail due to GitHub)
+    let url = server.api_url("/hub/assistants/refresh");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert!(
+        response.status() == 200 || response.status() == 500,
+        "Should return 200 or 500 for refresh attempt"
+    );
+
+    // User without permission should get 403
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", no_perm_user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "User without permission should be forbidden");
+}
+
+// ============================================================================
+// Hub MCP Servers Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_hub_mcp_servers_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::mcp_servers::read"]
+    ).await;
+
+    let no_perm_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "regular",
+        &[]
+    ).await;
+
+    // User with permission should succeed
+    let url = server.api_url("/hub/mcp-servers?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "User with permission should get MCP servers");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(body.is_array(), "Response should be an array of MCP servers");
+    assert!(body.as_array().unwrap().len() > 0, "Should have at least one MCP server");
+
+    // User without permission should get 403
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", no_perm_user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "User without permission should be forbidden");
+}
+
+#[tokio::test]
+async fn test_get_hub_mcp_servers_response_structure() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::mcp_servers::read"]
+    ).await;
+
+    let url = server.api_url("/hub/mcp-servers?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+
+    let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(servers.is_array(), "Response should be an array");
+
+    let first_server = servers.as_array().unwrap().first().expect("Should have at least one MCP server");
+
+    // Verify MCP server structure
+    assert!(first_server.get("id").and_then(|v| v.as_str()).is_some(), "Server should have id");
+    assert!(first_server.get("name").and_then(|v| v.as_str()).is_some(), "Server should have name");
+    assert!(first_server.get("display_name").and_then(|v| v.as_str()).is_some(), "Server should have display_name");
+    // command and args are optional (for HTTP transport servers)
+    assert!(first_server.get("tags").and_then(|v| v.as_array()).is_some(), "Server should have tags array");
+    assert!(first_server.get("popularity_score").and_then(|v| v.as_f64()).is_some(), "Server should have popularity_score");
+}
+
+#[tokio::test]
+async fn test_get_hub_mcp_servers_version_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::mcp_servers::read_version"]
+    ).await;
+
+    let url = server.api_url("/hub/mcp-servers/version");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "User with permission should get version");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(body.get("version").and_then(|v| v.as_str()).is_some(), "Should have version string");
+}
+
+#[tokio::test]
+async fn test_refresh_hub_mcp_servers_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_admin",
+        &["hub::mcp_servers::refresh"]
+    ).await;
+
+    let no_perm_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "regular",
+        &[]
+    ).await;
+
+    // User with permission should succeed (though may fail due to GitHub)
+    let url = server.api_url("/hub/mcp-servers/refresh");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert!(
+        response.status() == 200 || response.status() == 500,
+        "Should return 200 or 500 for refresh attempt"
+    );
+
+    // User without permission should get 403
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", no_perm_user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "User without permission should be forbidden");
+}
+
+// ============================================================================
+// Unauthorized Access Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_hub_endpoints_require_authentication() {
+    let server = crate::common::TestServer::start().await;
+
+    let endpoints = vec![
+        "/hub/models?lang=en",
+        "/hub/models/version",
+        "/hub/assistants?lang=en",
+        "/hub/assistants/version",
+        "/hub/mcp-servers?lang=en",
+        "/hub/mcp-servers/version",
+    ];
+
+    for endpoint in endpoints {
+        let url = server.api_url(endpoint);
+        let response = reqwest::Client::new()
+            .get(&url)
+            .send()
+            .await
+            .expect("Request failed");
+
+        assert_eq!(
+            response.status(),
+            401,
+            "Endpoint {} should require authentication",
+            endpoint
+        );
+    }
+
+    // Test POST endpoints
+    let post_endpoints = vec![
+        "/hub/models/refresh",
+        "/hub/assistants/refresh",
+        "/hub/mcp-servers/refresh",
+    ];
+
+    for endpoint in post_endpoints {
+        let url = server.api_url(endpoint);
+        let response = reqwest::Client::new()
+            .post(&url)
+            .send()
+            .await
+            .expect("Request failed");
+
+        assert_eq!(
+            response.status(),
+            401,
+            "Endpoint {} should require authentication",
+            endpoint
+        );
+    }
+}

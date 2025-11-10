@@ -140,9 +140,13 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
           })
         }
 
-        // Mark as destroyed
+        // Mark as destroyed and clear initialization state immediately
         refTracker.destroyed = true
         refTracker.destroyTimeoutId = null
+
+        // Clear initialization state so store can be re-initialized if accessed again
+        propInitCheck.clear()
+        storeInitialized = false
 
         if (import.meta.env.DEV) {
           console.log('✅ Store destroyed successfully')

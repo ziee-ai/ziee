@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Button, Card, Space, Tag, Typography, Spin } from 'antd'
 import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
@@ -9,6 +10,9 @@ const { Text } = Typography
  * Widget that displays LLM Providers assigned to a group.
  * Shows in GroupListItem below group info.
  * Uses a dedicated store to prevent duplicate API calls and cache data.
+ *
+ * IMPORTANT: Widget fetches data on mount AND listens to events for real-time updates.
+ * This ensures data is loaded even after page reloads.
  */
 export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   // Get data from store
@@ -16,6 +20,12 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
   const providers = groupData?.providers || []
   const loading = groupData?.loading || false
   const error = groupData?.error || null
+
+  // CRITICAL: Load data on mount
+  // The store has 30-second caching, so this won't cause excessive API calls
+  useEffect(() => {
+    Stores.LlmProviderGroupWidget.loadProvidersForGroup(group.id)
+  }, [group.id])
 
   const handleEdit = () => {
     Stores.GroupLlmProvidersAssignment.openDrawer(group)

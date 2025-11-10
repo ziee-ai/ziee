@@ -9,6 +9,15 @@ use uuid::Uuid;
 // Re-export ModelParameters from llm_model module
 pub use crate::modules::llm_model::models::ModelParameters;
 
+/// Source information for tracking where the assistant came from
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum AssistantSource {
+    Manual,
+    Template { id: String },
+    Hub { id: String },
+}
+
 /// Assistant entity
 /// Defines AI behavior with instructions, parameters, and settings
 /// Supports both user-created assistants and system-wide templates
@@ -30,6 +39,9 @@ pub struct Assistant {
     pub is_default: bool,
     /// Whether this assistant is enabled (false means disabled/soft-deleted)
     pub enabled: bool,
+    /// Source tracking (manual, template, hub)
+    #[serde(default)]
+    pub source: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -64,6 +76,9 @@ pub struct CreateAssistantRequest {
     /// Whether this assistant is enabled
     /// Defaults to true if not specified
     pub enabled: Option<bool>,
+
+    /// Source information (manual, template, hub)
+    pub source: Option<AssistantSource>,
 }
 
 /// Request structure for updating an existing assistant
@@ -123,6 +138,13 @@ impl CreateAssistantRequest {
             Some(params) => serde_json::to_value(params).unwrap_or_else(|_| serde_json::json!({})),
             None => serde_json::json!({}),
         }
+    }
+
+    /// Convert source to JSON value for database storage
+    pub fn source_to_json(&self) -> Option<serde_json::Value> {
+        self.source.as_ref().map(|source| {
+            serde_json::to_value(source).unwrap_or(serde_json::json!({"type": "manual"}))
+        })
     }
 }
 

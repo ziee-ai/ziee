@@ -1,0 +1,12 @@
+[
+  {
+    "id": "filesystem-server",
+    "display_name": "文件系统服务器",
+    "description": "用于文件系统操作的MCP服务器 - 读取、写入和管理文件"
+  },
+  {
+    "id": "git-server",
+    "display_name": "Git服务器",
+    "description": "用于Git操作的MCP服务器 - 提交、推送、拉取和分支管理"
+  }
+]

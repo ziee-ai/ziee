@@ -49,8 +49,8 @@ test.describe('MCP - User Servers', () => {
   test('should open Add Server drawer', async ({ page }) => {
     await openAddServerDrawer(page)
     await expect(page.locator('.ant-drawer-title:has-text("Add MCP Server")')).toBeVisible()
-    await expect(page.locator('input#name')).toBeVisible()
-    await expect(page.locator('input#display_name')).toBeVisible()
+    await expect(page.getByLabel('Name', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Display Name')).toBeVisible()
   })
 
   test('should create HTTP MCP server successfully', async ({ page }) => {
@@ -120,7 +120,7 @@ test.describe('MCP - User Servers', () => {
     await fillMcpServerForm(page, serverData)
 
     // Fill args with invalid JSON
-    await page.fill('textarea#args', 'not valid json')
+    await page.getByLabel('Arguments').fill('not valid json')
 
     await page.click('button:has-text("Create Server")')
 
@@ -141,7 +141,7 @@ test.describe('MCP - User Servers', () => {
     await fillMcpServerForm(page, serverData)
 
     // Fill env with JSON array instead of object
-    await page.fill('textarea#env', '["not", "an", "object"]')
+    await page.getByLabel('Environment Variables').fill('["not", "an", "object"]')
 
     await page.click('button:has-text("Create Server")')
 
@@ -170,11 +170,11 @@ test.describe('MCP - User Servers', () => {
 
     // Verify drawer opens with pre-filled data
     await expect(page.locator('.ant-drawer-title:has-text("Edit MCP Server")')).toBeVisible()
-    await expect(page.locator('input#display_name')).toHaveValue(serverData.displayName)
+    await expect(page.getByLabel('Display Name')).toHaveValue(serverData.displayName)
 
     // Update display name
     const newDisplayName = 'Updated Test Server'
-    await page.fill('input#display_name', newDisplayName)
+    await page.getByLabel('Display Name').fill(newDisplayName)
 
     await submitMcpServerForm(page, 'update')
 

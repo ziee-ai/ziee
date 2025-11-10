@@ -20,8 +20,8 @@ export async function waitForUserGroupsPageLoad(page: Page) {
   await page.waitForSelector('text=User Groups', { timeout: 30000 })
   // Wait for groups list to load - use 'load' not 'networkidle' to avoid SSE issues
   await page.waitForLoadState('load')
-  // Wait for content to render
-  await page.waitForTimeout(1000)
+  // Wait for content to render and API calls to complete
+  await page.waitForTimeout(3000)
 }
 
 export async function clickGroupItem(page: Page, groupName: string) {
@@ -66,9 +66,10 @@ export async function toggleProviderInDrawer(
   providerName: string,
   enable: boolean
 ) {
-  // Find the provider card in the drawer
+  // Find the provider card in the drawer by looking for the strong tag with the provider name
+  // The structure is: Card > div > (switch div + content div) > div > strong
   const providerCard = page.locator(
-    `.ant-drawer:visible .ant-drawer-body .ant-card:has-text("${providerName}")`
+    `.ant-drawer:visible .ant-drawer-body .ant-card:has(strong:has-text("${providerName}"))`
   )
   await providerCard.waitFor({ state: 'visible', timeout: 5000 })
 
@@ -97,11 +98,9 @@ export async function saveProviderAssignment(page: Page) {
     timeout: 5000,
   })
 
-  // CRITICAL: Wait for event propagation and widget cache update
-  // The save operation triggers an event that the widget store subscribes to.
-  // The widget store then fetches all providers and updates the cache.
-  // This is async and takes time, so we need to wait for it to complete.
-  await page.waitForTimeout(2000)
+  // Wait for event propagation and widget update
+  // The widget now loads data on mount AND listens to events for updates
+  await page.waitForTimeout(1000)
 }
 
 export async function cancelProviderAssignment(page: Page) {
@@ -237,14 +236,15 @@ export async function toggleGroupInDrawer(
   groupName: string,
   enable: boolean
 ) {
-  // Find the group card in the drawer
-  const groupCard = page.locator(
-    `.ant-drawer:visible .ant-drawer-body .ant-card:has-text("${groupName}")`
+  // Find the group item in the drawer by looking for the strong tag with the group name
+  // The structure is: drawer > body > generic container > switch + text container > strong
+  const groupContainer = page.locator(
+    `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
   )
-  await groupCard.waitFor({ state: 'visible', timeout: 5000 })
+  await groupContainer.waitFor({ state: 'visible', timeout: 5000 })
 
   // Get the switch state
-  const switchElement = groupCard.locator('.ant-switch')
+  const switchElement = groupContainer.locator('.ant-switch')
   const isChecked = (await switchElement.getAttribute('aria-checked')) === 'true'
 
   // Toggle if needed
@@ -267,6 +267,10 @@ export async function saveGroupAssignment(page: Page) {
     state: 'hidden',
     timeout: 5000,
   })
+
+  // Wait for event propagation and card update
+  // The card now loads data on mount AND listens to events for updates
+  await page.waitForTimeout(1000)
 }
 
 export async function cancelGroupAssignment(page: Page) {

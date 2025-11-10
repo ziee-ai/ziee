@@ -2,19 +2,22 @@ import { createModule } from '@/core'
 import { AppstoreOutlined } from '@ant-design/icons'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import './types/HubTabSlot' // CRITICAL: Import to register slot type
 
-const HubPage = lazyWithPreload(() => import('./HubPage'))
+const HubPage = lazyWithPreload(() =>
+  import('./HubPage').then(m => ({ default: m.HubPage }))
+)
 
 export default createModule({
   metadata: {
     name: 'hub',
     version: '1.0.0',
-    description: 'Hub module for extensions and integrations',
+    description: 'Hub for discovering and installing models, assistants, and MCP servers',
   },
   dependencies: ['router'],
   routes: [
     {
-      path: '/hub',
+      path: '/hub/:activeTab?',
       element: HubPage,
       requiresAuth: true,
       layout: AppLayoutDef,

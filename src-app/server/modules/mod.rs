@@ -4,6 +4,7 @@ pub mod assistant;
 pub mod auth;
 pub mod hardware;
 pub mod health;
+pub mod hub;
 pub mod llm_model;
 pub mod llm_provider;
 pub mod llm_repository;

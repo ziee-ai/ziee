@@ -458,7 +458,7 @@
             }
           },
           "400": {
-            "description": "Bad request - validation failed"
+            "description": "Bad request - validation failed or attempting to disable admin user"
           },
           "401": {
             "description": "Unauthorized"
@@ -562,6 +562,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Bad request - attempting to disable admin user"
           },
           "401": {
             "description": "Unauthorized"
@@ -4229,6 +4232,540 @@
           }
         ]
       }
+    },
+    "/api/hub/models": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Get hub models with locale support",
+        "description": "\n\n**Required Permission:** `hub::models::read`\n\nView hub models",
+        "operationId": "Hub.getModels",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "description": "Locale code (e.g., \"en\", \"es\", \"fr\")",
+            "schema": {
+              "description": "Locale code (e.g., \"en\", \"es\", \"fr\")",
+              "type": "string",
+              "default": "en"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub models",
+                        "name": "HubModelsRead",
+                        "value": "hub::models::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HubModel"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/models/version": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Get hub models version information",
+        "description": "\n\n**Required Permission:** `hub::models::read_version`\n\nView hub models version information",
+        "operationId": "Hub.getModelsVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub models version information",
+                        "name": "HubModelsVersionRead",
+                        "value": "hub::models::read_version"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::read_version",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Version response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubVersionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/models/refresh": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Refresh hub models from GitHub",
+        "description": "\n\n**Required Permission:** `hub::models::refresh`\n\nRefresh hub models from GitHub",
+        "operationId": "Hub.refreshModels",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Refresh hub models from GitHub",
+                        "name": "HubModelsRefresh",
+                        "value": "hub::models::refresh"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::refresh",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Refresh response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubRefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to refresh hub data"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/assistants": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Get hub assistants with locale support",
+        "description": "\n\n**Required Permission:** `hub::assistants::read`\n\nView hub assistants",
+        "operationId": "Hub.getAssistants",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "description": "Locale code (e.g., \"en\", \"es\", \"fr\")",
+            "schema": {
+              "description": "Locale code (e.g., \"en\", \"es\", \"fr\")",
+              "type": "string",
+              "default": "en"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub assistants",
+                        "name": "HubAssistantsRead",
+                        "value": "hub::assistants::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::assistants::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HubAssistant"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/assistants/version": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Get hub assistants version information",
+        "description": "\n\n**Required Permission:** `hub::assistants::read_version`\n\nView hub assistants version information",
+        "operationId": "Hub.getAssistantsVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub assistants version information",
+                        "name": "HubAssistantsVersionRead",
+                        "value": "hub::assistants::read_version"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::assistants::read_version",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Version response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubVersionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/assistants/refresh": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Refresh hub assistants from GitHub",
+        "description": "\n\n**Required Permission:** `hub::assistants::refresh`\n\nRefresh hub assistants from GitHub",
+        "operationId": "Hub.refreshAssistants",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Refresh hub assistants from GitHub",
+                        "name": "HubAssistantsRefresh",
+                        "value": "hub::assistants::refresh"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::assistants::refresh",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Refresh response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubRefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to refresh hub data"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/mcp-servers": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Get hub MCP servers with locale support",
+        "description": "\n\n**Required Permission:** `hub::mcp_servers::read`\n\nView hub MCP servers",
+        "operationId": "Hub.getMCPServers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lang",
+            "description": "Locale code (e.g., \"en\", \"es\", \"fr\")",
+            "schema": {
+              "description": "Locale code (e.g., \"en\", \"es\", \"fr\")",
+              "type": "string",
+              "default": "en"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub MCP servers",
+                        "name": "HubMCPServersRead",
+                        "value": "hub::mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HubMCPServer"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/mcp-servers/version": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Get hub MCP servers version information",
+        "description": "\n\n**Required Permission:** `hub::mcp_servers::read_version`\n\nView hub MCP servers version information",
+        "operationId": "Hub.getMCPServersVersion",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hub MCP servers version information",
+                        "name": "HubMCPServersVersionRead",
+                        "value": "hub::mcp_servers::read_version"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::mcp_servers::read_version",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Version response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubVersionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hub/mcp-servers/refresh": {
+      "post": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "Refresh hub MCP servers from GitHub",
+        "description": "\n\n**Required Permission:** `hub::mcp_servers::refresh`\n\nRefresh hub MCP servers from GitHub",
+        "operationId": "Hub.refreshMCPServers",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Refresh hub MCP servers from GitHub",
+                        "name": "HubMCPServersRefresh",
+                        "value": "hub::mcp_servers::refresh"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::mcp_servers::refresh",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Refresh response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubRefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to refresh hub data"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -5333,6 +5870,14 @@
           "gguf"
         ]
       },
+      "FileFormat2": {
+        "type": "string",
+        "enum": [
+          "gguf",
+          "safetensors",
+          "pytorch"
+        ]
+      },
       "GPUComputeCapabilities": {
         "type": "object",
         "properties": {
@@ -5631,6 +6176,482 @@
         },
         "required": [
           "status"
+        ]
+      },
+      "HubAssistant": {
+        "description": "Hub assistant entry",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities_required": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "example_prompts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "parameters": true,
+          "popularity_score": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "recommended_models": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "use_cases": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "parameters",
+          "tags",
+          "popularity_score"
+        ]
+      },
+      "HubMCPServer": {
+        "description": "Hub MCP server entry",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "documentation_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "download_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "environment_variables": true,
+          "example_prompts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "example_tools": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "headers": true,
+          "homepage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "license": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "minimum_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform_support": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "popularity_score": {
+            "type": "number",
+            "format": "double"
+          },
+          "rating": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "repository_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requires_desktop": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tool_categories": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "tool_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "transport_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "use_cases": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "tags",
+          "popularity_score"
+        ]
+      },
+      "HubModel": {
+        "description": "Hub model entry",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCapabilities2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context_length": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "file_format": {
+            "$ref": "#/components/schemas/FileFormat2"
+          },
+          "homepage_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "language_support": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "license": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "main_filename": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "popularity_score": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "public": {
+            "type": "boolean"
+          },
+          "quantization_options": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/HubModelQuantizationOption"
+            }
+          },
+          "recommended_engine": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recommended_engine_settings": true,
+          "recommended_parameters": true,
+          "repository_path": {
+            "type": "string"
+          },
+          "repository_url": {
+            "type": "string"
+          },
+          "size_gb": {
+            "type": "number",
+            "format": "double"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "repository_url",
+          "repository_path",
+          "main_filename",
+          "file_format",
+          "size_gb",
+          "tags",
+          "popularity_score",
+          "public"
+        ]
+      },
+      "HubModelQuantizationOption": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size_gb": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "required": [
+          "name",
+          "filename",
+          "size_gb"
+        ]
+      },
+      "HubQuery": {
+        "description": "Query parameters for hub endpoints",
+        "type": "object",
+        "properties": {
+          "lang": {
+            "description": "Locale code (e.g., \"en\", \"es\", \"fr\")",
+            "type": "string",
+            "default": "en"
+          }
+        }
+      },
+      "HubRefreshResponse": {
+        "description": "Refresh response",
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "updated",
+          "version"
+        ]
+      },
+      "HubVersionResponse": {
+        "description": "Version response",
+        "type": "object",
+        "properties": {
+          "last_updated": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
         ]
       },
       "JsonOption_for_DownloadProgressData": {
@@ -6724,6 +7745,41 @@
             ]
           }
         }
+      },
+      "ModelCapabilities2": {
+        "type": "object",
+        "properties": {
+          "audio": {
+            "type": "boolean"
+          },
+          "chat": {
+            "type": "boolean"
+          },
+          "code_interpreter": {
+            "type": "boolean"
+          },
+          "image_generator": {
+            "type": "boolean"
+          },
+          "text_embedding": {
+            "type": "boolean"
+          },
+          "tools": {
+            "type": "boolean"
+          },
+          "vision": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "vision",
+          "audio",
+          "tools",
+          "code_interpreter",
+          "chat",
+          "text_embedding",
+          "image_generator"
+        ]
       },
       "ModelEngineSettings": {
         "description": "Engine-specific settings for model configuration",

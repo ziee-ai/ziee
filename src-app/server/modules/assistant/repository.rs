@@ -19,6 +19,7 @@ fn row_to_assistant(
     is_template: bool,
     is_default: bool,
     enabled: bool,
+    source: Option<serde_json::Value>,
     created_at: time::OffsetDateTime,
     updated_at: time::OffsetDateTime,
 ) -> Assistant {
@@ -32,6 +33,7 @@ fn row_to_assistant(
         is_template,
         is_default,
         enabled,
+        source,
         created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0).unwrap(),
     }
@@ -50,6 +52,7 @@ pub async fn create_assistant(
     let is_template = request.is_template.unwrap_or(false);
     let enabled = request.enabled.unwrap_or(true);
     let parameters_json = request.parameters_to_json();
+    let source_json = request.source_to_json();
 
     // Start a transaction to handle default assistant logic
     let mut tx = pool.begin().await.map_err(AppError::database_error)?;
@@ -75,9 +78,9 @@ pub async fn create_assistant(
     }
 
     let row = sqlx::query!(
-        r#"INSERT INTO assistants (id, name, description, instructions, parameters, created_by, is_template, is_default, enabled)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at"#,
+        r#"INSERT INTO assistants (id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, source, created_at, updated_at"#,
         assistant_id,
         &request.name,
         request.description.as_deref(),
@@ -86,7 +89,8 @@ pub async fn create_assistant(
         user_id,
         is_template,
         is_default,
-        enabled
+        enabled,
+        source_json
     )
     .fetch_one(&mut *tx)
     .await
@@ -102,6 +106,7 @@ pub async fn create_assistant(
         row.is_template,
         row.is_default,
         row.enabled,
+        row.source,
         row.created_at,
         row.updated_at,
     );
@@ -117,7 +122,7 @@ pub async fn create_assistant(
 /// Does not check ownership - permission check should be done in handler
 pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>, AppError> {
     let row = sqlx::query!(
-        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, source, created_at, updated_at
         FROM assistants
         WHERE id = $1 AND enabled = true"#,
         id
@@ -136,6 +141,7 @@ pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>,
         r.is_template,
         r.is_default,
         r.enabled,
+        r.source,
         r.created_at,
         r.updated_at,
     )))
@@ -166,7 +172,7 @@ pub async fn list_assistants(
         let rows = sqlx::query!(
             r#"SELECT
                 id, name, description, instructions, parameters, created_by,
-                is_template, is_default, enabled, created_at, updated_at,
+                is_template, is_default, enabled, source, created_at, updated_at,
                 COUNT(*) OVER() as "total_count!"
              FROM assistants
              WHERE is_template = true
@@ -183,7 +189,7 @@ pub async fn list_assistants(
 
         let assistants = rows.into_iter().map(|r| row_to_assistant(
             r.id, r.name, r.description, r.instructions, r.parameters,
-            r.created_by, r.is_template, r.is_default, r.enabled,
+            r.created_by, r.is_template, r.is_default, r.enabled, r.source,
             r.created_at, r.updated_at
         )).collect();
 
@@ -195,7 +201,7 @@ pub async fn list_assistants(
             let rows = sqlx::query!(
                 r#"SELECT
                     id, name, description, instructions, parameters, created_by,
-                    is_template, is_default, enabled, created_at, updated_at,
+                    is_template, is_default, enabled, source, created_at, updated_at,
                     COUNT(*) OVER() as "total_count!"
                  FROM assistants
                  WHERE created_by = $1 AND is_template = false AND enabled = true
@@ -213,7 +219,7 @@ pub async fn list_assistants(
 
             let assistants = rows.into_iter().map(|r| row_to_assistant(
                 r.id, r.name, r.description, r.instructions, r.parameters,
-                r.created_by, r.is_template, r.is_default, r.enabled,
+                r.created_by, r.is_template, r.is_default, r.enabled, r.source,
                 r.created_at, r.updated_at
             )).collect();
 
@@ -244,7 +250,7 @@ pub async fn update_assistant(
 
     // Get current assistant to check its type for default logic
     let row = sqlx::query!(
-        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, source, created_at, updated_at
          FROM assistants WHERE id = $1"#,
         id
     )
@@ -255,7 +261,7 @@ pub async fn update_assistant(
 
     let current = row_to_assistant(
         row.id, row.name, row.description, row.instructions, row.parameters,
-        row.created_by, row.is_template, row.is_default, row.enabled,
+        row.created_by, row.is_template, row.is_default, row.enabled, row.source,
         row.created_at, row.updated_at
     );
 
@@ -352,7 +358,7 @@ pub async fn update_assistant(
 
     // Fetch the updated assistant
     let row = sqlx::query!(
-        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, source, created_at, updated_at
          FROM assistants WHERE id = $1"#,
         id
     )
@@ -362,7 +368,7 @@ pub async fn update_assistant(
 
     let assistant = row_to_assistant(
         row.id, row.name, row.description, row.instructions, row.parameters,
-        row.created_by, row.is_template, row.is_default, row.enabled,
+        row.created_by, row.is_template, row.is_default, row.enabled, row.source,
         row.created_at, row.updated_at
     );
 
@@ -394,7 +400,7 @@ pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Resu
     if let Some(uid) = user_id {
         // Try to get user's default assistant first
         let user_default_row = sqlx::query!(
-            r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+            r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, source, created_at, updated_at
              FROM assistants
              WHERE created_by = $1 AND is_default = true AND enabled = true
              ORDER BY created_at DESC
@@ -408,14 +414,14 @@ pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Resu
         if let Some(r) = user_default_row {
             return Ok(Some(row_to_assistant(
                 r.id, r.name, r.description, r.instructions, r.parameters,
-                r.created_by, r.is_template, r.is_default, r.enabled,
+                r.created_by, r.is_template, r.is_default, r.enabled, r.source,
                 r.created_at, r.updated_at
             )));
         }
 
         // Fall back to default template if no user default
         let template_default_row = sqlx::query!(
-            r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+            r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, source, created_at, updated_at
              FROM assistants
              WHERE is_template = true AND is_default = true AND enabled = true
              ORDER BY created_at DESC
@@ -427,13 +433,13 @@ pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Resu
 
         Ok(template_default_row.map(|r| row_to_assistant(
             r.id, r.name, r.description, r.instructions, r.parameters,
-            r.created_by, r.is_template, r.is_default, r.enabled,
+            r.created_by, r.is_template, r.is_default, r.enabled, r.source,
             r.created_at, r.updated_at
         )))
     } else {
         // No user context - return default template
         let template_default_row = sqlx::query!(
-            r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+            r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, source, created_at, updated_at
              FROM assistants
              WHERE is_template = true AND is_default = true AND enabled = true
              ORDER BY created_at DESC
@@ -445,7 +451,7 @@ pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Resu
 
         Ok(template_default_row.map(|r| row_to_assistant(
             r.id, r.name, r.description, r.instructions, r.parameters,
-            r.created_by, r.is_template, r.is_default, r.enabled,
+            r.created_by, r.is_template, r.is_default, r.enabled, r.source,
             r.created_at, r.updated_at
         )))
     }
