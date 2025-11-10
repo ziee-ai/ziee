@@ -3,10 +3,12 @@ mod permissions;
 mod repository;
 mod handlers;
 mod routes;
+pub mod events;
 
 pub use models::*;
 pub use permissions::*;
 pub use repository::*;
+pub use events::McpServerEvent;
 
 use crate::module_api::{AppModule, ModuleContext};
 use aide::axum::ApiRouter;

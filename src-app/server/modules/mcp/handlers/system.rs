@@ -3,19 +3,22 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query, State, Extension},
     http::StatusCode,
     Json,
 };
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
+    core::EventBus,
     modules::permissions::{with_permission, RequirePermissions},
 };
 
 use super::super::{
+    events::McpServerEvent,
     models::{CreateMcpServerRequest, McpServer, McpServerListResponse, UpdateMcpServerRequest},
     permissions::*,
     repository,
@@ -133,10 +136,14 @@ pub fn update_system_server_docs(op: TransformOperation) -> TransformOperation {
 /// Delete system MCP server
 pub async fn delete_system_server(
     _auth: RequirePermissions<(McpServersAdminDelete,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
     State(pool): State<PgPool>,
 ) -> ApiResult<StatusCode> {
     repository::delete_system_mcp_server(&pool, id).await?;
+
+    // Emit deletion event for other modules to react
+    event_bus.emit_async(McpServerEvent::system_server_deleted(id));
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

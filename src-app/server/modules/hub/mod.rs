@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::core::EventHandler;
 use crate::module_api::AppModule;
 use crate::ModuleContext;
 
@@ -16,6 +17,7 @@ pub mod routes;
 pub mod permissions;
 pub mod hub_manager;
 pub mod repository;
+pub mod event_handlers;
 
 // Re-export models
 pub use models::{HubModel, HubAssistant, HubMCPServer};
@@ -70,6 +72,12 @@ impl AppModule for HubModule {
             tracing::error!("HubModule: Pool not initialized during route registration");
             router
         }
+    }
+
+    fn register_event_handlers(&self) -> Vec<Arc<dyn EventHandler>> {
+        vec![
+            event_handlers::CleanupHubEntitiesHandler::new(),
+        ]
     }
 }
 

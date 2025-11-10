@@ -1028,3 +1028,381 @@ async fn test_multiple_creations_from_same_hub_item() {
         );
     }
 }
+
+// ============================================================================
+// Event Bus Integration Tests - Hub Entity Cleanup on Deletion
+// ============================================================================
+
+#[tokio::test]
+async fn test_hub_entity_cleaned_up_when_assistant_deleted() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user with necessary permissions
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::create", "hub::assistants::read", "assistants::delete"]
+    ).await;
+
+    // Get hub assistants
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let hub_id = assistants.as_array().unwrap()[0]
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Create assistant from hub
+    let url = server.api_url("/hub/assistants/create");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "is_default": false,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201);
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant_id = body.get("assistant")
+        .and_then(|a| a.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Verify hub entity tracking exists
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = assistant.get("created_ids")
+        .and_then(|v| v.as_array())
+        .unwrap();
+
+    assert_eq!(created_ids.len(), 1, "Should have hub tracking before deletion");
+    assert_eq!(created_ids[0].as_str().unwrap(), assistant_id);
+
+    // Delete the assistant
+    let url = server.api_url(&format!("/assistants/{}", assistant_id));
+    let response = reqwest::Client::new()
+        .delete(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 204, "Should delete assistant successfully");
+
+    // Give event handler time to process deletion event
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Verify hub entity tracking is removed
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = assistant.get("created_ids").and_then(|v| v.as_array());
+
+    assert!(
+        created_ids.is_none() || created_ids.unwrap().is_empty(),
+        "Hub tracking should be cleaned up after assistant deletion"
+    );
+}
+
+#[tokio::test]
+async fn test_hub_entity_cleaned_up_when_user_mcp_server_deleted() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user with necessary permissions
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::mcp_servers::create", "hub::mcp_servers::read", "mcp_servers::delete"]
+    ).await;
+
+    // Get hub MCP servers
+    let url = server.api_url("/hub/mcp-servers?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let hub_id = servers.as_array().unwrap()[0]
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Create MCP server from hub
+    let url = server.api_url("/hub/mcp-servers/create");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201);
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let server_id = body.get("server")
+        .and_then(|s| s.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Verify hub entity tracking exists
+    let url = server.api_url("/hub/mcp-servers?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let mcp_server = servers.as_array().unwrap()
+        .iter()
+        .find(|s| s.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = mcp_server.get("created_ids")
+        .and_then(|v| v.as_array())
+        .unwrap();
+
+    assert_eq!(created_ids.len(), 1, "Should have hub tracking before deletion");
+    assert_eq!(created_ids[0].as_str().unwrap(), server_id);
+
+    // Delete the MCP server
+    let url = server.api_url(&format!("/mcp/servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .delete(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 204, "Should delete MCP server successfully");
+
+    // Give event handler time to process deletion event
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Verify hub entity tracking is removed
+    let url = server.api_url("/hub/mcp-servers?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let mcp_server = servers.as_array().unwrap()
+        .iter()
+        .find(|s| s.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = mcp_server.get("created_ids").and_then(|v| v.as_array());
+
+    assert!(
+        created_ids.is_none() || created_ids.unwrap().is_empty(),
+        "Hub tracking should be cleaned up after MCP server deletion"
+    );
+}
+
+#[tokio::test]
+async fn test_multiple_hub_entities_cleanup_when_multiple_assistants_deleted() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &["hub::assistants::create", "hub::assistants::read", "assistants::delete"]
+    ).await;
+
+    // Get hub assistants
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let hub_id = assistants.as_array().unwrap()[0]
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Create 3 assistants from the same hub item
+    let mut assistant_ids = Vec::new();
+    for i in 0..3 {
+        let url = server.api_url("/hub/assistants/create");
+        let request_body = serde_json::json!({
+            "hub_id": hub_id,
+            "name": format!("Test Assistant {}", i),
+            "is_default": false,
+            "enabled": true
+        });
+
+        let response = reqwest::Client::new()
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", user.token))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .expect("Request failed");
+
+        assert_eq!(response.status(), 201);
+        let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+        let assistant_id = body.get("assistant")
+            .and_then(|a| a.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .to_string();
+
+        assistant_ids.push(assistant_id);
+    }
+
+    // Verify all 3 are tracked
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = assistant.get("created_ids")
+        .and_then(|v| v.as_array())
+        .unwrap();
+
+    assert_eq!(created_ids.len(), 3, "Should track all 3 assistants");
+
+    // Delete the first assistant
+    let url = server.api_url(&format!("/assistants/{}", assistant_ids[0]));
+    let response = reqwest::Client::new()
+        .delete(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 204);
+
+    // Give event handler time to process
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Verify only 2 are tracked now
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = assistant.get("created_ids")
+        .and_then(|v| v.as_array())
+        .unwrap();
+
+    assert_eq!(created_ids.len(), 2, "Should have 2 assistants after deleting 1");
+    assert!(!created_ids.iter().any(|id| id.as_str() == Some(&assistant_ids[0])),
+        "Deleted assistant should not be in tracking");
+    assert!(created_ids.iter().any(|id| id.as_str() == Some(&assistant_ids[1])),
+        "Second assistant should still be tracked");
+    assert!(created_ids.iter().any(|id| id.as_str() == Some(&assistant_ids[2])),
+        "Third assistant should still be tracked");
+
+    // Delete remaining two
+    for i in 1..3 {
+        let url = server.api_url(&format!("/assistants/{}", assistant_ids[i]));
+        let response = reqwest::Client::new()
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .expect("Request failed");
+
+        assert_eq!(response.status(), 204);
+    }
+
+    // Give event handler time to process
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Verify all tracking is cleaned up
+    let url = server.api_url("/hub/assistants?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let assistant = assistants.as_array().unwrap()
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .unwrap();
+
+    let created_ids = assistant.get("created_ids").and_then(|v| v.as_array());
+
+    assert!(
+        created_ids.is_none() || created_ids.unwrap().is_empty(),
+        "All hub tracking should be cleaned up after deleting all assistants"
+    );
+}

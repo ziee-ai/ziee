@@ -23,6 +23,9 @@ pub enum AppEvent {
     /// Assistant module events (assistant lifecycle)
     Assistant(crate::modules::assistant::events::AssistantEvent),
 
+    /// MCP Server module events (server lifecycle)
+    McpServer(crate::modules::mcp::events::McpServerEvent),
+
     // Add new module events here as the application grows
     // Example:
     // LlmProvider(crate::modules::llm_provider::events::LlmProviderEvent),

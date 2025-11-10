@@ -2,21 +2,24 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query, State, Extension},
     http::StatusCode,
     Json,
 };
 use serde::Deserialize;
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
+    events::AssistantEvent,
     models::{Assistant, AssistantListResponse, CreateAssistantRequest, UpdateAssistantRequest},
     permissions::*,
     repository,
 };
 use crate::{
     common::{AppError, ApiResult},
+    core::EventBus,
     modules::permissions::{
         extractors::RequirePermissions,
         types::PermissionCheck,
@@ -183,6 +186,7 @@ pub fn update_user_assistant_docs(op: TransformOperation) -> TransformOperation 
 /// Delete user assistant
 pub async fn delete_user_assistant(
     auth: RequirePermissions<(AssistantsDelete,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<()> {
@@ -203,6 +207,9 @@ pub async fn delete_user_assistant(
     }
 
     repository::delete_assistant(&pool, id).await?;
+
+    // Emit deletion event for other modules to react
+    event_bus.emit_async(AssistantEvent::deleted(id, Some(auth.user.id)));
 
     Ok((StatusCode::NO_CONTENT, ()))
 }
