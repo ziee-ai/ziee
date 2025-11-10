@@ -2,17 +2,19 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type { HubAssistant } from '@/api-client/types'
+import type { HubAssistant, Assistant, CreateAssistantFromHubRequest } from '@/api-client/types'
 
 interface HubAssistantsState {
   assistants: HubAssistant[]
   version: string | null
   loading: boolean
+  creating: boolean
   error: string | null
 
   // Actions
   loadAssistants: () => Promise<void>
   refreshFromGitHub: () => Promise<void>
+  createFromHub: (request: CreateAssistantFromHubRequest) => Promise<Assistant>
 
   // Lazy initialization
   __init__: {
@@ -27,6 +29,7 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
         assistants: [],
         version: null,
         loading: false,
+        creating: false,
         error: null,
 
         loadAssistants: async () => {
@@ -69,6 +72,33 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
             set({
               error: error.message || 'Failed to refresh hub assistants',
               loading: false,
+            })
+            throw error
+          }
+        },
+
+        createFromHub: async (request: CreateAssistantFromHubRequest): Promise<Assistant> => {
+          set({ creating: true, error: null })
+          try {
+            const response = await ApiClient.Hub.createAssistantFromHub(request)
+
+            // Update the hub assistant's created_ids directly from response
+            set(state => {
+              const assistant = state.assistants.find(a => a.id === request.hub_id)
+              if (assistant) {
+                if (!assistant.created_ids) {
+                  assistant.created_ids = []
+                }
+                assistant.created_ids.push(response.hub_tracking.entity_id)
+              }
+              state.creating = false
+            })
+
+            return response.assistant
+          } catch (error: any) {
+            set({
+              error: error.message || 'Failed to create assistant from hub',
+              creating: false,
             })
             throw error
           }

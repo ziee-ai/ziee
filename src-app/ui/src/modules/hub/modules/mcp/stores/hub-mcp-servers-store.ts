@@ -2,17 +2,19 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type { HubMCPServer } from '@/api-client/types'
+import type { HubMCPServer, McpServer, CreateMcpServerFromHubRequest } from '@/api-client/types'
 
 interface HubMcpServersState {
   servers: HubMCPServer[]
   version: string | null
   loading: boolean
+  creating: boolean
   error: string | null
 
   // Actions
   loadServers: () => Promise<void>
   refreshFromGitHub: () => Promise<void>
+  createFromHub: (request: CreateMcpServerFromHubRequest) => Promise<McpServer>
 
   // Lazy initialization
   __init__: {
@@ -27,6 +29,7 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
         servers: [],
         version: null,
         loading: false,
+        creating: false,
         error: null,
 
         loadServers: async () => {
@@ -69,6 +72,33 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
             set({
               error: error.message || 'Failed to refresh hub MCP servers',
               loading: false,
+            })
+            throw error
+          }
+        },
+
+        createFromHub: async (request: CreateMcpServerFromHubRequest): Promise<McpServer> => {
+          set({ creating: true, error: null })
+          try {
+            const response = await ApiClient.Hub.createMcpServerFromHub(request)
+
+            // Update the hub MCP server's created_ids directly from response
+            set(state => {
+              const server = state.servers.find(s => s.id === request.hub_id)
+              if (server) {
+                if (!server.created_ids) {
+                  server.created_ids = []
+                }
+                server.created_ids.push(response.hub_tracking.entity_id)
+              }
+              state.creating = false
+            })
+
+            return response.server
+          } catch (error: any) {
+            set({
+              error: error.message || 'Failed to create MCP server from hub',
+              creating: false,
             })
             throw error
           }

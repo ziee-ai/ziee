@@ -6,7 +6,7 @@ import {
   GithubOutlined,
   EyeOutlined,
 } from '@ant-design/icons'
-import type { HubMCPServer, CreateMcpServerRequest } from '@/api-client/types'
+import type { HubMCPServer } from '@/api-client/types'
 import { useState } from 'react'
 import { McpServerDetailsDrawer } from './McpServerDetailsDrawer'
 import { Stores } from '@/core/stores'
@@ -24,38 +24,21 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [installing, setInstalling] = useState(false)
 
-  const { systemServers } = Stores.SystemMcpServer
-
   // Check if server was already created from this hub server
-  const existingServer = systemServers.find(
-    (s: any) => s.source?.type === 'hub' && s.source?.id === server.id
-  )
+  const isAlreadyInstalled = server.created_ids && server.created_ids.length > 0
 
   const handleInstall = async () => {
     try {
       setInstalling(true)
 
-      // Determine transport type and required fields
-      const transport_type = server.transport_type || 'stdio'
-
-      if (transport_type === 'stdio' && !server.command) {
-        message.error('Cannot install: stdio server missing command')
-        setInstalling(false)
-        return
-      }
-
-      const request: CreateMcpServerRequest = {
+      // Create MCP server from hub via store action
+      await Stores.HubMcpServers.createFromHub({
+        hub_id: server.id,
         name: server.name,
         display_name: server.display_name,
-        description: server.description || undefined,
-        transport_type: transport_type as any,
-        command: server.command || '',
-        args: server.args || [],
-        environment_variables: server.environment_variables || undefined,
         enabled: true,
-      }
+      })
 
-      await Stores.SystemMcpServer.createSystemServer(request)
       message.success(`${server.display_name} installed successfully!`)
 
       // Navigate to /settings/mcp-admin after creation
@@ -105,7 +88,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     </Tag>
                   )}
                   {installing && <Tag color="blue">Installing...</Tag>}
-                  {existingServer && <Tag color="green">Installed</Tag>}
+                  {isAlreadyInstalled && <Tag color="green">Installed</Tag>}
                 </Flex>
               </div>
               <div className="flex gap-1 items-center justify-end">
@@ -128,11 +111,11 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   />
                 )}
                 <Button
-                  type={existingServer ? undefined : 'primary'}
-                  icon={existingServer ? <EyeOutlined /> : <DownloadOutlined />}
+                  type={isAlreadyInstalled ? undefined : 'primary'}
+                  icon={isAlreadyInstalled ? <EyeOutlined /> : <DownloadOutlined />}
                   onClick={e => {
                     e.stopPropagation()
-                    if (existingServer) {
+                    if (isAlreadyInstalled) {
                       navigate('/settings/mcp-admin')
                     } else {
                       handleInstall()
@@ -141,7 +124,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   disabled={installing}
                   loading={installing}
                 >
-                  {existingServer ? 'View Server' : 'Install'}
+                  {isAlreadyInstalled ? 'View Server' : 'Install'}
                 </Button>
               </div>
             </div>

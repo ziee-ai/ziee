@@ -24,19 +24,20 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   const handleUseAssistant = async () => {
     setIsCreating(true)
     try {
-      // Create a user assistant based on the hub assistant
-      await Stores.UserAssistants.createUserAssistant({
+      // Create a user assistant from the hub assistant via store action
+      await Stores.HubAssistants.createFromHub({
+        hub_id: assistant.id,
         name: assistant.name,
-        description: assistant.description || '',
-        instructions: assistant.instructions || '',
-        parameters: assistant.parameters || {},
+        description: assistant.description,
+        instructions: assistant.instructions,
+        parameters: assistant.parameters,
         is_default: false,
         enabled: true,
       })
 
       message.success(`Assistant "${assistant.display_name}" created successfully!`)
 
-      // Navigate to /assistants after creation
+      // Navigate to /assistants to see the created assistant
       navigate('/assistants')
     } catch (error: any) {
       console.error('Failed to create assistant:', error)

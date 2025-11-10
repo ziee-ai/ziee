@@ -47,14 +47,14 @@ export function McpServersHubTab() {
       )
     }
 
-    // Sort
-    filtered.sort((a, b) => {
+    // Sort (create a copy to avoid mutating read-only array from store)
+    const sorted = [...filtered].sort((a, b) => {
       if (sortBy === 'popular') return (b.popularity_score || 0) - (a.popularity_score || 0)
       if (sortBy === 'name') return a.name.localeCompare(b.name)
       return 0
     })
 
-    return filtered
+    return sorted
   }, [servers, searchTerm, selectedTags, sortBy])
 
   // Show loading state
