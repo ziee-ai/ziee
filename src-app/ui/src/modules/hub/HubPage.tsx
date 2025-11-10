@@ -8,6 +8,7 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { message } from 'antd'
+import { DivScrollY } from '@/components/common/DivScrollY'
 
 export function HubPage() {
   const { activeTab: urlActiveTab } = useParams()
@@ -141,7 +142,7 @@ export function HubPage() {
       </HeaderBarContainer>
 
       <div className="flex flex-col w-full h-full overflow-hidden">
-        <div className="flex flex-1 w-full flex-col overflow-y-auto">
+        <DivScrollY className="flex flex-1 w-full flex-col overflow-y-auto">
           <div className="max-w-4xl w-full flex flex-col self-center">
             <div className="flex-1 h-full w-full overflow-y-auto">
               <div className="flex flex-col py-3 w-full">
@@ -154,7 +155,7 @@ export function HubPage() {
               </div>
             </div>
           </div>
-        </div>
+        </DivScrollY>
       </div>
     </Flex>
   )

@@ -2,46 +2,55 @@
   {
     "id": "llama-3-8b-instruct",
     "display_name": "Llama 3 8B Instruct",
-    "description": "Meta的Llama 3 8B指令调优模型"
+    "description": "Meta的Llama 3 8B指令调优模型",
+    "auth_required": true
   },
   {
     "id": "llama-3-1-8b-instruct",
     "display_name": "Llama 3.1 8B Instruct",
-    "description": "Meta最新的Llama 3.1 8B指令调优模型，具有改进的功能"
+    "description": "Meta最新的Llama 3.1 8B指令调优模型，具有改进的功能",
+    "auth_required": true
   },
   {
     "id": "phi-3-mini-4k-instruct",
     "display_name": "Phi-3 Mini 4K Instruct",
-    "description": "Microsoft的小型但功能强大的指令调优模型"
+    "description": "Microsoft的小型但功能强大的指令调优模型",
+    "auth_required": true
   },
   {
     "id": "llava-v1.6-vicuna-7b",
     "display_name": "LLaVA v1.6 Vicuna 7B",
-    "description": "基于Vicuna 7B的大型语言和视觉助手"
+    "description": "基于Vicuna 7B的大型语言和视觉助手",
+    "auth_required": true
   },
   {
     "id": "qwen2.5-vl-3b-instruct",
     "display_name": "Qwen2.5-VL 3B Instruct",
-    "description": "Qwen2.5-VL 3B指令调优的视觉语言模型"
+    "description": "Qwen2.5-VL 3B指令调优的视觉语言模型",
+    "auth_required": true
   },
   {
     "id": "tinyllama-1.1b-chat-gguf",
     "display_name": "TinyLlama 1.1B Chat",
-    "description": "GGUF格式的小型高效聊天模型 - 非常适合测试"
+    "description": "GGUF格式的小型高效聊天模型 - 非常适合测试",
+    "auth_required": true
   },
   {
     "id": "llama-3-2-3b-instruct-gguf",
     "display_name": "Llama 3.2 3B Instruct",
-    "description": "Meta的Llama 3.2 3B指令调优模型的GGUF格式，针对效率进行了优化"
+    "description": "Meta的Llama 3.2 3B指令调优模型的GGUF格式，针对效率进行了优化",
+    "auth_required": true
   },
   {
     "id": "bge-m3",
     "display_name": "BGE-M3 Multilingual Embedding",
-    "description": "BAAI的BGE-M3多语言嵌入模型，支持100多种语言，具有密集、稀疏和多向量检索功能"
+    "description": "BAAI的BGE-M3多语言嵌入模型，支持100多种语言，具有密集、稀疏和多向量检索功能",
+    "auth_required": true
   },
   {
     "id": "bge-m3-gguf",
     "display_name": "BGE-M3 GGUF Multilingual",
-    "description": "BAAI的BGE-M3多语言嵌入模型的GGUF格式，针对高效推理进行了优化"
+    "description": "BAAI的BGE-M3多语言嵌入模型的GGUF格式，针对高效推理进行了优化",
+    "auth_required": true
   }
 ]

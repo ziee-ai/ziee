@@ -31,6 +31,10 @@ pub struct HubModel {
     pub recommended_engine: Option<String>,
     pub recommended_engine_settings: Option<serde_json::Value>,
 
+    /// Whether authentication is required to download/use this model
+    #[serde(default)]
+    pub auth_required: bool,
+
     /// Array of model IDs downloaded by ANYONE from this hub model (system-wide)
     #[serde(default)]
     pub created_ids: Vec<Uuid>,

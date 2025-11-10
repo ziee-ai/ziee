@@ -51,7 +51,8 @@
       "chat_template": true,
       "tokenizer_json": null,
       "arch": "llama"
-    }
+    },
+    "auth_required": true
   },
   {
     "id": "llama-3-1-8b-instruct",
@@ -109,7 +110,8 @@
       "chat_template": true,
       "tokenizer_json": null,
       "arch": "llama"
-    }
+    },
+    "auth_required": true
   },
   {
     "id": "phi-3-mini-4k-instruct",
@@ -159,7 +161,8 @@
       "chat_template": true,
       "tokenizer_json": null,
       "arch": "phi"
-    }
+    },
+    "auth_required": true
   },
   {
     "id": "llava-v1.6-vicuna-7b",
@@ -208,7 +211,8 @@
       "chat_template": true,
       "tokenizer_json": null,
       "arch": "llava"
-    }
+    },
+    "auth_required": true
   },
   {
     "id": "qwen2.5-vl-3b-instruct",
@@ -269,7 +273,8 @@
       "chat_template": true,
       "tokenizer_json": null,
       "arch": "qwen2"
-    }
+    },
+    "auth_required": true
   },
   {
     "id": "tinyllama-1.1b-chat-gguf",
@@ -346,7 +351,8 @@
       "parallel": 1,
       "cont_batching": true,
       "flash_attn": false
-    }
+    },
+    "auth_required": true
   },
   {
     "id": "llama-3-2-3b-instruct-gguf",
@@ -434,7 +440,8 @@
       "parallel": 1,
       "cont_batching": true,
       "flash_attn": false
-    }
+    },
+    "auth_required": true
   },
   {
     "id": "bge-m3",
@@ -604,7 +611,8 @@
         "colbert"
       ],
       "device_type": "auto"
-    }
+    },
+    "auth_required": true
   },
   {
     "id": "bge-m3-gguf",
@@ -813,6 +821,7 @@
       "pooling_type": "mean",
       "normalize_embeddings": true,
       "dimension": 1024
-    }
+    },
+    "auth_required": true
   }
 ]
