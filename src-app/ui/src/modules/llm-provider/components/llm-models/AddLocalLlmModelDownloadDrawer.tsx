@@ -143,9 +143,6 @@ export function AddLocalLlmModelDownloadDrawer() {
             parameters: values.parameters || {},
             engine_type: values.engine_type || 'mistralrs',
             engine_settings: values.engine_settings || {},
-            source: {
-              type: 'manual' as const,
-            },
             clear_cache: values.clear_cache || false,
           },
           Stores.ViewDownloadDrawer.openViewDownloadDrawer,

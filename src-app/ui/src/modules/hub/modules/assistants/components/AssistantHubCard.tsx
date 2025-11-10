@@ -18,12 +18,8 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
 
-  const { assistants } = Stores.UserAssistants
-
   // Check if assistant was already created from this hub assistant
-  const existingAssistant = Array.from(assistants.values()).find(
-    a => a.source?.type === 'hub' && a.source?.id === assistant.id
-  )
+  const isAlreadyCreated = assistant.created_ids && assistant.created_ids.length > 0
 
   const handleUseAssistant = async () => {
     setIsCreating(true)
@@ -36,7 +32,6 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
         parameters: assistant.parameters || {},
         is_default: false,
         enabled: true,
-        source: { type: 'hub', id: assistant.id },
       })
 
       message.success(`Assistant "${assistant.display_name}" created successfully!`)
@@ -76,7 +71,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                       {assistant.category}
                     </Tag>
                   )}
-                  {existingAssistant && <Tag color="green">Created</Tag>}
+                  {isAlreadyCreated && <Tag color="green">Created</Tag>}
                   {isCreating && <Tag color="blue">Creating...</Tag>}
                 </Flex>
               </div>
@@ -91,11 +86,11 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                   Details
                 </Button>
                 <Button
-                  type={existingAssistant ? undefined : 'primary'}
-                  icon={existingAssistant ? <EyeOutlined /> : <RobotOutlined />}
+                  type={isAlreadyCreated ? undefined : 'primary'}
+                  icon={isAlreadyCreated ? <EyeOutlined /> : <RobotOutlined />}
                   onClick={e => {
                     e.stopPropagation()
-                    if (existingAssistant) {
+                    if (isAlreadyCreated) {
                       navigate('/assistants')
                     } else {
                       handleUseAssistant()
@@ -104,7 +99,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                   loading={isCreating}
                   disabled={isCreating}
                 >
-                  {existingAssistant ? 'View Assistant' : 'Use Assistant'}
+                  {isAlreadyCreated ? 'View Assistant' : 'Use Assistant'}
                 </Button>
               </div>
             </div>

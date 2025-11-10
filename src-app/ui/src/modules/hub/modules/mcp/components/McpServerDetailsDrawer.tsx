@@ -41,18 +41,18 @@ export function McpServerDetailsDrawer({ server, open, onClose }: McpServerDetai
           <Title level={5}>Command</Title>
           <Card size="small" className="bg-gray-50">
             <Text code className="text-xs">
-              {server.command} {server.args.join(' ')}
+              {server.command} {server.args?.join(' ')}
             </Text>
           </Card>
         </div>
 
         {/* Environment Variables */}
-        {server.env && Object.keys(server.env).length > 0 && (
+        {server.environment_variables && Object.keys(server.environment_variables).length > 0 && (
           <div>
             <Title level={5}>Environment Variables</Title>
             <Card size="small">
               <pre className="text-xs overflow-auto m-0">
-                {JSON.stringify(server.env, null, 2)}
+                {JSON.stringify(server.environment_variables, null, 2)}
               </pre>
             </Card>
           </div>
@@ -78,7 +78,7 @@ export function McpServerDetailsDrawer({ server, open, onClose }: McpServerDetai
         </div>
 
         {/* Links */}
-        {(server.repository_url || server.homepage_url) && (
+        {(server.repository_url || server.homepage) && (
           <div>
             <Title level={5}>Links</Title>
             <Flex vertical className="gap-2">
@@ -92,9 +92,9 @@ export function McpServerDetailsDrawer({ server, open, onClose }: McpServerDetai
                   <LinkOutlined /> Repository
                 </a>
               )}
-              {server.homepage_url && (
+              {server.homepage && (
                 <a
-                  href={server.homepage_url}
+                  href={server.homepage}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2"

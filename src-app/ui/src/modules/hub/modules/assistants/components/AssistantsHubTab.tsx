@@ -3,7 +3,7 @@ import { Input, Select, Typography, Spin, Button } from 'antd'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from './AssistantHubCard'
-import { AssistantFormDrawer } from '../AssistantFormDrawer'
+import { AssistantFormDrawer } from '@/modules/assistants/components/AssistantFormDrawer'
 
 const { Text } = Typography
 

@@ -12,26 +12,21 @@ import {
   useViewDownloadDrawerStore,
   useUploadStore,
 } from './stores'
-import { useHubModelsStore } from './stores/hub-models-store'
 import { useProviderGroupCardStore } from './components/ProviderGroupAssignmentCard.store'
 import { useLlmProviderGroupWidgetStore } from './widgets/LLMProviderGroupWidget.store'
 import { useLlmProviderDrawerStore } from './components/LlmProviderDrawer.store'
 import { useGroupLlmProvidersAssignmentStore } from './components/GroupLlmProvidersAssignmentDrawer.store'
 import { useLlmProviderGroupsAssignmentStore } from './components/LlmProviderGroupsAssignmentDrawer.store'
-import { useModelDetailsDrawerStore } from './components/hub/ModelDetailsDrawer.store'
 import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
 import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
-import '@/modules/hub/types/HubTabSlot' // Register hub slot types
 
 const LlmProviderSettings = lazyWithPreload(() => import('./components/LlmProviderSettings').then(m => ({ default: m.LlmProviderSettings })))
 const GroupLlmProvidersAssignmentDrawer = lazyWithPreload(() => import('./components/GroupLlmProvidersAssignmentDrawer').then(m => ({ default: m.GroupLlmProvidersAssignmentDrawer })))
 const LlmProviderGroupsAssignmentDrawer = lazyWithPreload(() => import('./components/LlmProviderGroupsAssignmentDrawer').then(m => ({ default: m.LlmProviderGroupsAssignmentDrawer })))
 const LLMProviderGroupWidget = lazyWithPreload(() => import('./widgets/LLMProviderGroupWidget').then(m => ({ default: m.LLMProviderGroupWidget })))
-const ModelsHubTab = lazyWithPreload(() => import('./components/hub/ModelsHubTab').then(m => ({ default: m.ModelsHubTab })))
-const ModelDetailsDrawer = lazyWithPreload(() => import('./components/hub/ModelDetailsDrawer').then(m => ({ default: m.ModelDetailsDrawer })))
 
 export default createModule({
   metadata: {
@@ -101,14 +96,6 @@ export default createModule({
       name: 'ProviderGroupAssignmentCard',
       store: useProviderGroupCardStore,
     },
-    {
-      name: 'HubModels',
-      store: useHubModelsStore,
-    },
-    {
-      name: 'ModelDetailsDrawer',
-      store: useModelDetailsDrawerStore,
-    },
   ],
   components: [
     {
@@ -124,13 +111,6 @@ export default createModule({
       shouldMount: () =>
         useDelayedFalse(() => Stores.LlmProviderGroupsAssignment.isOpen),
       order: 101,
-    },
-    {
-      id: 'model-details-drawer',
-      component: ModelDetailsDrawer,
-      shouldMount: () =>
-        useDelayedFalse(() => Stores.ModelDetailsDrawer.isOpen),
-      order: 102,
     },
   ],
   slots: {
@@ -154,19 +134,6 @@ export default createModule({
       {
         order: 10,
         component: LLMProviderGroupWidget,
-      },
-    ],
-    hubTabs: [
-      {
-        id: 'models',
-        label: 'Models',
-        icon: <CloudServerOutlined />,
-        component: ModelsHubTab,
-        order: 10,
-        permission: 'hub::models::read',
-        refresh: async () => {
-          await useHubModelsStore.getState().refreshFromGitHub()
-        },
       },
     ],
   },

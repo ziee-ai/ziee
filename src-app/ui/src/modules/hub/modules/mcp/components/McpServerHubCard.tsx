@@ -53,7 +53,6 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         args: server.args || [],
         environment_variables: server.environment_variables || undefined,
         enabled: true,
-        source: { type: 'hub', id: server.id },
       }
 
       await Stores.SystemMcpServer.createSystemServer(request)

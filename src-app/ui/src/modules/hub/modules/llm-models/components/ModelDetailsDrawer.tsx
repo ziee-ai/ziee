@@ -4,7 +4,6 @@ import {
   EyeOutlined,
   ToolOutlined,
   MessageOutlined,
-  FileTextOutlined,
 } from '@ant-design/icons'
 import type { HubModel } from '@/api-client/types'
 
@@ -102,7 +101,7 @@ export function ModelDetailsDrawer({ model, open, onClose }: ModelDetailsDrawerP
                   Vision
                 </Tag>
               )}
-              {model.capabilities.function_calling && (
+              {model.capabilities.tools && (
                 <Tag color="blue" icon={<ToolOutlined />}>
                   Function Calling
                 </Tag>
@@ -110,11 +109,6 @@ export function ModelDetailsDrawer({ model, open, onClose }: ModelDetailsDrawerP
               {model.capabilities.chat && (
                 <Tag color="cyan" icon={<MessageOutlined />}>
                   Chat
-                </Tag>
-              )}
-              {model.capabilities.completion && (
-                <Tag color="green" icon={<FileTextOutlined />}>
-                  Completion
                 </Tag>
               )}
             </Flex>
