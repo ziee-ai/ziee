@@ -11,7 +11,7 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatRequest, ChatResponse, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk},
     traits::AIProvider,
 };
 use async_stream::stream;
@@ -25,6 +25,10 @@ use std::pin::Pin;
 
 /// OpenAI provider (zero-sized, stateless)
 pub struct OpenAIProvider;
+
+/// Models that require non-streaming due to organization verification requirements
+/// These models require org verification for streaming, so we use non-streaming internally
+const MODELS_REQUIRING_NON_STREAMING: &[&str] = &["gpt-5", "gpt-5-mini"];
 
 /// OpenAI API message format
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -118,36 +122,11 @@ struct OpenAIToolChoiceFunction {
     name: String,
 }
 
-/// OpenAI API response
-#[derive(Deserialize, Debug)]
-struct OpenAIResponse {
-    id: String,
-    model: String,
-    choices: Vec<OpenAIChoice>,
-    usage: Option<OpenAIUsage>,
-}
-
-#[derive(Deserialize, Debug)]
-struct OpenAIChoice {
-    index: u32,
-    message: OpenAIResponseMessage,
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-struct OpenAIResponseMessage {
-    #[allow(dead_code)]
-    role: String,
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<OpenAIToolCall>>,
-}
-
 #[derive(Deserialize, Debug)]
 struct OpenAIUsage {
     prompt_tokens: u32,
-    completion_tokens: u32,
+    #[serde(default)]
+    completion_tokens: u32,  // Optional, embeddings API doesn't include this
     total_tokens: u32,
     #[serde(default)]
     completion_tokens_details: Option<OpenAICompletionTokensDetails>,
@@ -175,6 +154,8 @@ struct OpenAIStreamChunk {
     #[allow(dead_code)]
     id: String,
     choices: Vec<OpenAIStreamChoice>,
+    #[serde(default)]
+    usage: Option<OpenAIUsage>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -192,6 +173,64 @@ struct OpenAIStreamDelta {
     role: Option<String>,
     #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
+    refusal: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<OpenAIStreamToolCall>>,
+}
+
+/// Tool call delta in streaming responses
+#[derive(Deserialize, Debug)]
+struct OpenAIStreamToolCall {
+    index: u32,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(rename = "type", default)]
+    #[allow(dead_code)]
+    tool_type: Option<String>,
+    #[serde(default)]
+    function: Option<OpenAIStreamFunction>,
+}
+
+/// Function delta in streaming tool calls
+#[derive(Deserialize, Debug)]
+struct OpenAIStreamFunction {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    arguments: Option<String>,
+}
+
+/// OpenAI non-streaming response
+#[derive(Deserialize, Debug)]
+struct OpenAINonStreamResponse {
+    #[allow(dead_code)]
+    id: String,
+    choices: Vec<OpenAINonStreamChoice>,
+    usage: OpenAIUsage,
+}
+
+/// OpenAI non-streaming choice
+#[derive(Deserialize, Debug)]
+struct OpenAINonStreamChoice {
+    #[allow(dead_code)]
+    index: u32,
+    message: OpenAINonStreamMessage,
+    finish_reason: Option<String>,
+}
+
+/// OpenAI non-streaming message
+#[derive(Deserialize, Debug)]
+struct OpenAINonStreamMessage {
+    #[serde(default)]
+    #[allow(dead_code)]
+    role: Option<String>,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    refusal: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<OpenAIToolCall>>,
 }
 
 /// OpenAI embeddings request
@@ -214,25 +253,104 @@ struct OpenAIEmbedding {
 }
 
 impl OpenAIProvider {
-    /// Converts our messages to OpenAI format
-    fn convert_messages(
-        msgs: &[crate::models::ChatMessage],
-        attachments: &[crate::models::FileAttachment],
-    ) -> Vec<OpenAIMessage> {
-        use base64::Engine;
-        let base64_engine = base64::engine::general_purpose::STANDARD;
+    /// Makes a non-streaming request and converts to a stream (workaround for org verification)
+    async fn non_streaming_to_stream(
+        client: &Client,
+        api_key: &str,
+        base_url: &str,
+        body: serde_json::Value,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<StreamChatChunk, ProviderError>> + Send>>,
+        ProviderError,
+    > {
+        // Make non-streaming request
+        let response = client
+            .post(format!("{}/chat/completions", base_url))
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
 
-        // Find the index of the last user message to attach files to
-        let last_user_idx = msgs
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, m)| m.role == crate::models::Role::User)
-            .map(|(i, _)| i);
+        // Check status
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        // Parse response
+        let resp: OpenAINonStreamResponse = response.json().await?;
+
+        // Convert to stream that yields chunks
+        let output_stream = stream! {
+            if let Some(choice) = resp.choices.first() {
+                let message = &choice.message;
+
+                // Build content deltas
+                let mut content_deltas = Vec::new();
+
+                // Text content
+                if let Some(ref text) = message.content {
+                    if !text.is_empty() {
+                        content_deltas.push(crate::models::ContentBlockDelta::TextDelta {
+                            index: 0,
+                            delta: text.clone(),
+                        });
+                    }
+                }
+
+                // Tool calls
+                if let Some(ref tool_calls) = message.tool_calls {
+                    for (idx, tc) in tool_calls.iter().enumerate() {
+                        content_deltas.push(crate::models::ContentBlockDelta::ToolUseDelta {
+                            index: idx,
+                            id: Some(tc.id.clone()),
+                            name: Some(tc.function.name.clone()),
+                            input_delta: Some(tc.function.arguments.clone()),
+                        });
+                    }
+                }
+
+                // Yield content chunk (if there's content or refusal)
+                if !content_deltas.is_empty() || message.refusal.is_some() {
+                    yield Ok(StreamChatChunk {
+                        content: content_deltas,
+                        finish_reason: choice.finish_reason.clone(),
+                        usage: None,
+                        refusal: message.refusal.clone(),
+                        safety_ratings: Vec::new(),
+                        safety_blocked: false,
+                    });
+                }
+
+                // Yield usage chunk
+                yield Ok(StreamChatChunk {
+                    content: Vec::new(),
+                    finish_reason: None,
+                    usage: Some(crate::models::StreamUsage {
+                        prompt_tokens: resp.usage.prompt_tokens,
+                        completion_tokens: resp.usage.completion_tokens,
+                        total_tokens: resp.usage.total_tokens,
+                        reasoning_tokens: resp.usage.completion_tokens_details
+                            .and_then(|d| d.reasoning_tokens),
+                    }),
+                    refusal: None,
+                    safety_ratings: Vec::new(),
+                    safety_blocked: false,
+                });
+            }
+        };
+
+        Ok(Box::pin(output_stream))
+    }
+
+    /// Converts our messages to OpenAI format
+    fn convert_messages(msgs: &[crate::models::ChatMessage]) -> Vec<OpenAIMessage> {
+        use crate::models::{ContentBlock, ImageSource};
 
         msgs.iter()
-            .enumerate()
-            .map(|(idx, m)| {
+            .map(|m| {
                 let role = match m.role {
                     crate::models::Role::System => "system",
                     crate::models::Role::User => "user",
@@ -241,75 +359,94 @@ impl OpenAIProvider {
                 }
                 .to_string();
 
-                let tool_calls = if !m.tool_calls.is_empty() {
-                    Some(
-                        m.tool_calls
-                            .iter()
-                            .map(|tc| OpenAIToolCall {
-                                id: tc.id.clone(),
-                                tool_type: tc.tool_type.clone(),
-                                function: OpenAIFunctionCall {
-                                    name: tc.function.name.clone(),
-                                    arguments: tc.function.arguments.clone(),
-                                },
-                            })
-                            .collect(),
-                    )
-                } else {
-                    None
-                };
+                // Convert content blocks to OpenAI format
+                let mut openai_parts = Vec::new();
+                let mut tool_calls = Vec::new();
+                let mut tool_call_id = None;
 
-                // Build content (with attachments if this is the last user message)
-                let content = if Some(idx) == last_user_idx && !attachments.is_empty() {
-                    // Multimodal content with text and images
-                    let mut parts = Vec::new();
-
-                    // Add text part if there is content
-                    if let Some(ref text) = m.content {
-                        if !text.is_empty() {
-                            parts.push(OpenAIContentPart::Text { text: text.clone() });
+                for block in &m.content {
+                    match block {
+                        ContentBlock::Text { text } => {
+                            openai_parts.push(OpenAIContentPart::Text {
+                                text: text.clone(),
+                            });
                         }
-                    }
-
-                    // Add image parts
-                    for attachment in attachments {
-                        // Check if it's an image
-                        if attachment.mime_type.starts_with("image/") {
-                            let base64_data = base64_engine.encode(&attachment.content);
-                            let data_url =
-                                format!("data:{};base64,{}", attachment.mime_type, base64_data);
-                            parts.push(OpenAIContentPart::ImageUrl {
-                                image_url: OpenAIImageUrl {
-                                    url: data_url,
-                                    detail: None, // Let the API decide
+                        ContentBlock::Image { source } => {
+                            let url = match source {
+                                ImageSource::Base64 { media_type, data } => {
+                                    format!("data:{};base64,{}", media_type, data)
+                                }
+                                ImageSource::Url { url, .. } => url.clone(),
+                            };
+                            let detail = match source {
+                                ImageSource::Url { detail, .. } => detail.clone(),
+                                _ => None,
+                            };
+                            openai_parts.push(OpenAIContentPart::ImageUrl {
+                                image_url: OpenAIImageUrl { url, detail },
+                            });
+                        }
+                        ContentBlock::Thinking { .. } => {
+                            // OpenAI doesn't support thinking in requests - skip
+                        }
+                        ContentBlock::ToolUse { id, name, input } => {
+                            // OpenAI uses separate tool_calls array
+                            tool_calls.push(OpenAIToolCall {
+                                id: id.clone(),
+                                tool_type: "function".to_string(),
+                                function: OpenAIFunctionCall {
+                                    name: name.clone(),
+                                    arguments: input.to_string(),
                                 },
                             });
                         }
-                    }
-
-                    if parts.len() > 1 {
-                        Some(OpenAIContent::Multimodal(parts))
-                    } else if parts.len() == 1 {
-                        // Single text part, use string format
-                        if let Some(OpenAIContentPart::Text { text }) = parts.into_iter().next() {
-                            Some(OpenAIContent::Text(text))
-                        } else {
-                            None
+                        ContentBlock::ToolResult {
+                            tool_use_id,
+                            content,
+                            ..
+                        } => {
+                            // OpenAI uses tool_call_id at message level
+                            tool_call_id = Some(tool_use_id.clone());
+                            // Flatten tool result content blocks to text
+                            for sub_block in content {
+                                if let ContentBlock::Text { text } = sub_block {
+                                    openai_parts.push(OpenAIContentPart::Text {
+                                        text: text.clone(),
+                                    });
+                                }
+                            }
                         }
+                    }
+                }
+
+                // Build content (string or multimodal array)
+                let content = if openai_parts.is_empty() {
+                    None
+                } else if openai_parts.len() == 1
+                    && matches!(openai_parts[0], OpenAIContentPart::Text { .. })
+                {
+                    // Single text part - use string format
+                    if let Some(OpenAIContentPart::Text { text }) = openai_parts.into_iter().next()
+                    {
+                        Some(OpenAIContent::Text(text))
                     } else {
-                        None
+                        unreachable!()
                     }
                 } else {
-                    // Regular text content
-                    m.content.clone().map(OpenAIContent::Text)
+                    // Multiple parts or non-text single part - use array format
+                    Some(OpenAIContent::Multimodal(openai_parts))
                 };
 
                 OpenAIMessage {
                     role,
                     content,
                     name: None,
-                    tool_call_id: m.tool_call_id.clone(),
-                    tool_calls,
+                    tool_call_id,
+                    tool_calls: if tool_calls.is_empty() {
+                        None
+                    } else {
+                        Some(tool_calls)
+                    },
                 }
             })
             .collect()
@@ -346,155 +483,12 @@ impl OpenAIProvider {
         }
     }
 
-    /// Converts OpenAI response to our format
-    fn convert_response(resp: OpenAIResponse) -> ChatResponse {
-        use crate::models::{Choice, Message, Role, Usage};
-
-        ChatResponse {
-            id: resp.id,
-            model: resp.model,
-            choices: resp
-                .choices
-                .into_iter()
-                .map(|c| {
-                    let tool_calls = c
-                        .message
-                        .tool_calls
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|tc| crate::models::ToolCall {
-                            id: tc.id,
-                            tool_type: tc.tool_type,
-                            function: crate::models::FunctionCall {
-                                name: tc.function.name,
-                                arguments: tc.function.arguments,
-                            },
-                        })
-                        .collect();
-
-                    Choice {
-                        message: Message {
-                            role: Role::Assistant,
-                            content: c.message.content.unwrap_or_default(),
-                            tool_calls,
-                            thinking: None, // TODO: Extract thinking for reasoning models
-                        },
-                        finish_reason: c.finish_reason.unwrap_or_else(|| "stop".to_string()),
-                        index: c.index,
-                    }
-                })
-                .collect(),
-            usage: resp.usage.map(|u| Usage {
-                prompt_tokens: u.prompt_tokens,
-                completion_tokens: u.completion_tokens,
-                total_tokens: u.total_tokens,
-                reasoning_tokens: u
-                    .completion_tokens_details
-                    .and_then(|d| d.reasoning_tokens),
-            }),
-        }
-    }
 }
 
 #[async_trait]
 impl AIProvider for OpenAIProvider {
     fn name(&self) -> &str {
         "OpenAI"
-    }
-
-    fn provider_type(&self) -> &str {
-        "openai"
-    }
-
-    async fn chat(
-        &self,
-        api_key: &str,
-        base_url: &str,
-        request: ChatRequest,
-    ) -> Result<ChatResponse, ProviderError> {
-        let client = Client::new();
-
-        // Convert messages
-        let messages = Self::convert_messages(&request.messages, &request.attachments);
-
-        // Build request body
-        let mut body = json!({
-            "model": request.model,
-            "messages": messages,
-        });
-
-        // Handle thinking/reasoning configuration
-        let is_reasoning_model = if let Some(ref thinking) = request.thinking {
-            if thinking.enabled {
-                // Add reasoning_effort parameter
-                if let Some(ref effort) = thinking.effort {
-                    let effort_str = match effort {
-                        crate::models::ThinkingEffort::Minimal => "minimal",
-                        crate::models::ThinkingEffort::Low => "low",
-                        crate::models::ThinkingEffort::Medium => "medium",
-                        crate::models::ThinkingEffort::High => "high",
-                        crate::models::ThinkingEffort::Dynamic => "medium", // Default for OpenAI
-                    };
-                    body["reasoning_effort"] = json!(effort_str);
-                }
-
-                // Use max_completion_tokens for reasoning models
-                if let Some(max_tokens) = request.max_tokens {
-                    body["max_completion_tokens"] = json!(max_tokens);
-                }
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        // Add optional parameters (only for non-reasoning models)
-        if !is_reasoning_model {
-            if let Some(temp) = request.temperature {
-                body["temperature"] = json!(temp);
-            }
-            if let Some(max_tokens) = request.max_tokens {
-                body["max_tokens"] = json!(max_tokens);
-            }
-            if let Some(top_p) = request.top_p {
-                body["top_p"] = json!(top_p);
-            }
-        }
-
-        // Add tools if provided
-        if !request.tools.is_empty() {
-            let tools = Self::convert_tools(&request.tools);
-            body["tools"] = json!(tools);
-        }
-
-        // Add tool choice if provided
-        if let Some(ref tool_choice) = request.tool_choice {
-            body["tool_choice"] = json!(Self::convert_tool_choice(tool_choice));
-        }
-
-        // Make request
-        let response = client
-            .post(format!("{}/chat/completions", base_url))
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-
-        // Check status
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
-        }
-
-        // Parse response
-        let openai_resp: OpenAIResponse = response.json().await?;
-
-        // Convert to our format
-        Ok(Self::convert_response(openai_resp))
     }
 
     async fn stream_chat(
@@ -509,13 +503,17 @@ impl AIProvider for OpenAIProvider {
         let client = Client::new();
 
         // Convert messages
-        let messages = Self::convert_messages(&request.messages, &request.attachments);
+        let messages = Self::convert_messages(&request.messages);
 
-        // Build request body with stream: true
+        // Check if model requires non-streaming workaround (org verification requirement)
+        let requires_non_streaming = MODELS_REQUIRING_NON_STREAMING
+            .contains(&request.model.as_str());
+
+        // Build request body
         let mut body = json!({
             "model": request.model,
             "messages": messages,
-            "stream": true,
+            "stream": !requires_non_streaming, // Use non-streaming for gpt-5, gpt-5-mini
         });
 
         // Handle thinking/reasoning configuration
@@ -567,6 +565,11 @@ impl AIProvider for OpenAIProvider {
         // Add tool choice if provided
         if let Some(ref tool_choice) = request.tool_choice {
             body["tool_choice"] = json!(Self::convert_tool_choice(tool_choice));
+        }
+
+        // If model requires non-streaming, use the workaround
+        if requires_non_streaming {
+            return Self::non_streaming_to_stream(&client, api_key, base_url, body).await;
         }
 
         // Make streaming request
@@ -622,12 +625,61 @@ impl AIProvider for OpenAIProvider {
 
                                 // Try to parse as JSON
                                 if let Ok(chunk_data) = serde_json::from_str::<OpenAIStreamChunk>(data) {
+                                    // Check for usage metadata (final chunk)
+                                    if let Some(usage) = chunk_data.usage {
+                                        yield Ok(StreamChatChunk {
+                                            content: Vec::new(),
+                                            finish_reason: None,
+                                            usage: Some(crate::models::StreamUsage {
+                                                prompt_tokens: usage.prompt_tokens,
+                                                completion_tokens: usage.completion_tokens,
+                                                total_tokens: usage.total_tokens,
+                                                reasoning_tokens: usage.completion_tokens_details
+                                                    .and_then(|d| d.reasoning_tokens),
+                                            }),
+                                            refusal: None,
+                                            safety_ratings: Vec::new(),
+                                            safety_blocked: false,
+                                        });
+                                    }
+
                                     if let Some(choice) = chunk_data.choices.first() {
-                                        if let Some(content) = &choice.delta.content {
+                                        let delta = &choice.delta;
+
+                                        // Build content block deltas
+                                        let mut content_deltas = Vec::new();
+
+                                        // Text content delta
+                                        if let Some(ref text) = delta.content {
+                                            if !text.is_empty() {
+                                                content_deltas.push(crate::models::ContentBlockDelta::TextDelta {
+                                                    index: 0,
+                                                    delta: text.clone(),
+                                                });
+                                            }
+                                        }
+
+                                        // Tool call deltas
+                                        if let Some(ref tool_calls) = delta.tool_calls {
+                                            for tc in tool_calls {
+                                                content_deltas.push(crate::models::ContentBlockDelta::ToolUseDelta {
+                                                    index: tc.index as usize,
+                                                    id: tc.id.clone(),
+                                                    name: tc.function.as_ref().and_then(|f| f.name.clone()),
+                                                    input_delta: tc.function.as_ref().and_then(|f| f.arguments.clone()),
+                                                });
+                                            }
+                                        }
+
+                                        // Yield if there's any content or refusal
+                                        if !content_deltas.is_empty() || delta.refusal.is_some() {
                                             yield Ok(StreamChatChunk {
-                                                content: content.clone(),
+                                                content: content_deltas,
                                                 finish_reason: choice.finish_reason.clone(),
-                                                thinking: None, // TODO: Extract thinking for reasoning models
+                                                usage: None,
+                                                refusal: delta.refusal.clone(),
+                                                safety_ratings: Vec::new(),
+                                                safety_blocked: false,
                                             });
                                         }
                                     }

@@ -15,6 +15,7 @@ export function ModelsHubTab() {
   const clearAllFilters = () => {
     setSearchTerm('')
     setSelectedTags([])
+    setSortBy('popular')
   }
 
   // Extract unique tags
@@ -94,6 +95,7 @@ export function ModelsHubTab() {
             onChange={e => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
+            aria-label="Search models"
           />
 
           <Select
@@ -110,6 +112,7 @@ export function ModelsHubTab() {
               label: tag,
             }))}
             popupMatchSelectWidth={false}
+            aria-label="Filter by tags"
           />
 
           <Select
@@ -123,6 +126,7 @@ export function ModelsHubTab() {
               { value: 'size', label: 'Size' },
             ]}
             popupMatchSelectWidth={false}
+            aria-label="Sort models"
           />
         </div>
 
@@ -142,6 +146,7 @@ export function ModelsHubTab() {
               type="text"
               icon={<ClearOutlined />}
               onClick={clearAllFilters}
+              aria-label="Clear all filters"
             >
               Clear all
             </Button>

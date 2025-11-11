@@ -31,10 +31,6 @@ pub struct ChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
 
-    /// File attachments (for providers that support multimodal input)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub attachments: Vec<FileAttachment>,
-
     /// Tools/functions available for the model to call
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<Tool>,
@@ -54,68 +50,168 @@ pub struct ChatMessage {
     /// The role of the message author
     pub role: Role,
 
-    /// The text content of the message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
-
-    /// Tool calls made by the assistant
+    /// Content blocks (text, images, thinking, tool use, etc.)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tool_calls: Vec<ToolCall>,
+    pub content: Vec<ContentBlock>,
+}
 
-    /// Tool call ID (for tool response messages)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>,
+/// A content block (text, image, thinking, tool use, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlock {
+    /// Plain text content
+    Text {
+        text: String,
+    },
+
+    /// Thinking/reasoning content (Anthropic, Gemini)
+    Thinking {
+        thinking: String,
+    },
+
+    /// Image content
+    Image {
+        #[serde(flatten)]
+        source: ImageSource,
+    },
+
+    /// Tool use request (model wants to call a tool)
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+
+    /// Tool result (response from tool execution)
+    ToolResult {
+        tool_use_id: String,
+        /// Can contain text, images, or structured data (recursive)
+        content: Vec<ContentBlock>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_error: Option<bool>,
+    },
+}
+
+/// Image source (URL or base64 data)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ImageSource {
+    /// Base64-encoded image data
+    Base64 {
+        media_type: String,
+        data: String,
+    },
+    /// URL to image
+    Url {
+        url: String,
+        /// OpenAI-specific: image detail level
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
 }
 
 impl ChatMessage {
-    /// Creates a system message
+    /// Creates a system message with text content
     pub fn system(content: impl Into<String>) -> Self {
         Self {
             role: Role::System,
-            content: Some(content.into()),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
+            content: vec![ContentBlock::Text {
+                text: content.into(),
+            }],
         }
     }
 
-    /// Creates a user message
+    /// Creates a user message with text content
     pub fn user(content: impl Into<String>) -> Self {
         Self {
             role: Role::User,
-            content: Some(content.into()),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
+            content: vec![ContentBlock::Text {
+                text: content.into(),
+            }],
         }
     }
 
-    /// Creates an assistant message
+    /// Creates an assistant message with text content
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             role: Role::Assistant,
-            content: Some(content.into()),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
+            content: vec![ContentBlock::Text {
+                text: content.into(),
+            }],
         }
     }
 
-    /// Creates an assistant message with tool calls
-    pub fn assistant_with_tools(content: Option<String>, tool_calls: Vec<ToolCall>) -> Self {
-        Self {
-            role: Role::Assistant,
-            content,
-            tool_calls,
-            tool_call_id: None,
-        }
+    /// Creates a message with custom content blocks
+    pub fn with_blocks(role: Role, content: Vec<ContentBlock>) -> Self {
+        Self { role, content }
     }
 
-    /// Creates a tool response message
-    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Tool,
-            content: Some(content.into()),
-            tool_calls: Vec::new(),
-            tool_call_id: Some(tool_call_id.into()),
-        }
+    /// Creates a user message with text and image
+    pub fn user_with_image(
+        text: impl Into<String>,
+        image_data: Vec<u8>,
+        media_type: impl Into<String>,
+    ) -> Self {
+        use base64::Engine;
+        let base64_data = base64::engine::general_purpose::STANDARD.encode(image_data);
+
+        Self::with_blocks(
+            Role::User,
+            vec![
+                ContentBlock::Text {
+                    text: text.into(),
+                },
+                ContentBlock::Image {
+                    source: ImageSource::Base64 {
+                        media_type: media_type.into(),
+                        data: base64_data,
+                    },
+                },
+            ],
+        )
+    }
+
+    /// Creates a user message with text and image URL
+    pub fn user_with_image_url(text: impl Into<String>, url: impl Into<String>) -> Self {
+        Self::with_blocks(
+            Role::User,
+            vec![
+                ContentBlock::Text {
+                    text: text.into(),
+                },
+                ContentBlock::Image {
+                    source: ImageSource::Url {
+                        url: url.into(),
+                        detail: None,
+                    },
+                },
+            ],
+        )
+    }
+
+    /// Creates a tool result message
+    pub fn tool_result(tool_use_id: impl Into<String>, content: Vec<ContentBlock>) -> Self {
+        Self::with_blocks(
+            Role::Tool,
+            vec![ContentBlock::ToolResult {
+                tool_use_id: tool_use_id.into(),
+                content,
+                is_error: None,
+            }],
+        )
+    }
+
+    /// Creates a tool result with simple text
+    pub fn tool_result_text(
+        tool_use_id: impl Into<String>,
+        text: impl Into<String>,
+    ) -> Self {
+        Self::tool_result(
+            tool_use_id,
+            vec![ContentBlock::Text {
+                text: text.into(),
+            }],
+        )
     }
 }
 
@@ -234,29 +330,111 @@ pub struct Usage {
 /// A chunk of streamed chat content
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamChatChunk {
-    /// The delta content
-    pub content: String,
+    /// Content block deltas
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content: Vec<ContentBlockDelta>,
 
     /// The reason the model stopped (if finished)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<String>,
 
-    /// The thinking/reasoning delta (if available)
+    /// Usage metadata (typically in final chunk)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub thinking: Option<String>,
+    pub usage: Option<StreamUsage>,
+
+    /// Refusal message (when model refuses to respond)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
+
+    /// Safety ratings (Gemini only)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub safety_ratings: Vec<SafetyRating>,
+
+    /// Whether content was blocked by safety filters
+    #[serde(default)]
+    pub safety_blocked: bool,
 }
 
-/// File attachment for multimodal requests
+/// Incremental content block update in streaming
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileAttachment {
-    /// The filename
-    pub filename: String,
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlockDelta {
+    /// Text content delta
+    TextDelta {
+        index: usize,
+        delta: String,
+    },
 
-    /// The file content (raw bytes)
-    pub content: Vec<u8>,
+    /// Thinking content delta
+    ThinkingDelta {
+        index: usize,
+        delta: String,
+    },
 
-    /// The MIME type (e.g., "image/png", "application/pdf")
-    pub mime_type: String,
+    /// Tool use delta (incremental JSON)
+    ToolUseDelta {
+        index: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        input_delta: Option<String>,
+    },
+}
+
+/// An incremental tool call update in a stream
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamToolCall {
+    /// The index of this tool call in the array
+    pub index: u32,
+
+    /// The ID of the tool call (appears in first chunk)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+
+    /// The type of tool (e.g., "function")
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub tool_type: Option<String>,
+
+    /// The function name (appears in first chunk)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function_name: Option<String>,
+
+    /// Incremental JSON arguments string
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments_delta: Option<String>,
+}
+
+/// Usage metadata in streaming responses
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamUsage {
+    /// Number of tokens in the prompt
+    pub prompt_tokens: u32,
+
+    /// Number of tokens in the completion
+    pub completion_tokens: u32,
+
+    /// Total tokens used
+    pub total_tokens: u32,
+
+    /// Number of tokens used for reasoning/thinking (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u32>,
+}
+
+/// Safety rating for content (Gemini)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SafetyRating {
+    /// The safety category
+    pub category: String,
+
+    /// The probability of harm
+    pub probability: String,
+
+    /// Whether this category blocked the content
+    #[serde(default)]
+    pub blocked: bool,
 }
 
 /// An embeddings request

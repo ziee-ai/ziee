@@ -15,17 +15,20 @@ export async function searchHubResources(page: Page, query: string) {
  * Filter hub resources by tags
  */
 export async function filterByTags(page: Page, tags: string[]) {
-  const tagFilter = page.getByRole('button', { name: /filter.*tag/i })
+  // Ant Design Select with mode="multiple" renders as a combobox
+  const tagFilter = page.getByRole('combobox', { name: /filter.*tag/i })
   await tagFilter.click()
 
-  const dropdown = page.getByRole('listbox')
+  // Wait for dropdown to appear
+  const dropdown = page.locator('.ant-select-dropdown:visible')
   await dropdown.waitFor({ state: 'visible' })
 
   for (const tag of tags) {
-    await page.getByRole('option', { name: new RegExp(tag, 'i') }).click()
+    // Click each option in the dropdown
+    await page.locator('.ant-select-item-option', { hasText: new RegExp(`^${tag}$`, 'i') }).click()
   }
 
-  // Close dropdown
+  // Close dropdown by pressing Escape or clicking outside
   await page.keyboard.press('Escape')
 }
 
@@ -36,8 +39,21 @@ export async function sortHubResources(
   page: Page,
   sortBy: 'popular' | 'name' | 'size',
 ) {
+  // Ant Design Select renders as a combobox
+  // Use force: true because the selected value span intercepts pointer events
   const sortSelect = page.getByRole('combobox', { name: /sort/i })
-  await sortSelect.selectOption({ label: new RegExp(sortBy, 'i') })
+  await sortSelect.click({ force: true })
+
+  // Wait for dropdown to appear
+  const dropdown = page.locator('.ant-select-dropdown').last()
+  await dropdown.waitFor({ state: 'visible' })
+
+  // Click the option matching the sortBy value
+  const option = dropdown.locator('.ant-select-item-option', {
+    hasText: new RegExp(`^${sortBy}$`, 'i')
+  })
+  await option.click()
+
   // Wait for re-render
   await page.waitForTimeout(300)
 }

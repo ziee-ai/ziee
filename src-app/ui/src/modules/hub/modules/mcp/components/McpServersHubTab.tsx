@@ -15,6 +15,7 @@ export function McpServersHubTab() {
   const clearAllFilters = () => {
     setSearchTerm('')
     setSelectedTags([])
+    setSortBy('popular')
   }
 
   // Extract unique tags
@@ -93,6 +94,7 @@ export function McpServersHubTab() {
             onChange={e => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
+            aria-label="Search MCP servers"
           />
 
           <Select
@@ -109,6 +111,7 @@ export function McpServersHubTab() {
               label: tag,
             }))}
             popupMatchSelectWidth={false}
+            aria-label="Filter by tags"
           />
 
           <Select
@@ -121,6 +124,7 @@ export function McpServersHubTab() {
               { value: 'name', label: 'Name' },
             ]}
             popupMatchSelectWidth={false}
+            aria-label="Sort MCP servers"
           />
         </div>
 
@@ -140,6 +144,7 @@ export function McpServersHubTab() {
               type="text"
               icon={<ClearOutlined />}
               onClick={clearAllFilters}
+              aria-label="Clear all filters"
             >
               Clear all
             </Button>

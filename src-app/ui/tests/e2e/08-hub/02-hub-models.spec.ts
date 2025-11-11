@@ -110,18 +110,22 @@ test.describe('Hub Models', () => {
     const modalVisible = await modal.isVisible({ timeout: 2000 }).catch(() => false)
 
     if (modalVisible) {
-      // Click configure button
+      // Click configure button - get OK button which triggers onOk callback
       await modal.getByRole('button', { name: /configure.*authentication/i }).click()
 
-      // Should open repository edit drawer
-      const drawer = page.getByRole('dialog', { name: /edit.*repository|add.*repository/i })
-      await expect(drawer).toBeVisible({ timeout: 5000 })
+      // Wait for modal to close
+      await expect(modal).not.toBeVisible({ timeout: 3000 })
+
+      // Should open repository edit drawer - use title text since Ant Design Drawer doesn't use role="dialog"
+      await expect(
+        page.getByText(/Edit.*Repository.*Authentication/i),
+      ).toBeVisible({ timeout: 5000 })
 
       // Should have auth type selector
-      await expect(drawer.getByLabel(/auth.*type/i)).toBeVisible()
+      await expect(page.getByLabel(/authentication.*type/i)).toBeVisible()
 
-      // Close drawer
-      await drawer.getByRole('button', { name: /cancel|close/i }).click()
+      // Close drawer by clicking Cancel button
+      await page.getByRole('button', { name: /cancel/i }).click()
     }
   })
 

@@ -16,6 +16,7 @@ export function AssistantsHubTab() {
   const clearAllFilters = () => {
     setSearchTerm('')
     setSelectedTags([])
+    setSortBy('popular')
   }
 
   // Extract unique tags
@@ -94,6 +95,7 @@ export function AssistantsHubTab() {
             onChange={e => setSearchTerm(e.target.value)}
             allowClear
             className="flex-1"
+            aria-label="Search assistants"
           />
 
           <Select
@@ -110,6 +112,7 @@ export function AssistantsHubTab() {
               label: tag,
             }))}
             popupMatchSelectWidth={false}
+            aria-label="Filter by tags"
           />
 
           <Select
@@ -122,6 +125,7 @@ export function AssistantsHubTab() {
               { value: 'name', label: 'Name' },
             ]}
             popupMatchSelectWidth={false}
+            aria-label="Sort assistants"
           />
         </div>
 
@@ -141,6 +145,7 @@ export function AssistantsHubTab() {
               type="text"
               icon={<ClearOutlined />}
               onClick={clearAllFilters}
+              aria-label="Clear all filters"
             >
               Clear all
             </Button>

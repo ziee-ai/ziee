@@ -114,25 +114,19 @@ impl ProviderError {
             _ => Self::provider(format!("HTTP {}: {}", status, body)),
         }
     }
-}
 
-// Note: OpenAI uses custom implementation, errors are handled directly
-
-/// Convert from Gemini library errors
-impl From<gemini_rust::ClientError> for ProviderError {
-    fn from(e: gemini_rust::ClientError) -> Self {
-        use gemini_rust::ClientError;
-        match e {
-            ClientError::InvalidApiKey { .. } => {
-                Self::Authentication("Invalid Gemini API key".to_string())
-            }
-            ClientError::BadResponse { code, description } => {
-                Self::from_status_code(code, description.unwrap_or_default())
-            }
-            ClientError::PerformRequest { source, .. } => {
-                Self::Network(source)
-            }
-            _ => Self::Gemini(e.to_string()),
+    /// Creates error from Anthropic error event
+    pub fn from_anthropic_error(error_type: &str, message: &str) -> Self {
+        match error_type {
+            "overloaded_error" => Self::rate_limit(format!("Overloaded: {}", message)),
+            "rate_limit_error" => Self::rate_limit(message),
+            "authentication_error" => Self::auth(message),
+            "invalid_request_error" => Self::invalid_request(message),
+            "permission_error" => Self::auth(message),
+            _ => Self::provider(format!("Anthropic {}: {}", error_type, message)),
         }
     }
 }
+
+// Note: All providers now use custom HTTP implementations
+// Errors are handled directly via reqwest and status code parsing

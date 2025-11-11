@@ -110,7 +110,7 @@ export async function handleAuthRequiredModal(
 
   // Configure auth
   const authTypeSelect = drawer.getByLabel(/auth.*type/i)
-  await authTypeSelect.selectOption({ label: credentials.authType === 'token' ? /token/i : /username.*password/i })
+  await authTypeSelect.selectOption({ label: credentials.authType === 'token' ? 'Token' : 'Username/Password' })
 
   if (credentials.authType === 'token' && credentials.token) {
     await drawer.getByLabel(/token/i).fill(credentials.token)

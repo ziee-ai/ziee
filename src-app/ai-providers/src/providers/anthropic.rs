@@ -3,8 +3,8 @@
 use crate::{
     error::ProviderError,
     models::{
-        ChatMessage, ChatRequest, ChatResponse, Choice, EmbeddingsRequest, EmbeddingsResponse,
-        Message, Role, StreamChatChunk, Tool, ToolChoice, Usage,
+        ChatMessage, ChatRequest, EmbeddingsRequest, EmbeddingsResponse,
+        Role, StreamChatChunk, Tool, ToolChoice,
     },
     traits::AIProvider,
 };
@@ -45,6 +45,17 @@ enum AnthropicContentBlock {
     Image {
         source: AnthropicImageSource,
     },
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_error: Option<bool>,
+    },
 }
 
 #[derive(Serialize)]
@@ -55,124 +66,170 @@ struct AnthropicImageSource {
     data: String,        // base64 encoded image data
 }
 
-/// Anthropic API response
-#[derive(Deserialize)]
-struct AnthropicResponse {
-    id: String,
-    model: String,
-    content: Vec<AnthropicContent>,
-    usage: AnthropicUsage,
-    stop_reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct AnthropicContent {
-    #[serde(rename = "type")]
-    content_type: String,
-    #[serde(default)]
-    text: Option<String>,
-    #[serde(default)]
-    thinking: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    signature: Option<String>, // Encrypted verification string
-}
-
-#[derive(Deserialize)]
-struct AnthropicUsage {
-    input_tokens: u32,
-    output_tokens: u32,
-}
-
 /// Anthropic streaming chunk
 #[derive(Deserialize)]
 struct AnthropicStreamChunk {
     #[serde(rename = "type")]
     event_type: String,
+    #[serde(default)]
     delta: Option<AnthropicDelta>,
+    #[serde(default)]
+    error: Option<AnthropicStreamError>,
+    #[serde(default)]
+    message: Option<AnthropicMessageDelta>,
+    #[serde(default)]
+    usage: Option<AnthropicStreamUsage>,
 }
 
 #[derive(Deserialize)]
 struct AnthropicDelta {
     #[serde(rename = "type")]
-    #[allow(dead_code)]
     delta_type: String,
     #[serde(default)]
     text: Option<String>,
     #[serde(default)]
     thinking: Option<String>,
+    #[serde(default)]
+    partial_json: Option<String>,
+}
+
+/// Error in streaming response
+#[derive(Deserialize)]
+struct AnthropicStreamError {
+    #[serde(rename = "type")]
+    error_type: String,
+    message: String,
+}
+
+/// Message delta for stop reason and usage
+#[derive(Deserialize)]
+struct AnthropicMessageDelta {
+    #[serde(default)]
+    stop_reason: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    stop_sequence: Option<String>,
+}
+
+/// Usage metadata in streaming response
+#[derive(Deserialize)]
+struct AnthropicStreamUsage {
+    #[serde(default)]
+    input_tokens: Option<u32>,
+    #[serde(default)]
+    output_tokens: Option<u32>,
 }
 
 impl AnthropicProvider {
     /// Converts our messages to Anthropic format
-    fn convert_messages(
-        msgs: &[ChatMessage],
-        attachments: &[crate::models::FileAttachment],
-    ) -> (Option<String>, Vec<AnthropicMessage>) {
-        use base64::Engine;
-        let base64_engine = base64::engine::general_purpose::STANDARD;
+    fn convert_messages(msgs: &[ChatMessage]) -> (Option<String>, Vec<AnthropicMessage>) {
+        use crate::models::{ContentBlock, ImageSource};
 
         let mut system_message = None;
         let mut messages = Vec::new();
 
-        // Find the index of the last user message to attach files to
-        let last_user_idx = msgs
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, m)| m.role == Role::User)
-            .map(|(i, _)| i);
-
-        for (idx, msg) in msgs.iter().enumerate() {
+        for msg in msgs.iter() {
             match msg.role {
                 Role::System => {
-                    system_message = msg.content.clone();
+                    // Extract text from content blocks for system message
+                    let text = msg
+                        .content
+                        .iter()
+                        .filter_map(|block| match block {
+                            ContentBlock::Text { text } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if !text.is_empty() {
+                        system_message = Some(text);
+                    }
                 }
-                Role::User => {
-                    // Build content (with attachments if this is the last user message)
-                    let content = if Some(idx) == last_user_idx && !attachments.is_empty() {
-                        // Multimodal content with text and images
-                        let mut blocks = Vec::new();
+                Role::User | Role::Tool => {
+                    // Convert content blocks to Anthropic format
+                    let mut anthropic_blocks = Vec::new();
 
-                        // Add text block if there is content
-                        if let Some(ref text) = msg.content {
-                            if !text.is_empty() {
-                                blocks.push(AnthropicContentBlock::Text { text: text.clone() });
+                    for block in &msg.content {
+                        match block {
+                            ContentBlock::Text { text } => {
+                                anthropic_blocks.push(AnthropicContentBlock::Text {
+                                    text: text.clone(),
+                                });
                             }
-                        }
-
-                        // Add image blocks
-                        for attachment in attachments {
-                            // Check if it's an image
-                            if attachment.mime_type.starts_with("image/") {
-                                let base64_data = base64_engine.encode(&attachment.content);
-                                blocks.push(AnthropicContentBlock::Image {
-                                    source: AnthropicImageSource {
-                                        source_type: "base64".to_string(),
-                                        media_type: attachment.mime_type.clone(),
-                                        data: base64_data,
+                            ContentBlock::Image { source } => {
+                                let anthropic_source = match source {
+                                    ImageSource::Base64 { media_type, data } => {
+                                        AnthropicImageSource {
+                                            source_type: "base64".to_string(),
+                                            media_type: media_type.clone(),
+                                            data: data.clone(),
+                                        }
+                                    }
+                                    ImageSource::Url { url, .. } => AnthropicImageSource {
+                                        source_type: "url".to_string(),
+                                        media_type: "image/jpeg".to_string(), // Default
+                                        data: url.clone(),
                                     },
+                                };
+                                anthropic_blocks.push(AnthropicContentBlock::Image {
+                                    source: anthropic_source,
+                                });
+                            }
+                            ContentBlock::Thinking { thinking } => {
+                                // Anthropic supports thinking blocks natively
+                                anthropic_blocks.push(AnthropicContentBlock::Text {
+                                    text: thinking.clone(),
+                                });
+                            }
+                            ContentBlock::ToolUse { id, name, input } => {
+                                // Anthropic uses tool_use content blocks
+                                anthropic_blocks.push(AnthropicContentBlock::ToolUse {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    input: input.clone(),
+                                });
+                            }
+                            ContentBlock::ToolResult {
+                                tool_use_id,
+                                content,
+                                is_error,
+                            } => {
+                                // Convert nested content blocks
+                                let result_content = content
+                                    .iter()
+                                    .filter_map(|block| match block {
+                                        ContentBlock::Text { text } => Some(text.clone()),
+                                        _ => None,
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+
+                                anthropic_blocks.push(AnthropicContentBlock::ToolResult {
+                                    tool_use_id: tool_use_id.clone(),
+                                    content: result_content,
+                                    is_error: *is_error,
                                 });
                             }
                         }
+                    }
 
-                        if blocks.len() > 1 {
-                            AnthropicMessageContent::Multimodal(blocks)
-                        } else if blocks.len() == 1 {
-                            // Single text block, use string format
-                            if let Some(AnthropicContentBlock::Text { text }) =
-                                blocks.into_iter().next()
-                            {
-                                AnthropicMessageContent::Text(text)
-                            } else {
-                                AnthropicMessageContent::Text(String::new())
-                            }
+                    // Build message content
+                    let content = if anthropic_blocks.is_empty() {
+                        AnthropicMessageContent::Text(String::new())
+                    } else if anthropic_blocks.len() == 1
+                        && matches!(anthropic_blocks[0], AnthropicContentBlock::Text { .. })
+                    {
+                        // Single text block - use string format
+                        if let Some(AnthropicContentBlock::Text { text }) =
+                            anthropic_blocks.into_iter().next()
+                        {
+                            AnthropicMessageContent::Text(text)
                         } else {
                             AnthropicMessageContent::Text(String::new())
                         }
                     } else {
-                        // Regular text content
-                        AnthropicMessageContent::Text(msg.content.clone().unwrap_or_default())
+                        // Multiple blocks or non-text - use array format
+                        AnthropicMessageContent::Multimodal(anthropic_blocks)
                     };
 
                     messages.push(AnthropicMessage {
@@ -181,21 +238,51 @@ impl AnthropicProvider {
                     });
                 }
                 Role::Assistant => {
+                    // Convert content blocks
+                    let mut anthropic_blocks = Vec::new();
+
+                    for block in &msg.content {
+                        match block {
+                            ContentBlock::Text { text } => {
+                                anthropic_blocks.push(AnthropicContentBlock::Text {
+                                    text: text.clone(),
+                                });
+                            }
+                            ContentBlock::Thinking { thinking } => {
+                                anthropic_blocks.push(AnthropicContentBlock::Text {
+                                    text: thinking.clone(),
+                                });
+                            }
+                            ContentBlock::ToolUse { id, name, input } => {
+                                anthropic_blocks.push(AnthropicContentBlock::ToolUse {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    input: input.clone(),
+                                });
+                            }
+                            _ => {} // Skip other types for assistant messages
+                        }
+                    }
+
+                    let content = if anthropic_blocks.is_empty() {
+                        AnthropicMessageContent::Text(String::new())
+                    } else if anthropic_blocks.len() == 1
+                        && matches!(anthropic_blocks[0], AnthropicContentBlock::Text { .. })
+                    {
+                        if let Some(AnthropicContentBlock::Text { text }) =
+                            anthropic_blocks.into_iter().next()
+                        {
+                            AnthropicMessageContent::Text(text)
+                        } else {
+                            AnthropicMessageContent::Text(String::new())
+                        }
+                    } else {
+                        AnthropicMessageContent::Multimodal(anthropic_blocks)
+                    };
+
                     messages.push(AnthropicMessage {
                         role: "assistant".to_string(),
-                        content: AnthropicMessageContent::Text(
-                            msg.content.clone().unwrap_or_default(),
-                        ),
-                    });
-                }
-                Role::Tool => {
-                    // Anthropic handles tool results as user messages with special format
-                    // For now, we'll treat them as user messages
-                    messages.push(AnthropicMessage {
-                        role: "user".to_string(),
-                        content: AnthropicMessageContent::Text(
-                            msg.content.clone().unwrap_or_default(),
-                        ),
+                        content,
                     });
                 }
             }
@@ -229,139 +316,12 @@ impl AnthropicProvider {
         }
     }
 
-    /// Converts Anthropic response to our format
-    fn convert_response(resp: AnthropicResponse) -> ChatResponse {
-        // Extract text content
-        let content = resp
-            .content
-            .iter()
-            .filter(|c| c.content_type == "text")
-            .filter_map(|c| c.text.as_ref())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("");
-
-        // Extract thinking content
-        let thinking = resp
-            .content
-            .iter()
-            .filter(|c| c.content_type == "thinking")
-            .filter_map(|c| c.thinking.as_ref())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        ChatResponse {
-            id: resp.id,
-            model: resp.model,
-            choices: vec![Choice {
-                message: Message {
-                    role: Role::Assistant,
-                    content,
-                    tool_calls: Vec::new(), // TODO: Extract tool calls from Anthropic response
-                    thinking: if thinking.is_empty() {
-                        None
-                    } else {
-                        Some(thinking)
-                    },
-                },
-                finish_reason: resp.stop_reason.unwrap_or_else(|| "stop".to_string()),
-                index: 0,
-            }],
-            usage: Some(Usage {
-                prompt_tokens: resp.usage.input_tokens,
-                completion_tokens: resp.usage.output_tokens,
-                total_tokens: resp.usage.input_tokens + resp.usage.output_tokens,
-                reasoning_tokens: None, // Anthropic bills for full thinking tokens, not separate
-            }),
-        }
-    }
 }
 
 #[async_trait]
 impl AIProvider for AnthropicProvider {
     fn name(&self) -> &str {
         "Anthropic"
-    }
-
-    fn provider_type(&self) -> &str {
-        "anthropic"
-    }
-
-    async fn chat(
-        &self,
-        api_key: &str,
-        base_url: &str,
-        request: ChatRequest,
-    ) -> Result<ChatResponse, ProviderError> {
-        let client = Client::new();
-
-        // Convert messages
-        let (system, messages) = Self::convert_messages(&request.messages, &request.attachments);
-
-        // Build request body
-        let mut body = json!({
-            "model": request.model,
-            "max_tokens": request.max_tokens.unwrap_or(1024),
-            "messages": messages,
-        });
-
-        if let Some(system_msg) = system {
-            body["system"] = json!(system_msg);
-        }
-
-        if let Some(temp) = request.temperature {
-            body["temperature"] = json!(temp);
-        }
-
-        if let Some(top_p) = request.top_p {
-            body["top_p"] = json!(top_p);
-        }
-
-        // Add tools if provided
-        if !request.tools.is_empty() {
-            let tools = Self::convert_tools(&request.tools);
-            body["tools"] = json!(tools);
-        }
-
-        // Add tool choice if provided
-        if let Some(ref tool_choice) = request.tool_choice {
-            body["tool_choice"] = Self::convert_tool_choice(tool_choice);
-        }
-
-        // Add thinking configuration if provided
-        if let Some(ref thinking) = request.thinking {
-            if thinking.enabled {
-                let budget = thinking.budget_tokens.unwrap_or(10000).max(1024); // Minimum 1024
-                body["thinking"] = json!({
-                    "type": "enabled",
-                    "budget_tokens": budget
-                });
-            }
-        }
-
-        // Make request
-        let response = client
-            .post(format!("{}/messages", base_url))
-            .header("x-api-key", api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-
-        // Check status
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
-        }
-
-        // Parse response
-        let anthropic_resp: AnthropicResponse = response.json().await?;
-
-        // Convert to our format
-        Ok(Self::convert_response(anthropic_resp))
     }
 
     async fn stream_chat(
@@ -376,7 +336,7 @@ impl AIProvider for AnthropicProvider {
         let client = Client::new();
 
         // Convert messages
-        let (system, messages) = Self::convert_messages(&request.messages, &request.attachments);
+        let (system, messages) = Self::convert_messages(&request.messages);
 
         // Build request body with stream: true
         let mut body = json!({
@@ -459,41 +419,112 @@ impl AIProvider for AnthropicProvider {
 
                         buffer.push_str(chunk_str);
 
-                        // Process complete SSE events
+                        // Process complete SSE events (Anthropic format: "event: ...\ndata: {...}\n\n")
                         while let Some(index) = buffer.find("\n\n") {
-                            let event = buffer[..index].to_string();
+                            let event_block = buffer[..index].to_string();
                             buffer.drain(..=index + 1);
 
-                            // Parse event
-                            if event.starts_with("data: ") {
-                                let data = &event[6..]; // Skip "data: "
+                            // Extract data line from event block
+                            for line in event_block.lines() {
+                                if line.starts_with("data: ") {
+                                    let data = &line[6..]; // Skip "data: "
 
-                                if data == "[DONE]" {
-                                    break;
-                                }
+                                    if data == "[DONE]" {
+                                        break;
+                                    }
 
-                                // Try to parse as JSON
-                                if let Ok(chunk_data) = serde_json::from_str::<AnthropicStreamChunk>(data) {
-                                    if chunk_data.event_type == "content_block_delta" {
-                                        if let Some(delta) = chunk_data.delta {
-                                            // Yield text delta if present
-                                            if let Some(text) = delta.text {
-                                                yield Ok(StreamChatChunk {
-                                                    content: text,
-                                                    finish_reason: None,
-                                                    thinking: None,
+                                    // Try to parse as JSON
+                                    if let Ok(chunk_data) = serde_json::from_str::<AnthropicStreamChunk>(data) {
+                                        // Handle error events
+                                        if chunk_data.event_type == "error" {
+                                            if let Some(error) = chunk_data.error {
+                                                yield Err(ProviderError::from_anthropic_error(
+                                                    &error.error_type,
+                                                    &error.message
+                                                ));
+                                                break;
+                                            }
+                                        }
+
+                                        // Handle message_delta for usage and finish reason
+                                        if chunk_data.event_type == "message_delta" {
+                                            let mut finish_reason = None;
+                                            let mut usage = None;
+
+                                            if let Some(message_delta) = chunk_data.message {
+                                                finish_reason = message_delta.stop_reason;
+                                            }
+
+                                            if let Some(stream_usage) = chunk_data.usage {
+                                                let input = stream_usage.input_tokens.unwrap_or(0);
+                                                let output = stream_usage.output_tokens.unwrap_or(0);
+                                                usage = Some(crate::models::StreamUsage {
+                                                    prompt_tokens: input,
+                                                    completion_tokens: output,
+                                                    total_tokens: input + output,
+                                                    reasoning_tokens: None,
                                                 });
                                             }
-                                            // Yield thinking delta if present
-                                            if let Some(thinking) = delta.thinking {
+
+                                            if finish_reason.is_some() || usage.is_some() {
                                                 yield Ok(StreamChatChunk {
-                                                    content: String::new(),
-                                                    finish_reason: None,
-                                                    thinking: Some(thinking),
+                                                    content: Vec::new(),
+                                                    finish_reason,
+                                                    usage,
+                                                    refusal: None,
+                                                    safety_ratings: Vec::new(),
+                                                    safety_blocked: false,
                                                 });
                                             }
                                         }
+
+                                        // Handle content_block_delta
+                                        if chunk_data.event_type == "content_block_delta" {
+                                            if let Some(delta) = chunk_data.delta {
+                                                let content_delta = match delta.delta_type.as_str() {
+                                                    "text_delta" => {
+                                                        delta.text.map(|text| {
+                                                            crate::models::ContentBlockDelta::TextDelta {
+                                                                index: 0, // TODO: track block index
+                                                                delta: text,
+                                                            }
+                                                        })
+                                                    }
+                                                    "thinking_delta" => {
+                                                        delta.thinking.map(|thinking| {
+                                                            crate::models::ContentBlockDelta::ThinkingDelta {
+                                                                index: 0, // TODO: track block index
+                                                                delta: thinking,
+                                                            }
+                                                        })
+                                                    }
+                                                    "input_json_delta" => {
+                                                        delta.partial_json.map(|partial_json| {
+                                                            crate::models::ContentBlockDelta::ToolUseDelta {
+                                                                index: 0, // TODO: track block index
+                                                                id: None,
+                                                                name: None,
+                                                                input_delta: Some(partial_json),
+                                                            }
+                                                        })
+                                                    }
+                                                    _ => None, // Ignore unknown delta types
+                                                };
+
+                                                if let Some(delta) = content_delta {
+                                                    yield Ok(StreamChatChunk {
+                                                        content: vec![delta],
+                                                        finish_reason: None,
+                                                        usage: None,
+                                                        refusal: None,
+                                                        safety_ratings: Vec::new(),
+                                                        safety_blocked: false,
+                                                    });
+                                                }
+                                            }
+                                        }
                                     }
+                                    break; // Only process first data line in block
                                 }
                             }
                         }

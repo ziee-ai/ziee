@@ -2,7 +2,7 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatRequest, ChatResponse, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk},
 };
 use async_trait::async_trait;
 use futures_core::Stream;
@@ -10,9 +10,12 @@ use std::pin::Pin;
 
 /// Unified interface for AI providers
 ///
-/// All providers implement this trait to provide a consistent API for chat, streaming,
+/// All providers implement this trait to provide a consistent API for streaming chat
 /// and embeddings functionality. The trait is stateless - all configuration (API keys,
 /// base URLs, etc.) must be passed as function parameters.
+///
+/// **STREAMING ONLY**: This library only supports streaming responses for optimal
+/// real-time user experience. Non-streaming chat methods have been removed.
 ///
 /// # Stateless Design
 ///
@@ -26,6 +29,7 @@ use std::pin::Pin;
 ///
 /// ```no_run
 /// use ai_providers::{OpenAIProvider, AIProvider, ChatRequest, ChatMessage};
+/// use futures_util::StreamExt;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,11 +42,16 @@ use std::pin::Pin;
 ///     };
 ///
 ///     // All config passed as parameters (stateless)
-///     let response = provider.chat(
+///     let mut stream = provider.stream_chat(
 ///         "sk-...",                      // API key
 ///         "https://api.openai.com/v1",  // Base URL
 ///         request,
 ///     ).await?;
+///
+///     while let Some(chunk) = stream.next().await {
+///         let chunk = chunk?;
+///         print!("{}", chunk.content);
+///     }
 ///
 ///     Ok(())
 /// }
@@ -51,32 +60,6 @@ use std::pin::Pin;
 pub trait AIProvider: Send + Sync {
     /// Returns the human-readable name of the provider
     fn name(&self) -> &str;
-
-    /// Returns the provider type identifier (e.g., "openai", "anthropic", "gemini")
-    fn provider_type(&self) -> &str;
-
-    /// Sends a chat completion request
-    ///
-    /// # Parameters
-    ///
-    /// - `api_key`: The API key for authentication
-    /// - `base_url`: The base URL for the provider's API (e.g., "https://api.openai.com/v1")
-    /// - `request`: The chat request containing messages, model, and parameters
-    ///
-    /// # Returns
-    ///
-    /// The complete chat response from the provider
-    ///
-    /// # Errors
-    ///
-    /// Returns `ProviderError` if the request fails due to network issues, authentication
-    /// errors, rate limiting, or invalid parameters.
-    async fn chat(
-        &self,
-        api_key: &str,
-        base_url: &str,
-        request: ChatRequest,
-    ) -> Result<ChatResponse, ProviderError>;
 
     /// Sends a streaming chat completion request
     ///

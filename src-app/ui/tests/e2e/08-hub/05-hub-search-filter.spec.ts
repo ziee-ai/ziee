@@ -123,8 +123,7 @@ test.describe('Hub Search and Filters', () => {
   })
 
   test.describe('Tag Filtering', () => {
-    test.skip('should filter by single tag', async ({ page, testInfra }) => {
-      // Skipped: Tag filtering implementation depends on hub data structure
+    test('should filter by single tag', async ({ page, testInfra }) => {
       const { baseURL } = testInfra
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
@@ -132,8 +131,8 @@ test.describe('Hub Search and Filters', () => {
       const initialCards = await getModelCards(page)
       const initialCount = await initialCards.count()
 
-      // Filter by tag
-      await filterByTags(page, ['conversational'])
+      // Filter by tag (using actual tag that exists in hub data)
+      await filterByTags(page, ['chat'])
 
       const filteredCards = await getModelCards(page)
       const filteredCount = await filteredCards.count()
@@ -141,14 +140,13 @@ test.describe('Hub Search and Filters', () => {
       expect(filteredCount).toBeLessThanOrEqual(initialCount)
     })
 
-    test.skip('should filter by multiple tags', async ({ page, testInfra }) => {
-      // Skipped: Tag filtering implementation depends on hub data structure
+    test('should filter by multiple tags', async ({ page, testInfra }) => {
       const { baseURL } = testInfra
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
 
-      // Filter by multiple tags
-      await filterByTags(page, ['conversational', 'open-source'])
+      // Filter by multiple tags (using actual tags that exist in hub data)
+      await filterByTags(page, ['chat', 'code'])
 
       const filteredCards = await getModelCards(page)
       const filteredCount = await filteredCards.count()
@@ -159,8 +157,7 @@ test.describe('Hub Search and Filters', () => {
   })
 
   test.describe('Sorting', () => {
-    test.skip('should sort by popularity', async ({ page, testInfra }) => {
-      // Skipped: Sorting implementation depends on UI
+    test('should sort by popularity', async ({ page, testInfra }) => {
       const { baseURL } = testInfra
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
@@ -172,8 +169,7 @@ test.describe('Hub Search and Filters', () => {
       expect(await modelCards.count()).toBeGreaterThan(0)
     })
 
-    test.skip('should sort by name', async ({ page, testInfra }) => {
-      // Skipped: Sorting implementation depends on UI
+    test('should sort by name', async ({ page, testInfra }) => {
       const { baseURL } = testInfra
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
@@ -186,8 +182,7 @@ test.describe('Hub Search and Filters', () => {
       // Could verify alphabetical order by extracting names
     })
 
-    test.skip('should sort by size', async ({ page, testInfra }) => {
-      // Skipped: Sorting implementation depends on UI
+    test('should sort by size', async ({ page, testInfra}) => {
       const { baseURL } = testInfra
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
@@ -225,8 +220,7 @@ test.describe('Hub Search and Filters', () => {
       expect(typeof searchValue).toBe('string')
     })
 
-    test.skip('should combine search and tag filters', async ({ page, testInfra }) => {
-      // Skipped: Depends on tag filtering implementation
+    test('should combine search and tag filters', async ({ page, testInfra }) => {
       const { baseURL } = testInfra
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
@@ -234,8 +228,8 @@ test.describe('Hub Search and Filters', () => {
       // Apply search
       await searchHubResources(page, 'llama')
 
-      // Apply tag filter
-      await filterByTags(page, ['open-source'])
+      // Apply tag filter (using actual tag that exists in hub data)
+      await filterByTags(page, ['chat'])
 
       // Results should match both filters
       const filteredCards = await getModelCards(page)

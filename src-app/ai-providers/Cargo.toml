@@ -7,9 +7,7 @@ description = "Unified interface for multiple AI provider APIs (OpenAI, Anthropi
 license = ""
 
 [dependencies]
-# Use existing libraries as path dependencies (local)
-# Note: OpenAI uses custom implementation (no library dependency)
-gemini-rust = { path = "/home/pbya/projects/gemini-rust" }
+# All providers now use custom HTTP implementations (no external provider libraries)
 
 # Core async runtime
 tokio = { workspace = true }
