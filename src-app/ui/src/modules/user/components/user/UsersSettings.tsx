@@ -1,4 +1,5 @@
 import {
+  DeleteOutlined,
   EditOutlined,
   LockOutlined,
   PlusOutlined,
@@ -69,6 +70,16 @@ export function UsersSettings() {
     }
   }
 
+  const handleDelete = async (userId: string) => {
+    try {
+      await Stores.Users.deleteUser(userId)
+      message.success('User deleted successfully')
+    } catch (error) {
+      console.error('Failed to delete user:', error)
+      // Error is handled by the store
+    }
+  }
+
   const getUserActions = (user: User) => {
     const actions: React.ReactNode[] = []
 
@@ -116,6 +127,25 @@ export function UsersSettings() {
       >
         Groups
       </Button>,
+    )
+
+    actions.push(
+      <Popconfirm
+        key="delete"
+        title="Are you sure you want to delete this user?"
+        onConfirm={() => handleDelete(user.id)}
+        okText="Yes"
+        cancelText="No"
+      >
+        <Button
+          type="text"
+          danger
+          icon={<DeleteOutlined aria-hidden="true" />}
+          aria-label={`Delete ${user.username}`}
+        >
+          Delete
+        </Button>
+      </Popconfirm>,
     )
 
     return actions.filter(Boolean)

@@ -70,11 +70,11 @@ reqwest = { version = "0.12", features = ["json"] }
 
 [lib]
 name = "ziee_chat"
-path = "lib.rs"
+path = "src/lib.rs"
 
 [[bin]]
 name = "ziee-chat"
-path = "main.rs"
+path = "src/main.rs"
 
 [features]
 default = ["gpu-detect"]

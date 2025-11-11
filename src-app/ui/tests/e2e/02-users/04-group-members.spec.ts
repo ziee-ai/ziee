@@ -1,0 +1,290 @@
+import { test, expect } from '../../fixtures/test-context'
+import { loginAsAdmin } from '../../common/auth-helpers'
+import {
+  navigateToUsers,
+  navigateToUserGroups,
+  openCreateUserDrawer,
+  openCreateGroupDrawer,
+  openGroupMembersDrawer,
+  openUserGroupsDrawer,
+} from './helpers/user-navigation'
+import { createUser } from './helpers/user-actions'
+import { createGroup, viewGroupMembers } from './helpers/group-actions'
+import {
+  assertUserExists,
+  assertGroupExists,
+  assertUserInGroup,
+  assertUserNotInGroup,
+  assertDrawerOpen,
+} from './helpers/user-assertions'
+
+test.describe('Group Membership Management', () => {
+  test('should display group members drawer', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Navigate to groups page
+    await navigateToUserGroups(page, baseURL)
+
+    // Create a test group
+    await openCreateGroupDrawer(page)
+    const timestamp = Date.now()
+    const groupData = {
+      name: `TestGroup${timestamp}`,
+      description: 'Test group',
+    }
+    await createGroup(page, groupData)
+
+    // Open members drawer
+    await viewGroupMembers(page, groupData.name)
+
+    // Verify drawer opened
+    await assertDrawerOpen(page, /members of/i)
+
+    // Verify group name is in drawer title
+    const drawer = page.locator('.ant-drawer:visible')
+    await expect(drawer.locator('.ant-drawer-title')).toContainText(
+      groupData.name
+    )
+  })
+
+  test('should display empty state when group has no members', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Navigate to groups page
+    await navigateToUserGroups(page, baseURL)
+
+    // Create a test group
+    await openCreateGroupDrawer(page)
+    const timestamp = Date.now()
+    const groupData = {
+      name: `TestGroup${timestamp}`,
+      description: 'Empty group',
+    }
+    await createGroup(page, groupData)
+
+    // Open members drawer
+    await viewGroupMembers(page, groupData.name)
+
+    // Verify empty state or no items message
+    const drawer = page.locator('.ant-drawer:visible')
+    const membersList = drawer.locator('.ant-list')
+
+    // Either no items or empty state should be shown
+    const isEmpty =
+      (await membersList.locator('.ant-list-item').count()) === 0 ||
+      (await drawer.locator('.ant-empty').isVisible())
+
+    expect(isEmpty).toBe(true)
+  })
+
+  test('should display user groups drawer', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Navigate to users page
+    await navigateToUsers(page, baseURL)
+
+    // Create a test user
+    await openCreateUserDrawer(page)
+    const timestamp = Date.now()
+    const userData = {
+      username: `testuser${timestamp}`,
+      email: `testuser${timestamp}@example.com`,
+      password: 'password123',
+    }
+    await createUser(page, userData)
+
+    // Open user groups drawer
+    await openUserGroupsDrawer(page, userData.username)
+
+    // Verify drawer opened
+    const drawer = page.locator('.ant-drawer:visible')
+    await expect(drawer).toBeVisible()
+  })
+
+  test('should show system groups in list', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Navigate to groups page
+    await navigateToUserGroups(page, baseURL)
+
+    // Check if admin group exists (it's typically a system group)
+    const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+    const adminExists = await adminGroup.isVisible()
+
+    if (adminExists) {
+      // Verify it has system tag
+      const systemTag = adminGroup.locator('.ant-tag', { hasText: /system/i })
+      await expect(systemTag).toBeVisible()
+
+      // View members
+      await viewGroupMembers(page, 'admin')
+
+      // Verify members drawer opens
+      await assertDrawerOpen(page, /members of/i)
+
+      // Admin group should have at least one member
+      const drawer = page.locator('.ant-drawer:visible')
+      const membersList = drawer.locator('.ant-list-item')
+      await expect(membersList.first()).toBeVisible()
+    }
+  })
+
+  test('should display user information in members list', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Navigate to groups page
+    await navigateToUserGroups(page, baseURL)
+
+    // Find admin group (it typically has members)
+    const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+    const adminExists = await adminGroup.isVisible()
+
+    if (adminExists) {
+      // View admin group members
+      await viewGroupMembers(page, 'admin')
+
+      // Verify drawer shows member information
+      const drawer = page.locator('.ant-drawer:visible')
+      const firstMember = drawer.locator('.ant-list-item').first()
+
+      if (await firstMember.isVisible()) {
+        // Check for username/title
+        await expect(firstMember.locator('.ant-list-item-meta-title')).toBeVisible()
+
+        // Check for email in description
+        await expect(firstMember.locator('.ant-list-item-meta-description')).toBeVisible()
+
+        // Check for status tag
+        const statusTag = firstMember.locator('.ant-tag')
+        await expect(statusTag).toBeVisible()
+      }
+    }
+  })
+
+  test('should display active/inactive status for group members', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Navigate to groups page
+    await navigateToUserGroups(page, baseURL)
+
+    // Find admin group
+    const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+    const adminExists = await adminGroup.isVisible()
+
+    if (adminExists) {
+      await viewGroupMembers(page, 'admin')
+
+      const drawer = page.locator('.ant-drawer:visible')
+      const firstMember = drawer.locator('.ant-list-item').first()
+
+      if (await firstMember.isVisible()) {
+        // Check for status tag (green for active, red for inactive)
+        const statusTag = firstMember.locator('.ant-tag')
+        await expect(statusTag).toBeVisible()
+
+        const statusText = await statusTag.textContent()
+        expect(
+          statusText?.toLowerCase() === 'active' ||
+            statusText?.toLowerCase() === 'inactive'
+        ).toBe(true)
+      }
+    }
+  })
+
+  test('should close members drawer', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Navigate to groups page
+    await navigateToUserGroups(page, baseURL)
+
+    // Create a test group
+    await openCreateGroupDrawer(page)
+    const timestamp = Date.now()
+    const groupData = {
+      name: `TestGroup${timestamp}`,
+      description: 'Test group',
+    }
+    await createGroup(page, groupData)
+
+    // Open members drawer
+    await viewGroupMembers(page, groupData.name)
+    await assertDrawerOpen(page, /members of/i)
+
+    // Close drawer
+    const closeButton = page.locator('.ant-drawer:visible .ant-drawer-close')
+    await closeButton.click()
+
+    // Verify drawer closed
+    await page.waitForTimeout(300)
+    const drawer = page.locator('.ant-drawer:visible')
+    await expect(drawer).not.toBeVisible()
+  })
+
+  test('should handle loading state when fetching members', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Navigate to groups page
+    await navigateToUserGroups(page, baseURL)
+
+    // Find admin group
+    const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+    const adminExists = await adminGroup.isVisible()
+
+    if (adminExists) {
+      // Click members button
+      const membersButton = adminGroup.getByRole('button', {
+        name: /members/i,
+      })
+      await membersButton.click()
+
+      // Wait for drawer to appear
+      const drawer = page.locator('.ant-drawer:visible')
+      await drawer.waitFor({ state: 'visible' })
+
+      // Loading spinner should appear briefly (or list loads quickly)
+      const spinner = drawer.locator('.ant-spin')
+      // Spinner might not be visible if data loads too quickly, that's okay
+
+      // Eventually, either spinner disappears or list appears
+      await expect(
+        drawer.locator('.ant-list').or(spinner)
+      ).toBeVisible({ timeout: 5000 })
+    }
+  })
+
+  test('should navigate between users and groups pages', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    // Start on users page
+    await navigateToUsers(page, baseURL)
+    await expect(page.locator('h1', { hasText: /^users$/i })).toBeVisible()
+
+    // Navigate to groups page
+    await navigateToUserGroups(page, baseURL)
+    await expect(
+      page.locator('h1', { hasText: /user groups/i })
+    ).toBeVisible()
+
+    // Navigate back to users page
+    await navigateToUsers(page, baseURL)
+    await expect(page.locator('h1', { hasText: /^users$/i })).toBeVisible()
+  })
+})
