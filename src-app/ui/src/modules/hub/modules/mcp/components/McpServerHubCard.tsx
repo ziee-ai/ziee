@@ -60,6 +60,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
         className="cursor-pointer relative group hover:!shadow-md transition-shadow h-full"
         onClick={() => setShowDetails(true)}
         data-server-id={server.id}
+        data-testid={`hub-mcp-card-${server.id}`}
       >
         <div className="flex items-start gap-3 flex-wrap">
           {/* Server Info */}

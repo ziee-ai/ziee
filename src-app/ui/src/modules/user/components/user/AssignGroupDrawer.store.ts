@@ -14,6 +14,7 @@ interface AssignGroupDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useAssignGroupDrawerStore = create<AssignGroupDrawerState>()(
@@ -33,6 +34,7 @@ export const useAssignGroupDrawerStore = create<AssignGroupDrawerState>()(
 
         __init__: {
           __store__: () => {
+            const GROUP = 'AssignGroupDrawerStore'
             const eventBus = Stores.EventBus
 
             // Close drawer when user is deleted
@@ -42,8 +44,12 @@ export const useAssignGroupDrawerStore = create<AssignGroupDrawerState>()(
               if (state.user?.id === userId) {
                 get().closeAssignGroupDrawer()
               }
-            })
+            }, GROUP)
           },
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('AssignGroupDrawerStore')
         },
       }),
     ),

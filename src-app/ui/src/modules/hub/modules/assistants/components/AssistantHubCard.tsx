@@ -56,6 +56,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
         className="cursor-pointer relative group hover:!shadow-md transition-shadow h-full"
         onClick={() => setShowDetails(true)}
         data-assistant-id={assistant.id}
+        data-testid={`hub-assistant-card-${assistant.id}`}
       >
         <div className="flex items-start gap-3 flex-wrap">
           {/* Assistant Info */}

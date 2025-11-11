@@ -99,6 +99,7 @@ interface EditLlmModelDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useEditLlmModelDrawerStore = create<EditLlmModelDrawerState>()(
@@ -110,6 +111,7 @@ export const useEditLlmModelDrawerStore = create<EditLlmModelDrawerState>()(
 
       __init__: {
         __store__: () => {
+          const GROUP = 'EditLlmModelDrawerStore'
           const eventBus = Stores.EventBus
 
           // Subscribe to llm_model.deleted
@@ -120,7 +122,7 @@ export const useEditLlmModelDrawerStore = create<EditLlmModelDrawerState>()(
             if (state.modelId === modelId) {
               get().closeEditLlmModelDrawer()
             }
-          })
+          }, GROUP)
         },
       },
 
@@ -142,6 +144,10 @@ export const useEditLlmModelDrawerStore = create<EditLlmModelDrawerState>()(
 
       setEditLlmModelDrawerLoading: (loading: boolean) => {
         set({ loading })
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('EditLlmModelDrawerStore')
       },
     }),
   ),

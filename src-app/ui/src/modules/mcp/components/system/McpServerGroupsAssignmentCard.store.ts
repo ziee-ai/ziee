@@ -35,6 +35,9 @@ interface SystemMcpServerGroupCardState {
   clearServerGroups: (serverId: string) => void
   clearAllServerGroups: () => void
   getServerGroupsData: (serverId: string) => ServerGroups | undefined
+
+  // Cleanup
+  __destroy__?: () => void
 }
 
 export const useSystemMcpServerGroupCardStore = create<SystemMcpServerGroupCardState>()(
@@ -49,6 +52,7 @@ export const useSystemMcpServerGroupCardStore = create<SystemMcpServerGroupCardS
         __init__: {
           // Store-level initialization - runs once on first access (any property)
           __store__: () => {
+            const GROUP = 'McpServerGroupsAssignmentCardStore'
             // Subscribe to group events for cache invalidation
             const eventBus = Stores.EventBus
 
@@ -61,9 +65,9 @@ export const useSystemMcpServerGroupCardStore = create<SystemMcpServerGroupCardS
             }
 
             // Type-safe - TypeScript infers event types automatically
-            eventBus.on('group.created', handleGroupChange)
-            eventBus.on('group.updated', handleGroupChange)
-            eventBus.on('group.deleted', handleGroupChange)
+            eventBus.on('group.created', handleGroupChange, GROUP)
+            eventBus.on('group.updated', handleGroupChange, GROUP)
+            eventBus.on('group.deleted', handleGroupChange, GROUP)
 
             // When groups are assigned to a server, update the cache directly
             eventBus.on('mcp_server.groups_changed', async event => {
@@ -85,7 +89,7 @@ export const useSystemMcpServerGroupCardStore = create<SystemMcpServerGroupCardS
                   lastFetched: Date.now(),
                 })
               })
-            })
+            }, GROUP)
           },
 
           // Property-specific initialization - runs when allGroups is first accessed
@@ -233,6 +237,13 @@ export const useSystemMcpServerGroupCardStore = create<SystemMcpServerGroupCardS
          */
         getServerGroupsData: (serverId: string): ServerGroups | undefined => {
           return get().serverGroups.get(serverId)
+        },
+
+        /**
+         * Cleanup method - removes all event listeners for this store
+         */
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('McpServerGroupsAssignmentCardStore')
         },
       }),
     ),

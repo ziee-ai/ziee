@@ -19,6 +19,7 @@ interface AssistantDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useAssistantDrawerStore = create<AssistantDrawerState>()(
@@ -32,6 +33,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
 
       __init__: {
         __store__: () => {
+          const GROUP = 'AssistantDrawerStore'
           const eventBus = Stores.EventBus
 
           // Subscribe to assistant.updated (user assistants)
@@ -42,7 +44,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
             if (!state.isTemplate && !state.isCloning && state.editingAssistant?.id === assistant.id) {
               set({ editingAssistant: assistant })
             }
-          })
+          }, GROUP)
 
           // Subscribe to assistant.deleted (user assistants)
           eventBus.on('assistant.deleted', async event => {
@@ -52,7 +54,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
             if (!state.isTemplate && !state.isCloning && state.editingAssistant?.id === assistantId) {
               get().closeAssistantDrawer()
             }
-          })
+          }, GROUP)
 
           // Subscribe to assistant_template.updated (template assistants)
           eventBus.on('assistant_template.updated', async event => {
@@ -62,7 +64,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
             if (state.isTemplate && !state.isCloning && state.editingAssistant?.id === template.id) {
               set({ editingAssistant: template })
             }
-          })
+          }, GROUP)
 
           // Subscribe to assistant_template.deleted (template assistants)
           eventBus.on('assistant_template.deleted', async event => {
@@ -72,7 +74,7 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
             if (state.isTemplate && !state.isCloning && state.editingAssistant?.id === templateId) {
               get().closeAssistantDrawer()
             }
-          })
+          }, GROUP)
         },
       },
 
@@ -98,6 +100,10 @@ export const useAssistantDrawerStore = create<AssistantDrawerState>()(
 
       setAssistantDrawerLoading: (loading: boolean) => {
         set({ loading })
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('AssistantDrawerStore')
       },
     }),
   ),

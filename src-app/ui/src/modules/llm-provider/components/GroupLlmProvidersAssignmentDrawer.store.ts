@@ -16,6 +16,7 @@ interface GroupLlmProvidersAssignmentState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useGroupLlmProvidersAssignmentStore =
@@ -27,6 +28,7 @@ export const useGroupLlmProvidersAssignmentStore =
 
         __init__: {
           __store__: () => {
+            const GROUP = 'GroupLlmProvidersAssignmentDrawerStore'
             const eventBus = Stores.EventBus
 
             // Subscribe to group.updated
@@ -37,7 +39,7 @@ export const useGroupLlmProvidersAssignmentStore =
               if (state.selectedGroup?.id === group.id) {
                 set({ selectedGroup: group })
               }
-            })
+            }, GROUP)
 
             // Subscribe to group.deleted
             eventBus.on('group.deleted', async event => {
@@ -47,7 +49,7 @@ export const useGroupLlmProvidersAssignmentStore =
               if (state.selectedGroup?.id === groupId) {
                 get().closeDrawer()
               }
-            })
+            }, GROUP)
           },
         },
 
@@ -57,6 +59,10 @@ export const useGroupLlmProvidersAssignmentStore =
 
         closeDrawer: () => {
           set({ isOpen: false, selectedGroup: null })
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('GroupLlmProvidersAssignmentDrawerStore')
         },
       }),
     ),

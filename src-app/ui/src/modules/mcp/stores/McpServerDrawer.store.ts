@@ -23,6 +23,7 @@ interface McpServerDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
@@ -36,6 +37,7 @@ export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
 
       __init__: {
         __store__: () => {
+          const GROUP = 'McpServerDrawerStore'
           const eventBus = Stores.EventBus
 
           // Subscribe to mcp_server.updated
@@ -49,7 +51,7 @@ export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
             ) {
               set({ editingServer: server })
             }
-          })
+          }, GROUP)
 
           // Subscribe to mcp_server.deleted
           eventBus.on('mcp_server.deleted', async event => {
@@ -59,7 +61,7 @@ export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
             if (state.editingServer?.id === serverId) {
               get().closeMcpServerDrawer()
             }
-          })
+          }, GROUP)
         },
       },
 
@@ -93,6 +95,10 @@ export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
 
       setMcpServerDrawerLoading: (loading: boolean) => {
         set({ loading })
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('McpServerDrawerStore')
       },
     }),
   ),

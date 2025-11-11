@@ -13,6 +13,7 @@ interface McpServerGroupsAssignmentState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmentState>()(
@@ -23,6 +24,7 @@ export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmen
 
       __init__: {
         __store__: () => {
+          const GROUP = 'McpServerGroupsAssignmentDrawerStore'
           const eventBus = Stores.EventBus
 
           // Subscribe to mcp_server.deleted
@@ -33,7 +35,7 @@ export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmen
             if (state.selectedServerId === serverId) {
               get().closeDrawer()
             }
-          })
+          }, GROUP)
         },
       },
 
@@ -49,6 +51,10 @@ export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmen
           state.isOpen = false
           state.selectedServerId = null
         })
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('McpServerGroupsAssignmentDrawerStore')
       },
     })),
   ),

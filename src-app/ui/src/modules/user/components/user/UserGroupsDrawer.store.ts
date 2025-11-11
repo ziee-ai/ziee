@@ -14,6 +14,7 @@ interface UserGroupsDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useUserGroupsDrawerStore = create<UserGroupsDrawerState>()(
@@ -33,6 +34,7 @@ export const useUserGroupsDrawerStore = create<UserGroupsDrawerState>()(
 
         __init__: {
           __store__: () => {
+            const GROUP = 'UserGroupsDrawerStore'
             const eventBus = Stores.EventBus
 
             // Close drawer when user is deleted
@@ -42,13 +44,17 @@ export const useUserGroupsDrawerStore = create<UserGroupsDrawerState>()(
               if (state.user?.id === userId) {
                 get().closeUserGroupsDrawer()
               }
-            })
+            }, GROUP)
 
             // Could refresh if currently viewing that group (optional)
             eventBus.on('group.deleted', async () => {
               // Optional: could trigger a refresh of the groups list
-            })
+            }, GROUP)
           },
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('UserGroupsDrawerStore')
         },
       }),
     ),

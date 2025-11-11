@@ -17,6 +17,7 @@ interface LlmRepositoryDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>()(
@@ -28,6 +29,7 @@ export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>()(
 
       __init__: {
         __store__: () => {
+          const GROUP = 'LlmRepositoryDrawerStore'
           const eventBus = Stores.EventBus
 
           // Subscribe to llm_repository.updated
@@ -38,7 +40,7 @@ export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>()(
             if (state.editingRepository?.id === repository.id) {
               set({ editingRepository: repository })
             }
-          })
+          }, GROUP)
 
           // Subscribe to llm_repository.deleted
           eventBus.on('llm_repository.deleted', async event => {
@@ -48,7 +50,7 @@ export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>()(
             if (state.editingRepository?.id === repositoryId) {
               get().closeDrawer()
             }
-          })
+          }, GROUP)
         },
       },
 
@@ -70,6 +72,10 @@ export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>()(
 
       setLoading: (loading: boolean) => {
         set({ loading })
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('LlmRepositoryDrawerStore')
       },
     }),
   ),

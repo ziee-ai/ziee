@@ -130,7 +130,12 @@ export function SystemMcpServersPage() {
         {/* Servers List */}
         <div className="flex flex-col gap-3">
           {filteredServers.map(server => (
-            <div key={server.id} className="flex flex-col gap-3">
+            <div
+              key={server.id}
+              className="flex flex-col gap-3"
+              data-server-id={server.id}
+              data-server-name={server.display_name}
+            >
               <McpServerCard
                 server={server}
                 isEditable={true}

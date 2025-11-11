@@ -35,6 +35,9 @@ interface GroupSystemMcpServersWidgetState {
   clearGroupServers: (groupId: string) => void
   clearAllGroupServers: () => void
   getGroupServersData: (groupId: string) => GroupServers | undefined
+
+  // Cleanup
+  __destroy__?: () => void
 }
 
 export const useGroupSystemMcpServersWidgetStore = create<GroupSystemMcpServersWidgetState>()(
@@ -49,6 +52,7 @@ export const useGroupSystemMcpServersWidgetStore = create<GroupSystemMcpServersW
         __init__: {
           // Store-level initialization - runs once on first access (any property)
           __store__: () => {
+            const GROUP = 'GroupSystemMcpServersWidgetStore'
             // Subscribe to group server assignment changes
             const eventBus = Stores.EventBus
 
@@ -72,7 +76,7 @@ export const useGroupSystemMcpServersWidgetStore = create<GroupSystemMcpServersW
                   lastFetched: Date.now(),
                 })
               })
-            })
+            }, GROUP)
 
             // Subscribe to mcp_server.created
             eventBus.on('mcp_server.created', async event => {
@@ -84,7 +88,7 @@ export const useGroupSystemMcpServersWidgetStore = create<GroupSystemMcpServersW
                 })
                 await get().loadAllServers()
               }
-            })
+            }, GROUP)
 
             // Subscribe to mcp_server.updated
             eventBus.on('mcp_server.updated', async event => {
@@ -98,7 +102,7 @@ export const useGroupSystemMcpServersWidgetStore = create<GroupSystemMcpServersW
                   }
                 })
               }
-            })
+            }, GROUP)
 
             // Subscribe to mcp_server.deleted
             eventBus.on('mcp_server.deleted', async event => {
@@ -116,7 +120,7 @@ export const useGroupSystemMcpServersWidgetStore = create<GroupSystemMcpServersW
                   })
                 })
               })
-            })
+            }, GROUP)
           },
 
           // Property-specific initialization - runs when allServers is first accessed
@@ -267,6 +271,13 @@ export const useGroupSystemMcpServersWidgetStore = create<GroupSystemMcpServersW
          */
         getGroupServersData: (groupId: string): GroupServers | undefined => {
           return get().groupServers.get(groupId)
+        },
+
+        /**
+         * Cleanup method - removes all event listeners for this store
+         */
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('GroupSystemMcpServersWidgetStore')
         },
       }),
     ),

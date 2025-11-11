@@ -301,6 +301,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         className="cursor-pointer relative group hover:!shadow-md transition-shadow h-full"
         onClick={() => setShowDetails(true)}
         data-model-id={model.id}
+        data-testid={`hub-model-card-${model.id}`}
       >
         <div className="flex items-start gap-3 flex-wrap">
           {/* Model Info */}

@@ -35,6 +35,9 @@ interface ProviderGroupCardState {
   clearProviderGroups: (providerId: string) => void
   clearAllProviderGroups: () => void
   getProviderGroupsData: (providerId: string) => ProviderGroups | undefined
+
+  // Cleanup
+  __destroy__?: () => void
 }
 
 export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
@@ -49,6 +52,7 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
         __init__: {
           // Store-level initialization - runs once on first access (any property)
           __store__: () => {
+            const GROUP = 'ProviderGroupAssignmentCardStore'
             // Subscribe to group events for cache invalidation
             const eventBus = Stores.EventBus
 
@@ -59,9 +63,9 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
             }
 
             // Type-safe - TypeScript infers event types automatically
-            eventBus.on('group.created', handleGroupChange)
-            eventBus.on('group.updated', handleGroupChange)
-            eventBus.on('group.deleted', handleGroupChange)
+            eventBus.on('group.created', handleGroupChange, GROUP)
+            eventBus.on('group.updated', handleGroupChange, GROUP)
+            eventBus.on('group.deleted', handleGroupChange, GROUP)
 
             // Subscribe to provider group assignment changes
             // When groups are assigned to a provider, update the cache directly
@@ -80,7 +84,7 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
                   lastFetched: Date.now(),
                 })
               })
-            })
+            }, GROUP)
           },
 
           // Property-specific initialization - runs when allGroups is first accessed
@@ -219,6 +223,13 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
          */
         getProviderGroupsData: (providerId: string): ProviderGroups | undefined => {
           return get().providerGroups.get(providerId)
+        },
+
+        /**
+         * Cleanup method - removes all event listeners for this store
+         */
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('ProviderGroupAssignmentCardStore')
         },
       }),
     ),

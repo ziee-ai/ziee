@@ -1,0 +1,37 @@
+[package]
+name = "ai-providers"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ziee Team"]
+description = "Unified interface for multiple AI provider APIs (OpenAI, Anthropic, Gemini)"
+license = ""
+
+[dependencies]
+# Use existing libraries as path dependencies (local)
+# Note: OpenAI uses custom implementation (no library dependency)
+gemini-rust = { path = "/home/pbya/projects/gemini-rust" }
+
+# Core async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true, features = ["stream"] }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Streaming
+futures-core = "0.3"
+futures-util = "0.3"
+async-stream = "0.3"
+
+# Base64 encoding (for file attachments)
+base64 = "0.22"
+
+[dev-dependencies]
+tokio-test = "0.4"

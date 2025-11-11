@@ -16,6 +16,7 @@ interface GroupMembersDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useGroupMembersDrawerStore = create<GroupMembersDrawerState>()(
@@ -26,6 +27,7 @@ export const useGroupMembersDrawerStore = create<GroupMembersDrawerState>()(
 
       __init__: {
         __store__: () => {
+          const GROUP = 'GroupMembersDrawerStore'
           const eventBus = Stores.EventBus
 
           // Subscribe to group.updated
@@ -36,7 +38,7 @@ export const useGroupMembersDrawerStore = create<GroupMembersDrawerState>()(
             if (state.selectedGroup?.id === group.id) {
               set({ selectedGroup: group })
             }
-          })
+          }, GROUP)
 
           // Subscribe to group.deleted
           eventBus.on('group.deleted', async event => {
@@ -46,7 +48,7 @@ export const useGroupMembersDrawerStore = create<GroupMembersDrawerState>()(
             if (state.selectedGroup?.id === groupId) {
               get().closeGroupMembersDrawer()
             }
-          })
+          }, GROUP)
         },
       },
 
@@ -56,6 +58,10 @@ export const useGroupMembersDrawerStore = create<GroupMembersDrawerState>()(
 
       closeGroupMembersDrawer: () => {
         set({ isOpen: false, selectedGroup: null })
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('GroupMembersDrawerStore')
       },
     }),
   ),

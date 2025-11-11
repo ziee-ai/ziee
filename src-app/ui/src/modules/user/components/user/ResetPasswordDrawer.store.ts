@@ -14,6 +14,7 @@ interface ResetPasswordDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useResetPasswordDrawerStore = create<ResetPasswordDrawerState>()(
@@ -33,6 +34,7 @@ export const useResetPasswordDrawerStore = create<ResetPasswordDrawerState>()(
 
         __init__: {
           __store__: () => {
+            const GROUP = 'ResetPasswordDrawerStore'
             const eventBus = Stores.EventBus
 
             // Close drawer when user is deleted
@@ -42,8 +44,12 @@ export const useResetPasswordDrawerStore = create<ResetPasswordDrawerState>()(
               if (state.user?.id === userId) {
                 get().closeResetPasswordDrawer()
               }
-            })
+            }, GROUP)
           },
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('ResetPasswordDrawerStore')
         },
       }),
     ),

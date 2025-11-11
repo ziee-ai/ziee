@@ -35,6 +35,9 @@ interface LlmProviderGroupWidgetState {
   clearGroupProviders: (groupId: string) => void
   clearAllGroupProviders: () => void
   getGroupProvidersData: (groupId: string) => GroupProviders | undefined
+
+  // Cleanup
+  __destroy__?: () => void
 }
 
 export const useLlmProviderGroupWidgetStore = create<LlmProviderGroupWidgetState>()(
@@ -49,6 +52,7 @@ export const useLlmProviderGroupWidgetStore = create<LlmProviderGroupWidgetState
         __init__: {
           // Store-level initialization - runs once on first access (any property)
           __store__: () => {
+            const GROUP = 'LLMProviderGroupWidgetStore'
             // Subscribe to group provider assignment changes
             const eventBus = Stores.EventBus
 
@@ -72,7 +76,7 @@ export const useLlmProviderGroupWidgetStore = create<LlmProviderGroupWidgetState
                   lastFetched: Date.now(),
                 })
               })
-            })
+            }, GROUP)
 
             // Subscribe to llm_provider.created
             eventBus.on('llm_provider.created', async () => {
@@ -80,7 +84,7 @@ export const useLlmProviderGroupWidgetStore = create<LlmProviderGroupWidgetState
                 state.providersInitialized = false
               })
               await get().loadAllProviders()
-            })
+            }, GROUP)
 
             // Subscribe to llm_provider.updated
             eventBus.on('llm_provider.updated', async event => {
@@ -91,7 +95,7 @@ export const useLlmProviderGroupWidgetStore = create<LlmProviderGroupWidgetState
                   state.allProviders[index] = provider
                 }
               })
-            })
+            }, GROUP)
 
             // Subscribe to llm_provider.deleted
             eventBus.on('llm_provider.deleted', async event => {
@@ -109,7 +113,7 @@ export const useLlmProviderGroupWidgetStore = create<LlmProviderGroupWidgetState
                   })
                 })
               })
-            })
+            }, GROUP)
           },
 
           // Property-specific initialization - runs when allProviders is first accessed
@@ -247,6 +251,13 @@ export const useLlmProviderGroupWidgetStore = create<LlmProviderGroupWidgetState
          */
         getGroupProvidersData: (groupId: string): GroupProviders | undefined => {
           return get().groupProviders.get(groupId)
+        },
+
+        /**
+         * Cleanup method - removes all event listeners for this store
+         */
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('LLMProviderGroupWidgetStore')
         },
       }),
     ),

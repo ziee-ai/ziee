@@ -35,3 +35,27 @@ export async function waitForMcpAdminPageLoad(page: Page) {
   // Wait for content to be ready (same button text as user page)
   await page.waitForSelector('button:has-text("Add Server")', { timeout: 10000 })
 }
+
+export async function clickServerCard(page: Page, serverDisplayName: string, isAdmin: boolean = false) {
+  // Wait for server card to be visible and scroll into view
+  // Note: There's no separate detail page - cards are shown inline on the list page
+  const serverCard = page.locator(`.ant-card:has-text("${serverDisplayName}")`).first()
+  await serverCard.waitFor({ state: 'visible', timeout: 10000 })
+
+  // Scroll the server card into view
+  await serverCard.scrollIntoViewIfNeeded()
+
+  // Wait for associated cards (like User Groups card) to render
+  await page.waitForTimeout(1000)
+}
+
+export async function goToServerDetail(
+  page: Page,
+  baseURL: string,
+  serverId: string,
+  isAdmin: boolean = false
+) {
+  const path = isAdmin ? `/settings/mcp-admin/${serverId}` : `/settings/mcp-servers/${serverId}`
+  await page.goto(`${baseURL}${path}`)
+  await page.waitForLoadState('load')
+}

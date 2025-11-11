@@ -15,6 +15,7 @@ interface LlmProviderDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>()(
@@ -25,6 +26,7 @@ export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>()(
 
       __init__: {
         __store__: () => {
+          const GROUP = 'LlmProviderDrawerStore'
           const eventBus = Stores.EventBus
 
           // Subscribe to llm_provider.updated
@@ -35,7 +37,7 @@ export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>()(
             if (state.editingProvider?.id === provider.id) {
               set({ editingProvider: provider })
             }
-          })
+          }, GROUP)
 
           // Subscribe to llm_provider.deleted
           eventBus.on('llm_provider.deleted', async event => {
@@ -45,7 +47,7 @@ export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>()(
             if (state.editingProvider?.id === providerId) {
               get().closeLlmProviderDrawer()
             }
-          })
+          }, GROUP)
         },
       },
 
@@ -59,6 +61,10 @@ export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>()(
 
       closeLlmProviderDrawer: () => {
         set({ isOpen: false, editingProvider: null })
+      },
+
+      __destroy__: () => {
+        Stores.EventBus.removeGroupListeners('LlmProviderDrawerStore')
       },
     }),
   ),

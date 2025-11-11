@@ -39,9 +39,19 @@ export async function loginAsAdmin(
   await page.goto(`${baseURL}/setup`)
   await page.waitForLoadState('networkidle')
 
-  // Wait for React to initialize and check if setup form appears
-  // The setup page will redirect if admin already exists
-  await page.waitForTimeout(1500)
+  // Wait for React to initialize and check if setup form appears or page redirects
+  // The setup page will redirect to /auth if admin already exists
+  try {
+    // Wait for either the setup form to appear OR a redirect to happen
+    await Promise.race([
+      page.waitForSelector('#setup-form_username', { timeout: 5000 }),
+      page.waitForURL(/\/auth/, { timeout: 5000 }),
+      page.waitForURL(/\/$/, { timeout: 5000 }) // Sometimes redirects to home
+    ])
+  } catch {
+    // If both timeout, wait a bit more and check URL
+    await page.waitForTimeout(1000)
+  }
 
   // Check if we're still on setup page (admin doesn't exist) or redirected (admin exists)
   const currentURL = page.url()

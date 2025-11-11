@@ -35,6 +35,8 @@ export function McpServerGroupsAssignmentCard({ serverId }: McpServerGroupsAssig
 
   return (
     <Card
+      data-server-id={serverId}
+      data-card-type="user-groups-assignment"
       title="User Groups"
       extra={
         <Button

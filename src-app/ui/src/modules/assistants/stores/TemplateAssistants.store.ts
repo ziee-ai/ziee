@@ -39,6 +39,9 @@ interface TemplateAssistantsState {
   deleteTemplateAssistant: (id: string) => Promise<void>
   clearTemplateAssistantsStoreError: () => void
   getTemplateDefaultAssistant: () => Assistant | undefined
+
+  // Cleanup
+  __destroy__?: () => void
 }
 
 export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
@@ -58,25 +61,26 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
         error: null,
         __init__: {
           __store__: () => {
+            const GROUP = 'TemplateAssistantsStore'
             const eventBus = Stores.EventBus
 
             // Subscribe to assistant_template.created
             eventBus.on('assistant_template.created', async () => {
               // Reload the list to maintain pagination consistency
               await get().loadTemplateAssistants()
-            })
+            }, GROUP)
 
             // Subscribe to assistant_template.updated
             eventBus.on('assistant_template.updated', async () => {
               // Reload the list to ensure fresh data
               await get().loadTemplateAssistants()
-            })
+            }, GROUP)
 
             // Subscribe to assistant_template.deleted
             eventBus.on('assistant_template.deleted', async () => {
               // Reload the list to maintain pagination consistency
               await get().loadTemplateAssistants()
-            })
+            }, GROUP)
           },
           assistants: () => get().loadTemplateAssistants(),
         },
@@ -240,6 +244,13 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
 
         getTemplateDefaultAssistant: (): Assistant | undefined => {
           return get().assistants.find(a => a.is_default)
+        },
+
+        /**
+         * Cleanup method - removes all event listeners for this store
+         */
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('TemplateAssistantsStore')
         },
       }),
     ),

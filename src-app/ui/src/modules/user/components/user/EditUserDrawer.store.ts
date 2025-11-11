@@ -14,6 +14,7 @@ interface EditUserDrawerState {
   __init__: {
     __store__: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useEditUserDrawerStore = create<EditUserDrawerState>()(
@@ -33,6 +34,7 @@ export const useEditUserDrawerStore = create<EditUserDrawerState>()(
 
         __init__: {
           __store__: () => {
+            const GROUP = 'EditUserDrawerStore'
             const eventBus = Stores.EventBus
 
             // Update editingUser when user is updated
@@ -42,7 +44,7 @@ export const useEditUserDrawerStore = create<EditUserDrawerState>()(
               if (state.editingUser?.id === user.id) {
                 set({ editingUser: user })
               }
-            })
+            }, GROUP)
 
             // Close drawer when user is deleted
             eventBus.on('user.deleted', async event => {
@@ -51,8 +53,12 @@ export const useEditUserDrawerStore = create<EditUserDrawerState>()(
               if (state.editingUser?.id === userId) {
                 get().closeEditUserDrawer()
               }
-            })
+            }, GROUP)
           },
+        },
+
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('EditUserDrawerStore')
         },
       }),
     ),

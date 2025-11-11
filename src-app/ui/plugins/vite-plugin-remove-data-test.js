@@ -21,8 +21,8 @@ export function removeDataTestPlugin() {
     transformIndexHtml: {
       order: 'post',
       handler(html) {
-        // Remove data-test-* attributes from HTML
-        return html.replace(/\s*data-test-[a-zA-Z0-9-_]*="[^"]*"/g, '')
+        // Remove data-test* attributes from HTML
+        return html.replace(/\s*data-test[a-zA-Z0-9-_]*="[^"]*"/g, '')
       }
     },
 

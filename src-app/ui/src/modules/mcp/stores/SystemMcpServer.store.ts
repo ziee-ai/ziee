@@ -346,38 +346,11 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
         serverIds: string[],
       ): Promise<void> => {
         try {
-          // Get all system servers
-          const allServers = get().systemServers
-
-          // For each server, determine if it should be assigned to this group
-          for (const server of allServers) {
-            // Get current groups for this server
-            const currentGroupIds = await ApiClient.McpServerSystem.getServerGroups({
-              id: server.id,
-            })
-
-            const shouldBeAssigned = serverIds.includes(server.id)
-            const isCurrentlyAssigned = currentGroupIds.includes(groupId)
-
-            // Calculate new group list
-            let newGroupIds = [...currentGroupIds]
-            if (shouldBeAssigned && !isCurrentlyAssigned) {
-              // Add group
-              newGroupIds.push(groupId)
-            } else if (!shouldBeAssigned && isCurrentlyAssigned) {
-              // Remove group
-              newGroupIds = newGroupIds.filter(id => id !== groupId)
-            } else {
-              // No change needed
-              continue
-            }
-
-            // Update server groups
-            await ApiClient.McpServerSystem.assignServerToGroups({
-              id: server.id,
-              group_ids: newGroupIds,
-            })
-          }
+          // Use the group-centric bulk update API endpoint
+          await ApiClient.Group.updateSystemServers({
+            group_id: groupId,
+            server_ids: serverIds,
+          })
 
           // Emit event to invalidate cache
           await emitGroupSystemMcpServersChanged(groupId, serverIds)
