@@ -13,7 +13,9 @@ pub mod core;
 pub mod extensions;
 
 // Include auto-generated extension registration code
-macros::include_chat_extensions!();
+#[path = "extension_registration.rs"]
+mod extension_registration;
+use extension_registration::auto_register_extensions;
 
 // Re-exports
 pub use core::extension::ExtensionRegistry;
