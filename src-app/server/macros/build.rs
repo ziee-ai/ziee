@@ -1,0 +1,184 @@
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use walkdir::WalkDir;
+use quote::quote;
+
+#[derive(Debug)]
+struct ExtensionInfo {
+    module_path: String,
+    name: String,
+    order: i32,
+    fields: Vec<String>,
+}
+
+fn main() {
+    // Get the macros crate directory
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let macros_dir = PathBuf::from(&manifest_dir);
+
+    // Get the parent directory (server/)
+    let server_dir = macros_dir.parent().unwrap().to_path_buf();
+
+    // Scan for extension.rs files in modules/chat/**/
+    let chat_dir = server_dir.join("src/modules/chat");
+
+    println!("cargo:warning=Scanning for extensions in: {}", chat_dir.display());
+
+    let mut extensions = Vec::new();
+
+    if chat_dir.exists() {
+        for entry in WalkDir::new(&chat_dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+
+            // Look for extension.rs files
+            if path.file_name() == Some(std::ffi::OsStr::new("extension.rs")) {
+                println!("cargo:warning=Found extension: {}", path.display());
+
+                // Extract module path from file path
+                let module_path = extract_module_path(&chat_dir, path);
+
+                // Read and parse the extension file
+                if let Ok(content) = fs::read_to_string(path) {
+                    if let Ok(parsed) = syn::parse_file(&content) {
+                        let mut name = module_path.split("::").last().unwrap_or("unknown").to_string();
+                        let mut order = 50; // Default order
+                        let mut fields = Vec::new();
+
+                        // Extract metadata and fields
+                        for item in parsed.items {
+                            match &item {
+                                // Extract METADATA constant
+                                syn::Item::Const(const_item) if const_item.ident == "METADATA" => {
+                                    // Try to extract order from the const expression
+                                    if let syn::Expr::Struct(expr_struct) = &*const_item.expr {
+                                        for field in &expr_struct.fields {
+                                            if let syn::Member::Named(ident) = &field.member {
+                                                if ident == "name" {
+                                                    if let syn::Expr::Lit(syn::ExprLit {
+                                                        lit: syn::Lit::Str(lit_str), ..
+                                                    }) = &field.expr {
+                                                        name = lit_str.value();
+                                                    }
+                                                } else if ident == "order" {
+                                                    if let syn::Expr::Lit(syn::ExprLit {
+                                                        lit: syn::Lit::Int(lit_int), ..
+                                                    }) = &field.expr {
+                                                        order = lit_int.base10_parse().unwrap_or(50);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                // Extract SendMessageRequestFields struct
+                                syn::Item::Struct(item_struct) if item_struct.ident == "SendMessageRequestFields" => {
+                                    if let syn::Fields::Named(fields_named) = &item_struct.fields {
+                                        for field in &fields_named.named {
+                                            let field_tokens = quote! { #field };
+                                            fields.push(field_tokens.to_string());
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        extensions.push(ExtensionInfo {
+                            module_path,
+                            name,
+                            order,
+                            fields,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort extensions by order
+    extensions.sort_by_key(|e| e.order);
+
+    // Generate the extensions file
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let dest_path = PathBuf::from(&out_dir).join("chat_extensions.rs");
+
+    generate_extensions_file(&extensions, &dest_path);
+
+    // Tell cargo to rerun if any .rs file in modules/chat changes
+    println!("cargo:rerun-if-changed={}", chat_dir.display());
+}
+
+fn extract_module_path(base: &PathBuf, path: &std::path::Path) -> String {
+    path.strip_prefix(base)
+        .ok()
+        .and_then(|p| p.parent())
+        .map(|p| {
+            p.components()
+                .filter_map(|c| c.as_os_str().to_str())
+                .collect::<Vec<_>>()
+                .join("::")
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn generate_extensions_file(extensions: &[ExtensionInfo], dest_path: &PathBuf) {
+    // Generate field definitions
+    let all_fields: Vec<String> = extensions
+        .iter()
+        .flat_map(|ext| ext.fields.iter())
+        .cloned()
+        .collect();
+
+    let fields_code = all_fields
+        .iter()
+        .map(|field| format!("    {},", field))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Generate registration code
+    let registration_code = extensions
+        .iter()
+        .map(|ext| {
+            format!(
+                "    // {} (order: {})\n    registry.register(crate::modules::chat::extensions::{}::extension::create(pool.clone()));",
+                ext.name, ext.order, ext.module_path.replace("::", "::")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let generated = format!(
+        r#"// Auto-generated chat extension registration
+// DO NOT EDIT - Generated by build.rs
+//
+// Extensions are automatically discovered by scanning extension.rs files
+// and registered in order based on their METADATA.order value
+
+use sqlx::PgPool;
+use std::sync::Arc;
+use crate::modules::chat::core::extension::{{ChatExtension, ExtensionRegistry}};
+
+/// List of extension fields to be composed into SendMessageRequest
+pub const EXTENSION_FIELDS: &[&str] = &[
+{}
+];
+
+/// Auto-register all discovered extensions in order
+pub fn auto_register_extensions(pool: PgPool) -> ExtensionRegistry {{
+    let mut registry = ExtensionRegistry::new();
+
+{}
+
+    registry
+}}
+"#,
+        fields_code, registration_code
+    );
+
+    fs::write(dest_path, generated).unwrap();
+}

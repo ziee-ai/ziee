@@ -1,0 +1,214 @@
+// Conversations repository
+
+use chrono::{DateTime, Utc};
+use sqlx::PgPool;
+use time::OffsetDateTime;
+use uuid::Uuid;
+
+use crate::common::AppError;
+use crate::modules::chat::core::models::{Conversation, ConversationResponse};
+
+/// Convert time::OffsetDateTime to chrono::DateTime<Utc>
+fn to_chrono_datetime(odt: OffsetDateTime) -> DateTime<Utc> {
+    DateTime::from_timestamp(odt.unix_timestamp(), odt.nanosecond())
+        .expect("valid timestamp")
+}
+
+/// Create a new conversation with a default branch
+pub async fn create_conversation(
+    pool: &PgPool,
+    user_id: Uuid,
+    model_id: Uuid,
+    title: Option<String>,
+) -> Result<Conversation, AppError> {
+    // Start transaction to ensure conversation and default branch are created atomically
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // 1. Create conversation (without active_branch_id yet)
+    let conversation = sqlx::query_as!(
+        Conversation,
+        r#"
+        INSERT INTO conversations (user_id, model_id, title)
+        VALUES ($1, $2, $3)
+        RETURNING id, user_id, model_id, title, active_branch_id,
+                  created_at as "created_at: _", updated_at as "updated_at: _"
+        "#,
+        user_id,
+        model_id,
+        title
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    // 2. Create default branch
+    let branch = sqlx::query!(
+        r#"
+        INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id)
+        VALUES ($1, NULL, NULL)
+        RETURNING id
+        "#,
+        conversation.id
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    // 3. Update conversation with active_branch_id
+    let conversation = sqlx::query_as!(
+        Conversation,
+        r#"
+        UPDATE conversations
+        SET active_branch_id = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id, user_id, model_id, title, active_branch_id,
+                  created_at as "created_at: _", updated_at as "updated_at: _"
+        "#,
+        branch.id,
+        conversation.id
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    // Commit transaction
+    tx.commit().await.map_err(AppError::database_error)?;
+
+    Ok(conversation)
+}
+
+/// Get conversation by ID (with user ownership check)
+pub async fn get_conversation(
+    pool: &PgPool,
+    id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<Conversation>, AppError> {
+    let conversation = sqlx::query_as!(
+        Conversation,
+        r#"
+        SELECT id, user_id, model_id, title, active_branch_id,
+               created_at as "created_at: _", updated_at as "updated_at: _"
+        FROM conversations
+        WHERE id = $1 AND user_id = $2
+        "#,
+        id,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(conversation)
+}
+
+/// List conversations for a user with pagination
+pub async fn list_conversations(
+    pool: &PgPool,
+    user_id: Uuid,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ConversationResponse>, AppError> {
+    // Query without wildcard annotations since we're using query!() not query_as!()
+    let conversations = sqlx::query!(
+        r#"
+        SELECT
+            c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
+            c.created_at, c.updated_at,
+            COUNT(bm.message_id) as message_count
+        FROM conversations c
+        LEFT JOIN branches b ON b.conversation_id = c.id
+        LEFT JOIN branch_messages bm ON bm.branch_id = b.id
+        WHERE c.user_id = $1
+        GROUP BY c.id
+        ORDER BY c.updated_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        user_id,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    let responses = conversations
+        .into_iter()
+        .map(|row| ConversationResponse {
+            conversation: Conversation {
+                id: row.id,
+                user_id: row.user_id,
+                model_id: row.model_id,
+                title: row.title,
+                active_branch_id: row.active_branch_id,
+                created_at: to_chrono_datetime(row.created_at),
+                updated_at: to_chrono_datetime(row.updated_at),
+            },
+            message_count: row.message_count.unwrap_or(0),
+        })
+        .collect();
+
+    Ok(responses)
+}
+
+/// Update conversation metadata
+pub async fn update_conversation(
+    pool: &PgPool,
+    id: Uuid,
+    user_id: Uuid,
+    title: Option<String>,
+) -> Result<Option<Conversation>, AppError> {
+    let conversation = sqlx::query_as!(
+        Conversation,
+        r#"
+        UPDATE conversations
+        SET
+            title = COALESCE($1, title),
+            updated_at = NOW()
+        WHERE id = $2 AND user_id = $3
+        RETURNING id, user_id, model_id, title, active_branch_id,
+                  created_at as "created_at: _", updated_at as "updated_at: _"
+        "#,
+        title,
+        id,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(conversation)
+}
+
+/// Delete conversation (cascades to branches and messages)
+pub async fn delete_conversation(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
+    let result = sqlx::query!(
+        r#"
+        DELETE FROM conversations
+        WHERE id = $1 AND user_id = $2
+        "#,
+        id,
+        user_id
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Get active branch for conversation
+pub async fn get_active_branch_id(pool: &PgPool, conversation_id: Uuid) -> Result<Option<Uuid>, AppError> {
+    let result = sqlx::query!(
+        r#"
+        SELECT active_branch_id
+        FROM conversations
+        WHERE id = $1
+        "#,
+        conversation_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(result.and_then(|r| r.active_branch_id))
+}

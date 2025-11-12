@@ -1,6 +1,81 @@
 // Chat module - Modular architecture for AI chat functionality
-pub mod base;
-pub mod permissions;
+
+use aide::axum::ApiRouter;
+use axum::Extension;
+use sqlx::PgPool;
+use std::error::Error;
+use std::sync::Arc;
+
+use crate::module_api::AppModule;
+use crate::ModuleContext;
+
+pub mod core;
+pub mod extensions;
+
+// Include auto-generated extension registration code
+macros::include_chat_extensions!();
 
 // Re-exports
-pub use permissions::all_permissions;
+pub use core::extension::ExtensionRegistry;
+pub use core::permissions::all_permissions;
+pub use core::routes::chat_router;
+
+/// Chat Module
+/// Manages chat conversations, messages, and extensions
+pub struct ChatModule {
+    pool: Option<Arc<PgPool>>,
+    extension_registry: Option<Arc<ExtensionRegistry>>,
+}
+
+impl ChatModule {
+    pub fn new() -> Self {
+        Self {
+            pool: None,
+            extension_registry: None,
+        }
+    }
+}
+
+impl AppModule for ChatModule {
+    fn name(&self) -> &'static str {
+        "chat"
+    }
+
+    fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
+        self.pool = Some(ctx.db_pool.clone());
+
+        // Auto-register extensions using generated code
+        // Extensions are discovered at build time and registered in order based on METADATA.order
+        let registry = auto_register_extensions((*ctx.db_pool).clone());
+        self.extension_registry = Some(Arc::new(registry));
+
+        tracing::info!("Chat module initialized with auto-registered extensions");
+        Ok(())
+    }
+
+    fn register_routes(&self, router: ApiRouter) -> ApiRouter {
+        if let Some(pool) = &self.pool {
+            if let Some(registry) = &self.extension_registry {
+                // Create chat router with pool state and extension registry as extension
+                let chat_module_router = ApiRouter::new()
+                    .merge(chat_router())
+                    .layer(Extension(registry.clone()))
+                    .with_state((**pool).clone());
+
+                router.merge(chat_module_router)
+            } else {
+                tracing::error!("ChatModule: Extension registry not initialized during route registration");
+                router
+            }
+        } else {
+            tracing::error!("ChatModule: Pool not initialized during route registration");
+            router
+        }
+    }
+}
+
+impl Default for ChatModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
