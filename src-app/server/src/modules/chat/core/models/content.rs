@@ -26,8 +26,7 @@ pub struct MessageContent {
 impl MessageContent {
     /// Parse the JSONB content into MessageContentData
     pub fn parse_content(&self) -> Result<MessageContentData, AppError> {
-        serde_json::from_value(self.content.clone())
-            .map_err(|e| AppError::database_error(e))
+        serde_json::from_value(self.content.clone()).map_err(|e| AppError::database_error(e))
     }
 }
 
@@ -167,24 +166,23 @@ impl MessageContentData {
     pub fn to_content_block(&self) -> Option<ai_providers::ContentBlock> {
         match self {
             // Base types
-            Self::Text { text } => Some(ai_providers::ContentBlock::Text {
-                text: text.clone(),
-            }),
+            Self::Text { text } => Some(ai_providers::ContentBlock::Text { text: text.clone() }),
             Self::Thinking { thinking, .. } => Some(ai_providers::ContentBlock::Thinking {
                 thinking: thinking.clone(),
             }),
-            Self::Image { source, alt_text: _ } => Some(ai_providers::ContentBlock::Image {
+            Self::Image {
+                source,
+                alt_text: _,
+            } => Some(ai_providers::ContentBlock::Image {
                 source: match source {
                     ImageSource::Url { url } => ai_providers::ImageSource::Url {
                         url: url.clone(),
                         detail: None, // We don't store detail level
                     },
-                    ImageSource::Base64 { media_type, data } => {
-                        ai_providers::ImageSource::Base64 {
-                            media_type: media_type.clone(),
-                            data: data.clone(),
-                        }
-                    }
+                    ImageSource::Base64 { media_type, data } => ai_providers::ImageSource::Base64 {
+                        media_type: media_type.clone(),
+                        data: data.clone(),
+                    },
                 },
             }),
 
@@ -212,24 +210,20 @@ impl MessageContentData {
     pub fn from_content_block(block: &ai_providers::ContentBlock) -> Option<Self> {
         match block {
             // Base types
-            ai_providers::ContentBlock::Text { text } => Some(Self::Text {
-                text: text.clone(),
-            }),
+            ai_providers::ContentBlock::Text { text } => Some(Self::Text { text: text.clone() }),
             ai_providers::ContentBlock::Thinking { thinking } => Some(Self::Thinking {
                 thinking: thinking.clone(),
                 metadata: None,
             }),
             ai_providers::ContentBlock::Image { source } => Some(Self::Image {
                 source: match source {
-                    ai_providers::ImageSource::Url { url, .. } => ImageSource::Url {
-                        url: url.clone(),
-                    },
-                    ai_providers::ImageSource::Base64 { media_type, data } => {
-                        ImageSource::Base64 {
-                            media_type: media_type.clone(),
-                            data: data.clone(),
-                        }
+                    ai_providers::ImageSource::Url { url, .. } => {
+                        ImageSource::Url { url: url.clone() }
                     }
+                    ai_providers::ImageSource::Base64 { media_type, data } => ImageSource::Base64 {
+                        media_type: media_type.clone(),
+                        data: data.clone(),
+                    },
                 },
                 alt_text: None,
             }),

@@ -5,7 +5,6 @@
 //
 // This module defines SendMessageRequest using procedural macros for extension composition.
 // Extensions are auto-discovered by scanning for extension.rs files in modules/chat/**/
-
 use macros::compose_chat_extensions;
 use uuid::Uuid;
 

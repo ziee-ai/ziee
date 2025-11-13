@@ -171,7 +171,9 @@ impl GroupService {
         permissions: Option<Vec<String>>,
         is_active: Option<bool>,
     ) -> Result<Group, AppError> {
-        self.group_repo.update(id, name, description, permissions, is_active).await
+        self.group_repo
+            .update(id, name, description, permissions, is_active)
+            .await
     }
 
     /// Delete group (only non-system groups)

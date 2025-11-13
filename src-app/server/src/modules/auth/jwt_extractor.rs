@@ -4,7 +4,7 @@
 use aide::OperationIo;
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{StatusCode, request::Parts},
 };
 use std::sync::Arc;
 
@@ -31,15 +31,12 @@ where
     ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
         async move {
             // Get JWT service from app state
-            let jwt_service = parts
-                .extensions
-                .get::<Arc<JwtService>>()
-                .ok_or_else(|| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        AppError::internal_error("JWT service not configured"),
-                    )
-                })?;
+            let jwt_service = parts.extensions.get::<Arc<JwtService>>().ok_or_else(|| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    AppError::internal_error("JWT service not configured"),
+                )
+            })?;
 
             // Extract Authorization header
             let auth_header = parts

@@ -8,17 +8,17 @@ use std::error::Error;
 use std::sync::Arc;
 
 use crate::core::EventHandler;
-use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
-pub mod events;
-pub mod models;
-pub mod types;
-pub mod handlers;
-pub mod routes;
-pub mod permissions;
-pub mod hub_manager;
-pub mod repository;
 pub mod event_handlers;
+pub mod events;
+pub mod handlers;
+pub mod hub_manager;
+pub mod models;
+pub mod permissions;
+pub mod repository;
+pub mod routes;
+pub mod types;
 
 // Re-export models
 
@@ -75,9 +75,7 @@ impl AppModule for HubModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
-            let hub_module_router = ApiRouter::new()
-                .merge(hub_router())
-                ;
+            let hub_module_router = ApiRouter::new().merge(hub_router());
 
             router.merge(hub_module_router)
         } else {
@@ -87,9 +85,7 @@ impl AppModule for HubModule {
     }
 
     fn register_event_handlers(&self) -> Vec<Arc<dyn EventHandler>> {
-        vec![
-            event_handlers::CleanupHubEntitiesHandler::new(),
-        ]
+        vec![event_handlers::CleanupHubEntitiesHandler::new()]
     }
 }
 

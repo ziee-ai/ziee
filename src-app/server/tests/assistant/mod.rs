@@ -1,7 +1,7 @@
 // Integration tests for Assistant module
 
-use serde_json::json;
 use reqwest::StatusCode;
+use serde_json::json;
 use uuid::Uuid;
 
 // =====================================================
@@ -11,7 +11,8 @@ use uuid::Uuid;
 #[tokio::test]
 async fn test_list_assistants_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/assistants"))
@@ -26,7 +27,8 @@ async fn test_list_assistants_requires_read_permission() {
 #[tokio::test]
 async fn test_create_user_assistant_requires_create_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let payload = json!({
         "name": "My Assistant"
@@ -46,7 +48,12 @@ async fn test_create_user_assistant_requires_create_permission() {
 #[tokio::test]
 async fn test_create_template_requires_template_create_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Template Assistant"
@@ -66,7 +73,12 @@ async fn test_create_template_requires_template_create_permission() {
 #[tokio::test]
 async fn test_list_templates_requires_template_read_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::read"],
+    )
+    .await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/assistant-templates"))
@@ -85,7 +97,12 @@ async fn test_list_templates_requires_template_read_permission() {
 #[tokio::test]
 async fn test_create_user_assistant_success() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "My Assistant",
@@ -114,7 +131,12 @@ async fn test_create_user_assistant_success() {
 #[tokio::test]
 async fn test_list_user_assistants() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create", "assistants::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create", "assistants::read"],
+    )
+    .await;
 
     // Create two assistants
     create_user_assistant(&server, &user.token, "Assistant 1").await;
@@ -138,7 +160,12 @@ async fn test_list_user_assistants() {
 #[tokio::test]
 async fn test_get_user_assistant_by_id() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create", "assistants::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create", "assistants::read"],
+    )
+    .await;
 
     // Create assistant
     let assistant = create_user_assistant(&server, &user.token, "Test Assistant").await;
@@ -161,7 +188,12 @@ async fn test_get_user_assistant_by_id() {
 #[tokio::test]
 async fn test_update_user_assistant() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create", "assistants::edit", "assistants::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create", "assistants::edit", "assistants::read"],
+    )
+    .await;
 
     // Create assistant
     let assistant = create_user_assistant(&server, &user.token, "Original Name").await;
@@ -190,7 +222,16 @@ async fn test_update_user_assistant() {
 #[tokio::test]
 async fn test_delete_user_assistant() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create", "assistants::delete", "assistants::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "assistants::create",
+            "assistants::delete",
+            "assistants::read",
+        ],
+    )
+    .await;
 
     // Create assistant
     let assistant = create_user_assistant(&server, &user.token, "To Delete").await;
@@ -224,7 +265,12 @@ async fn test_delete_user_assistant() {
 #[tokio::test]
 async fn test_create_template_assistant_success() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistant_templates::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistant_templates::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Template Assistant",
@@ -249,7 +295,12 @@ async fn test_create_template_assistant_success() {
 #[tokio::test]
 async fn test_list_template_assistants() {
     let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistant_templates::create", "assistant_templates::read"]).await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["assistant_templates::create", "assistant_templates::read"],
+    )
+    .await;
 
     // Create templates
     create_template_assistant(&server, &admin.token, "Template 1").await;
@@ -272,7 +323,12 @@ async fn test_list_template_assistants() {
 #[tokio::test]
 async fn test_get_template_assistant_by_id() {
     let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistant_templates::create", "assistant_templates::read"]).await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["assistant_templates::create", "assistant_templates::read"],
+    )
+    .await;
 
     // Create template
     let template = create_template_assistant(&server, &admin.token, "Template").await;
@@ -295,7 +351,12 @@ async fn test_get_template_assistant_by_id() {
 #[tokio::test]
 async fn test_update_template_assistant() {
     let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistant_templates::create", "assistant_templates::edit"]).await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["assistant_templates::create", "assistant_templates::edit"],
+    )
+    .await;
 
     // Create template
     let template = create_template_assistant(&server, &admin.token, "Original Template").await;
@@ -322,7 +383,12 @@ async fn test_update_template_assistant() {
 #[tokio::test]
 async fn test_delete_template_assistant() {
     let server = crate::common::TestServer::start().await;
-    let admin = crate::common::test_helpers::create_user_with_permissions(&server, "admin", &["assistant_templates::create", "assistant_templates::delete"]).await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["assistant_templates::create", "assistant_templates::delete"],
+    )
+    .await;
 
     // Create template
     let template = create_template_assistant(&server, &admin.token, "To Delete").await;
@@ -346,8 +412,18 @@ async fn test_delete_template_assistant() {
 #[tokio::test]
 async fn test_user_cannot_read_other_users_assistant() {
     let server = crate::common::TestServer::start().await;
-    let user1 = crate::common::test_helpers::create_user_with_permissions(&server, "user1", &["assistants::create", "assistants::read"]).await;
-    let user2 = crate::common::test_helpers::create_user_with_permissions(&server, "user2", &["assistants::read"]).await;
+    let user1 = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user1",
+        &["assistants::create", "assistants::read"],
+    )
+    .await;
+    let user2 = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user2",
+        &["assistants::read"],
+    )
+    .await;
 
     // User1 creates assistant
     let assistant = create_user_assistant(&server, &user1.token, "User1 Assistant").await;
@@ -367,8 +443,18 @@ async fn test_user_cannot_read_other_users_assistant() {
 #[tokio::test]
 async fn test_user_cannot_edit_other_users_assistant() {
     let server = crate::common::TestServer::start().await;
-    let user1 = crate::common::test_helpers::create_user_with_permissions(&server, "user1", &["assistants::create"]).await;
-    let user2 = crate::common::test_helpers::create_user_with_permissions(&server, "user2", &["assistants::edit"]).await;
+    let user1 = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user1",
+        &["assistants::create"],
+    )
+    .await;
+    let user2 = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user2",
+        &["assistants::edit"],
+    )
+    .await;
 
     // User1 creates assistant
     let assistant = create_user_assistant(&server, &user1.token, "User1 Assistant").await;
@@ -390,8 +476,18 @@ async fn test_user_cannot_edit_other_users_assistant() {
 #[tokio::test]
 async fn test_user_cannot_delete_other_users_assistant() {
     let server = crate::common::TestServer::start().await;
-    let user1 = crate::common::test_helpers::create_user_with_permissions(&server, "user1", &["assistants::create"]).await;
-    let user2 = crate::common::test_helpers::create_user_with_permissions(&server, "user2", &["assistants::delete"]).await;
+    let user1 = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user1",
+        &["assistants::create"],
+    )
+    .await;
+    let user2 = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user2",
+        &["assistants::delete"],
+    )
+    .await;
 
     // User1 creates assistant
     let assistant = create_user_assistant(&server, &user1.token, "User1 Assistant").await;
@@ -415,7 +511,12 @@ async fn test_user_cannot_delete_other_users_assistant() {
 #[tokio::test]
 async fn test_create_default_user_assistant() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create", "assistants::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create", "assistants::read"],
+    )
+    .await;
 
     let payload = json!({
         "name": "My Default",
@@ -450,7 +551,12 @@ async fn test_create_default_user_assistant() {
 #[tokio::test]
 async fn test_only_one_default_per_user() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create", "assistants::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create", "assistants::read"],
+    )
+    .await;
 
     // Create first default
     let payload1 = json!({
@@ -488,7 +594,10 @@ async fn test_only_one_default_per_user() {
 
     // Verify assistant1 is no longer default
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/assistants/{}", assistant1["id"].as_str().unwrap())))
+        .get(&server.api_url(&format!(
+            "/assistants/{}",
+            assistant1["id"].as_str().unwrap()
+        )))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -508,7 +617,12 @@ async fn test_only_one_default_per_user() {
 #[tokio::test]
 async fn test_create_assistant_empty_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": ""
@@ -528,7 +642,12 @@ async fn test_create_assistant_empty_name() {
 #[tokio::test]
 async fn test_get_assistant_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["assistants::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["assistants::read"],
+    )
+    .await;
 
     let assistant_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -553,8 +672,12 @@ async fn test_default_template_cloned_on_user_registration() {
     let admin = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "admin_template",
-        &["assistant_templates::create", "assistant_templates::set_default"]
-    ).await;
+        &[
+            "assistant_templates::create",
+            "assistant_templates::set_default",
+        ],
+    )
+    .await;
 
     // Create a default enabled template
     let template_payload = json!({
@@ -582,8 +705,9 @@ async fn test_default_template_cloned_on_user_registration() {
     let new_user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "newuser_event",
-        &["assistants::read"]
-    ).await;
+        &["assistants::read"],
+    )
+    .await;
 
     // Wait a moment for the async event to process
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -601,19 +725,25 @@ async fn test_default_template_cloned_on_user_registration() {
 
     // Verify the cloned assistant exists
     let assistants = list_result["assistants"].as_array().unwrap();
-    assert!(assistants.len() >= 1,
+    assert!(
+        assistants.len() >= 1,
         "New user should have at least one assistant (cloned from template). Found {} assistants",
-        assistants.len());
+        assistants.len()
+    );
 
     // Find the cloned assistant
-    let cloned_assistant = assistants.iter()
+    let cloned_assistant = assistants
+        .iter()
         .find(|a| a["name"] == "Default Test Template")
         .expect("Cloned template assistant should exist");
 
     assert_eq!(cloned_assistant["name"], "Default Test Template");
-    assert_eq!(cloned_assistant["description"], "A template that should be cloned to new users");
+    assert_eq!(
+        cloned_assistant["description"],
+        "A template that should be cloned to new users"
+    );
     assert_eq!(cloned_assistant["is_template"], false); // It's a user assistant, not a template
-    assert_eq!(cloned_assistant["is_default"], true);   // Preserves is_default flag
+    assert_eq!(cloned_assistant["is_default"], true); // Preserves is_default flag
     assert_eq!(cloned_assistant["enabled"], true);
 }
 
@@ -621,7 +751,11 @@ async fn test_default_template_cloned_on_user_registration() {
 // Helper Functions
 // =====================================================
 
-async fn create_user_assistant(server: &crate::common::TestServer, token: &str, name: &str) -> serde_json::Value {
+async fn create_user_assistant(
+    server: &crate::common::TestServer,
+    token: &str,
+    name: &str,
+) -> serde_json::Value {
     let payload = json!({
         "name": name
     });
@@ -638,7 +772,11 @@ async fn create_user_assistant(server: &crate::common::TestServer, token: &str, 
     response.json().await.unwrap()
 }
 
-async fn create_template_assistant(server: &crate::common::TestServer, token: &str, name: &str) -> serde_json::Value {
+async fn create_template_assistant(
+    server: &crate::common::TestServer,
+    token: &str,
+    name: &str,
+) -> serde_json::Value {
     let payload = json!({
         "name": name
     });

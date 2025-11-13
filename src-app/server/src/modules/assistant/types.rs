@@ -66,7 +66,6 @@ pub struct UpdateAssistantRequest {
     /// Update enabled status (soft delete)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
-
     // Note: is_template is NOT included here - it's immutable after creation
 }
 
@@ -90,9 +89,9 @@ impl CreateAssistantRequest {
 impl UpdateAssistantRequest {
     /// Convert parameters to JSON value for database storage
     pub fn parameters_to_json(&self) -> Option<serde_json::Value> {
-        self.parameters.as_ref().map(|params| {
-            serde_json::to_value(params).unwrap_or_else(|_| serde_json::json!({}))
-        })
+        self.parameters
+            .as_ref()
+            .map(|params| serde_json::to_value(params).unwrap_or_else(|_| serde_json::json!({})))
     }
 
     /// Check if this update request has any fields set

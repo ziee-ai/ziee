@@ -4,11 +4,10 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
+    Extension, Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
     response::sse::{Event, Sse},
-    Extension, Json,
 };
 use futures_util::stream::Stream;
 use schemars::JsonSchema;
@@ -75,7 +74,10 @@ impl From<&DownloadInstance> for DownloadProgressUpdate {
                 .unwrap_or(DownloadPhase::Created),
             current: download.progress_data.as_ref().map(|p| p.current),
             total: download.progress_data.as_ref().map(|p| p.total),
-            message: download.progress_data.as_ref().and_then(|p| Some(p.message.clone())),
+            message: download
+                .progress_data
+                .as_ref()
+                .and_then(|p| Some(p.message.clone())),
             speed_bps: download.progress_data.as_ref().map(|p| p.speed_bps),
             eta_seconds: download.progress_data.as_ref().map(|p| p.eta_seconds),
             error_message: download.error_message.clone(),
@@ -133,7 +135,9 @@ pub async fn list_all_downloads(
         .as_ref()
         .and_then(|s| DownloadStatus::from_str(s));
 
-    let response = repo.list(page, per_page, status_filter).await
+    let response = repo
+        .list(page, per_page, status_filter)
+        .await
         .map_err(|e| {
             tracing::error!("Failed to get all downloads: {}", e);
             AppError::internal_error("Failed to retrieve downloads").to_api_error()
@@ -161,7 +165,9 @@ pub async fn get_download(
     Path(download_id): Path<Uuid>,
     Extension(repo): Extension<DownloadInstanceRepository>,
 ) -> ApiResult<Json<DownloadInstance>> {
-    let download = repo.get_by_id(download_id).await
+    let download = repo
+        .get_by_id(download_id)
+        .await
         .map_err(|e| {
             tracing::error!("Failed to get download {}: {}", download_id, e);
             AppError::internal_error("Database operation failed").to_api_error()
@@ -192,7 +198,9 @@ pub async fn cancel_download(
     Extension(repo): Extension<DownloadInstanceRepository>,
 ) -> ApiResult<StatusCode> {
     // Verify the download exists and user has access
-    let download = repo.get_by_id(download_id).await
+    let download = repo
+        .get_by_id(download_id)
+        .await
         .map_err(|e| {
             tracing::error!("Failed to verify download {}: {}", download_id, e);
             AppError::internal_error("Database operation failed").to_api_error()
@@ -205,7 +213,7 @@ pub async fn cancel_download(
             StatusCode::BAD_REQUEST,
             AppError::bad_request(
                 "INVALID_STATE",
-                "Download cannot be cancelled in its current state"
+                "Download cannot be cancelled in its current state",
             ),
         ));
     }
@@ -214,9 +222,15 @@ pub async fn cancel_download(
     let cancellation_result = crate::utils::cancellation::cancel_download(download_id).await;
 
     if cancellation_result {
-        tracing::info!("Download {} cancellation signal sent successfully", download_id);
+        tracing::info!(
+            "Download {} cancellation signal sent successfully",
+            download_id
+        );
     } else {
-        tracing::warn!("Download {} was not being tracked for cancellation", download_id);
+        tracing::warn!(
+            "Download {} was not being tracked for cancellation",
+            download_id
+        );
     }
 
     // Update status to cancelled first so users can see the cancellation
@@ -226,7 +240,9 @@ pub async fn cancel_download(
         model_id: None,
     };
 
-    let _updated = repo.update_status(download_id, cancel_request).await
+    let _updated = repo
+        .update_status(download_id, cancel_request)
+        .await
         .map_err(|e| {
             tracing::error!("Failed to cancel download {}: {}", download_id, e);
             AppError::internal_error("Failed to cancel download").to_api_error()
@@ -238,18 +254,28 @@ pub async fn cancel_download(
     // Spawn a background task to delete the cancelled download after 60 seconds
     let repo_clone = repo.clone();
     tokio::spawn(async move {
-        tracing::info!("Scheduling deletion of cancelled download {} in 60 seconds", download_id);
+        tracing::info!(
+            "Scheduling deletion of cancelled download {} in 60 seconds",
+            download_id
+        );
         tokio::time::sleep(Duration::from_secs(60)).await;
 
         match repo_clone.delete(download_id).await {
             Ok(true) => {
-                tracing::info!("Successfully deleted cancelled download {} after 60 seconds", download_id);
+                tracing::info!(
+                    "Successfully deleted cancelled download {} after 60 seconds",
+                    download_id
+                );
             }
             Ok(false) => {
                 tracing::warn!("Cancelled download {} was already deleted", download_id);
             }
             Err(e) => {
-                tracing::error!("Failed to delete cancelled download {} after 60 seconds: {}", download_id, e);
+                tracing::error!(
+                    "Failed to delete cancelled download {} after 60 seconds: {}",
+                    download_id,
+                    e
+                );
             }
         }
     });
@@ -279,7 +305,9 @@ pub async fn delete_download(
     Extension(repo): Extension<DownloadInstanceRepository>,
 ) -> ApiResult<StatusCode> {
     // Verify the download exists and user has access
-    let download = repo.get_by_id(download_id).await
+    let download = repo
+        .get_by_id(download_id)
+        .await
         .map_err(|e| {
             tracing::error!("Failed to verify download {}: {}", download_id, e);
             AppError::internal_error("Database operation failed").to_api_error()
@@ -290,18 +318,14 @@ pub async fn delete_download(
     if !download.is_terminal() {
         return Err((
             StatusCode::BAD_REQUEST,
-            AppError::bad_request(
-                "INVALID_STATE",
-                "Cannot delete active download"
-            ),
+            AppError::bad_request("INVALID_STATE", "Cannot delete active download"),
         ));
     }
 
-    let deleted = repo.delete(download_id).await
-        .map_err(|e| {
-            tracing::error!("Failed to delete download {}: {}", download_id, e);
-            AppError::internal_error("Failed to delete download").to_api_error()
-        })?;
+    let deleted = repo.delete(download_id).await.map_err(|e| {
+        tracing::error!("Failed to delete download {}: {}", download_id, e);
+        AppError::internal_error("Failed to delete download").to_api_error()
+    })?;
 
     if !deleted {
         return Err(AppError::not_found("Download instance").to_api_error());
@@ -421,7 +445,7 @@ async fn start_download_monitoring(repo: DownloadInstanceRepository) {
                     if downloads.is_empty() {
                         // No more active downloads, send complete event and stop
                         let complete_event = SSEDownloadProgressEvent::Complete(
-                            "All downloads completed".to_string()
+                            "All downloads completed".to_string(),
                         );
                         broadcast_event(complete_event.into()).await;
 
@@ -445,9 +469,8 @@ async fn start_download_monitoring(repo: DownloadInstanceRepository) {
                 }
                 Err(e) => {
                     tracing::error!("Failed to get downloads: {}", e);
-                    let error_event = SSEDownloadProgressEvent::Error(
-                        format!("Failed to get downloads: {}", e)
-                    );
+                    let error_event =
+                        SSEDownloadProgressEvent::Error(format!("Failed to get downloads: {}", e));
                     broadcast_event(error_event.into()).await;
 
                     // Stop monitoring on error
@@ -485,7 +508,10 @@ async fn broadcast_event(event: Event) {
         let mut clients = SSE_CLIENTS.lock().unwrap();
         for client_id in disconnected_clients {
             clients.remove(&client_id);
-            tracing::info!("Removed disconnected download monitoring client: {}", client_id);
+            tracing::info!(
+                "Removed disconnected download monitoring client: {}",
+                client_id
+            );
         }
     }
 }

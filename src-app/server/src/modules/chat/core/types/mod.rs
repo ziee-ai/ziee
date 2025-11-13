@@ -8,10 +8,7 @@ pub mod streaming;
 // Re-export API types
 pub use branch::CreateBranchRequest;
 pub use conversation::{
-    ConversationResponse, CreateConversationRequest,
-    UpdateConversationRequest,
+    ConversationResponse, CreateConversationRequest, UpdateConversationRequest,
 };
-pub use message::{
-    EditMessageRequest, EditMessageResponse, MessageWithContent,
-};
+pub use message::{EditMessageRequest, EditMessageResponse, MessageWithContent};
 pub use streaming::{ChatStreamChunk, ContentBlockDelta, StreamError, Usage};

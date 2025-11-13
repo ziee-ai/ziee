@@ -7,10 +7,10 @@ pub use routes::routes;
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
 use sqlx::PgPool;
-use std::sync::Arc;
 use std::error::Error;
+use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
 /// Register health module
 #[distributed_slice(MODULE_ENTRIES)]

@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::common::AppError;
 
 use super::models::{McpServer, TransportType};
-use super::types::{CreateMcpServerRequest, UpdateMcpServerRequest, McpServerListResponse};
+use super::types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest};
 
 /// MCP Repository
 pub struct McpRepository {
@@ -21,15 +21,28 @@ impl McpRepository {
     }
 
     // User server operations
-    pub async fn create_user_server(&self, user_id: Uuid, request: CreateMcpServerRequest) -> Result<McpServer, AppError> {
+    pub async fn create_user_server(
+        &self,
+        user_id: Uuid,
+        request: CreateMcpServerRequest,
+    ) -> Result<McpServer, AppError> {
         create_user_mcp_server(&self.pool, user_id, request).await
     }
 
-    pub async fn get_user_server(&self, id: Uuid, user_id: Uuid) -> Result<Option<McpServer>, AppError> {
+    pub async fn get_user_server(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<McpServer>, AppError> {
         get_user_mcp_server(&self.pool, id, user_id).await
     }
 
-    pub async fn list_user_servers(&self, user_id: Uuid, page: i64, per_page: i64) -> Result<McpServerListResponse, AppError> {
+    pub async fn list_user_servers(
+        &self,
+        user_id: Uuid,
+        page: i64,
+        per_page: i64,
+    ) -> Result<McpServerListResponse, AppError> {
         let (servers, total) = list_user_mcp_servers(&self.pool, user_id, page, per_page).await?;
         let total_pages = (total + per_page - 1) / per_page;
         Ok(McpServerListResponse {
@@ -41,7 +54,12 @@ impl McpRepository {
         })
     }
 
-    pub async fn update_user_server(&self, id: Uuid, user_id: Uuid, request: UpdateMcpServerRequest) -> Result<McpServer, AppError> {
+    pub async fn update_user_server(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+        request: UpdateMcpServerRequest,
+    ) -> Result<McpServer, AppError> {
         update_user_mcp_server(&self.pool, id, user_id, request).await
     }
 
@@ -50,7 +68,10 @@ impl McpRepository {
     }
 
     // System server operations
-    pub async fn create_system_server(&self, request: CreateMcpServerRequest) -> Result<McpServer, AppError> {
+    pub async fn create_system_server(
+        &self,
+        request: CreateMcpServerRequest,
+    ) -> Result<McpServer, AppError> {
         create_system_mcp_server(&self.pool, request).await
     }
 
@@ -58,7 +79,11 @@ impl McpRepository {
         get_system_mcp_server(&self.pool, id).await
     }
 
-    pub async fn list_system_servers(&self, page: i64, per_page: i64) -> Result<McpServerListResponse, AppError> {
+    pub async fn list_system_servers(
+        &self,
+        page: i64,
+        per_page: i64,
+    ) -> Result<McpServerListResponse, AppError> {
         let (servers, total) = list_system_mcp_servers(&self.pool, page, per_page).await?;
         let total_pages = (total + per_page - 1) / per_page;
         Ok(McpServerListResponse {
@@ -70,7 +95,11 @@ impl McpRepository {
         })
     }
 
-    pub async fn update_system_server(&self, id: Uuid, request: UpdateMcpServerRequest) -> Result<McpServer, AppError> {
+    pub async fn update_system_server(
+        &self,
+        id: Uuid,
+        request: UpdateMcpServerRequest,
+    ) -> Result<McpServer, AppError> {
         update_system_mcp_server(&self.pool, id, request).await
     }
 
@@ -83,7 +112,10 @@ impl McpRepository {
         get_group_mcp_servers(&self.pool, group_id).await
     }
 
-    pub async fn get_system_servers_for_group(&self, group_id: Uuid) -> Result<Vec<McpServer>, AppError> {
+    pub async fn get_system_servers_for_group(
+        &self,
+        group_id: Uuid,
+    ) -> Result<Vec<McpServer>, AppError> {
         get_system_servers_for_group(&self.pool, group_id).await
     }
 
@@ -95,7 +127,11 @@ impl McpRepository {
         remove_mcp_server_from_group(&self.pool, server_id, group_id).await
     }
 
-    pub async fn set_group_servers(&self, group_id: Uuid, server_ids: Vec<Uuid>) -> Result<(), AppError> {
+    pub async fn set_group_servers(
+        &self,
+        group_id: Uuid,
+        server_ids: Vec<Uuid>,
+    ) -> Result<(), AppError> {
         set_group_mcp_servers(&self.pool, group_id, server_ids).await
     }
 
@@ -103,13 +139,23 @@ impl McpRepository {
         get_server_groups(&self.pool, server_id).await
     }
 
-    pub async fn set_server_groups(&self, server_id: Uuid, group_ids: Vec<Uuid>) -> Result<(), AppError> {
+    pub async fn set_server_groups(
+        &self,
+        server_id: Uuid,
+        group_ids: Vec<Uuid>,
+    ) -> Result<(), AppError> {
         set_server_groups(&self.pool, server_id, group_ids).await
     }
 
     // List accessible servers
-    pub async fn list_accessible(&self, user_id: Uuid, page: i64, per_page: i64) -> Result<McpServerListResponse, AppError> {
-        let (servers, total) = list_accessible_mcp_servers(&self.pool, user_id, page, per_page).await?;
+    pub async fn list_accessible(
+        &self,
+        user_id: Uuid,
+        page: i64,
+        per_page: i64,
+    ) -> Result<McpServerListResponse, AppError> {
+        let (servers, total) =
+            list_accessible_mcp_servers(&self.pool, user_id, page, per_page).await?;
         let total_pages = (total + per_page - 1) / per_page;
         Ok(McpServerListResponse {
             servers,
@@ -138,11 +184,12 @@ pub async fn create_user_mcp_server(
         .map_err(|e| AppError::internal_error(format!("Failed to serialize args: {}", e)))?;
 
     let env_vars = serde_json::to_value(request.environment_variables.clone().unwrap_or_default())
-        .map_err(|e| AppError::internal_error(format!("Failed to serialize environment_variables: {}", e)))?;
+        .map_err(|e| {
+            AppError::internal_error(format!("Failed to serialize environment_variables: {}", e))
+        })?;
 
     let headers = serde_json::to_value(request.headers.clone().unwrap_or_default())
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
-
 
     let row = sqlx::query!(
         r#"
@@ -193,7 +240,9 @@ pub async fn create_user_mcp_server(
         transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
-        environment_variables: row.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+        environment_variables: row
+            .environment_variables
+            .unwrap_or_else(|| serde_json::json!({})),
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
@@ -239,7 +288,9 @@ pub async fn get_user_mcp_server(
         transport_type: TransportType::from_str(&r.transport_type).unwrap(),
         command: r.command,
         args: r.args.unwrap_or_else(|| serde_json::json!([])),
-        environment_variables: r.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+        environment_variables: r
+            .environment_variables
+            .unwrap_or_else(|| serde_json::json!({})),
         url: r.url,
         headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: r.timeout_seconds,
@@ -289,7 +340,9 @@ pub async fn list_user_mcp_servers(
             transport_type: TransportType::from_str(&r.transport_type).unwrap(),
             command: r.command,
             args: r.args.unwrap_or_else(|| serde_json::json!([])),
-            environment_variables: r.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+            environment_variables: r
+                .environment_variables
+                .unwrap_or_else(|| serde_json::json!({})),
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
@@ -326,8 +379,14 @@ pub async fn update_user_mcp_server(
     validate_transport_update(&existing.transport_type, &request)?;
 
     let args = request.args.map(|a| serde_json::to_value(a).ok()).flatten();
-    let env_vars = request.environment_variables.map(|e| serde_json::to_value(e).ok()).flatten();
-    let headers = request.headers.map(|h| serde_json::to_value(h).ok()).flatten();
+    let env_vars = request
+        .environment_variables
+        .map(|e| serde_json::to_value(e).ok())
+        .flatten();
+    let headers = request
+        .headers
+        .map(|h| serde_json::to_value(h).ok())
+        .flatten();
 
     let row = sqlx::query!(
         r#"
@@ -388,7 +447,9 @@ pub async fn update_user_mcp_server(
         transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
-        environment_variables: row.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+        environment_variables: row
+            .environment_variables
+            .unwrap_or_else(|| serde_json::json!({})),
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
@@ -438,11 +499,12 @@ pub async fn create_system_mcp_server(
         .map_err(|e| AppError::internal_error(format!("Failed to serialize args: {}", e)))?;
 
     let env_vars = serde_json::to_value(request.environment_variables.clone().unwrap_or_default())
-        .map_err(|e| AppError::internal_error(format!("Failed to serialize environment_variables: {}", e)))?;
+        .map_err(|e| {
+            AppError::internal_error(format!("Failed to serialize environment_variables: {}", e))
+        })?;
 
     let headers = serde_json::to_value(request.headers.clone().unwrap_or_default())
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
-
 
     let row = sqlx::query!(
         r#"
@@ -492,7 +554,9 @@ pub async fn create_system_mcp_server(
         transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
-        environment_variables: row.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+        environment_variables: row
+            .environment_variables
+            .unwrap_or_else(|| serde_json::json!({})),
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
@@ -533,7 +597,9 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
         transport_type: TransportType::from_str(&r.transport_type).unwrap(),
         command: r.command,
         args: r.args.unwrap_or_else(|| serde_json::json!([])),
-        environment_variables: r.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+        environment_variables: r
+            .environment_variables
+            .unwrap_or_else(|| serde_json::json!({})),
         url: r.url,
         headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: r.timeout_seconds,
@@ -581,7 +647,9 @@ pub async fn list_system_mcp_servers(
             transport_type: TransportType::from_str(&r.transport_type).unwrap(),
             command: r.command,
             args: r.args.unwrap_or_else(|| serde_json::json!([])),
-            environment_variables: r.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+            environment_variables: r
+                .environment_variables
+                .unwrap_or_else(|| serde_json::json!({})),
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
@@ -614,8 +682,14 @@ pub async fn update_system_mcp_server(
     validate_transport_update(&existing.transport_type, &request)?;
 
     let args = request.args.map(|a| serde_json::to_value(a).ok()).flatten();
-    let env_vars = request.environment_variables.map(|e| serde_json::to_value(e).ok()).flatten();
-    let headers = request.headers.map(|h| serde_json::to_value(h).ok()).flatten();
+    let env_vars = request
+        .environment_variables
+        .map(|e| serde_json::to_value(e).ok())
+        .flatten();
+    let headers = request
+        .headers
+        .map(|h| serde_json::to_value(h).ok())
+        .flatten();
 
     let row = sqlx::query!(
         r#"
@@ -675,7 +749,9 @@ pub async fn update_system_mcp_server(
         transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
-        environment_variables: row.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+        environment_variables: row
+            .environment_variables
+            .unwrap_or_else(|| serde_json::json!({})),
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
@@ -690,9 +766,12 @@ pub async fn update_system_mcp_server(
 
 /// Delete system MCP server
 pub async fn delete_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
-    let result = sqlx::query!("DELETE FROM mcp_servers WHERE id = $1 AND is_system = true", id)
-        .execute(pool)
-        .await?;
+    let result = sqlx::query!(
+        "DELETE FROM mcp_servers WHERE id = $1 AND is_system = true",
+        id
+    )
+    .execute(pool)
+    .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::not_found("Server"));
@@ -721,7 +800,10 @@ pub async fn get_group_mcp_servers(pool: &PgPool, group_id: Uuid) -> Result<Vec<
 }
 
 /// Get full system MCP server details for a group (for UI widgets)
-pub async fn get_system_servers_for_group(pool: &PgPool, group_id: Uuid) -> Result<Vec<McpServer>, AppError> {
+pub async fn get_system_servers_for_group(
+    pool: &PgPool,
+    group_id: Uuid,
+) -> Result<Vec<McpServer>, AppError> {
     let rows = sqlx::query!(
         r#"
         SELECT s.id, s.user_id, s.name, s.display_name, s.description,
@@ -751,7 +833,9 @@ pub async fn get_system_servers_for_group(pool: &PgPool, group_id: Uuid) -> Resu
             transport_type: TransportType::from_str(&r.transport_type).unwrap(),
             command: r.command,
             args: r.args.unwrap_or_else(|| serde_json::json!([])),
-            environment_variables: r.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+            environment_variables: r
+                .environment_variables
+                .unwrap_or_else(|| serde_json::json!({})),
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
@@ -770,13 +854,10 @@ pub async fn assign_mcp_server_to_group(
     server_id: Uuid,
 ) -> Result<(), AppError> {
     // Verify server is a system server
-    let server = sqlx::query!(
-        "SELECT is_system FROM mcp_servers WHERE id = $1",
-        server_id
-    )
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| AppError::not_found("Server"))?;
+    let server = sqlx::query!("SELECT is_system FROM mcp_servers WHERE id = $1", server_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::not_found("Server"))?;
 
     if !server.is_system {
         return Err(AppError::bad_request(
@@ -832,13 +913,10 @@ pub async fn set_group_mcp_servers(
 
     // Verify all servers are system servers
     for server_id in &server_ids {
-        let server = sqlx::query!(
-            "SELECT is_system FROM mcp_servers WHERE id = $1",
-            server_id
-        )
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| AppError::not_found("Server"))?;
+        let server = sqlx::query!("SELECT is_system FROM mcp_servers WHERE id = $1", server_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| AppError::not_found("Server"))?;
 
         if !server.is_system {
             return Err(AppError::bad_request(
@@ -849,9 +927,12 @@ pub async fn set_group_mcp_servers(
     }
 
     // Delete all existing assignments
-    sqlx::query!("DELETE FROM user_group_mcp_servers WHERE group_id = $1", group_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query!(
+        "DELETE FROM user_group_mcp_servers WHERE group_id = $1",
+        group_id
+    )
+    .execute(&mut *tx)
+    .await?;
 
     // Insert new assignments
     for server_id in server_ids {
@@ -891,13 +972,10 @@ pub async fn set_server_groups(
     group_ids: Vec<Uuid>,
 ) -> Result<(), AppError> {
     // Verify server is a system server
-    let server = sqlx::query!(
-        "SELECT is_system FROM mcp_servers WHERE id = $1",
-        server_id
-    )
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| AppError::not_found("Server"))?;
+    let server = sqlx::query!("SELECT is_system FROM mcp_servers WHERE id = $1", server_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::not_found("Server"))?;
 
     if !server.is_system {
         return Err(AppError::bad_request(
@@ -910,9 +988,12 @@ pub async fn set_server_groups(
     let mut tx = pool.begin().await?;
 
     // Delete all existing assignments for this server
-    sqlx::query!("DELETE FROM user_group_mcp_servers WHERE mcp_server_id = $1", server_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query!(
+        "DELETE FROM user_group_mcp_servers WHERE mcp_server_id = $1",
+        server_id
+    )
+    .execute(&mut *tx)
+    .await?;
 
     // Insert new assignments
     for group_id in group_ids {
@@ -982,7 +1063,9 @@ pub async fn list_accessible_mcp_servers(
             transport_type: TransportType::from_str(&r.transport_type).unwrap(),
             command: r.command,
             args: r.args.unwrap_or_else(|| serde_json::json!([])),
-            environment_variables: r.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+            environment_variables: r
+                .environment_variables
+                .unwrap_or_else(|| serde_json::json!({})),
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
@@ -1025,7 +1108,13 @@ fn validate_transport_config(
 ) -> Result<(), AppError> {
     match transport_type {
         TransportType::Stdio => {
-            if request.command.is_none() || request.command.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+            if request.command.is_none()
+                || request
+                    .command
+                    .as_ref()
+                    .map(|s| s.is_empty())
+                    .unwrap_or(true)
+            {
                 return Err(AppError::bad_request(
                     "INVALID_TRANSPORT",
                     "command is required for stdio transport",

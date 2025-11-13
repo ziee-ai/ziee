@@ -151,7 +151,11 @@ mod tests {
         let groups = vec![create_test_group(vec!["config::auth::*"])];
         assert!(check_permission_union(&user, &groups, "config::auth::read"));
         assert!(check_permission_union(&user, &groups, "config::auth::edit"));
-        assert!(!check_permission_union(&user, &groups, "config::proxy::read"));
+        assert!(!check_permission_union(
+            &user,
+            &groups,
+            "config::proxy::read"
+        ));
     }
 
     #[test]

@@ -16,9 +16,9 @@ use uuid::Uuid;
 
 use ai_providers::ChatRequest;
 
-use crate::common::AppError;
-use crate::modules::chat::core::models::{content::MessageContentData, Message};
 use super::request::SendMessageRequest;
+use crate::common::AppError;
+use crate::modules::chat::core::models::{Message, content::MessageContentData};
 
 /// Extension registration entry for distributed collection
 #[derive(Debug, Clone, Copy)]

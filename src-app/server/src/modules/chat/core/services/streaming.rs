@@ -17,8 +17,8 @@ use crate::common::AppError;
 use crate::modules::chat::core::{
     extension::{ExtensionRegistry, SendMessageRequest, StreamContext},
     models::{MessageContentData, MessageRole},
-    types::{ChatStreamChunk, ContentBlockDelta},
     repository::{contents as content_repo, messages as msg_repo},
+    types::{ChatStreamChunk, ContentBlockDelta},
 };
 
 /// Streaming service for chat messages
@@ -59,13 +59,13 @@ impl StreamingService {
 
         // Create initial user message
         let user_message =
-            msg_repo::create_message(&self.pool, branch_id, MessageRole::User.as_str())
-                .await?;
+            msg_repo::create_message(&self.pool, branch_id, MessageRole::User.as_str()).await?;
 
         let user_content_data = MessageContentData::Text {
             text: request.content.clone(),
         };
-        content_repo::create_content(&self.pool, user_message.id, "text", user_content_data, 0).await?;
+        content_repo::create_content(&self.pool, user_message.id, "text", user_content_data, 0)
+            .await?;
 
         // Create channel for streaming output
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -135,10 +135,19 @@ impl StreamingService {
 
                 // Create stream context
                 let mut context_metadata = std::collections::HashMap::new();
-                context_metadata.insert("provider_type".to_string(), serde_json::json!(provider_for_task.provider_type()));
+                context_metadata.insert(
+                    "provider_type".to_string(),
+                    serde_json::json!(provider_for_task.provider_type()),
+                );
                 context_metadata.insert("model_name".to_string(), serde_json::json!(model_name));
-                context_metadata.insert("model_id".to_string(), serde_json::json!(model_id.to_string()));
-                context_metadata.insert("provider_id".to_string(), serde_json::json!(provider_id.to_string()));
+                context_metadata.insert(
+                    "model_id".to_string(),
+                    serde_json::json!(model_id.to_string()),
+                );
+                context_metadata.insert(
+                    "provider_id".to_string(),
+                    serde_json::json!(provider_id.to_string()),
+                );
 
                 let mut stream_context = StreamContext {
                     conversation_id,
@@ -174,7 +183,10 @@ impl StreamingService {
                 let mut ai_stream = match provider_for_task.chat_stream(chat_request).await {
                     Ok(stream) => stream,
                     Err(e) => {
-                        let _ = tx.send(Err(AppError::internal_error(format!("AI provider error: {}", e))));
+                        let _ = tx.send(Err(AppError::internal_error(format!(
+                            "AI provider error: {}",
+                            e
+                        ))));
                         break;
                     }
                 };
@@ -210,7 +222,10 @@ impl StreamingService {
                             }
                         }
                         Err(e) => {
-                            let _ = tx.send(Err(AppError::internal_error(format!("Stream error: {}", e))));
+                            let _ = tx.send(Err(AppError::internal_error(format!(
+                                "Stream error: {}",
+                                e
+                            ))));
                             return;
                         }
                     }
@@ -264,9 +279,10 @@ impl StreamingService {
         let mut messages = Vec::new();
 
         for msg_with_content in history {
-            let role = msg_with_content.message.role_enum().map_err(|e| {
-                AppError::internal_error(format!("Invalid message role: {}", e))
-            })?;
+            let role = msg_with_content
+                .message
+                .role_enum()
+                .map_err(|e| AppError::internal_error(format!("Invalid message role: {}", e)))?;
 
             // Convert role to AI provider role
             let ai_role = match role {
@@ -300,9 +316,10 @@ impl StreamingService {
         let mut messages = Vec::new();
 
         for msg_with_content in history {
-            let role = msg_with_content.message.role_enum().map_err(|e| {
-                AppError::internal_error(format!("Invalid message role: {}", e))
-            })?;
+            let role = msg_with_content
+                .message
+                .role_enum()
+                .map_err(|e| AppError::internal_error(format!("Invalid message role: {}", e)))?;
 
             // Convert role to AI provider role
             let ai_role = match role {
@@ -358,7 +375,9 @@ impl StreamingService {
     /// Transform AI provider stream to our ChatStreamChunk format with accumulation
     fn transform_stream(
         &self,
-        ai_stream: Pin<Box<dyn Stream<Item = Result<AiStreamChunk, ai_providers::ProviderError>> + Send>>,
+        ai_stream: Pin<
+            Box<dyn Stream<Item = Result<AiStreamChunk, ai_providers::ProviderError>> + Send>,
+        >,
         accumulator: Arc<Mutex<DeltaAccumulator>>,
     ) -> Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, AppError>> + Send>> {
         use futures_util::StreamExt;
@@ -418,10 +437,13 @@ impl DeltaAccumulator {
             conversation_id: Some(self.conversation_id),
             branch_id: Some(self.branch_id),
             finish_reason: ai_chunk.finish_reason.clone(),
-            usage: ai_chunk.usage.as_ref().map(|u| crate::modules::chat::core::types::Usage {
-                input_tokens: Some(u.prompt_tokens),
-                output_tokens: Some(u.completion_tokens),
-            }),
+            usage: ai_chunk
+                .usage
+                .as_ref()
+                .map(|u| crate::modules::chat::core::types::Usage {
+                    input_tokens: Some(u.prompt_tokens),
+                    output_tokens: Some(u.completion_tokens),
+                }),
             title: None,
             error: None,
         };
@@ -448,13 +470,21 @@ impl DeltaAccumulator {
     /// Accumulate a delta in memory (no database writes during streaming)
     fn accumulate_delta_in_memory(&mut self, delta: &ContentBlockDelta) {
         match delta {
-            ContentBlockDelta::TextDelta { index, delta, content_id: _ } => {
+            ContentBlockDelta::TextDelta {
+                index,
+                delta,
+                content_id: _,
+            } => {
                 self.ensure_content_block_exists(*index, "text");
                 if let Some(block) = self.content_blocks.get_mut(*index) {
                     block.accumulated_text.push_str(delta);
                 }
             }
-            ContentBlockDelta::ThinkingDelta { index, delta, content_id: _ } => {
+            ContentBlockDelta::ThinkingDelta {
+                index,
+                delta,
+                content_id: _,
+            } => {
                 self.ensure_content_block_exists(*index, "thinking");
                 if let Some(block) = self.content_blocks.get_mut(*index) {
                     block.accumulated_text.push_str(delta);
@@ -505,8 +535,8 @@ impl DeltaAccumulator {
             };
 
             // Serialize to JSON
-            let content_json = serde_json::to_value(&content_data)
-                .map_err(|e| AppError::database_error(e))?;
+            let content_json =
+                serde_json::to_value(&content_data).map_err(|e| AppError::database_error(e))?;
 
             // Insert content block
             sqlx::query!(
@@ -546,7 +576,8 @@ impl DeltaAccumulator {
                     // Log error but don't fail the stream
                     eprintln!("Extension error in after_llm_call: {}", e);
                     // Default to Complete on error
-                    self.extension_action = Some(crate::modules::chat::core::extension::ExtensionAction::Complete);
+                    self.extension_action =
+                        Some(crate::modules::chat::core::extension::ExtensionAction::Complete);
                 }
             }
         }

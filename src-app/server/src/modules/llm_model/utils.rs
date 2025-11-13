@@ -9,7 +9,10 @@ use super::types::{CreateLlmModelRequest, UpdateLlmModelRequest};
 pub fn validate_create_request(request: &CreateLlmModelRequest) -> Result<(), AppError> {
     // Validate name
     if request.name.trim().is_empty() {
-        return Err(AppError::unprocessable_entity("INVALID_NAME", "Model name cannot be empty"));
+        return Err(AppError::unprocessable_entity(
+            "INVALID_NAME",
+            "Model name cannot be empty",
+        ));
     }
 
     if request.name.len() > 255 {
@@ -64,7 +67,10 @@ pub fn validate_update_request(request: &UpdateLlmModelRequest) -> Result<(), Ap
     // Validate name if provided
     if let Some(ref name) = request.name {
         if name.trim().is_empty() {
-            return Err(AppError::unprocessable_entity("INVALID_NAME", "Model name cannot be empty"));
+            return Err(AppError::unprocessable_entity(
+                "INVALID_NAME",
+                "Model name cannot be empty",
+            ));
         }
 
         if name.len() > 255 {

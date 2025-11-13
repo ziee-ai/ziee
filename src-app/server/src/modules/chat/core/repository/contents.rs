@@ -14,8 +14,8 @@ pub async fn create_content(
     initial_data: MessageContentData,
     sequence_order: i32,
 ) -> Result<MessageContent, AppError> {
-    let content_json = serde_json::to_value(&initial_data)
-        .map_err(|e| AppError::database_error(e))?;
+    let content_json =
+        serde_json::to_value(&initial_data).map_err(|e| AppError::database_error(e))?;
 
     let content = sqlx::query_as!(
         MessageContent,
@@ -38,7 +38,10 @@ pub async fn create_content(
 }
 
 /// Get all content blocks for a message (ordered by sequence)
-pub async fn get_message_contents(pool: &PgPool, message_id: Uuid) -> Result<Vec<MessageContent>, AppError> {
+pub async fn get_message_contents(
+    pool: &PgPool,
+    message_id: Uuid,
+) -> Result<Vec<MessageContent>, AppError> {
     let contents = sqlx::query_as!(
         MessageContent,
         r#"

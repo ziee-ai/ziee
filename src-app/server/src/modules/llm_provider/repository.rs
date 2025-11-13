@@ -9,9 +9,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::models::LlmProvider;
-use super::types::{
-    CreateLlmProviderRequest, UpdateLlmProviderRequest,
-};
+use super::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
 use crate::modules::user::models::Group;
 
 // =====================================================
@@ -36,11 +34,18 @@ impl LlmProviderRepository {
         list_llm_providers(&self.pool).await
     }
 
-    pub async fn create(&self, request: CreateLlmProviderRequest) -> Result<LlmProvider, sqlx::Error> {
+    pub async fn create(
+        &self,
+        request: CreateLlmProviderRequest,
+    ) -> Result<LlmProvider, sqlx::Error> {
         create_llm_provider(&self.pool, request).await
     }
 
-    pub async fn update(&self, provider_id: Uuid, request: UpdateLlmProviderRequest) -> Result<Option<LlmProvider>, sqlx::Error> {
+    pub async fn update(
+        &self,
+        provider_id: Uuid,
+        request: UpdateLlmProviderRequest,
+    ) -> Result<Option<LlmProvider>, sqlx::Error> {
         update_llm_provider(&self.pool, provider_id, request).await
     }
 
@@ -52,11 +57,19 @@ impl LlmProviderRepository {
         get_llm_provider_groups(&self.pool, provider_id).await
     }
 
-    pub async fn assign_to_group(&self, provider_id: Uuid, group_id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn assign_to_group(
+        &self,
+        provider_id: Uuid,
+        group_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
         assign_provider_to_group(&self.pool, provider_id, group_id).await
     }
 
-    pub async fn remove_from_group(&self, group_id: Uuid, provider_id: Uuid) -> Result<bool, sqlx::Error> {
+    pub async fn remove_from_group(
+        &self,
+        group_id: Uuid,
+        provider_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
         remove_provider_from_group(&self.pool, group_id, provider_id).await
     }
 
@@ -137,8 +150,8 @@ pub async fn create_llm_provider(
     request: CreateLlmProviderRequest,
 ) -> Result<LlmProvider, sqlx::Error> {
     let provider_id = Uuid::new_v4();
-    let proxy_settings_json =
-        serde_json::to_value(&request.proxy_settings.unwrap_or_default()).unwrap_or(serde_json::json!({}));
+    let proxy_settings_json = serde_json::to_value(&request.proxy_settings.unwrap_or_default())
+        .unwrap_or(serde_json::json!({}));
 
     let row = sqlx::query!(
         r#"INSERT INTO llm_providers (id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings)
@@ -230,7 +243,8 @@ pub async fn update_llm_provider(
     }
 
     if let Some(proxy_settings) = &request.proxy_settings {
-        let proxy_settings_json = serde_json::to_value(proxy_settings).unwrap_or(serde_json::json!({}));
+        let proxy_settings_json =
+            serde_json::to_value(proxy_settings).unwrap_or(serde_json::json!({}));
         sqlx::query!(
             "UPDATE llm_providers SET proxy_settings = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
             proxy_settings_json,

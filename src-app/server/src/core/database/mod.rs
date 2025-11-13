@@ -2,9 +2,9 @@ use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
 use sqlx::PgPool;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::OnceCell;
 
 const POSTGRES_VERSION: &str = "17.5.0";
@@ -58,7 +58,9 @@ fn stop_existing_postgres_instance(
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        eprintln!("Error: Failed to stop PostgreSQL instance. Exiting to prevent database corruption.");
+        eprintln!(
+            "Error: Failed to stop PostgreSQL instance. Exiting to prevent database corruption."
+        );
         eprintln!("STDERR: {}", stderr);
         eprintln!("STDOUT: {}", stdout);
         std::process::exit(1);
@@ -90,7 +92,7 @@ pub async fn initialize_database(
 
                 match try_initialize_database_once(&config_clone).await {
                     Ok(pool) => {
-                        return Ok::<Arc<PgPool>, Box<dyn std::error::Error + Send + Sync>>(pool)
+                        return Ok::<Arc<PgPool>, Box<dyn std::error::Error + Send + Sync>>(pool);
                     }
                     Err(e) => {
                         eprintln!("Database initialization attempt {} failed: {}", attempt, e);
@@ -126,7 +128,10 @@ async fn try_initialize_database_once(
 ) -> Result<Arc<PgPool>, Box<dyn std::error::Error + Send + Sync>> {
     let database_url = if config.postgresql.use_embedded {
         // Initialize embedded PostgreSQL
-        let embedded = config.postgresql.embedded.as_ref()
+        let embedded = config
+            .postgresql
+            .embedded
+            .as_ref()
             .ok_or("embedded config must be present when use_embedded is true")?;
 
         let mut settings = Settings::default();
@@ -161,19 +166,27 @@ async fn try_initialize_database_once(
         settings.host = embedded.bind_address.clone();
 
         // Set logging configuration from config
-        let logging_collector = if embedded.logging.collector { "on" } else { "off" };
-        settings
-            .configuration
-            .insert("logging_collector".to_string(), logging_collector.to_string());
-        settings
-            .configuration
-            .insert("log_directory".to_string(), embedded.logging.directory.clone());
-        settings
-            .configuration
-            .insert("log_filename".to_string(), embedded.logging.filename.clone());
-        settings
-            .configuration
-            .insert("log_statement".to_string(), embedded.logging.statement.clone());
+        let logging_collector = if embedded.logging.collector {
+            "on"
+        } else {
+            "off"
+        };
+        settings.configuration.insert(
+            "logging_collector".to_string(),
+            logging_collector.to_string(),
+        );
+        settings.configuration.insert(
+            "log_directory".to_string(),
+            embedded.logging.directory.clone(),
+        );
+        settings.configuration.insert(
+            "log_filename".to_string(),
+            embedded.logging.filename.clone(),
+        );
+        settings.configuration.insert(
+            "log_statement".to_string(),
+            embedded.logging.statement.clone(),
+        );
 
         let mut postgresql = PostgreSQL::new(settings);
         println!(
@@ -205,11 +218,15 @@ async fn try_initialize_database_once(
         database_url
     } else {
         // Use external PostgreSQL
-        let external = config.postgresql.external.as_ref()
+        let external = config
+            .postgresql
+            .external
+            .as_ref()
             .ok_or("external config must be present when use_embedded is false")?;
-        println!("Using external PostgreSQL at {}:{}",
-            external.host,
-            external.port);
+        println!(
+            "Using external PostgreSQL at {}:{}",
+            external.host, external.port
+        );
         config.database_url()
     };
 

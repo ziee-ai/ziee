@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::chat::core::models::Message;
-use crate::modules::chat::core::types::{MessageWithContent, EditMessageRequest, EditMessageResponse};
+use crate::modules::chat::core::types::{
+    EditMessageRequest, EditMessageResponse, MessageWithContent,
+};
 
 use super::contents::get_message_contents;
 
@@ -79,7 +81,10 @@ pub async fn get_message(pool: &PgPool, id: Uuid) -> Result<Option<Message>, App
 }
 
 /// Get message with all its content blocks
-pub async fn get_message_with_content(pool: &PgPool, id: Uuid) -> Result<Option<MessageWithContent>, AppError> {
+pub async fn get_message_with_content(
+    pool: &PgPool,
+    id: Uuid,
+) -> Result<Option<MessageWithContent>, AppError> {
     let message = get_message(pool, id).await?;
 
     match message {
@@ -96,7 +101,10 @@ pub async fn get_message_with_content(pool: &PgPool, id: Uuid) -> Result<Option<
 
 /// List all messages in a branch (ordered by when they were added to branch)
 /// This joins through the branch_messages junction table
-pub async fn list_messages_in_branch(pool: &PgPool, branch_id: Uuid) -> Result<Vec<Message>, AppError> {
+pub async fn list_messages_in_branch(
+    pool: &PgPool,
+    branch_id: Uuid,
+) -> Result<Vec<Message>, AppError> {
     let messages = sqlx::query_as!(
         Message,
         r#"
@@ -129,10 +137,7 @@ pub async fn get_conversation_history(
     let mut history = Vec::new();
     for message in messages {
         let contents = get_message_contents(pool, message.id).await?;
-        history.push(MessageWithContent {
-            message,
-            contents,
-        });
+        history.push(MessageWithContent { message, contents });
     }
 
     Ok(history)
@@ -305,8 +310,8 @@ pub async fn edit_message(
         "#,
         new_message_id,
         original.role,
-        original.originated_from_id,  // Keep same origin
-        original.edit_count  // Will be incremented later
+        original.originated_from_id, // Keep same origin
+        original.edit_count          // Will be incremented later
     )
     .fetch_one(&mut *tx)
     .await

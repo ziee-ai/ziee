@@ -2,9 +2,8 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
+    Json, debug_handler,
     response::sse::{Event, Sse},
-    Json,
 };
 use futures_util::stream::Stream;
 use sysinfo::System;

@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-pub mod local;
 pub mod ldap;
+pub mod local;
 pub mod models;
 pub mod oauth2;
 pub mod repository;
@@ -55,18 +55,13 @@ pub trait AuthProviderTrait: Send + Sync {
     fn provider_type(&self) -> &str;
 
     /// Authenticate user with username and password (for password-based providers)
-    async fn authenticate(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<AuthResult, AuthError>;
+    async fn authenticate(&self, username: &str, password: &str) -> Result<AuthResult, AuthError>;
 
     /// Initialize OAuth/OIDC authentication flow (returns redirect URL)
-    async fn init_oauth_flow(
-        &self,
-        _redirect_uri: &str,
-    ) -> Result<OAuthResult, AuthError> {
-        Err(AuthError::NotSupported("OAuth not supported by this provider".to_string()))
+    async fn init_oauth_flow(&self, _redirect_uri: &str) -> Result<OAuthResult, AuthError> {
+        Err(AuthError::NotSupported(
+            "OAuth not supported by this provider".to_string(),
+        ))
     }
 
     /// Handle OAuth callback and complete authentication
@@ -76,7 +71,9 @@ pub trait AuthProviderTrait: Send + Sync {
         _state: &str,
         _session_key: &str,
     ) -> Result<AuthResult, AuthError> {
-        Err(AuthError::NotSupported("OAuth not supported by this provider".to_string()))
+        Err(AuthError::NotSupported(
+            "OAuth not supported by this provider".to_string(),
+        ))
     }
 
     /// Test provider connection (for admin testing)

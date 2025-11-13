@@ -1,16 +1,16 @@
+pub mod events;
+mod handlers;
 mod models;
-mod types;
 mod permissions;
 mod repository;
-mod handlers;
 mod routes;
-pub mod events;
+mod types;
 
 pub use models::*;
-pub use types::*;
 pub use repository::*;
+pub use types::*;
 
-use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
 use sqlx::PgPool;
@@ -59,8 +59,7 @@ impl AppModule for McpModule {
         if let Some(_pool) = &self.pool {
             let mcp_router_with_state = ApiRouter::new()
                 .merge(routes::user_routes())
-                .merge(routes::admin_routes())
-                ;
+                .merge(routes::admin_routes());
             router.merge(mcp_router_with_state)
         } else {
             tracing::error!("McpModule: Pool not initialized during route registration");

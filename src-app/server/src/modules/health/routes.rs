@@ -1,6 +1,6 @@
 // Health routes configuration
 
-use aide::axum::{routing::get_with, ApiRouter};
+use aide::axum::{ApiRouter, routing::get_with};
 
 use super::handlers::*;
 

@@ -11,8 +11,7 @@ use crate::modules::chat::core::types::ConversationResponse;
 
 /// Convert time::OffsetDateTime to chrono::DateTime<Utc>
 fn to_chrono_datetime(odt: OffsetDateTime) -> DateTime<Utc> {
-    DateTime::from_timestamp(odt.unix_timestamp(), odt.nanosecond())
-        .expect("valid timestamp")
+    DateTime::from_timestamp(odt.unix_timestamp(), odt.nanosecond()).expect("valid timestamp")
 }
 
 /// Create a new conversation with a default branch

@@ -1,11 +1,11 @@
-use aide::axum::{
-    routing::{delete_with, get_with, post_with},
-    ApiRouter,
-};
+// Group handlers
+
 use crate::core::Repos;
+use aide::transform::TransformOperation;
 use axum::{
+    Json, debug_handler,
     extract::{Path, Query},
-    http::StatusCode, Json,
+    http::StatusCode,
 };
 use uuid::Uuid;
 
@@ -14,52 +14,24 @@ use crate::{
     modules::permissions::{RequirePermissions, with_permission},
 };
 
-use super::{
+use crate::modules::user::{
     models::Group,
-    types::{
-        AssignUserToGroupRequest, CreateGroupRequest, GroupListResponse,
-        UpdateGroupRequest, UserListResponse,
-    },
     permissions::*,
+    types::{
+        AssignUserToGroupRequest, CreateGroupRequest, GroupListResponse, UpdateGroupRequest,
+        UserListResponse,
+    },
 };
-
-/// Group management routes
-pub fn group_router() -> ApiRouter {
-    ApiRouter::new()
-        .api_route("/groups", get_with(list_groups, list_groups_docs))
-        .api_route("/groups", post_with(create_group, create_group_docs))
-        .api_route("/groups/{group_id}", get_with(get_group, get_group_docs))
-        .api_route(
-            "/groups/{group_id}",
-            post_with(update_group, update_group_docs),
-        )
-        .api_route(
-            "/groups/{group_id}",
-            delete_with(delete_group, delete_group_docs),
-        )
-        .api_route(
-            "/groups/{group_id}/members",
-            get_with(get_group_members, get_group_members_docs),
-        )
-        .api_route(
-            "/groups/assign",
-            post_with(assign_user_to_group, assign_user_to_group_docs),
-        )
-        .api_route(
-            "/groups/{user_id}/{group_id}/remove",
-            delete_with(remove_user_from_group, remove_user_from_group_docs),
-        )
-}
 
 // =====================================================
 // Route Handlers
 // =====================================================
 
 /// List all groups (requires groups::read permission)
-async fn list_groups(
+#[debug_handler]
+pub async fn list_groups(
     _auth: RequirePermissions<(GroupsRead,)>,
     Query(params): Query<PaginationQuery>,
-    
 ) -> ApiResult<Json<GroupListResponse>> {
     let (groups, total) = Repos.group.list(params.page, params.per_page).await?;
 
@@ -77,9 +49,8 @@ async fn list_groups(
     ))
 }
 
-fn list_groups_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+/// Documentation for list_groups endpoint
+pub fn list_groups_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(GroupsRead,)>(op)
         .id("UserGroup.list")
         .tag("User Groups")
@@ -89,12 +60,13 @@ fn list_groups_docs(
 }
 
 /// Get group by ID (requires groups::read permission)
-async fn get_group(
+#[debug_handler]
+pub async fn get_group(
     _auth: RequirePermissions<(GroupsRead,)>,
     Path(group_id): Path<Uuid>,
-    
 ) -> ApiResult<Json<Group>> {
-    let group = Repos.group
+    let group = Repos
+        .group
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -102,9 +74,8 @@ async fn get_group(
     Ok((StatusCode::OK, Json(group)))
 }
 
-fn get_group_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+/// Documentation for get_group endpoint
+pub fn get_group_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(GroupsRead,)>(op)
         .id("UserGroup.get")
         .tag("User Groups")
@@ -115,9 +86,10 @@ fn get_group_docs(
 }
 
 /// Create a new group (requires groups::create permission)
-async fn create_group(
+#[debug_handler]
+pub async fn create_group(
     _auth: RequirePermissions<(GroupsCreate,)>,
-    
+
     Json(request): Json<CreateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Validate group name
@@ -131,16 +103,16 @@ async fn create_group(
     }
 
     // Create group
-    let group = Repos.group
+    let group = Repos
+        .group
         .create(&request.name, request.description, request.permissions)
         .await?;
 
     Ok((StatusCode::CREATED, Json(group)))
 }
 
-fn create_group_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+/// Documentation for create_group endpoint
+pub fn create_group_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(GroupsCreate,)>(op)
         .id("UserGroup.create")
         .tag("User Groups")
@@ -152,15 +124,16 @@ fn create_group_docs(
 }
 
 /// Update group (requires groups::edit permission)
-async fn update_group(
+#[debug_handler]
+pub async fn update_group(
     _auth: RequirePermissions<(GroupsEdit,)>,
     Path(group_id): Path<Uuid>,
-    
+
     Json(request): Json<UpdateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
-
     // Check if group exists
-    let existing_group = Repos.group
+    let existing_group = Repos
+        .group
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -186,7 +159,8 @@ async fn update_group(
     }
 
     // Update group
-    let group = Repos.group
+    let group = Repos
+        .group
         .update(
             group_id,
             request.name,
@@ -199,9 +173,8 @@ async fn update_group(
     Ok((StatusCode::OK, Json(group)))
 }
 
-fn update_group_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+/// Documentation for update_group endpoint
+pub fn update_group_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(GroupsEdit,)>(op)
         .id("UserGroup.update")
         .tag("User Groups")
@@ -214,14 +187,14 @@ fn update_group_docs(
 }
 
 /// Delete group (requires groups::delete permission)
-async fn delete_group(
+#[debug_handler]
+pub async fn delete_group(
     _auth: RequirePermissions<(GroupsDelete,)>,
     Path(group_id): Path<Uuid>,
-    
 ) -> ApiResult<StatusCode> {
-
     // Check if group exists
-    let group = Repos.group
+    let group = Repos
+        .group
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -237,9 +210,8 @@ async fn delete_group(
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
-fn delete_group_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+/// Documentation for delete_group endpoint
+pub fn delete_group_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(GroupsDelete,)>(op)
         .id("UserGroup.delete")
         .tag("User Groups")
@@ -251,20 +223,20 @@ fn delete_group_docs(
 }
 
 /// Get members of a group (requires groups::read permission)
-async fn get_group_members(
+#[debug_handler]
+pub async fn get_group_members(
     _auth: RequirePermissions<(GroupsRead,)>,
     Path(group_id): Path<Uuid>,
     Query(params): Query<PaginationQuery>,
-    
 ) -> ApiResult<Json<UserListResponse>> {
-
     // Check if group exists
     if Repos.group.get_by_id(group_id).await?.is_none() {
         return Err(AppError::not_found("Group").into());
     }
 
     // Get group members
-    let (users, total) = Repos.group
+    let (users, total) = Repos
+        .group
         .get_members(group_id, params.page, params.per_page)
         .await?;
 
@@ -282,9 +254,8 @@ async fn get_group_members(
     ))
 }
 
-fn get_group_members_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+/// Documentation for get_group_members endpoint
+pub fn get_group_members_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(GroupsRead,)>(op)
         .id("UserGroup.getMembers")
         .tag("User Groups")
@@ -295,13 +266,12 @@ fn get_group_members_docs(
 }
 
 /// Assign user to group (requires groups::assign_users permission)
-async fn assign_user_to_group(
+#[debug_handler]
+pub async fn assign_user_to_group(
     auth: RequirePermissions<(GroupsAssignUsers,)>,
-    
-    
+
     Json(request): Json<AssignUserToGroupRequest>,
 ) -> ApiResult<StatusCode> {
-
     // Check if user exists
     if Repos.user.get_by_id(request.user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
@@ -313,16 +283,16 @@ async fn assign_user_to_group(
     }
 
     // Assign user to group
-    Repos.user
+    Repos
+        .user
         .assign_to_group(request.user_id, request.group_id, Some(auth.user.id))
         .await?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
-fn assign_user_to_group_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+/// Documentation for assign_user_to_group endpoint
+pub fn assign_user_to_group_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(GroupsAssignUsers,)>(op)
         .id("UserGroup.assignUser")
         .tag("User Groups")
@@ -333,13 +303,11 @@ fn assign_user_to_group_docs(
 }
 
 /// Remove user from group (requires groups::assign_users permission)
-async fn remove_user_from_group(
+#[debug_handler]
+pub async fn remove_user_from_group(
     _auth: RequirePermissions<(GroupsAssignUsers,)>,
     Path((user_id, group_id)): Path<(Uuid, Uuid)>,
-    
-    
 ) -> ApiResult<StatusCode> {
-
     // Check if user exists
     if Repos.user.get_by_id(user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
@@ -356,9 +324,8 @@ async fn remove_user_from_group(
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
-fn remove_user_from_group_docs(
-    op: aide::transform::TransformOperation,
-) -> aide::transform::TransformOperation {
+/// Documentation for remove_user_from_group endpoint
+pub fn remove_user_from_group_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(GroupsAssignUsers,)>(op)
         .id("UserGroup.removeUser")
         .tag("User Groups")

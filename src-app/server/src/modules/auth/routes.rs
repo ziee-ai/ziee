@@ -1,8 +1,8 @@
 // Auth routes configuration
 
 use aide::axum::{
-    routing::{get_with, post_with},
     ApiRouter,
+    routing::{get_with, post_with},
 };
 use axum::routing::get;
 

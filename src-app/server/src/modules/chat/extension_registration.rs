@@ -5,7 +5,7 @@
 
 use sqlx::PgPool;
 
-use crate::modules::chat::core::extension::{ExtensionRegistry, CHAT_EXTENSIONS};
+use crate::modules::chat::core::extension::{CHAT_EXTENSIONS, ExtensionRegistry};
 
 /// Register all discovered extensions in order
 pub fn auto_register_extensions(pool: PgPool) -> ExtensionRegistry {
@@ -17,7 +17,11 @@ pub fn auto_register_extensions(pool: PgPool) -> ExtensionRegistry {
 
     // Register each extension in order
     for entry in entries {
-        tracing::debug!("Registering chat extension: {} (order: {})", entry.name, entry.order);
+        tracing::debug!(
+            "Registering chat extension: {} (order: {})",
+            entry.name,
+            entry.order
+        );
         let extension = (entry.factory)(pool.clone());
         registry.register(extension);
     }

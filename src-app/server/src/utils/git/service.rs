@@ -1,6 +1,6 @@
 use super::lfs::{LfsError, LfsPhase, LfsProgress, LfsService};
 use crate::utils::cancellation::CancellationToken;
-use git2::{build::RepoBuilder, Cred, FetchOptions, RemoteCallbacks};
+use git2::{Cred, FetchOptions, RemoteCallbacks, build::RepoBuilder};
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

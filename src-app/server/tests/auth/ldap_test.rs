@@ -2,7 +2,6 @@
 ///
 /// These tests use testcontainers to automatically spawn LDAP mock servers.
 /// Docker will be started automatically if not already running.
-
 use crate::common::ldap_mock::LdapMockServer;
 use ldap3::{LdapConnAsync, Scope, SearchEntry};
 
@@ -55,7 +54,12 @@ async fn test_ldap_user_search() {
     let search_base = format!("ou=people,{}", ldap_server.base_dn);
 
     let (results, _) = ldap
-        .search(&search_base, Scope::Subtree, &filter, vec!["uid", "cn", "mail", "userPassword"])
+        .search(
+            &search_base,
+            Scope::Subtree,
+            &filter,
+            vec!["uid", "cn", "mail", "userPassword"],
+        )
         .await
         .expect("Search failed")
         .success()
@@ -66,7 +70,10 @@ async fn test_ldap_user_search() {
     let entry = SearchEntry::construct(results[0].clone());
     assert_eq!(entry.attrs.get("uid").unwrap()[0], username);
     assert!(entry.attrs.get("cn").is_some(), "Should have cn attribute");
-    assert!(entry.attrs.get("mail").is_some(), "Should have mail attribute");
+    assert!(
+        entry.attrs.get("mail").is_some(),
+        "Should have mail attribute"
+    );
     ldap.unbind().await.ok();
 }
 
@@ -115,9 +122,15 @@ async fn test_ldap_user_authentication() {
         .expect("Failed to connect");
     ldap3::drive!(conn2);
 
-    let bind_result = user_ldap.simple_bind(&user_dn, password).await.expect("Bind failed");
+    let bind_result = user_ldap
+        .simple_bind(&user_dn, password)
+        .await
+        .expect("Bind failed");
 
-    assert!(bind_result.success().is_ok(), "User authentication should succeed");
+    assert!(
+        bind_result.success().is_ok(),
+        "User authentication should succeed"
+    );
     user_ldap.unbind().await.ok();
 }
 
@@ -168,7 +181,10 @@ async fn test_ldap_wrong_password_fails() {
     // Bind should fail or return an error
     match bind_result {
         Ok(result) => {
-            assert!(result.success().is_err(), "Bind with wrong password should fail");
+            assert!(
+                result.success().is_err(),
+                "Bind with wrong password should fail"
+            );
         }
         Err(_) => {
             // Connection error is also acceptable - authentication failed
@@ -230,7 +246,10 @@ async fn test_create_ldap_provider() {
     // Verify config fields
     assert_eq!(retrieved.config["url"], ldap_server.ldap_url());
     assert_eq!(retrieved.config["admin_bind_dn"], ldap_server.bind_dn);
-    assert_eq!(retrieved.config["base_dn"], "ou=people,dc=planetexpress,dc=com");
+    assert_eq!(
+        retrieved.config["base_dn"],
+        "ou=people,dc=planetexpress,dc=com"
+    );
     assert_eq!(retrieved.config["search_filter"], "(uid={username})");
 }
 
@@ -326,9 +345,18 @@ async fn test_ldap_login_flow() {
         .expect("Failed to parse login response");
 
     // Validate we got OUR application's JWT tokens
-    assert!(auth_data["access_token"].is_string(), "Should have access_token from our app");
-    assert!(auth_data["refresh_token"].is_string(), "Should have refresh_token from our app");
-    assert!(auth_data["user"]["username"].is_string(), "Should have user info");
+    assert!(
+        auth_data["access_token"].is_string(),
+        "Should have access_token from our app"
+    );
+    assert!(
+        auth_data["refresh_token"].is_string(),
+        "Should have refresh_token from our app"
+    );
+    assert!(
+        auth_data["user"]["username"].is_string(),
+        "Should have user info"
+    );
 
     println!("✅ Complete LDAP login flow successful!");
     println!("   User: {}", auth_data["user"]["username"]);

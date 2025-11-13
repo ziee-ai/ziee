@@ -76,7 +76,10 @@ impl UserRepository {
     }
 
     /// Get user by username or email
-    pub async fn get_by_username_or_email(&self, identifier: &str) -> Result<Option<User>, AppError> {
+    pub async fn get_by_username_or_email(
+        &self,
+        identifier: &str,
+    ) -> Result<Option<User>, AppError> {
         sqlx::query_as!(
             User,
             r#"
@@ -98,12 +101,10 @@ impl UserRepository {
         let offset = ((page - 1) * per_page) as i64;
 
         // Get total count
-        let total: i64 = sqlx::query_scalar!(
-            r#"SELECT COUNT(*) as "count!" FROM users"#
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
+        let total: i64 = sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM users"#)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::database_error)?;
 
         // Get paginated users
         let users = sqlx::query_as!(

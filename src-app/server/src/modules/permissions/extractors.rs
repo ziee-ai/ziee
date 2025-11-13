@@ -6,7 +6,7 @@ use std::{marker::PhantomData, sync::Arc};
 use aide::OperationIo;
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{StatusCode, request::Parts},
 };
 
 use crate::{
@@ -48,15 +48,12 @@ impl<Perms: PermissionList> FromRequestParts<()> for RequirePermissions<Perms> {
     ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
         async move {
             // 1. Get JWT service from app state
-            let jwt_service = parts
-                .extensions
-                .get::<Arc<JwtService>>()
-                .ok_or_else(|| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        AppError::internal_error("JWT service not configured"),
-                    )
-                })?;
+            let jwt_service = parts.extensions.get::<Arc<JwtService>>().ok_or_else(|| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    AppError::internal_error("JWT service not configured"),
+                )
+            })?;
 
             // 2. Extract Authorization header
             let auth_header = parts
@@ -87,7 +84,8 @@ impl<Perms: PermissionList> FromRequestParts<()> for RequirePermissions<Perms> {
             })?;
 
             // 5. Load user from database using global Repos
-            let user = Repos.user
+            let user = Repos
+                .user
                 .get_by_id(user_id)
                 .await
                 .map_err(|e| {
@@ -140,7 +138,10 @@ impl<Perms: PermissionList> FromRequestParts<()> for RequirePermissions<Perms> {
                 let error_message = if missing_permissions.len() == 1 {
                     format!("Missing required permission: {}", missing_permissions[0])
                 } else {
-                    format!("Missing required permissions: {}", missing_permissions.join(", "))
+                    format!(
+                        "Missing required permissions: {}",
+                        missing_permissions.join(", ")
+                    )
                 };
 
                 return Err((
@@ -179,15 +180,12 @@ impl FromRequestParts<()> for RequireAdmin {
     ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
         async move {
             // Get JWT service from app state
-            let jwt_service = parts
-                .extensions
-                .get::<Arc<JwtService>>()
-                .ok_or_else(|| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        AppError::internal_error("JWT service not configured"),
-                    )
-                })?;
+            let jwt_service = parts.extensions.get::<Arc<JwtService>>().ok_or_else(|| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    AppError::internal_error("JWT service not configured"),
+                )
+            })?;
 
             // Extract Authorization header
             let auth_header = parts
@@ -218,7 +216,8 @@ impl FromRequestParts<()> for RequireAdmin {
             })?;
 
             // Load user from database using global Repos
-            let user = Repos.user
+            let user = Repos
+                .user
                 .get_by_id(user_id)
                 .await
                 .map_err(|e| {
@@ -246,10 +245,7 @@ impl FromRequestParts<()> for RequireAdmin {
             if !user.is_admin {
                 return Err((
                     StatusCode::FORBIDDEN,
-                    AppError::forbidden(
-                        "ADMIN_REQUIRED",
-                        "Root administrator access required",
-                    ),
+                    AppError::forbidden("ADMIN_REQUIRED", "Root administrator access required"),
                 ));
             }
 

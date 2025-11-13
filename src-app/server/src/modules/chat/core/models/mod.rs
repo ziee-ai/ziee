@@ -4,7 +4,7 @@ pub mod branch;
 pub mod content;
 pub mod conversation;
 pub mod message;
-pub mod streaming;  // Empty module, kept for organization
+pub mod streaming; // Empty module, kept for organization
 
 // Re-export DB entities only
 pub use branch::Branch;

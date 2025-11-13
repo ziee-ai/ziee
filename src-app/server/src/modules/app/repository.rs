@@ -60,12 +60,11 @@ impl AppRepository {
         .map_err(AppError::database_error)?;
 
         // Assign to Administrators group
-        let admin_group = sqlx::query!(
-            r#"SELECT id FROM groups WHERE name = 'Administrators' LIMIT 1"#
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(AppError::database_error)?;
+        let admin_group =
+            sqlx::query!(r#"SELECT id FROM groups WHERE name = 'Administrators' LIMIT 1"#)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(AppError::database_error)?;
 
         sqlx::query!(
             r#"INSERT INTO user_groups (user_id, group_id) VALUES ($1, $2)"#,
@@ -77,12 +76,10 @@ impl AppRepository {
         .map_err(AppError::database_error)?;
 
         // Also assign to Users group (for access to default resources like MCP servers)
-        let users_group = sqlx::query!(
-            r#"SELECT id FROM groups WHERE name = 'Users' LIMIT 1"#
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(AppError::database_error)?;
+        let users_group = sqlx::query!(r#"SELECT id FROM groups WHERE name = 'Users' LIMIT 1"#)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
 
         sqlx::query!(
             r#"INSERT INTO user_groups (user_id, group_id) VALUES ($1, $2)"#,

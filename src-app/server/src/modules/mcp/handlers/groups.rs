@@ -1,13 +1,12 @@
 // Group MCP server assignment handlers
 // These handlers manage MCP server assignments to user groups
 
-use aide::transform::TransformOperation;
 use crate::core::Repos;
+use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
-    extract::{Path, Extension},
+    Json, debug_handler,
+    extract::{Extension, Path},
     http::StatusCode,
-    Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -15,13 +14,13 @@ use uuid::Uuid;
 use crate::{
     common::ApiResult,
     core::EventBus,
-    modules::permissions::{with_permission, RequirePermissions},
+    modules::permissions::{RequirePermissions, with_permission},
 };
 
 use super::super::{
     events::McpServerEvent,
-    types::{GroupSystemServersResponse, ServerGroupsRequest, UpdateGroupSystemServersRequest},
     permissions::*,
+    types::{GroupSystemServersResponse, ServerGroupsRequest, UpdateGroupSystemServersRequest},
 };
 
 // =====================================================
@@ -33,7 +32,6 @@ use super::super::{
 pub async fn get_server_groups(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Path(id): Path<Uuid>,
-    
 ) -> ApiResult<Json<Vec<Uuid>>> {
     let group_ids = Repos.mcp.get_server_groups(id).await?;
 
@@ -74,7 +72,9 @@ pub fn assign_server_to_groups_docs(op: TransformOperation) -> TransformOperatio
         .summary("Assign server to groups")
         .description("Assign MCP server to groups (replaces all assignments)")
         .response_with::<204, (), _>(|res| res.description("Server assigned successfully"))
-        .response_with::<400, (), _>(|res| res.description("Bad request - only system servers can be assigned to groups"))
+        .response_with::<400, (), _>(|res| {
+            res.description("Bad request - only system servers can be assigned to groups")
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }
@@ -114,9 +114,10 @@ pub fn remove_server_from_group_docs(op: TransformOperation) -> TransformOperati
 pub async fn get_group_system_servers(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Path(group_id): Path<Uuid>,
-    
 ) -> ApiResult<Json<GroupSystemServersResponse>> {
-    let servers = Repos.mcp.get_system_servers_for_group(group_id)
+    let servers = Repos
+        .mcp
+        .get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
             eprintln!("Failed to get system servers for group {}: {}", group_id, e);
@@ -148,10 +149,15 @@ pub async fn update_group_system_servers(
     use std::collections::HashSet;
 
     // Get current assignments
-    let current = Repos.mcp.get_system_servers_for_group(group_id)
+    let current = Repos
+        .mcp
+        .get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
-            eprintln!("Failed to get current servers for group {}: {}", group_id, e);
+            eprintln!(
+                "Failed to get current servers for group {}: {}",
+                group_id, e
+            );
             crate::common::AppError::internal_error("Database operation failed")
         })?;
 
@@ -169,19 +175,29 @@ pub async fn update_group_system_servers(
 
     // Apply changes - remove first, then add
     for server_id in to_remove {
-        Repos.mcp.remove_from_group(group_id, server_id)
+        Repos
+            .mcp
+            .remove_from_group(group_id, server_id)
             .await
             .map_err(|e| {
-                eprintln!("Failed to remove server {} from group {}: {}", server_id, group_id, e);
+                eprintln!(
+                    "Failed to remove server {} from group {}: {}",
+                    server_id, group_id, e
+                );
                 crate::common::AppError::internal_error("Database operation failed")
             })?;
     }
 
     for server_id in to_add {
-        Repos.mcp.assign_to_group(group_id, server_id)
+        Repos
+            .mcp
+            .assign_to_group(group_id, server_id)
             .await
             .map_err(|e| {
-                eprintln!("Failed to assign server {} to group {}: {}", server_id, group_id, e);
+                eprintln!(
+                    "Failed to assign server {} to group {}: {}",
+                    server_id, group_id, e
+                );
                 crate::common::AppError::internal_error("Database operation failed")
             })?;
     }
@@ -192,10 +208,15 @@ pub async fn update_group_system_servers(
     }
 
     // Return updated list
-    let servers = Repos.mcp.get_system_servers_for_group(group_id)
+    let servers = Repos
+        .mcp
+        .get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
-            eprintln!("Failed to get updated servers for group {}: {}", group_id, e);
+            eprintln!(
+                "Failed to get updated servers for group {}: {}",
+                group_id, e
+            );
             crate::common::AppError::internal_error("Database operation failed")
         })?;
 

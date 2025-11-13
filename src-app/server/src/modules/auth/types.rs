@@ -3,8 +3,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::modules::user::User;
 use super::jwt::TokenPair;
+use crate::modules::user::User;
 
 // =====================================================
 // Request Types

@@ -5,7 +5,10 @@ use std::fs;
 use std::path::Path;
 
 /// Generate OpenAPI specification in the output directory
-pub async fn generate_openapi_spec(output_dir: &str, config_file: Option<String>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn generate_openapi_spec(
+    output_dir: &str,
+    config_file: Option<String>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Generating OpenAPI specification...");
 
     // Load configuration
@@ -26,11 +29,8 @@ pub async fn generate_openapi_spec(output_dir: &str, config_file: Option<String>
 
     // Build API router using shared builder function
     // build_api_router expects PgPool, so we need to extract it from Arc
-    let (api_router, mut api_doc) = app_builder::build_api_router(
-        &modules,
-        &config.server.api_prefix,
-        (*pool).clone(),
-    );
+    let (api_router, mut api_doc) =
+        app_builder::build_api_router(&modules, &config.server.api_prefix, (*pool).clone());
 
     // Finish the API and extract the OpenAPI spec
     let _router = api_router.finish_api(&mut api_doc);
@@ -47,7 +47,10 @@ pub async fn generate_openapi_spec(output_dir: &str, config_file: Option<String>
     // Write openapi.json
     let openapi_json_path = output_path.join("openapi.json");
     fs::write(&openapi_json_path, &json)?;
-    println!("✓ OpenAPI specification written to: {}", openapi_json_path.display());
+    println!(
+        "✓ OpenAPI specification written to: {}",
+        openapi_json_path.display()
+    );
 
     println!("\n✓ OpenAPI generation complete!");
     println!("  - OpenAPI spec: {}", openapi_json_path.display());

@@ -31,7 +31,10 @@ impl ModelStorage {
 
         // Create models directory if it doesn't exist
         if !base_path.exists() {
-            tracing::info!("Creating ModelStorage base directory: {}", base_path.display());
+            tracing::info!(
+                "Creating ModelStorage base directory: {}",
+                base_path.display()
+            );
             tokio::fs::create_dir_all(&base_path).await.map_err(|e| {
                 ModelStorageError::Io(std::io::Error::new(
                     e.kind(),
@@ -60,7 +63,10 @@ impl ModelStorage {
             })?;
         }
 
-        tracing::info!("ModelStorage initialized with base path: {}", base_path.display());
+        tracing::info!(
+            "ModelStorage initialized with base path: {}",
+            base_path.display()
+        );
         tracing::debug!("Temp directory: {}", temp_base.display());
         Ok(Self { base_path })
     }
@@ -125,7 +131,11 @@ impl ModelStorage {
             .replace("..", "_");
 
         let file_path = session_dir.join(&safe_filename);
-        tracing::debug!("Saving temp file to: {} ({} bytes)", file_path.display(), data.len());
+        tracing::debug!(
+            "Saving temp file to: {} ({} bytes)",
+            file_path.display(),
+            data.len()
+        );
 
         tokio::fs::write(&file_path, data).await.map_err(|e| {
             ModelStorageError::Io(std::io::Error::new(
@@ -211,7 +221,11 @@ impl ModelStorage {
                     }
                     Err(e) => {
                         error_count += 1;
-                        tracing::error!("Failed to remove temp file {}: {}", entry_path.display(), e);
+                        tracing::error!(
+                            "Failed to remove temp file {}: {}",
+                            entry_path.display(),
+                            e
+                        );
                     }
                 }
             }
@@ -220,7 +234,8 @@ impl ModelStorage {
         if removed_sessions > 0 || removed_files > 0 {
             tracing::info!(
                 "Temp directory cleanup complete: {} session directories and {} files removed",
-                removed_sessions, removed_files
+                removed_sessions,
+                removed_files
             );
         }
         if error_count > 0 {

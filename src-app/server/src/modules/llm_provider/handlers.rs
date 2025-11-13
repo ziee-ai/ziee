@@ -1,10 +1,9 @@
 // LLM Provider handlers
 
 use axum::{
-    debug_handler,
+    Extension, Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
-    Extension, Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -12,7 +11,10 @@ use uuid::Uuid;
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::events::EventBus,
-    modules::{permissions::{RequirePermissions, with_permission}, user::models::Group},
+    modules::{
+        permissions::{RequirePermissions, with_permission},
+        user::models::Group,
+    },
 };
 
 use super::{
@@ -20,8 +22,11 @@ use super::{
     models::LlmProvider,
     permissions::*,
     repository::LlmProviderRepository,
+    types::{
+        AssignProviderToGroupRequest, CreateLlmProviderRequest, GroupProvidersResponse,
+        LlmProviderListResponse, UpdateGroupProvidersRequest, UpdateLlmProviderRequest,
+    },
     utils,
-    types::{AssignProviderToGroupRequest, CreateLlmProviderRequest, GroupProvidersResponse, LlmProviderListResponse, UpdateGroupProvidersRequest, UpdateLlmProviderRequest},
 };
 
 // =====================================================
@@ -36,11 +41,10 @@ pub async fn list_providers(
     Extension(repo): Extension<LlmProviderRepository>,
 ) -> ApiResult<Json<LlmProviderListResponse>> {
     // Get all providers
-    let all_providers = repo.list().await
-        .map_err(|e| {
-            eprintln!("Failed to get providers: {}", e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let all_providers = repo.list().await.map_err(|e| {
+        eprintln!("Failed to get providers: {}", e);
+        AppError::internal_error("Database operation failed")
+    })?;
 
     // Calculate pagination
     let total = all_providers.len() as i64;
@@ -64,7 +68,9 @@ pub async fn list_providers(
     ))
 }
 
-pub fn list_providers_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn list_providers_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersRead,)>(op)
         .id("LlmProvider.list")
         .tag("LLM Providers")
@@ -80,7 +86,9 @@ pub async fn get_provider(
     Path(provider_id): Path<Uuid>,
     Extension(repo): Extension<LlmProviderRepository>,
 ) -> ApiResult<Json<LlmProvider>> {
-    let provider = repo.get_by_id(provider_id).await
+    let provider = repo
+        .get_by_id(provider_id)
+        .await
         .map_err(|e| {
             eprintln!("Failed to get provider {}: {}", provider_id, e);
             AppError::internal_error("Database operation failed")
@@ -90,7 +98,9 @@ pub async fn get_provider(
     Ok((StatusCode::OK, Json(provider)))
 }
 
-pub fn get_provider_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn get_provider_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersRead,)>(op)
         .id("LlmProvider.get")
         .tag("LLM Providers")
@@ -112,11 +122,10 @@ pub async fn create_provider(
     utils::validate_create_request(&request)?;
 
     // Create provider
-    let provider = repo.create(request).await
-        .map_err(|e| {
-            eprintln!("Failed to create provider: {}", e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let provider = repo.create(request).await.map_err(|e| {
+        eprintln!("Failed to create provider: {}", e);
+        AppError::internal_error("Database operation failed")
+    })?;
 
     // Emit event
     event_bus.emit_async(LlmProviderEvent::created(provider.clone()).into());
@@ -124,7 +133,9 @@ pub async fn create_provider(
     Ok((StatusCode::CREATED, Json(provider)))
 }
 
-pub fn create_provider_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn create_provider_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersCreate,)>(op)
         .id("LlmProvider.create")
         .tag("LLM Providers")
@@ -147,7 +158,9 @@ pub async fn update_provider(
     utils::validate_update_request(&request)?;
 
     // Update provider
-    let provider = repo.update(provider_id, request).await
+    let provider = repo
+        .update(provider_id, request)
+        .await
         .map_err(|e| {
             eprintln!("Failed to update provider {}: {}", provider_id, e);
             AppError::internal_error("Database operation failed")
@@ -160,7 +173,9 @@ pub async fn update_provider(
     Ok((StatusCode::OK, Json(provider)))
 }
 
-pub fn update_provider_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn update_provider_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersEdit,)>(op)
         .id("LlmProvider.update")
         .tag("LLM Providers")
@@ -180,11 +195,10 @@ pub async fn delete_provider(
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
     // Get provider info before deleting (for event emission)
-    let provider = repo.get_by_id(provider_id).await
-        .map_err(|e| {
-            eprintln!("Failed to get provider {}: {}", provider_id, e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let provider = repo.get_by_id(provider_id).await.map_err(|e| {
+        eprintln!("Failed to get provider {}: {}", provider_id, e);
+        AppError::internal_error("Database operation failed")
+    })?;
 
     match repo.delete(provider_id).await {
         Ok(Ok(true)) => {
@@ -193,7 +207,7 @@ pub async fn delete_provider(
                 event_bus.emit_async(LlmProviderEvent::deleted(provider_id, p.name).into());
             }
             Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
-        },
+        }
         Ok(Ok(false)) => Err(AppError::not_found("Provider").into()),
         Ok(Err(msg)) => Err(AppError::bad_request("DELETE_ERROR", &msg).into()),
         Err(e) => {
@@ -203,7 +217,9 @@ pub async fn delete_provider(
     }
 }
 
-pub fn delete_provider_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn delete_provider_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersDelete,)>(op)
         .id("LlmProvider.delete")
         .tag("LLM Providers")
@@ -226,16 +242,17 @@ pub async fn get_provider_groups(
     Path(provider_id): Path<Uuid>,
     Extension(repo): Extension<LlmProviderRepository>,
 ) -> ApiResult<Json<Vec<Group>>> {
-    let groups = repo.get_provider_groups(provider_id).await
-        .map_err(|e| {
-            eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let groups = repo.get_provider_groups(provider_id).await.map_err(|e| {
+        eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
+        AppError::internal_error("Database operation failed")
+    })?;
 
     Ok((StatusCode::OK, Json(groups)))
 }
 
-pub fn get_provider_groups_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn get_provider_groups_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersRead,)>(op)
         .id("LlmProvider.getGroups")
         .tag("LLM Providers")
@@ -253,18 +270,21 @@ pub async fn assign_provider_to_group(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<AssignProviderToGroupRequest>,
 ) -> ApiResult<StatusCode> {
-    repo.assign_to_group(provider_id, request.group_id).await
+    repo.assign_to_group(provider_id, request.group_id)
+        .await
         .map_err(|e| {
-            eprintln!("Failed to assign provider {} to group {}: {}", provider_id, request.group_id, e);
+            eprintln!(
+                "Failed to assign provider {} to group {}: {}",
+                provider_id, request.group_id, e
+            );
             AppError::internal_error("Database operation failed")
         })?;
 
     // Get updated group list for event
-    let groups = repo.get_provider_groups(provider_id).await
-        .map_err(|e| {
-            eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let groups = repo.get_provider_groups(provider_id).await.map_err(|e| {
+        eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
+        AppError::internal_error("Database operation failed")
+    })?;
     let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
 
     // Emit event
@@ -273,12 +293,16 @@ pub async fn assign_provider_to_group(
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
 
-pub fn assign_provider_to_group_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn assign_provider_to_group_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersAssignGroups,)>(op)
         .id("LlmProvider.assignGroup")
         .tag("LLM Providers")
         .summary("Assign a provider to a user group")
-        .response_with::<204, (), _>(|res| res.description("Provider assigned to group successfully"))
+        .response_with::<204, (), _>(|res| {
+            res.description("Provider assigned to group successfully")
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 
@@ -290,23 +314,28 @@ pub async fn remove_provider_from_group(
     Extension(repo): Extension<LlmProviderRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
-    let removed = repo.remove_from_group(group_id, provider_id).await
+    let removed = repo
+        .remove_from_group(group_id, provider_id)
+        .await
         .map_err(|e| {
-            eprintln!("Failed to remove provider {} from group {}: {}", provider_id, group_id, e);
+            eprintln!(
+                "Failed to remove provider {} from group {}: {}",
+                provider_id, group_id, e
+            );
             AppError::internal_error("Database operation failed")
         })?;
 
     if removed {
         // Get updated group list for event
-        let groups = repo.get_provider_groups(provider_id).await
-            .map_err(|e| {
-                eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
-                AppError::internal_error("Database operation failed")
-            })?;
+        let groups = repo.get_provider_groups(provider_id).await.map_err(|e| {
+            eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
+            AppError::internal_error("Database operation failed")
+        })?;
         let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
 
         // Emit event
-        event_bus.emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
+        event_bus
+            .emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
 
         Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
     } else {
@@ -314,12 +343,16 @@ pub async fn remove_provider_from_group(
     }
 }
 
-pub fn remove_provider_from_group_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn remove_provider_from_group_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersAssignGroups,)>(op)
         .id("LlmProvider.removeGroup")
         .tag("LLM Providers")
         .summary("Remove a provider from a user group")
-        .response_with::<204, (), _>(|res| res.description("Provider removed from group successfully"))
+        .response_with::<204, (), _>(|res| {
+            res.description("Provider removed from group successfully")
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Assignment not found"))
 }
@@ -336,16 +369,17 @@ pub async fn get_group_providers(
     Path(group_id): Path<Uuid>,
     Extension(repo): Extension<LlmProviderRepository>,
 ) -> ApiResult<Json<GroupProvidersResponse>> {
-    let providers = repo.get_for_group(group_id).await
-        .map_err(|e| {
-            eprintln!("Failed to get providers for group {}: {}", group_id, e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let providers = repo.get_for_group(group_id).await.map_err(|e| {
+        eprintln!("Failed to get providers for group {}: {}", group_id, e);
+        AppError::internal_error("Database operation failed")
+    })?;
 
     Ok((StatusCode::OK, Json(GroupProvidersResponse { providers })))
 }
 
-pub fn get_group_providers_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn get_group_providers_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersRead,)>(op)
         .id("Group.getProviders")
         .tag("Admin - Groups")
@@ -367,11 +401,13 @@ pub async fn update_group_providers(
     use std::collections::HashSet;
 
     // Get current assignments
-    let current = repo.get_for_group(group_id).await
-        .map_err(|e| {
-            eprintln!("Failed to get current providers for group {}: {}", group_id, e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let current = repo.get_for_group(group_id).await.map_err(|e| {
+        eprintln!(
+            "Failed to get current providers for group {}: {}",
+            group_id, e
+        );
+        AppError::internal_error("Database operation failed")
+    })?;
 
     let current_ids: HashSet<Uuid> = current.iter().map(|p| p.id).collect();
     let new_ids: HashSet<Uuid> = request.provider_ids.iter().copied().collect();
@@ -385,18 +421,26 @@ pub async fn update_group_providers(
 
     // Apply changes - remove first, then add
     for provider_id in to_remove {
-        repo.remove_from_group(group_id, provider_id).await
+        repo.remove_from_group(group_id, provider_id)
+            .await
             .map_err(|e| {
-                eprintln!("Failed to remove provider {} from group {}: {}", provider_id, group_id, e);
+                eprintln!(
+                    "Failed to remove provider {} from group {}: {}",
+                    provider_id, group_id, e
+                );
                 AppError::internal_error("Database operation failed")
             })?;
         affected_provider_ids.insert(provider_id);
     }
 
     for provider_id in to_add {
-        repo.assign_to_group(provider_id, group_id).await
+        repo.assign_to_group(provider_id, group_id)
+            .await
             .map_err(|e| {
-                eprintln!("Failed to assign provider {} to group {}: {}", provider_id, group_id, e);
+                eprintln!(
+                    "Failed to assign provider {} to group {}: {}",
+                    provider_id, group_id, e
+                );
                 AppError::internal_error("Database operation failed")
             })?;
         affected_provider_ids.insert(provider_id);
@@ -404,26 +448,30 @@ pub async fn update_group_providers(
 
     // Emit events for all affected providers
     for provider_id in affected_provider_ids {
-        let groups = repo.get_provider_groups(provider_id).await
-            .map_err(|e| {
-                eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
-                AppError::internal_error("Database operation failed")
-            })?;
+        let groups = repo.get_provider_groups(provider_id).await.map_err(|e| {
+            eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
+            AppError::internal_error("Database operation failed")
+        })?;
         let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
-        event_bus.emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
+        event_bus
+            .emit_async(LlmProviderEvent::group_assignment_changed(provider_id, group_ids).into());
     }
 
     // Return updated list
-    let providers = repo.get_for_group(group_id).await
-        .map_err(|e| {
-            eprintln!("Failed to get updated providers for group {}: {}", group_id, e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let providers = repo.get_for_group(group_id).await.map_err(|e| {
+        eprintln!(
+            "Failed to get updated providers for group {}: {}",
+            group_id, e
+        );
+        AppError::internal_error("Database operation failed")
+    })?;
 
     Ok((StatusCode::OK, Json(GroupProvidersResponse { providers })))
 }
 
-pub fn update_group_providers_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+pub fn update_group_providers_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
     with_permission::<(LlmProvidersAssignGroups,)>(op)
         .id("Group.updateProviders")
         .tag("Admin - Groups")

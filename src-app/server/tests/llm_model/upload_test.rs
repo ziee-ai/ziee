@@ -1,10 +1,9 @@
+use reqwest::StatusCode;
 /// Model Upload Integration Tests
 ///
 /// These tests download small models from HuggingFace using the `hf` CLI
 /// and test the upload functionality with real model files.
-
 use reqwest::multipart::{Form, Part};
-use reqwest::StatusCode;
 use serde_json::json;
 use std::path::PathBuf;
 use tokio::fs;
@@ -19,48 +18,48 @@ const TEST_MODELS: &[(&str, &str, &str, &str)] = &[
         "hf-internal-testing/tiny-random-gpt2",
         "model.safetensors",
         "safetensors",
-        "Tiny Random GPT-2"
+        "Tiny Random GPT-2",
     ),
     (
         "hf-internal-testing/tiny-random-gpt2",
         "model.safetensors",
         "safetensors",
-        "Tiny Random GPT-2 #2"
+        "Tiny Random GPT-2 #2",
     ),
-
     // GGUF models (quantized format for llama.cpp) - using 2 different quantization levels
     (
         "tensorblock/tiny-mistral-test-GGUF",
         "tiny-mistral-test-Q2_K.gguf",
         "gguf",
-        "Tiny Mistral Q2_K"
+        "Tiny Mistral Q2_K",
     ),
     (
         "tensorblock/tiny-mistral-test-GGUF",
         "tiny-mistral-test-Q4_0.gguf",
         "gguf",
-        "Tiny Mistral Q4_0"
+        "Tiny Mistral Q4_0",
     ),
-
     // PyTorch models (legacy PyTorch .bin format)
     (
         "stas/tiny-wmt19-en-de",
         "pytorch_model.bin",
         "pytorch",
-        "Tiny WMT19 EN-DE"
+        "Tiny WMT19 EN-DE",
     ),
     (
         "prajjwal1/bert-tiny",
         "pytorch_model.bin",
         "pytorch",
-        "BERT Tiny"
+        "BERT Tiny",
     ),
 ];
 
 /// Helper to download a model from HuggingFace using hf CLI
 async fn download_test_model(repo_id: &str, filename: &str) -> Result<PathBuf, String> {
     let cache_dir = std::env::temp_dir().join("ziee-chat-test-models");
-    fs::create_dir_all(&cache_dir).await.map_err(|e| e.to_string())?;
+    fs::create_dir_all(&cache_dir)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let model_dir = cache_dir.join(repo_id.replace("/", "_"));
 
@@ -71,7 +70,9 @@ async fn download_test_model(repo_id: &str, filename: &str) -> Result<PathBuf, S
         return Ok(model_path);
     }
 
-    fs::create_dir_all(&model_dir).await.map_err(|e| e.to_string())?;
+    fs::create_dir_all(&model_dir)
+        .await
+        .map_err(|e| e.to_string())?;
 
     println!("Downloading model {} from {}...", filename, repo_id);
 
@@ -97,7 +98,10 @@ async fn download_test_model(repo_id: &str, filename: &str) -> Result<PathBuf, S
     }
 
     if !model_path.exists() {
-        return Err(format!("Model file not found after download: {}", model_path.display()));
+        return Err(format!(
+            "Model file not found after download: {}",
+            model_path.display()
+        ));
     }
 
     println!("Model downloaded successfully to: {}", model_path.display());
@@ -105,10 +109,7 @@ async fn download_test_model(repo_id: &str, filename: &str) -> Result<PathBuf, S
 }
 
 /// Helper to get or create a local provider
-async fn get_local_provider(
-    server: &crate::common::TestServer,
-    token: &str,
-) -> serde_json::Value {
+async fn get_local_provider(server: &crate::common::TestServer, token: &str) -> serde_json::Value {
     // Try to get existing local provider
     let response = reqwest::Client::new()
         .get(&server.api_url("/llm-providers"))
@@ -183,7 +184,10 @@ async fn test_upload_model_helper(
         .text("provider_id", provider_id.to_string())
         .text("name", model_name.to_string())
         .text("display_name", display_name.to_string())
-        .text("description", format!("Test {} model uploaded via integration test", file_format))
+        .text(
+            "description",
+            format!("Test {} model uploaded via integration test", file_format),
+        )
         .text("file_format", file_format.to_string())
         .text("main_filename", filename.to_string())
         .part("files", file_part);
@@ -210,7 +214,10 @@ async fn test_upload_model_helper(
     assert_eq!(status, StatusCode::OK);
 
     let model: serde_json::Value = response.json().await.unwrap();
-    println!("Model created: {}", serde_json::to_string_pretty(&model).unwrap());
+    println!(
+        "Model created: {}",
+        serde_json::to_string_pretty(&model).unwrap()
+    );
 
     // Verify model was created correctly
     assert_eq!(model["name"].as_str().unwrap(), model_name);
@@ -247,11 +254,14 @@ async fn test_upload_model_helper(
     let models_list: serde_json::Value = response.json().await.unwrap();
     let models = models_list["models"].as_array().unwrap();
 
-    let found_model = models.iter().find(|m| {
-        m["id"].as_str().unwrap() == model_id
-    });
+    let found_model = models
+        .iter()
+        .find(|m| m["id"].as_str().unwrap() == model_id);
 
-    assert!(found_model.is_some(), "Uploaded model should appear in provider's models list");
+    assert!(
+        found_model.is_some(),
+        "Uploaded model should appear in provider's models list"
+    );
     let found = found_model.unwrap();
     assert_eq!(found["name"].as_str().unwrap(), model_name);
     assert_eq!(found["display_name"].as_str().unwrap(), display_name);
@@ -266,7 +276,12 @@ async fn test_upload_gguf_models() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "uploader",
-        &["llm_models::create", "llm_models::read", "llm_providers::read", "llm_providers::create"],
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
     )
     .await;
 
@@ -303,7 +318,12 @@ async fn test_upload_safetensors_models() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "uploader",
-        &["llm_models::create", "llm_models::read", "llm_providers::read", "llm_providers::create"],
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
     )
     .await;
 
@@ -317,7 +337,9 @@ async fn test_upload_safetensors_models() {
         .filter(|(_, _, format, _)| *format == "safetensors")
         .collect();
 
-    for (idx, (repo_id, filename, file_format, display_name)) in safetensors_models.iter().enumerate() {
+    for (idx, (repo_id, filename, file_format, display_name)) in
+        safetensors_models.iter().enumerate()
+    {
         let model_name = format!("safetensors-test-{}", idx);
         test_upload_model_helper(
             &server,
@@ -340,7 +362,12 @@ async fn test_upload_pytorch_models() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "uploader",
-        &["llm_models::create", "llm_models::read", "llm_providers::read", "llm_providers::create"],
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
     )
     .await;
 
@@ -418,7 +445,12 @@ async fn test_upload_duplicate_name_fails() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "uploader",
-        &["llm_models::create", "llm_models::read", "llm_providers::read", "llm_providers::create"],
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
     )
     .await;
 
@@ -478,7 +510,11 @@ async fn test_upload_duplicate_name_fails() {
     let error: serde_json::Value = response2.json().await.unwrap();
     // The API returns error in the "error" field, not "message"
     let error_msg = error["error"].as_str().unwrap().to_lowercase();
-    assert!(error_msg.contains("duplicate"), "Error message should contain 'duplicate', got: {}", error_msg);
+    assert!(
+        error_msg.contains("duplicate"),
+        "Error message should contain 'duplicate', got: {}",
+        error_msg
+    );
     assert_eq!(error["error_code"].as_str().unwrap(), "DUPLICATE_ENTRY");
 }
 
@@ -488,7 +524,11 @@ async fn test_upload_missing_fields_fails() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "uploader",
-        &["llm_models::create", "llm_models::read", "llm_providers::read"],
+        &[
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::read",
+        ],
     )
     .await;
 

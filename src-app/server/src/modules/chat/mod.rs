@@ -7,8 +7,8 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleEntry, MODULE_ENTRIES};
 use crate::ModuleContext;
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleEntry};
 
 pub mod core;
 pub mod extensions;
@@ -70,12 +70,13 @@ impl AppModule for ChatModule {
                 // Create chat router with pool state and extension registry as extension
                 let chat_module_router = ApiRouter::new()
                     .merge(chat_router())
-                    .layer(Extension(registry.clone()))
-                    ;
+                    .layer(Extension(registry.clone()));
 
                 router.merge(chat_module_router)
             } else {
-                tracing::error!("ChatModule: Extension registry not initialized during route registration");
+                tracing::error!(
+                    "ChatModule: Extension registry not initialized during route registration"
+                );
                 router
             }
         } else {

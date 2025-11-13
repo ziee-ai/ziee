@@ -1,13 +1,12 @@
 // System MCP server handlers
 // These handlers manage system-wide MCP servers
 
-use aide::transform::TransformOperation;
 use crate::core::Repos;
+use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
-    extract::{Path, Query, Extension},
+    Json, debug_handler,
+    extract::{Extension, Path, Query},
     http::StatusCode,
-    Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -15,14 +14,14 @@ use uuid::Uuid;
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::EventBus,
-    modules::permissions::{with_permission, RequirePermissions},
+    modules::permissions::{RequirePermissions, with_permission},
 };
 
 use super::super::{
     events::McpServerEvent,
     models::McpServer,
-    types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest},
     permissions::*,
+    types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest},
 };
 
 // =====================================================
@@ -34,9 +33,11 @@ use super::super::{
 pub async fn list_system_servers(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Query(params): Query<PaginationQuery>,
-    
 ) -> ApiResult<Json<McpServerListResponse>> {
-    let response = Repos.mcp.list_system_servers(params.page as i64, params.per_page as i64).await?;
+    let response = Repos
+        .mcp
+        .list_system_servers(params.page as i64, params.per_page as i64)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -83,9 +84,10 @@ pub fn create_system_server_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_system_server(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Path(id): Path<Uuid>,
-    
 ) -> ApiResult<Json<McpServer>> {
-    let server = Repos.mcp.get_system_server(id)
+    let server = Repos
+        .mcp
+        .get_system_server(id)
         .await?
         .ok_or_else(|| AppError::not_found("Server"))?;
 
@@ -138,7 +140,6 @@ pub async fn delete_system_server(
     _auth: RequirePermissions<(McpServersAdminDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
-    
 ) -> ApiResult<StatusCode> {
     Repos.mcp.delete_system_server(id).await?;
 

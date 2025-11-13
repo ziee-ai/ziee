@@ -1,6 +1,6 @@
+use crate::common::test_helpers::{self, TestUser};
 use serde_json::json;
 use uuid::Uuid;
-use crate::common::test_helpers::{self, TestUser};
 
 // ============================================================================
 // User MCP Server Tests
@@ -9,7 +9,8 @@ use crate::common::test_helpers::{self, TestUser};
 #[tokio::test]
 async fn test_create_user_mcp_server() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+    let user =
+        test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
     let payload = json!({
         "name": "my_local_server",
@@ -80,7 +81,12 @@ async fn test_create_user_server_requires_permission() {
 #[tokio::test]
 async fn test_list_accessible_servers() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read", "mcp_servers::create"]).await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["mcp_servers::read", "mcp_servers::create"],
+    )
+    .await;
 
     // Create a personal server
     let payload = json!({
@@ -112,7 +118,9 @@ async fn test_list_accessible_servers() {
     assert_eq!(response.status(), 200, "Should list accessible servers");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let servers = body["servers"].as_array().expect("Should have servers array");
+    let servers = body["servers"]
+        .as_array()
+        .expect("Should have servers array");
 
     // Debug: Print what servers we got
     println!("Found {} servers:", servers.len());
@@ -121,7 +129,11 @@ async fn test_list_accessible_servers() {
     }
 
     // Should have at least the personal server + fetch (assigned to default group)
-    assert!(servers.len() >= 2, "Should have personal server and fetch server from default group. Found {} servers", servers.len());
+    assert!(
+        servers.len() >= 2,
+        "Should have personal server and fetch server from default group. Found {} servers",
+        servers.len()
+    );
 
     // Verify personal server is in the list
     let has_personal = servers.iter().any(|s| s["name"] == "personal_server");
@@ -135,7 +147,12 @@ async fn test_list_accessible_servers() {
 #[tokio::test]
 async fn test_get_user_server() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read", "mcp_servers::create"]).await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["mcp_servers::read", "mcp_servers::create"],
+    )
+    .await;
 
     // Create a server
     let payload = json!({
@@ -178,7 +195,16 @@ async fn test_get_user_server() {
 #[tokio::test]
 async fn test_update_user_server() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read", "mcp_servers::create", "mcp_servers::edit"]).await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "mcp_servers::read",
+            "mcp_servers::create",
+            "mcp_servers::edit",
+        ],
+    )
+    .await;
 
     // Create a server
     let payload = json!({
@@ -231,7 +257,16 @@ async fn test_update_user_server() {
 #[tokio::test]
 async fn test_delete_user_server() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read", "mcp_servers::create", "mcp_servers::delete"]).await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "mcp_servers::read",
+            "mcp_servers::create",
+            "mcp_servers::delete",
+        ],
+    )
+    .await;
 
     // Create a server
     let payload = json!({
@@ -280,8 +315,14 @@ async fn test_delete_user_server() {
 #[tokio::test]
 async fn test_user_cannot_access_other_user_server() {
     let server = crate::common::TestServer::start().await;
-    let user1 = test_helpers::create_user_with_permissions(&server, "user1", &["mcp_servers::read", "mcp_servers::create"]).await;
-    let user2 = test_helpers::create_user_with_permissions(&server, "user2", &["mcp_servers::read"]).await;
+    let user1 = test_helpers::create_user_with_permissions(
+        &server,
+        "user1",
+        &["mcp_servers::read", "mcp_servers::create"],
+    )
+    .await;
+    let user2 =
+        test_helpers::create_user_with_permissions(&server, "user2", &["mcp_servers::read"]).await;
 
     // User1 creates a server
     let payload = json!({
@@ -313,7 +354,11 @@ async fn test_user_cannot_access_other_user_server() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404, "User should not access other user's server");
+    assert_eq!(
+        response.status(),
+        404,
+        "User should not access other user's server"
+    );
 }
 
 // ============================================================================
@@ -323,7 +368,12 @@ async fn test_user_cannot_access_other_user_server() {
 #[tokio::test]
 async fn test_create_system_server() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::create"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "system_server",
@@ -351,13 +401,17 @@ async fn test_create_system_server() {
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(body["name"], "system_server");
     assert_eq!(body["is_system"], true);
-    assert!(body["user_id"].is_null(), "System server should not have user_id");
+    assert!(
+        body["user_id"].is_null(),
+        "System server should not have user_id"
+    );
 }
 
 #[tokio::test]
 async fn test_create_system_server_requires_admin_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+    let user =
+        test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
     let payload = json!({
         "name": "system_server",
@@ -385,7 +439,9 @@ async fn test_create_system_server_requires_admin_permission() {
 #[tokio::test]
 async fn test_list_system_servers() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read"])
+            .await;
 
     let url = server.api_url("/mcp/system-servers");
     let response = reqwest::Client::new()
@@ -398,7 +454,9 @@ async fn test_list_system_servers() {
     assert_eq!(response.status(), 200, "Should list system servers");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let servers = body["servers"].as_array().expect("Should have servers array");
+    let servers = body["servers"]
+        .as_array()
+        .expect("Should have servers array");
 
     // Should have the 4 default system servers (filesystem, fetch, browser, git)
     assert!(servers.len() >= 4, "Should have default system servers");
@@ -406,14 +464,22 @@ async fn test_list_system_servers() {
     // Verify all are system servers
     for server in servers {
         assert_eq!(server["is_system"], true, "All should be system servers");
-        assert!(server["user_id"].is_null(), "System servers should not have user_id");
+        assert!(
+            server["user_id"].is_null(),
+            "System servers should not have user_id"
+        );
     }
 }
 
 #[tokio::test]
 async fn test_get_system_server() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::read", "mcp_servers_admin::create"],
+    )
+    .await;
 
     // Create a system server
     let payload = json!({
@@ -457,7 +523,16 @@ async fn test_get_system_server() {
 #[tokio::test]
 async fn test_update_system_server() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create", "mcp_servers_admin::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "mcp_servers_admin::read",
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::edit",
+        ],
+    )
+    .await;
 
     // Create a system server
     let payload = json!({
@@ -510,7 +585,16 @@ async fn test_update_system_server() {
 #[tokio::test]
 async fn test_delete_system_server() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create", "mcp_servers_admin::delete"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "mcp_servers_admin::read",
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::delete",
+        ],
+    )
+    .await;
 
     // Create a system server
     let payload = json!({
@@ -553,7 +637,11 @@ async fn test_delete_system_server() {
         .await
         .expect("Request failed");
 
-    assert_eq!(get_response.status(), 404, "System server should be deleted");
+    assert_eq!(
+        get_response.status(),
+        404,
+        "System server should be deleted"
+    );
 }
 
 // ============================================================================
@@ -563,7 +651,12 @@ async fn test_delete_system_server() {
 #[tokio::test]
 async fn test_assign_server_to_groups() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::read", "mcp_servers_admin::edit"],
+    )
+    .await;
 
     // Get group IDs
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -579,10 +672,11 @@ async fn test_assign_server_to_groups() {
     let default_group_id = default_group.id;
 
     // Get filesystem server ID
-    let filesystem_server = sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'filesystem' AND is_system = true")
-        .fetch_one(&pool)
-        .await
-        .expect("Failed to get filesystem server");
+    let filesystem_server =
+        sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'filesystem' AND is_system = true")
+            .fetch_one(&pool)
+            .await
+            .expect("Failed to get filesystem server");
     let filesystem_server_id = filesystem_server.id;
 
     pool.close().await;
@@ -592,7 +686,10 @@ async fn test_assign_server_to_groups() {
         "group_ids": [default_group_id]
     });
 
-    let url = server.api_url(&format!("/mcp/system-servers/{}/groups", filesystem_server_id));
+    let url = server.api_url(&format!(
+        "/mcp/system-servers/{}/groups",
+        filesystem_server_id
+    ));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -604,7 +701,10 @@ async fn test_assign_server_to_groups() {
     assert_eq!(response.status(), 204, "Should assign server to groups");
 
     // Get server's assigned groups
-    let get_url = server.api_url(&format!("/mcp/system-servers/{}/groups", filesystem_server_id));
+    let get_url = server.api_url(&format!(
+        "/mcp/system-servers/{}/groups",
+        filesystem_server_id
+    ));
     let get_response = reqwest::Client::new()
         .get(&get_url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -622,7 +722,12 @@ async fn test_assign_server_to_groups() {
 #[tokio::test]
 async fn test_remove_server_from_group() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::read", "mcp_servers_admin::edit"],
+    )
+    .await;
 
     // Get the default group ID and fetch server ID
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -637,16 +742,20 @@ async fn test_remove_server_from_group() {
         .expect("Failed to get default group");
     let group_id = group.id;
 
-    let fetch_server = sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'fetch' AND is_system = true")
-        .fetch_one(&pool)
-        .await
-        .expect("Failed to get fetch server");
+    let fetch_server =
+        sqlx::query!("SELECT id FROM mcp_servers WHERE name = 'fetch' AND is_system = true")
+            .fetch_one(&pool)
+            .await
+            .expect("Failed to get fetch server");
     let fetch_server_id = fetch_server.id;
 
     pool.close().await;
 
     // Remove fetch server from group (it was assigned in migration)
-    let url = server.api_url(&format!("/mcp/system-servers/{}/groups/{}", fetch_server_id, group_id));
+    let url = server.api_url(&format!(
+        "/mcp/system-servers/{}/groups/{}",
+        fetch_server_id, group_id
+    ));
     let response = reqwest::Client::new()
         .delete(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -669,9 +778,9 @@ async fn test_remove_server_from_group() {
     let group_ids = body.as_array().expect("Should be array of group IDs");
 
     // Should not contain the default group
-    let has_group = group_ids.iter().any(|id| {
-        id.as_str() == Some(&group_id.to_string())
-    });
+    let has_group = group_ids
+        .iter()
+        .any(|id| id.as_str() == Some(&group_id.to_string()));
     assert!(!has_group, "Should not have default group after removal");
 }
 
@@ -682,7 +791,9 @@ async fn test_remove_server_from_group() {
 #[tokio::test]
 async fn test_get_group_system_servers() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read"])
+            .await;
 
     // Get default group ID
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -711,17 +822,31 @@ async fn test_get_group_system_servers() {
     assert_eq!(response.status(), 200, "Should get group system servers");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let servers = body["servers"].as_array().expect("Should have servers array");
+    let servers = body["servers"]
+        .as_array()
+        .expect("Should have servers array");
 
     // Should have fetch server (assigned in migration)
     let has_fetch = servers.iter().any(|s| s["name"] == "fetch");
-    assert!(has_fetch, "Should include fetch server assigned in migration");
+    assert!(
+        has_fetch,
+        "Should include fetch server assigned in migration"
+    );
 }
 
 #[tokio::test]
 async fn test_update_group_system_servers_bulk() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create", "mcp_servers_admin::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "mcp_servers_admin::read",
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::edit",
+        ],
+    )
+    .await;
 
     // Get default group ID and create test system servers
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -764,13 +889,19 @@ async fn test_update_group_system_servers_bulk() {
     assert_eq!(response.status(), 200, "Should update group system servers");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let servers = body["servers"].as_array().expect("Should have servers array");
+    let servers = body["servers"]
+        .as_array()
+        .expect("Should have servers array");
 
     // Should have 2 assigned servers (plus fetch from migration = 3 total)
-    assert!(servers.len() >= 2, "Should have at least 2 assigned servers");
+    assert!(
+        servers.len() >= 2,
+        "Should have at least 2 assigned servers"
+    );
 
     // Verify correct servers are assigned
-    let server_names: Vec<String> = servers.iter()
+    let server_names: Vec<String> = servers
+        .iter()
         .map(|s| s["name"].as_str().unwrap().to_string())
         .collect();
     assert!(server_names.contains(&"test_server_1".to_string()));
@@ -792,10 +923,13 @@ async fn test_update_group_system_servers_bulk() {
     assert_eq!(response.status(), 200, "Should update group system servers");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let servers = body["servers"].as_array().expect("Should have servers array");
+    let servers = body["servers"]
+        .as_array()
+        .expect("Should have servers array");
 
     // Verify correct servers are now assigned
-    let server_names: Vec<String> = servers.iter()
+    let server_names: Vec<String> = servers
+        .iter()
         .map(|s| s["name"].as_str().unwrap().to_string())
         .collect();
     assert!(server_names.contains(&"test_server_2".to_string()));
@@ -806,7 +940,16 @@ async fn test_update_group_system_servers_bulk() {
 #[tokio::test]
 async fn test_update_group_system_servers_empty_list() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["mcp_servers_admin::read", "mcp_servers_admin::create", "mcp_servers_admin::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "mcp_servers_admin::read",
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::edit",
+        ],
+    )
+    .await;
 
     // Get default group ID
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -856,7 +999,9 @@ async fn test_update_group_system_servers_empty_list() {
     assert_eq!(response.status(), 200, "Should clear group assignments");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let servers = body["servers"].as_array().expect("Should have servers array");
+    let servers = body["servers"]
+        .as_array()
+        .expect("Should have servers array");
 
     // Should not contain the test server
     let has_temp = servers.iter().any(|s| s["name"] == "temp_server");
@@ -866,7 +1011,9 @@ async fn test_update_group_system_servers_empty_list() {
 #[tokio::test]
 async fn test_update_group_system_servers_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers_admin::read"]).await;
+    let user =
+        test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers_admin::read"])
+            .await;
 
     let group_id = Uuid::new_v4();
     let payload = json!({
@@ -912,7 +1059,11 @@ async fn test_get_group_system_servers_requires_permission() {
 // Helper Functions
 // ============================================================================
 
-async fn create_test_system_server(server: &crate::common::TestServer, token: &str, name: &str) -> serde_json::Value {
+async fn create_test_system_server(
+    server: &crate::common::TestServer,
+    token: &str,
+    name: &str,
+) -> serde_json::Value {
     let payload = json!({
         "name": name,
         "display_name": format!("Test Server {}", name),
@@ -942,7 +1093,8 @@ async fn create_test_system_server(server: &crate::common::TestServer, token: &s
 #[tokio::test]
 async fn test_stdio_transport_requires_command() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+    let user =
+        test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
     // Try to create stdio server without command
     let payload = json!({
@@ -962,13 +1114,18 @@ async fn test_stdio_transport_requires_command() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 400, "Should reject stdio without command");
+    assert_eq!(
+        response.status(),
+        400,
+        "Should reject stdio without command"
+    );
 }
 
 #[tokio::test]
 async fn test_http_transport_requires_url() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+    let user =
+        test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
     // Try to create http server without url
     let payload = json!({
@@ -994,7 +1151,8 @@ async fn test_http_transport_requires_url() {
 #[tokio::test]
 async fn test_duplicate_server_name_allowed() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
+    let user =
+        test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::create"]).await;
 
     let payload = json!({
         "name": "duplicate_server",
@@ -1026,5 +1184,9 @@ async fn test_duplicate_server_name_allowed() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response2.status(), 201, "Second server with duplicate name should be allowed");
+    assert_eq!(
+        response2.status(),
+        201,
+        "Second server with duplicate name should be allowed"
+    );
 }

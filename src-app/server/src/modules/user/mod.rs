@@ -1,19 +1,17 @@
 // User module - User and group management
+pub mod events;
+pub mod handlers;
 pub mod models;
-pub mod types;
 pub mod permissions;
 pub mod repository;
-pub mod events;
-mod handlers;
 mod routes;
-mod group_routes;
 mod service;
+pub mod types;
 
 // Re-exports
 pub use models::*;
 pub use repository::{GroupRepository, UserRepository};
-pub use routes::user_router;
-pub use group_routes::group_router;
+pub use routes::{group_router, user_router};
 pub use service::UserService;
 
 use aide::axum::ApiRouter;
@@ -22,7 +20,7 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
 /// Register user module
 #[distributed_slice(MODULE_ENTRIES)]
@@ -56,9 +54,7 @@ impl AppModule for UserModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
-            router
-                .merge(user_router())
-                .merge(group_router())
+            router.merge(user_router()).merge(group_router())
         } else {
             tracing::error!("UserModule: Pool not initialized during route registration");
             router

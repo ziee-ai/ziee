@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::models::{User, Group};
+use super::models::{Group, User};
 
 // =====================================================
 // API Request/Response Models

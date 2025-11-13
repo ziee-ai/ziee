@@ -11,8 +11,8 @@ pub mod routes;
 pub mod types;
 
 // Re-exports
-pub use repository::AuthRepository;
 pub use jwt::JwtService;
+pub use repository::AuthRepository;
 pub use routes::auth_routes;
 pub use types::AuthResponse;
 
@@ -25,7 +25,7 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
 /// Register auth module
 #[distributed_slice(MODULE_ENTRIES)]
@@ -68,9 +68,7 @@ impl AppModule for AuthModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
-            let auth_router_with_state = ApiRouter::new()
-                .nest("/auth", auth_routes())
-                ;
+            let auth_router_with_state = ApiRouter::new().nest("/auth", auth_routes());
             router.merge(auth_router_with_state)
         } else {
             tracing::error!("AuthModule: Pool not initialized during route registration");

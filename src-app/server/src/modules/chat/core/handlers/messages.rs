@@ -1,22 +1,17 @@
 // Message handlers - Operations for chat messages
 
-use aide::transform::TransformOperation;
 use crate::core::Repos;
-use axum::{
-    debug_handler,
-    extract::Path,
-    http::StatusCode,
-    Json,
-};
+use aide::transform::TransformOperation;
+use axum::{Json, debug_handler, extract::Path, http::StatusCode};
 use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError},
     modules::{
         chat::core::{
-            types::{EditMessageRequest, EditMessageResponse, MessageWithContent},
             permissions::*,
             repository::{conversations as conv_repo, messages as msg_repo},
+            types::{EditMessageRequest, EditMessageResponse, MessageWithContent},
         },
         permissions::{extractors::RequirePermissions, with_permission},
     },
@@ -30,7 +25,7 @@ use crate::{
 #[debug_handler]
 pub async fn get_conversation_history(
     auth: RequirePermissions<(MessagesRead,)>,
-    
+
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<MessageWithContent>>> {
     // Verify conversation exists and user owns it
@@ -67,7 +62,8 @@ pub async fn get_message(
 
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<Json<MessageWithContent>> {
-    let message_with_content = msg_repo::get_message_with_content(Repos.pool(), message_id).await?
+    let message_with_content = msg_repo::get_message_with_content(Repos.pool(), message_id)
+        .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 
     // TODO: Verify user owns the conversation containing this message
@@ -91,7 +87,7 @@ pub fn get_message_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn edit_message(
     auth: RequirePermissions<(MessagesCreate,)>,
-    
+
     Path((conversation_id, message_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<EditMessageRequest>,
 ) -> ApiResult<Json<EditMessageResponse>> {
@@ -152,7 +148,9 @@ pub fn delete_message_docs(op: TransformOperation) -> TransformOperation {
         .id("Message.delete")
         .tag("Chat")
         .summary("Delete message")
-        .description("Delete a message and all its descendants. This cascades to all content blocks.")
+        .description(
+            "Delete a message and all its descendants. This cascades to all content blocks.",
+        )
         .response_with::<204, (), _>(|res| res.description("Message deleted successfully"))
         .response_with::<404, (), _>(|res| res.description("Message not found"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))

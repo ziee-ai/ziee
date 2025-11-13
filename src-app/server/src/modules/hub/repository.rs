@@ -1,13 +1,13 @@
 // Hub repository
 #![allow(dead_code)]
 
-use sqlx::PgPool;
-use uuid::Uuid;
-use std::collections::HashMap;
 use chrono::DateTime;
+use sqlx::PgPool;
+use std::collections::HashMap;
+use uuid::Uuid;
 
+use super::models::{HubCategory, HubEntity, HubEntityType};
 use crate::common::AppError;
-use super::models::{HubEntity, HubEntityType, HubCategory};
 
 /// Hub Repository
 pub struct HubRepository {
@@ -19,15 +19,36 @@ impl HubRepository {
         Self { pool }
     }
 
-    pub async fn track_hub_entity(&self, entity_type: HubEntityType, entity_id: Uuid, hub_id: &str, hub_category: HubCategory, created_by: Option<Uuid>) -> Result<HubEntity, AppError> {
-        track_hub_entity(&self.pool, entity_type, entity_id, hub_id, hub_category, created_by).await
+    pub async fn track_hub_entity(
+        &self,
+        entity_type: HubEntityType,
+        entity_id: Uuid,
+        hub_id: &str,
+        hub_category: HubCategory,
+        created_by: Option<Uuid>,
+    ) -> Result<HubEntity, AppError> {
+        track_hub_entity(
+            &self.pool,
+            entity_type,
+            entity_id,
+            hub_id,
+            hub_category,
+            created_by,
+        )
+        .await
     }
 
-    pub async fn get_created_assistant_ids(&self, user_id: Uuid) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
+    pub async fn get_created_assistant_ids(
+        &self,
+        user_id: Uuid,
+    ) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
         get_created_assistant_ids(&self.pool, user_id).await
     }
 
-    pub async fn get_created_mcp_server_ids(&self, user_id: Uuid) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
+    pub async fn get_created_mcp_server_ids(
+        &self,
+        user_id: Uuid,
+    ) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
         get_created_mcp_server_ids(&self.pool, user_id).await
     }
 
@@ -35,7 +56,11 @@ impl HubRepository {
         get_created_model_ids(&self.pool).await
     }
 
-    pub async fn delete_hub_tracking(&self, entity_type: HubEntityType, entity_id: Uuid) -> Result<(), AppError> {
+    pub async fn delete_hub_tracking(
+        &self,
+        entity_type: HubEntityType,
+        entity_id: Uuid,
+    ) -> Result<(), AppError> {
         delete_hub_tracking(&self.pool, entity_type, entity_id).await
     }
 }
@@ -139,9 +164,7 @@ pub async fn get_created_mcp_server_ids(
 }
 
 /// Get created entity IDs for models (system-wide, no user filter)
-pub async fn get_created_model_ids(
-    pool: &PgPool,
-) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
+pub async fn get_created_model_ids(pool: &PgPool) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
     let records = sqlx::query!(
         r#"
         SELECT he.hub_id, ARRAY_AGG(he.entity_id) as entity_ids

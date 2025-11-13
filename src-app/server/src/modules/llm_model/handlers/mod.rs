@@ -1,8 +1,8 @@
 // LLM Model handlers module
 // Organizes all handler functions for LLM model operations
 
-pub mod models;
 pub mod downloads;
+pub mod models;
 pub mod uploads;
 
 // Re-export model CRUD handlers

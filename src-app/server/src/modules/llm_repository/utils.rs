@@ -2,18 +2,23 @@
 // Source: react-test/src-tauri/src/api/repositories.rs
 // IMPORTANT: All validation logic copied exactly from react-test
 
-use crate::common::AppError;
 use super::{
     models::LlmRepository,
-    types::{CreateLlmRepositoryRequest, TestRepositoryConnectionRequest, UpdateLlmRepositoryRequest},
+    types::{
+        CreateLlmRepositoryRequest, TestRepositoryConnectionRequest, UpdateLlmRepositoryRequest,
+    },
 };
+use crate::common::AppError;
 
 /// Validate URL format using reqwest URL parser
 pub fn validate_url(url: &str) -> Result<(), AppError> {
     if reqwest::Url::parse(url).is_ok() {
         Ok(())
     } else {
-        Err(AppError::bad_request("VALIDATION_ERROR", "Invalid URL format"))
+        Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "Invalid URL format",
+        ))
     }
 }
 
@@ -23,7 +28,10 @@ pub fn validate_auth_type(auth_type: &str) -> Result<(), AppError> {
     if valid_auth_types.contains(&auth_type) {
         Ok(())
     } else {
-        Err(AppError::bad_request("VALIDATION_ERROR", "Invalid authentication type"))
+        Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "Invalid authentication type",
+        ))
     }
 }
 

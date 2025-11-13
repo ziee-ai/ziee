@@ -2,6 +2,5 @@
 //
 // Automatically generates conversation titles using AI after the first message exchange.
 
-mod title;
-pub mod extension; // Auto-discovered by build script
-
+pub mod extension;
+mod title; // Auto-discovered by build script

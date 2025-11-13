@@ -2,8 +2,8 @@
 // Defines API routes for MCP server management
 
 use aide::axum::{
-    routing::{delete_with, get_with, post_with, put_with},
     ApiRouter,
+    routing::{delete_with, get_with, post_with, put_with},
 };
 
 use super::handlers::*;
@@ -81,6 +81,9 @@ pub fn admin_routes() -> ApiRouter {
         )
         .api_route(
             "/groups/{group_id}/system-servers",
-            put_with(update_group_system_servers, update_group_system_servers_docs),
+            put_with(
+                update_group_system_servers,
+                update_group_system_servers_docs,
+            ),
         )
 }

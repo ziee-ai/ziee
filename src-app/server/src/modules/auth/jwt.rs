@@ -1,5 +1,5 @@
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -9,14 +9,14 @@ use crate::core::config::JwtConfig;
 /// JWT claims structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String,        // Subject (user ID)
-    pub exp: i64,           // Expiration time
-    pub iat: i64,           // Issued at
-    pub iss: String,        // Issuer
-    pub aud: String,        // Audience
-    pub username: String,   // Username
-    pub email: String,      // Email
-    pub is_admin: bool,     // Admin flag
+    pub sub: String,      // Subject (user ID)
+    pub exp: i64,         // Expiration time
+    pub iat: i64,         // Issued at
+    pub iss: String,      // Issuer
+    pub aud: String,      // Audience
+    pub username: String, // Username
+    pub email: String,    // Email
+    pub is_admin: bool,   // Admin flag
 }
 
 /// JWT token pair (access + refresh)
@@ -90,8 +90,9 @@ impl JwtService {
             is_admin,
         };
 
-        encode(&Header::default(), &claims, &self.encoding_key)
-            .map_err(|e| AppError::internal_error(format!("Failed to generate access token: {}", e)))
+        encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
+            AppError::internal_error(format!("Failed to generate access token: {}", e))
+        })
     }
 
     /// Generate a refresh token (simpler claims, longer expiry)
@@ -110,8 +111,9 @@ impl JwtService {
             is_admin: false,
         };
 
-        encode(&Header::default(), &claims, &self.encoding_key)
-            .map_err(|e| AppError::internal_error(format!("Failed to generate refresh token: {}", e)))
+        encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
+            AppError::internal_error(format!("Failed to generate refresh token: {}", e))
+        })
     }
 
     /// Validate and decode an access token
@@ -123,10 +125,7 @@ impl JwtService {
         decode::<Claims>(token, &self.decoding_key, &validation)
             .map(|data| data.claims)
             .map_err(|e| {
-                AppError::unauthorized(
-                    "INVALID_TOKEN",
-                    format!("Invalid or expired token: {}", e),
-                )
+                AppError::unauthorized("INVALID_TOKEN", format!("Invalid or expired token: {}", e))
             })
     }
 

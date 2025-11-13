@@ -1,8 +1,8 @@
 // Chat routes configuration
 
 use aide::axum::{
-    routing::{delete_with, get_with, post_with, put_with},
     ApiRouter,
+    routing::{delete_with, get_with, post_with, put_with},
 };
 
 use super::handlers::*;
@@ -40,10 +40,7 @@ pub fn chat_router() -> ApiRouter {
             "/conversations/{id}/messages/stream",
             post_with(send_message, send_message_docs),
         )
-        .api_route(
-            "/messages/{id}",
-            get_with(get_message, get_message_docs),
-        )
+        .api_route("/messages/{id}", get_with(get_message, get_message_docs))
         .api_route(
             "/conversations/{conversation_id}/messages/{message_id}",
             put_with(edit_message, edit_message_docs),

@@ -22,7 +22,7 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
 /// Register hardware module
 #[distributed_slice(MODULE_ENTRIES)]
@@ -65,9 +65,7 @@ impl AppModule for HardwareModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
-            let hardware_module_router = ApiRouter::new()
-                .merge(hardware_router())
-                ;
+            let hardware_module_router = ApiRouter::new().merge(hardware_router());
             router.merge(hardware_module_router)
         } else {
             tracing::error!("HardwareModule: Pool not initialized during route registration");

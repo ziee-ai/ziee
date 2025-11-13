@@ -62,7 +62,10 @@ pub enum Credentials {
     /// Password-based authentication
     Password { username: String, password: String },
     /// Provider-based authentication (OAuth2, SAML, LDAP)
-    Provider { provider_id: Uuid, external_id: String },
+    Provider {
+        provider_id: Uuid,
+        external_id: String,
+    },
 }
 
 /// Authentication backend for axum-login
@@ -91,13 +94,17 @@ impl AuthBackend {
         if let Some(user) = user {
             // Check if user is active
             if !user.is_active {
-                return Err(AppError::unauthorized("ACCOUNT_DISABLED", "User account is disabled"));
+                return Err(AppError::unauthorized(
+                    "ACCOUNT_DISABLED",
+                    "User account is disabled",
+                ));
             }
 
             // Check password
             if let Some(hash) = &user.password_hash {
-                let valid = password::verify_password(password_input, hash)
-                    .map_err(|e| AppError::internal_error(format!("Password verification error: {}", e)))?;
+                let valid = password::verify_password(password_input, hash).map_err(|e| {
+                    AppError::internal_error(format!("Password verification error: {}", e))
+                })?;
 
                 if valid {
                     // Update last login
@@ -142,7 +149,10 @@ impl AuthBackend {
             if let Some(user) = user {
                 // Check if user is active
                 if !user.is_active {
-                    return Err(AppError::unauthorized("ACCOUNT_DISABLED", "User account is disabled"));
+                    return Err(AppError::unauthorized(
+                        "ACCOUNT_DISABLED",
+                        "User account is disabled",
+                    ));
                 }
 
                 // Update last login
@@ -207,10 +217,7 @@ impl AuthnBackend for AuthBackend {
 
 // Authorization methods (not using AuthzBackend trait for now)
 impl AuthBackend {
-    pub async fn get_all_permissions(
-        &self,
-        user: &User,
-    ) -> Result<HashSet<String>, AppError> {
+    pub async fn get_all_permissions(&self, user: &User) -> Result<HashSet<String>, AppError> {
         let permissions = sqlx::query_scalar!(
             r#"
             SELECT DISTINCT unnest(g.permissions) as "permission!"
@@ -227,11 +234,7 @@ impl AuthBackend {
         Ok(permissions.into_iter().collect())
     }
 
-    pub async fn has_permission(
-        &self,
-        user: &User,
-        permission: &str,
-    ) -> Result<bool, AppError> {
+    pub async fn has_permission(&self, user: &User, permission: &str) -> Result<bool, AppError> {
         // Quick admin check
         if user.is_admin {
             return Ok(true);

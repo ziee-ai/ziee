@@ -24,7 +24,10 @@ impl LlmRepositoryRepository {
         Self { pool }
     }
 
-    pub async fn get_by_id(&self, repository_id: Uuid) -> Result<Option<LlmRepository>, sqlx::Error> {
+    pub async fn get_by_id(
+        &self,
+        repository_id: Uuid,
+    ) -> Result<Option<LlmRepository>, sqlx::Error> {
         get_llm_repository_by_id(&self.pool, repository_id).await
     }
 
@@ -32,11 +35,18 @@ impl LlmRepositoryRepository {
         list_llm_repositories(&self.pool).await
     }
 
-    pub async fn create(&self, request: CreateLlmRepositoryRequest) -> Result<LlmRepository, sqlx::Error> {
+    pub async fn create(
+        &self,
+        request: CreateLlmRepositoryRequest,
+    ) -> Result<LlmRepository, sqlx::Error> {
         create_llm_repository(&self.pool, request).await
     }
 
-    pub async fn update(&self, repository_id: Uuid, request: UpdateLlmRepositoryRequest) -> Result<Option<LlmRepository>, sqlx::Error> {
+    pub async fn update(
+        &self,
+        repository_id: Uuid,
+        request: UpdateLlmRepositoryRequest,
+    ) -> Result<Option<LlmRepository>, sqlx::Error> {
         update_llm_repository(&self.pool, repository_id, request).await
     }
 
@@ -67,7 +77,8 @@ pub async fn get_llm_repository_by_id(
         name: r.name,
         url: r.url,
         auth_type: r.auth_type,
-        auth_config: r.auth_config
+        auth_config: r
+            .auth_config
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
         enabled: r.enabled,
@@ -93,7 +104,8 @@ pub async fn list_llm_repositories(pool: &PgPool) -> Result<Vec<LlmRepository>, 
             name: r.name,
             url: r.url,
             auth_type: r.auth_type,
-            auth_config: r.auth_config
+            auth_config: r
+                .auth_config
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
             enabled: r.enabled,
@@ -109,7 +121,8 @@ pub async fn create_llm_repository(
     request: CreateLlmRepositoryRequest,
 ) -> Result<LlmRepository, sqlx::Error> {
     let repository_id = Uuid::new_v4();
-    let auth_config_json = serde_json::to_value(&request.auth_config).unwrap_or(serde_json::json!({}));
+    let auth_config_json =
+        serde_json::to_value(&request.auth_config).unwrap_or(serde_json::json!({}));
 
     let row = sqlx::query!(
         r#"INSERT INTO llm_repositories (id, name, url, auth_type, auth_config, enabled, built_in)
@@ -131,7 +144,8 @@ pub async fn create_llm_repository(
         name: row.name,
         url: row.url,
         auth_type: row.auth_type,
-        auth_config: row.auth_config
+        auth_config: row
+            .auth_config
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
         enabled: row.enabled,
@@ -219,9 +233,10 @@ pub async fn delete_llm_repository(
             if built_in {
                 Ok(Err("Cannot delete built-in repository".to_string()))
             } else {
-                let result = sqlx::query!("DELETE FROM llm_repositories WHERE id = $1", repository_id)
-                    .execute(pool)
-                    .await?;
+                let result =
+                    sqlx::query!("DELETE FROM llm_repositories WHERE id = $1", repository_id)
+                        .execute(pool)
+                        .await?;
                 Ok(Ok(result.rows_affected() > 0))
             }
         }

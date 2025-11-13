@@ -1,15 +1,15 @@
-use std::env;
-use std::fs;
-use std::process::{Child, Command};
-use std::path::PathBuf;
-use std::time::Duration;
 use rand::Rng;
 use sqlx::postgres::PgPoolOptions;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use std::process::{Child, Command};
+use std::time::Duration;
 use uuid::Uuid;
 
 // Test helpers for OAuth and LDAP mock servers
-pub mod oauth_mock;
 pub mod ldap_mock;
+pub mod oauth_mock;
 
 /// Get database URL from environment or use default
 fn database_url() -> String {
@@ -43,7 +43,8 @@ impl TestServer {
         let password = url.password().unwrap_or("");
 
         // Create test config for the server
-        let config = format!(r#"
+        let config = format!(
+            r#"
 postgresql:
   use_embedded: false
 
@@ -73,18 +74,12 @@ jwt:
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
 "#,
-            host,
-            port,
-            username,
-            password,
-            database_name,
-            server_port
+            host, port, username, password, database_name, server_port
         );
 
         // Write temporary config file
         let temp_config_path = format!("/tmp/ziee-chat-test-{}.yaml", test_id);
-        fs::write(&temp_config_path, config)
-            .expect("Failed to write temporary config");
+        fs::write(&temp_config_path, config).expect("Failed to write temporary config");
 
         // Create the test database
         let pool = PgPoolOptions::new()
@@ -101,8 +96,7 @@ jwt:
         pool.close().await;
 
         // Start the server process with the temporary config
-        let binary_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("target/debug/ziee-chat");
+        let binary_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/ziee-chat");
 
         let child = Command::new(binary_path)
             .arg("--config-file")
@@ -116,11 +110,7 @@ jwt:
         // Construct database URL for the test database
         let test_database_url = format!(
             "postgresql://{}:{}@{}:{}/{}",
-            username,
-            password,
-            host,
-            port,
-            database_name
+            username, password, host, port, database_name
         );
 
         // Wait for server to be ready
@@ -193,9 +183,9 @@ impl Drop for TestServer {
 
 /// Common test helpers for creating users and managing permissions
 pub mod test_helpers {
+    use super::{TestServer, database_url};
     use serde_json::json;
     use uuid::Uuid;
-    use super::{TestServer, database_url};
 
     /// Test user with token and ID
     #[derive(Debug, Clone)]
@@ -224,7 +214,11 @@ pub mod test_helpers {
             .await
             .expect("Failed to register user");
 
-        assert_eq!(register_response.status(), 201, "Registration should succeed");
+        assert_eq!(
+            register_response.status(),
+            201,
+            "Registration should succeed"
+        );
 
         let register_body: serde_json::Value = register_response
             .json()
@@ -268,7 +262,7 @@ pub mod test_helpers {
             let user_uuid = Uuid::parse_str(&user_id).expect("Invalid user ID");
             sqlx::query(
                 "INSERT INTO user_groups (user_id, group_id, assigned_at)
-                 VALUES ($1, $2, NOW())"
+                 VALUES ($1, $2, NOW())",
             )
             .bind(user_uuid)
             .bind(group_id)
@@ -277,18 +271,17 @@ pub mod test_helpers {
             .expect("Failed to assign user to custom group");
 
             // Also assign user to default group (like real registration does)
-            let default_group_result = sqlx::query!(
-                "SELECT id FROM groups WHERE is_default = true LIMIT 1"
-            )
-            .fetch_optional(&pool)
-            .await
-            .expect("Failed to query default group");
+            let default_group_result =
+                sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+                    .fetch_optional(&pool)
+                    .await
+                    .expect("Failed to query default group");
 
             if let Some(default_group) = default_group_result {
                 sqlx::query(
                     "INSERT INTO user_groups (user_id, group_id, assigned_at)
                      VALUES ($1, $2, NOW())
-                     ON CONFLICT DO NOTHING"
+                     ON CONFLICT DO NOTHING",
                 )
                 .bind(user_uuid)
                 .bind(default_group.id)
@@ -332,8 +325,8 @@ pub mod test_helpers {
 
 /// Helper to make HTTP requests during tests
 pub mod http {
-    use serde::de::DeserializeOwned;
     use serde::Serialize;
+    use serde::de::DeserializeOwned;
 
     pub async fn get<T: DeserializeOwned>(url: &str) -> Result<T, reqwest::Error> {
         reqwest::get(url).await?.json().await
@@ -390,7 +383,10 @@ pub mod http {
         client.delete(url).send().await
     }
 
-    pub async fn delete_with_auth(url: &str, token: &str) -> Result<reqwest::Response, reqwest::Error> {
+    pub async fn delete_with_auth(
+        url: &str,
+        token: &str,
+    ) -> Result<reqwest::Response, reqwest::Error> {
         let client = reqwest::Client::new();
         client
             .delete(url)

@@ -15,8 +15,9 @@ async fn test_list_downloads_requires_permission() {
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_read"]
-    ).await;
+        &["llm_models::downloads_read"],
+    )
+    .await;
 
     // User without permission
     let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
@@ -34,7 +35,10 @@ async fn test_list_downloads_requires_permission() {
     assert_eq!(response.status(), 200, "Admin should list downloads");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert!(body.get("downloads").is_some(), "Should have downloads array");
+    assert!(
+        body.get("downloads").is_some(),
+        "Should have downloads array"
+    );
     assert!(body.get("total").is_some(), "Should have total count");
     assert!(body.get("page").is_some(), "Should have page number");
     assert!(body.get("per_page").is_some(), "Should have per_page");
@@ -62,7 +66,11 @@ async fn test_list_downloads_unauthorized() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 401, "Should be unauthorized without token");
+    assert_eq!(
+        response.status(),
+        401,
+        "Should be unauthorized without token"
+    );
 }
 
 #[tokio::test]
@@ -71,8 +79,9 @@ async fn test_list_downloads_pagination() {
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_read"]
-    ).await;
+        &["llm_models::downloads_read"],
+    )
+    .await;
 
     // Test with pagination parameters
     let url = server.api_url("/llm-models/downloads?page=1&per_page=10");
@@ -100,8 +109,9 @@ async fn test_get_download_not_found() {
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_read"]
-    ).await;
+        &["llm_models::downloads_read"],
+    )
+    .await;
 
     // Try to get non-existent download
     let url = server.api_url("/llm-models/downloads/00000000-0000-0000-0000-000000000000");
@@ -112,7 +122,11 @@ async fn test_get_download_not_found() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404, "Non-existent download should return 404");
+    assert_eq!(
+        response.status(),
+        404,
+        "Non-existent download should return 404"
+    );
 }
 
 #[tokio::test]
@@ -122,8 +136,9 @@ async fn test_get_download_requires_permission() {
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_read"]
-    ).await;
+        &["llm_models::downloads_read"],
+    )
+    .await;
 
     let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
 
@@ -147,7 +162,11 @@ async fn test_get_download_requires_permission() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 403, "Should be forbidden without permission");
+    assert_eq!(
+        response.status(),
+        403,
+        "Should be forbidden without permission"
+    );
 }
 
 // =====================================================
@@ -161,8 +180,9 @@ async fn test_cancel_download_requires_permission() {
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_cancel"]
-    ).await;
+        &["llm_models::downloads_cancel"],
+    )
+    .await;
 
     let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
 
@@ -186,7 +206,11 @@ async fn test_cancel_download_requires_permission() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 403, "Should be forbidden without permission");
+    assert_eq!(
+        response.status(),
+        403,
+        "Should be forbidden without permission"
+    );
 }
 
 // =====================================================
@@ -200,8 +224,9 @@ async fn test_delete_download_requires_permission() {
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_delete"]
-    ).await;
+        &["llm_models::downloads_delete"],
+    )
+    .await;
 
     let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
 
@@ -225,7 +250,11 @@ async fn test_delete_download_requires_permission() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 403, "Should be forbidden without permission");
+    assert_eq!(
+        response.status(),
+        403,
+        "Should be forbidden without permission"
+    );
 }
 
 // =====================================================
@@ -240,8 +269,9 @@ async fn test_subscribe_download_progress_requires_permission() {
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_read"]
-    ).await;
+        &["llm_models::downloads_read"],
+    )
+    .await;
 
     // User without permission
     let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
@@ -259,7 +289,8 @@ async fn test_subscribe_download_progress_requires_permission() {
 
     assert_eq!(response.status(), 200, "Admin should connect to SSE");
     assert_eq!(
-        response.headers()
+        response
+            .headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok()),
         Some("text/event-stream"),
@@ -293,7 +324,11 @@ async fn test_subscribe_download_progress_unauthorized() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 401, "Should be unauthorized without token");
+    assert_eq!(
+        response.status(),
+        401,
+        "Should be unauthorized without token"
+    );
 }
 
 #[tokio::test]
@@ -302,8 +337,9 @@ async fn test_subscribe_download_progress_sse_format() {
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_read"]
-    ).await;
+        &["llm_models::downloads_read"],
+    )
+    .await;
 
     let url = server.api_url("/llm-models/downloads/subscribe");
     let response = reqwest::Client::new()
@@ -317,7 +353,8 @@ async fn test_subscribe_download_progress_sse_format() {
     assert_eq!(response.status(), 200);
 
     // Verify SSE content type
-    let content_type = response.headers()
+    let content_type = response
+        .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .expect("Should have content-type header");
@@ -341,14 +378,15 @@ async fn test_subscribe_download_progress_sse_format() {
 #[tokio::test]
 async fn test_subscribe_download_progress_connected_event() {
     use futures_util::StreamExt;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     let server = TestServer::start().await;
     let admin = test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_models::downloads_read"]
-    ).await;
+        &["llm_models::downloads_read"],
+    )
+    .await;
 
     let url = server.api_url("/llm-models/downloads/subscribe");
     let response = reqwest::Client::new()
@@ -371,8 +409,7 @@ async fn test_subscribe_download_progress_connected_event() {
         .expect("Stream ended prematurely")
         .expect("Failed to read chunk");
 
-    let event_text = String::from_utf8(first_chunk.to_vec())
-        .expect("Failed to convert to UTF-8");
+    let event_text = String::from_utf8(first_chunk.to_vec()).expect("Failed to convert to UTF-8");
 
     // Verify SSE format
     assert!(event_text.contains("event:"), "Should have event type");
@@ -403,7 +440,7 @@ async fn test_sse_completion_event_structure() {
     // tests the end-to-end download flow. This test focuses on verifying the
     // data structure of a completed download.
 
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     let server = TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(
@@ -422,12 +459,9 @@ async fn test_sse_completion_event_structure() {
     .await;
 
     // Get Hugging Face repository and configure API key
-    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
-        &server,
-        &user.token,
-        true,
-    )
-    .await;
+    let hf_repo =
+        crate::llm_model::download_test::get_huggingface_repository(&server, &user.token, true)
+            .await;
     let repo_id = hf_repo["id"].as_str().unwrap();
 
     // Get local provider
@@ -501,7 +535,9 @@ async fn test_sse_completion_event_structure() {
         }
 
         if status == "failed" {
-            let error = download["error_message"].as_str().unwrap_or("Unknown error");
+            let error = download["error_message"]
+                .as_str()
+                .unwrap_or("Unknown error");
             panic!("Download failed: {}", error);
         }
     }
@@ -509,7 +545,10 @@ async fn test_sse_completion_event_structure() {
     // Verify the completed download structure
     if let Some(download) = final_download {
         // Debug: Print the full download structure
-        println!("Download structure: {}", serde_json::to_string_pretty(&download).unwrap());
+        println!(
+            "Download structure: {}",
+            serde_json::to_string_pretty(&download).unwrap()
+        );
 
         // Check if download has model_id (the key field for completion)
         let model_id = download["model_id"]
@@ -526,7 +565,10 @@ async fn test_sse_completion_event_structure() {
         );
 
         println!("✅ Completed download includes model_id: {}", model_id);
-        println!("✅ Completed download includes provider_id: {}", provider_id);
+        println!(
+            "✅ Completed download includes provider_id: {}",
+            provider_id
+        );
         println!("✅ This structure would be sent in SSE Complete event");
     }
 
@@ -537,7 +579,7 @@ async fn test_sse_completion_event_structure() {
 async fn test_sse_sends_update_events_during_download() {
     // This test verifies that SSE actually sends UPDATE events during an active download
     use futures_util::StreamExt;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     let server = TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(
@@ -556,12 +598,9 @@ async fn test_sse_sends_update_events_during_download() {
     .await;
 
     // Get Hugging Face repository and configure API key
-    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
-        &server,
-        &user.token,
-        true,
-    )
-    .await;
+    let hf_repo =
+        crate::llm_model::download_test::get_huggingface_repository(&server, &user.token, true)
+            .await;
     let repo_id = hf_repo["id"].as_str().unwrap();
 
     // Get local provider
@@ -623,8 +662,8 @@ async fn test_sse_sends_update_events_during_download() {
         .expect("Stream ended prematurely")
         .expect("Failed to read chunk");
 
-    let connected_text = String::from_utf8(connected_chunk.to_vec())
-        .expect("Failed to convert to UTF-8");
+    let connected_text =
+        String::from_utf8(connected_chunk.to_vec()).expect("Failed to convert to UTF-8");
 
     println!("📡 First event: {}", connected_text);
     assert!(
@@ -641,8 +680,8 @@ async fn test_sse_sends_update_events_during_download() {
     while events_read < max_events {
         match timeout(Duration::from_secs(60), sse_stream.next()).await {
             Ok(Some(Ok(chunk))) => {
-                let event_text = String::from_utf8(chunk.to_vec())
-                    .expect("Failed to convert to UTF-8");
+                let event_text =
+                    String::from_utf8(chunk.to_vec()).expect("Failed to convert to UTF-8");
 
                 println!("📡 SSE Event #{}: {}", events_read + 1, event_text);
 
@@ -676,35 +715,72 @@ async fn test_sse_sends_update_events_during_download() {
                     assert!(update.get("id").is_some(), "UPDATE should have 'id' field");
                     assert!(update["id"].is_string(), "'id' should be a string");
 
-                    assert!(update.get("status").is_some(), "UPDATE should have 'status' field");
+                    assert!(
+                        update.get("status").is_some(),
+                        "UPDATE should have 'status' field"
+                    );
                     assert!(update["status"].is_string(), "'status' should be a string");
 
-                    assert!(update.get("phase").is_some(), "UPDATE should have 'phase' field");
+                    assert!(
+                        update.get("phase").is_some(),
+                        "UPDATE should have 'phase' field"
+                    );
                     assert!(update["phase"].is_string(), "'phase' should be a string");
 
                     // Optional fields (can be null or present)
-                    assert!(update.get("current").is_some(), "UPDATE should have 'current' field");
-                    assert!(update.get("total").is_some(), "UPDATE should have 'total' field");
-                    assert!(update.get("message").is_some(), "UPDATE should have 'message' field");
-                    assert!(update.get("speed_bps").is_some(), "UPDATE should have 'speed_bps' field");
-                    assert!(update.get("eta_seconds").is_some(), "UPDATE should have 'eta_seconds' field");
-                    assert!(update.get("error_message").is_some(), "UPDATE should have 'error_message' field");
+                    assert!(
+                        update.get("current").is_some(),
+                        "UPDATE should have 'current' field"
+                    );
+                    assert!(
+                        update.get("total").is_some(),
+                        "UPDATE should have 'total' field"
+                    );
+                    assert!(
+                        update.get("message").is_some(),
+                        "UPDATE should have 'message' field"
+                    );
+                    assert!(
+                        update.get("speed_bps").is_some(),
+                        "UPDATE should have 'speed_bps' field"
+                    );
+                    assert!(
+                        update.get("eta_seconds").is_some(),
+                        "UPDATE should have 'eta_seconds' field"
+                    );
+                    assert!(
+                        update.get("error_message").is_some(),
+                        "UPDATE should have 'error_message' field"
+                    );
 
                     // If numeric fields are present (not null), they should be numbers
                     if !update["current"].is_null() {
-                        assert!(update["current"].is_number(), "'current' should be a number when present");
+                        assert!(
+                            update["current"].is_number(),
+                            "'current' should be a number when present"
+                        );
                     }
                     if !update["total"].is_null() {
-                        assert!(update["total"].is_number(), "'total' should be a number when present");
+                        assert!(
+                            update["total"].is_number(),
+                            "'total' should be a number when present"
+                        );
                     }
                     if !update["speed_bps"].is_null() {
-                        assert!(update["speed_bps"].is_number(), "'speed_bps' should be a number when present");
+                        assert!(
+                            update["speed_bps"].is_number(),
+                            "'speed_bps' should be a number when present"
+                        );
                     }
                     if !update["eta_seconds"].is_null() {
-                        assert!(update["eta_seconds"].is_number(), "'eta_seconds' should be a number when present");
+                        assert!(
+                            update["eta_seconds"].is_number(),
+                            "'eta_seconds' should be a number when present"
+                        );
                     }
 
-                    println!("✅ Received valid UPDATE event #{} - status: {}, phase: {}",
+                    println!(
+                        "✅ Received valid UPDATE event #{} - status: {}, phase: {}",
                         update_events_received,
                         update["status"].as_str().unwrap_or("unknown"),
                         update["phase"].as_str().unwrap_or("unknown")
@@ -743,5 +819,8 @@ async fn test_sse_sends_update_events_during_download() {
 
     println!("✅ SSE UPDATE events test passed!");
     println!("   - Received {} UPDATE events", update_events_received);
-    println!("   - Complete event: {}", if complete_event_received { "Yes" } else { "No" });
+    println!(
+        "   - Complete event: {}",
+        if complete_event_received { "Yes" } else { "No" }
+    );
 }

@@ -1,12 +1,11 @@
 // Streaming handlers - SSE streaming for AI chat responses
 
-use aide::transform::TransformOperation;
 use crate::core::Repos;
+use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
+    Extension, Json, debug_handler,
     extract::Path,
     response::sse::{Event, KeepAlive, Sse},
-    Extension, Json,
 };
 use futures_util::{Stream, StreamExt};
 use std::convert::Infallible;
@@ -18,10 +17,10 @@ use crate::{
     modules::{
         chat::core::{
             extension::{ExtensionRegistry, SendMessageRequest},
-            types::{ChatStreamChunk, StreamError},
             permissions::*,
             repository::conversations as conv_repo,
             services::StreamingService,
+            types::{ChatStreamChunk, StreamError},
         },
         permissions::{extractors::RequirePermissions, with_permission},
     },
@@ -32,7 +31,7 @@ use crate::{
 #[debug_handler]
 pub async fn send_message(
     auth: RequirePermissions<(MessagesCreate,)>,
-    
+
     Extension(extension_registry): Extension<Arc<ExtensionRegistry>>,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<SendMessageRequest>,
@@ -45,13 +44,14 @@ pub async fn send_message(
     // Handle branch creation if requested (for edit/regenerate flow)
     let branch_id = if let Some(message_id) = request.create_branch_from_message_id {
         // Create new branch from the specified message
-        let new_branch = crate::modules::chat::core::repository::messages::create_branch_from_message(
-            Repos.pool(),
-            conversation_id,
-            request.branch_id,
-            message_id,
-        )
-        .await?;
+        let new_branch =
+            crate::modules::chat::core::repository::messages::create_branch_from_message(
+                Repos.pool(),
+                conversation_id,
+                request.branch_id,
+                message_id,
+            )
+            .await?;
 
         new_branch.id
     } else {
@@ -71,17 +71,12 @@ pub async fn send_message(
 
     // Create streaming service with extensions
     // Provider is created inside send_message based on request.model_id
-    let streaming_service = StreamingService::new(Repos.pool().clone())
-        .with_extensions(extension_registry);
+    let streaming_service =
+        StreamingService::new(Repos.pool().clone()).with_extensions(extension_registry);
 
     // Send message and get stream
     let chunk_stream = streaming_service
-        .send_message(
-            branch_id,
-            conversation_id,
-            auth.user.id,
-            request,
-        )
+        .send_message(branch_id, conversation_id, auth.user.id, request)
         .await?;
 
     // Clone IDs for use in closure (they're Copy types)

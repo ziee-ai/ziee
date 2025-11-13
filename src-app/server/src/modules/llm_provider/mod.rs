@@ -11,8 +11,8 @@ pub mod models;
 pub mod permissions;
 pub mod repository;
 pub mod routes;
-pub mod utils;
 pub mod types;
+pub mod utils;
 
 // Re-export main types and router
 pub use repository::LlmProviderRepository;
@@ -24,7 +24,7 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
 /// Register llm_provider module
 #[distributed_slice(MODULE_ENTRIES)]

@@ -1,6 +1,6 @@
-use axum::http::StatusCode;
-use crate::common::AppError;
 use super::types::SetupAdminRequest;
+use crate::common::AppError;
+use axum::http::StatusCode;
 
 // =====================================================
 // Validation Functions
@@ -11,7 +11,7 @@ pub fn validate_setup_request(req: &SetupAdminRequest) -> Result<(), (StatusCode
     if req.username.len() < 3 || req.username.len() > 100 {
         return Err((
             StatusCode::BAD_REQUEST,
-            AppError::bad_request("INVALID_USERNAME", "Username must be 3-100 characters")
+            AppError::bad_request("INVALID_USERNAME", "Username must be 3-100 characters"),
         ));
     }
 
@@ -19,7 +19,7 @@ pub fn validate_setup_request(req: &SetupAdminRequest) -> Result<(), (StatusCode
     if !is_valid_email(&req.email) {
         return Err((
             StatusCode::BAD_REQUEST,
-            AppError::bad_request("INVALID_EMAIL", "Invalid email format")
+            AppError::bad_request("INVALID_EMAIL", "Invalid email format"),
         ));
     }
 
@@ -27,10 +27,7 @@ pub fn validate_setup_request(req: &SetupAdminRequest) -> Result<(), (StatusCode
     if !is_strong_password(&req.password) {
         return Err((
             StatusCode::BAD_REQUEST,
-            AppError::bad_request(
-                "WEAK_PASSWORD",
-                "Password must be at least 8 characters"
-            )
+            AppError::bad_request("WEAK_PASSWORD", "Password must be at least 8 characters"),
         ));
     }
 

@@ -4,10 +4,9 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
+    Extension, Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
-    Extension, Json,
 };
 use uuid::Uuid;
 
@@ -23,8 +22,8 @@ use super::super::{
     models::{DownloadInstance, LlmModel},
     permissions::*,
     repository::LlmModelRepository,
-    utils,
     types::{CreateLlmModelRequest, ListModelsQuery, LlmModelListResponse, UpdateLlmModelRequest},
+    utils,
 };
 
 // =====================================================
@@ -87,7 +86,9 @@ pub async fn get_model(
     Path(model_id): Path<Uuid>,
     Extension(repo): Extension<LlmModelRepository>,
 ) -> ApiResult<Json<LlmModel>> {
-    let model = repo.get_by_id(model_id).await?
+    let model = repo
+        .get_by_id(model_id)
+        .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
 
     Ok((StatusCode::OK, Json(model)))
@@ -146,7 +147,9 @@ pub async fn update_model(
     utils::validate_update_request(&request)?;
 
     // Update model
-    let model = repo.update(model_id, request).await?
+    let model = repo
+        .update(model_id, request)
+        .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
 
     // Emit event
@@ -203,12 +206,14 @@ pub async fn delete_model(
     let model_path = storage.get_model_path(&provider_id, &model_id);
 
     if model_path.exists() {
-        tokio::fs::remove_dir_all(&model_path)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to remove model directory {}: {}", model_path.display(), e);
-                AppError::internal_error(&format!("Failed to remove model files: {}", e))
-            })?;
+        tokio::fs::remove_dir_all(&model_path).await.map_err(|e| {
+            tracing::error!(
+                "Failed to remove model directory {}: {}",
+                model_path.display(),
+                e
+            );
+            AppError::internal_error(&format!("Failed to remove model files: {}", e))
+        })?;
 
         tracing::info!("Removed model directory: {}", model_path.display());
     }
@@ -243,7 +248,9 @@ pub async fn enable_model(
         ..Default::default()
     };
 
-    let model = repo.update(model_id, request).await?
+    let model = repo
+        .update(model_id, request)
+        .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
 
     // Emit event
@@ -275,7 +282,9 @@ pub async fn disable_model(
         ..Default::default()
     };
 
-    let model = repo.update(model_id, request).await?
+    let model = repo
+        .update(model_id, request)
+        .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
 
     // Emit event

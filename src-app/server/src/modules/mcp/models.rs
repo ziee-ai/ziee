@@ -17,9 +17,7 @@ pub enum TransportType {
 }
 
 impl<'r> Decode<'r, Postgres> for TransportType {
-    fn decode(
-        value: sqlx::postgres::PgValueRef<'r>,
-    ) -> Result<Self, sqlx::error::BoxDynError> {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <&str as Decode<Postgres>>::decode(value)?;
         match s {
             "stdio" => Ok(TransportType::Stdio),
@@ -56,7 +54,10 @@ impl TransportType {
             "stdio" => Ok(TransportType::Stdio),
             "http" => Ok(TransportType::Http),
             "sse" => Ok(TransportType::Sse),
-            _ => Err(crate::common::AppError::internal_error(format!("Unknown transport type: {}", s))),
+            _ => Err(crate::common::AppError::internal_error(format!(
+                "Unknown transport type: {}",
+                s
+            ))),
         }
     }
 

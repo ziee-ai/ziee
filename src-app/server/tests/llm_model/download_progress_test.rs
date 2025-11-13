@@ -2,10 +2,9 @@
 ///
 /// These tests verify that the download progress tracking works correctly,
 /// including status updates, progress data updates, and model creation.
-
 use reqwest::StatusCode;
 use serde_json::json;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 #[tokio::test]
 async fn test_download_status_and_progress_tracking() {
@@ -26,12 +25,9 @@ async fn test_download_status_and_progress_tracking() {
     .await;
 
     // Get Hugging Face repository and configure API key
-    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
-        &server,
-        &user.token,
-        true,
-    )
-    .await;
+    let hf_repo =
+        crate::llm_model::download_test::get_huggingface_repository(&server, &user.token, true)
+            .await;
     let repo_id = hf_repo["id"].as_str().unwrap();
 
     // Get local provider
@@ -92,7 +88,10 @@ async fn test_download_status_and_progress_tracking() {
 
         if response.status() == StatusCode::NOT_FOUND {
             // Download was deleted (means it completed)
-            println!("Download completed and deleted after {} seconds", iterations);
+            println!(
+                "Download completed and deleted after {} seconds",
+                iterations
+            );
             final_status = "completed".to_string();
             break;
         }
@@ -141,10 +140,7 @@ async fn test_download_status_and_progress_tracking() {
 
                     // Verify model appears in provider's models list
                     let response = reqwest::Client::new()
-                        .get(&server.api_url(&format!(
-                            "/llm-models?provider_id={}",
-                            provider_id
-                        )))
+                        .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
                         .header("Authorization", format!("Bearer {}", user.token))
                         .send()
                         .await
@@ -217,12 +213,9 @@ async fn test_download_with_invalid_repository() {
     .await;
 
     // Get Hugging Face repository
-    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
-        &server,
-        &user.token,
-        true,
-    )
-    .await;
+    let hf_repo =
+        crate::llm_model::download_test::get_huggingface_repository(&server, &user.token, true)
+            .await;
     let repo_id = hf_repo["id"].as_str().unwrap();
 
     // Get local provider
@@ -336,12 +329,9 @@ async fn test_download_cancellation() {
     .await;
 
     // Get Hugging Face repository
-    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
-        &server,
-        &user.token,
-        true,
-    )
-    .await;
+    let hf_repo =
+        crate::llm_model::download_test::get_huggingface_repository(&server, &user.token, true)
+            .await;
     let repo_id = hf_repo["id"].as_str().unwrap();
 
     // Get local provider
@@ -457,7 +447,10 @@ async fn test_download_with_authenticated_repository() {
 
     // Verify the repository has auth configured
     let auth_type = hf_repo["auth_type"].as_str().unwrap();
-    assert_eq!(auth_type, "api_key", "Repository must use API key authentication");
+    assert_eq!(
+        auth_type, "api_key",
+        "Repository must use API key authentication"
+    );
     println!("Repository configured with auth_type: {}", auth_type);
 
     // Get local provider
@@ -532,7 +525,9 @@ async fn test_download_with_authenticated_repository() {
         }
 
         if status == "failed" {
-            let error_msg = download["error_message"].as_str().unwrap_or("Unknown error");
+            let error_msg = download["error_message"]
+                .as_str()
+                .unwrap_or("Unknown error");
             panic!(
                 "Download failed: {}\nWith valid API key and valid repository, download must succeed",
                 error_msg

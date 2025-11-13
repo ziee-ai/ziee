@@ -21,8 +21,8 @@ async fn test_list_llm_repositories_requires_permission() {
     .await;
 
     // Create user without permission
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[])
-        .await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
 
     // Admin should be able to list repositories
     let url = server.api_url("/llm-repositories");
@@ -162,11 +162,7 @@ async fn test_create_llm_repository_validation() {
         .await
         .expect("Request failed");
 
-    assert_eq!(
-        response.status(),
-        400,
-        "Should reject invalid URL format"
-    );
+    assert_eq!(response.status(), 400, "Should reject invalid URL format");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(
@@ -189,11 +185,7 @@ async fn test_create_llm_repository_validation() {
         .await
         .expect("Request failed");
 
-    assert_eq!(
-        response.status(),
-        400,
-        "Should reject invalid auth type"
-    );
+    assert_eq!(response.status(), 400, "Should reject invalid auth type");
 
     // Test 3: Missing auth_config for api_key auth type
     let missing_auth_config_data = json!({
@@ -235,11 +227,7 @@ async fn test_create_llm_repository_validation() {
         .await
         .expect("Request failed");
 
-    assert_eq!(
-        response.status(),
-        400,
-        "Should reject empty api_key"
-    );
+    assert_eq!(response.status(), 400, "Should reject empty api_key");
 
     // Test 5: Missing credentials for basic_auth
     let missing_basic_auth_data = json!({
@@ -274,7 +262,11 @@ async fn test_update_llm_repository() {
     let admin = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_repositories::create", "llm_repositories::edit", "llm_repositories::read"],
+        &[
+            "llm_repositories::create",
+            "llm_repositories::edit",
+            "llm_repositories::read",
+        ],
     )
     .await;
 
@@ -336,7 +328,11 @@ async fn test_update_llm_repository_built_in_protection() {
     let admin = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "admin",
-        &["llm_repositories::read", "llm_repositories::edit", "llm_repositories::create"],
+        &[
+            "llm_repositories::read",
+            "llm_repositories::edit",
+            "llm_repositories::create",
+        ],
     )
     .await;
 
@@ -349,8 +345,7 @@ async fn test_update_llm_repository_built_in_protection() {
         .await
         .expect("Request failed");
 
-    let list_body: serde_json::Value =
-        list_response.json().await.expect("Failed to parse JSON");
+    let list_body: serde_json::Value = list_response.json().await.expect("Failed to parse JSON");
     let repositories = list_body
         .get("repositories")
         .and_then(|r| r.as_array())
@@ -472,8 +467,7 @@ async fn test_delete_built_in_repository_protected() {
         .await
         .expect("Request failed");
 
-    let list_body: serde_json::Value =
-        list_response.json().await.expect("Failed to parse JSON");
+    let list_body: serde_json::Value = list_response.json().await.expect("Failed to parse JSON");
     let repositories = list_body
         .get("repositories")
         .and_then(|r| r.as_array())
@@ -506,12 +500,10 @@ async fn test_delete_built_in_repository_protected() {
     );
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    let error_message = body
-        .get("error")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let error_message = body.get("error").and_then(|v| v.as_str()).unwrap_or("");
     assert!(
-        error_message.to_lowercase().contains("built-in") || error_message.to_lowercase().contains("built in"),
+        error_message.to_lowercase().contains("built-in")
+            || error_message.to_lowercase().contains("built in"),
         "Error message should mention built-in protection, got: {}",
         error_message
     );
@@ -580,14 +572,8 @@ async fn test_repository_connection_test() {
     );
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert!(
-        body.get("success").is_some(),
-        "Should have success field"
-    );
-    assert!(
-        body.get("message").is_some(),
-        "Should have message field"
-    );
+    assert!(body.get("success").is_some(), "Should have success field");
+    assert!(body.get("message").is_some(), "Should have message field");
 }
 
 #[tokio::test]

@@ -1,10 +1,10 @@
 // Hub models
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
-use schemars::JsonSchema;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Hub model entry
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

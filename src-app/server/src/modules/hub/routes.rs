@@ -1,6 +1,6 @@
 use aide::axum::{
-    routing::{get_with, post_with},
     ApiRouter,
+    routing::{get_with, post_with},
 };
 
 use super::handlers::*;
@@ -8,10 +8,7 @@ use super::handlers::*;
 pub fn hub_router() -> ApiRouter {
     ApiRouter::new()
         // Models endpoints
-        .api_route(
-            "/hub/models",
-            get_with(get_hub_models, get_hub_models_docs),
-        )
+        .api_route("/hub/models", get_with(get_hub_models, get_hub_models_docs))
         .api_route(
             "/hub/models/version",
             get_with(get_hub_models_version, get_hub_models_version_docs),
@@ -40,7 +37,10 @@ pub fn hub_router() -> ApiRouter {
         )
         .api_route(
             "/hub/mcp-servers/version",
-            get_with(get_hub_mcp_servers_version, get_hub_mcp_servers_version_docs),
+            get_with(
+                get_hub_mcp_servers_version,
+                get_hub_mcp_servers_version_docs,
+            ),
         )
         .api_route(
             "/hub/mcp-servers/refresh",

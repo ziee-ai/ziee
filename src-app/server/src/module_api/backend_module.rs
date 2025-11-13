@@ -13,13 +13,13 @@ pub trait AppModule: Send + Sync {
     /// Module version
     #[allow(dead_code)]
     fn version(&self) -> &'static str {
-        "1.0.0"  // Default version
+        "1.0.0" // Default version
     }
 
     /// Module description
     #[allow(dead_code)]
     fn description(&self) -> &'static str {
-        ""  // Default: no description
+        "" // Default: no description
     }
 
     /// Initialize module with context
@@ -31,7 +31,7 @@ pub trait AppModule: Send + Sync {
     /// Register event handlers
     /// Returns list of handlers that will receive application events
     fn register_event_handlers(&self) -> Vec<Arc<dyn EventHandler>> {
-        vec![]  // Default: no handlers
+        vec![] // Default: no handlers
     }
 }
 

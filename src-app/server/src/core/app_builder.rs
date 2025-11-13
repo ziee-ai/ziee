@@ -1,14 +1,14 @@
 use aide::axum::ApiRouter;
 use aide::openapi::OpenApi;
-use axum::http::header::HeaderName;
 use axum::http::Method;
+use axum::http::header::HeaderName;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
-use crate::core::config::Config;
 use crate::core::EventBus;
-use crate::module_api::{AppModule, ModuleContext, MODULE_ENTRIES};
+use crate::core::config::Config;
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext};
 
 /// Create and initialize all application modules
 ///
@@ -22,10 +22,8 @@ pub fn create_modules() -> Vec<Box<dyn AppModule>> {
     entries.sort_by_key(|e| e.order);
 
     // Instantiate modules using their constructors
-    let modules: Vec<Box<dyn AppModule>> = entries
-        .iter()
-        .map(|entry| (entry.constructor)())
-        .collect();
+    let modules: Vec<Box<dyn AppModule>> =
+        entries.iter().map(|entry| (entry.constructor)()).collect();
 
     tracing::info!("Loaded {} modules in order:", modules.len());
     for entry in entries.iter() {
@@ -46,19 +44,16 @@ pub fn initialize_modules(
     context: &ModuleContext,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     for module in modules.iter_mut() {
-        module.init(context).map_err(|e| {
-            format!("Failed to initialize module {}: {}", module.name(), e)
-        })?;
+        module
+            .init(context)
+            .map_err(|e| format!("Failed to initialize module {}: {}", module.name(), e))?;
         tracing::info!("Initialized module: {}", module.name());
     }
     Ok(())
 }
 
 /// Register event handlers from all modules
-pub fn register_event_handlers(
-    modules: &[Box<dyn AppModule>],
-    pool: Arc<PgPool>,
-) -> EventBus {
+pub fn register_event_handlers(modules: &[Box<dyn AppModule>], pool: Arc<PgPool>) -> EventBus {
     let mut event_bus = EventBus::new(pool);
 
     for module in modules.iter() {
@@ -72,7 +67,10 @@ pub fn register_event_handlers(
         }
     }
 
-    tracing::info!("Registered {} event handlers total", event_bus.handler_count());
+    tracing::info!(
+        "Registered {} event handlers total",
+        event_bus.handler_count()
+    );
     event_bus
 }
 
@@ -122,13 +120,7 @@ pub fn create_cors_layer(config: &Config) -> CorsLayer {
         let headers: Vec<HeaderName> = cors_config
             .allow_headers
             .iter()
-            .filter_map(|h| {
-                if h == "*" {
-                    None
-                } else {
-                    h.parse().ok()
-                }
-            })
+            .filter_map(|h| if h == "*" { None } else { h.parse().ok() })
             .collect();
 
         let mut layer = CorsLayer::new();
@@ -163,4 +155,3 @@ pub fn create_cors_layer(config: &Config) -> CorsLayer {
             .allow_headers(Any)
     }
 }
-

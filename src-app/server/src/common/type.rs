@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,11 @@ pub struct AppError {
 }
 
 impl AppError {
-    pub fn new(status_code: StatusCode, error_code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(
+        status_code: StatusCode,
+        error_code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             status_code: status_code.as_u16(),
             error_code: error_code.into(),
@@ -95,7 +99,11 @@ impl AppError {
     }
 
     pub fn internal_error(message: impl Into<String>) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "SYSTEM_INTERNAL_ERROR", message)
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "SYSTEM_INTERNAL_ERROR",
+            message,
+        )
     }
 
     pub fn database_error(err: impl std::error::Error) -> Self {
@@ -123,7 +131,8 @@ impl IntoResponse for AppError {
             details: self.details,
         });
 
-        let status = StatusCode::from_u16(self.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status =
+            StatusCode::from_u16(self.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         (status, body).into_response()
     }
 }
@@ -147,7 +156,8 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
 // Helper conversions for ApiResult
 impl From<AppError> for (StatusCode, AppError) {
     fn from(err: AppError) -> Self {
-        let status = StatusCode::from_u16(err.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status =
+            StatusCode::from_u16(err.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         (status, err)
     }
 }
@@ -155,7 +165,8 @@ impl From<AppError> for (StatusCode, AppError) {
 // Helper to convert sqlx errors to ApiResult error type
 impl AppError {
     pub fn to_api_error(self) -> (StatusCode, Self) {
-        let status = StatusCode::from_u16(self.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let status =
+            StatusCode::from_u16(self.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         (status, self)
     }
 }

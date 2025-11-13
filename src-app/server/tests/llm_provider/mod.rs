@@ -1,7 +1,7 @@
 // Integration tests for LLM Provider module
 
-use serde_json::json;
 use reqwest::StatusCode;
+use serde_json::json;
 use uuid::Uuid;
 
 // =====================================================
@@ -11,7 +11,8 @@ use uuid::Uuid;
 #[tokio::test]
 async fn test_list_providers_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/llm-providers"))
@@ -26,7 +27,12 @@ async fn test_list_providers_requires_read_permission() {
 #[tokio::test]
 async fn test_list_providers_with_read_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read"],
+    )
+    .await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/llm-providers"))
@@ -45,7 +51,8 @@ async fn test_list_providers_with_read_permission() {
 #[tokio::test]
 async fn test_get_provider_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let provider_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -61,7 +68,12 @@ async fn test_get_provider_requires_read_permission() {
 #[tokio::test]
 async fn test_create_provider_requires_create_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Test Provider",
@@ -83,7 +95,12 @@ async fn test_create_provider_requires_create_permission() {
 #[tokio::test]
 async fn test_update_provider_requires_edit_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
 
     // Create a provider first
     let provider = create_test_provider(&server, &user.token).await;
@@ -107,7 +124,12 @@ async fn test_update_provider_requires_edit_permission() {
 #[tokio::test]
 async fn test_delete_provider_requires_delete_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
 
     // Create a provider first
     let provider = create_test_provider(&server, &user.token).await;
@@ -126,7 +148,12 @@ async fn test_delete_provider_requires_delete_permission() {
 #[tokio::test]
 async fn test_assign_provider_to_group_requires_assign_groups_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read"],
+    )
+    .await;
 
     let provider_id = Uuid::new_v4();
     let payload = json!({
@@ -151,7 +178,12 @@ async fn test_assign_provider_to_group_requires_assign_groups_permission() {
 #[tokio::test]
 async fn test_list_providers_with_pagination() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read"],
+    )
+    .await;
 
     // Test default pagination
     let response = reqwest::Client::new()
@@ -185,7 +217,12 @@ async fn test_list_providers_with_pagination() {
 #[tokio::test]
 async fn test_get_provider_by_id_success() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -209,7 +246,12 @@ async fn test_get_provider_by_id_success() {
 #[tokio::test]
 async fn test_get_provider_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read"],
+    )
+    .await;
 
     let provider_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -225,7 +267,12 @@ async fn test_get_provider_not_found() {
 #[tokio::test]
 async fn test_create_provider_minimal() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Minimal Provider",
@@ -252,7 +299,12 @@ async fn test_create_provider_minimal() {
 #[tokio::test]
 async fn test_create_provider_with_all_fields() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Full Provider",
@@ -284,13 +336,25 @@ async fn test_create_provider_with_all_fields() {
     assert_eq!(body["api_key"], "sk-test123");
     assert_eq!(body["base_url"], "https://api.openai.com/v1");
     assert_eq!(body["proxy_settings"]["enabled"], true);
-    assert_eq!(body["proxy_settings"]["url"], "http://proxy.example.com:8080");
+    assert_eq!(
+        body["proxy_settings"]["url"],
+        "http://proxy.example.com:8080"
+    );
 }
 
 #[tokio::test]
 async fn test_update_provider_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create", "llm_providers::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -318,7 +382,16 @@ async fn test_update_provider_name() {
 #[tokio::test]
 async fn test_update_provider_enabled_and_api_key() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create", "llm_providers::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -347,7 +420,16 @@ async fn test_update_provider_enabled_and_api_key() {
 #[tokio::test]
 async fn test_update_provider_proxy_settings() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create", "llm_providers::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -372,13 +454,21 @@ async fn test_update_provider_proxy_settings() {
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["proxy_settings"]["enabled"], true);
-    assert_eq!(body["proxy_settings"]["url"], "http://newproxy.example.com:3128");
+    assert_eq!(
+        body["proxy_settings"]["url"],
+        "http://newproxy.example.com:3128"
+    );
 }
 
 #[tokio::test]
 async fn test_update_provider_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::edit"],
+    )
+    .await;
 
     let provider_id = Uuid::new_v4();
     let payload = json!({
@@ -399,7 +489,16 @@ async fn test_update_provider_not_found() {
 #[tokio::test]
 async fn test_delete_custom_provider() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create", "llm_providers::delete"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::delete",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -429,7 +528,12 @@ async fn test_delete_custom_provider() {
 #[tokio::test]
 async fn test_delete_built_in_provider_fails() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::delete"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "llm_providers::delete"],
+    )
+    .await;
 
     // Get a built-in provider (OpenAI)
     let response = reqwest::Client::new()
@@ -441,7 +545,8 @@ async fn test_delete_built_in_provider_fails() {
 
     let body: serde_json::Value = response.json().await.unwrap();
     let providers = body["providers"].as_array().unwrap();
-    let openai_provider = providers.iter()
+    let openai_provider = providers
+        .iter()
         .find(|p| p["name"] == "OpenAI")
         .expect("OpenAI built-in provider should exist");
     let provider_id = openai_provider["id"].as_str().unwrap();
@@ -460,7 +565,12 @@ async fn test_delete_built_in_provider_fails() {
 #[tokio::test]
 async fn test_delete_provider_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::delete"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::delete"],
+    )
+    .await;
 
     let provider_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -480,7 +590,12 @@ async fn test_delete_provider_not_found() {
 #[tokio::test]
 async fn test_create_provider_invalid_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Invalid Provider",
@@ -503,7 +618,12 @@ async fn test_create_provider_invalid_type() {
 #[tokio::test]
 async fn test_create_provider_empty_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "",
@@ -525,7 +645,12 @@ async fn test_create_provider_empty_name() {
 #[tokio::test]
 async fn test_create_provider_invalid_base_url() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Invalid URL Provider",
@@ -548,7 +673,12 @@ async fn test_create_provider_invalid_base_url() {
 #[tokio::test]
 async fn test_create_enabled_remote_provider_requires_api_key() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Enabled Without Key",
@@ -571,7 +701,12 @@ async fn test_create_enabled_remote_provider_requires_api_key() {
 #[tokio::test]
 async fn test_create_local_provider_no_api_key_required() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::create"],
+    )
+    .await;
 
     let payload = json!({
         "name": "Local Provider",
@@ -598,7 +733,16 @@ async fn test_create_local_provider_no_api_key_required() {
 #[tokio::test]
 async fn test_update_provider_empty_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create", "llm_providers::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -623,7 +767,16 @@ async fn test_update_provider_empty_name() {
 #[tokio::test]
 async fn test_update_provider_invalid_base_url() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create", "llm_providers::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -652,7 +805,12 @@ async fn test_update_provider_invalid_base_url() {
 #[tokio::test]
 async fn test_get_provider_groups() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "llm_providers::create"],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -675,12 +833,17 @@ async fn test_get_provider_groups() {
 #[tokio::test]
 async fn test_assign_provider_to_group() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
-        "llm_providers::read",
-        "llm_providers::create",
-        "llm_providers::assign_groups",
-        "groups::read"
-    ]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::assign_groups",
+            "groups::read",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -720,12 +883,17 @@ async fn test_assign_provider_to_group() {
 #[tokio::test]
 async fn test_assign_provider_to_group_idempotent() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
-        "llm_providers::read",
-        "llm_providers::create",
-        "llm_providers::assign_groups",
-        "groups::read"
-    ]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::assign_groups",
+            "groups::read",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -774,12 +942,17 @@ async fn test_assign_provider_to_group_idempotent() {
 #[tokio::test]
 async fn test_remove_provider_from_group() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
-        "llm_providers::read",
-        "llm_providers::create",
-        "llm_providers::assign_groups",
-        "groups::read"
-    ]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::assign_groups",
+            "groups::read",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -803,7 +976,10 @@ async fn test_remove_provider_from_group() {
 
     // Remove assignment
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-providers/{}/groups/{}", provider_id, admin_group_id)))
+        .delete(&server.api_url(&format!(
+            "/llm-providers/{}/groups/{}",
+            provider_id, admin_group_id
+        )))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -826,16 +1002,21 @@ async fn test_remove_provider_from_group() {
 #[tokio::test]
 async fn test_remove_provider_from_group_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
-        "llm_providers::assign_groups",
-        "groups::read"
-    ]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::assign_groups", "groups::read"],
+    )
+    .await;
 
     let provider_id = Uuid::new_v4();
     let group_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-providers/{}/groups/{}", provider_id, group_id)))
+        .delete(&server.api_url(&format!(
+            "/llm-providers/{}/groups/{}",
+            provider_id, group_id
+        )))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -851,10 +1032,12 @@ async fn test_remove_provider_from_group_not_found() {
 #[tokio::test]
 async fn test_get_group_providers() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
-        "llm_providers::read",
-        "groups::read"
-    ]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "groups::read"],
+    )
+    .await;
 
     // Get admin group
     let admin_group_id = get_admin_group_id(&server, &user.token).await;
@@ -876,12 +1059,17 @@ async fn test_get_group_providers() {
 #[tokio::test]
 async fn test_update_group_providers_bulk() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
-        "llm_providers::read",
-        "llm_providers::create",
-        "llm_providers::assign_groups",
-        "groups::read"
-    ]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::assign_groups",
+            "groups::read",
+        ],
+    )
+    .await;
 
     // Create multiple providers
     let provider1 = create_test_provider(&server, &user.token).await;
@@ -931,7 +1119,8 @@ async fn test_update_group_providers_bulk() {
     assert_eq!(providers.len(), 2);
 
     // Verify correct providers are assigned
-    let provider_ids: Vec<String> = providers.iter()
+    let provider_ids: Vec<String> = providers
+        .iter()
         .map(|p| p["id"].as_str().unwrap().to_string())
         .collect();
     assert!(provider_ids.contains(&provider_id2.to_string()));
@@ -942,12 +1131,17 @@ async fn test_update_group_providers_bulk() {
 #[tokio::test]
 async fn test_update_group_providers_empty_list() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
-        "llm_providers::read",
-        "llm_providers::create",
-        "llm_providers::assign_groups",
-        "groups::read"
-    ]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::assign_groups",
+            "groups::read",
+        ],
+    )
+    .await;
 
     // Create a provider
     let provider = create_test_provider(&server, &user.token).await;
@@ -990,10 +1184,12 @@ async fn test_update_group_providers_empty_list() {
 #[tokio::test]
 async fn test_update_group_providers_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[
-        "llm_providers::read",
-        "groups::read"
-    ]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "groups::read"],
+    )
+    .await;
 
     // Get admin group
     let admin_group_id = get_admin_group_id(&server, &user.token).await;
@@ -1016,7 +1212,8 @@ async fn test_update_group_providers_requires_permission() {
 #[tokio::test]
 async fn test_get_group_providers_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let group_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -1036,7 +1233,12 @@ async fn test_get_group_providers_requires_permission() {
 #[tokio::test]
 async fn test_built_in_providers_exist() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read"],
+    )
+    .await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/llm-providers?per_page=100"))
@@ -1049,10 +1251,20 @@ async fn test_built_in_providers_exist() {
     let providers = body["providers"].as_array().unwrap();
 
     // Check for built-in providers
-    let expected_providers = vec!["OpenAI", "Anthropic", "Groq", "Google Gemini", "Mistral AI", "DeepSeek", "Local"];
+    let expected_providers = vec![
+        "OpenAI",
+        "Anthropic",
+        "Groq",
+        "Google Gemini",
+        "Mistral AI",
+        "DeepSeek",
+        "Local",
+    ];
     for expected in expected_providers {
         assert!(
-            providers.iter().any(|p| p["name"] == expected && p["built_in"] == true),
+            providers
+                .iter()
+                .any(|p| p["name"] == expected && p["built_in"] == true),
             "Built-in provider '{}' should exist",
             expected
         );
@@ -1062,7 +1274,12 @@ async fn test_built_in_providers_exist() {
 #[tokio::test]
 async fn test_update_built_in_provider() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_providers::read", "llm_providers::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_providers::read", "llm_providers::edit"],
+    )
+    .await;
 
     // Get OpenAI built-in provider
     let response = reqwest::Client::new()
@@ -1074,7 +1291,8 @@ async fn test_update_built_in_provider() {
 
     let body: serde_json::Value = response.json().await.unwrap();
     let providers = body["providers"].as_array().unwrap();
-    let openai = providers.iter()
+    let openai = providers
+        .iter()
         .find(|p| p["name"] == "OpenAI")
         .expect("OpenAI provider should exist");
     let provider_id = openai["id"].as_str().unwrap();
@@ -1104,7 +1322,10 @@ async fn test_update_built_in_provider() {
 // Helper Functions
 // =====================================================
 
-async fn create_test_provider(server: &crate::common::TestServer, token: &str) -> serde_json::Value {
+async fn create_test_provider(
+    server: &crate::common::TestServer,
+    token: &str,
+) -> serde_json::Value {
     let payload = json!({
         "name": "Test Provider",
         "provider_type": "openai",
@@ -1134,7 +1355,8 @@ async fn get_admin_group_id(server: &crate::common::TestServer, token: &str) -> 
 
     let body: serde_json::Value = response.json().await.unwrap();
     let groups = body["groups"].as_array().unwrap();
-    let admin_group = groups.iter()
+    let admin_group = groups
+        .iter()
         .find(|g| g["name"] == "Administrators")
         .expect("Administrators group should exist");
 

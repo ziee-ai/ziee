@@ -1,7 +1,7 @@
 use testcontainers::{
+    ContainerAsync, GenericImage,
     core::{ContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ContainerAsync,
 };
 
 /// LDAP mock server using rroemhild/test-openldap
@@ -95,7 +95,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_ldap_mock_server_starts() {
-        let server = LdapMockServer::start().await.expect("Failed to start LDAP mock server");
+        let server = LdapMockServer::start()
+            .await
+            .expect("Failed to start LDAP mock server");
 
         // Verify we can connect and bind
         let (conn, mut ldap) = LdapConnAsync::new(&server.ldap_url())
@@ -114,7 +116,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_ldap_mock_server_has_test_users() {
-        let server = LdapMockServer::start().await.expect("Failed to start LDAP mock server");
+        let server = LdapMockServer::start()
+            .await
+            .expect("Failed to start LDAP mock server");
 
         let (conn, mut ldap) = LdapConnAsync::new(&server.ldap_url())
             .await
@@ -133,7 +137,12 @@ mod tests {
         let search_base = format!("ou=people,{}", server.base_dn);
 
         let (results, _res) = ldap
-            .search(&search_base, Scope::Subtree, &filter, vec!["uid", "cn", "mail"])
+            .search(
+                &search_base,
+                Scope::Subtree,
+                &filter,
+                vec!["uid", "cn", "mail"],
+            )
             .await
             .expect("Search failed")
             .success()

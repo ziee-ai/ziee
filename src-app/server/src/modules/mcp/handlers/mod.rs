@@ -1,9 +1,9 @@
 // MCP handlers module
 // Organizes all handler functions for MCP server operations
 
-pub mod user;
-pub mod system;
 pub mod groups;
+pub mod system;
+pub mod user;
 
 // Re-export user handlers
 pub use user::*;

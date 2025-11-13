@@ -1,9 +1,9 @@
 // Assistant repository - copied from ziee-chat-ref and adapted for ziee-chat
 // Source: ziee-chat-ref/src-tauri/src/database/queries/assistants.rs
 
+use chrono::DateTime;
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::DateTime;
 
 use super::models::Assistant;
 use super::types::{AssistantListResponse, CreateAssistantRequest, UpdateAssistantRequest};
@@ -19,11 +19,21 @@ impl AssistantRepository {
         Self { pool }
     }
 
-    pub async fn create(&self, user_id: Option<Uuid>, request: CreateAssistantRequest) -> Result<Assistant, AppError> {
+    pub async fn create(
+        &self,
+        user_id: Option<Uuid>,
+        request: CreateAssistantRequest,
+    ) -> Result<Assistant, AppError> {
         create_assistant(&self.pool, user_id, request).await
     }
 
-    pub async fn list(&self, user_id: Option<Uuid>, is_template: bool, page: i64, limit: i64) -> Result<AssistantListResponse, AppError> {
+    pub async fn list(
+        &self,
+        user_id: Option<Uuid>,
+        is_template: bool,
+        page: i64,
+        limit: i64,
+    ) -> Result<AssistantListResponse, AppError> {
         list_assistants(&self.pool, user_id, is_template, page, limit).await
     }
 
@@ -31,7 +41,11 @@ impl AssistantRepository {
         get_assistant(&self.pool, id).await
     }
 
-    pub async fn update(&self, id: Uuid, request: UpdateAssistantRequest) -> Result<Assistant, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        request: UpdateAssistantRequest,
+    ) -> Result<Assistant, AppError> {
         update_assistant(&self.pool, id, request).await
     }
 
@@ -162,19 +176,21 @@ pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>,
     .await
     .map_err(AppError::database_error)?;
 
-    Ok(row.map(|r| row_to_assistant(
-        r.id,
-        r.name,
-        r.description,
-        r.instructions,
-        r.parameters,
-        r.created_by,
-        r.is_template,
-        r.is_default,
-        r.enabled,
-        r.created_at,
-        r.updated_at,
-    )))
+    Ok(row.map(|r| {
+        row_to_assistant(
+            r.id,
+            r.name,
+            r.description,
+            r.instructions,
+            r.parameters,
+            r.created_by,
+            r.is_template,
+            r.is_default,
+            r.enabled,
+            r.created_at,
+            r.updated_at,
+        )
+    }))
 }
 
 /// List assistants with pagination and filtering
@@ -217,11 +233,24 @@ pub async fn list_assistants(
 
         let total = rows.first().map(|r| r.total_count).unwrap_or(0);
 
-        let assistants = rows.into_iter().map(|r| row_to_assistant(
-            r.id, r.name, r.description, r.instructions, r.parameters,
-            r.created_by, r.is_template, r.is_default, r.enabled,
-            r.created_at, r.updated_at
-        )).collect();
+        let assistants = rows
+            .into_iter()
+            .map(|r| {
+                row_to_assistant(
+                    r.id,
+                    r.name,
+                    r.description,
+                    r.instructions,
+                    r.parameters,
+                    r.created_by,
+                    r.is_template,
+                    r.is_default,
+                    r.enabled,
+                    r.created_at,
+                    r.updated_at,
+                )
+            })
+            .collect();
 
         Ok(AssistantListResponse { assistants, total })
     } else {
@@ -247,16 +276,32 @@ pub async fn list_assistants(
 
             let total = rows.first().map(|r| r.total_count).unwrap_or(0);
 
-            let assistants = rows.into_iter().map(|r| row_to_assistant(
-                r.id, r.name, r.description, r.instructions, r.parameters,
-                r.created_by, r.is_template, r.is_default, r.enabled,
-                r.created_at, r.updated_at
-            )).collect();
+            let assistants = rows
+                .into_iter()
+                .map(|r| {
+                    row_to_assistant(
+                        r.id,
+                        r.name,
+                        r.description,
+                        r.instructions,
+                        r.parameters,
+                        r.created_by,
+                        r.is_template,
+                        r.is_default,
+                        r.enabled,
+                        r.created_at,
+                        r.updated_at,
+                    )
+                })
+                .collect();
 
             Ok(AssistantListResponse { assistants, total })
         } else {
             // No user_id provided but filtering for user assistants - return empty
-            Ok(AssistantListResponse { assistants: vec![], total: 0 })
+            Ok(AssistantListResponse {
+                assistants: vec![],
+                total: 0,
+            })
         }
     }
 }
@@ -271,7 +316,8 @@ pub async fn update_assistant(
 ) -> Result<Assistant, AppError> {
     // Check if there are any updates
     if !request.has_updates() {
-        return get_assistant(pool, id).await?
+        return get_assistant(pool, id)
+            .await?
             .ok_or_else(|| AppError::not_found("Assistant"));
     }
 
@@ -290,9 +336,17 @@ pub async fn update_assistant(
     .ok_or_else(|| AppError::not_found("Assistant"))?;
 
     let current = row_to_assistant(
-        row.id, row.name, row.description, row.instructions, row.parameters,
-        row.created_by, row.is_template, row.is_default, row.enabled,
-        row.created_at, row.updated_at
+        row.id,
+        row.name,
+        row.description,
+        row.instructions,
+        row.parameters,
+        row.created_by,
+        row.is_template,
+        row.is_default,
+        row.enabled,
+        row.created_at,
+        row.updated_at,
     );
 
     // If this assistant is being set as default, unset all other defaults for the same context
@@ -397,9 +451,17 @@ pub async fn update_assistant(
     .map_err(AppError::database_error)?;
 
     let assistant = row_to_assistant(
-        row.id, row.name, row.description, row.instructions, row.parameters,
-        row.created_by, row.is_template, row.is_default, row.enabled,
-        row.created_at, row.updated_at
+        row.id,
+        row.name,
+        row.description,
+        row.instructions,
+        row.parameters,
+        row.created_by,
+        row.is_template,
+        row.is_default,
+        row.enabled,
+        row.created_at,
+        row.updated_at,
     );
 
     // Commit the transaction
@@ -426,7 +488,10 @@ pub async fn delete_assistant(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
 /// Get default assistant for a given context
 /// - user_id = None: Get default template assistant
 /// - user_id = Some(id): Get user's default assistant (user assistant or template if no user default)
-pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Result<Option<Assistant>, AppError> {
+pub async fn get_default_assistant(
+    pool: &PgPool,
+    user_id: Option<Uuid>,
+) -> Result<Option<Assistant>, AppError> {
     if let Some(uid) = user_id {
         // Try to get user's default assistant first
         let user_default_row = sqlx::query!(
@@ -443,9 +508,17 @@ pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Resu
 
         if let Some(r) = user_default_row {
             return Ok(Some(row_to_assistant(
-                r.id, r.name, r.description, r.instructions, r.parameters,
-                r.created_by, r.is_template, r.is_default, r.enabled,
-                r.created_at, r.updated_at
+                r.id,
+                r.name,
+                r.description,
+                r.instructions,
+                r.parameters,
+                r.created_by,
+                r.is_template,
+                r.is_default,
+                r.enabled,
+                r.created_at,
+                r.updated_at,
             )));
         }
 
@@ -461,11 +534,21 @@ pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Resu
         .await
         .map_err(AppError::database_error)?;
 
-        Ok(template_default_row.map(|r| row_to_assistant(
-            r.id, r.name, r.description, r.instructions, r.parameters,
-            r.created_by, r.is_template, r.is_default, r.enabled,
-            r.created_at, r.updated_at
-        )))
+        Ok(template_default_row.map(|r| {
+            row_to_assistant(
+                r.id,
+                r.name,
+                r.description,
+                r.instructions,
+                r.parameters,
+                r.created_by,
+                r.is_template,
+                r.is_default,
+                r.enabled,
+                r.created_at,
+                r.updated_at,
+            )
+        }))
     } else {
         // No user context - return default template
         let template_default_row = sqlx::query!(
@@ -479,11 +562,20 @@ pub async fn get_default_assistant(pool: &PgPool, user_id: Option<Uuid>) -> Resu
         .await
         .map_err(AppError::database_error)?;
 
-        Ok(template_default_row.map(|r| row_to_assistant(
-            r.id, r.name, r.description, r.instructions, r.parameters,
-            r.created_by, r.is_template, r.is_default, r.enabled,
-            r.created_at, r.updated_at
-        )))
+        Ok(template_default_row.map(|r| {
+            row_to_assistant(
+                r.id,
+                r.name,
+                r.description,
+                r.instructions,
+                r.parameters,
+                r.created_by,
+                r.is_template,
+                r.is_default,
+                r.enabled,
+                r.created_at,
+                r.updated_at,
+            )
+        }))
     }
 }
-

@@ -6,8 +6,8 @@ mod download_test;
 mod storage_test;
 mod upload_test;
 
-use serde_json::json;
 use reqwest::StatusCode;
+use serde_json::json;
 use uuid::Uuid;
 
 // =====================================================
@@ -17,7 +17,8 @@ use uuid::Uuid;
 #[tokio::test]
 async fn test_list_models_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/llm-models"))
@@ -32,7 +33,12 @@ async fn test_list_models_requires_read_permission() {
 #[tokio::test]
 async fn test_list_models_with_read_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::read"],
+    )
+    .await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/llm-models"))
@@ -51,7 +57,8 @@ async fn test_list_models_with_read_permission() {
 #[tokio::test]
 async fn test_get_model_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -67,7 +74,12 @@ async fn test_get_model_requires_read_permission() {
 #[tokio::test]
 async fn test_create_model_requires_create_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::read", "llm_providers::read"],
+    )
+    .await;
 
     // Get a provider first
     let provider = get_first_provider(&server, &user.token).await;
@@ -94,7 +106,16 @@ async fn test_create_model_requires_create_permission() {
 #[tokio::test]
 async fn test_update_model_requires_edit_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model first
     let model = create_test_model(&server, &user.token).await;
@@ -118,7 +139,16 @@ async fn test_update_model_requires_edit_permission() {
 #[tokio::test]
 async fn test_delete_model_requires_delete_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model first
     let model = create_test_model(&server, &user.token).await;
@@ -137,7 +167,16 @@ async fn test_delete_model_requires_delete_permission() {
 #[tokio::test]
 async fn test_enable_model_requires_edit_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model first
     let model = create_test_model(&server, &user.token).await;
@@ -156,7 +195,16 @@ async fn test_enable_model_requires_edit_permission() {
 #[tokio::test]
 async fn test_disable_model_requires_edit_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model first
     let model = create_test_model(&server, &user.token).await;
@@ -179,7 +227,12 @@ async fn test_disable_model_requires_edit_permission() {
 #[tokio::test]
 async fn test_list_models_with_pagination() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::read"],
+    )
+    .await;
 
     // Test default pagination
     let response = reqwest::Client::new()
@@ -214,7 +267,16 @@ async fn test_list_models_with_pagination() {
 #[tokio::test]
 async fn test_list_models_with_provider_filter() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Get a provider
     let provider = get_first_provider(&server, &user.token).await;
@@ -243,7 +305,16 @@ async fn test_list_models_with_provider_filter() {
 #[tokio::test]
 async fn test_get_model_by_id_success() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model
     let model = create_test_model(&server, &user.token).await;
@@ -267,7 +338,12 @@ async fn test_get_model_by_id_success() {
 #[tokio::test]
 async fn test_get_model_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::read"],
+    )
+    .await;
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -283,7 +359,12 @@ async fn test_get_model_not_found() {
 #[tokio::test]
 async fn test_create_model_minimal() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -315,7 +396,12 @@ async fn test_create_model_minimal() {
 #[tokio::test]
 async fn test_create_model_with_all_fields() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -355,7 +441,17 @@ async fn test_create_model_with_all_fields() {
 #[tokio::test]
 async fn test_update_model_display_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model
     let model = create_test_model(&server, &user.token).await;
@@ -383,7 +479,17 @@ async fn test_update_model_display_name() {
 #[tokio::test]
 async fn test_update_model_enabled_and_description() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model
     let model = create_test_model(&server, &user.token).await;
@@ -412,7 +518,17 @@ async fn test_update_model_enabled_and_description() {
 #[tokio::test]
 async fn test_update_model_engine_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model
     let model = create_test_model(&server, &user.token).await;
@@ -439,7 +555,12 @@ async fn test_update_model_engine_type() {
 #[tokio::test]
 async fn test_update_model_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::edit"],
+    )
+    .await;
 
     let model_id = Uuid::new_v4();
     let payload = json!({
@@ -460,7 +581,17 @@ async fn test_update_model_not_found() {
 #[tokio::test]
 async fn test_delete_model() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::delete", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::delete",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model
     let model = create_test_model(&server, &user.token).await;
@@ -490,7 +621,12 @@ async fn test_delete_model() {
 #[tokio::test]
 async fn test_delete_model_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::delete"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::delete"],
+    )
+    .await;
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -506,7 +642,17 @@ async fn test_delete_model_not_found() {
 #[tokio::test]
 async fn test_enable_model() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model (disabled by default in test helper)
     let model = create_test_model(&server, &user.token).await;
@@ -528,7 +674,17 @@ async fn test_enable_model() {
 #[tokio::test]
 async fn test_disable_model() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model and enable it
     let model = create_test_model(&server, &user.token).await;
@@ -558,7 +714,12 @@ async fn test_disable_model() {
 #[tokio::test]
 async fn test_enable_model_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::edit"],
+    )
+    .await;
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -574,7 +735,12 @@ async fn test_enable_model_not_found() {
 #[tokio::test]
 async fn test_disable_model_not_found() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::edit"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::edit"],
+    )
+    .await;
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
@@ -594,7 +760,12 @@ async fn test_disable_model_not_found() {
 #[tokio::test]
 async fn test_create_model_empty_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -620,7 +791,12 @@ async fn test_create_model_empty_name() {
 #[tokio::test]
 async fn test_create_model_empty_display_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -646,7 +822,12 @@ async fn test_create_model_empty_display_name() {
 #[tokio::test]
 async fn test_create_model_name_too_long() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -674,7 +855,12 @@ async fn test_create_model_name_too_long() {
 #[tokio::test]
 async fn test_create_model_display_name_too_long() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -702,7 +888,17 @@ async fn test_create_model_display_name_too_long() {
 #[tokio::test]
 async fn test_update_model_empty_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model
     let model = create_test_model(&server, &user.token).await;
@@ -727,7 +923,17 @@ async fn test_update_model_empty_name() {
 #[tokio::test]
 async fn test_update_model_empty_display_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     // Create a model
     let model = create_test_model(&server, &user.token).await;
@@ -752,7 +958,12 @@ async fn test_update_model_empty_display_name() {
 #[tokio::test]
 async fn test_create_model_invalid_provider() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create"],
+    )
+    .await;
 
     let invalid_provider_id = Uuid::new_v4();
 
@@ -783,7 +994,12 @@ async fn test_create_model_invalid_provider() {
 #[tokio::test]
 async fn test_create_model_missing_provider_id() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let payload = json!({
         "name": "test-model",
@@ -806,7 +1022,12 @@ async fn test_create_model_missing_provider_id() {
 #[tokio::test]
 async fn test_create_model_missing_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -831,7 +1052,12 @@ async fn test_create_model_missing_name() {
 #[tokio::test]
 async fn test_create_model_missing_display_name() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -856,7 +1082,12 @@ async fn test_create_model_missing_display_name() {
 #[tokio::test]
 async fn test_create_model_missing_engine_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -881,7 +1112,12 @@ async fn test_create_model_missing_engine_type() {
 #[tokio::test]
 async fn test_create_model_missing_file_format() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -910,7 +1146,12 @@ async fn test_create_model_missing_file_format() {
 #[tokio::test]
 async fn test_create_model_provider_id_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let payload = json!({
         "provider_id": 12345, // Should be UUID string
@@ -934,7 +1175,12 @@ async fn test_create_model_provider_id_wrong_type() {
 #[tokio::test]
 async fn test_create_model_name_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -960,7 +1206,12 @@ async fn test_create_model_name_wrong_type() {
 #[tokio::test]
 async fn test_create_model_display_name_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -986,7 +1237,12 @@ async fn test_create_model_display_name_wrong_type() {
 #[tokio::test]
 async fn test_create_model_enabled_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -1013,7 +1269,12 @@ async fn test_create_model_enabled_wrong_type() {
 #[tokio::test]
 async fn test_create_model_description_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -1040,7 +1301,12 @@ async fn test_create_model_description_wrong_type() {
 #[tokio::test]
 async fn test_create_model_capabilities_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -1067,7 +1333,12 @@ async fn test_create_model_capabilities_wrong_type() {
 #[tokio::test]
 async fn test_create_model_parameters_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -1094,7 +1365,12 @@ async fn test_create_model_parameters_wrong_type() {
 #[tokio::test]
 async fn test_create_model_engine_settings_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -1125,7 +1401,12 @@ async fn test_create_model_engine_settings_wrong_type() {
 #[tokio::test]
 async fn test_create_model_invalid_engine_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -1151,7 +1432,12 @@ async fn test_create_model_invalid_engine_type() {
 #[tokio::test]
 async fn test_create_model_invalid_file_format() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::create", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["llm_models::create", "llm_providers::read"],
+    )
+    .await;
 
     let provider = get_first_provider(&server, &user.token).await;
 
@@ -1181,7 +1467,17 @@ async fn test_create_model_invalid_file_format() {
 #[tokio::test]
 async fn test_update_model_name_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1204,7 +1500,17 @@ async fn test_update_model_name_wrong_type() {
 #[tokio::test]
 async fn test_update_model_display_name_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1227,7 +1533,17 @@ async fn test_update_model_display_name_wrong_type() {
 #[tokio::test]
 async fn test_update_model_enabled_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1250,7 +1566,17 @@ async fn test_update_model_enabled_wrong_type() {
 #[tokio::test]
 async fn test_update_model_description_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1273,7 +1599,17 @@ async fn test_update_model_description_wrong_type() {
 #[tokio::test]
 async fn test_update_model_invalid_engine_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1296,7 +1632,17 @@ async fn test_update_model_invalid_engine_type() {
 #[tokio::test]
 async fn test_update_model_invalid_file_format() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1319,7 +1665,17 @@ async fn test_update_model_invalid_file_format() {
 #[tokio::test]
 async fn test_update_model_capabilities_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1342,7 +1698,17 @@ async fn test_update_model_capabilities_wrong_type() {
 #[tokio::test]
 async fn test_update_model_parameters_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1365,7 +1731,17 @@ async fn test_update_model_parameters_wrong_type() {
 #[tokio::test]
 async fn test_update_model_engine_settings_wrong_type() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &["llm_models::read", "llm_models::create", "llm_models::edit", "llm_providers::read"]).await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_models::edit",
+            "llm_providers::read",
+        ],
+    )
+    .await;
 
     let model = create_test_model(&server, &user.token).await;
     let model_id = model["id"].as_str().unwrap();
@@ -1425,7 +1801,10 @@ async fn get_first_provider(server: &crate::common::TestServer, token: &str) -> 
 
     let body: serde_json::Value = response.json().await.unwrap();
     let providers = body["providers"].as_array().unwrap();
-    assert!(!providers.is_empty(), "No providers found - tests need at least one provider");
+    assert!(
+        !providers.is_empty(),
+        "No providers found - tests need at least one provider"
+    );
 
     providers[0].clone()
 }

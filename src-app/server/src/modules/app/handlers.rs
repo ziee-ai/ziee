@@ -1,14 +1,13 @@
 use aide::transform::TransformOperation;
-use axum::{http::StatusCode, Extension, Json};
 use axum::debug_handler;
+use axum::{Extension, Json, http::StatusCode};
 use std::sync::Arc;
 
 use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
-use crate::modules::auth::{JwtService, password, AuthResponse};
-use crate::modules::user::UserRepository;
+use crate::modules::auth::{AuthResponse, JwtService, password};
 
-use super::types::{SetupStatusResponse, SetupAdminRequest};
+use super::types::{SetupAdminRequest, SetupStatusResponse};
 use super::utils::validate_setup_request;
 
 // =====================================================
@@ -18,20 +17,21 @@ use super::utils::validate_setup_request;
 /// GET /api/app/setup/status
 /// Check if initial admin setup is required
 #[debug_handler]
-pub async fn get_setup_status(
-    
-) -> ApiResult<Json<SetupStatusResponse>> {
-    let user_repo = UserRepository::new(Repos.pool().clone());
-    let has_admin = user_repo
+pub async fn get_setup_status() -> ApiResult<Json<SetupStatusResponse>> {
+    let has_admin = Repos
+        .user
         .has_admin()
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    Ok((StatusCode::OK, Json(SetupStatusResponse {
-        needs_setup: !has_admin,
-        app_name: "Ziee Chat".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    })))
+    Ok((
+        StatusCode::OK,
+        Json(SetupStatusResponse {
+            needs_setup: !has_admin,
+            app_name: "Ziee Chat".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        }),
+    ))
 }
 
 /// Documentation for get_setup_status endpoint
@@ -46,13 +46,12 @@ pub fn get_setup_status_docs(op: TransformOperation) -> TransformOperation {
 /// Create the first administrator account
 #[debug_handler]
 pub async fn setup_admin(
-    
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Json(req): Json<SetupAdminRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
     // Check if admin already exists
-    let user_repo = UserRepository::new(Repos.pool().clone());
-    let has_admin = user_repo
+    let has_admin = Repos
+        .user
         .has_admin()
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -60,7 +59,7 @@ pub async fn setup_admin(
     if has_admin {
         return Err((
             StatusCode::FORBIDDEN,
-            AppError::forbidden("SETUP_ALREADY_COMPLETE", "Admin user already exists")
+            AppError::forbidden("SETUP_ALREADY_COMPLETE", "Admin user already exists"),
         ));
     }
 
@@ -68,11 +67,16 @@ pub async fn setup_admin(
     validate_setup_request(&req)?;
 
     // Hash password
-    let password_hash = password::hash_password(&req.password)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::internal_error(format!("Failed to hash password: {}", e))))?;
+    let password_hash = password::hash_password(&req.password).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(format!("Failed to hash password: {}", e)),
+        )
+    })?;
 
     // Create admin user with group assignments via repository (handles transaction)
-    let user = Repos.app
+    let user = Repos
+        .app
         .create_admin_user(&req.username, &req.email, &password_hash, req.display_name)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;

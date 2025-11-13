@@ -1,13 +1,8 @@
 // LLM Model file upload and download handlers
 // Adapted from react-test/src-tauri/src/api/model_uploads.rs for ziee-chat
 
-use axum::{
-    debug_handler,
-    extract::Multipart,
-    http::StatusCode,
-    response::Json,
-};
 use crate::core::Repos;
+use axum::{debug_handler, extract::Multipart, http::StatusCode, response::Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -20,9 +15,8 @@ use crate::utils::git::{GitError, GitPhase, GitProgress, GitService};
 
 use super::super::{
     models::{
-        DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData,
-        DownloadStatus, EngineType, FileFormat, LlmModel, ModelCapabilities, ModelEngineSettings,
-        ModelParameters,
+        DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData, DownloadStatus,
+        EngineType, FileFormat, LlmModel, ModelCapabilities, ModelEngineSettings, ModelParameters,
     },
     permissions::*,
     repository,
@@ -144,10 +138,11 @@ async fn create_model_with_files(
         .map_err(|e| AppError::internal_error(&format!("Failed to initialize storage: {}", e)))?;
 
     // Validate provider exists and is of type 'local'
-    let provider = crate::modules::llm_provider::repository::get_llm_provider_by_id(pool, request.provider_id)
-        .await
-        .map_err(|e| AppError::internal_error(&e.to_string()))?
-        .ok_or_else(|| AppError::bad_request("NOT_FOUND", "Provider not found"))?;
+    let provider =
+        crate::modules::llm_provider::repository::get_llm_provider_by_id(pool, request.provider_id)
+            .await
+            .map_err(|e| AppError::internal_error(&e.to_string()))?
+            .ok_or_else(|| AppError::bad_request("NOT_FOUND", "Provider not found"))?;
 
     if provider.provider_type.as_str() != "local" {
         return Err(AppError::bad_request(
@@ -160,7 +155,10 @@ async fn create_model_with_files(
     let model_id = Uuid::new_v4();
     let model_name = request.name.clone();
 
-    tracing::info!("Processing model with file format: {}", request.file_format.as_str());
+    tracing::info!(
+        "Processing model with file format: {}",
+        request.file_format.as_str()
+    );
 
     // Create storage directory
     storage
@@ -170,7 +168,10 @@ async fn create_model_with_files(
             AppError::internal_error(&format!("Failed to create storage directory: {}", e))
         })?;
 
-    tracing::debug!("Source directory for model files: {}", request.source_dir.display());
+    tracing::debug!(
+        "Source directory for model files: {}",
+        request.source_dir.display()
+    );
 
     // List all files in the source directory
     let source_files = match tokio::fs::read_dir(&request.source_dir).await {
@@ -201,7 +202,10 @@ async fn create_model_with_files(
     };
 
     if source_files.is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "No files found in source directory"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "No files found in source directory",
+        ));
     }
 
     // Determine which files to copy based on main filename and index files
@@ -213,11 +217,15 @@ async fn create_model_with_files(
             &format!(
                 "No relevant files found for main filename: {}",
                 request.main_filename
-            )
+            ),
         ));
     }
 
-    tracing::info!("Found {} files to copy: {:?}", files_to_copy.len(), files_to_copy);
+    tracing::info!(
+        "Found {} files to copy: {:?}",
+        files_to_copy.len(),
+        files_to_copy
+    );
 
     // Copy the necessary files to the model directory and collect file info
     let mut total_size = 0u64;
@@ -260,7 +268,9 @@ async fn create_model_with_files(
 
         tracing::debug!(
             "Copied file: {} -> {} ({} bytes)",
-            filename, relative_path, file_size
+            filename,
+            relative_path,
+            file_size
         );
     }
 
@@ -305,12 +315,14 @@ async fn create_model_with_files(
     let new_dir = storage.get_model_path(&request.provider_id, &model_db.id);
 
     if old_dir != new_dir {
-        tokio::fs::rename(&old_dir, &new_dir)
-            .await
-            .map_err(|e| {
-                AppError::internal_error(&format!("Failed to rename model directory: {}", e))
-            })?;
-        tracing::debug!("Renamed model directory from {} to {}", old_dir.display(), new_dir.display());
+        tokio::fs::rename(&old_dir, &new_dir).await.map_err(|e| {
+            AppError::internal_error(&format!("Failed to rename model directory: {}", e))
+        })?;
+        tracing::debug!(
+            "Renamed model directory from {} to {}",
+            old_dir.display(),
+            new_dir.display()
+        );
     }
 
     // Create all file records in the database
@@ -325,7 +337,8 @@ async fn create_model_with_files(
 
     tracing::info!(
         "Model created successfully: {} files, {} total size",
-        file_count, total_size
+        file_count,
+        total_size
     );
 
     Ok(model)
@@ -446,7 +459,7 @@ fn determine_files_to_copy(
                 } else {
                     main_filename
                 }
-            )
+            ),
         ));
     }
 
@@ -504,12 +517,9 @@ pub struct DownloadFromRepositoryRequest {
 #[debug_handler]
 pub async fn upload_multiple_files_and_commit(
     _auth: RequirePermissions<(LlmModelsCreate,)>,
-    
+
     mut multipart: Multipart,
 ) -> ApiResult<Json<LlmModel>> {
-    // Create repository instances
-    let model_repo = repository::LlmModelRepository::new(Repos.pool().clone());
-
     let storage = ModelStorage::new().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -535,7 +545,10 @@ pub async fn upload_multiple_files_and_commit(
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            AppError::bad_request("INVALID_INPUT", &format!("Failed to read multipart field: {}", e)),
+            AppError::bad_request(
+                "INVALID_INPUT",
+                &format!("Failed to read multipart field: {}", e),
+            ),
         )
     })? {
         let field_name = field.name().unwrap_or("").to_string();
@@ -552,7 +565,10 @@ pub async fn upload_multiple_files_and_commit(
                     let data = field.bytes().await.map_err(|e| {
                         (
                             StatusCode::BAD_REQUEST,
-                            AppError::bad_request("INVALID_INPUT", &format!("Failed to read file data: {}", e)),
+                            AppError::bad_request(
+                                "INVALID_INPUT",
+                                &format!("Failed to read file data: {}", e),
+                            ),
                         )
                     })?;
 
@@ -563,7 +579,10 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read main_filename: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read main_filename: {}", e),
+                        ),
                     )
                 })?;
                 main_filename = Some(value);
@@ -572,13 +591,19 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read provider_id: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read provider_id: {}", e),
+                        ),
                     )
                 })?;
                 provider_id = Some(Uuid::parse_str(&value).map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Invalid provider_id format: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Invalid provider_id format: {}", e),
+                        ),
                     )
                 })?);
             }
@@ -586,7 +611,10 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read name: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read name: {}", e),
+                        ),
                     )
                 })?;
                 name = Some(value);
@@ -595,7 +623,10 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read display_name: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read display_name: {}", e),
+                        ),
                     )
                 })?;
                 display_name = Some(value);
@@ -604,7 +635,10 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read description: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read description: {}", e),
+                        ),
                     )
                 })?;
                 description = if value.is_empty() { None } else { Some(value) };
@@ -613,7 +647,10 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read file_format: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read file_format: {}", e),
+                        ),
                     )
                 })?;
                 file_format = Some(value);
@@ -622,14 +659,20 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read capabilities: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read capabilities: {}", e),
+                        ),
                     )
                 })?;
                 if !value.is_empty() {
                     capabilities = serde_json::from_str(&value).map_err(|e| {
                         (
                             StatusCode::BAD_REQUEST,
-                            AppError::bad_request("INVALID_INPUT", &format!("Invalid capabilities JSON: {}", e)),
+                            AppError::bad_request(
+                                "INVALID_INPUT",
+                                &format!("Invalid capabilities JSON: {}", e),
+                            ),
                         )
                     })?;
                 }
@@ -638,14 +681,20 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read engine_type: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read engine_type: {}", e),
+                        ),
                     )
                 })?;
                 if !value.is_empty() {
                     engine_type = Some(EngineType::from_str(&value).ok_or_else(|| {
                         (
                             StatusCode::BAD_REQUEST,
-                            AppError::bad_request("INVALID_INPUT", &format!("Invalid engine_type: {}", value)),
+                            AppError::bad_request(
+                                "INVALID_INPUT",
+                                &format!("Invalid engine_type: {}", value),
+                            ),
                         )
                     })?);
                 }
@@ -654,14 +703,20 @@ pub async fn upload_multiple_files_and_commit(
                 let value = field.text().await.map_err(|e| {
                     (
                         StatusCode::BAD_REQUEST,
-                        AppError::bad_request("INVALID_INPUT", &format!("Failed to read engine_settings: {}", e)),
+                        AppError::bad_request(
+                            "INVALID_INPUT",
+                            &format!("Failed to read engine_settings: {}", e),
+                        ),
                     )
                 })?;
                 if !value.is_empty() {
                     engine_settings = Some(serde_json::from_str(&value).map_err(|e| {
                         (
                             StatusCode::BAD_REQUEST,
-                            AppError::bad_request("INVALID_INPUT", &format!("Invalid engine_settings JSON: {}", e)),
+                            AppError::bad_request(
+                                "INVALID_INPUT",
+                                &format!("Invalid engine_settings JSON: {}", e),
+                            ),
                         )
                     })?)
                 }
@@ -673,7 +728,12 @@ pub async fn upload_multiple_files_and_commit(
         }
     }
 
-    tracing::info!("Finished parsing multipart fields. Files: {}, provider_id: {:?}, name: {:?}", uploaded_files.len(), provider_id, name);
+    tracing::info!(
+        "Finished parsing multipart fields. Files: {}, provider_id: {:?}, name: {:?}",
+        uploaded_files.len(),
+        provider_id,
+        name
+    );
 
     // Validate required fields
     tracing::info!("Starting field validation");
@@ -694,7 +754,10 @@ pub async fn upload_multiple_files_and_commit(
     let main_filename = main_filename.ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
-            AppError::bad_request("MISSING_FIELD", "Missing main_filename in multipart request"),
+            AppError::bad_request(
+                "MISSING_FIELD",
+                "Missing main_filename in multipart request",
+            ),
         )
     })?;
 
@@ -751,19 +814,27 @@ pub async fn upload_multiple_files_and_commit(
             })?;
     }
 
-    tracing::info!("Files uploaded successfully, total size: {} bytes", total_size);
+    tracing::info!(
+        "Files uploaded successfully, total size: {} bytes",
+        total_size
+    );
 
     // Step 2: Auto-commit the uploaded files as a model
     let source_dir = crate::core::get_app_data_dir()
         .join("temp")
         .join(temp_session_id.to_string());
 
-    tracing::info!("Creating model with source_dir: {:?}, engine_type: {:?}, engine_settings: {:?}", source_dir, engine_type, engine_settings);
+    tracing::info!(
+        "Creating model with source_dir: {:?}, engine_type: {:?}, engine_settings: {:?}",
+        source_dir,
+        engine_type,
+        engine_settings
+    );
 
     // Create model using the existing function
     let model = create_model_with_files(
         Repos.pool(),
-        &model_repo,
+        &*Repos.llm_model,
         CreateModelWithFilesRequest {
             provider_id,
             name,
@@ -772,7 +843,10 @@ pub async fn upload_multiple_files_and_commit(
             file_format: FileFormat::from_str(&file_format).ok_or_else(|| {
                 (
                     StatusCode::BAD_REQUEST,
-                    AppError::bad_request("INVALID_INPUT", &format!("Invalid file format: {}", file_format)),
+                    AppError::bad_request(
+                        "INVALID_INPUT",
+                        &format!("Invalid file format: {}", file_format),
+                    ),
                 )
             })?,
             main_filename,
@@ -786,7 +860,11 @@ pub async fn upload_multiple_files_and_commit(
     .await
     .map_err(|e| e.to_api_error())?;
 
-    tracing::info!("Model created successfully: {} ({})", model.display_name, model.id);
+    tracing::info!(
+        "Model created successfully: {} ({})",
+        model.display_name,
+        model.id
+    );
 
     Ok((StatusCode::OK, Json(model)))
 }
@@ -915,27 +993,30 @@ impl std::fmt::Display for ModelFileType {
 #[debug_handler]
 pub async fn initiate_repository_download(
     _auth: RequirePermissions<(LlmModelsCreate,)>,
-    
+
     Json(request): Json<DownloadFromRepositoryRequest>,
 ) -> ApiResult<Json<DownloadInstance>> {
     // Get repository information
-    let repository = crate::modules::llm_repository::repository::get_llm_repository_by_id(Repos.pool(), request.repository_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(&format!("Database error: {}", e)),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                AppError::not_found(&format!("Repository with ID {} not found", request.repository_id)),
-            )
-        })?;
-
-    // Create repository instances
-    let download_repo = repository::DownloadInstanceRepository::new(Repos.pool().clone());
+    let repository = crate::modules::llm_repository::repository::get_llm_repository_by_id(
+        Repos.pool(),
+        request.repository_id,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(&format!("Database error: {}", e)),
+        )
+    })?
+    .ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            AppError::not_found(&format!(
+                "Repository with ID {} not found",
+                request.repository_id
+            )),
+        )
+    })?;
 
     // Create download instance in the database
     let download_request = CreateDownloadInstanceRequest {
@@ -958,7 +1039,9 @@ pub async fn initiate_repository_download(
         },
     };
 
-    let download_instance = download_repo.create(download_request)
+    let download_instance = Repos
+        .download_instance
+        .create(download_request)
         .await
         .map_err(|e| {
             (
@@ -970,21 +1053,19 @@ pub async fn initiate_repository_download(
     // Clone necessary data for the background task
     let download_id = download_instance.id;
     let repository_id = repository.id;
-    let repository_url = GitService::build_repository_url(&repository.url, &request.repository_path);
+    let repository_url =
+        GitService::build_repository_url(&repository.url, &request.repository_path);
     let repository_branch = request.repository_branch.clone();
 
     // Extract authentication token based on repository auth type
     let auth_token = match repository.auth_type.as_str() {
-        "api_key" => repository
-            .auth_config
-            .api_key
-            .clone(),
-        "bearer_token" => repository
-            .auth_config
-            .token
-            .clone(),
+        "api_key" => repository.auth_config.api_key.clone(),
+        "bearer_token" => repository.auth_config.token.clone(),
         "basic_auth" => {
-            if let (Some(username), Some(password)) = (&repository.auth_config.username, &repository.auth_config.password) {
+            if let (Some(username), Some(password)) = (
+                &repository.auth_config.username,
+                &repository.auth_config.password,
+            ) {
                 Some(format!("{}:{}", username, password))
             } else {
                 None
@@ -1045,7 +1126,11 @@ pub async fn initiate_repository_download(
         if clear_cache {
             tracing::info!("Clearing cache for repository (clear_cache=true)");
             if let Err(e) = git_service
-                .clear_cache(&repository_id, &repository_url, repository_branch.as_deref())
+                .clear_cache(
+                    &repository_id,
+                    &repository_url,
+                    repository_branch.as_deref(),
+                )
                 .await
             {
                 tracing::warn!("Failed to clear git cache: {}", e);
@@ -1054,7 +1139,7 @@ pub async fn initiate_repository_download(
 
         // Spawn task to update download progress in database
         let download_id_progress = download_id;
-        let download_repo_progress = download_repo.clone();
+        let download_repo_progress = Repos.download_instance.clone();
         let progress_task = tokio::spawn(async move {
             let mut tracker = ProgressTracker::new();
             while let Some(git_progress) = progress_rx.recv().await {
@@ -1213,8 +1298,7 @@ pub async fn initiate_repository_download(
                     .await;
 
                 // Create new progress channel for LFS
-                let (lfs_progress_tx, _lfs_progress_rx) =
-                    mpsc::unbounded_channel::<GitProgress>();
+                let (lfs_progress_tx, _lfs_progress_rx) = mpsc::unbounded_channel::<GitProgress>();
 
                 // Pull LFS files
                 let lfs_result = git_service

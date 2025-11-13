@@ -1,6 +1,6 @@
+use crate::common::test_helpers::{self, TestUser};
 use serde_json::json;
 use uuid::Uuid;
-use crate::common::test_helpers::{self, TestUser};
 
 // ============================================================================
 // Admin User Management Tests with Permission Checks
@@ -11,7 +11,8 @@ async fn test_list_users_requires_permission() {
     let server = crate::common::TestServer::start().await;
 
     // Create admin user with users::read permission
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::read"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::read"]).await;
 
     // Create regular user without permission
     let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
@@ -42,17 +43,26 @@ async fn test_list_users_requires_permission() {
     assert_eq!(response.status(), 403, "Regular user should be forbidden");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert_eq!(body.get("error_code").and_then(|v| v.as_str()), Some("INSUFFICIENT_PERMISSIONS"));
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("INSUFFICIENT_PERMISSIONS")
+    );
 }
 
 #[tokio::test]
 async fn test_list_users_with_pagination() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::read", "users::create"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::read", "users::create"],
+    )
+    .await;
 
     // Create multiple users
     for i in 0..15 {
-        test_helpers::create_test_user(&server, &admin.token, &format!("user{}", i), "password123").await;
+        test_helpers::create_test_user(&server, &admin.token, &format!("user{}", i), "password123")
+            .await;
     }
 
     // Test first page
@@ -87,10 +97,16 @@ async fn test_list_users_with_pagination() {
 #[tokio::test]
 async fn test_get_user_by_id() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::read", "users::create"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::read", "users::create"],
+    )
+    .await;
 
     // Create a test user
-    let new_user = test_helpers::create_test_user(&server, &admin.token, "testuser", "password123").await;
+    let new_user =
+        test_helpers::create_test_user(&server, &admin.token, "testuser", "password123").await;
     let user_id = new_user["id"].as_str().expect("Should have user ID");
 
     // Get user by ID
@@ -112,7 +128,8 @@ async fn test_get_user_by_id() {
 #[tokio::test]
 async fn test_get_user_not_found() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::read"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::read"]).await;
 
     // Try to get non-existent user
     let fake_id = Uuid::new_v4();
@@ -130,7 +147,8 @@ async fn test_get_user_not_found() {
 #[tokio::test]
 async fn test_create_user() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
 
     let url = server.api_url("/users");
     let payload = json!({
@@ -159,7 +177,8 @@ async fn test_create_user() {
 #[tokio::test]
 async fn test_create_user_duplicate_username() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
 
     // Create first user
     test_helpers::create_test_user(&server, &admin.token, "duplicateuser", "password123").await;
@@ -186,7 +205,8 @@ async fn test_create_user_duplicate_username() {
 #[tokio::test]
 async fn test_create_user_duplicate_email() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
 
     // Create first user
     let url = server.api_url("/users");
@@ -225,7 +245,8 @@ async fn test_create_user_duplicate_email() {
 #[tokio::test]
 async fn test_create_user_validation() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::create"]).await;
 
     let url = server.api_url("/users");
 
@@ -267,10 +288,16 @@ async fn test_create_user_validation() {
 #[tokio::test]
 async fn test_update_user() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::edit"],
+    )
+    .await;
 
     // Create user
-    let user = test_helpers::create_test_user(&server, &admin.token, "updateuser", "password123").await;
+    let user =
+        test_helpers::create_test_user(&server, &admin.token, "updateuser", "password123").await;
     let user_id = user["id"].as_str().expect("Should have user ID");
 
     // Update user
@@ -300,10 +327,16 @@ async fn test_update_user() {
 #[tokio::test]
 async fn test_update_user_partial() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::edit"],
+    )
+    .await;
 
     // Create user
-    let user = test_helpers::create_test_user(&server, &admin.token, "partialuser", "password123").await;
+    let user =
+        test_helpers::create_test_user(&server, &admin.token, "partialuser", "password123").await;
     let user_id = user["id"].as_str().expect("Should have user ID");
     let original_email = user["email"].as_str().unwrap();
 
@@ -331,7 +364,8 @@ async fn test_update_user_partial() {
 #[tokio::test]
 async fn test_update_user_not_found() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::edit"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::edit"]).await;
 
     let fake_id = Uuid::new_v4();
     let url = server.api_url(&format!("/users/{}", fake_id));
@@ -353,10 +387,16 @@ async fn test_update_user_not_found() {
 #[tokio::test]
 async fn test_delete_user() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::delete", "users::read"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::delete", "users::read"],
+    )
+    .await;
 
     // Create user
-    let user = test_helpers::create_test_user(&server, &admin.token, "deleteuser", "password123").await;
+    let user =
+        test_helpers::create_test_user(&server, &admin.token, "deleteuser", "password123").await;
     let user_id = user["id"].as_str().expect("Should have user ID");
 
     // Delete user
@@ -384,7 +424,8 @@ async fn test_delete_user() {
 #[tokio::test]
 async fn test_delete_user_not_found() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::delete"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::delete"]).await;
 
     let fake_id = Uuid::new_v4();
     let url = server.api_url(&format!("/users/{}", fake_id));
@@ -401,10 +442,16 @@ async fn test_delete_user_not_found() {
 #[tokio::test]
 async fn test_toggle_user_active() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle_status"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::toggle_status"],
+    )
+    .await;
 
     // Create user (initially active)
-    let user = test_helpers::create_test_user(&server, &admin.token, "toggleuser", "password123").await;
+    let user =
+        test_helpers::create_test_user(&server, &admin.token, "toggleuser", "password123").await;
     let user_id = user["id"].as_str().expect("Should have user ID");
     assert_eq!(user["is_active"], true);
 
@@ -440,10 +487,16 @@ async fn test_toggle_user_active() {
 #[tokio::test]
 async fn test_reset_user_password() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::reset_password"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::reset_password"],
+    )
+    .await;
 
     // Create user
-    let user = test_helpers::create_test_user(&server, &admin.token, "resetuser", "oldpassword").await;
+    let user =
+        test_helpers::create_test_user(&server, &admin.token, "resetuser", "oldpassword").await;
     let user_id = user["id"].as_str().expect("Should have user ID");
 
     // Reset password
@@ -467,7 +520,9 @@ async fn test_reset_user_password() {
 #[tokio::test]
 async fn test_reset_password_user_not_found() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::reset_password"]).await;
+    let admin =
+        test_helpers::create_user_with_permissions(&server, "admin", &["users::reset_password"])
+            .await;
 
     let fake_id = Uuid::new_v4();
     let url = server.api_url("/users/reset-password");
@@ -492,7 +547,12 @@ async fn test_multiple_permissions() {
     let server = crate::common::TestServer::start().await;
 
     // User with both read and edit permissions
-    let user = test_helpers::create_user_with_permissions(&server, "multiuser", &["users::read", "users::edit"]).await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "multiuser",
+        &["users::read", "users::edit"],
+    )
+    .await;
 
     // Should be able to list users (requires users::read)
     let url = server.api_url("/users");
@@ -533,7 +593,11 @@ async fn test_unauthorized_without_token() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 401, "Should be unauthorized without token");
+    assert_eq!(
+        response.status(),
+        401,
+        "Should be unauthorized without token"
+    );
 }
 
 // ============================================================================
@@ -543,10 +607,16 @@ async fn test_unauthorized_without_token() {
 #[tokio::test]
 async fn test_cannot_disable_admin_user_via_toggle() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle_status", "users::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::toggle_status", "users::edit"],
+    )
+    .await;
 
     // Create a regular user and set as admin via direct database update
-    let test_user = test_helpers::create_test_user(&server, &admin.token, "adminuser", "password123").await;
+    let test_user =
+        test_helpers::create_test_user(&server, &admin.token, "adminuser", "password123").await;
     let user_id = test_user["id"].as_str().expect("Should have user ID");
 
     // Mark user as admin directly in database
@@ -576,17 +646,33 @@ async fn test_cannot_disable_admin_user_via_toggle() {
     assert_eq!(response.status(), 400, "Should reject disabling admin user");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert_eq!(body.get("error_code").and_then(|v| v.as_str()), Some("CANNOT_DISABLE_ADMIN"), "Should have correct error code");
-    assert!(body.get("error").and_then(|v| v.as_str()).map(|s| s.contains("Cannot disable admin")).unwrap_or(false), "Should have descriptive error message");
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("CANNOT_DISABLE_ADMIN"),
+        "Should have correct error code"
+    );
+    assert!(
+        body.get("error")
+            .and_then(|v| v.as_str())
+            .map(|s| s.contains("Cannot disable admin"))
+            .unwrap_or(false),
+        "Should have descriptive error message"
+    );
 }
 
 #[tokio::test]
 async fn test_cannot_disable_admin_user_via_update() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::edit"],
+    )
+    .await;
 
     // Create a regular user and set as admin via direct database update
-    let test_user = test_helpers::create_test_user(&server, &admin.token, "adminuser2", "password123").await;
+    let test_user =
+        test_helpers::create_test_user(&server, &admin.token, "adminuser2", "password123").await;
     let user_id = test_user["id"].as_str().expect("Should have user ID");
 
     // Mark user as admin directly in database
@@ -621,17 +707,33 @@ async fn test_cannot_disable_admin_user_via_update() {
     assert_eq!(response.status(), 400, "Should reject disabling admin user");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert_eq!(body.get("error_code").and_then(|v| v.as_str()), Some("CANNOT_DISABLE_ADMIN"), "Should have correct error code");
-    assert!(body.get("error").and_then(|v| v.as_str()).map(|s| s.contains("Cannot disable admin")).unwrap_or(false), "Should have descriptive error message");
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("CANNOT_DISABLE_ADMIN"),
+        "Should have correct error code"
+    );
+    assert!(
+        body.get("error")
+            .and_then(|v| v.as_str())
+            .map(|s| s.contains("Cannot disable admin"))
+            .unwrap_or(false),
+        "Should have descriptive error message"
+    );
 }
 
 #[tokio::test]
 async fn test_can_enable_admin_user() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle_status"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::toggle_status"],
+    )
+    .await;
 
     // Create a regular user, set as admin, and disable via direct database update
-    let test_user = test_helpers::create_test_user(&server, &admin.token, "adminuser3", "password123").await;
+    let test_user =
+        test_helpers::create_test_user(&server, &admin.token, "adminuser3", "password123").await;
     let user_id = test_user["id"].as_str().expect("Should have user ID");
 
     // Mark user as admin AND inactive directly in database
@@ -667,10 +769,16 @@ async fn test_can_enable_admin_user() {
 #[tokio::test]
 async fn test_can_disable_non_admin_user() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::toggle_status"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::toggle_status"],
+    )
+    .await;
 
     // Create a regular user (not admin)
-    let test_user = test_helpers::create_test_user(&server, &admin.token, "regularuser", "password123").await;
+    let test_user =
+        test_helpers::create_test_user(&server, &admin.token, "regularuser", "password123").await;
     let user_id = test_user["id"].as_str().expect("Should have user ID");
     assert_eq!(test_user["is_active"], true);
 
@@ -683,19 +791,32 @@ async fn test_can_disable_non_admin_user() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 200, "Should allow disabling non-admin user");
+    assert_eq!(
+        response.status(),
+        200,
+        "Should allow disabling non-admin user"
+    );
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert_eq!(body["is_active"], false, "Non-admin user should be disabled");
+    assert_eq!(
+        body["is_active"], false,
+        "Non-admin user should be disabled"
+    );
 }
 
 #[tokio::test]
 async fn test_can_update_admin_user_other_fields() {
     let server = crate::common::TestServer::start().await;
-    let admin = test_helpers::create_user_with_permissions(&server, "admin", &["users::create", "users::edit"]).await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["users::create", "users::edit"],
+    )
+    .await;
 
     // Create a regular user and set as admin via direct database update
-    let test_user = test_helpers::create_test_user(&server, &admin.token, "adminuser4", "password123").await;
+    let test_user =
+        test_helpers::create_test_user(&server, &admin.token, "adminuser4", "password123").await;
     let user_id = test_user["id"].as_str().expect("Should have user ID");
 
     // Mark user as admin directly in database
@@ -728,11 +849,14 @@ async fn test_can_update_admin_user_other_fields() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 200, "Should allow updating admin user's other fields");
+    assert_eq!(
+        response.status(),
+        200,
+        "Should allow updating admin user's other fields"
+    );
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(body["display_name"], "Updated Admin Display Name");
     assert_eq!(body["email"], "updatedemail@example.com");
     assert_eq!(body["is_active"], true, "Admin user should remain active");
 }
-

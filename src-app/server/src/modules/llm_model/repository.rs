@@ -11,8 +11,8 @@ use uuid::Uuid;
 use crate::common::AppError;
 
 use super::models::{
-    DownloadInstance, DownloadPhase, DownloadProgressData, DownloadStatus,
-    EngineType, FileFormat, LlmModel,
+    DownloadInstance, DownloadPhase, DownloadProgressData, DownloadStatus, EngineType, FileFormat,
+    LlmModel,
 };
 use super::types::{
     CreateDownloadInstanceRequest, CreateLlmModelRequest, DownloadInstanceListResponse,
@@ -77,7 +77,11 @@ impl LlmModelRepository {
     }
 
     /// Update an existing LLM model
-    pub async fn update(&self, model_id: Uuid, request: UpdateLlmModelRequest) -> Result<Option<LlmModel>, AppError> {
+    pub async fn update(
+        &self,
+        model_id: Uuid,
+        request: UpdateLlmModelRequest,
+    ) -> Result<Option<LlmModel>, AppError> {
         update_llm_model(&self.pool, model_id, request)
             .await
             .map_err(AppError::database_error)
@@ -107,7 +111,10 @@ impl DownloadInstanceRepository {
     }
 
     /// Create a new download instance
-    pub async fn create(&self, request: CreateDownloadInstanceRequest) -> Result<DownloadInstance, AppError> {
+    pub async fn create(
+        &self,
+        request: CreateDownloadInstanceRequest,
+    ) -> Result<DownloadInstance, AppError> {
         create_download_instance(&self.pool, request)
             .await
             .map_err(AppError::database_error)
@@ -208,11 +215,15 @@ pub async fn get_llm_model_by_id(
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         file_size_bytes: r.file_size_bytes,
         validation_status: r.validation_status,
-        validation_issues: r.validation_issues.and_then(|v| serde_json::from_value(v).ok()),
+        validation_issues: r
+            .validation_issues
+            .and_then(|v| serde_json::from_value(v).ok()),
         port: r.port,
         pid: r.pid,
         engine_type: EngineType::from_str(&r.engine_type).unwrap(),
-        engine_settings: r.engine_settings.and_then(|v| serde_json::from_value(v).ok()),
+        engine_settings: r
+            .engine_settings
+            .and_then(|v| serde_json::from_value(v).ok()),
         file_format: FileFormat::from_str(&r.file_format).unwrap(),
     }))
 }
@@ -255,11 +266,15 @@ pub async fn list_all_llm_models(pool: &PgPool) -> Result<Vec<LlmModel>, sqlx::E
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
             file_size_bytes: r.file_size_bytes,
             validation_status: r.validation_status,
-            validation_issues: r.validation_issues.and_then(|v| serde_json::from_value(v).ok()),
+            validation_issues: r
+                .validation_issues
+                .and_then(|v| serde_json::from_value(v).ok()),
             port: r.port,
             pid: r.pid,
             engine_type: EngineType::from_str(&r.engine_type).unwrap(),
-            engine_settings: r.engine_settings.and_then(|v| serde_json::from_value(v).ok()),
+            engine_settings: r
+                .engine_settings
+                .and_then(|v| serde_json::from_value(v).ok()),
             file_format: FileFormat::from_str(&r.file_format).unwrap(),
         })
         .collect())
@@ -308,11 +323,15 @@ pub async fn list_llm_models_by_provider(
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
             file_size_bytes: r.file_size_bytes,
             validation_status: r.validation_status,
-            validation_issues: r.validation_issues.and_then(|v| serde_json::from_value(v).ok()),
+            validation_issues: r
+                .validation_issues
+                .and_then(|v| serde_json::from_value(v).ok()),
             port: r.port,
             pid: r.pid,
             engine_type: EngineType::from_str(&r.engine_type).unwrap(),
-            engine_settings: r.engine_settings.and_then(|v| serde_json::from_value(v).ok()),
+            engine_settings: r
+                .engine_settings
+                .and_then(|v| serde_json::from_value(v).ok()),
             file_format: FileFormat::from_str(&r.file_format).unwrap(),
         })
         .collect())
@@ -323,11 +342,14 @@ pub async fn create_llm_model(
     request: CreateLlmModelRequest,
 ) -> Result<LlmModel, sqlx::Error> {
     let model_id = Uuid::new_v4();
-    let capabilities_json =
-        serde_json::to_value(&request.capabilities.unwrap_or_default()).unwrap_or(serde_json::json!({}));
-    let parameters_json =
-        serde_json::to_value(&request.parameters.unwrap_or_default()).unwrap_or(serde_json::json!({}));
-    let engine_settings_json = request.engine_settings.as_ref().map(|s| serde_json::to_value(s).unwrap());
+    let capabilities_json = serde_json::to_value(&request.capabilities.unwrap_or_default())
+        .unwrap_or(serde_json::json!({}));
+    let parameters_json = serde_json::to_value(&request.parameters.unwrap_or_default())
+        .unwrap_or(serde_json::json!({}));
+    let engine_settings_json = request
+        .engine_settings
+        .as_ref()
+        .map(|s| serde_json::to_value(s).unwrap());
 
     let row = sqlx::query!(
         r#"INSERT INTO llm_models (id, provider_id, name, display_name, description, enabled, capabilities, parameters, engine_type, engine_settings, file_format)
@@ -372,11 +394,15 @@ pub async fn create_llm_model(
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
         file_size_bytes: row.file_size_bytes,
         validation_status: row.validation_status,
-        validation_issues: row.validation_issues.and_then(|v| serde_json::from_value(v).ok()),
+        validation_issues: row
+            .validation_issues
+            .and_then(|v| serde_json::from_value(v).ok()),
         port: row.port,
         pid: row.pid,
         engine_type: EngineType::from_str(&row.engine_type).unwrap(),
-        engine_settings: row.engine_settings.and_then(|v| serde_json::from_value(v).ok()),
+        engine_settings: row
+            .engine_settings
+            .and_then(|v| serde_json::from_value(v).ok()),
         file_format: FileFormat::from_str(&row.file_format).unwrap(),
     })
 }

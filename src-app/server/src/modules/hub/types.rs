@@ -1,11 +1,11 @@
 // Hub types
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::models::{HubModel, HubAssistant, HubMCPServer, HubEntity};
+use super::models::{HubAssistant, HubEntity, HubMCPServer, HubModel};
 
 /// Query parameters for hub endpoints
 #[derive(Debug, Deserialize, JsonSchema)]

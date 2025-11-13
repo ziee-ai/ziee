@@ -1,8 +1,8 @@
 // LLM Provider service layer with validation
 // Similar to LLM Repository service but for provider management
 
-use crate::common::AppError;
 use super::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
+use crate::common::AppError;
 
 /// Validate provider type is one of the allowed types
 pub fn validate_provider_type(provider_type: &str) -> Result<(), AppError> {
@@ -20,7 +20,10 @@ pub fn validate_provider_type(provider_type: &str) -> Result<(), AppError> {
     if valid_types.contains(&provider_type) {
         Ok(())
     } else {
-        Err(AppError::bad_request("VALIDATION_ERROR", "Invalid provider type"))
+        Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "Invalid provider type",
+        ))
     }
 }
 
@@ -28,7 +31,10 @@ pub fn validate_provider_type(provider_type: &str) -> Result<(), AppError> {
 pub fn validate_base_url(base_url: &Option<String>) -> Result<(), AppError> {
     if let Some(url) = base_url {
         if !url.is_empty() && reqwest::Url::parse(url).is_err() {
-            return Err(AppError::bad_request("VALIDATION_ERROR", "Invalid base URL format"));
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "Invalid base URL format",
+            ));
         }
     }
     Ok(())
@@ -38,7 +44,10 @@ pub fn validate_base_url(base_url: &Option<String>) -> Result<(), AppError> {
 pub fn validate_create_request(request: &CreateLlmProviderRequest) -> Result<(), AppError> {
     // Validate name is not empty
     if request.name.trim().is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "Provider name cannot be empty"));
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "Provider name cannot be empty",
+        ));
     }
 
     // Validate provider type
@@ -68,7 +77,10 @@ pub fn validate_update_request(request: &UpdateLlmProviderRequest) -> Result<(),
     // Validate name is not empty if being updated
     if let Some(name) = &request.name {
         if name.trim().is_empty() {
-            return Err(AppError::bad_request("VALIDATION_ERROR", "Provider name cannot be empty"));
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "Provider name cannot be empty",
+            ));
         }
     }
 

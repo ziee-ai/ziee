@@ -1,8 +1,7 @@
 // Health handlers
 
 use aide::transform::TransformOperation;
-use axum::{
-    debug_handler,http::StatusCode, Json};
+use axum::{Json, debug_handler, http::StatusCode};
 
 use super::types::HealthResponse;
 

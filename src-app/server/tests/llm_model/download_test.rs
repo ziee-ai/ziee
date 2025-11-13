@@ -3,7 +3,6 @@
 /// These tests verify the download functionality from remote repositories like Hugging Face.
 /// The tests use the initiate_repository_download endpoint to start background downloads
 /// and verify the download instance creation and status tracking.
-
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -187,13 +186,25 @@ async fn test_initiate_download_from_huggingface() {
 
     // Verify download instance fields
     assert!(download_instance["id"].as_str().is_some());
-    assert_eq!(download_instance["provider_id"].as_str().unwrap(), provider_id);
-    assert_eq!(download_instance["repository_id"].as_str().unwrap(), repo_id);
+    assert_eq!(
+        download_instance["provider_id"].as_str().unwrap(),
+        provider_id
+    );
+    assert_eq!(
+        download_instance["repository_id"].as_str().unwrap(),
+        repo_id
+    );
 
     let request_data = &download_instance["request_data"];
-    assert_eq!(request_data["model_name"].as_str().unwrap(), "tiny-gpt2-download-test");
+    assert_eq!(
+        request_data["model_name"].as_str().unwrap(),
+        "tiny-gpt2-download-test"
+    );
     assert_eq!(request_data["revision"].as_str().unwrap(), "main");
-    assert_eq!(request_data["repository_path"].as_str().unwrap(), "hf-internal-testing/tiny-random-gpt2");
+    assert_eq!(
+        request_data["repository_path"].as_str().unwrap(),
+        "hf-internal-testing/tiny-random-gpt2"
+    );
 
     // Status should be pending initially
     let status_str = download_instance["status"].as_str().unwrap();
@@ -222,11 +233,14 @@ async fn test_initiate_download_from_huggingface() {
             let models_list: serde_json::Value = response.json().await.unwrap();
             let models = models_list["models"].as_array().unwrap();
 
-            let found_model = models.iter().find(|m| {
-                m["id"].as_str().unwrap() == model_id
-            });
+            let found_model = models
+                .iter()
+                .find(|m| m["id"].as_str().unwrap() == model_id);
 
-            assert!(found_model.is_some(), "Downloaded model should appear in provider's models list");
+            assert!(
+                found_model.is_some(),
+                "Downloaded model should appear in provider's models list"
+            );
             let found = found_model.unwrap();
             assert_eq!(found["name"].as_str().unwrap(), "tiny-gpt2-download-test");
 
@@ -245,7 +259,11 @@ async fn test_download_requires_create_permission() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "reader",
-        &["llm_models::read", "llm_providers::read", "llm_repositories::read"],
+        &[
+            "llm_models::read",
+            "llm_providers::read",
+            "llm_repositories::read",
+        ],
     )
     .await;
 
@@ -466,7 +484,12 @@ async fn test_download_multiple_models() {
             panic!("Failed to initiate download for {}: {}", name, status);
         }
 
-        assert_eq!(status, StatusCode::OK, "Failed to initiate download for {}", name);
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "Failed to initiate download for {}",
+            name
+        );
 
         let download_instance: serde_json::Value = response.json().await.unwrap();
         assert!(download_instance["id"].as_str().is_some());

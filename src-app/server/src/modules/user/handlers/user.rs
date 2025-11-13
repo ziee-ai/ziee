@@ -1,12 +1,11 @@
 // User handlers and request/response models
 
-use aide::transform::TransformOperation;
 use crate::core::Repos;
+use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
+    Extension, Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
-    Extension, Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -17,14 +16,14 @@ use crate::{
     modules::permissions::{RequirePermissions, with_permission},
 };
 
-use super::{
-    models::User,
-    types::{
-        CreateUserRequest, ResetPasswordRequest, UpdateUserRequest,
-        UserActiveStatusResponse, UserListResponse,
-    },
-    permissions::*,
+use crate::modules::user::{
     events::UserEvent,
+    models::User,
+    permissions::*,
+    types::{
+        CreateUserRequest, ResetPasswordRequest, UpdateUserRequest, UserActiveStatusResponse,
+        UserListResponse,
+    },
 };
 
 // =====================================================
@@ -36,7 +35,6 @@ use super::{
 pub async fn list_users(
     _auth: RequirePermissions<(UsersRead,)>,
     Query(params): Query<PaginationQuery>,
-    
 ) -> ApiResult<Json<UserListResponse>> {
     let (users, total) = Repos.user.list(params.page, params.per_page).await?;
 
@@ -69,9 +67,9 @@ pub fn list_users_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_user(
     _auth: RequirePermissions<(UsersRead,)>,
     Path(user_id): Path<Uuid>,
-    
 ) -> ApiResult<Json<User>> {
-    let user = Repos.user
+    let user = Repos
+        .user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -94,8 +92,7 @@ pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_user(
     _auth: RequirePermissions<(UsersCreate,)>,
-    
-    
+
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateUserRequest>,
 ) -> ApiResult<Json<User>> {
@@ -108,7 +105,12 @@ pub async fn create_user(
     }
 
     // Check if username already exists
-    if Repos.user.get_by_username(&request.username).await?.is_some() {
+    if Repos
+        .user
+        .get_by_username(&request.username)
+        .await?
+        .is_some()
+    {
         return Err(AppError::conflict("Username").into());
     }
 
@@ -122,7 +124,8 @@ pub async fn create_user(
         .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))?;
 
     // Create user
-    let user = Repos.user
+    let user = Repos
+        .user
         .create(
             &request.username,
             &request.email,
@@ -135,7 +138,10 @@ pub async fn create_user(
     // Assign user to default group if it exists
     if let Some(default_group) = Repos.group.get_default().await? {
         // Assign user to default group (assigned_by is None for automatic assignment)
-        let _ = Repos.user.assign_to_group(user.id, default_group.id, None).await;
+        let _ = Repos
+            .user
+            .assign_to_group(user.id, default_group.id, None)
+            .await;
         // Note: We ignore errors here to not fail user creation if group assignment fails
     }
 
@@ -164,19 +170,18 @@ pub async fn update_user(
     Path(user_id): Path<Uuid>,
     Json(request): Json<UpdateUserRequest>,
 ) -> ApiResult<Json<User>> {
-
     // Check if user exists and get user data
-    let user = Repos.user
+    let user = Repos
+        .user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
 
     // Prevent disabling admin users
     if user.is_admin && request.is_active == Some(false) {
-        return Err(AppError::bad_request(
-            "CANNOT_DISABLE_ADMIN",
-            "Cannot disable admin users"
-        ).into());
+        return Err(
+            AppError::bad_request("CANNOT_DISABLE_ADMIN", "Cannot disable admin users").into(),
+        );
     }
 
     // Check if new username already exists
@@ -198,8 +203,15 @@ pub async fn update_user(
     }
 
     // Update user
-    Repos.user
-        .update(user_id, request.username, request.email, request.display_name, request.permissions)
+    Repos
+        .user
+        .update(
+            user_id,
+            request.username,
+            request.email,
+            request.display_name,
+            request.permissions,
+        )
         .await?;
 
     // Update active status if provided
@@ -208,7 +220,8 @@ pub async fn update_user(
     }
 
     // Fetch updated user
-    let updated_user = Repos.user
+    let updated_user = Repos
+        .user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -226,7 +239,9 @@ pub fn update_user_docs(op: TransformOperation) -> TransformOperation {
         .tag("Users")
         .summary("Update user")
         .response::<200, Json<User>>()
-        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed or attempting to disable admin user"))
+        .response_with::<400, (), _>(|res| {
+            res.description("Bad request - validation failed or attempting to disable admin user")
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("User not found"))
 }
@@ -238,19 +253,18 @@ pub async fn toggle_user_active(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
 ) -> ApiResult<Json<UserActiveStatusResponse>> {
-
     // Get current user
-    let user = Repos.user
+    let user = Repos
+        .user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
 
     // Prevent disabling admin users
     if user.is_admin && user.is_active {
-        return Err(AppError::bad_request(
-            "CANNOT_DISABLE_ADMIN",
-            "Cannot disable admin users"
-        ).into());
+        return Err(
+            AppError::bad_request("CANNOT_DISABLE_ADMIN", "Cannot disable admin users").into(),
+        );
     }
 
     // Toggle active status
@@ -258,7 +272,8 @@ pub async fn toggle_user_active(
     Repos.user.set_active(user_id, new_status).await?;
 
     // Fetch updated user and emit event
-    let updated_user = Repos.user
+    let updated_user = Repos
+        .user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -281,7 +296,9 @@ pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
         .tag("Users")
         .summary("Toggle user active status")
         .response::<200, Json<UserActiveStatusResponse>>()
-        .response_with::<400, (), _>(|res| res.description("Bad request - attempting to disable admin user"))
+        .response_with::<400, (), _>(|res| {
+            res.description("Bad request - attempting to disable admin user")
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("User not found"))
 }
@@ -290,10 +307,9 @@ pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn reset_user_password(
     _auth: RequirePermissions<(UsersResetPassword,)>,
-    
+
     Json(request): Json<ResetPasswordRequest>,
 ) -> ApiResult<StatusCode> {
-
     // Check if user exists
     if Repos.user.get_by_id(request.user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
@@ -304,7 +320,8 @@ pub async fn reset_user_password(
         .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))?;
 
     // Update password
-    Repos.user
+    Repos
+        .user
         .update_password(request.user_id, &password_hash)
         .await?;
 
@@ -329,7 +346,6 @@ pub async fn delete_user(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-
     // Check if user exists
     if Repos.user.get_by_id(user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());

@@ -1,4 +1,4 @@
-use bcrypt::{hash, verify, DEFAULT_COST};
+use bcrypt::{DEFAULT_COST, hash, verify};
 
 /// Hash a password using bcrypt
 /// bcrypt automatically generates and includes salt in the hash

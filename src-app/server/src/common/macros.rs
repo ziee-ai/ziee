@@ -213,9 +213,7 @@ macro_rules! make_transparent {
 #[macro_export]
 macro_rules! impl_json_option_from {
     ($concrete_type:ty) => {
-        impl From<Option<serde_json::Value>>
-            for crate::common::types::JsonOption<$concrete_type>
-        {
+        impl From<Option<serde_json::Value>> for crate::common::types::JsonOption<$concrete_type> {
             fn from(value: Option<serde_json::Value>) -> Self {
                 crate::common::types::JsonOption::from_json_option(value)
             }

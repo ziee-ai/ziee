@@ -1,12 +1,11 @@
 // Conversation handlers - CRUD operations for chat conversations
 
-use aide::transform::TransformOperation;
 use crate::core::Repos;
+use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
+    Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
-    Json,
 };
 use serde::Deserialize;
 use uuid::Uuid;
@@ -16,9 +15,9 @@ use crate::{
     modules::{
         chat::core::{
             models::Conversation,
-            types::{ConversationResponse, CreateConversationRequest, UpdateConversationRequest},
             permissions::*,
             repository::conversations as repo,
+            types::{ConversationResponse, CreateConversationRequest, UpdateConversationRequest},
         },
         permissions::{extractors::RequirePermissions, with_permission},
     },
@@ -54,16 +53,12 @@ fn default_limit() -> i64 {
 #[debug_handler]
 pub async fn create_conversation(
     auth: RequirePermissions<(ConversationsCreate,)>,
-    
+
     Json(request): Json<CreateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
-    let conversation = repo::create_conversation(
-        Repos.pool(),
-        auth.user.id,
-        request.model_id,
-        request.title,
-    )
-    .await?;
+    let conversation =
+        repo::create_conversation(Repos.pool(), auth.user.id, request.model_id, request.title)
+            .await?;
 
     Ok((StatusCode::CREATED, Json(conversation)))
 }
@@ -83,7 +78,7 @@ pub fn create_conversation_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn get_conversation(
     auth: RequirePermissions<(ConversationsRead,)>,
-    
+
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Conversation>> {
     let conversation = repo::get_conversation(Repos.pool(), id, auth.user.id)
@@ -108,7 +103,7 @@ pub fn get_conversation_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn list_conversations(
     auth: RequirePermissions<(ConversationsRead,)>,
-    
+
     Query(params): Query<PaginationQuery>,
 ) -> ApiResult<Json<Vec<ConversationResponse>>> {
     // Validate pagination
@@ -135,7 +130,7 @@ pub fn list_conversations_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn update_conversation(
     auth: RequirePermissions<(ConversationsEdit,)>,
-    
+
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
@@ -161,7 +156,7 @@ pub fn update_conversation_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn delete_conversation(
     auth: RequirePermissions<(ConversationsDelete,)>,
-    
+
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     let deleted = repo::delete_conversation(Repos.pool(), id, auth.user.id).await?;

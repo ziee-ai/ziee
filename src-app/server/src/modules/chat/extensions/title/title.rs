@@ -45,9 +45,7 @@ impl TitleGenerationExtension {
             model: model_name.to_string(),
             messages: vec![ChatMessage {
                 role: Role::User,
-                content: vec![ContentBlock::Text {
-                    text: title_prompt,
-                }],
+                content: vec![ContentBlock::Text { text: title_prompt }],
             }],
             temperature: Some(0.7),
             max_tokens: Some(50),
@@ -145,13 +143,10 @@ impl ChatExtension for TitleGenerationExtension {
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<ExtensionAction, AppError> {
         // Check if conversation needs a title
-        let conversation = conv_repo::get_conversation(
-            &self.pool,
-            context.conversation_id,
-            context.user_id,
-        )
-        .await?
-        .ok_or_else(|| AppError::not_found("Conversation"))?;
+        let conversation =
+            conv_repo::get_conversation(&self.pool, context.conversation_id, context.user_id)
+                .await?
+                .ok_or_else(|| AppError::not_found("Conversation"))?;
 
         // Skip if conversation already has a title
         if conversation.title.is_some() && !conversation.title.as_ref().unwrap().is_empty() {

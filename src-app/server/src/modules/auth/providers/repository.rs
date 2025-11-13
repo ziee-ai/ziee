@@ -28,10 +28,7 @@ pub async fn get_provider_by_name(
 }
 
 /// Create OAuth session for OAuth/OIDC flows
-pub async fn create_oauth_session(
-    pool: &PgPool,
-    session: &OAuthSession,
-) -> Result<(), AppError> {
+pub async fn create_oauth_session(pool: &PgPool, session: &OAuthSession) -> Result<(), AppError> {
     let expires_at_timestamp = session.expires_at.timestamp() as f64;
     sqlx::query!(
         r#"
@@ -75,10 +72,7 @@ pub async fn get_oauth_session_by_state(
 }
 
 /// Delete OAuth session by state
-pub async fn delete_oauth_session(
-    pool: &PgPool,
-    state: &str,
-) -> Result<(), AppError> {
+pub async fn delete_oauth_session(pool: &PgPool, state: &str) -> Result<(), AppError> {
     sqlx::query!(
         r#"
         DELETE FROM oauth_sessions

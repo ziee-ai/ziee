@@ -1,8 +1,8 @@
 use serde_json::json;
 
 // OAuth and LDAP provider integration tests (require Docker)
-mod oauth_test;
 mod ldap_test;
+mod oauth_test;
 
 #[tokio::test]
 async fn test_auth_registration() {
@@ -26,21 +26,27 @@ async fn test_auth_registration() {
 
     assert_eq!(response.status(), 201, "Expected 201 Created");
 
-    let response_body: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse response");
+    let response_body: serde_json::Value = response.json().await.expect("Failed to parse response");
 
     // Check user data
-    assert!(response_body.get("user").is_some(), "Response should contain user");
+    assert!(
+        response_body.get("user").is_some(),
+        "Response should contain user"
+    );
     let user = response_body.get("user").unwrap();
     assert_eq!(user.get("username").unwrap(), "testuser");
     assert_eq!(user.get("email").unwrap(), "test@example.com");
     assert_eq!(user.get("display_name").unwrap(), "Test User");
 
     // Check JWT tokens
-    assert!(response_body.get("access_token").is_some(), "Response should contain access_token");
-    assert!(response_body.get("refresh_token").is_some(), "Response should contain refresh_token");
+    assert!(
+        response_body.get("access_token").is_some(),
+        "Response should contain access_token"
+    );
+    assert!(
+        response_body.get("refresh_token").is_some(),
+        "Response should contain refresh_token"
+    );
     assert_eq!(response_body.get("token_type").unwrap(), "Bearer");
     assert!(response_body.get("expires_in").is_some());
 }
@@ -131,7 +137,10 @@ async fn test_auth_login_and_jwt() {
     assert_eq!(user.get("username").unwrap(), "logintest");
 
     // Check JWT tokens
-    assert!(login_body.get("access_token").is_some(), "Login should return access_token");
+    assert!(
+        login_body.get("access_token").is_some(),
+        "Login should return access_token"
+    );
     let access_token = login_body.get("access_token").unwrap().as_str().unwrap();
 
     // Test accessing /me endpoint with JWT token
@@ -150,16 +159,29 @@ async fn test_auth_login_and_jwt() {
         .expect("Failed to parse me response");
 
     // Check response structure
-    assert!(me_body.get("user").is_some(), "Me endpoint should return user object");
-    assert!(me_body.get("permissions").is_some(), "Me endpoint should return permissions array");
+    assert!(
+        me_body.get("user").is_some(),
+        "Me endpoint should return user object"
+    );
+    assert!(
+        me_body.get("permissions").is_some(),
+        "Me endpoint should return permissions array"
+    );
 
     let current_user = me_body.get("user").unwrap();
     assert_eq!(current_user.get("username").unwrap(), "logintest");
     assert_eq!(current_user.get("email").unwrap(), "login@example.com");
 
     // Check permissions is an array
-    let permissions = me_body.get("permissions").unwrap().as_array().expect("Permissions should be an array");
-    assert!(permissions.is_empty() || !permissions.is_empty(), "Permissions should be a valid array");
+    let permissions = me_body
+        .get("permissions")
+        .unwrap()
+        .as_array()
+        .expect("Permissions should be an array");
+    assert!(
+        permissions.is_empty() || !permissions.is_empty(),
+        "Permissions should be a valid array"
+    );
 }
 
 #[tokio::test]
@@ -342,10 +364,8 @@ async fn test_auth_login_with_email() {
 
     assert_eq!(response.status(), 200, "Should login with email");
 
-    let login_response: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse response");
+    let login_response: serde_json::Value =
+        response.json().await.expect("Failed to parse response");
 
     assert!(login_response.get("user").is_some());
     let user = login_response.get("user").unwrap();
@@ -411,7 +431,11 @@ async fn test_auth_refresh_token() {
         .expect("Registration failed");
 
     let register_body: serde_json::Value = register_response.json().await.unwrap();
-    let refresh_token = register_body.get("refresh_token").unwrap().as_str().unwrap();
+    let refresh_token = register_body
+        .get("refresh_token")
+        .unwrap()
+        .as_str()
+        .unwrap();
 
     // Use refresh token to get new access token
     let refresh_body = json!({
@@ -428,11 +452,21 @@ async fn test_auth_refresh_token() {
     assert_eq!(refresh_response.status(), 200, "Expected 200 OK");
 
     let refresh_response_body: serde_json::Value = refresh_response.json().await.unwrap();
-    assert!(refresh_response_body.get("access_token").is_some(), "Should return new access_token");
-    assert!(refresh_response_body.get("refresh_token").is_some(), "Should return new refresh_token");
+    assert!(
+        refresh_response_body.get("access_token").is_some(),
+        "Should return new access_token"
+    );
+    assert!(
+        refresh_response_body.get("refresh_token").is_some(),
+        "Should return new refresh_token"
+    );
 
     // Verify new access token works
-    let new_access_token = refresh_response_body.get("access_token").unwrap().as_str().unwrap();
+    let new_access_token = refresh_response_body
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap();
     let me_response = client
         .get(&server.api_url("/auth/me"))
         .header("Authorization", format!("Bearer {}", new_access_token))
@@ -504,10 +538,7 @@ async fn test_setup_status_needs_setup() {
 
     assert_eq!(response.status(), 200, "Expected 200 OK");
 
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse response");
+    let body: serde_json::Value = response.json().await.expect("Failed to parse response");
 
     // Should need setup since no admin exists
     assert_eq!(body.get("needs_setup").unwrap(), true, "Should need setup");
@@ -544,13 +575,14 @@ async fn test_setup_status_no_setup_needed() {
 
     assert_eq!(response.status(), 200, "Expected 200 OK");
 
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse response");
+    let body: serde_json::Value = response.json().await.expect("Failed to parse response");
 
     // Should not need setup anymore
-    assert_eq!(body.get("needs_setup").unwrap(), false, "Should not need setup");
+    assert_eq!(
+        body.get("needs_setup").unwrap(),
+        false,
+        "Should not need setup"
+    );
 }
 
 #[tokio::test]
@@ -574,10 +606,7 @@ async fn test_setup_admin_success() {
 
     assert_eq!(response.status(), 201, "Expected 201 Created");
 
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse response");
+    let body: serde_json::Value = response.json().await.expect("Failed to parse response");
 
     // Check user data
     assert!(body.get("user").is_some());
@@ -632,7 +661,10 @@ async fn test_setup_admin_already_exists() {
         .await
         .expect("Failed to parse error response");
 
-    assert_eq!(error_body.get("error_code").unwrap(), "SETUP_ALREADY_COMPLETE");
+    assert_eq!(
+        error_body.get("error_code").unwrap(),
+        "SETUP_ALREADY_COMPLETE"
+    );
 }
 
 #[tokio::test]
@@ -740,7 +772,11 @@ async fn test_setup_admin_assigns_to_administrators_group() {
         .expect("Setup admin failed");
 
     let setup_response: serde_json::Value = response.json().await.unwrap();
-    let access_token = setup_response.get("access_token").unwrap().as_str().unwrap();
+    let access_token = setup_response
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap();
 
     // Check user's permissions (should have admin permissions from Administrators group)
     let me_response = client

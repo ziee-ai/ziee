@@ -2,7 +2,6 @@
 ///
 /// These tests use testcontainers to automatically spawn OAuth mock servers.
 /// Docker will be started automatically if not already running.
-
 use crate::common::oauth_mock::OAuthMockServer;
 use serde_json::json;
 use sqlx::PgPool;
@@ -130,13 +129,12 @@ async fn test_oauth_authorization_flow() {
     .expect("Failed to create OAuth provider");
 
     // Get the provider ID we just created
-    let provider_id: uuid::Uuid = sqlx::query_scalar(
-        "SELECT id FROM auth_providers WHERE name = $1"
-    )
-    .bind("test-oauth")
-    .fetch_one(&pool)
-    .await
-    .expect("Failed to get provider ID");
+    let provider_id: uuid::Uuid =
+        sqlx::query_scalar("SELECT id FROM auth_providers WHERE name = $1")
+            .bind("test-oauth")
+            .fetch_one(&pool)
+            .await
+            .expect("Failed to get provider ID");
 
     // Create a test user
     let user_id = uuid::Uuid::new_v4();
@@ -175,8 +173,15 @@ async fn test_oauth_authorization_flow() {
         .build()
         .unwrap();
 
-    let callback_url = format!("{}/api/auth/oauth/test-oauth/callback", test_server.base_url);
-    let authorize_url = format!("{}/api/auth/oauth/test-oauth/authorize?redirect_uri={}", test_server.base_url, callback_url.replace("/", "%2F").replace(":", "%3A"));
+    let callback_url = format!(
+        "{}/api/auth/oauth/test-oauth/callback",
+        test_server.base_url
+    );
+    let authorize_url = format!(
+        "{}/api/auth/oauth/test-oauth/authorize?redirect_uri={}",
+        test_server.base_url,
+        callback_url.replace("/", "%2F").replace(":", "%3A")
+    );
     println!("Step 1: Initiating OAuth flow at: {}", authorize_url);
 
     let auth_response = client
@@ -186,7 +191,11 @@ async fn test_oauth_authorization_flow() {
         .expect("Failed to initiate OAuth flow");
 
     // Our app should redirect to the mock OAuth server
-    assert_eq!(auth_response.status(), 307, "Should redirect to OAuth provider");
+    assert_eq!(
+        auth_response.status(),
+        307,
+        "Should redirect to OAuth provider"
+    );
 
     let oauth_auth_url = auth_response
         .headers()
@@ -196,7 +205,10 @@ async fn test_oauth_authorization_flow() {
         .expect("Location should be valid string");
 
     println!("Step 2: Redirected to OAuth provider: {}", oauth_auth_url);
-    assert!(oauth_auth_url.contains("response_type=code"), "Should be OAuth authorize URL");
+    assert!(
+        oauth_auth_url.contains("response_type=code"),
+        "Should be OAuth authorize URL"
+    );
 
     // Step 3: Submit login form to mock OAuth server
     let oauth_response = client
@@ -216,9 +228,18 @@ async fn test_oauth_authorization_flow() {
         .to_str()
         .expect("Location should be valid string");
 
-    println!("Step 3: OAuth server redirected to callback: {}", callback_redirect);
-    assert!(callback_redirect.contains("/api/auth/oauth/test-oauth/callback"), "Should redirect to our callback");
-    assert!(callback_redirect.contains("code="), "Should include authorization code");
+    println!(
+        "Step 3: OAuth server redirected to callback: {}",
+        callback_redirect
+    );
+    assert!(
+        callback_redirect.contains("/api/auth/oauth/test-oauth/callback"),
+        "Should redirect to our callback"
+    );
+    assert!(
+        callback_redirect.contains("code="),
+        "Should include authorization code"
+    );
 
     // Step 4: Follow redirect to OUR callback endpoint
     let callback_response = client
@@ -231,7 +252,10 @@ async fn test_oauth_authorization_flow() {
     println!("Step 4: Callback response status: {}", status);
 
     // Our application returns a redirect to /?token={access_token}
-    assert!(status.is_redirection(), "Callback should redirect with token");
+    assert!(
+        status.is_redirection(),
+        "Callback should redirect with token"
+    );
 
     let redirect_url = callback_response
         .headers()
@@ -241,12 +265,16 @@ async fn test_oauth_authorization_flow() {
         .expect("Location should be valid string");
 
     println!("Step 5: Redirected to: {}", redirect_url);
-    assert!(redirect_url.contains("token="), "Should include access token in redirect");
+    assert!(
+        redirect_url.contains("token="),
+        "Should include access token in redirect"
+    );
 
     // Extract the token from the URL
     let url = reqwest::Url::parse(&format!("http://example.com{}", redirect_url))
         .expect("Failed to parse redirect URL");
-    let access_token = url.query_pairs()
+    let access_token = url
+        .query_pairs()
         .find(|(key, _)| key == "token")
         .map(|(_, value)| value.to_string())
         .expect("Token not found in redirect URL");
@@ -254,7 +282,10 @@ async fn test_oauth_authorization_flow() {
     println!("✅ Complete OAuth flow successful!");
     println!("   User authenticated: testuser");
     println!("   Got JWT access token from our application");
-    println!("   Access token: {}...", &access_token[..20.min(access_token.len())]);
+    println!(
+        "   Access token: {}...",
+        &access_token[..20.min(access_token.len())]
+    );
 }
 
 /// Test that OAuth provider configuration validation works

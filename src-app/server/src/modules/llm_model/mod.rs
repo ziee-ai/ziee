@@ -7,8 +7,8 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleEntry, MODULE_ENTRIES};
 use crate::ModuleContext;
+use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleEntry};
 
 pub mod events;
 pub mod handlers;
@@ -16,9 +16,9 @@ pub mod models;
 pub mod permissions;
 pub mod repository;
 pub mod routes;
-pub mod utils;
 pub mod storage;
 pub mod types;
+pub mod utils;
 
 // Re-export database entities from models
 pub use models::ModelParameters;

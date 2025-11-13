@@ -1,12 +1,12 @@
 // App module - Application-level endpoints
 mod handlers;
+mod repository;
 mod routes;
 mod types;
 mod utils;
-mod repository;
 
-pub use routes::app_routes;
 pub use repository::AppRepository;
+pub use routes::app_routes;
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
@@ -14,7 +14,7 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule as AppModuleTrait, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+use crate::module_api::{AppModule as AppModuleTrait, MODULE_ENTRIES, ModuleContext, ModuleEntry};
 
 /// Register app module
 #[distributed_slice(MODULE_ENTRIES)]
@@ -57,9 +57,7 @@ impl AppModuleTrait for AppModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
-            let app_router_with_state = ApiRouter::new()
-                .nest("/app", app_routes())
-                ;
+            let app_router_with_state = ApiRouter::new().nest("/app", app_routes());
             router.merge(app_router_with_state)
         } else {
             tracing::error!("AppModule: Pool not initialized during route registration");

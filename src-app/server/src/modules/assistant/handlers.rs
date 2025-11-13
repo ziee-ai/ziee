@@ -2,10 +2,9 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
-    extract::{Path, Query, Extension},
+    Json, debug_handler,
+    extract::{Extension, Path, Query},
     http::StatusCode,
-    Json,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -14,16 +13,13 @@ use uuid::Uuid;
 use super::{
     events::AssistantEvent,
     models::Assistant,
-    types::{AssistantListResponse, CreateAssistantRequest, UpdateAssistantRequest},
     permissions::*,
+    types::{AssistantListResponse, CreateAssistantRequest, UpdateAssistantRequest},
 };
 use crate::{
-    common::{AppError, ApiResult},
+    common::{ApiResult, AppError},
     core::{EventBus, Repos},
-    modules::permissions::{
-        extractors::RequirePermissions,
-        with_permission
-    },
+    modules::permissions::{extractors::RequirePermissions, with_permission},
 };
 
 // =====================================================
@@ -41,8 +37,12 @@ pub struct PaginationQuery {
     pub limit: i64,
 }
 
-fn default_page() -> i64 { 1 }
-fn default_limit() -> i64 { 20 }
+fn default_page() -> i64 {
+    1
+}
+fn default_limit() -> i64 {
+    20
+}
 
 // =====================================================
 // USER ASSISTANT HANDLERS
@@ -57,10 +57,9 @@ pub async fn create_user_assistant(
 ) -> ApiResult<Json<Assistant>> {
     // Validate name is not empty
     if request.name.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "Assistant name cannot be empty"
-        ).into());
+        return Err(
+            AppError::bad_request("VALIDATION_ERROR", "Assistant name cannot be empty").into(),
+        );
     }
 
     // Force is_template to false for user assistants
@@ -79,7 +78,9 @@ pub fn create_user_assistant_docs(op: TransformOperation) -> TransformOperation 
         .id("Assistant.create")
         .tag("Assistants")
         .summary("Create a new user assistant")
-        .description("Create a user assistant. The assistant will be owned by the authenticated user.")
+        .description(
+            "Create a user assistant. The assistant will be owned by the authenticated user.",
+        )
         .response::<201, Json<Assistant>>()
         .response_with::<400, (), _>(|res| res.description("Invalid request"))
         .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
@@ -92,12 +93,15 @@ pub async fn list_user_assistants(
 
     Query(query): Query<PaginationQuery>,
 ) -> ApiResult<Json<AssistantListResponse>> {
-    let response = Repos.assistant.list(
-        Some(auth.user.id),
-        false, // Only user assistants (never returns templates)
-        query.page,
-        query.limit,
-    ).await?;
+    let response = Repos
+        .assistant
+        .list(
+            Some(auth.user.id),
+            false, // Only user assistants (never returns templates)
+            query.page,
+            query.limit,
+        )
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -119,7 +123,10 @@ pub async fn get_user_assistant(
 
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Assistant>> {
-    let assistant = Repos.assistant.get(id).await?
+    let assistant = Repos
+        .assistant
+        .get(id)
+        .await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 
     // Check ownership
@@ -127,7 +134,8 @@ pub async fn get_user_assistant(
         return Err(AppError::forbidden(
             "ACCESS_DENIED",
             "You can only access your own assistants",
-        ).into());
+        )
+        .into());
     }
 
     // Ensure it's not a template
@@ -157,15 +165,17 @@ pub async fn update_user_assistant(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
-    let existing = Repos.assistant.get(id).await?
+    let existing = Repos
+        .assistant
+        .get(id)
+        .await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 
     // Check ownership
     if existing.created_by != Some(auth.user.id) {
-        return Err(AppError::forbidden(
-            "ACCESS_DENIED",
-            "You can only edit your own assistants",
-        ).into());
+        return Err(
+            AppError::forbidden("ACCESS_DENIED", "You can only edit your own assistants").into(),
+        );
     }
 
     // Ensure it's not a template
@@ -200,7 +210,10 @@ pub async fn delete_user_assistant(
 
     Path(id): Path<Uuid>,
 ) -> ApiResult<()> {
-    let existing = Repos.assistant.get(id).await?
+    let existing = Repos
+        .assistant
+        .get(id)
+        .await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 
     // Check ownership
@@ -208,7 +221,8 @@ pub async fn delete_user_assistant(
         return Err(AppError::forbidden(
             "ACCESS_DENIED",
             "You can only delete your own assistants",
-        ).into());
+        )
+        .into());
     }
 
     // Ensure it's not a template
@@ -239,10 +253,12 @@ pub fn delete_user_assistant_docs(op: TransformOperation) -> TransformOperation 
 #[debug_handler]
 pub async fn get_default_user_assistant(
     auth: RequirePermissions<(AssistantsRead,)>,
-
 ) -> ApiResult<Json<Assistant>> {
     // Get user's default (or fall back to template default)
-    let assistant = Repos.assistant.get_default(Some(auth.user.id)).await?
+    let assistant = Repos
+        .assistant
+        .get_default(Some(auth.user.id))
+        .await?
         .ok_or_else(|| AppError::not_found("Default assistant"))?;
 
     Ok((StatusCode::OK, Json(assistant)))
@@ -272,10 +288,9 @@ pub async fn create_template_assistant(
 ) -> ApiResult<Json<Assistant>> {
     // Validate name is not empty
     if request.name.trim().is_empty() {
-        return Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "Assistant name cannot be empty"
-        ).into());
+        return Err(
+            AppError::bad_request("VALIDATION_ERROR", "Assistant name cannot be empty").into(),
+        );
     }
 
     // Force is_template to true for template assistants
@@ -308,12 +323,15 @@ pub async fn list_template_assistants(
 
     Query(query): Query<PaginationQuery>,
 ) -> ApiResult<Json<AssistantListResponse>> {
-    let response = Repos.assistant.list(
-        None, // No user filter for templates
-        true, // Only templates
-        query.page,
-        query.limit,
-    ).await?;
+    let response = Repos
+        .assistant
+        .list(
+            None, // No user filter for templates
+            true, // Only templates
+            query.page,
+            query.limit,
+        )
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -335,7 +353,10 @@ pub async fn get_template_assistant(
 
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Assistant>> {
-    let assistant = Repos.assistant.get(id).await?
+    let assistant = Repos
+        .assistant
+        .get(id)
+        .await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 
     // Ensure it's a template
@@ -365,7 +386,10 @@ pub async fn update_template_assistant(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
-    let existing = Repos.assistant.get(id).await?
+    let existing = Repos
+        .assistant
+        .get(id)
+        .await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 
     // Ensure it's a template
@@ -399,7 +423,10 @@ pub async fn delete_template_assistant(
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<()> {
-    let existing = Repos.assistant.get(id).await?
+    let existing = Repos
+        .assistant
+        .get(id)
+        .await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 
     // Ensure it's a template
@@ -421,7 +448,9 @@ pub fn delete_template_assistant_docs(op: TransformOperation) -> TransformOperat
         .tag("Assistant Templates")
         .summary("Delete template assistant")
         .description("Delete a template assistant.")
-        .response_with::<204, (), _>(|res| res.description("Assistant template deleted successfully"))
+        .response_with::<204, (), _>(|res| {
+            res.description("Assistant template deleted successfully")
+        })
         .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Assistant template not found"))
 }
@@ -430,10 +459,12 @@ pub fn delete_template_assistant_docs(op: TransformOperation) -> TransformOperat
 #[debug_handler]
 pub async fn get_default_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateRead,)>,
-
 ) -> ApiResult<Json<Assistant>> {
     // Get default template
-    let assistant = Repos.assistant.get_default(None).await?
+    let assistant = Repos
+        .assistant
+        .get_default(None)
+        .await?
         .ok_or_else(|| AppError::not_found("Default template assistant"))?;
 
     Ok((StatusCode::OK, Json(assistant)))

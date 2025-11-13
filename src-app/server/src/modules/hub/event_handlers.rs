@@ -39,10 +39,7 @@ impl EventHandler for CleanupHubEntitiesHandler {
                 .map_err(AppError::database_error)?;
 
                 if result.rows_affected() > 0 {
-                    tracing::debug!(
-                        "Deleted hub entity tracking for assistant {}",
-                        assistant_id
-                    );
+                    tracing::debug!("Deleted hub entity tracking for assistant {}", assistant_id);
                 }
 
                 Ok(())
@@ -64,10 +61,7 @@ impl EventHandler for CleanupHubEntitiesHandler {
                 .map_err(AppError::database_error)?;
 
                 if result.rows_affected() > 0 {
-                    tracing::debug!(
-                        "Deleted hub entity tracking for MCP server {}",
-                        server_id
-                    );
+                    tracing::debug!("Deleted hub entity tracking for MCP server {}", server_id);
                 }
 
                 Ok(())

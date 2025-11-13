@@ -6,13 +6,15 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use oauth2::{
-    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    HttpRequest as OAuth2HttpRequest, HttpResponse as OAuth2HttpResponse,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+    HttpRequest as OAuth2HttpRequest, HttpResponse as OAuth2HttpResponse, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl, basic::BasicClient,
 };
 use openidconnect::{
-    core::{CoreClient, CoreIdToken, CoreIdTokenVerifier, CoreProviderMetadata, CoreAuthenticationFlow},
-    IssuerUrl, Nonce, HttpRequest, HttpResponse,
+    HttpRequest, HttpResponse, IssuerUrl, Nonce,
+    core::{
+        CoreAuthenticationFlow, CoreClient, CoreIdToken, CoreIdTokenVerifier, CoreProviderMetadata,
+    },
 };
 // Import TokenResponse trait separately to avoid conflict with oauth2::TokenResponse
 use openidconnect::TokenResponse as _;
@@ -20,8 +22,11 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::{AuthError, AuthProvider, AuthProviderTrait, AuthResult, OAuthSession, OAuthResult, UserAttributes};
 use super::repository;
+use super::{
+    AuthError, AuthProvider, AuthProviderTrait, AuthResult, OAuthResult, OAuthSession,
+    UserAttributes,
+};
 
 /// Create an HTTP client for OAuth2/OIDC requests
 /// This client disables redirects to prevent SSRF attacks
@@ -41,9 +46,7 @@ async fn async_http_client(request: HttpRequest) -> Result<HttpResponse, reqwest
     let headers = request.headers().clone();
     let body = request.body().clone();
 
-    let mut request_builder = client
-        .request(method, url)
-        .body(body);
+    let mut request_builder = client.request(method, url).body(body);
 
     for (name, value) in headers.iter() {
         request_builder = request_builder.header(name, value);
@@ -67,7 +70,9 @@ async fn async_http_client(request: HttpRequest) -> Result<HttpResponse, reqwest
 }
 
 /// Async HTTP client implementation for oauth2
-async fn oauth2_http_client(request: OAuth2HttpRequest) -> Result<OAuth2HttpResponse, reqwest::Error> {
+async fn oauth2_http_client(
+    request: OAuth2HttpRequest,
+) -> Result<OAuth2HttpResponse, reqwest::Error> {
     let client = create_http_client();
 
     let method = request.method().clone();
@@ -75,9 +80,7 @@ async fn oauth2_http_client(request: OAuth2HttpRequest) -> Result<OAuth2HttpResp
     let headers = request.headers().clone();
     let body = request.body().clone();
 
-    let mut request_builder = client
-        .request(method, url)
-        .body(body);
+    let mut request_builder = client.request(method, url).body(body);
 
     for (name, value) in headers.iter() {
         request_builder = request_builder.header(name, value);
@@ -125,13 +128,13 @@ pub struct OAuth2Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuth2AttributeMapping {
-    pub user_id: String,      // Default: "sub"
-    pub username: String,     // Default: "preferred_username" or "email"
-    pub email: String,        // Default: "email"
-    pub display_name: Option<String>,  // Default: "name"
-    pub first_name: Option<String>,    // Default: "given_name"
-    pub last_name: Option<String>,     // Default: "family_name"
-    pub groups: Option<String>,        // Default: "groups"
+    pub user_id: String,              // Default: "sub"
+    pub username: String,             // Default: "preferred_username" or "email"
+    pub email: String,                // Default: "email"
+    pub display_name: Option<String>, // Default: "name"
+    pub first_name: Option<String>,   // Default: "given_name"
+    pub last_name: Option<String>,    // Default: "family_name"
+    pub groups: Option<String>,       // Default: "groups"
 }
 
 impl Default for OAuth2AttributeMapping {
@@ -158,8 +161,10 @@ pub struct OAuth2Provider {
 
 impl OAuth2Provider {
     pub fn new(provider: &AuthProvider, pool: PgPool) -> Result<Self, AuthError> {
-        let config: OAuth2Config = serde_json::from_value(provider.config.clone())
-            .map_err(|e| AuthError::ConfigurationError(format!("Invalid OAuth2 configuration: {}", e)))?;
+        let config: OAuth2Config =
+            serde_json::from_value(provider.config.clone()).map_err(|e| {
+                AuthError::ConfigurationError(format!("Invalid OAuth2 configuration: {}", e))
+            })?;
 
         Ok(Self {
             name: provider.name.clone(),
@@ -170,11 +175,15 @@ impl OAuth2Provider {
         })
     }
 
-
-    async fn get_user_info_from_token(&self, id_token: &CoreIdToken, verifier: &CoreIdTokenVerifier<'_>, nonce: &Nonce) -> Result<serde_json::Value, AuthError> {
-        let claims = id_token
-            .claims(verifier, nonce)
-            .map_err(|e| AuthError::InvalidCredentials(format!("ID token verification failed: {}", e)))?;
+    async fn get_user_info_from_token(
+        &self,
+        id_token: &CoreIdToken,
+        verifier: &CoreIdTokenVerifier<'_>,
+        nonce: &Nonce,
+    ) -> Result<serde_json::Value, AuthError> {
+        let claims = id_token.claims(verifier, nonce).map_err(|e| {
+            AuthError::InvalidCredentials(format!("ID token verification failed: {}", e))
+        })?;
 
         Ok(serde_json::json!({
             "sub": claims.subject().to_string(),
@@ -187,9 +196,13 @@ impl OAuth2Provider {
         }))
     }
 
-    async fn get_user_info_from_api(&self, access_token: &str) -> Result<serde_json::Value, AuthError> {
-        let userinfo_url = self.config.userinfo_url.as_ref()
-            .ok_or_else(|| AuthError::ConfigurationError("UserInfo URL not configured".to_string()))?;
+    async fn get_user_info_from_api(
+        &self,
+        access_token: &str,
+    ) -> Result<serde_json::Value, AuthError> {
+        let userinfo_url = self.config.userinfo_url.as_ref().ok_or_else(|| {
+            AuthError::ConfigurationError("UserInfo URL not configured".to_string())
+        })?;
 
         let client = reqwest::Client::new();
         let response = client
@@ -197,7 +210,9 @@ impl OAuth2Provider {
             .bearer_auth(access_token)
             .send()
             .await
-            .map_err(|e| AuthError::ConnectionFailed(format!("Failed to fetch user info: {}", e)))?;
+            .map_err(|e| {
+                AuthError::ConnectionFailed(format!("Failed to fetch user info: {}", e))
+            })?;
 
         if !response.status().is_success() {
             return Err(AuthError::InternalError(format!(
@@ -212,38 +227,62 @@ impl OAuth2Provider {
             .map_err(|e| AuthError::InternalError(format!("Failed to parse user info: {}", e)))
     }
 
-    fn extract_user_attributes(&self, user_info: &serde_json::Value) -> Result<UserAttributes, AuthError> {
+    fn extract_user_attributes(
+        &self,
+        user_info: &serde_json::Value,
+    ) -> Result<UserAttributes, AuthError> {
         let get_str = |key: &str| -> Option<String> {
-            user_info.get(key)
+            user_info
+                .get(key)
                 .and_then(|v| v.as_str())
                 .map(String::from)
         };
 
         let get_str_array = |key: &str| -> Vec<String> {
-            user_info.get(key)
+            user_info
+                .get(key)
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(String::from)
-                    .collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str())
+                        .map(String::from)
+                        .collect()
+                })
                 .unwrap_or_default()
         };
 
         let username = get_str(&self.config.attribute_mapping.username)
             .or_else(|| get_str(&self.config.attribute_mapping.email))
-            .ok_or_else(|| AuthError::InternalError("No username found in user info".to_string()))?;
+            .ok_or_else(|| {
+                AuthError::InternalError("No username found in user info".to_string())
+            })?;
 
-        let email = get_str(&self.config.attribute_mapping.email)
-            .unwrap_or_default();
+        let email = get_str(&self.config.attribute_mapping.email).unwrap_or_default();
 
-        let display_name = self.config.attribute_mapping.display_name.as_ref()
+        let display_name = self
+            .config
+            .attribute_mapping
+            .display_name
+            .as_ref()
             .and_then(|attr| get_str(attr));
-        let first_name = self.config.attribute_mapping.first_name.as_ref()
+        let first_name = self
+            .config
+            .attribute_mapping
+            .first_name
+            .as_ref()
             .and_then(|attr| get_str(attr));
-        let last_name = self.config.attribute_mapping.last_name.as_ref()
+        let last_name = self
+            .config
+            .attribute_mapping
+            .last_name
+            .as_ref()
             .and_then(|attr| get_str(attr));
 
-        let groups = self.config.attribute_mapping.groups.as_ref()
+        let groups = self
+            .config
+            .attribute_mapping
+            .groups
+            .as_ref()
             .map(|attr| get_str_array(attr))
             .unwrap_or_default();
 
@@ -298,19 +337,22 @@ impl AuthProviderTrait for OAuth2Provider {
 
             let metadata = CoreProviderMetadata::discover_async(issuer, &async_http_client)
                 .await
-                .map_err(|e| AuthError::ConfigurationError(format!("Failed to discover OIDC metadata: {}", e)))?;
+                .map_err(|e| {
+                    AuthError::ConfigurationError(format!(
+                        "Failed to discover OIDC metadata: {}",
+                        e
+                    ))
+                })?;
 
             let client_id = ClientId::new(self.config.client_id.clone());
             let client_secret = ClientSecret::new(self.config.client_secret.clone());
-            let redirect_url = RedirectUrl::new(redirect_uri.to_string())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e)))?;
+            let redirect_url = RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
+                AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
+            })?;
 
-            let client = CoreClient::from_provider_metadata(
-                metadata,
-                client_id,
-                Some(client_secret),
-            )
-            .set_redirect_uri(redirect_url);
+            let client =
+                CoreClient::from_provider_metadata(metadata, client_id, Some(client_secret))
+                    .set_redirect_uri(redirect_url);
 
             let state_clone = CsrfToken::new(state.secret().clone());
             let nonce_clone = Nonce::new(nonce.secret().clone());
@@ -333,12 +375,14 @@ impl AuthProviderTrait for OAuth2Provider {
             // OAuth 2.0 flow - create client inline to avoid type parameter issues
             let client_id = ClientId::new(self.config.client_id.clone());
             let client_secret = ClientSecret::new(self.config.client_secret.clone());
-            let auth_url = AuthUrl::new(self.config.authorization_url.clone())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e)))?;
+            let auth_url = AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
+                AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
+            })?;
             let token_url = TokenUrl::new(self.config.token_url.clone())
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
-            let redirect_url = RedirectUrl::new(redirect_uri.to_string())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e)))?;
+            let redirect_url = RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
+                AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
+            })?;
 
             let client = BasicClient::new(client_id)
                 .set_client_secret(client_secret)
@@ -395,15 +439,21 @@ impl AuthProviderTrait for OAuth2Provider {
         let session = repository::get_oauth_session_by_state(&self.pool, state)
             .await
             .map_err(|e| AuthError::InternalError(format!("Failed to get session: {}", e)))?
-            .ok_or_else(|| AuthError::InvalidCredentials("Invalid or expired session".to_string()))?;
+            .ok_or_else(|| {
+                AuthError::InvalidCredentials("Invalid or expired session".to_string())
+            })?;
 
         if session.provider_id != self.provider_id {
-            return Err(AuthError::InvalidCredentials("Provider mismatch".to_string()));
+            return Err(AuthError::InvalidCredentials(
+                "Provider mismatch".to_string(),
+            ));
         }
 
         let redirect_uri = &session.redirect_uri;
 
-        let pkce_verifier = session.pkce_verifier.as_ref()
+        let pkce_verifier = session
+            .pkce_verifier
+            .as_ref()
             .ok_or_else(|| AuthError::InternalError("No PKCE verifier in session".to_string()))?;
 
         // Exchange code for token
@@ -414,32 +464,44 @@ impl AuthProviderTrait for OAuth2Provider {
 
             let metadata = CoreProviderMetadata::discover_async(issuer, &async_http_client)
                 .await
-                .map_err(|e| AuthError::ConfigurationError(format!("Failed to discover OIDC metadata: {}", e)))?;
+                .map_err(|e| {
+                    AuthError::ConfigurationError(format!(
+                        "Failed to discover OIDC metadata: {}",
+                        e
+                    ))
+                })?;
 
             let client_id = ClientId::new(self.config.client_id.clone());
             let client_secret = ClientSecret::new(self.config.client_secret.clone());
-            let redirect_url = RedirectUrl::new(redirect_uri.to_string())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e)))?;
+            let redirect_url = RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
+                AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
+            })?;
 
-            let client = CoreClient::from_provider_metadata(
-                metadata,
-                client_id,
-                Some(client_secret),
-            )
-            .set_redirect_uri(redirect_url);
+            let client =
+                CoreClient::from_provider_metadata(metadata, client_id, Some(client_secret))
+                    .set_redirect_uri(redirect_url);
 
-            let nonce_str = session.nonce.as_ref()
+            let nonce_str = session
+                .nonce
+                .as_ref()
                 .ok_or_else(|| AuthError::InternalError("No nonce in session".to_string()))?;
 
             let token_request = client
                 .exchange_code(AuthorizationCode::new(code.to_string()))
-                .map_err(|e| AuthError::ConfigurationError(format!("Failed to create token request: {:?}", e)))?;
+                .map_err(|e| {
+                    AuthError::ConfigurationError(format!(
+                        "Failed to create token request: {:?}",
+                        e
+                    ))
+                })?;
 
             let token_response = token_request
                 .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier.clone()))
                 .request_async(&async_http_client)
                 .await
-                .map_err(|e| AuthError::InvalidCredentials(format!("Token exchange failed: {}", e)))?;
+                .map_err(|e| {
+                    AuthError::InvalidCredentials(format!("Token exchange failed: {}", e))
+                })?;
 
             let id_token = token_response
                 .id_token()
@@ -448,25 +510,29 @@ impl AuthProviderTrait for OAuth2Provider {
             // Verify ID token
             let verifier = client.id_token_verifier();
             let nonce = Nonce::new(nonce_str.clone());
-            let _claims = id_token
-                .claims(&verifier, &nonce)
-                .map_err(|e| AuthError::InvalidCredentials(format!("ID token verification failed: {}", e)))?;
+            let _claims = id_token.claims(&verifier, &nonce).map_err(|e| {
+                AuthError::InvalidCredentials(format!("ID token verification failed: {}", e))
+            })?;
 
             // Note: AccessTokenHash verification skipped - requires JWK key which is complex to obtain
             // The ID token verification above provides sufficient security
 
-            let user_info = self.get_user_info_from_token(id_token, &verifier, &nonce).await?;
+            let user_info = self
+                .get_user_info_from_token(id_token, &verifier, &nonce)
+                .await?;
             (token_response.access_token().secret().clone(), user_info)
         } else {
             // OAuth 2.0 flow - create client inline to avoid type parameter issues
             let client_id = ClientId::new(self.config.client_id.clone());
             let client_secret = ClientSecret::new(self.config.client_secret.clone());
-            let auth_url = AuthUrl::new(self.config.authorization_url.clone())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e)))?;
+            let auth_url = AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
+                AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
+            })?;
             let token_url = TokenUrl::new(self.config.token_url.clone())
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
-            let redirect_url = RedirectUrl::new(redirect_uri.to_string())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e)))?;
+            let redirect_url = RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
+                AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
+            })?;
 
             let client = BasicClient::new(client_id)
                 .set_client_secret(client_secret)
@@ -479,7 +545,9 @@ impl AuthProviderTrait for OAuth2Provider {
                 .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier.clone()))
                 .request_async(&oauth2_http_client)
                 .await
-                .map_err(|e| AuthError::InvalidCredentials(format!("Token exchange failed: {}", e)))?;
+                .map_err(|e| {
+                    AuthError::InvalidCredentials(format!("Token exchange failed: {}", e))
+                })?;
 
             let access_token = token_response.access_token().secret().clone();
             let user_info = self.get_user_info_from_api(&access_token).await?;
@@ -519,11 +587,14 @@ impl AuthProviderTrait for OAuth2Provider {
 
             CoreProviderMetadata::discover_async(issuer, &async_http_client)
                 .await
-                .map_err(|e| AuthError::ConnectionFailed(format!("Failed to discover OIDC metadata: {}", e)))?;
+                .map_err(|e| {
+                    AuthError::ConnectionFailed(format!("Failed to discover OIDC metadata: {}", e))
+                })?;
         } else {
             // For OAuth 2.0, just validate URLs
-            AuthUrl::new(self.config.authorization_url.clone())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e)))?;
+            AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
+                AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
+            })?;
             TokenUrl::new(self.config.token_url.clone())
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
         }

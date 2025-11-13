@@ -20,7 +20,10 @@ pub static APP_DATA_DIR: Lazy<Mutex<PathBuf>> = Lazy::new(|| {
 pub fn set_app_data_dir(path: PathBuf) {
     if let Ok(mut app_data_dir) = APP_DATA_DIR.lock() {
         *app_data_dir = path;
-        tracing::info!("Application data directory set to: {}", app_data_dir.display());
+        tracing::info!(
+            "Application data directory set to: {}",
+            app_data_dir.display()
+        );
     } else {
         tracing::error!("Failed to lock APP_DATA_DIR mutex");
     }

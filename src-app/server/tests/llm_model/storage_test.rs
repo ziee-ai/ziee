@@ -2,15 +2,14 @@
 ///
 /// These tests verify that file operations (storage, cleanup, validation)
 /// work correctly for model uploads and downloads.
-
 use crate::common::{TestServer, test_helpers};
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 #[tokio::test]
 async fn test_delete_downloaded_model_removes_files() {
     // This test verifies that deleting a downloaded model removes its files from disk
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     let server = TestServer::start().await;
     let user = test_helpers::create_user_with_permissions(
@@ -30,12 +29,9 @@ async fn test_delete_downloaded_model_removes_files() {
     .await;
 
     // Get Hugging Face repository
-    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
-        &server,
-        &user.token,
-        true,
-    )
-    .await;
+    let hf_repo =
+        crate::llm_model::download_test::get_huggingface_repository(&server, &user.token, true)
+            .await;
     let repo_id = hf_repo["id"].as_str().unwrap();
 
     // Get local provider
@@ -69,7 +65,10 @@ async fn test_delete_downloaded_model_removes_files() {
 
     assert_eq!(download_response.status(), 200);
 
-    let download_instance: serde_json::Value = download_response.json().await.expect("Failed to parse download response");
+    let download_instance: serde_json::Value = download_response
+        .json()
+        .await
+        .expect("Failed to parse download response");
     let download_id = download_instance["id"].as_str().unwrap();
 
     println!("Download initiated with ID: {}", download_id);
@@ -103,12 +102,17 @@ async fn test_delete_downloaded_model_removes_files() {
 
         if status == "completed" {
             model_id = Some(download["model_id"].as_str().unwrap().to_string());
-            println!("✅ Download completed, model_id: {}", model_id.as_ref().unwrap());
+            println!(
+                "✅ Download completed, model_id: {}",
+                model_id.as_ref().unwrap()
+            );
             break;
         }
 
         if status == "failed" {
-            let error = download["error_message"].as_str().unwrap_or("Unknown error");
+            let error = download["error_message"]
+                .as_str()
+                .unwrap_or("Unknown error");
             panic!("Download failed: {}", error);
         }
     }
@@ -125,8 +129,13 @@ async fn test_delete_downloaded_model_removes_files() {
 
     assert_eq!(get_response.status(), 200);
 
-    let models_list: serde_json::Value = get_response.json().await.expect("Failed to parse models list");
-    let models = models_list["models"].as_array().expect("Should have models array");
+    let models_list: serde_json::Value = get_response
+        .json()
+        .await
+        .expect("Failed to parse models list");
+    let models = models_list["models"]
+        .as_array()
+        .expect("Should have models array");
     let _model = models
         .iter()
         .find(|m| m["id"].as_str().unwrap() == model_id)
@@ -135,11 +144,10 @@ async fn test_delete_downloaded_model_removes_files() {
     // Construct the model path manually since API doesn't return file paths
     // Model storage path is: {app_data_dir}/models/{provider_id}/{model_id}
     // App data dir defaults to home directory
-    let app_data_dir = std::env::var("APP_DATA_DIR")
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            format!("{}/.ziee-chat", home)
-        });
+    let app_data_dir = std::env::var("APP_DATA_DIR").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        format!("{}/.ziee-chat", home)
+    });
     let model_path = Path::new(&app_data_dir)
         .join("models")
         .join(provider_id)
@@ -159,8 +167,14 @@ async fn test_delete_downloaded_model_removes_files() {
         .expect("Should be able to read model directory")
         .count();
 
-    println!("Files in model directory before deletion: {}", file_count_before);
-    assert!(file_count_before > 0, "Model directory should contain files");
+    println!(
+        "Files in model directory before deletion: {}",
+        file_count_before
+    );
+    assert!(
+        file_count_before > 0,
+        "Model directory should contain files"
+    );
 
     // Delete the model via API
     let delete_response = reqwest::Client::new()
@@ -211,12 +225,9 @@ async fn test_download_creates_correct_file_structure() {
     .await;
 
     // Get Hugging Face repository
-    let hf_repo = crate::llm_model::download_test::get_huggingface_repository(
-        &server,
-        &user.token,
-        true,
-    )
-    .await;
+    let hf_repo =
+        crate::llm_model::download_test::get_huggingface_repository(&server, &user.token, true)
+            .await;
     let repo_id = hf_repo["id"].as_str().unwrap();
 
     // Get local provider
@@ -250,13 +261,16 @@ async fn test_download_creates_correct_file_structure() {
 
     assert_eq!(download_response.status(), 200);
 
-    let download_instance: serde_json::Value = download_response.json().await.expect("Failed to parse download response");
+    let download_instance: serde_json::Value = download_response
+        .json()
+        .await
+        .expect("Failed to parse download response");
     let download_id = download_instance["id"].as_str().unwrap();
 
     println!("Download initiated with ID: {}", download_id);
 
     // Wait for download to complete
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
     let mut iterations = 0;
     let max_iterations = 30;
     let mut model_id: Option<String> = None;
@@ -285,12 +299,17 @@ async fn test_download_creates_correct_file_structure() {
 
         if status == "completed" {
             model_id = Some(download["model_id"].as_str().unwrap().to_string());
-            println!("✅ Download completed, model_id: {}", model_id.as_ref().unwrap());
+            println!(
+                "✅ Download completed, model_id: {}",
+                model_id.as_ref().unwrap()
+            );
             break;
         }
 
         if status == "failed" {
-            let error = download["error_message"].as_str().unwrap_or("Unknown error");
+            let error = download["error_message"]
+                .as_str()
+                .unwrap_or("Unknown error");
             panic!("Download failed: {}", error);
         }
     }
@@ -307,8 +326,13 @@ async fn test_download_creates_correct_file_structure() {
 
     assert_eq!(get_response.status(), 200);
 
-    let models_list: serde_json::Value = get_response.json().await.expect("Failed to parse models list");
-    let models = models_list["models"].as_array().expect("Should have models array");
+    let models_list: serde_json::Value = get_response
+        .json()
+        .await
+        .expect("Failed to parse models list");
+    let models = models_list["models"]
+        .as_array()
+        .expect("Should have models array");
     let _model = models
         .iter()
         .find(|m| m["id"].as_str().unwrap() == model_id)
@@ -317,11 +341,10 @@ async fn test_download_creates_correct_file_structure() {
     // Construct the model path manually since API doesn't return file paths
     // Model storage path is: {app_data_dir}/models/{provider_id}/{model_id}
     // App data dir defaults to home directory
-    let app_data_dir = std::env::var("APP_DATA_DIR")
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            format!("{}/.ziee-chat", home)
-        });
+    let app_data_dir = std::env::var("APP_DATA_DIR").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        format!("{}/.ziee-chat", home)
+    });
     let model_path = Path::new(&app_data_dir)
         .join("models")
         .join(provider_id)

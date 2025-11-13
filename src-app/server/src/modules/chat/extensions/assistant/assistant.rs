@@ -48,9 +48,7 @@ impl ChatExtension for AssistantExtension {
                             // Create system message
                             let system_message = ChatMessage {
                                 role: Role::System,
-                                content: vec![ContentBlock::Text {
-                                    text: instructions,
-                                }],
+                                content: vec![ContentBlock::Text { text: instructions }],
                             };
 
                             // Insert at the beginning of messages
@@ -60,7 +58,10 @@ impl ChatExtension for AssistantExtension {
                 }
                 None => {
                     // Assistant not found - log warning but don't fail
-                    tracing::warn!("Assistant {} not found, continuing without instructions", assistant_id);
+                    tracing::warn!(
+                        "Assistant {} not found, continuing without instructions",
+                        assistant_id
+                    );
                 }
             }
         }
@@ -72,7 +73,11 @@ impl ChatExtension for AssistantExtension {
         &self,
         _context: &StreamContext,
         _final_message: &crate::modules::chat::core::models::Message,
-        _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        _tx: Option<
+            &tokio::sync::mpsc::UnboundedSender<
+                Result<axum::response::sse::Event, std::convert::Infallible>,
+            >,
+        >,
     ) -> Result<ExtensionAction, AppError> {
         // Assistant extension doesn't need post-processing
         Ok(ExtensionAction::Complete)

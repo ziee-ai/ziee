@@ -1,13 +1,12 @@
 // User MCP server handlers
 // These handlers manage personal MCP servers owned by individual users
 
-use aide::transform::TransformOperation;
 use crate::core::Repos;
+use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
-    extract::{Path, Query, Extension},
+    Json, debug_handler,
+    extract::{Extension, Path, Query},
     http::StatusCode,
-    Json,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -15,14 +14,14 @@ use uuid::Uuid;
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
     core::EventBus,
-    modules::permissions::{with_permission, RequirePermissions},
+    modules::permissions::{RequirePermissions, with_permission},
 };
 
 use super::super::{
     events::McpServerEvent,
     models::McpServer,
-    types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest},
     permissions::*,
+    types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest},
 };
 
 // =====================================================
@@ -34,10 +33,11 @@ use super::super::{
 pub async fn list_accessible_servers(
     auth: RequirePermissions<(McpServersRead,)>,
     Query(params): Query<PaginationQuery>,
-    
 ) -> ApiResult<Json<McpServerListResponse>> {
-    let response = Repos.mcp.list_accessible(auth.user.id, params.page as i64, params.per_page as i64)
-            .await?;
+    let response = Repos
+        .mcp
+        .list_accessible(auth.user.id, params.page as i64, params.per_page as i64)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -84,9 +84,10 @@ pub fn create_user_server_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_user_server(
     auth: RequirePermissions<(McpServersRead,)>,
     Path(id): Path<Uuid>,
-    
 ) -> ApiResult<Json<McpServer>> {
-    let server = Repos.mcp.get_user_server(id, auth.user.id)
+    let server = Repos
+        .mcp
+        .get_user_server(id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Server"))?;
 
@@ -112,7 +113,10 @@ pub async fn update_user_server(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = Repos.mcp.update_user_server(id, auth.user.id, request).await?;
+    let server = Repos
+        .mcp
+        .update_user_server(id, auth.user.id, request)
+        .await?;
 
     // Emit update event for other modules to react
     event_bus.emit_async(McpServerEvent::user_server_updated(server.id, auth.user.id));
@@ -139,7 +143,6 @@ pub async fn delete_user_server(
     auth: RequirePermissions<(McpServersDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
-    
 ) -> ApiResult<StatusCode> {
     Repos.mcp.delete_user_server(id, auth.user.id).await?;
 

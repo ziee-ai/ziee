@@ -10,7 +10,9 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::modules::chat::core::extension::{ChatExtension, ExtensionEntry, ExtensionMetadata, CHAT_EXTENSIONS};
+use crate::modules::chat::core::extension::{
+    CHAT_EXTENSIONS, ChatExtension, ExtensionEntry, ExtensionMetadata,
+};
 
 /// Extension metadata - defines name and execution order
 pub const METADATA: ExtensionMetadata = ExtensionMetadata {

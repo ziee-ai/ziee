@@ -91,13 +91,11 @@ impl ContentBlockDelta {
     /// Convert from ai-providers ContentBlockDelta
     pub fn from_ai_providers_delta(delta: &ai_providers::ContentBlockDelta) -> Option<Self> {
         match delta {
-            ai_providers::ContentBlockDelta::TextDelta { index, delta } => {
-                Some(Self::TextDelta {
-                    index: *index,
-                    content_id: None,
-                    delta: delta.clone(),
-                })
-            }
+            ai_providers::ContentBlockDelta::TextDelta { index, delta } => Some(Self::TextDelta {
+                index: *index,
+                content_id: None,
+                delta: delta.clone(),
+            }),
             ai_providers::ContentBlockDelta::ThinkingDelta { index, delta } => {
                 Some(Self::ThinkingDelta {
                     index: *index,

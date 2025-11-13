@@ -1,13 +1,13 @@
 // Integration tests for ziee-chat backend API
 // Each module contains tests for specific functionality
 
-mod common;
+mod assistant;
 mod auth;
-mod user;
+mod common;
 mod hardware;
 mod hub;
-mod llm_repository;
-mod llm_provider;
 mod llm_model;
-mod assistant;
+mod llm_provider;
+mod llm_repository;
 mod mcp;
+mod user;

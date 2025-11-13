@@ -14,10 +14,14 @@ pub use core::config::Config;
 
 /// Initialize and start the backend server
 /// Returns the server address that was bound
-pub async fn start_server(config: Config) -> Result<SocketAddr, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn start_server(
+    config: Config,
+) -> Result<SocketAddr, Box<dyn std::error::Error + Send + Sync>> {
     // Initialize tracing for logging based on config
     if let Some(ref logging_config) = config.logging {
-        let level = logging_config.level.parse::<tracing_subscriber::filter::LevelFilter>()
+        let level = logging_config
+            .level
+            .parse::<tracing_subscriber::filter::LevelFilter>()
             .unwrap_or(tracing_subscriber::filter::LevelFilter::INFO);
 
         match logging_config.format.as_str() {
@@ -78,8 +82,14 @@ pub async fn start_server(config: Config) -> Result<SocketAddr, Box<dyn std::err
     core::app_builder::initialize_modules(&mut modules, &module_context)?;
 
     // Register event handlers from all modules
-    let event_bus = Arc::new(core::app_builder::register_event_handlers(&modules, pool.clone()));
-    tracing::info!("Event bus initialized with {} handlers", event_bus.handler_count());
+    let event_bus = Arc::new(core::app_builder::register_event_handlers(
+        &modules,
+        pool.clone(),
+    ));
+    tracing::info!(
+        "Event bus initialized with {} handlers",
+        event_bus.handler_count()
+    );
 
     // Setup CORS from config
     let cors = core::app_builder::create_cors_layer(&config);
@@ -111,7 +121,10 @@ pub async fn start_server(config: Config) -> Result<SocketAddr, Box<dyn std::err
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     let local_addr = listener.local_addr()?;
 
-    tracing::info!("Ziee Chat backend server started successfully on {}", local_addr);
+    tracing::info!(
+        "Ziee Chat backend server started successfully on {}",
+        local_addr
+    );
 
     // Spawn server in background task
     tokio::spawn(async move {
@@ -125,9 +138,7 @@ pub async fn start_server(config: Config) -> Result<SocketAddr, Box<dyn std::err
 
 /// Find an available port in the given range
 pub fn find_available_port(start: u16, end: u16) -> Option<u16> {
-    (start..=end).find(|&port| {
-        std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
-    })
+    (start..=end).find(|&port| std::net::TcpListener::bind(("127.0.0.1", port)).is_ok())
 }
 
 /// Cleanup server resources
@@ -137,7 +148,10 @@ pub async fn cleanup_server() {
 }
 
 /// Generate OpenAPI specification
-pub async fn generate_openapi(output_dir: &str, config_file: Option<String>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn generate_openapi(
+    output_dir: &str,
+    config_file: Option<String>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     openapi::generate_openapi_spec(output_dir, config_file).await?;
     Ok(())
 }

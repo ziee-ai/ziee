@@ -1,13 +1,8 @@
 // Branch handlers - Operations for conversation branches (edit/regenerate)
 
-use aide::transform::TransformOperation;
 use crate::core::Repos;
-use axum::{
-    debug_handler,
-    extract::Path,
-    http::StatusCode,
-    Json,
-};
+use aide::transform::TransformOperation;
+use axum::{Json, debug_handler, extract::Path, http::StatusCode};
 use uuid::Uuid;
 
 use crate::{
@@ -15,9 +10,9 @@ use crate::{
     modules::{
         chat::core::{
             models::Branch,
-            types::CreateBranchRequest,
             permissions::*,
             repository::{branches as branch_repo, conversations as conv_repo},
+            types::CreateBranchRequest,
         },
         permissions::{extractors::RequirePermissions, with_permission},
     },
@@ -31,7 +26,7 @@ use crate::{
 #[debug_handler]
 pub async fn create_branch(
     auth: RequirePermissions<(BranchesCreate,)>,
-    
+
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<CreateBranchRequest>,
 ) -> ApiResult<Json<Branch>> {
@@ -41,12 +36,12 @@ pub async fn create_branch(
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
     // Ensure conversation has an active branch to use as parent
-    let parent_branch_id = conversation
-        .active_branch_id
-        .ok_or_else(|| AppError::bad_request(
+    let parent_branch_id = conversation.active_branch_id.ok_or_else(|| {
+        AppError::bad_request(
             "NO_ACTIVE_BRANCH",
-            "Conversation must have an active branch to create a new branch from"
-        ))?;
+            "Conversation must have an active branch to create a new branch from",
+        )
+    })?;
 
     // Create new branch with message cloning (handled in repository)
     let branch = branch_repo::create_branch(
@@ -75,7 +70,7 @@ pub fn create_branch_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn list_branches(
     auth: RequirePermissions<(ConversationsRead,)>,
-    
+
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<Branch>>> {
     // Verify conversation exists and user owns it
@@ -103,7 +98,7 @@ pub fn list_branches_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn activate_branch(
     auth: RequirePermissions<(BranchesSwitch,)>,
-    
+
     Path((conversation_id, branch_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<StatusCode> {
     // Verify conversation exists and user owns it
@@ -138,6 +133,8 @@ pub fn activate_branch_docs(op: TransformOperation) -> TransformOperation {
         .description("Switch the active branch for a conversation")
         .response_with::<204, (), _>(|res| res.description("Branch activated successfully"))
         .response_with::<404, (), _>(|res| res.description("Conversation or branch not found"))
-        .response_with::<400, (), _>(|res| res.description("Branch does not belong to conversation"))
+        .response_with::<400, (), _>(|res| {
+            res.description("Branch does not belong to conversation")
+        })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }

@@ -4,8 +4,8 @@
 
 // Events related to user lifecycle and authentication
 
-use uuid::Uuid;
 use super::models::User;
+use uuid::Uuid;
 
 /// Events emitted by the user module
 #[derive(Debug, Clone)]

@@ -1,8 +1,8 @@
 // Permission system infrastructure
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 // =====================================================
 // Permission Trait
@@ -68,7 +68,10 @@ pub trait PermissionList: Send + Sync + 'static {
         let descs = Self::descriptions();
 
         if perms.len() == 1 {
-            format!("\n\n**Required Permission:** `{}`\n\n{}", perms[0], descs[0])
+            format!(
+                "\n\n**Required Permission:** `{}`\n\n{}",
+                perms[0], descs[0]
+            )
         } else {
             let mut result = String::from("\n\n**Required Permissions (ALL):**\n");
             for (perm, desc) in perms.iter().zip(descs.iter()) {
@@ -146,11 +149,21 @@ where
     }
 
     fn permissions() -> Vec<&'static str> {
-        vec![P1::PERMISSION, P2::PERMISSION, P3::PERMISSION, P4::PERMISSION]
+        vec![
+            P1::PERMISSION,
+            P2::PERMISSION,
+            P3::PERMISSION,
+            P4::PERMISSION,
+        ]
     }
 
     fn descriptions() -> Vec<&'static str> {
-        vec![P1::DESCRIPTION, P2::DESCRIPTION, P3::DESCRIPTION, P4::DESCRIPTION]
+        vec![
+            P1::DESCRIPTION,
+            P2::DESCRIPTION,
+            P3::DESCRIPTION,
+            P4::DESCRIPTION,
+        ]
     }
 }
 

@@ -65,7 +65,9 @@ async fn main() {
 
     // Initialize tracing for logging based on config
     if let Some(ref logging_config) = config.logging {
-        let level = logging_config.level.parse::<tracing_subscriber::filter::LevelFilter>()
+        let level = logging_config
+            .level
+            .parse::<tracing_subscriber::filter::LevelFilter>()
             .unwrap_or(tracing_subscriber::filter::LevelFilter::INFO);
 
         match logging_config.format.as_str() {
@@ -83,9 +85,7 @@ async fn main() {
             }
             _ => {
                 // Default format
-                tracing_subscriber::fmt()
-                    .with_max_level(level)
-                    .init();
+                tracing_subscriber::fmt().with_max_level(level).init();
             }
         }
     } else {
@@ -136,8 +136,14 @@ async fn main() {
     }
 
     // Register event handlers from all modules
-    let event_bus = std::sync::Arc::new(core::app_builder::register_event_handlers(&modules, pool.clone()));
-    tracing::info!("Event bus initialized with {} handlers", event_bus.handler_count());
+    let event_bus = std::sync::Arc::new(core::app_builder::register_event_handlers(
+        &modules,
+        pool.clone(),
+    ));
+    tracing::info!(
+        "Event bus initialized with {} handlers",
+        event_bus.handler_count()
+    );
 
     // Setup CORS from config
     let cors = core::app_builder::create_cors_layer(&config);

@@ -2,7 +2,6 @@
 // Event infrastructure for future use
 #![allow(dead_code)]
 
-
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -27,7 +26,11 @@ pub enum LlmModelEvent {
     DownloadCompleted { instance_id: Uuid, model_id: Uuid },
 
     /// A model download failed
-    DownloadFailed { instance_id: Uuid, model_id: Uuid, error: String },
+    DownloadFailed {
+        instance_id: Uuid,
+        model_id: Uuid,
+        error: String,
+    },
 }
 
 impl LlmModelEvent {
@@ -48,17 +51,27 @@ impl LlmModelEvent {
 
     /// Create a DownloadStarted event
     pub fn download_started(instance_id: Uuid, model_id: Uuid) -> Self {
-        Self::DownloadStarted { instance_id, model_id }
+        Self::DownloadStarted {
+            instance_id,
+            model_id,
+        }
     }
 
     /// Create a DownloadCompleted event
     pub fn download_completed(instance_id: Uuid, model_id: Uuid) -> Self {
-        Self::DownloadCompleted { instance_id, model_id }
+        Self::DownloadCompleted {
+            instance_id,
+            model_id,
+        }
     }
 
     /// Create a DownloadFailed event
     pub fn download_failed(instance_id: Uuid, model_id: Uuid, error: String) -> Self {
-        Self::DownloadFailed { instance_id, model_id, error }
+        Self::DownloadFailed {
+            instance_id,
+            model_id,
+            error,
+        }
     }
 }
 

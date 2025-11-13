@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use super::{AuthError, AuthProvider, AuthProviderTrait, AuthResult, UserAttributes};
-use crate::modules::user::{User, UserRepository};
 use crate::modules::auth::password;
+use crate::modules::user::{User, UserRepository};
 
 /// Local authentication provider using database-stored passwords
 pub struct LocalAuthProvider {
@@ -53,11 +53,7 @@ impl AuthProviderTrait for LocalAuthProvider {
         "local"
     }
 
-    async fn authenticate(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<AuthResult, AuthError> {
+    async fn authenticate(&self, username: &str, password: &str) -> Result<AuthResult, AuthError> {
         // Get user by username or email
         let user = self
             .get_user(username)
@@ -70,9 +66,8 @@ impl AuthProviderTrait for LocalAuthProvider {
         })?;
 
         // Verify password (password::verify_password uses bcrypt internally)
-        let valid = password::verify_password(password, password_hash).map_err(|e| {
-            AuthError::InternalError(format!("Password verification error: {}", e))
-        })?;
+        let valid = password::verify_password(password, password_hash)
+            .map_err(|e| AuthError::InternalError(format!("Password verification error: {}", e)))?;
 
         if !valid {
             return Err(AuthError::InvalidCredentials(
@@ -93,8 +88,8 @@ impl AuthProviderTrait for LocalAuthProvider {
                 username: user.username.clone(),
                 email: user.email.clone(),
                 display_name: user.display_name.clone(),
-                first_name: None, // Not tracked separately in new schema
-                last_name: None,  // Not tracked separately in new schema
+                first_name: None,   // Not tracked separately in new schema
+                last_name: None,    // Not tracked separately in new schema
                 groups: Vec::new(), // TODO: Add group support
             },
         })

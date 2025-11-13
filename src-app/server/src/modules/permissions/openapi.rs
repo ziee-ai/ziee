@@ -44,9 +44,7 @@ pub struct PermissionDetail {
 ///         .response::<200, Json<UserListResponse>>()
 /// }
 /// ```
-pub fn with_permission<Perms: PermissionList>(
-    op: TransformOperation
-) -> TransformOperation {
+pub fn with_permission<Perms: PermissionList>(op: TransformOperation) -> TransformOperation {
     // Add description with permission info
     let permission_desc = Perms::format_description();
 
@@ -91,4 +89,3 @@ pub fn with_permission<Perms: PermissionList>(
     // Add security requirement for Bearer token
     op.security_requirement("bearerAuth")
 }
-

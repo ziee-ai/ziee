@@ -107,7 +107,9 @@ fn default_refresh_token_expiry() -> i64 {
 }
 
 impl Config {
-    pub fn load_from(config_path: Option<String>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn load_from(
+        config_path: Option<String>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Get config file path from parameter or environment variable
         let config_path = config_path
             .or_else(|| std::env::var("CONFIG_FILE").ok())
@@ -153,7 +155,10 @@ impl Config {
 
     pub fn database_url(&self) -> String {
         if self.postgresql.use_embedded {
-            let embedded = self.postgresql.embedded.as_ref()
+            let embedded = self
+                .postgresql
+                .embedded
+                .as_ref()
                 .expect("embedded config must be present when use_embedded is true");
             format!(
                 "postgresql://{}:{}@{}:{}/{}",
@@ -164,7 +169,10 @@ impl Config {
                 embedded.database
             )
         } else {
-            let external = self.postgresql.external.as_ref()
+            let external = self
+                .postgresql
+                .external
+                .as_ref()
                 .expect("external config must be present when use_embedded is false");
             format!(
                 "postgresql://{}:{}@{}:{}/{}",

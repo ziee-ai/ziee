@@ -4,10 +4,9 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    debug_handler,
+    Extension, Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
-    Extension, Json,
 };
 use uuid::Uuid;
 
@@ -21,13 +20,12 @@ use std::sync::Arc;
 use super::{
     events::LlmRepositoryEvent,
     models::LlmRepository,
-    types::{
-        CreateLlmRepositoryRequest, LlmRepositoryListResponse,
-        TestRepositoryConnectionRequest, TestRepositoryConnectionResponse,
-        UpdateLlmRepositoryRequest,
-    },
     permissions::*,
     repository::LlmRepositoryRepository,
+    types::{
+        CreateLlmRepositoryRequest, LlmRepositoryListResponse, TestRepositoryConnectionRequest,
+        TestRepositoryConnectionResponse, UpdateLlmRepositoryRequest,
+    },
     utils,
 };
 
@@ -43,11 +41,10 @@ pub async fn list_repositories(
     Extension(repo): Extension<LlmRepositoryRepository>,
 ) -> ApiResult<Json<LlmRepositoryListResponse>> {
     // Get all repositories
-    let all_repositories = repo.list().await
-        .map_err(|e| {
-            eprintln!("Failed to get repositories: {}", e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let all_repositories = repo.list().await.map_err(|e| {
+        eprintln!("Failed to get repositories: {}", e);
+        AppError::internal_error("Database operation failed")
+    })?;
 
     // Calculate pagination
     let total = all_repositories.len() as i64;
@@ -88,7 +85,9 @@ pub async fn get_repository(
     Path(repository_id): Path<Uuid>,
     Extension(repo): Extension<LlmRepositoryRepository>,
 ) -> ApiResult<Json<LlmRepository>> {
-    let repository = repo.get_by_id(repository_id).await
+    let repository = repo
+        .get_by_id(repository_id)
+        .await
         .map_err(|e| {
             eprintln!("Failed to get repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
@@ -128,11 +127,10 @@ pub async fn create_repository(
     utils::validate_auth_config_for_create(&request)?;
 
     // Create repository
-    let repository = repo.create(request).await
-        .map_err(|e| {
-            eprintln!("Failed to create repository: {}", e);
-            AppError::internal_error("Database operation failed")
-        })?;
+    let repository = repo.create(request).await.map_err(|e| {
+        eprintln!("Failed to create repository: {}", e);
+        AppError::internal_error("Database operation failed")
+    })?;
 
     // Emit event
     event_bus.emit_async(LlmRepositoryEvent::created(repository.clone()).into());
@@ -172,7 +170,9 @@ pub async fn update_repository(
     }
 
     // Get current repository to validate auth config updates
-    let current_repository = repo.get_by_id(repository_id).await
+    let current_repository = repo
+        .get_by_id(repository_id)
+        .await
         .map_err(|e| {
             eprintln!("Failed to get repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
@@ -183,7 +183,9 @@ pub async fn update_repository(
     utils::validate_auth_config_for_update(&current_repository, &request)?;
 
     // Update repository
-    let updated_repository = repo.update(repository_id, request).await
+    let updated_repository = repo
+        .update(repository_id, request)
+        .await
         .map_err(|e| {
             eprintln!("Failed to update repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
@@ -218,7 +220,9 @@ pub async fn delete_repository(
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
     // Get repository name before deletion for event
-    let repository_name = repo.get_by_id(repository_id).await
+    let repository_name = repo
+        .get_by_id(repository_id)
+        .await
         .ok()
         .flatten()
         .map(|r| r.name.clone())
@@ -227,16 +231,20 @@ pub async fn delete_repository(
     match repo.delete(repository_id).await {
         Ok(Ok(true)) => {
             // Emit event
-            event_bus.emit_async(LlmRepositoryEvent::deleted(repository_id, repository_name).into());
+            event_bus
+                .emit_async(LlmRepositoryEvent::deleted(repository_id, repository_name).into());
             Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
         }
         Ok(Ok(false)) => Err(AppError::not_found("Repository").into()),
         Ok(Err(error_message)) => {
-            eprintln!("Cannot delete repository {}: {}", repository_id, error_message);
-            Err(AppError::bad_request(
-                "INVALID_OPERATION",
-                "Cannot delete built-in repository",
-            ).into())
+            eprintln!(
+                "Cannot delete repository {}: {}",
+                repository_id, error_message
+            );
+            Err(
+                AppError::bad_request("INVALID_OPERATION", "Cannot delete built-in repository")
+                    .into(),
+            )
         }
         Err(e) => {
             eprintln!("Failed to delete repository {}: {}", repository_id, e);

@@ -1,7 +1,7 @@
 use testcontainers::{
+    ContainerAsync, GenericImage,
     core::{ContainerPort, WaitFor},
     runners::AsyncRunner,
-    GenericImage, ContainerAsync,
 };
 
 /// OAuth2/OIDC mock server using navikt/mock-oauth2-server
@@ -56,7 +56,8 @@ impl OAuthMockServer {
                     retry_count += 1;
                     if retry_count < max_retries {
                         // Exponential backoff: 100ms, 200ms, 400ms, 800ms, etc.
-                        let delay = std::time::Duration::from_millis(100 * 2_u64.pow(retry_count.min(5)));
+                        let delay =
+                            std::time::Duration::from_millis(100 * 2_u64.pow(retry_count.min(5)));
                         tokio::time::sleep(delay).await;
                     }
                 }
@@ -67,7 +68,8 @@ impl OAuthMockServer {
             return Err(format!(
                 "OAuth mock server failed to become ready after {} attempts. Last error: {:?}",
                 max_retries, last_error
-            ).into());
+            )
+            .into());
         }
 
         Ok(Self {
@@ -105,7 +107,11 @@ impl OAuthMockServer {
 
     /// Create a mock OAuth provider configuration for testing
     /// Returns JSON that can be inserted into the database
-    pub fn create_test_provider_config(&self, client_id: &str, client_secret: &str) -> serde_json::Value {
+    pub fn create_test_provider_config(
+        &self,
+        client_id: &str,
+        client_secret: &str,
+    ) -> serde_json::Value {
         serde_json::json!({
             "client_id": client_id,
             "client_secret": client_secret,
@@ -123,7 +129,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_oauth_mock_server_starts() {
-        let server = OAuthMockServer::start().await.expect("Failed to start OAuth mock server");
+        let server = OAuthMockServer::start()
+            .await
+            .expect("Failed to start OAuth mock server");
 
         // Verify the server is responding
         let client = reqwest::Client::new();

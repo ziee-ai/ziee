@@ -57,11 +57,14 @@ pub async fn create_provider_from_model_id(
 
     // Get API key and base URL
     let api_key = provider_info.api_key.as_deref().unwrap_or("");
-    let base_url = provider_info.base_url.as_deref().unwrap_or_else(|| match provider_type {
-        "anthropic" => "https://api.anthropic.com",
-        "gemini" => "https://generativelanguage.googleapis.com",
-        _ => "https://api.openai.com/v1",
-    });
+    let base_url = provider_info
+        .base_url
+        .as_deref()
+        .unwrap_or_else(|| match provider_type {
+            "anthropic" => "https://api.anthropic.com",
+            "gemini" => "https://generativelanguage.googleapis.com",
+            _ => "https://api.openai.com/v1",
+        });
 
     // Create provider instance
     let provider = Arc::new(
