@@ -18,7 +18,7 @@ fn to_chrono_datetime(odt: OffsetDateTime) -> DateTime<Utc> {
 pub async fn create_conversation(
     pool: &PgPool,
     user_id: Uuid,
-    model_id: Uuid,
+    model_id: Option<Uuid>,
     title: Option<String>,
 ) -> Result<Conversation, AppError> {
     // Start transaction to ensure conversation and default branch are created atomically
@@ -30,11 +30,11 @@ pub async fn create_conversation(
         r#"
         INSERT INTO conversations (user_id, model_id, title)
         VALUES ($1, $2, $3)
-        RETURNING id, user_id, model_id, title, active_branch_id,
+        RETURNING id, user_id, model_id as "model_id: _", title, active_branch_id,
                   created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         user_id,
-        model_id,
+        model_id as Option<Uuid>,
         title
     )
     .fetch_one(&mut *tx)
@@ -61,7 +61,7 @@ pub async fn create_conversation(
         UPDATE conversations
         SET active_branch_id = $1, updated_at = NOW()
         WHERE id = $2
-        RETURNING id, user_id, model_id, title, active_branch_id,
+        RETURNING id, user_id, model_id as "model_id: _", title, active_branch_id,
                   created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         branch.id,
@@ -86,7 +86,7 @@ pub async fn get_conversation(
     let conversation = sqlx::query_as!(
         Conversation,
         r#"
-        SELECT id, user_id, model_id, title, active_branch_id,
+        SELECT id, user_id, model_id as "model_id: _", title, active_branch_id,
                created_at as "created_at: _", updated_at as "updated_at: _"
         FROM conversations
         WHERE id = $1 AND user_id = $2
@@ -165,7 +165,7 @@ pub async fn update_conversation(
             title = COALESCE($1, title),
             updated_at = NOW()
         WHERE id = $2 AND user_id = $3
-        RETURNING id, user_id, model_id, title, active_branch_id,
+        RETURNING id, user_id, model_id as "model_id: _", title, active_branch_id,
                   created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         title,
@@ -211,4 +211,72 @@ pub async fn get_active_branch_id(pool: &PgPool, conversation_id: Uuid) -> Resul
     .map_err(AppError::database_error)?;
 
     Ok(result.and_then(|r| r.active_branch_id))
+}
+
+/// Update active branch for conversation
+pub async fn update_active_branch(
+    pool: &PgPool,
+    conversation_id: Uuid,
+    user_id: Uuid,
+    branch_id: Uuid,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        UPDATE conversations
+        SET active_branch_id = $1, updated_at = NOW()
+        WHERE id = $2 AND user_id = $3
+        "#,
+        branch_id,
+        conversation_id,
+        user_id
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(())
+}
+
+/// Update conversation model and optionally active branch
+pub async fn update_conversation_state(
+    pool: &PgPool,
+    conversation_id: Uuid,
+    user_id: Uuid,
+    model_id: Uuid,
+    branch_id: Option<Uuid>,
+) -> Result<(), AppError> {
+    if let Some(branch_id) = branch_id {
+        // Update both model and branch
+        sqlx::query!(
+            r#"
+            UPDATE conversations
+            SET model_id = $1, active_branch_id = $2, updated_at = NOW()
+            WHERE id = $3 AND user_id = $4
+            "#,
+            model_id,
+            branch_id,
+            conversation_id,
+            user_id
+        )
+        .execute(pool)
+        .await
+        .map_err(AppError::database_error)?;
+    } else {
+        // Update only model
+        sqlx::query!(
+            r#"
+            UPDATE conversations
+            SET model_id = $1, updated_at = NOW()
+            WHERE id = $2 AND user_id = $3
+            "#,
+            model_id,
+            conversation_id,
+            user_id
+        )
+        .execute(pool)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+
+    Ok(())
 }

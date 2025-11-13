@@ -16,10 +16,7 @@ use crate::{
             core::{
                 models::{Branch, CreateBranchRequest},
                 permissions::*,
-                repository::{
-                    branch_messages as bm_repo, branches as branch_repo,
-                    conversations as conv_repo,
-                },
+                repository::{branches as branch_repo, conversations as conv_repo},
             },
         },
         permissions::{extractors::RequirePermissions, with_permission},
@@ -42,10 +39,15 @@ pub async fn create_branch(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
-    // Get the current active branch to use as parent
-    let parent_branch_id = conversation.active_branch_id;
+    // Ensure conversation has an active branch to use as parent
+    let parent_branch_id = conversation
+        .active_branch_id
+        .ok_or_else(|| AppError::bad_request(
+            "NO_ACTIVE_BRANCH",
+            "Conversation must have an active branch to create a new branch from"
+        ))?;
 
-    // Create new branch
+    // Create new branch with message cloning (handled in repository)
     let branch = branch_repo::create_branch(
         &pool,
         conversation_id,
@@ -53,23 +55,6 @@ pub async fn create_branch(
         request.from_message_id,
     )
     .await?;
-
-    // If from_message_id is specified, clone messages from parent branch up to that message
-    // This uses copy-on-write: messages are referenced, not duplicated
-    if request.from_message_id.is_some() {
-        if let Some(parent_id) = parent_branch_id {
-            // Clone all messages from parent branch
-            // Note: If we wanted to clone only up to a specific message, we'd need the
-            // created_at timestamp of that message in the parent branch
-            let _cloned_ids = bm_repo::clone_messages_to_branch(
-                &pool,
-                parent_id,
-                branch.id,
-                None, // Clone all messages for now
-            )
-            .await?;
-        }
-    }
 
     Ok((StatusCode::CREATED, Json(branch)))
 }

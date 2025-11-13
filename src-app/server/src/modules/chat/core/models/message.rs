@@ -51,8 +51,6 @@ impl std::str::FromStr for MessageRole {
 pub struct Message {
     pub id: Uuid,
     pub role: String,
-    pub parent_id: Option<Uuid>,
-    pub sequence_number: i32,
     pub originated_from_id: Uuid,  // Original message ID in edit lineage
     pub edit_count: i32,  // Number of edits in this lineage
     pub created_at: DateTime<Utc>,
@@ -77,7 +75,6 @@ pub struct MessageWithContent {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CreateMessageRequest {
     pub role: MessageRole,
-    pub parent_id: Option<Uuid>,
 }
 
 /// Request to edit an existing message

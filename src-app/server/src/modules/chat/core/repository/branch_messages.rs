@@ -15,6 +15,12 @@ fn to_offset_datetime(dt: chrono::DateTime<chrono::Utc>) -> OffsetDateTime {
         .expect("valid nanoseconds")
 }
 
+/// Convert time::OffsetDateTime to chrono::DateTime<Utc>
+fn from_offset_datetime(odt: OffsetDateTime) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::from_timestamp(odt.unix_timestamp(), odt.nanosecond())
+        .expect("valid timestamp")
+}
+
 /// Add a message to a branch (create junction record)
 pub async fn add_message_to_branch(
     pool: &PgPool,
@@ -130,6 +136,28 @@ pub async fn get_branch_messages(
     .map_err(AppError::database_error)?;
 
     Ok(branch_messages)
+}
+
+/// Get the timestamp when a message was added to a branch
+pub async fn get_message_timestamp_in_branch(
+    pool: &PgPool,
+    branch_id: Uuid,
+    message_id: Uuid,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, AppError> {
+    let result = sqlx::query!(
+        r#"
+        SELECT created_at
+        FROM branch_messages
+        WHERE branch_id = $1 AND message_id = $2
+        "#,
+        branch_id,
+        message_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(result.map(|r| from_offset_datetime(r.created_at)))
 }
 
 /// Check if a message belongs to a branch

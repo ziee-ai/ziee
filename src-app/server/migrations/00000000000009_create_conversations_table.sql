@@ -3,8 +3,9 @@ CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
-    -- Model configuration
-    model_id UUID NOT NULL REFERENCES llm_models(id),
+    -- Model configuration (optional, for display/history purposes)
+    -- Actual model selection happens per-message via SendMessageRequest
+    model_id UUID REFERENCES llm_models(id) ON DELETE SET NULL,
 
     -- Conversation metadata
     title VARCHAR(500),

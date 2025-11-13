@@ -22,15 +22,13 @@ use crate::modules::chat::core::{
 /// Streaming service for chat messages
 pub struct StreamingService {
     pool: PgPool,
-    provider: Arc<Provider>,
     extension_registry: Option<Arc<ExtensionRegistry>>,
 }
 
 impl StreamingService {
-    pub fn new(pool: PgPool, provider: Arc<Provider>) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
-            provider,
             extension_registry: None,
         }
     }
@@ -48,14 +46,18 @@ impl StreamingService {
         branch_id: Uuid,
         conversation_id: Uuid,
         user_id: Uuid,
-        model_id: Uuid,
-        provider_id: Uuid,
         request: SendMessageRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, AppError>> + Send>>, AppError>
     {
+        // Create provider from model_id
+        use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
+
+        let (provider, model_name, model_id, provider_id) =
+            create_provider_from_model_id(&self.pool, request.model_id).await?;
+
         // Create initial user message
         let user_message =
-            msg_repo::create_message(&self.pool, branch_id, MessageRole::User.as_str(), request.parent_id)
+            msg_repo::create_message(&self.pool, branch_id, MessageRole::User.as_str())
                 .await?;
 
         let user_content_data = MessageContentData::Text {
@@ -68,9 +70,8 @@ impl StreamingService {
 
         // Clone data for spawned task
         let pool = self.pool.clone();
-        let provider = self.provider.clone();
+        let provider_for_task = provider.clone();
         let extension_registry = self.extension_registry.clone();
-        let model_name = request.model_name.clone().unwrap_or_else(|| "gpt-4".to_string());
 
         // Spawn task to handle loop
         tokio::spawn(async move {
@@ -103,7 +104,6 @@ impl StreamingService {
                     &pool,
                     branch_id,
                     MessageRole::Assistant.as_str(),
-                    parent_message_id,
                 )
                 .await
                 {
@@ -134,7 +134,7 @@ impl StreamingService {
 
                 // Create stream context
                 let mut context_metadata = std::collections::HashMap::new();
-                context_metadata.insert("provider_type".to_string(), serde_json::json!(provider.provider_type()));
+                context_metadata.insert("provider_type".to_string(), serde_json::json!(provider_for_task.provider_type()));
                 context_metadata.insert("model_name".to_string(), serde_json::json!(model_name));
                 context_metadata.insert("model_id".to_string(), serde_json::json!(model_id.to_string()));
                 context_metadata.insert("provider_id".to_string(), serde_json::json!(provider_id.to_string()));
@@ -170,7 +170,7 @@ impl StreamingService {
                 }
 
                 // Call AI provider
-                let mut ai_stream = match provider.chat_stream(chat_request).await {
+                let mut ai_stream = match provider_for_task.chat_stream(chat_request).await {
                     Ok(stream) => stream,
                     Err(e) => {
                         let _ = tx.send(Err(AppError::internal_error(format!("AI provider error: {}", e))));
@@ -229,7 +229,6 @@ impl StreamingService {
                         match Self::create_continuation_message_static(
                             &pool,
                             branch_id,
-                            Some(assistant_message.id),
                             user_message_content,
                         )
                         .await
@@ -335,12 +334,11 @@ impl StreamingService {
     async fn create_continuation_message_static(
         pool: &PgPool,
         branch_id: Uuid,
-        parent_id: Option<Uuid>,
         user_message_content: Vec<MessageContentData>,
     ) -> Result<Uuid, AppError> {
         // Create user message for tool results
         let continuation_message =
-            msg_repo::create_message(pool, branch_id, MessageRole::User.as_str(), parent_id).await?;
+            msg_repo::create_message(pool, branch_id, MessageRole::User.as_str()).await?;
 
         // Store content blocks (tool results, etc.)
         for (index, content_data) in user_message_content.iter().enumerate() {

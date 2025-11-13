@@ -22,13 +22,9 @@ use crate::{
             repository::conversations as conv_repo,
             services::StreamingService,
         },
-        llm_model::repository as model_repo,
-        llm_provider::repository as provider_repo,
         permissions::{extractors::RequirePermissions, with_permission},
     },
 };
-
-use ai_providers::Provider;
 
 /// Send a message and stream the AI response using SSE
 /// This is the main endpoint for interactive chat functionality
@@ -37,79 +33,43 @@ pub async fn send_message(
     State(pool): State<PgPool>,
     Extension(extension_registry): Extension<Arc<ExtensionRegistry>>,
     Path(conversation_id): Path<Uuid>,
-    Json(mut request): Json<SendMessageRequest>,
+    Json(request): Json<SendMessageRequest>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
     // Verify conversation exists and user owns it
-    let conversation = conv_repo::get_conversation(&pool, conversation_id, auth.user.id)
+    let _conversation = conv_repo::get_conversation(&pool, conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
-    // Get active branch
-    let branch_id = conversation
-        .active_branch_id
-        .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
-
-    // Create repository instances
-    let model_repo = model_repo::LlmModelRepository::new(pool.clone());
-    let provider_repo = provider_repo::LlmProviderRepository::new(pool.clone());
-
-    // Get model information from database
-    let model = model_repo
-        .get_by_id(conversation.model_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Model"))?;
-
-    // Get provider information from database
-    let provider_info = provider_repo
-        .get_by_id(model.provider_id)
-        .await
-        .map_err(AppError::database_error)?
-        .ok_or_else(|| AppError::not_found("Provider"))?;
-
-    // Check if provider is enabled
-    if !provider_info.enabled {
-        return Err(AppError::bad_request(
-            "PROVIDER_DISABLED",
-            "The provider for this model is currently disabled",
+    // Handle branch creation if requested (for edit/regenerate flow)
+    let branch_id = if let Some(message_id) = request.create_branch_from_message_id {
+        // Create new branch from the specified message
+        let new_branch = crate::modules::chat::core::repository::messages::create_branch_from_message(
+            &pool,
+            conversation_id,
+            request.branch_id,
+            message_id,
         )
-        .into());
-    }
+        .await?;
 
-    // Map provider type to ai_providers format
-    // anthropic and gemini map directly, everything else uses OpenAI-compatible API
-    let provider_type = match provider_info.provider_type.as_str() {
-        "anthropic" => "anthropic",
-        "gemini" => "gemini",
-        _ => "openai", // openai, groq, mistral, deepseek, custom, huggingface all use OpenAI-compatible API
+        new_branch.id
+    } else {
+        // Use the specified branch directly
+        request.branch_id
     };
 
-    // Get API key from provider
-    let api_key = provider_info
-        .api_key
-        .as_deref()
-        .unwrap_or("");
-
-    // Get base URL (use provider's base_url or default based on type)
-    let base_url = provider_info
-        .base_url
-        .as_deref()
-        .unwrap_or_else(|| match provider_type {
-            "anthropic" => "https://api.anthropic.com",
-            "gemini" => "https://generativelanguage.googleapis.com",
-            _ => "https://api.openai.com/v1",
-        });
-
-    // Create provider instance
-    let provider = Arc::new(
-        Provider::new(provider_type, api_key, base_url)
-            .map_err(|e| AppError::internal_error(format!("Failed to create provider: {}", e)))?,
-    );
-
-    // Set model name in request for the streaming service
-    request.model_name = Some(model.name.clone());
+    // Update conversation state with the active branch and model
+    conv_repo::update_conversation_state(
+        &pool,
+        conversation_id,
+        auth.user.id,
+        request.model_id,
+        Some(branch_id),
+    )
+    .await?;
 
     // Create streaming service with extensions
-    let streaming_service = StreamingService::new(pool.clone(), provider)
+    // Provider is created inside send_message based on request.model_id
+    let streaming_service = StreamingService::new(pool.clone())
         .with_extensions(extension_registry);
 
     // Send message and get stream
@@ -118,8 +78,6 @@ pub async fn send_message(
             branch_id,
             conversation_id,
             auth.user.id,
-            model.id,
-            model.provider_id,
             request,
         )
         .await?;

@@ -16,11 +16,16 @@ pub struct SendMessageRequest {
     /// User message content (text)
     pub content: String,
 
-    /// Optional parent message ID (for threading)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_id: Option<Uuid>,
+    /// Model ID to use for this message (required)
+    pub model_id: Uuid,
 
-    /// Model name to use for the chat request (passed from handler)
-    #[serde(skip)]
-    pub model_name: Option<String>,
+    /// Branch ID to send message to (required)
+    /// This branch will be used as the parent when creating a new branch
+    pub branch_id: Uuid,
+
+    /// If set, creates a new branch from this message before sending
+    /// The message must belong to the specified branch_id
+    /// The new branch becomes the active branch
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub create_branch_from_message_id: Option<Uuid>,
 }

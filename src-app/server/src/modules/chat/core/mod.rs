@@ -1,5 +1,6 @@
 // Core chat module - Core chat functionality with extension system
 
+pub mod ai_provider;
 pub mod extension;
 pub mod handlers;
 pub mod models;
@@ -9,6 +10,7 @@ pub mod routes;
 pub mod services;
 
 // Re-export for convenience
+pub use ai_provider::*;
 pub use extension::*;
 pub use handlers::*;
 pub use models::*;

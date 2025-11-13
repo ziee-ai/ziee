@@ -12,7 +12,9 @@ use super::branch::Branch;
 pub struct Conversation {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub model_id: Uuid,
+    /// Optional model ID for display/history purposes
+    /// Actual model selection happens per-message via SendMessageRequest
+    pub model_id: Option<Uuid>,
     pub title: Option<String>,
     pub active_branch_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
@@ -30,7 +32,10 @@ pub struct ConversationWithBranch {
 /// Request to create a new conversation
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CreateConversationRequest {
-    pub model_id: Uuid,
+    /// Optional model ID for display/history purposes
+    /// Actual model selection happens per-message via SendMessageRequest
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 }

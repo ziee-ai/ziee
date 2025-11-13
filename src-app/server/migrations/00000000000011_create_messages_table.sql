@@ -7,10 +7,6 @@ CREATE TABLE messages (
     -- Message metadata
     role VARCHAR(20) NOT NULL,  -- 'user', 'assistant', 'system'
 
-    -- Message hierarchy (for threading)
-    parent_id UUID REFERENCES messages(id) ON DELETE CASCADE,
-    sequence_number INTEGER NOT NULL DEFAULT 0,
-
     -- Edit tracking (for message edit lineage)
     originated_from_id UUID NOT NULL,
     edit_count INTEGER NOT NULL DEFAULT 0,
@@ -20,7 +16,6 @@ CREATE TABLE messages (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_messages_parent_id ON messages(parent_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
 CREATE INDEX idx_messages_role ON messages(role);
 CREATE INDEX idx_messages_originated_from_id ON messages(originated_from_id);

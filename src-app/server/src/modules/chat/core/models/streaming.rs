@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// A chunk of streamed chat content (extends ai-providers StreamChatChunk)
+/// Extension fields (e.g., title) are automatically added by the compose_chat_stream_chunk_extensions macro
+#[macros::compose_chat_stream_chunk_extensions]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ChatStreamChunk {
     /// Content block deltas
@@ -33,16 +35,14 @@ pub struct ChatStreamChunk {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
 
-    /// Auto-generated title (when available)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-
     /// Error information
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<StreamError>,
 }
 
 /// Content block delta - Base types (extensions can add more variants)
+/// Extension variants (e.g., ToolUseDelta) are automatically added by the compose_content_block_delta_variants macro
+#[macros::compose_content_block_delta_variants]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlockDelta {
@@ -61,8 +61,6 @@ pub enum ContentBlockDelta {
         content_id: Option<Uuid>,
         delta: String,
     },
-
-    // Tool-related deltas (ToolUseDelta, etc.) will be added by MCP extension
 }
 
 impl ContentBlockDelta {

@@ -14,23 +14,7 @@ pub async fn create_message(
     pool: &PgPool,
     branch_id: Uuid,
     role: &str,
-    parent_id: Option<Uuid>,
 ) -> Result<Message, AppError> {
-    // Get next sequence number for this branch
-    let max_seq = sqlx::query_scalar!(
-        r#"
-        SELECT COALESCE(MAX(m.sequence_number), -1) as "max_seq!"
-        FROM messages m
-        INNER JOIN branch_messages bm ON m.id = bm.message_id
-        WHERE bm.branch_id = $1
-        "#,
-        branch_id
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::database_error)?;
-
-    let sequence_number = max_seq + 1;
     let message_id = Uuid::new_v4();
 
     // Start transaction
@@ -40,17 +24,15 @@ pub async fn create_message(
     let message = sqlx::query_as!(
         Message,
         r#"
-        INSERT INTO messages (id, role, parent_id, sequence_number, originated_from_id, edit_count)
-        VALUES ($1, $2, $3, $4, $1, 0)
-        RETURNING id, role, parent_id, sequence_number,
+        INSERT INTO messages (id, role, originated_from_id, edit_count)
+        VALUES ($1, $2, $1, 0)
+        RETURNING id, role,
                   originated_from_id as "originated_from_id!",
                   edit_count,
                   created_at as "created_at: _"
         "#,
         message_id,
-        role,
-        parent_id,
-        sequence_number
+        role
     )
     .fetch_one(&mut *tx)
     .await
@@ -79,7 +61,7 @@ pub async fn get_message(pool: &PgPool, id: Uuid) -> Result<Option<Message>, App
     let message = sqlx::query_as!(
         Message,
         r#"
-        SELECT id, role, parent_id, sequence_number,
+        SELECT id, role,
                originated_from_id as "originated_from_id!",
                edit_count,
                created_at as "created_at: _"
@@ -111,13 +93,13 @@ pub async fn get_message_with_content(pool: &PgPool, id: Uuid) -> Result<Option<
     }
 }
 
-/// List all messages in a branch (in sequence order)
+/// List all messages in a branch (ordered by when they were added to branch)
 /// This joins through the branch_messages junction table
 pub async fn list_messages_in_branch(pool: &PgPool, branch_id: Uuid) -> Result<Vec<Message>, AppError> {
     let messages = sqlx::query_as!(
         Message,
         r#"
-        SELECT m.id, m.role, m.parent_id, m.sequence_number,
+        SELECT m.id, m.role,
                m.originated_from_id as "originated_from_id!",
                m.edit_count,
                m.created_at as "created_at: _"
@@ -155,6 +137,82 @@ pub async fn get_conversation_history(
     Ok(history)
 }
 
+/// Create a new branch from a message (for unified streaming endpoint)
+/// Clones all messages from parent branch up to (but not including) the specified message
+pub async fn create_branch_from_message(
+    pool: &PgPool,
+    conversation_id: Uuid,
+    parent_branch_id: Uuid,
+    message_id: Uuid,
+) -> Result<crate::modules::chat::core::models::Branch, AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::database_error)?;
+
+    // Verify message exists in the parent branch
+    let message_created_at = sqlx::query_scalar!(
+        r#"
+        SELECT created_at
+        FROM branch_messages
+        WHERE branch_id = $1 AND message_id = $2
+        "#,
+        parent_branch_id,
+        message_id
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?
+    .ok_or_else(|| AppError::not_found("Message not in branch"))?;
+
+    // Create new branch
+    let new_branch = sqlx::query_as!(
+        crate::modules::chat::core::models::Branch,
+        r#"
+        INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id)
+        VALUES ($1, $2, $3)
+        RETURNING id, conversation_id, parent_branch_id, created_from_message_id,
+                  created_at as "created_at: _"
+        "#,
+        conversation_id,
+        Some(parent_branch_id),
+        Some(message_id)
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    // Clone messages from parent branch up to (but not including) the branching message
+    sqlx::query!(
+        r#"
+        INSERT INTO branch_messages (branch_id, message_id, is_clone, created_at)
+        SELECT $1, message_id, true, created_at
+        FROM branch_messages
+        WHERE branch_id = $2 AND created_at < $3
+        "#,
+        new_branch.id,
+        parent_branch_id,
+        message_created_at
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    // Set new branch as active
+    sqlx::query!(
+        r#"
+        UPDATE conversations SET active_branch_id = $1, updated_at = NOW()
+        WHERE id = $2
+        "#,
+        new_branch.id,
+        conversation_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(AppError::database_error)?;
+
+    tx.commit().await.map_err(AppError::database_error)?;
+
+    Ok(new_branch)
+}
+
 /// Edit a message (creates new branch with updated message)
 /// This is the key operation for edit/regenerate functionality
 pub async fn edit_message(
@@ -170,7 +228,7 @@ pub async fn edit_message(
     let original = sqlx::query_as!(
         Message,
         r#"
-        SELECT id, role, parent_id, sequence_number,
+        SELECT id, role,
                originated_from_id as "originated_from_id!",
                edit_count,
                created_at as "created_at: _"
@@ -237,17 +295,15 @@ pub async fn edit_message(
     let new_message = sqlx::query_as!(
         Message,
         r#"
-        INSERT INTO messages (id, role, parent_id, sequence_number, originated_from_id, edit_count)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, role, parent_id, sequence_number,
+        INSERT INTO messages (id, role, originated_from_id, edit_count)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, role,
                   originated_from_id as "originated_from_id!",
                   edit_count,
                   created_at as "created_at: _"
         "#,
         new_message_id,
         original.role,
-        original.parent_id,
-        original.sequence_number,
         original.originated_from_id,  // Keep same origin
         original.edit_count  // Will be incremented later
     )
