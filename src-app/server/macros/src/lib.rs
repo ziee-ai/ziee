@@ -156,18 +156,6 @@ fn compose_fields(item: TokenStream, const_name: &str) -> TokenStream {
     .into()
 }
 
-/// Marker attribute for chat extensions (documentation purposes)
-///
-/// Usage in extension modules:
-/// ```
-/// // In modules/chat/assistant/extension.rs
-/// pub struct RequestFields {
-///     pub assistant_id: Option<Uuid>,
-/// }
-/// ```
-#[proc_macro_attribute]
-pub fn register_chat_extension(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // This is primarily a marker for documentation
-    // The actual discovery happens via build script scanning for extension.rs files
-    item
-}
+// Note: register_chat_extension and register_repositories macros removed
+// - Extension registration now uses linkme distributed slices
+// - Repository registration now uses linkme distributed slices

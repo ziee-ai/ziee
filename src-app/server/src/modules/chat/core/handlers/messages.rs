@@ -1,19 +1,20 @@
 // Message handlers - Operations for chat messages
 
 use aide::transform::TransformOperation;
+use crate::core::Repos;
 use axum::{
-    extract::{Path, State},
+    debug_handler,
+    extract::Path,
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError},
     modules::{
         chat::core::{
-            models::{EditMessageRequest, EditMessageResponse, MessageWithContent},
+            types::{EditMessageRequest, EditMessageResponse, MessageWithContent},
             permissions::*,
             repository::{conversations as conv_repo, messages as msg_repo},
         },
@@ -26,13 +27,14 @@ use crate::{
 // =====================================================
 
 /// Get conversation history (all messages with content in active branch)
+#[debug_handler]
 pub async fn get_conversation_history(
     auth: RequirePermissions<(MessagesRead,)>,
-    State(pool): State<PgPool>,
+    
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<MessageWithContent>>> {
     // Verify conversation exists and user owns it
-    let conversation = conv_repo::get_conversation(&pool, conversation_id, auth.user.id)
+    let conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -42,7 +44,7 @@ pub async fn get_conversation_history(
         .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
 
     // Get conversation history
-    let history = msg_repo::get_conversation_history(&pool, branch_id).await?;
+    let history = msg_repo::get_conversation_history(Repos.pool(), branch_id).await?;
 
     Ok((StatusCode::OK, Json(history)))
 }
@@ -59,12 +61,13 @@ pub fn get_conversation_history_docs(op: TransformOperation) -> TransformOperati
 }
 
 /// Get a specific message with its content
+#[debug_handler]
 pub async fn get_message(
-    auth: RequirePermissions<(MessagesRead,)>,
-    State(pool): State<PgPool>,
+    _auth: RequirePermissions<(MessagesRead,)>,
+
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<Json<MessageWithContent>> {
-    let message_with_content = msg_repo::get_message_with_content(&pool, message_id).await?
+    let message_with_content = msg_repo::get_message_with_content(Repos.pool(), message_id).await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 
     // TODO: Verify user owns the conversation containing this message
@@ -85,14 +88,15 @@ pub fn get_message_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Edit a message (creates new branch with updated message)
+#[debug_handler]
 pub async fn edit_message(
     auth: RequirePermissions<(MessagesCreate,)>,
-    State(pool): State<PgPool>,
+    
     Path((conversation_id, message_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<EditMessageRequest>,
 ) -> ApiResult<Json<EditMessageResponse>> {
     // Verify conversation exists and user owns it
-    let conversation = conv_repo::get_conversation(&pool, conversation_id, auth.user.id)
+    let conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -103,7 +107,7 @@ pub async fn edit_message(
 
     // Edit message (creates new branch with edited message)
     let response = msg_repo::edit_message(
-        &pool,
+        Repos.pool(),
         message_id,
         conversation_id,
         request,
@@ -126,14 +130,15 @@ pub fn edit_message_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Delete a message and all its descendants
+#[debug_handler]
 pub async fn delete_message(
-    auth: RequirePermissions<(MessagesDelete,)>,
-    State(pool): State<PgPool>,
+    _auth: RequirePermissions<(MessagesDelete,)>,
+
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // TODO: Verify user owns the conversation containing this message
 
-    let deleted_count = msg_repo::delete_message_and_descendants(&pool, message_id).await?;
+    let deleted_count = msg_repo::delete_message_and_descendants(Repos.pool(), message_id).await?;
 
     if deleted_count == 0 {
         return Err(AppError::not_found("Message").into());

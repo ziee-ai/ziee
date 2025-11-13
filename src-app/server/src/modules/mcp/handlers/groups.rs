@@ -2,23 +2,26 @@
 // These handlers manage MCP server assignments to user groups
 
 use aide::transform::TransformOperation;
+use crate::core::Repos;
 use axum::{
-    extract::{Path, State},
+    debug_handler,
+    extract::{Path, Extension},
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     common::ApiResult,
+    core::EventBus,
     modules::permissions::{with_permission, RequirePermissions},
 };
 
 use super::super::{
-    models::{GroupSystemServersResponse, ServerGroupsRequest, UpdateGroupSystemServersRequest},
+    events::McpServerEvent,
+    types::{GroupSystemServersResponse, ServerGroupsRequest, UpdateGroupSystemServersRequest},
     permissions::*,
-    repository,
 };
 
 // =====================================================
@@ -26,12 +29,13 @@ use super::super::{
 // =====================================================
 
 /// Get groups assigned to an MCP server
+#[debug_handler]
 pub async fn get_server_groups(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Path(id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    
 ) -> ApiResult<Json<Vec<Uuid>>> {
-    let group_ids = repository::get_server_groups(&pool, id).await?;
+    let group_ids = Repos.mcp.get_server_groups(id).await?;
 
     Ok((StatusCode::OK, Json(group_ids)))
 }
@@ -48,13 +52,17 @@ pub fn get_server_groups_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Assign MCP server to groups (replaces all assignments)
+#[debug_handler]
 pub async fn assign_server_to_groups(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
-    State(pool): State<PgPool>,
     Json(request): Json<ServerGroupsRequest>,
 ) -> ApiResult<StatusCode> {
-    repository::set_server_groups(&pool, id, request.group_ids).await?;
+    Repos.mcp.set_server_groups(id, request.group_ids).await?;
+
+    // Emit group assignment changed event
+    event_bus.emit_async(McpServerEvent::group_assignment_changed(id));
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -72,12 +80,16 @@ pub fn assign_server_to_groups_docs(op: TransformOperation) -> TransformOperatio
 }
 
 /// Remove MCP server from group
+#[debug_handler]
 pub async fn remove_server_from_group(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path((id, group_id)): Path<(Uuid, Uuid)>,
-    State(pool): State<PgPool>,
 ) -> ApiResult<StatusCode> {
-    repository::remove_mcp_server_from_group(&pool, group_id, id).await?;
+    Repos.mcp.remove_from_group(group_id, id).await?;
+
+    // Emit group assignment changed event
+    event_bus.emit_async(McpServerEvent::group_assignment_changed(id));
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -98,12 +110,13 @@ pub fn remove_server_from_group_docs(op: TransformOperation) -> TransformOperati
 // =====================================================
 
 /// Get all system MCP servers assigned to a group
+#[debug_handler]
 pub async fn get_group_system_servers(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Path(group_id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    
 ) -> ApiResult<Json<GroupSystemServersResponse>> {
-    let servers = repository::get_system_servers_for_group(&pool, group_id)
+    let servers = Repos.mcp.get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
             eprintln!("Failed to get system servers for group {}: {}", group_id, e);
@@ -125,16 +138,17 @@ pub fn get_group_system_servers_docs(op: TransformOperation) -> TransformOperati
 
 /// Bulk update system MCP servers for a group (requires mcp_servers::admin_edit permission)
 /// Atomically updates server assignments - adds new servers and removes unspecified ones
+#[debug_handler]
 pub async fn update_group_system_servers(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(group_id): Path<Uuid>,
-    State(pool): State<PgPool>,
     Json(request): Json<UpdateGroupSystemServersRequest>,
 ) -> ApiResult<Json<GroupSystemServersResponse>> {
     use std::collections::HashSet;
 
     // Get current assignments
-    let current = repository::get_system_servers_for_group(&pool, group_id)
+    let current = Repos.mcp.get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
             eprintln!("Failed to get current servers for group {}: {}", group_id, e);
@@ -148,9 +162,14 @@ pub async fn update_group_system_servers(
     let to_add: Vec<Uuid> = new_ids.difference(&current_ids).copied().collect();
     let to_remove: Vec<Uuid> = current_ids.difference(&new_ids).copied().collect();
 
+    // Track all affected server IDs for event emission
+    let mut affected_server_ids = HashSet::new();
+    affected_server_ids.extend(to_add.iter().copied());
+    affected_server_ids.extend(to_remove.iter().copied());
+
     // Apply changes - remove first, then add
     for server_id in to_remove {
-        repository::remove_mcp_server_from_group(&pool, group_id, server_id)
+        Repos.mcp.remove_from_group(group_id, server_id)
             .await
             .map_err(|e| {
                 eprintln!("Failed to remove server {} from group {}: {}", server_id, group_id, e);
@@ -159,7 +178,7 @@ pub async fn update_group_system_servers(
     }
 
     for server_id in to_add {
-        repository::assign_mcp_server_to_group(&pool, group_id, server_id)
+        Repos.mcp.assign_to_group(group_id, server_id)
             .await
             .map_err(|e| {
                 eprintln!("Failed to assign server {} to group {}: {}", server_id, group_id, e);
@@ -167,8 +186,13 @@ pub async fn update_group_system_servers(
             })?;
     }
 
+    // Emit group assignment changed events for all affected servers
+    for server_id in affected_server_ids {
+        event_bus.emit_async(McpServerEvent::group_assignment_changed(server_id));
+    }
+
     // Return updated list
-    let servers = repository::get_system_servers_for_group(&pool, group_id)
+    let servers = Repos.mcp.get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
             eprintln!("Failed to get updated servers for group {}: {}", group_id, e);

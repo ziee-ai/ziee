@@ -3,12 +3,10 @@
 use aide::transform::TransformOperation;
 use axum::{
     debug_handler,
-    extract::State,
     response::sse::{Event, Sse},
     Json,
 };
 use futures_util::stream::Stream;
-use sqlx::PgPool;
 use sysinfo::System;
 use uuid::Uuid;
 
@@ -32,7 +30,6 @@ use super::types::{
 #[debug_handler]
 pub async fn get_hardware_info(
     _auth: RequirePermissions<(HardwareRead,)>,
-    State(_pool): State<PgPool>,
 ) -> ApiResult<Json<HardwareInfoResponse>> {
     let mut sys = System::new_all();
     sys.refresh_all();
@@ -100,7 +97,6 @@ pub fn get_hardware_info_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn subscribe_hardware_usage(
     _auth: RequirePermissions<(HardwareMonitor,)>,
-    State(_pool): State<PgPool>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
     let client_id = Uuid::new_v4();
     let mut rx = add_client(client_id);

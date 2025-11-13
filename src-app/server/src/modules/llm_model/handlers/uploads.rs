@@ -2,10 +2,12 @@
 // Adapted from react-test/src-tauri/src/api/model_uploads.rs for ziee-chat
 
 use axum::{
-    extract::{Multipart, State},
+    debug_handler,
+    extract::Multipart,
     http::StatusCode,
     response::Json,
 };
+use crate::core::Repos;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -499,13 +501,14 @@ pub struct DownloadFromRepositoryRequest {
 }
 
 /// Upload multiple model files and auto-commit as a model
+#[debug_handler]
 pub async fn upload_multiple_files_and_commit(
     _auth: RequirePermissions<(LlmModelsCreate,)>,
-    State(pool): State<sqlx::PgPool>,
+    
     mut multipart: Multipart,
 ) -> ApiResult<Json<LlmModel>> {
     // Create repository instances
-    let model_repo = repository::LlmModelRepository::new(pool.clone());
+    let model_repo = repository::LlmModelRepository::new(Repos.pool().clone());
 
     let storage = ModelStorage::new().await.map_err(|e| {
         (
@@ -759,7 +762,7 @@ pub async fn upload_multiple_files_and_commit(
 
     // Create model using the existing function
     let model = create_model_with_files(
-        &pool,
+        Repos.pool(),
         &model_repo,
         CreateModelWithFilesRequest {
             provider_id,
@@ -909,13 +912,14 @@ impl std::fmt::Display for ModelFileType {
 
 /// Initiate repository download (returns immediately with download instance ID)
 /// The actual download happens in a background task
+#[debug_handler]
 pub async fn initiate_repository_download(
     _auth: RequirePermissions<(LlmModelsCreate,)>,
-    State(pool): State<sqlx::PgPool>,
+    
     Json(request): Json<DownloadFromRepositoryRequest>,
 ) -> ApiResult<Json<DownloadInstance>> {
     // Get repository information
-    let repository = crate::modules::llm_repository::repository::get_llm_repository_by_id(&pool, request.repository_id)
+    let repository = crate::modules::llm_repository::repository::get_llm_repository_by_id(Repos.pool(), request.repository_id)
         .await
         .map_err(|e| {
             (
@@ -931,8 +935,7 @@ pub async fn initiate_repository_download(
         })?;
 
     // Create repository instances
-    let download_repo = repository::DownloadInstanceRepository::new(pool.clone());
-    let model_repo = repository::LlmModelRepository::new(pool.clone());
+    let download_repo = repository::DownloadInstanceRepository::new(Repos.pool().clone());
 
     // Create download instance in the database
     let download_request = CreateDownloadInstanceRequest {
@@ -991,7 +994,7 @@ pub async fn initiate_repository_download(
     };
 
     // Clone pool for background task
-    let bg_pool = pool.clone();
+    let bg_pool = Repos.pool().clone();
 
     // Clone clear_cache flag for background task
     let clear_cache = request.clear_cache.unwrap_or(false);

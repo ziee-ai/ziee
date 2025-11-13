@@ -153,19 +153,3 @@ pub async fn set_active_branch(
 
     Ok(())
 }
-
-/// Delete a branch
-pub async fn delete_branch(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
-    let result = sqlx::query!(
-        r#"
-        DELETE FROM branches
-        WHERE id = $1
-        "#,
-        id
-    )
-    .execute(pool)
-    .await
-    .map_err(AppError::database_error)?;
-
-    Ok(result.rows_affected())
-}

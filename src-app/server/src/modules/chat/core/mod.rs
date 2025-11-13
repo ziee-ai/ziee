@@ -8,13 +8,12 @@ pub mod permissions;
 pub mod repository;
 pub mod routes;
 pub mod services;
+pub mod types;
 
 // Re-export for convenience
-pub use ai_provider::*;
-pub use extension::*;
-pub use handlers::*;
-pub use models::*;
-pub use permissions::*;
-pub use repository::*;
-pub use routes::*;
-pub use services::*;
+
+// Re-export DB entities from models
+
+// Re-export API types from types
+
+// Note: StreamContext is exported from extension module, not models

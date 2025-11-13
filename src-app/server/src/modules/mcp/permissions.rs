@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::modules::permissions::{PermissionCheck, PermissionInfo};
 
 // =====================================================
@@ -83,17 +84,3 @@ impl PermissionCheck for McpServersAdminDelete {
 // =====================================================
 // Helper Function to Collect All Permissions
 // =====================================================
-
-/// Get all MCP module permissions
-pub fn all_permissions() -> Vec<PermissionInfo> {
-    vec![
-        McpServersRead::to_info(),
-        McpServersCreate::to_info(),
-        McpServersEdit::to_info(),
-        McpServersDelete::to_info(),
-        McpServersAdminRead::to_info(),
-        McpServersAdminCreate::to_info(),
-        McpServersAdminEdit::to_info(),
-        McpServersAdminDelete::to_info(),
-    ]
-}

@@ -5,7 +5,6 @@ use axum::response::sse::Event;
 use futures_util::StreamExt;
 use sqlx::PgPool;
 use std::convert::Infallible;
-use std::sync::Arc;
 
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Provider, Role};
 
@@ -142,7 +141,7 @@ impl ChatExtension for TitleGenerationExtension {
     async fn after_llm_call(
         &self,
         context: &StreamContext,
-        final_message: &Message,
+        _final_message: &Message,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<ExtensionAction, AppError> {
         // Check if conversation needs a title

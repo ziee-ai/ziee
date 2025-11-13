@@ -1,7 +1,8 @@
 // Health handlers
 
 use aide::transform::TransformOperation;
-use axum::{http::StatusCode, Json};
+use axum::{
+    debug_handler,http::StatusCode, Json};
 
 use super::types::HealthResponse;
 
@@ -11,6 +12,7 @@ use super::types::HealthResponse;
 
 /// GET /api/health
 /// Health check endpoint
+#[debug_handler]
 pub async fn health_check() -> (StatusCode, Json<HealthResponse>) {
     (
         StatusCode::OK,

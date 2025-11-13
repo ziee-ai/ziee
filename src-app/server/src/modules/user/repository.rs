@@ -1,3 +1,6 @@
+// User repository infrastructure
+#![allow(dead_code)]
+
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -8,7 +11,7 @@ use crate::common::AppError;
 // User Repository
 // =====================================================
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UserRepository {
     pool: PgPool,
 }
@@ -351,7 +354,7 @@ impl UserRepository {
 // Group Repository
 // =====================================================
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GroupRepository {
     pool: PgPool,
 }

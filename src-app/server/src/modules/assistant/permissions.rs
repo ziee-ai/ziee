@@ -41,6 +41,7 @@ impl PermissionCheck for AssistantsDelete {
     const MODULE: &'static str = "assistant";
 }
 
+#[allow(dead_code)]
 pub struct AssistantsSetDefault;
 impl PermissionCheck for AssistantsSetDefault {
     const NAME: &'static str = "AssistantsSetDefault";
@@ -85,68 +86,11 @@ impl PermissionCheck for AssistantsTemplateDelete {
     const MODULE: &'static str = "assistant";
 }
 
+#[allow(dead_code)]
 pub struct AssistantsTemplateSetDefault;
 impl PermissionCheck for AssistantsTemplateSetDefault {
     const NAME: &'static str = "AssistantsTemplateSetDefault";
     const PERMISSION: &'static str = "assistant_templates::set_default";
     const DESCRIPTION: &'static str = "Set default template assistant";
     const MODULE: &'static str = "assistant";
-}
-
-// Export all permissions for registration
-pub fn all_permissions() -> Vec<(&'static str, &'static str, &'static str)> {
-    vec![
-        // User assistants permissions
-        (
-            AssistantsCreate::PERMISSION,
-            AssistantsCreate::DESCRIPTION,
-            AssistantsCreate::MODULE,
-        ),
-        (
-            AssistantsRead::PERMISSION,
-            AssistantsRead::DESCRIPTION,
-            AssistantsRead::MODULE,
-        ),
-        (
-            AssistantsEdit::PERMISSION,
-            AssistantsEdit::DESCRIPTION,
-            AssistantsEdit::MODULE,
-        ),
-        (
-            AssistantsDelete::PERMISSION,
-            AssistantsDelete::DESCRIPTION,
-            AssistantsDelete::MODULE,
-        ),
-        (
-            AssistantsSetDefault::PERMISSION,
-            AssistantsSetDefault::DESCRIPTION,
-            AssistantsSetDefault::MODULE,
-        ),
-        // Template assistants permissions
-        (
-            AssistantsTemplateCreate::PERMISSION,
-            AssistantsTemplateCreate::DESCRIPTION,
-            AssistantsTemplateCreate::MODULE,
-        ),
-        (
-            AssistantsTemplateRead::PERMISSION,
-            AssistantsTemplateRead::DESCRIPTION,
-            AssistantsTemplateRead::MODULE,
-        ),
-        (
-            AssistantsTemplateEdit::PERMISSION,
-            AssistantsTemplateEdit::DESCRIPTION,
-            AssistantsTemplateEdit::MODULE,
-        ),
-        (
-            AssistantsTemplateDelete::PERMISSION,
-            AssistantsTemplateDelete::DESCRIPTION,
-            AssistantsTemplateDelete::MODULE,
-        ),
-        (
-            AssistantsTemplateSetDefault::PERMISSION,
-            AssistantsTemplateSetDefault::DESCRIPTION,
-            AssistantsTemplateSetDefault::MODULE,
-        ),
-    ]
 }

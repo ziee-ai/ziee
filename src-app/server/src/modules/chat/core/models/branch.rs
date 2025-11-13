@@ -1,4 +1,4 @@
-// Branch models
+// Branch DB entity
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -13,11 +13,4 @@ pub struct Branch {
     pub parent_branch_id: Option<Uuid>,
     pub created_from_message_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
-}
-
-/// Request to create a new branch (for edit/regenerate)
-/// Both parent_branch_id (from conversation's active branch) and from_message_id are required
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct CreateBranchRequest {
-    pub from_message_id: Uuid,
 }

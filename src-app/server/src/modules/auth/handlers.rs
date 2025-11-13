@@ -1,13 +1,13 @@
 // Auth handlers
 
 use aide::transform::TransformOperation;
-use axum::{debug_handler, extract::{Path, Query, State}, http::StatusCode, response::{IntoResponse, Redirect}, Extension, Json};
+use axum::{debug_handler, extract::{Path, Query}, http::StatusCode, response::{IntoResponse, Redirect}, Extension, Json};
 use sqlx::PgPool;
 use std::sync::Arc;
 
 use crate::common::{ApiResult, AppError};
-use crate::core::{AppEvent, EventBus};
-use crate::modules::user::{User, UserRepository, GroupRepository, UserService};
+use crate::core::{EventBus, Repos};
+use crate::modules::user::{UserRepository, GroupRepository, UserService};
 use crate::modules::user::events::UserEvent;
 
 use super::jwt::{JwtService, TokenPair};
@@ -27,7 +27,7 @@ use super::types::{
 /// Register a new user with username, email, and password
 #[debug_handler]
 pub async fn register(
-    State(pool): State<PgPool>,
+    
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(req): Json<RegisterRequest>,
@@ -43,7 +43,7 @@ pub async fn register(
         return Err((StatusCode::BAD_REQUEST, AppError::bad_request("INVALID_PASSWORD", "Password cannot be empty")));
     }
 
-    let user_repo = UserRepository::new(pool.clone());
+    let user_repo = UserRepository::new(Repos.pool().clone());
 
     // Hash password
     let password_hash = password::hash_password(&req.password)
@@ -56,33 +56,10 @@ pub async fn register(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Auto-assign user to default group
-    let default_group = sqlx::query_as!(
-        crate::modules::user::Group,
-        r#"
-        SELECT id, name, description, permissions, is_system, is_active, is_default,
-               created_at as "created_at: _", updated_at as "updated_at: _"
-        FROM groups
-        WHERE is_default = true
-        LIMIT 1
-        "#
-    )
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
-
-    if let Some(group) = default_group {
-        sqlx::query!(
-            r#"
-            INSERT INTO user_groups (user_id, group_id, assigned_at)
-            VALUES ($1, $2, NOW())
-            "#,
-            user.id,
-            group.id
-        )
-        .execute(&pool)
+    Repos.auth
+        .assign_user_to_default_group(user.id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
-    }
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Emit UserCreated event asynchronously
     event_bus.emit_async(UserEvent::created(user.clone()));
@@ -110,17 +87,17 @@ pub fn register_docs(op: TransformOperation) -> TransformOperation {
 /// Login with username/email and password
 #[debug_handler]
 pub async fn login(
-    State(pool): State<PgPool>,
+    
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
-    let user_repo = UserRepository::new(pool.clone());
+    let user_repo = UserRepository::new(Repos.pool().clone());
 
     // Check if external provider is specified
     if let Some(provider_name) = &req.provider {
         if provider_name != "local" {
             // External authentication (LDAP/OAuth)
-            return login_with_provider(pool, jwt_service, &req.username, &req.password, provider_name).await;
+            return login_with_provider(Repos.pool().clone(), jwt_service, &req.username, &req.password, provider_name).await;
         }
     }
 
@@ -182,7 +159,7 @@ async fn login_with_provider(
     use crate::modules::auth::providers::{create_provider, repository as provider_repo};
 
     // Get provider configuration
-    let provider_config = provider_repo::get_provider_by_name(&pool, provider_name)
+    let provider_config = provider_repo::get_provider_by_name(Repos.pool(), provider_name)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::internal_error(format!("Database error: {}", e))))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Authentication provider")))?;
@@ -198,88 +175,33 @@ async fn login_with_provider(
         .map_err(|_e| (StatusCode::UNAUTHORIZED, AppError::unauthorized("INVALID_CREDENTIALS", format!("Invalid username or password"))))?;
 
     // Try to find user via auth link
-    let link = sqlx::query!(
-        r#"
-        SELECT user_id
-        FROM user_auth_links
-        WHERE provider_id = $1 AND external_id = $2
-        "#,
-        provider_config.id,
-        auth_result.external_id
-    )
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+    let user_id = Repos.auth
+        .find_user_by_auth_link(provider_config.id, &auth_result.external_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    let user_repo = UserRepository::new(pool.clone());
+    let user_repo = UserRepository::new(Repos.pool().clone());
 
-    let user = if let Some(link) = link {
+    let user = if let Some(user_id) = user_id {
         // User exists, get it
-        user_repo.get_by_id(link.user_id).await
+        user_repo.get_by_id(user_id).await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
             .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?
     } else {
-        // User doesn't exist - create new user
-        let new_user_id = uuid::Uuid::new_v4();
+        // User doesn't exist - create new user with auth link and default group assignment
         let display_name = auth_result.attributes.display_name.unwrap_or_else(|| username.to_string());
         let email = auth_result.attributes.email;
 
-        sqlx::query!(
-            r#"
-            INSERT INTO users (id, username, email, display_name, is_active, is_admin, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, true, false, NOW(), NOW())
-            "#,
-            new_user_id,
-            username,
-            email,
-            display_name
-        )
-        .execute(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
-
-        // Create auth link
-        sqlx::query!(
-            r#"
-            INSERT INTO user_auth_links (user_id, provider_id, external_id, created_at)
-            VALUES ($1, $2, $3, NOW())
-            "#,
-            new_user_id,
-            provider_config.id,
-            auth_result.external_id
-        )
-        .execute(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
-
-        // Auto-assign user to default group
-        let default_group = sqlx::query_as!(
-            crate::modules::user::Group,
-            r#"
-            SELECT id, name, description, permissions, is_system, is_active, is_default,
-                   created_at as "created_at: _", updated_at as "updated_at: _"
-            FROM groups
-            WHERE is_default = true
-            LIMIT 1
-            "#
-        )
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
-
-        if let Some(group) = default_group {
-            sqlx::query!(
-                r#"
-                INSERT INTO user_groups (user_id, group_id, assigned_at)
-                VALUES ($1, $2, NOW())
-                "#,
-                new_user_id,
-                group.id
+        let new_user_id = Repos.auth
+            .create_external_user_with_link(
+                username,
+                Some(email),
+                &display_name,
+                provider_config.id,
+                &auth_result.external_id,
             )
-            .execute(&pool)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
-        }
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
         // Fetch the newly created user
         user_repo.get_by_id(new_user_id).await
@@ -311,7 +233,7 @@ async fn login_with_provider(
 /// Refresh access token using refresh token
 #[debug_handler]
 pub async fn refresh(
-    State(pool): State<PgPool>,
+    
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Json(req): Json<RefreshTokenRequest>,
 ) -> ApiResult<Json<TokenPair>> {
@@ -325,7 +247,7 @@ pub async fn refresh(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::internal_error(format!("Invalid user ID in token: {}", e))))?;
 
     // Get user from database
-    let user_repo = UserRepository::new(pool);
+    let user_repo = UserRepository::new(Repos.pool().clone());
     let user = user_repo
         .get_by_id(user_id)
         .await
@@ -375,7 +297,7 @@ pub fn logout_docs(op: TransformOperation) -> TransformOperation {
 /// Get currently authenticated user with their effective permissions
 #[debug_handler]
 pub async fn me(
-    State(pool): State<PgPool>,
+    
     auth: JwtAuth,
 ) -> ApiResult<Json<MeResponse>> {
     // Parse user ID from claims
@@ -383,7 +305,7 @@ pub async fn me(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::internal_error(format!("Invalid user ID in token: {}", e))))?;
 
     // Get user from database
-    let user_repo = UserRepository::new(pool.clone());
+    let user_repo = UserRepository::new(Repos.pool().clone());
     let user = user_repo
         .get_by_id(user_id)
         .await
@@ -391,7 +313,7 @@ pub async fn me(
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?;
 
     // Get effective permissions (union of user permissions + group permissions)
-    let group_repo = GroupRepository::new(pool);
+    let group_repo = GroupRepository::new(Repos.pool().clone());
     let user_service = UserService::new(user_repo, group_repo);
     let permissions = user_service
         .get_effective_permissions(user_id)
@@ -413,18 +335,18 @@ pub fn me_docs(op: TransformOperation) -> TransformOperation {
 /// Initiate OAuth flow for the specified provider
 #[debug_handler]
 pub async fn oauth_authorize(
-    State(pool): State<PgPool>,
+    
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthAuthorizeQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
     // Get provider configuration
-    let provider_config = provider_repo::get_provider_by_name(&pool, &provider_name)
+    let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::internal_error(format!("Database error: {}", e))))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Authentication provider")))?;
 
     // Create provider instance
-    let provider = create_provider(&provider_config, pool)
+    let provider = create_provider(&provider_config, Repos.pool().clone())
         .map_err(|e| (StatusCode::BAD_REQUEST, AppError::bad_request("PROVIDER_ERROR", format!("Provider error: {}", e))))?;
 
     // Build callback URL (should be a full URL in production)
@@ -446,19 +368,19 @@ pub async fn oauth_authorize(
 /// Handle OAuth callback from provider
 #[debug_handler]
 pub async fn oauth_callback(
-    State(pool): State<PgPool>,
+    
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
     // Get provider configuration
-    let provider_config = provider_repo::get_provider_by_name(&pool, &provider_name)
+    let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::internal_error(format!("Database error: {}", e))))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Authentication provider")))?;
 
     // Create provider instance
-    let provider = create_provider(&provider_config, pool.clone())
+    let provider = create_provider(&provider_config, Repos.pool().clone())
         .map_err(|e| (StatusCode::BAD_REQUEST, AppError::bad_request("PROVIDER_ERROR", format!("Provider error: {}", e))))?;
 
     // Handle OAuth callback
@@ -468,22 +390,14 @@ pub async fn oauth_callback(
         .map_err(|e| (StatusCode::UNAUTHORIZED, AppError::unauthorized("OAUTH_FAILED", format!("OAuth authentication failed: {}", e))))?;
 
     // Try to find user via auth link
-    let link = sqlx::query!(
-        r#"
-        SELECT user_id
-        FROM user_auth_links
-        WHERE provider_id = $1 AND external_id = $2
-        "#,
-        provider_config.id,
-        auth_result.external_id
-    )
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, AppError::database_error(e)))?;
+    let user_id = Repos.auth
+        .find_user_by_auth_link(provider_config.id, &auth_result.external_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    if let Some(link) = link {
-        let user_repo = UserRepository::new(pool);
-        let user = user_repo.get_by_id(link.user_id).await
+    if let Some(link_user_id) = user_id {
+        let user_repo = UserRepository::new(Repos.pool().clone());
+        let user = user_repo.get_by_id(link_user_id).await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
             .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?;
 

@@ -5,8 +5,44 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::DateTime;
 
-use super::models::{Assistant, AssistantListResponse, CreateAssistantRequest, UpdateAssistantRequest};
+use super::models::Assistant;
+use super::types::{AssistantListResponse, CreateAssistantRequest, UpdateAssistantRequest};
 use crate::common::AppError;
+
+/// Assistant Repository
+pub struct AssistantRepository {
+    pool: PgPool,
+}
+
+impl AssistantRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    pub async fn create(&self, user_id: Option<Uuid>, request: CreateAssistantRequest) -> Result<Assistant, AppError> {
+        create_assistant(&self.pool, user_id, request).await
+    }
+
+    pub async fn list(&self, user_id: Option<Uuid>, is_template: bool, page: i64, limit: i64) -> Result<AssistantListResponse, AppError> {
+        list_assistants(&self.pool, user_id, is_template, page, limit).await
+    }
+
+    pub async fn get(&self, id: Uuid) -> Result<Option<Assistant>, AppError> {
+        get_assistant(&self.pool, id).await
+    }
+
+    pub async fn update(&self, id: Uuid, request: UpdateAssistantRequest) -> Result<Assistant, AppError> {
+        update_assistant(&self.pool, id, request).await
+    }
+
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
+        delete_assistant(&self.pool, id).await
+    }
+
+    pub async fn get_default(&self, user_id: Option<Uuid>) -> Result<Option<Assistant>, AppError> {
+        get_default_assistant(&self.pool, user_id).await
+    }
+}
 
 /// Helper function to convert a database row to Assistant struct
 fn row_to_assistant(

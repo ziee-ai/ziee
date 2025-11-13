@@ -14,6 +14,3 @@ pub mod permissions;
 pub mod user;
 
 // Re-export modules
-pub use app::AppModule;
-pub use auth::AuthModule;
-pub use health::HealthModule;

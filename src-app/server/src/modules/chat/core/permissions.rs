@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::modules::permissions::{PermissionCheck, PermissionInfo};
 
 // =====================================================
@@ -96,18 +97,3 @@ impl PermissionCheck for BranchesSwitch {
 // =====================================================
 // Helper Function
 // =====================================================
-
-/// Get all chat module permissions
-pub fn all_permissions() -> Vec<PermissionInfo> {
-    vec![
-        ConversationsCreate::to_info(),
-        ConversationsRead::to_info(),
-        ConversationsEdit::to_info(),
-        ConversationsDelete::to_info(),
-        MessagesCreate::to_info(),
-        MessagesRead::to_info(),
-        MessagesDelete::to_info(),
-        BranchesCreate::to_info(),
-        BranchesSwitch::to_info(),
-    ]
-}

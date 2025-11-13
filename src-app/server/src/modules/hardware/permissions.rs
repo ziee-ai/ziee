@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::modules::permissions::{PermissionCheck, PermissionInfo};
 
 // =====================================================
@@ -25,8 +26,3 @@ impl PermissionCheck for HardwareMonitor {
 // =====================================================
 // Helper Function to Collect All Permissions
 // =====================================================
-
-/// Get all hardware module permissions
-pub fn all_permissions() -> Vec<PermissionInfo> {
-    vec![HardwareRead::to_info(), HardwareMonitor::to_info()]
-}

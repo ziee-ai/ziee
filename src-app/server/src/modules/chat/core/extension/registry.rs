@@ -1,9 +1,13 @@
+// Chat extension infrastructure
+#![allow(dead_code)]
+
 // Extension registry for chat module
 //
 // Provides a plugin system for extending chat functionality without modifying base code.
 
 use async_trait::async_trait;
 use axum::response::sse::Event;
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -15,6 +19,18 @@ use ai_providers::ChatRequest;
 use crate::common::AppError;
 use crate::modules::chat::core::models::{content::MessageContentData, Message};
 use super::request::SendMessageRequest;
+
+/// Extension registration entry for distributed collection
+#[derive(Debug, Clone, Copy)]
+pub struct ExtensionEntry {
+    pub name: &'static str,
+    pub order: i32,
+    pub factory: fn(PgPool) -> Arc<dyn ChatExtension>,
+}
+
+/// Distributed slice for collecting all chat extensions
+#[distributed_slice]
+pub static CHAT_EXTENSIONS: [ExtensionEntry] = [..];
 
 /// Action returned by extensions after LLM call completes
 #[derive(Debug, Clone)]

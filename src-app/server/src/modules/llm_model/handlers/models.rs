@@ -4,6 +4,7 @@
 
 use aide::transform::TransformOperation;
 use axum::{
+    debug_handler,
     extract::{Path, Query},
     http::StatusCode,
     Extension, Json,
@@ -12,10 +13,13 @@ use uuid::Uuid;
 
 use crate::{
     common::r#type::{ApiResult, AppError},
+    core::events::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
 };
+use std::sync::Arc;
 
 use super::super::{
+    events::LlmModelEvent,
     models::{DownloadInstance, LlmModel},
     permissions::*,
     repository::LlmModelRepository,
@@ -29,6 +33,7 @@ use super::super::{
 
 /// List all LLM models with pagination and optional provider filtering
 /// (requires llm_models::read permission)
+#[debug_handler]
 pub async fn list_models(
     _auth: RequirePermissions<(LlmModelsRead,)>,
     Query(params): Query<ListModelsQuery>,
@@ -76,6 +81,7 @@ pub fn list_models_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Get LLM model by ID (requires llm_models::read permission)
+#[debug_handler]
 pub async fn get_model(
     _auth: RequirePermissions<(LlmModelsRead,)>,
     Path(model_id): Path<Uuid>,
@@ -98,9 +104,11 @@ pub fn get_model_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Create a new LLM model (requires llm_models::create permission)
+#[debug_handler]
 pub async fn create_model(
     _auth: RequirePermissions<(LlmModelsCreate,)>,
     Extension(repo): Extension<LlmModelRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateLlmModelRequest>,
 ) -> ApiResult<Json<LlmModel>> {
     // Validate request
@@ -108,6 +116,9 @@ pub async fn create_model(
 
     // Create model
     let model = repo.create(request).await?;
+
+    // Emit event
+    event_bus.emit_async(LlmModelEvent::created(model.clone()).into());
 
     Ok((StatusCode::CREATED, Json(model)))
 }
@@ -123,10 +134,12 @@ pub fn create_model_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Update an existing LLM model (requires llm_models::edit permission)
+#[debug_handler]
 pub async fn update_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
     Extension(repo): Extension<LlmModelRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<UpdateLlmModelRequest>,
 ) -> ApiResult<Json<LlmModel>> {
     // Validate request
@@ -135,6 +148,9 @@ pub async fn update_model(
     // Update model
     let model = repo.update(model_id, request).await?
         .ok_or_else(|| AppError::not_found("Model"))?;
+
+    // Emit event
+    event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
 
     Ok((StatusCode::OK, Json(model)))
 }
@@ -151,10 +167,12 @@ pub fn update_model_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Delete an LLM model (requires llm_models::delete permission)
+#[debug_handler]
 pub async fn delete_model(
     _auth: RequirePermissions<(LlmModelsDelete,)>,
     Path(model_id): Path<Uuid>,
     Extension(repo): Extension<LlmModelRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
     // Get model details before deletion (need provider_id for file path)
     let model = repo.get_by_id(model_id).await?;
@@ -165,6 +183,7 @@ pub async fn delete_model(
 
     let model = model.unwrap();
     let provider_id = model.provider_id;
+    let model_name = model.name.clone();
 
     // Delete from database first
     let deleted = repo.delete(model_id).await?;
@@ -172,6 +191,9 @@ pub async fn delete_model(
     if !deleted {
         return Err(AppError::not_found("Model").to_api_error());
     }
+
+    // Emit event
+    event_bus.emit_async(LlmModelEvent::deleted(model_id, model_name).into());
 
     // Delete files from disk
     let storage = crate::modules::llm_model::storage::ModelStorage::new()
@@ -209,10 +231,12 @@ pub fn delete_model_docs(op: TransformOperation) -> TransformOperation {
 // =====================================================
 
 /// Enable an LLM model (requires llm_models::edit permission)
+#[debug_handler]
 pub async fn enable_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
     Extension(repo): Extension<LlmModelRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<Json<LlmModel>> {
     let request = UpdateLlmModelRequest {
         enabled: Some(true),
@@ -221,6 +245,9 @@ pub async fn enable_model(
 
     let model = repo.update(model_id, request).await?
         .ok_or_else(|| AppError::not_found("Model"))?;
+
+    // Emit event
+    event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
 
     Ok((StatusCode::OK, Json(model)))
 }
@@ -236,10 +263,12 @@ pub fn enable_model_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Disable an LLM model (requires llm_models::edit permission)
+#[debug_handler]
 pub async fn disable_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
     Extension(repo): Extension<LlmModelRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<Json<LlmModel>> {
     let request = UpdateLlmModelRequest {
         enabled: Some(false),
@@ -248,6 +277,9 @@ pub async fn disable_model(
 
     let model = repo.update(model_id, request).await?
         .ok_or_else(|| AppError::not_found("Model"))?;
+
+    // Emit event
+    event_bus.emit_async(LlmModelEvent::updated(model.clone()).into());
 
     Ok((StatusCode::OK, Json(model)))
 }

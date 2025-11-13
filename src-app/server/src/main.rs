@@ -121,6 +121,10 @@ async fn main() {
         }
     };
 
+    // Initialize global repository factory
+    core::init_repositories((*pool).clone());
+    tracing::info!("Global repository factory initialized");
+
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone());
     let mut modules = core::app_builder::create_modules();

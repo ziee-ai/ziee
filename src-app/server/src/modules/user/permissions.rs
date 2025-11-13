@@ -1,3 +1,6 @@
+// User permissions
+#![allow(dead_code)]
+
 use crate::modules::permissions::{PermissionCheck, PermissionInfo};
 
 // =====================================================

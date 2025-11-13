@@ -107,11 +107,6 @@ fn default_refresh_token_expiry() -> i64 {
 }
 
 impl Config {
-    #[allow(dead_code)]
-    pub fn load() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::load_from(None)
-    }
-
     pub fn load_from(config_path: Option<String>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Get config file path from parameter or environment variable
         let config_path = config_path

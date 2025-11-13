@@ -2,12 +2,11 @@ use aide::axum::{
     routing::{delete_with, get_with, post_with},
     ApiRouter,
 };
+use crate::core::Repos;
 use axum::{
     extract::{Path, Query},
-    http::StatusCode,
-    Extension, Json,
+    http::StatusCode, Json,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
@@ -22,11 +21,10 @@ use super::{
         UpdateGroupRequest, UserListResponse,
     },
     permissions::*,
-    repository::{GroupRepository, UserRepository},
 };
 
 /// Group management routes
-pub fn group_router() -> ApiRouter<PgPool> {
+pub fn group_router() -> ApiRouter {
     ApiRouter::new()
         .api_route("/groups", get_with(list_groups, list_groups_docs))
         .api_route("/groups", post_with(create_group, create_group_docs))
@@ -61,9 +59,9 @@ pub fn group_router() -> ApiRouter<PgPool> {
 async fn list_groups(
     _auth: RequirePermissions<(GroupsRead,)>,
     Query(params): Query<PaginationQuery>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
 ) -> ApiResult<Json<GroupListResponse>> {
-    let (groups, total) = group_repo.list(params.page, params.per_page).await?;
+    let (groups, total) = Repos.group.list(params.page, params.per_page).await?;
 
     let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
 
@@ -94,9 +92,9 @@ fn list_groups_docs(
 async fn get_group(
     _auth: RequirePermissions<(GroupsRead,)>,
     Path(group_id): Path<Uuid>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
 ) -> ApiResult<Json<Group>> {
-    let group = group_repo
+    let group = Repos.group
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -119,7 +117,7 @@ fn get_group_docs(
 /// Create a new group (requires groups::create permission)
 async fn create_group(
     _auth: RequirePermissions<(GroupsCreate,)>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
     Json(request): Json<CreateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
     // Validate group name
@@ -128,12 +126,12 @@ async fn create_group(
     }
 
     // Check if group name already exists
-    if group_repo.get_by_name(&request.name).await?.is_some() {
+    if Repos.group.get_by_name(&request.name).await?.is_some() {
         return Err(AppError::conflict("Group name").into());
     }
 
     // Create group
-    let group = group_repo
+    let group = Repos.group
         .create(&request.name, request.description, request.permissions)
         .await?;
 
@@ -157,12 +155,12 @@ fn create_group_docs(
 async fn update_group(
     _auth: RequirePermissions<(GroupsEdit,)>,
     Path(group_id): Path<Uuid>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
     Json(request): Json<UpdateGroupRequest>,
 ) -> ApiResult<Json<Group>> {
 
     // Check if group exists
-    let existing_group = group_repo
+    let existing_group = Repos.group
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -180,7 +178,7 @@ async fn update_group(
 
     // Check if new name already exists
     if let Some(ref name) = request.name {
-        if let Some(existing) = group_repo.get_by_name(name).await? {
+        if let Some(existing) = Repos.group.get_by_name(name).await? {
             if existing.id != group_id {
                 return Err(AppError::conflict("Group name").into());
             }
@@ -188,7 +186,7 @@ async fn update_group(
     }
 
     // Update group
-    let group = group_repo
+    let group = Repos.group
         .update(
             group_id,
             request.name,
@@ -219,11 +217,11 @@ fn update_group_docs(
 async fn delete_group(
     _auth: RequirePermissions<(GroupsDelete,)>,
     Path(group_id): Path<Uuid>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
 ) -> ApiResult<StatusCode> {
 
     // Check if group exists
-    let group = group_repo
+    let group = Repos.group
         .get_by_id(group_id)
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
@@ -234,7 +232,7 @@ async fn delete_group(
     }
 
     // Delete group
-    group_repo.delete(group_id).await?;
+    Repos.group.delete(group_id).await?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }
@@ -257,16 +255,16 @@ async fn get_group_members(
     _auth: RequirePermissions<(GroupsRead,)>,
     Path(group_id): Path<Uuid>,
     Query(params): Query<PaginationQuery>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
 ) -> ApiResult<Json<UserListResponse>> {
 
     // Check if group exists
-    if group_repo.get_by_id(group_id).await?.is_none() {
+    if Repos.group.get_by_id(group_id).await?.is_none() {
         return Err(AppError::not_found("Group").into());
     }
 
     // Get group members
-    let (users, total) = group_repo
+    let (users, total) = Repos.group
         .get_members(group_id, params.page, params.per_page)
         .await?;
 
@@ -299,23 +297,23 @@ fn get_group_members_docs(
 /// Assign user to group (requires groups::assign_users permission)
 async fn assign_user_to_group(
     auth: RequirePermissions<(GroupsAssignUsers,)>,
-    Extension(user_repo): Extension<UserRepository>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
+    
     Json(request): Json<AssignUserToGroupRequest>,
 ) -> ApiResult<StatusCode> {
 
     // Check if user exists
-    if user_repo.get_by_id(request.user_id).await?.is_none() {
+    if Repos.user.get_by_id(request.user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
     }
 
     // Check if group exists
-    if group_repo.get_by_id(request.group_id).await?.is_none() {
+    if Repos.group.get_by_id(request.group_id).await?.is_none() {
         return Err(AppError::not_found("Group").into());
     }
 
     // Assign user to group
-    user_repo
+    Repos.user
         .assign_to_group(request.user_id, request.group_id, Some(auth.user.id))
         .await?;
 
@@ -338,22 +336,22 @@ fn assign_user_to_group_docs(
 async fn remove_user_from_group(
     _auth: RequirePermissions<(GroupsAssignUsers,)>,
     Path((user_id, group_id)): Path<(Uuid, Uuid)>,
-    Extension(user_repo): Extension<UserRepository>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
+    
 ) -> ApiResult<StatusCode> {
 
     // Check if user exists
-    if user_repo.get_by_id(user_id).await?.is_none() {
+    if Repos.user.get_by_id(user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
     }
 
     // Check if group exists
-    if group_repo.get_by_id(group_id).await?.is_none() {
+    if Repos.group.get_by_id(group_id).await?.is_none() {
         return Err(AppError::not_found("Group").into());
     }
 
     // Remove user from group
-    user_repo.remove_from_group(user_id, group_id).await?;
+    Repos.user.remove_from_group(user_id, group_id).await?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

@@ -1,13 +1,16 @@
+// Provider repository
+#![allow(dead_code)]
+
 // LLM Provider database queries - copied from react-test and refactored for ziee-chat
 // Source: react-test/src-tauri/src/database/queries/providers.rs and user_group_providers.rs
 
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::models::{LlmProvider, ProxySettings};
+use super::models::LlmProvider;
 use super::types::{
-    AssignProviderToGroupRequest, CreateLlmProviderRequest, UpdateLlmProviderRequest,
+    CreateLlmProviderRequest, UpdateLlmProviderRequest,
 };
 use crate::modules::user::models::Group;
 
@@ -15,7 +18,7 @@ use crate::modules::user::models::Group;
 // Repository Struct
 // =====================================================
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LlmProviderRepository {
     pool: PgPool,
 }

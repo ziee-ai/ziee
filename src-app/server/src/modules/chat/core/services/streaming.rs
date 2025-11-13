@@ -1,3 +1,6 @@
+// Streaming service infrastructure
+#![allow(dead_code)]
+
 // Streaming service - Core streaming logic with delta accumulation
 
 use futures_util::{Stream, StreamExt};
@@ -8,14 +11,13 @@ use tokio::sync::Mutex;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
-use ai_providers::{ChatMessage, ChatRequest, Provider, StreamChatChunk as AiStreamChunk};
+use ai_providers::{ChatMessage, ChatRequest, StreamChatChunk as AiStreamChunk};
 
 use crate::common::AppError;
 use crate::modules::chat::core::{
     extension::{ExtensionRegistry, SendMessageRequest, StreamContext},
-    models::{
-        ChatStreamChunk, ContentBlockDelta, MessageContent, MessageContentData, MessageRole,
-    },
+    models::{MessageContentData, MessageRole},
+    types::{ChatStreamChunk, ContentBlockDelta},
     repository::{contents as content_repo, messages as msg_repo},
 };
 
@@ -77,7 +79,6 @@ impl StreamingService {
         tokio::spawn(async move {
             const MAX_ITERATIONS: u32 = 5;
             let mut iteration = 1u32;
-            let mut parent_message_id = Some(user_message.id);
 
             loop {
                 // Guard against infinite loops
@@ -90,7 +91,7 @@ impl StreamingService {
                         finish_reason: Some("max_iterations".to_string()),
                         usage: None,
                         title: None,
-                        error: Some(crate::modules::chat::core::models::StreamError {
+                        error: Some(crate::modules::chat::core::types::StreamError {
                             message: "Maximum tool calling iterations exceeded".to_string(),
                             code: Some("MAX_ITERATIONS_EXCEEDED".to_string()),
                         }),
@@ -233,8 +234,7 @@ impl StreamingService {
                         )
                         .await
                         {
-                            Ok(continuation_msg_id) => {
-                                parent_message_id = Some(continuation_msg_id);
+                            Ok(_continuation_msg_id) => {
                                 iteration += 1;
                                 // Continue loop
                             }
@@ -259,7 +259,7 @@ impl StreamingService {
     /// Convert conversation history to AI provider message format
     fn convert_history_to_messages(
         &self,
-        history: &[crate::modules::chat::core::models::MessageWithContent],
+        history: &[crate::modules::chat::core::types::MessageWithContent],
     ) -> Result<Vec<ChatMessage>, AppError> {
         let mut messages = Vec::new();
 
@@ -295,7 +295,7 @@ impl StreamingService {
 
     /// Static version of convert_history_to_messages for use in spawned task
     fn convert_history_to_messages_static(
-        history: &[crate::modules::chat::core::models::MessageWithContent],
+        history: &[crate::modules::chat::core::types::MessageWithContent],
     ) -> Result<Vec<ChatMessage>, AppError> {
         let mut messages = Vec::new();
 
@@ -418,7 +418,7 @@ impl DeltaAccumulator {
             conversation_id: Some(self.conversation_id),
             branch_id: Some(self.branch_id),
             finish_reason: ai_chunk.finish_reason.clone(),
-            usage: ai_chunk.usage.as_ref().map(|u| crate::modules::chat::core::models::Usage {
+            usage: ai_chunk.usage.as_ref().map(|u| crate::modules::chat::core::types::Usage {
                 input_tokens: Some(u.prompt_tokens),
                 output_tokens: Some(u.completion_tokens),
             }),

@@ -15,16 +15,26 @@ pub mod types;
 
 // Re-export main types and router
 pub use routes::hardware_router;
-pub use types::{HardwareInfo, HardwareInfoResponse, HardwareUsageUpdate};
 
 use aide::axum::ApiRouter;
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleContext};
+use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+
+/// Register hardware module
+#[distributed_slice(MODULE_ENTRIES)]
+static HARDWARE_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "hardware",
+    order: 75,
+    description: "Hardware detection and GPU management",
+    constructor: || Box::new(HardwareModule::new()),
+};
 
 /// Hardware module for system monitoring
+/// Note: Kept as manual registration due to stateful route requirements
 pub struct HardwareModule {
     pool: Option<Arc<PgPool>>,
 }
@@ -40,22 +50,26 @@ impl AppModule for HardwareModule {
         "hardware"
     }
 
+    fn version(&self) -> &'static str {
+        "1.0.0"
+    }
+
+    fn description(&self) -> &'static str {
+        "System hardware information and monitoring"
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
         Ok(())
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(pool) = &self.pool {
-            // Create a stateful hardware router
+        if let Some(_pool) = &self.pool {
             let hardware_module_router = ApiRouter::new()
                 .merge(hardware_router())
-                .with_state((**pool).clone());
-
-            // Merge the stateful router into the provided stateless router
+                ;
             router.merge(hardware_module_router)
         } else {
-            // Pool not initialized - this shouldn't happen in normal flow
             tracing::error!("HardwareModule: Pool not initialized during route registration");
             router
         }

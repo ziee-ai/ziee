@@ -4,7 +4,7 @@
 
 use crate::common::AppError;
 use super::{
-    models::{LlmRepository, RepositoryAuthConfig},
+    models::LlmRepository,
     types::{CreateLlmRepositoryRequest, TestRepositoryConnectionRequest, UpdateLlmRepositoryRequest},
 };
 

@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::modules::permissions::{PermissionCheck, PermissionInfo};
 
 // =====================================================
@@ -43,13 +44,3 @@ impl PermissionCheck for LlmRepositoriesDelete {
 // =====================================================
 // Helper Function to Collect All Permissions
 // =====================================================
-
-/// Get all LLM repository module permissions
-pub fn all_permissions() -> Vec<PermissionInfo> {
-    vec![
-        LlmRepositoriesRead::to_info(),
-        LlmRepositoriesCreate::to_info(),
-        LlmRepositoriesEdit::to_info(),
-        LlmRepositoriesDelete::to_info(),
-    ]
-}

@@ -1,3 +1,6 @@
+// Permission system infrastructure
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
 

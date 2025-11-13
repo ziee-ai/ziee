@@ -3,17 +3,32 @@ mod routes;
 mod types;
 
 pub use routes::routes;
-pub use types::*;
 
-use crate::module_api::{AppModule, ModuleContext};
 use aide::axum::ApiRouter;
+use linkme::distributed_slice;
+use sqlx::PgPool;
+use std::sync::Arc;
 use std::error::Error;
 
-pub struct HealthModule;
+use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+
+/// Register health module
+#[distributed_slice(MODULE_ENTRIES)]
+static HEALTH_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "health",
+    order: 85,
+    description: "Health checks and system status",
+    constructor: || Box::new(HealthModule::new()),
+};
+
+/// Health check module - provides health and readiness endpoints
+pub struct HealthModule {
+    pool: Option<Arc<PgPool>>,
+}
 
 impl HealthModule {
     pub fn new() -> Self {
-        Self
+        Self { pool: None }
     }
 }
 
@@ -22,7 +37,16 @@ impl AppModule for HealthModule {
         "health"
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
+    fn version(&self) -> &'static str {
+        "1.0.0"
+    }
+
+    fn description(&self) -> &'static str {
+        "Health check and readiness endpoints"
+    }
+
+    fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
+        self.pool = Some(ctx.db_pool.clone());
         Ok(())
     }
 
@@ -33,6 +57,6 @@ impl AppModule for HealthModule {
 
 impl Default for HealthModule {
     fn default() -> Self {
-        Self::new()
+        Self { pool: None }
     }
 }

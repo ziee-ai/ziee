@@ -1,3 +1,6 @@
+// Auth provider infrastructure - part of future auth system
+#![allow(dead_code)]
+
 use async_trait::async_trait;
 use ldap3::{LdapConnAsync, Scope, SearchEntry};
 use serde::{Deserialize, Serialize};
@@ -51,12 +54,10 @@ pub struct LdapAuthProvider {
     name: String,
     config: LdapConfig,
     raw_config: serde_json::Value,
-    #[allow(dead_code)]
-    pool: PgPool,
 }
 
 impl LdapAuthProvider {
-    pub fn new(provider: &AuthProvider, pool: PgPool) -> Result<Self, AuthError> {
+    pub fn new(provider: &AuthProvider, _pool: PgPool) -> Result<Self, AuthError> {
         let config: LdapConfig = serde_json::from_value(provider.config.clone())
             .map_err(|e| AuthError::ConfigurationError(format!("Invalid LDAP configuration: {}", e)))?;
 
@@ -64,7 +65,6 @@ impl LdapAuthProvider {
             name: provider.name.clone(),
             config,
             raw_config: provider.config.clone(),
-            pool,
         })
     }
 

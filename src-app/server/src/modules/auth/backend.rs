@@ -1,3 +1,7 @@
+// Auth backend implementation - currently unused but part of auth system infrastructure
+// This module contains auth backend infrastructure that will be used when auth is fully implemented
+#![allow(dead_code)]
+
 use aide::OperationIo;
 use axum_login::{AuthnBackend, UserId};
 use sqlx::PgPool;

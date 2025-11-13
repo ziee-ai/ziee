@@ -2,11 +2,12 @@
 
 use aide::axum::ApiRouter;
 use axum::Extension;
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::AppModule;
+use crate::module_api::{AppModule, ModuleEntry, MODULE_ENTRIES};
 use crate::ModuleContext;
 
 pub mod core;
@@ -19,8 +20,16 @@ use extension_registration::auto_register_extensions;
 
 // Re-exports
 pub use core::extension::ExtensionRegistry;
-pub use core::permissions::all_permissions;
 pub use core::routes::chat_router;
+
+/// Register chat module
+#[distributed_slice(MODULE_ENTRIES)]
+static CHAT_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "chat",
+    order: 50,
+    description: "Core chat functionality and message handling",
+    constructor: || Box::new(ChatModule::new()),
+};
 
 /// Chat Module
 /// Manages chat conversations, messages, and extensions
@@ -56,13 +65,13 @@ impl AppModule for ChatModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(pool) = &self.pool {
+        if let Some(_pool) = &self.pool {
             if let Some(registry) = &self.extension_registry {
                 // Create chat router with pool state and extension registry as extension
                 let chat_module_router = ApiRouter::new()
                     .merge(chat_router())
                     .layer(Extension(registry.clone()))
-                    .with_state((**pool).clone());
+                    ;
 
                 router.merge(chat_module_router)
             } else {

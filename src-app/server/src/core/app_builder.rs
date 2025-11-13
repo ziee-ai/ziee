@@ -8,25 +8,36 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 use crate::core::config::Config;
 use crate::core::EventBus;
-use crate::module_api::{AppModule, ModuleContext};
-use crate::modules::{AppModule as AppMod, AuthModule, HealthModule, user::UserModule, hardware::HardwareModule, llm_provider::LlmProviderModule, llm_repository::LlmRepositoryModule, llm_model::LlmModelModule, assistant::AssistantModule, mcp::McpModule, hub::HubModule, chat::ChatModule};
+use crate::module_api::{AppModule, ModuleContext, MODULE_ENTRIES};
 
 /// Create and initialize all application modules
+///
+/// Modules are automatically discovered at link time using linkme distributed slices.
+/// Each module registers itself using #[distributed_slice(MODULE_ENTRIES)].
 pub fn create_modules() -> Vec<Box<dyn AppModule>> {
-    vec![
-        Box::new(HealthModule::new()),
-        Box::new(AppMod::new()),
-        Box::new(AuthModule::new()),
-        Box::new(UserModule::new()),
-        Box::new(HardwareModule::new()),
-        Box::new(LlmProviderModule::new()),
-        Box::new(LlmRepositoryModule::new()),
-        Box::new(LlmModelModule::new()),
-        Box::new(AssistantModule::new()),
-        Box::new(McpModule::new()),
-        Box::new(HubModule::new()),
-        Box::new(ChatModule::new()),
-    ]
+    // Collect modules from distributed slice
+    let mut entries: Vec<_> = MODULE_ENTRIES.iter().collect();
+
+    // Sort by order (lower numbers first)
+    entries.sort_by_key(|e| e.order);
+
+    // Instantiate modules using their constructors
+    let modules: Vec<Box<dyn AppModule>> = entries
+        .iter()
+        .map(|entry| (entry.constructor)())
+        .collect();
+
+    tracing::info!("Loaded {} modules in order:", modules.len());
+    for entry in entries.iter() {
+        tracing::debug!(
+            "  - {} (order: {}) - {}",
+            entry.name,
+            entry.order,
+            entry.description
+        );
+    }
+
+    modules
 }
 
 /// Initialize all modules with the given context

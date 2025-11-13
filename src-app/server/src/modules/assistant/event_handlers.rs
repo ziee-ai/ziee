@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::common::AppError;
 use crate::core::events::{AppEvent, EventHandler};
 use crate::modules::user::events::UserEvent;
-use super::{repository, models};
+use super::{repository, types};
 
 /// Clones enabled default template assistants to newly created users
 pub struct CloneTemplateAssistantsHandler;
@@ -57,7 +57,7 @@ impl EventHandler for CloneTemplateAssistantsHandler {
                             }
                         };
 
-                        let request = models::CreateAssistantRequest {
+                        let request = types::CreateAssistantRequest {
                             name: template.name.clone(),
                             description: template.description.clone(),
                             instructions: template.instructions.clone(),

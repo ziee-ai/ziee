@@ -1,7 +1,9 @@
 // User handlers and request/response models
 
 use aide::transform::TransformOperation;
+use crate::core::Repos;
 use axum::{
+    debug_handler,
     extract::{Path, Query},
     http::StatusCode,
     Extension, Json,
@@ -11,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
-    core::{AppEvent, EventBus},
+    core::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
 };
 
@@ -22,7 +24,6 @@ use super::{
         UserActiveStatusResponse, UserListResponse,
     },
     permissions::*,
-    repository::{UserRepository, GroupRepository},
     events::UserEvent,
 };
 
@@ -31,12 +32,13 @@ use super::{
 // =====================================================
 
 /// List all users (requires users::read permission)
+#[debug_handler]
 pub async fn list_users(
     _auth: RequirePermissions<(UsersRead,)>,
     Query(params): Query<PaginationQuery>,
-    Extension(user_repo): Extension<UserRepository>,
+    
 ) -> ApiResult<Json<UserListResponse>> {
-    let (users, total) = user_repo.list(params.page, params.per_page).await?;
+    let (users, total) = Repos.user.list(params.page, params.per_page).await?;
 
     let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
 
@@ -63,12 +65,13 @@ pub fn list_users_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Get user by ID (requires users::read permission)
+#[debug_handler]
 pub async fn get_user(
     _auth: RequirePermissions<(UsersRead,)>,
     Path(user_id): Path<Uuid>,
-    Extension(user_repo): Extension<UserRepository>,
+    
 ) -> ApiResult<Json<User>> {
-    let user = user_repo
+    let user = Repos.user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -88,10 +91,11 @@ pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Create a new user (requires users::create permission)
+#[debug_handler]
 pub async fn create_user(
     _auth: RequirePermissions<(UsersCreate,)>,
-    Extension(user_repo): Extension<UserRepository>,
-    Extension(group_repo): Extension<GroupRepository>,
+    
+    
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateUserRequest>,
 ) -> ApiResult<Json<User>> {
@@ -104,12 +108,12 @@ pub async fn create_user(
     }
 
     // Check if username already exists
-    if user_repo.get_by_username(&request.username).await?.is_some() {
+    if Repos.user.get_by_username(&request.username).await?.is_some() {
         return Err(AppError::conflict("Username").into());
     }
 
     // Check if email already exists
-    if user_repo.get_by_email(&request.email).await?.is_some() {
+    if Repos.user.get_by_email(&request.email).await?.is_some() {
         return Err(AppError::conflict("Email").into());
     }
 
@@ -118,7 +122,7 @@ pub async fn create_user(
         .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))?;
 
     // Create user
-    let user = user_repo
+    let user = Repos.user
         .create(
             &request.username,
             &request.email,
@@ -129,9 +133,9 @@ pub async fn create_user(
         .await?;
 
     // Assign user to default group if it exists
-    if let Some(default_group) = group_repo.get_default().await? {
+    if let Some(default_group) = Repos.group.get_default().await? {
         // Assign user to default group (assigned_by is None for automatic assignment)
-        let _ = user_repo.assign_to_group(user.id, default_group.id, None).await;
+        let _ = Repos.user.assign_to_group(user.id, default_group.id, None).await;
         // Note: We ignore errors here to not fail user creation if group assignment fails
     }
 
@@ -153,15 +157,16 @@ pub fn create_user_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Update user (requires users::edit permission)
+#[debug_handler]
 pub async fn update_user(
     _auth: RequirePermissions<(UsersEdit,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
-    Extension(user_repo): Extension<UserRepository>,
     Json(request): Json<UpdateUserRequest>,
 ) -> ApiResult<Json<User>> {
 
     // Check if user exists and get user data
-    let user = user_repo
+    let user = Repos.user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -176,7 +181,7 @@ pub async fn update_user(
 
     // Check if new username already exists
     if let Some(ref username) = request.username {
-        if let Some(existing) = user_repo.get_by_username(username).await? {
+        if let Some(existing) = Repos.user.get_by_username(username).await? {
             if existing.id != user_id {
                 return Err(AppError::conflict("Username").into());
             }
@@ -185,7 +190,7 @@ pub async fn update_user(
 
     // Check if new email already exists
     if let Some(ref email) = request.email {
-        if let Some(existing) = user_repo.get_by_email(email).await? {
+        if let Some(existing) = Repos.user.get_by_email(email).await? {
             if existing.id != user_id {
                 return Err(AppError::conflict("Email").into());
             }
@@ -193,20 +198,23 @@ pub async fn update_user(
     }
 
     // Update user
-    user_repo
+    Repos.user
         .update(user_id, request.username, request.email, request.display_name, request.permissions)
         .await?;
 
     // Update active status if provided
     if let Some(is_active) = request.is_active {
-        user_repo.set_active(user_id, is_active).await?;
+        Repos.user.set_active(user_id, is_active).await?;
     }
 
     // Fetch updated user
-    let updated_user = user_repo
+    let updated_user = Repos.user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
+
+    // Emit update event for other modules to react
+    event_bus.emit_async(UserEvent::updated(updated_user.clone()));
 
     Ok((StatusCode::OK, Json(updated_user)))
 }
@@ -224,14 +232,15 @@ pub fn update_user_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Toggle user active status (requires users::toggle_status permission)
+#[debug_handler]
 pub async fn toggle_user_active(
     _auth: RequirePermissions<(UsersToggleStatus,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
-    Extension(user_repo): Extension<UserRepository>,
 ) -> ApiResult<Json<UserActiveStatusResponse>> {
 
     // Get current user
-    let user = user_repo
+    let user = Repos.user
         .get_by_id(user_id)
         .await?
         .ok_or_else(|| AppError::not_found("User"))?;
@@ -246,7 +255,15 @@ pub async fn toggle_user_active(
 
     // Toggle active status
     let new_status = !user.is_active;
-    user_repo.set_active(user_id, new_status).await?;
+    Repos.user.set_active(user_id, new_status).await?;
+
+    // Fetch updated user and emit event
+    let updated_user = Repos.user
+        .get_by_id(user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("User"))?;
+
+    event_bus.emit_async(UserEvent::updated(updated_user));
 
     Ok((
         StatusCode::OK,
@@ -270,14 +287,15 @@ pub fn toggle_user_active_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Reset user password (requires users::reset_password permission)
+#[debug_handler]
 pub async fn reset_user_password(
     _auth: RequirePermissions<(UsersResetPassword,)>,
-    Extension(user_repo): Extension<UserRepository>,
+    
     Json(request): Json<ResetPasswordRequest>,
 ) -> ApiResult<StatusCode> {
 
     // Check if user exists
-    if user_repo.get_by_id(request.user_id).await?.is_none() {
+    if Repos.user.get_by_id(request.user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
     }
 
@@ -286,7 +304,7 @@ pub async fn reset_user_password(
         .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))?;
 
     // Update password
-    user_repo
+    Repos.user
         .update_password(request.user_id, &password_hash)
         .await?;
 
@@ -305,19 +323,23 @@ pub fn reset_user_password_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Delete user (requires users::delete permission)
+#[debug_handler]
 pub async fn delete_user(
     _auth: RequirePermissions<(UsersDelete,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(user_id): Path<Uuid>,
-    Extension(user_repo): Extension<UserRepository>,
 ) -> ApiResult<StatusCode> {
 
     // Check if user exists
-    if user_repo.get_by_id(user_id).await?.is_none() {
+    if Repos.user.get_by_id(user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
     }
 
     // Delete user
-    user_repo.delete(user_id).await?;
+    Repos.user.delete(user_id).await?;
+
+    // Emit deletion event for other modules to react
+    event_bus.emit_async(UserEvent::deleted(user_id));
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

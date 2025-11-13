@@ -1,3 +1,6 @@
+// Permission extractors
+#![allow(dead_code)]
+
 use std::{marker::PhantomData, sync::Arc};
 
 use aide::OperationIo;
@@ -5,17 +8,17 @@ use axum::{
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
 };
-use sqlx::PgPool;
 
 use crate::{
     common::AppError,
+    core::Repos,
     modules::{
         auth::jwt::JwtService,
-        user::{models::{Group, User}, repository::UserRepository},
+        user::models::{Group, User},
     },
 };
 
-use super::{checker::check_permission_union, types::{PermissionCheck, PermissionList}};
+use super::{checker::check_permission_union, types::PermissionList};
 
 // =====================================================
 // RequirePermissions - Generic Permission Extractor
@@ -36,12 +39,12 @@ pub struct RequirePermissions<Perms: PermissionList> {
     _marker: PhantomData<Perms>,
 }
 
-impl<Perms: PermissionList> FromRequestParts<PgPool> for RequirePermissions<Perms> {
+impl<Perms: PermissionList> FromRequestParts<()> for RequirePermissions<Perms> {
     type Rejection = (StatusCode, AppError);
 
     fn from_request_parts(
         parts: &mut Parts,
-        state: &PgPool,
+        _state: &(),
     ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
         async move {
             // 1. Get JWT service from app state
@@ -83,9 +86,8 @@ impl<Perms: PermissionList> FromRequestParts<PgPool> for RequirePermissions<Perm
                 )
             })?;
 
-            // 5. Load user from database
-            let user_repo = UserRepository::new(state.clone());
-            let user = user_repo
+            // 5. Load user from database using global Repos
+            let user = Repos.user
                 .get_by_id(user_id)
                 .await
                 .map_err(|e| {
@@ -118,8 +120,8 @@ impl<Perms: PermissionList> FromRequestParts<PgPool> for RequirePermissions<Perm
                 });
             }
 
-            // 7. Load user's groups with permissions
-            let groups = user_repo.get_user_groups(user.id).await.map_err(|e| {
+            // 7. Load user's groups with permissions using global Repos
+            let groups = Repos.user.get_user_groups(user.id).await.map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     AppError::internal_error(format!("Failed to load groups: {}", e)),
@@ -168,12 +170,12 @@ pub struct RequireAdmin {
     pub user: User,
 }
 
-impl FromRequestParts<PgPool> for RequireAdmin {
+impl FromRequestParts<()> for RequireAdmin {
     type Rejection = (StatusCode, AppError);
 
     fn from_request_parts(
         parts: &mut Parts,
-        state: &PgPool,
+        _state: &(),
     ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
         async move {
             // Get JWT service from app state
@@ -215,9 +217,8 @@ impl FromRequestParts<PgPool> for RequireAdmin {
                 )
             })?;
 
-            // Load user from database
-            let user_repo = UserRepository::new(state.clone());
-            let user = user_repo
+            // Load user from database using global Repos
+            let user = Repos.user
                 .get_by_id(user_id)
                 .await
                 .map_err(|e| {

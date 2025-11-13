@@ -1,3 +1,6 @@
+// Hardware API infrastructure
+#![allow(dead_code)]
+
 use super::detection::detect_gpu_devices;
 use super::monitoring::{add_client, remove_client, start_hardware_monitoring};
 use super::permissions::{HardwareMonitor, HardwareRead};
@@ -9,12 +12,10 @@ use crate::common::ApiResult;
 use crate::modules::permissions::RequirePermissions;
 use axum::{
     debug_handler,
-    extract::State,
     response::sse::{Event, Sse},
     Json,
 };
 use futures_util::stream::Stream;
-use sqlx::PgPool;
 use sysinfo::System;
 use uuid::Uuid;
 
@@ -26,7 +27,6 @@ use uuid::Uuid;
 #[debug_handler]
 pub async fn get_hardware_info(
     _auth: RequirePermissions<(HardwareRead,)>,
-    State(_pool): State<PgPool>,
 ) -> ApiResult<Json<HardwareInfoResponse>> {
     let mut sys = System::new_all();
     sys.refresh_all();
@@ -81,7 +81,6 @@ pub async fn get_hardware_info(
 #[debug_handler]
 pub async fn subscribe_hardware_usage(
     _auth: RequirePermissions<(HardwareMonitor,)>,
-    State(_pool): State<PgPool>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
     let client_id = Uuid::new_v4();
     let mut rx = add_client(client_id);

@@ -1,12 +1,11 @@
 // Assistant routes configuration - separate routes for user and template assistants
 
 use aide::axum::{routing::{delete_with, get_with, post_with, put_with}, ApiRouter};
-use sqlx::PgPool;
 
 use super::handlers::*;
 
 /// Assistant management routes
-pub fn assistant_router() -> ApiRouter<PgPool> {
+pub fn assistant_router() -> ApiRouter {
     ApiRouter::new()
         // User assistant routes (/assistants)
         .api_route("/assistants", post_with(create_user_assistant, create_user_assistant_docs))

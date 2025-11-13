@@ -1,23 +1,23 @@
 // Branch handlers - Operations for conversation branches (edit/regenerate)
 
 use aide::transform::TransformOperation;
+use crate::core::Repos;
 use axum::{
-    extract::{Path, State},
+    debug_handler,
+    extract::Path,
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError},
     modules::{
-        chat::{
-            core::{
-                models::{Branch, CreateBranchRequest},
-                permissions::*,
-                repository::{branches as branch_repo, conversations as conv_repo},
-            },
+        chat::core::{
+            models::Branch,
+            types::CreateBranchRequest,
+            permissions::*,
+            repository::{branches as branch_repo, conversations as conv_repo},
         },
         permissions::{extractors::RequirePermissions, with_permission},
     },
@@ -28,14 +28,15 @@ use crate::{
 // =====================================================
 
 /// Create a new branch (for edit/regenerate functionality)
+#[debug_handler]
 pub async fn create_branch(
     auth: RequirePermissions<(BranchesCreate,)>,
-    State(pool): State<PgPool>,
+    
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<CreateBranchRequest>,
 ) -> ApiResult<Json<Branch>> {
     // Verify conversation exists and user owns it
-    let conversation = conv_repo::get_conversation(&pool, conversation_id, auth.user.id)
+    let conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -49,7 +50,7 @@ pub async fn create_branch(
 
     // Create new branch with message cloning (handled in repository)
     let branch = branch_repo::create_branch(
-        &pool,
+        Repos.pool(),
         conversation_id,
         parent_branch_id,
         request.from_message_id,
@@ -71,17 +72,18 @@ pub fn create_branch_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// List all branches for a conversation
+#[debug_handler]
 pub async fn list_branches(
     auth: RequirePermissions<(ConversationsRead,)>,
-    State(pool): State<PgPool>,
+    
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<Branch>>> {
     // Verify conversation exists and user owns it
-    let _conversation = conv_repo::get_conversation(&pool, conversation_id, auth.user.id)
+    let _conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
-    let branches = branch_repo::list_branches(&pool, conversation_id).await?;
+    let branches = branch_repo::list_branches(Repos.pool(), conversation_id).await?;
 
     Ok((StatusCode::OK, Json(branches)))
 }
@@ -98,18 +100,19 @@ pub fn list_branches_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Switch to a different branch (activate it)
+#[debug_handler]
 pub async fn activate_branch(
     auth: RequirePermissions<(BranchesSwitch,)>,
-    State(pool): State<PgPool>,
+    
     Path((conversation_id, branch_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<StatusCode> {
     // Verify conversation exists and user owns it
-    let _conversation = conv_repo::get_conversation(&pool, conversation_id, auth.user.id)
+    let _conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
     // Verify branch exists and belongs to this conversation
-    let branch = branch_repo::get_branch(&pool, branch_id)
+    let branch = branch_repo::get_branch(Repos.pool(), branch_id)
         .await?
         .ok_or_else(|| AppError::not_found("Branch"))?;
 
@@ -122,7 +125,7 @@ pub async fn activate_branch(
     }
 
     // Activate the branch
-    branch_repo::set_active_branch(&pool, conversation_id, branch_id).await?;
+    branch_repo::set_active_branch(Repos.pool(), conversation_id, branch_id).await?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

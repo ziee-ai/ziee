@@ -1,5 +1,7 @@
 // Auth module events
 // Events related to authentication and authorization
+// These are part of the event system infrastructure for future use
+#![allow(dead_code)]
 
 use uuid::Uuid;
 

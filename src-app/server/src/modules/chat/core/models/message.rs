@@ -1,11 +1,12 @@
-// Message models
+// Chat model infrastructure
+#![allow(dead_code)]
+
+// Message DB entities
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
-
-use super::content::MessageContent;
 
 /// Message role in conversation
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
@@ -63,26 +64,6 @@ impl Message {
     }
 }
 
-/// Message with its content blocks
-#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct MessageWithContent {
-    #[serde(flatten)]
-    pub message: Message,
-    pub contents: Vec<MessageContent>,
-}
-
-/// Request to create a new message (for system messages or manual creation)
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct CreateMessageRequest {
-    pub role: MessageRole,
-}
-
-/// Request to edit an existing message
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct EditMessageRequest {
-    pub content: String,
-}
-
 /// Branch-Message junction table entity
 /// Represents the many-to-many relationship between branches and messages
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, schemars::JsonSchema)]
@@ -92,11 +73,4 @@ pub struct BranchMessage {
     pub message_id: Uuid,
     pub is_clone: bool,  // true if message was cloned from another branch
     pub created_at: DateTime<Utc>,
-}
-
-/// Response when editing a message (creates new branch)
-#[derive(Debug, Serialize, schemars::JsonSchema)]
-pub struct EditMessageResponse {
-    pub message: Message,
-    pub branch: crate::modules::chat::core::models::Branch,
 }

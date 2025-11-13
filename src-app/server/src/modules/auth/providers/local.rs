@@ -1,3 +1,6 @@
+// Auth provider infrastructure - part of future auth system
+#![allow(dead_code)]
+
 use async_trait::async_trait;
 use sqlx::PgPool;
 

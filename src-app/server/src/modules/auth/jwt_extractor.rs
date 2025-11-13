@@ -1,3 +1,6 @@
+// JWT authentication infrastructure
+#![allow(dead_code)]
+
 use aide::OperationIo;
 use axum::{
     extract::FromRequestParts,

@@ -2,11 +2,10 @@ use aide::axum::{
     routing::{get_with, post_with},
     ApiRouter,
 };
-use sqlx::PgPool;
 
 use super::handlers::*;
 
-pub fn hub_router() -> ApiRouter<PgPool> {
+pub fn hub_router() -> ApiRouter {
     ApiRouter::new()
         // Models endpoints
         .api_route(

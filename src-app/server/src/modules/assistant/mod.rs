@@ -2,15 +2,17 @@
 // Manages user assistants and system-wide template assistants
 
 use aide::axum::ApiRouter;
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
 use crate::core::EventHandler;
-use crate::module_api::AppModule;
+use crate::module_api::{AppModule, ModuleEntry, MODULE_ENTRIES};
 use crate::ModuleContext;
 
 pub mod models;
+pub mod types;
 pub mod permissions;
 pub mod repository;
 pub mod handlers;
@@ -19,10 +21,10 @@ pub mod events;
 pub mod event_handlers;
 
 // Re-export database entities from models
-pub use models::{Assistant, CreateAssistantRequest, UpdateAssistantRequest, AssistantListResponse, ModelParameters};
+
+// Re-export API types
 
 // Re-export permissions
-pub use permissions::*;
 
 // Re-export repository functions
 pub use repository::*;
@@ -31,10 +33,19 @@ pub use repository::*;
 pub use routes::assistant_router;
 
 // Re-export events
-pub use events::AssistantEvent;
+
+/// Register assistant module
+#[distributed_slice(MODULE_ENTRIES)]
+static ASSISTANT_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "assistant",
+    order: 45,
+    description: "AI assistant management and interactions",
+    constructor: || Box::new(AssistantModule::new()),
+};
 
 /// Assistant Module
 /// Manages user-created assistants and system-wide template assistants
+/// Note: Kept as manual registration due to event handler requirements
 pub struct AssistantModule {
     pool: Option<Arc<PgPool>>,
 }
@@ -50,18 +61,24 @@ impl AppModule for AssistantModule {
         "assistant"
     }
 
+    fn version(&self) -> &'static str {
+        "1.0.0"
+    }
+
+    fn description(&self) -> &'static str {
+        "Assistant management and template system"
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
         Ok(())
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(pool) = &self.pool {
-            // Create assistant router with pool state
+        if let Some(_pool) = &self.pool {
             let assistant_module_router = ApiRouter::new()
                 .merge(assistant_router())
-                .with_state((**pool).clone());
-
+                ;
             router.merge(assistant_module_router)
         } else {
             tracing::error!("AssistantModule: Pool not initialized during route registration");

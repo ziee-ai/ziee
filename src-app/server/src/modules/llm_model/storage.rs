@@ -1,3 +1,6 @@
+// Model storage
+#![allow(dead_code)]
+
 // Model storage utility for managing model files
 // Adapted from react-test/src-tauri/src/utils/model_storage.rs
 

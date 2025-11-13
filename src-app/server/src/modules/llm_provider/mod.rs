@@ -5,6 +5,7 @@
 // This module manages LLM provider configurations (OpenAI, Anthropic, Local, etc.)
 // with support for API keys, proxy settings, and user group assignments
 
+pub mod events;
 pub mod handlers;
 pub mod models;
 pub mod permissions;
@@ -14,18 +15,25 @@ pub mod utils;
 pub mod types;
 
 // Re-export main types and router
-pub use models::*;
-pub use permissions::all_permissions;
 pub use repository::LlmProviderRepository;
 pub use routes::llm_provider_router;
-pub use types::*;
 
 use aide::axum::ApiRouter;
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleContext};
+use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+
+/// Register llm_provider module
+#[distributed_slice(MODULE_ENTRIES)]
+static LLM_PROVIDER_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "llm_provider",
+    order: 30,
+    description: "LLM provider configuration and management",
+    constructor: || Box::new(LlmProviderModule::new()),
+};
 
 /// LLM Provider module for managing provider configurations
 pub struct LlmProviderModule {
@@ -49,20 +57,9 @@ impl AppModule for LlmProviderModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(pool) = &self.pool {
-            // Create repository once at module level
-            let llm_provider_repo = repository::LlmProviderRepository::new((**pool).clone());
-
-            // Create LLM provider router with both state (for permission checks) and extensions (for repository)
-            let llm_provider_module_router = ApiRouter::new()
-                .merge(llm_provider_router())
-                .with_state((**pool).clone())
-                .layer(axum::Extension(llm_provider_repo));
-
-            // Merge the stateful router into the provided stateless router
-            router.merge(llm_provider_module_router)
+        if let Some(_pool) = &self.pool {
+            router.merge(llm_provider_router())
         } else {
-            // Pool not initialized - this shouldn't happen in normal flow
             tracing::error!("LlmProviderModule: Pool not initialized during route registration");
             router
         }

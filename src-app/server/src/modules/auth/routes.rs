@@ -4,15 +4,12 @@ use aide::axum::{
     routing::{get_with, post_with},
     ApiRouter,
 };
-use axum::{routing::get, Json};
-use sqlx::PgPool;
+use axum::routing::get;
 
 use super::handlers::*;
-use super::jwt::TokenPair;
-use super::types::{AuthResponse, MeResponse};
 
 /// Auth routes configuration
-pub fn auth_routes() -> ApiRouter<PgPool> {
+pub fn auth_routes() -> ApiRouter {
     ApiRouter::new()
         .api_route("/register", post_with(register, register_docs))
         .api_route("/login", post_with(login, login_docs))

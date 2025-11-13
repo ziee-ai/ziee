@@ -4,7 +4,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::chat::core::models::{Message, MessageWithContent, EditMessageRequest, EditMessageResponse};
+use crate::modules::chat::core::models::Message;
+use crate::modules::chat::core::types::{MessageWithContent, EditMessageRequest, EditMessageResponse};
 
 use super::contents::get_message_contents;
 
@@ -389,62 +390,4 @@ pub async fn delete_message_and_descendants(pool: &PgPool, id: Uuid) -> Result<u
     .map_err(AppError::database_error)?;
 
     Ok(result.rows_affected())
-}
-
-/// Count messages in a branch
-pub async fn count_messages_in_branch(pool: &PgPool, branch_id: Uuid) -> Result<i64, AppError> {
-    let count = sqlx::query_scalar!(
-        r#"
-        SELECT COUNT(*) as "count!"
-        FROM branch_messages
-        WHERE branch_id = $1
-        "#,
-        branch_id
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::database_error)?;
-
-    Ok(count)
-}
-
-/// Get all branches containing a specific message or its edits
-pub async fn get_message_branches(
-    pool: &PgPool,
-    message_id: Uuid,
-) -> Result<Vec<crate::modules::chat::core::models::Branch>, AppError> {
-    // Get the originated_from_id for this message
-    let originated_from_id = sqlx::query_scalar!(
-        r#"
-        SELECT originated_from_id as "originated_from_id!"
-        FROM messages
-        WHERE id = $1
-        "#,
-        message_id
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::database_error)?
-    .ok_or_else(|| AppError::not_found("Message"))?;
-
-    // Get all branches containing any message with this originated_from_id
-    let branches = sqlx::query_as!(
-        crate::modules::chat::core::models::Branch,
-        r#"
-        SELECT DISTINCT b.id, b.conversation_id, b.parent_branch_id, b.created_from_message_id,
-               b.created_at as "created_at: _"
-        FROM branches b
-        INNER JOIN branch_messages bm ON b.id = bm.branch_id
-        INNER JOIN messages m ON bm.message_id = m.id
-        WHERE m.originated_from_id = $1
-          AND bm.is_clone = false
-        ORDER BY b.created_at ASC
-        "#,
-        originated_from_id
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(AppError::database_error)?;
-
-    Ok(branches)
 }

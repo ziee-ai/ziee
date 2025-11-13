@@ -2,27 +2,26 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    extract::{Path, Query, State, Extension},
+    debug_handler,
+    extract::{Path, Query, Extension},
     http::StatusCode,
     Json,
 };
 use serde::Deserialize;
-use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
     events::AssistantEvent,
-    models::{Assistant, AssistantListResponse, CreateAssistantRequest, UpdateAssistantRequest},
+    models::Assistant,
+    types::{AssistantListResponse, CreateAssistantRequest, UpdateAssistantRequest},
     permissions::*,
-    repository,
 };
 use crate::{
     common::{AppError, ApiResult},
-    core::EventBus,
+    core::{EventBus, Repos},
     modules::permissions::{
         extractors::RequirePermissions,
-        types::PermissionCheck,
         with_permission
     },
 };
@@ -50,9 +49,10 @@ fn default_limit() -> i64 { 20 }
 // =====================================================
 
 /// Create a new user assistant
+#[debug_handler]
 pub async fn create_user_assistant(
     auth: RequirePermissions<(AssistantsCreate,)>,
-    State(pool): State<PgPool>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(mut request): Json<CreateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
     // Validate name is not empty
@@ -66,7 +66,11 @@ pub async fn create_user_assistant(
     // Force is_template to false for user assistants
     request.is_template = Some(false);
 
-    let assistant = repository::create_assistant(&pool, Some(auth.user.id), request).await?;
+    let assistant = Repos.assistant.create(Some(auth.user.id), request).await?;
+
+    // Emit creation event for other modules to react
+    event_bus.emit_async(AssistantEvent::created(assistant.id, Some(auth.user.id)));
+
     Ok((StatusCode::CREATED, Json(assistant)))
 }
 
@@ -82,13 +86,13 @@ pub fn create_user_assistant_docs(op: TransformOperation) -> TransformOperation 
 }
 
 /// List user's assistants
+#[debug_handler]
 pub async fn list_user_assistants(
     auth: RequirePermissions<(AssistantsRead,)>,
-    State(pool): State<PgPool>,
+
     Query(query): Query<PaginationQuery>,
 ) -> ApiResult<Json<AssistantListResponse>> {
-    let response = repository::list_assistants(
-        &pool,
+    let response = Repos.assistant.list(
         Some(auth.user.id),
         false, // Only user assistants (never returns templates)
         query.page,
@@ -109,12 +113,13 @@ pub fn list_user_assistants_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Get user assistant by ID
+#[debug_handler]
 pub async fn get_user_assistant(
     auth: RequirePermissions<(AssistantsRead,)>,
-    State(pool): State<PgPool>,
+
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Assistant>> {
-    let assistant = repository::get_assistant(&pool, id).await?
+    let assistant = Repos.assistant.get(id).await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 
     // Check ownership
@@ -145,13 +150,14 @@ pub fn get_user_assistant_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Update user assistant
+#[debug_handler]
 pub async fn update_user_assistant(
     auth: RequirePermissions<(AssistantsEdit,)>,
-    State(pool): State<PgPool>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
-    let existing = repository::get_assistant(&pool, id).await?
+    let existing = Repos.assistant.get(id).await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 
     // Check ownership
@@ -167,7 +173,10 @@ pub async fn update_user_assistant(
         return Err(AppError::not_found("Assistant").into());
     }
 
-    let assistant = repository::update_assistant(&pool, id, request).await?;
+    let assistant = Repos.assistant.update(id, request).await?;
+
+    // Emit update event for other modules to react
+    event_bus.emit_async(AssistantEvent::updated(assistant.id, Some(auth.user.id)));
 
     Ok((StatusCode::OK, Json(assistant)))
 }
@@ -184,13 +193,14 @@ pub fn update_user_assistant_docs(op: TransformOperation) -> TransformOperation 
 }
 
 /// Delete user assistant
+#[debug_handler]
 pub async fn delete_user_assistant(
     auth: RequirePermissions<(AssistantsDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
-    State(pool): State<PgPool>,
+
     Path(id): Path<Uuid>,
 ) -> ApiResult<()> {
-    let existing = repository::get_assistant(&pool, id).await?
+    let existing = Repos.assistant.get(id).await?
         .ok_or_else(|| AppError::not_found("Assistant"))?;
 
     // Check ownership
@@ -206,7 +216,7 @@ pub async fn delete_user_assistant(
         return Err(AppError::not_found("Assistant").into());
     }
 
-    repository::delete_assistant(&pool, id).await?;
+    Repos.assistant.delete(id).await?;
 
     // Emit deletion event for other modules to react
     event_bus.emit_async(AssistantEvent::deleted(id, Some(auth.user.id)));
@@ -226,12 +236,13 @@ pub fn delete_user_assistant_docs(op: TransformOperation) -> TransformOperation 
 }
 
 /// Get user's default assistant
+#[debug_handler]
 pub async fn get_default_user_assistant(
     auth: RequirePermissions<(AssistantsRead,)>,
-    State(pool): State<PgPool>,
+
 ) -> ApiResult<Json<Assistant>> {
     // Get user's default (or fall back to template default)
-    let assistant = repository::get_default_assistant(&pool, Some(auth.user.id)).await?
+    let assistant = Repos.assistant.get_default(Some(auth.user.id)).await?
         .ok_or_else(|| AppError::not_found("Default assistant"))?;
 
     Ok((StatusCode::OK, Json(assistant)))
@@ -253,9 +264,10 @@ pub fn get_default_user_assistant_docs(op: TransformOperation) -> TransformOpera
 // =====================================================
 
 /// Create a new template assistant
+#[debug_handler]
 pub async fn create_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateCreate,)>,
-    State(pool): State<PgPool>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(mut request): Json<CreateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
     // Validate name is not empty
@@ -270,7 +282,11 @@ pub async fn create_template_assistant(
     request.is_template = Some(true);
 
     // Templates have no owner
-    let assistant = repository::create_assistant(&pool, None, request).await?;
+    let assistant = Repos.assistant.create(None, request).await?;
+
+    // Emit creation event for other modules to react
+    event_bus.emit_async(AssistantEvent::created(assistant.id, None));
+
     Ok((StatusCode::CREATED, Json(assistant)))
 }
 
@@ -286,13 +302,13 @@ pub fn create_template_assistant_docs(op: TransformOperation) -> TransformOperat
 }
 
 /// List template assistants
+#[debug_handler]
 pub async fn list_template_assistants(
     _auth: RequirePermissions<(AssistantsTemplateRead,)>,
-    State(pool): State<PgPool>,
+
     Query(query): Query<PaginationQuery>,
 ) -> ApiResult<Json<AssistantListResponse>> {
-    let response = repository::list_assistants(
-        &pool,
+    let response = Repos.assistant.list(
         None, // No user filter for templates
         true, // Only templates
         query.page,
@@ -313,12 +329,13 @@ pub fn list_template_assistants_docs(op: TransformOperation) -> TransformOperati
 }
 
 /// Get template assistant by ID
+#[debug_handler]
 pub async fn get_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateRead,)>,
-    State(pool): State<PgPool>,
+
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Assistant>> {
-    let assistant = repository::get_assistant(&pool, id).await?
+    let assistant = Repos.assistant.get(id).await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 
     // Ensure it's a template
@@ -341,13 +358,14 @@ pub fn get_template_assistant_docs(op: TransformOperation) -> TransformOperation
 }
 
 /// Update template assistant
+#[debug_handler]
 pub async fn update_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateEdit,)>,
-    State(pool): State<PgPool>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
-    let existing = repository::get_assistant(&pool, id).await?
+    let existing = Repos.assistant.get(id).await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 
     // Ensure it's a template
@@ -355,7 +373,10 @@ pub async fn update_template_assistant(
         return Err(AppError::not_found("Assistant template").into());
     }
 
-    let assistant = repository::update_assistant(&pool, id, request).await?;
+    let assistant = Repos.assistant.update(id, request).await?;
+
+    // Emit update event for other modules to react
+    event_bus.emit_async(AssistantEvent::updated(assistant.id, None));
 
     Ok((StatusCode::OK, Json(assistant)))
 }
@@ -372,12 +393,13 @@ pub fn update_template_assistant_docs(op: TransformOperation) -> TransformOperat
 }
 
 /// Delete template assistant
+#[debug_handler]
 pub async fn delete_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateDelete,)>,
-    State(pool): State<PgPool>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<()> {
-    let existing = repository::get_assistant(&pool, id).await?
+    let existing = Repos.assistant.get(id).await?
         .ok_or_else(|| AppError::not_found("Assistant template"))?;
 
     // Ensure it's a template
@@ -385,7 +407,10 @@ pub async fn delete_template_assistant(
         return Err(AppError::not_found("Assistant template").into());
     }
 
-    repository::delete_assistant(&pool, id).await?;
+    Repos.assistant.delete(id).await?;
+
+    // Emit deletion event for other modules to react
+    event_bus.emit_async(AssistantEvent::deleted(id, None));
 
     Ok((StatusCode::NO_CONTENT, ()))
 }
@@ -402,12 +427,13 @@ pub fn delete_template_assistant_docs(op: TransformOperation) -> TransformOperat
 }
 
 /// Get default template assistant
+#[debug_handler]
 pub async fn get_default_template_assistant(
     _auth: RequirePermissions<(AssistantsTemplateRead,)>,
-    State(pool): State<PgPool>,
+
 ) -> ApiResult<Json<Assistant>> {
     // Get default template
-    let assistant = repository::get_default_assistant(&pool, None).await?
+    let assistant = Repos.assistant.get_default(None).await?
         .ok_or_else(|| AppError::not_found("Default template assistant"))?;
 
     Ok((StatusCode::OK, Json(assistant)))

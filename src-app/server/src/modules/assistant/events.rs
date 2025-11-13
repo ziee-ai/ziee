@@ -1,4 +1,7 @@
 // Assistant module events
+// Event infrastructure for future use
+#![allow(dead_code)]
+
 // Events related to assistant lifecycle
 
 use uuid::Uuid;

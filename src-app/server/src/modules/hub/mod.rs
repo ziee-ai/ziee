@@ -2,14 +2,15 @@
 // Manages marketplace data for models, assistants, and MCP servers
 
 use aide::axum::ApiRouter;
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
 use crate::core::EventHandler;
-use crate::module_api::AppModule;
-use crate::ModuleContext;
+use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 
+pub mod events;
 pub mod models;
 pub mod types;
 pub mod handlers;
@@ -20,16 +21,27 @@ pub mod repository;
 pub mod event_handlers;
 
 // Re-export models
-pub use models::{HubModel, HubAssistant, HubMCPServer};
+
+// Re-export events
 
 // Re-export permissions
-pub use permissions::*;
 
 // Re-export hub manager
-pub use hub_manager::HubManager;
+
+// Re-export repository
+pub use repository::HubRepository;
 
 // Re-export router
 pub use routes::hub_router;
+
+/// Register hub module
+#[distributed_slice(MODULE_ENTRIES)]
+static HUB_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "hub",
+    order: 70,
+    description: "Module hub and discovery",
+    constructor: || Box::new(HubModule::new()),
+};
 
 /// Hub Module
 /// Manages marketplace data for models, assistants, and MCP servers
@@ -62,10 +74,10 @@ impl AppModule for HubModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(pool) = &self.pool {
+        if let Some(_pool) = &self.pool {
             let hub_module_router = ApiRouter::new()
                 .merge(hub_router())
-                .with_state((**pool).clone());
+                ;
 
             router.merge(hub_module_router)
         } else {

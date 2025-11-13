@@ -5,4 +5,3 @@
 mod title;
 pub mod extension; // Auto-discovered by build script
 
-pub use title::TitleGenerationExtension;

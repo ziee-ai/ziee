@@ -2,12 +2,13 @@
 // These handlers manage personal MCP servers owned by individual users
 
 use aide::transform::TransformOperation;
+use crate::core::Repos;
 use axum::{
-    extract::{Path, Query, State, Extension},
+    debug_handler,
+    extract::{Path, Query, Extension},
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -19,9 +20,9 @@ use crate::{
 
 use super::super::{
     events::McpServerEvent,
-    models::{CreateMcpServerRequest, McpServer, McpServerListResponse, UpdateMcpServerRequest},
+    models::McpServer,
+    types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest},
     permissions::*,
-    repository,
 };
 
 // =====================================================
@@ -29,27 +30,16 @@ use super::super::{
 // =====================================================
 
 /// List user's accessible MCP servers (own + group-assigned system servers)
+#[debug_handler]
 pub async fn list_accessible_servers(
     auth: RequirePermissions<(McpServersRead,)>,
     Query(params): Query<PaginationQuery>,
-    State(pool): State<PgPool>,
+    
 ) -> ApiResult<Json<McpServerListResponse>> {
-    let (servers, total) =
-        repository::list_accessible_mcp_servers(&pool, auth.user.id, params.page as i64, params.per_page as i64)
+    let response = Repos.mcp.list_accessible(auth.user.id, params.page as i64, params.per_page as i64)
             .await?;
 
-    let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
-
-    Ok((
-        StatusCode::OK,
-        Json(McpServerListResponse {
-            servers,
-            total,
-            page: params.page as i64,
-            per_page: params.per_page as i64,
-            total_pages,
-        }),
-    ))
+    Ok((StatusCode::OK, Json(response)))
 }
 
 pub fn list_accessible_servers_docs(op: TransformOperation) -> TransformOperation {
@@ -63,12 +53,16 @@ pub fn list_accessible_servers_docs(op: TransformOperation) -> TransformOperatio
 }
 
 /// Create a new user MCP server
+#[debug_handler]
 pub async fn create_user_server(
     auth: RequirePermissions<(McpServersCreate,)>,
-    State(pool): State<PgPool>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = repository::create_user_mcp_server(&pool, auth.user.id, request).await?;
+    let server = Repos.mcp.create_user_server(auth.user.id, request).await?;
+
+    // Emit creation event for other modules to react
+    event_bus.emit_async(McpServerEvent::user_server_created(server.id, auth.user.id));
 
     Ok((StatusCode::CREATED, Json(server)))
 }
@@ -86,12 +80,13 @@ pub fn create_user_server_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Get user MCP server by ID
+#[debug_handler]
 pub async fn get_user_server(
     auth: RequirePermissions<(McpServersRead,)>,
     Path(id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    
 ) -> ApiResult<Json<McpServer>> {
-    let server = repository::get_user_mcp_server(&pool, id, auth.user.id)
+    let server = Repos.mcp.get_user_server(id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Server"))?;
 
@@ -110,13 +105,17 @@ pub fn get_user_server_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Update user MCP server
+#[debug_handler]
 pub async fn update_user_server(
     auth: RequirePermissions<(McpServersEdit,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
-    State(pool): State<PgPool>,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = repository::update_user_mcp_server(&pool, id, auth.user.id, request).await?;
+    let server = Repos.mcp.update_user_server(id, auth.user.id, request).await?;
+
+    // Emit update event for other modules to react
+    event_bus.emit_async(McpServerEvent::user_server_updated(server.id, auth.user.id));
 
     Ok((StatusCode::OK, Json(server)))
 }
@@ -135,13 +134,14 @@ pub fn update_user_server_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Delete user MCP server
+#[debug_handler]
 pub async fn delete_user_server(
     auth: RequirePermissions<(McpServersDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    
 ) -> ApiResult<StatusCode> {
-    repository::delete_user_mcp_server(&pool, id, auth.user.id).await?;
+    Repos.mcp.delete_user_server(id, auth.user.id).await?;
 
     // Emit deletion event for other modules to react
     event_bus.emit_async(McpServerEvent::user_server_deleted(id, auth.user.id));

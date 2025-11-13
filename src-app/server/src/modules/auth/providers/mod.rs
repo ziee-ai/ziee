@@ -1,3 +1,5 @@
+// Auth providers - infrastructure for future authentication system
+#[allow(dead_code)]
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +9,7 @@ pub mod models;
 pub mod oauth2;
 pub mod repository;
 
-pub use models::{AuthProvider, OAuthSession, UserAuthLink};
+pub use models::{AuthProvider, OAuthSession};
 
 /// Authentication result containing user info and metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +46,7 @@ pub struct OAuthResult {
 
 /// Authentication provider trait
 #[async_trait]
+#[allow(dead_code)]
 pub trait AuthProviderTrait: Send + Sync {
     /// Provider name for logging and identification
     fn name(&self) -> &str;

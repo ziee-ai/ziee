@@ -6,7 +6,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::chat::core::models::{Conversation, ConversationResponse};
+use crate::modules::chat::core::models::Conversation;
+use crate::modules::chat::core::types::ConversationResponse;
 
 /// Convert time::OffsetDateTime to chrono::DateTime<Utc>
 fn to_chrono_datetime(odt: OffsetDateTime) -> DateTime<Utc> {
@@ -194,47 +195,6 @@ pub async fn delete_conversation(pool: &PgPool, id: Uuid, user_id: Uuid) -> Resu
     .map_err(AppError::database_error)?;
 
     Ok(result.rows_affected() > 0)
-}
-
-/// Get active branch for conversation
-pub async fn get_active_branch_id(pool: &PgPool, conversation_id: Uuid) -> Result<Option<Uuid>, AppError> {
-    let result = sqlx::query!(
-        r#"
-        SELECT active_branch_id
-        FROM conversations
-        WHERE id = $1
-        "#,
-        conversation_id
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::database_error)?;
-
-    Ok(result.and_then(|r| r.active_branch_id))
-}
-
-/// Update active branch for conversation
-pub async fn update_active_branch(
-    pool: &PgPool,
-    conversation_id: Uuid,
-    user_id: Uuid,
-    branch_id: Uuid,
-) -> Result<(), AppError> {
-    sqlx::query!(
-        r#"
-        UPDATE conversations
-        SET active_branch_id = $1, updated_at = NOW()
-        WHERE id = $2 AND user_id = $3
-        "#,
-        branch_id,
-        conversation_id,
-        user_id
-    )
-    .execute(pool)
-    .await
-    .map_err(AppError::database_error)?;
-
-    Ok(())
 }
 
 /// Update conversation model and optionally active branch

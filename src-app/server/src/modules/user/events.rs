@@ -1,4 +1,7 @@
 // User module events
+// Event infrastructure for future use
+#![allow(dead_code)]
+
 // Events related to user lifecycle and authentication
 
 use uuid::Uuid;

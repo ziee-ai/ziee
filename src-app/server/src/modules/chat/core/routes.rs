@@ -4,12 +4,11 @@ use aide::axum::{
     routing::{delete_with, get_with, post_with, put_with},
     ApiRouter,
 };
-use sqlx::PgPool;
 
 use super::handlers::*;
 
 /// Chat conversation management routes
-pub fn chat_router() -> ApiRouter<PgPool> {
+pub fn chat_router() -> ApiRouter {
     ApiRouter::new()
         // Conversation CRUD
         .api_route(

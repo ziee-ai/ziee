@@ -14,6 +14,9 @@ pub async fn generate_openapi_spec(output_dir: &str, config_file: Option<String>
     // Initialize database properly (this starts embedded PostgreSQL if use_embedded: true)
     let pool = crate::core::database::initialize_database(&config).await?;
 
+    // Initialize global repository factory
+    crate::core::init_repositories((*pool).clone());
+
     // Initialize modules using shared builder functions
     let module_context = ModuleContext::new(pool.clone());
     let mut modules = app_builder::create_modules();

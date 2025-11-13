@@ -1,4 +1,5 @@
 mod models;
+mod types;
 mod permissions;
 mod repository;
 mod handlers;
@@ -6,16 +7,26 @@ mod routes;
 pub mod events;
 
 pub use models::*;
-pub use permissions::*;
+pub use types::*;
 pub use repository::*;
-pub use events::McpServerEvent;
 
-use crate::module_api::{AppModule, ModuleContext};
+use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 use aide::axum::ApiRouter;
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
+/// Register mcp module
+#[distributed_slice(MODULE_ENTRIES)]
+static MCP_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "mcp",
+    order: 65,
+    description: "Model Context Protocol server management",
+    constructor: || Box::new(McpModule::new()),
+};
+
+/// Note: Kept as manual registration due to stateful route requirements
 pub struct McpModule {
     pool: Option<Arc<PgPool>>,
 }
@@ -31,24 +42,35 @@ impl AppModule for McpModule {
         "mcp"
     }
 
+    fn version(&self) -> &'static str {
+        "1.0.0"
+    }
+
+    fn description(&self) -> &'static str {
+        "Model Context Protocol (MCP) server management"
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
         Ok(())
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(pool) = &self.pool {
-            // Create stateful routers
+        if let Some(_pool) = &self.pool {
             let mcp_router_with_state = ApiRouter::new()
                 .merge(routes::user_routes())
                 .merge(routes::admin_routes())
-                .with_state((**pool).clone());
-
-            // Merge into the provided router
+                ;
             router.merge(mcp_router_with_state)
         } else {
             tracing::error!("McpModule: Pool not initialized during route registration");
             router
         }
+    }
+}
+
+impl Default for McpModule {
+    fn default() -> Self {
+        Self::new()
     }
 }

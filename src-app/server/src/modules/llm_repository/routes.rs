@@ -1,12 +1,11 @@
 // LLM Repository routes configuration
 
 use aide::axum::{routing::{get_with, post_with}, ApiRouter};
-use sqlx::PgPool;
 
 use super::handlers::*;
 
 /// LLM Repository management routes
-pub fn llm_repository_router() -> ApiRouter<PgPool> {
+pub fn llm_repository_router() -> ApiRouter {
     ApiRouter::new()
         .api_route("/llm-repositories", get_with(list_repositories, list_repositories_docs))
         .api_route("/llm-repositories", post_with(create_repository, create_repository_docs))

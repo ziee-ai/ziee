@@ -28,7 +28,6 @@ pub mod openapi;
 pub mod types;
 
 // Re-export main types
-pub use checker::check_permission_union;
-pub use extractors::{RequireAdmin, RequirePermissions};
+pub use extractors::RequirePermissions;
 pub use openapi::with_permission;
-pub use types::{PermissionCheck, PermissionInfo, PermissionList};
+pub use types::{PermissionCheck, PermissionInfo};

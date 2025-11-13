@@ -1,15 +1,18 @@
+// LLM model repository
+#![allow(dead_code)]
+
 // LLM Model database queries - copied from react-test and refactored for ziee-chat
 // Source: react-test/src-tauri/src/database/queries/models.rs
 
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
 
 use super::models::{
-    DownloadInstance, DownloadPhase, DownloadProgressData, DownloadRequestData, DownloadStatus,
-    EngineType, FileFormat, LlmModel, ModelCapabilities, ModelEngineSettings, ModelParameters,
+    DownloadInstance, DownloadPhase, DownloadProgressData, DownloadStatus,
+    EngineType, FileFormat, LlmModel,
 };
 use super::types::{
     CreateDownloadInstanceRequest, CreateLlmModelRequest, DownloadInstanceListResponse,
@@ -23,7 +26,7 @@ use super::types::{
 // =====================================================
 
 /// Repository for LLM model database operations
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LlmModelRepository {
     pool: PgPool,
 }
@@ -93,7 +96,7 @@ impl LlmModelRepository {
 // =====================================================
 
 /// Repository for download instance database operations
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DownloadInstanceRepository {
     pool: PgPool,
 }

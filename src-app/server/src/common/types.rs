@@ -8,6 +8,7 @@ make_transparent!(
     pub struct JsonOption<T>(Option<T>)
 );
 
+#[allow(dead_code)]
 impl<T> JsonOption<T> {
     /// Convert JsonOption<T> to Option<T>
     pub fn into_option(self) -> Option<T> {

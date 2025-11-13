@@ -4,12 +4,11 @@ use aide::axum::{
     routing::{get_with, post_with},
     ApiRouter,
 };
-use sqlx::PgPool;
 
 use super::handlers::*;
 
 /// User management routes
-pub fn user_router() -> ApiRouter<PgPool> {
+pub fn user_router() -> ApiRouter {
     ApiRouter::new()
         .api_route("/users", get_with(list_users, list_users_docs))
         .api_route("/users", post_with(create_user, create_user_docs))

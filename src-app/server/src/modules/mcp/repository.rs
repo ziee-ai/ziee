@@ -1,11 +1,125 @@
-use chrono::{DateTime, Utc};
+// MCP repository
+#![allow(dead_code)]
+
+use chrono::DateTime;
 use sqlx::PgPool;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::common::AppError;
 
-use super::models::{CreateMcpServerRequest, McpServer, TransportType, UpdateMcpServerRequest};
+use super::models::{McpServer, TransportType};
+use super::types::{CreateMcpServerRequest, UpdateMcpServerRequest, McpServerListResponse};
+
+/// MCP Repository
+pub struct McpRepository {
+    pool: PgPool,
+}
+
+impl McpRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    // User server operations
+    pub async fn create_user_server(&self, user_id: Uuid, request: CreateMcpServerRequest) -> Result<McpServer, AppError> {
+        create_user_mcp_server(&self.pool, user_id, request).await
+    }
+
+    pub async fn get_user_server(&self, id: Uuid, user_id: Uuid) -> Result<Option<McpServer>, AppError> {
+        get_user_mcp_server(&self.pool, id, user_id).await
+    }
+
+    pub async fn list_user_servers(&self, user_id: Uuid, page: i64, per_page: i64) -> Result<McpServerListResponse, AppError> {
+        let (servers, total) = list_user_mcp_servers(&self.pool, user_id, page, per_page).await?;
+        let total_pages = (total + per_page - 1) / per_page;
+        Ok(McpServerListResponse {
+            servers,
+            total,
+            page,
+            per_page,
+            total_pages,
+        })
+    }
+
+    pub async fn update_user_server(&self, id: Uuid, user_id: Uuid, request: UpdateMcpServerRequest) -> Result<McpServer, AppError> {
+        update_user_mcp_server(&self.pool, id, user_id, request).await
+    }
+
+    pub async fn delete_user_server(&self, id: Uuid, user_id: Uuid) -> Result<(), AppError> {
+        delete_user_mcp_server(&self.pool, id, user_id).await
+    }
+
+    // System server operations
+    pub async fn create_system_server(&self, request: CreateMcpServerRequest) -> Result<McpServer, AppError> {
+        create_system_mcp_server(&self.pool, request).await
+    }
+
+    pub async fn get_system_server(&self, id: Uuid) -> Result<Option<McpServer>, AppError> {
+        get_system_mcp_server(&self.pool, id).await
+    }
+
+    pub async fn list_system_servers(&self, page: i64, per_page: i64) -> Result<McpServerListResponse, AppError> {
+        let (servers, total) = list_system_mcp_servers(&self.pool, page, per_page).await?;
+        let total_pages = (total + per_page - 1) / per_page;
+        Ok(McpServerListResponse {
+            servers,
+            total,
+            page,
+            per_page,
+            total_pages,
+        })
+    }
+
+    pub async fn update_system_server(&self, id: Uuid, request: UpdateMcpServerRequest) -> Result<McpServer, AppError> {
+        update_system_mcp_server(&self.pool, id, request).await
+    }
+
+    pub async fn delete_system_server(&self, id: Uuid) -> Result<(), AppError> {
+        delete_system_mcp_server(&self.pool, id).await
+    }
+
+    // Group assignment operations
+    pub async fn get_group_mcp_servers(&self, group_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        get_group_mcp_servers(&self.pool, group_id).await
+    }
+
+    pub async fn get_system_servers_for_group(&self, group_id: Uuid) -> Result<Vec<McpServer>, AppError> {
+        get_system_servers_for_group(&self.pool, group_id).await
+    }
+
+    pub async fn assign_to_group(&self, server_id: Uuid, group_id: Uuid) -> Result<(), AppError> {
+        assign_mcp_server_to_group(&self.pool, server_id, group_id).await
+    }
+
+    pub async fn remove_from_group(&self, server_id: Uuid, group_id: Uuid) -> Result<(), AppError> {
+        remove_mcp_server_from_group(&self.pool, server_id, group_id).await
+    }
+
+    pub async fn set_group_servers(&self, group_id: Uuid, server_ids: Vec<Uuid>) -> Result<(), AppError> {
+        set_group_mcp_servers(&self.pool, group_id, server_ids).await
+    }
+
+    pub async fn get_server_groups(&self, server_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        get_server_groups(&self.pool, server_id).await
+    }
+
+    pub async fn set_server_groups(&self, server_id: Uuid, group_ids: Vec<Uuid>) -> Result<(), AppError> {
+        set_server_groups(&self.pool, server_id, group_ids).await
+    }
+
+    // List accessible servers
+    pub async fn list_accessible(&self, user_id: Uuid, page: i64, per_page: i64) -> Result<McpServerListResponse, AppError> {
+        let (servers, total) = list_accessible_mcp_servers(&self.pool, user_id, page, per_page).await?;
+        let total_pages = (total + per_page - 1) / per_page;
+        Ok(McpServerListResponse {
+            servers,
+            total,
+            page,
+            per_page,
+            total_pages,
+        })
+    }
+}
 
 // =====================================================
 // User Server Operations

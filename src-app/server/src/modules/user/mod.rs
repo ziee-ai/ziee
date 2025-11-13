@@ -11,19 +11,27 @@ mod service;
 
 // Re-exports
 pub use models::*;
-pub use types::*;
 pub use repository::{GroupRepository, UserRepository};
 pub use routes::user_router;
 pub use group_routes::group_router;
-pub use service::{GroupService, UserService};
-pub use events::UserEvent;
+pub use service::UserService;
 
 use aide::axum::ApiRouter;
+use linkme::distributed_slice;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::module_api::{AppModule, ModuleContext};
+use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
+
+/// Register user module
+#[distributed_slice(MODULE_ENTRIES)]
+static USER_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
+    name: "user",
+    order: 10,
+    description: "User and group management",
+    constructor: || Box::new(UserModule::new()),
+};
 
 /// User module for user and group management
 pub struct UserModule {
@@ -47,23 +55,11 @@ impl AppModule for UserModule {
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
-        if let Some(pool) = &self.pool {
-            // Create repositories once at module level
-            let user_repo = UserRepository::new((**pool).clone());
-            let group_repo = GroupRepository::new((**pool).clone());
-
-            // Create user router with both state (for permission checks) and extensions (for repositories)
-            let user_module_router = ApiRouter::new()
+        if let Some(_pool) = &self.pool {
+            router
                 .merge(user_router())
                 .merge(group_router())
-                .with_state((**pool).clone())
-                .layer(axum::Extension(user_repo))
-                .layer(axum::Extension(group_repo));
-
-            // Merge into the provided router
-            router.merge(user_module_router)
         } else {
-            // Pool not initialized - this shouldn't happen in normal flow
             tracing::error!("UserModule: Pool not initialized during route registration");
             router
         }

@@ -10,6 +10,18 @@ pub trait AppModule: Send + Sync {
     /// Unique module name
     fn name(&self) -> &'static str;
 
+    /// Module version
+    #[allow(dead_code)]
+    fn version(&self) -> &'static str {
+        "1.0.0"  // Default version
+    }
+
+    /// Module description
+    #[allow(dead_code)]
+    fn description(&self) -> &'static str {
+        ""  // Default: no description
+    }
+
     /// Initialize module with context
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>>;
 
@@ -20,18 +32,6 @@ pub trait AppModule: Send + Sync {
     /// Returns list of handlers that will receive application events
     fn register_event_handlers(&self) -> Vec<Arc<dyn EventHandler>> {
         vec![]  // Default: no handlers
-    }
-
-    /// Shutdown cleanup
-    #[allow(dead_code)]
-    fn shutdown(&mut self) -> Result<(), Box<dyn Error>> {
-        Ok(())
-    }
-
-    /// Optional: Module dependencies
-    #[allow(dead_code)]
-    fn dependencies(&self) -> Vec<&'static str> {
-        vec![]
     }
 }
 

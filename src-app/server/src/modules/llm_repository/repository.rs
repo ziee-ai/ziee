@@ -1,12 +1,12 @@
 // LLM Repository database queries - copied from react-test and refactored for ziee-chat
 // Source: react-test/src-tauri/src/database/queries/repositories.rs
 
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::{
-    models::{LlmRepository, RepositoryAuthConfig},
+    models::LlmRepository,
     types::{CreateLlmRepositoryRequest, UpdateLlmRepositoryRequest},
 };
 
@@ -14,7 +14,7 @@ use super::{
 // Repository Struct
 // =====================================================
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LlmRepositoryRepository {
     pool: PgPool,
 }

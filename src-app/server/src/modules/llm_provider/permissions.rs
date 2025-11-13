@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::modules::permissions::{PermissionCheck, PermissionInfo};
 
 // =====================================================
@@ -52,14 +53,3 @@ impl PermissionCheck for LlmProvidersAssignGroups {
 // =====================================================
 // Helper Function to Collect All Permissions
 // =====================================================
-
-/// Get all LLM provider module permissions
-pub fn all_permissions() -> Vec<PermissionInfo> {
-    vec![
-        LlmProvidersRead::to_info(),
-        LlmProvidersCreate::to_info(),
-        LlmProvidersEdit::to_info(),
-        LlmProvidersDelete::to_info(),
-        LlmProvidersAssignGroups::to_info(),
-    ]
-}

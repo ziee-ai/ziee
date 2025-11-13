@@ -2,12 +2,13 @@
 // These handlers manage system-wide MCP servers
 
 use aide::transform::TransformOperation;
+use crate::core::Repos;
 use axum::{
-    extract::{Path, Query, State, Extension},
+    debug_handler,
+    extract::{Path, Query, Extension},
     http::StatusCode,
     Json,
 };
-use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -19,9 +20,9 @@ use crate::{
 
 use super::super::{
     events::McpServerEvent,
-    models::{CreateMcpServerRequest, McpServer, McpServerListResponse, UpdateMcpServerRequest},
+    models::McpServer,
+    types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest},
     permissions::*,
-    repository,
 };
 
 // =====================================================
@@ -29,26 +30,15 @@ use super::super::{
 // =====================================================
 
 /// List all system MCP servers
+#[debug_handler]
 pub async fn list_system_servers(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Query(params): Query<PaginationQuery>,
-    State(pool): State<PgPool>,
+    
 ) -> ApiResult<Json<McpServerListResponse>> {
-    let (servers, total) =
-        repository::list_system_mcp_servers(&pool, params.page as i64, params.per_page as i64).await?;
+    let response = Repos.mcp.list_system_servers(params.page as i64, params.per_page as i64).await?;
 
-    let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
-
-    Ok((
-        StatusCode::OK,
-        Json(McpServerListResponse {
-            servers,
-            total,
-            page: params.page as i64,
-            per_page: params.per_page as i64,
-            total_pages,
-        }),
-    ))
+    Ok((StatusCode::OK, Json(response)))
 }
 
 pub fn list_system_servers_docs(op: TransformOperation) -> TransformOperation {
@@ -62,12 +52,16 @@ pub fn list_system_servers_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Create a new system MCP server
+#[debug_handler]
 pub async fn create_system_server(
     _auth: RequirePermissions<(McpServersAdminCreate,)>,
-    State(pool): State<PgPool>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = repository::create_system_mcp_server(&pool, request).await?;
+    let server = Repos.mcp.create_system_server(request).await?;
+
+    // Emit creation event for other modules to react
+    event_bus.emit_async(McpServerEvent::system_server_created(server.id));
 
     Ok((StatusCode::CREATED, Json(server)))
 }
@@ -85,12 +79,13 @@ pub fn create_system_server_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Get system MCP server by ID
+#[debug_handler]
 pub async fn get_system_server(
     _auth: RequirePermissions<(McpServersAdminRead,)>,
     Path(id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    
 ) -> ApiResult<Json<McpServer>> {
-    let server = repository::get_system_mcp_server(&pool, id)
+    let server = Repos.mcp.get_system_server(id)
         .await?
         .ok_or_else(|| AppError::not_found("Server"))?;
 
@@ -109,13 +104,17 @@ pub fn get_system_server_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Update system MCP server
+#[debug_handler]
 pub async fn update_system_server(
     _auth: RequirePermissions<(McpServersAdminEdit,)>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
-    State(pool): State<PgPool>,
     Json(request): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<Json<McpServer>> {
-    let server = repository::update_system_mcp_server(&pool, id, request).await?;
+    let server = Repos.mcp.update_system_server(id, request).await?;
+
+    // Emit update event for other modules to react
+    event_bus.emit_async(McpServerEvent::system_server_updated(server.id));
 
     Ok((StatusCode::OK, Json(server)))
 }
@@ -134,13 +133,14 @@ pub fn update_system_server_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Delete system MCP server
+#[debug_handler]
 pub async fn delete_system_server(
     _auth: RequirePermissions<(McpServersAdminDelete,)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Path(id): Path<Uuid>,
-    State(pool): State<PgPool>,
+    
 ) -> ApiResult<StatusCode> {
-    repository::delete_system_mcp_server(&pool, id).await?;
+    Repos.mcp.delete_system_server(id).await?;
 
     // Emit deletion event for other modules to react
     event_bus.emit_async(McpServerEvent::system_server_deleted(id));

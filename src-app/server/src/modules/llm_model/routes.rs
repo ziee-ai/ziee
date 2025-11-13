@@ -3,12 +3,11 @@
 // Following ziee-chat patterns from llm_provider module
 
 use aide::axum::{routing::{delete_with, get_with, post_with}, ApiRouter};
-use sqlx::PgPool;
 
 use super::handlers::*;
 
 /// LLM Model management routes
-pub fn llm_model_router() -> ApiRouter<PgPool> {
+pub fn llm_model_router() -> ApiRouter {
     ApiRouter::new()
         // Model CRUD
         .api_route("/llm-models", get_with(list_models, list_models_docs))

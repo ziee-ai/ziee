@@ -5,7 +5,6 @@ use aide::axum::{
     routing::{delete_with, get_with, post_with, put_with},
     ApiRouter,
 };
-use sqlx::PgPool;
 
 use super::handlers::*;
 
@@ -13,7 +12,7 @@ use super::handlers::*;
 // User Routes
 // =====================================================
 
-pub fn user_routes() -> ApiRouter<PgPool> {
+pub fn user_routes() -> ApiRouter {
     ApiRouter::new()
         .api_route(
             "/mcp/servers",
@@ -41,7 +40,7 @@ pub fn user_routes() -> ApiRouter<PgPool> {
 // Admin Routes
 // =====================================================
 
-pub fn admin_routes() -> ApiRouter<PgPool> {
+pub fn admin_routes() -> ApiRouter {
     ApiRouter::new()
         .api_route(
             "/mcp/system-servers",

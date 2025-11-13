@@ -6,7 +6,6 @@ mod modules;
 mod openapi;
 mod utils;
 
-use axum::Router;
 use module_api::ModuleContext;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -66,6 +65,10 @@ pub async fn start_server(config: Config) -> Result<SocketAddr, Box<dyn std::err
     // Initialize database
     let pool = core::database::initialize_database(&config).await?;
     tracing::info!("Database initialized with {} connections", pool.num_idle());
+
+    // Initialize global repository factory
+    core::init_repositories((*pool).clone());
+    tracing::info!("Global repository factory initialized");
 
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone());

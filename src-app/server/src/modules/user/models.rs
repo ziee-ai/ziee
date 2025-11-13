@@ -1,3 +1,6 @@
+// User models
+#![allow(dead_code)]
+
 use axum_login::AuthUser as AuthUserTrait;
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;

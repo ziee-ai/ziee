@@ -1,12 +1,11 @@
 // LLM Provider routes configuration
 
 use aide::axum::{routing::{delete_with, get_with, post_with, put_with}, ApiRouter};
-use sqlx::PgPool;
 
 use super::handlers::*;
 
 /// LLM Provider management routes
-pub fn llm_provider_router() -> ApiRouter<PgPool> {
+pub fn llm_provider_router() -> ApiRouter {
     ApiRouter::new()
         // Provider CRUD
         .api_route("/llm-providers", get_with(list_providers, list_providers_docs))

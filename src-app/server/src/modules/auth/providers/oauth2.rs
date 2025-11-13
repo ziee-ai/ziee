@@ -1,3 +1,6 @@
+// Auth provider infrastructure - part of future auth system
+#![allow(dead_code)]
+
 // OAuth2/OIDC authentication provider implementation
 
 use async_trait::async_trait;
@@ -9,7 +12,7 @@ use oauth2::{
 };
 use openidconnect::{
     core::{CoreClient, CoreIdToken, CoreIdTokenVerifier, CoreProviderMetadata, CoreAuthenticationFlow},
-    IssuerUrl, Nonce, HttpRequest, HttpResponse, AsyncHttpClient,
+    IssuerUrl, Nonce, HttpRequest, HttpResponse,
 };
 // Import TokenResponse trait separately to avoid conflict with oauth2::TokenResponse
 use openidconnect::TokenResponse as _;

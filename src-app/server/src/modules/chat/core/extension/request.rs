@@ -1,3 +1,6 @@
+// Chat extension request infrastructure
+#![allow(dead_code)]
+
 // Request models for chat streaming
 //
 // This module defines SendMessageRequest using procedural macros for extension composition.

@@ -1,20 +1,22 @@
 // Conversation handlers - CRUD operations for chat conversations
 
 use aide::transform::TransformOperation;
+use crate::core::Repos;
 use axum::{
-    extract::{Path, Query, State},
+    debug_handler,
+    extract::{Path, Query},
     http::StatusCode,
     Json,
 };
 use serde::Deserialize;
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError},
     modules::{
         chat::core::{
-            models::{Conversation, ConversationResponse, CreateConversationRequest, UpdateConversationRequest},
+            models::Conversation,
+            types::{ConversationResponse, CreateConversationRequest, UpdateConversationRequest},
             permissions::*,
             repository::conversations as repo,
         },
@@ -49,13 +51,14 @@ fn default_limit() -> i64 {
 // =====================================================
 
 /// Create a new conversation
+#[debug_handler]
 pub async fn create_conversation(
     auth: RequirePermissions<(ConversationsCreate,)>,
-    State(pool): State<PgPool>,
+    
     Json(request): Json<CreateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
     let conversation = repo::create_conversation(
-        &pool,
+        Repos.pool(),
         auth.user.id,
         request.model_id,
         request.title,
@@ -77,12 +80,13 @@ pub fn create_conversation_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Get conversation by ID
+#[debug_handler]
 pub async fn get_conversation(
     auth: RequirePermissions<(ConversationsRead,)>,
-    State(pool): State<PgPool>,
+    
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Conversation>> {
-    let conversation = repo::get_conversation(&pool, id, auth.user.id)
+    let conversation = repo::get_conversation(Repos.pool(), id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -101,9 +105,10 @@ pub fn get_conversation_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// List conversations for the authenticated user
+#[debug_handler]
 pub async fn list_conversations(
     auth: RequirePermissions<(ConversationsRead,)>,
-    State(pool): State<PgPool>,
+    
     Query(params): Query<PaginationQuery>,
 ) -> ApiResult<Json<Vec<ConversationResponse>>> {
     // Validate pagination
@@ -111,7 +116,7 @@ pub async fn list_conversations(
     let page = params.page.max(1);
     let offset = (page - 1) * limit;
 
-    let conversations = repo::list_conversations(&pool, auth.user.id, limit, offset).await?;
+    let conversations = repo::list_conversations(Repos.pool(), auth.user.id, limit, offset).await?;
 
     Ok((StatusCode::OK, Json(conversations)))
 }
@@ -127,13 +132,14 @@ pub fn list_conversations_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Update conversation metadata
+#[debug_handler]
 pub async fn update_conversation(
     auth: RequirePermissions<(ConversationsEdit,)>,
-    State(pool): State<PgPool>,
+    
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
-    let conversation = repo::update_conversation(&pool, id, auth.user.id, request.title)
+    let conversation = repo::update_conversation(Repos.pool(), id, auth.user.id, request.title)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -152,12 +158,13 @@ pub fn update_conversation_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Delete conversation
+#[debug_handler]
 pub async fn delete_conversation(
     auth: RequirePermissions<(ConversationsDelete,)>,
-    State(pool): State<PgPool>,
+    
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    let deleted = repo::delete_conversation(&pool, id, auth.user.id).await?;
+    let deleted = repo::delete_conversation(Repos.pool(), id, auth.user.id).await?;
 
     if !deleted {
         return Err(AppError::not_found("Conversation").into());

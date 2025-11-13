@@ -5,17 +5,15 @@
 use aide::transform::TransformOperation;
 use axum::{
     debug_handler,
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
-    response::sse::{Event, KeepAlive, Sse},
+    response::sse::{Event, Sse},
     Extension, Json,
 };
-use sqlx::PgPool;
 use futures_util::stream::Stream;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::sync::Mutex;
 use std::time::Duration;
 use tokio::time::interval;
@@ -92,7 +90,7 @@ pub struct SSEDownloadProgressConnectedData {
     pub message: Option<String>,
 }
 
-/// SSE event types for download progress
+// SSE event types for download progress
 crate::sse_event_enum! {
     #[derive(Debug, Clone, Serialize, JsonSchema)]
     pub enum SSEDownloadProgressEvent {
@@ -122,7 +120,6 @@ lazy_static::lazy_static! {
 /// List all download instances (paginated, with optional status filter)
 #[debug_handler]
 pub async fn list_all_downloads(
-    State(_pool): State<PgPool>,
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
     Query(params): Query<DownloadPaginationQuery>,
     Extension(repo): Extension<DownloadInstanceRepository>,
@@ -160,7 +157,6 @@ pub fn list_all_downloads_docs(op: TransformOperation) -> TransformOperation {
 /// Get a specific download instance by ID
 #[debug_handler]
 pub async fn get_download(
-    State(_pool): State<PgPool>,
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
     Path(download_id): Path<Uuid>,
     Extension(repo): Extension<DownloadInstanceRepository>,
@@ -191,7 +187,6 @@ pub fn get_download_docs(op: TransformOperation) -> TransformOperation {
 /// Cancel an active download
 #[debug_handler]
 pub async fn cancel_download(
-    State(_pool): State<PgPool>,
     _auth: RequirePermissions<(LlmModelsDownloadsCancel,)>,
     Path(download_id): Path<Uuid>,
     Extension(repo): Extension<DownloadInstanceRepository>,
@@ -279,7 +274,6 @@ pub fn cancel_download_docs(op: TransformOperation) -> TransformOperation {
 /// Delete a download instance (only terminal states)
 #[debug_handler]
 pub async fn delete_download(
-    State(_pool): State<PgPool>,
     _auth: RequirePermissions<(LlmModelsDownloadsDelete,)>,
     Path(download_id): Path<Uuid>,
     Extension(repo): Extension<DownloadInstanceRepository>,
@@ -333,7 +327,6 @@ pub fn delete_download_docs(op: TransformOperation) -> TransformOperation {
 /// Subscribe to all active download progress updates via SSE
 #[debug_handler]
 pub async fn subscribe_download_progress(
-    State(_pool): State<PgPool>,
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
     Extension(repo): Extension<DownloadInstanceRepository>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {

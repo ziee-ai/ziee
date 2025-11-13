@@ -1,5 +1,4 @@
 use std::env;
-use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() {
@@ -40,7 +39,7 @@ async fn main() {
         .ok();
 
     // Run migrations
-    let migrations_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let migrations_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
     let migrator = sqlx::migrate::Migrator::new(migrations_path)
         .await
         .expect("Failed to create migrator");

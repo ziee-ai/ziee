@@ -1,3 +1,6 @@
+// Auth provider infrastructure - part of future auth system
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;

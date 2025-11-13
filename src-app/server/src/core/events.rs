@@ -3,6 +3,9 @@
 //
 // Each module defines its own events in modules/{module}/events.rs
 // This core file aggregates all module events into a single AppEvent enum
+//
+// Event infrastructure - currently unused but part of the core architecture
+#![allow(dead_code)]
 
 use async_trait::async_trait;
 use sqlx::PgPool;
@@ -26,9 +29,19 @@ pub enum AppEvent {
     /// MCP Server module events (server lifecycle)
     McpServer(crate::modules::mcp::events::McpServerEvent),
 
+    /// LLM Provider module events (provider lifecycle, group assignments)
+    LlmProvider(crate::modules::llm_provider::events::LlmProviderEvent),
+
+    /// LLM Model module events (model lifecycle, downloads)
+    LlmModel(crate::modules::llm_model::events::LlmModelEvent),
+
+    /// LLM Repository module events (repository lifecycle)
+    LlmRepository(crate::modules::llm_repository::events::LlmRepositoryEvent),
+
+    /// Hub module events (catalog refreshes, entity creation from hub)
+    Hub(crate::modules::hub::events::HubEvent),
+
     // Add new module events here as the application grows
-    // Example:
-    // LlmProvider(crate::modules::llm_provider::events::LlmProviderEvent),
 }
 
 /// Trait for handling application events

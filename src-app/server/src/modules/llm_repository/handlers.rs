@@ -4,6 +4,7 @@
 
 use aide::transform::TransformOperation;
 use axum::{
+    debug_handler,
     extract::{Path, Query},
     http::StatusCode,
     Extension, Json,
@@ -12,10 +13,13 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
+    core::events::EventBus,
     modules::permissions::{RequirePermissions, with_permission},
 };
+use std::sync::Arc;
 
 use super::{
+    events::LlmRepositoryEvent,
     models::LlmRepository,
     types::{
         CreateLlmRepositoryRequest, LlmRepositoryListResponse,
@@ -32,6 +36,7 @@ use super::{
 // =====================================================
 
 /// List all LLM repositories (requires llm_repositories::read permission)
+#[debug_handler]
 pub async fn list_repositories(
     _auth: RequirePermissions<(LlmRepositoriesRead,)>,
     Query(params): Query<PaginationQuery>,
@@ -77,6 +82,7 @@ pub fn list_repositories_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// Get LLM repository by ID (requires llm_repositories::read permission)
+#[debug_handler]
 pub async fn get_repository(
     _auth: RequirePermissions<(LlmRepositoriesRead,)>,
     Path(repository_id): Path<Uuid>,
@@ -105,9 +111,11 @@ pub fn get_repository_docs(op: TransformOperation) -> TransformOperation {
 
 /// Create a new LLM repository (requires llm_repositories::create permission)
 /// ALL validation logic preserved from react-test
+#[debug_handler]
 pub async fn create_repository(
     _auth: RequirePermissions<(LlmRepositoriesCreate,)>,
     Extension(repo): Extension<LlmRepositoryRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateLlmRepositoryRequest>,
 ) -> ApiResult<Json<LlmRepository>> {
     // Validate auth type
@@ -126,6 +134,9 @@ pub async fn create_repository(
             AppError::internal_error("Database operation failed")
         })?;
 
+    // Emit event
+    event_bus.emit_async(LlmRepositoryEvent::created(repository.clone()).into());
+
     Ok((StatusCode::CREATED, Json(repository)))
 }
 
@@ -142,10 +153,12 @@ pub fn create_repository_docs(op: TransformOperation) -> TransformOperation {
 
 /// Update an existing LLM repository (requires llm_repositories::edit permission)
 /// ALL validation logic preserved from react-test including auth_config merging
+#[debug_handler]
 pub async fn update_repository(
     _auth: RequirePermissions<(LlmRepositoriesEdit,)>,
     Path(repository_id): Path<Uuid>,
     Extension(repo): Extension<LlmRepositoryRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<UpdateLlmRepositoryRequest>,
 ) -> ApiResult<Json<LlmRepository>> {
     // Validate auth type if provided
@@ -177,6 +190,9 @@ pub async fn update_repository(
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
 
+    // Emit event
+    event_bus.emit_async(LlmRepositoryEvent::updated(updated_repository.clone()).into());
+
     Ok((StatusCode::OK, Json(updated_repository)))
 }
 
@@ -194,13 +210,26 @@ pub fn update_repository_docs(op: TransformOperation) -> TransformOperation {
 
 /// Delete an LLM repository (requires llm_repositories::delete permission)
 /// Built-in repositories cannot be deleted
+#[debug_handler]
 pub async fn delete_repository(
     _auth: RequirePermissions<(LlmRepositoriesDelete,)>,
     Path(repository_id): Path<Uuid>,
     Extension(repo): Extension<LlmRepositoryRepository>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
+    // Get repository name before deletion for event
+    let repository_name = repo.get_by_id(repository_id).await
+        .ok()
+        .flatten()
+        .map(|r| r.name.clone())
+        .unwrap_or_else(|| "Unknown".to_string());
+
     match repo.delete(repository_id).await {
-        Ok(Ok(true)) => Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT)),
+        Ok(Ok(true)) => {
+            // Emit event
+            event_bus.emit_async(LlmRepositoryEvent::deleted(repository_id, repository_name).into());
+            Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+        }
         Ok(Ok(false)) => Err(AppError::not_found("Repository").into()),
         Ok(Err(error_message)) => {
             eprintln!("Cannot delete repository {}: {}", repository_id, error_message);
@@ -231,6 +260,7 @@ pub fn delete_repository_docs(op: TransformOperation) -> TransformOperation {
 /// Test LLM repository connection (requires llm_repositories::read permission)
 /// Tests connectivity with provided credentials without saving
 /// ALL logic preserved from react-test including Hugging Face special handling
+#[debug_handler]
 pub async fn test_repository_connection(
     _auth: RequirePermissions<(LlmRepositoriesRead,)>,
     Json(request): Json<TestRepositoryConnectionRequest>,

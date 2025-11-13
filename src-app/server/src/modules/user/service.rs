@@ -1,3 +1,6 @@
+// User service infrastructure
+#![allow(dead_code)]
+
 use std::collections::HashSet;
 use uuid::Uuid;
 
