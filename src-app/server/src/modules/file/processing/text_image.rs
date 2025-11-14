@@ -28,8 +28,11 @@ impl TextImageGenerator {
         let img = image::load_from_memory(image_data)
             .map_err(|e| AppError::internal_error(format!("Failed to decode image: {}", e)))?;
 
+        // Convert to RGB first (to ensure resize returns RGB)
+        let rgb_img = img.to_rgb8();
+
         // Calculate dimensions maintaining aspect ratio
-        let (width, height) = img.dimensions();
+        let (width, height) = rgb_img.dimensions();
         let (new_width, new_height) = if width > height {
             (THUMBNAIL_SIZE, (height * THUMBNAIL_SIZE) / width)
         } else {
@@ -38,7 +41,7 @@ impl TextImageGenerator {
 
         // Resize with Lanczos3 filter (high quality) - resize returns an ImageBuffer
         let resized = image::imageops::resize(
-            &img,
+            &rgb_img,
             new_width,
             new_height,
             image::imageops::FilterType::Lanczos3

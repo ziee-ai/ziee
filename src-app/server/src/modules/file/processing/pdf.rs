@@ -146,7 +146,7 @@ impl ImageGenerator for PdfProcessor {
         }
 
         // Generate single 300px thumbnail from first page only
-        let thumbnails = if let Some(first_page) = document.pages().get(0) {
+        let thumbnails = if let Ok(first_page) = document.pages().get(0) {
             vec![render_page_to_jpeg(&first_page, 300)?]
         } else {
             vec![]
