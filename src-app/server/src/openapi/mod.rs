@@ -21,7 +21,7 @@ pub async fn generate_openapi_spec(
     crate::core::init_repositories((*pool).clone());
 
     // Initialize modules using shared builder functions
-    let module_context = ModuleContext::new(pool.clone());
+    let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
     let mut modules = app_builder::create_modules();
 
     // Initialize all modules

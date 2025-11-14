@@ -4,6 +4,7 @@
 mod assistant;
 mod auth;
 mod common;
+mod file;
 mod hardware;
 mod hub;
 mod llm_model;

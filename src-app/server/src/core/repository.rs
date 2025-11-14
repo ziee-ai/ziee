@@ -163,4 +163,5 @@ declare_repositories! {
     mcp: McpRepository => crate::modules::mcp,
     app: AppRepository => crate::modules::app,
     auth: AuthRepository => crate::modules::auth,
+    file: FileRepository => crate::modules::file,
 }

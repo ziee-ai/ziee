@@ -26,8 +26,6 @@ fn main() {
     // Scan for extension.rs files in modules/chat/**/
     let chat_dir = server_dir.join("src/modules/chat");
 
-    println!("cargo:warning=Scanning for extensions in: {}", chat_dir.display());
-
     let mut extensions = Vec::new();
 
     if chat_dir.exists() {
@@ -40,7 +38,6 @@ fn main() {
 
             // Look for extension.rs files
             if path.file_name() == Some(std::ffi::OsStr::new("extension.rs")) {
-                println!("cargo:warning=Found extension: {}", path.display());
 
                 // Extract module path from file path
                 let module_path = extract_module_path(&chat_dir, path);

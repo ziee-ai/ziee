@@ -5,6 +5,7 @@
 //
 // Provides a plugin system for extending chat functionality without modifying base code.
 
+use aide::axum::ApiRouter;
 use async_trait::async_trait;
 use axum::response::sse::Event;
 use linkme::distributed_slice;
@@ -14,7 +15,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use ai_providers::ChatRequest;
+use ai_providers::{ChatRequest, ContentBlock};
 
 use super::request::SendMessageRequest;
 use crate::common::AppError;
@@ -93,6 +94,48 @@ pub trait ChatExtension: Send + Sync {
     async fn initialize(&self, _pool: &PgPool) -> Result<(), AppError> {
         Ok(())
     }
+
+    // ========== ROUTE REGISTRATION ==========
+
+    /// Register custom routes for this extension
+    /// Extensions can add their own API endpoints (e.g., file upload, tool approval)
+    /// Routes are typically nested under /chat/<extension-name>/
+    fn register_routes(&self, router: ApiRouter) -> ApiRouter {
+        router // Default: no routes
+    }
+
+    // ========== CONTENT TYPE HANDLING ==========
+
+    /// Returns content types this extension handles
+    /// Example: ["file", "tool_approval"]
+    /// When content of these types is processed, the extension's hooks will be called
+    fn handled_content_types(&self) -> Vec<&'static str> {
+        vec![]
+    }
+
+    /// Process content before sending to LLM
+    /// Called when preparing chat history for LLM request
+    /// Extension can transform content (e.g., file → text description, image → alt text)
+    /// Return Some(ContentBlock) to replace content, None to use default conversion
+    async fn process_content_for_llm(
+        &self,
+        _content: &MessageContentData,
+        _context: &StreamContext,
+    ) -> Result<Option<ContentBlock>, AppError> {
+        Ok(None) // Default: no transformation
+    }
+
+    /// Process content after retrieving from database
+    /// Called when loading message history
+    /// Extension can enrich content (e.g., add download URLs, resolve references)
+    /// Modifies content in-place
+    async fn process_content_from_db(
+        &self,
+        _content: &mut MessageContentData,
+        _context: &StreamContext,
+    ) -> Result<(), AppError> {
+        Ok(()) // Default: no processing
+    }
 }
 
 /// Registry for managing chat extensions
@@ -154,6 +197,61 @@ impl ExtensionRegistry {
 
         // All extensions returned Complete
         Ok(ExtensionAction::Complete)
+    }
+
+    // ========== ROUTE REGISTRATION ==========
+
+    /// Register routes from all extensions
+    /// Collects routes from all extensions and merges them into the router
+    pub fn register_routes(&self, router: ApiRouter) -> ApiRouter {
+        self.extensions
+            .iter()
+            .fold(router, |router, ext| ext.register_routes(router))
+    }
+
+    // ========== CONTENT TYPE HANDLING ==========
+
+    /// Find extension that handles given content type
+    /// Returns first extension that declares it handles this content type
+    pub fn get_handler_for_content_type(
+        &self,
+        content_type: &str,
+    ) -> Option<&Arc<dyn ChatExtension>> {
+        self.extensions
+            .iter()
+            .find(|ext| ext.handled_content_types().contains(&content_type))
+    }
+
+    /// Process content for LLM across all extensions
+    /// Finds handler for content type and calls process_content_for_llm
+    /// Returns transformed ContentBlock if extension provides one, None otherwise
+    pub async fn process_content_for_llm(
+        &self,
+        content: &MessageContentData,
+        context: &StreamContext,
+    ) -> Result<Option<ContentBlock>, AppError> {
+        let content_type = content.content_type();
+        if let Some(handler) = self.get_handler_for_content_type(content_type) {
+            handler.process_content_for_llm(content, context).await
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Process content from database across all extensions
+    /// Finds handler for content type and calls process_content_from_db
+    /// Modifies content in-place
+    pub async fn process_content_from_db(
+        &self,
+        content: &mut MessageContentData,
+        context: &StreamContext,
+    ) -> Result<(), AppError> {
+        let content_type = content.content_type();
+        if let Some(handler) = self.get_handler_for_content_type(content_type) {
+            handler.process_content_from_db(content, context).await
+        } else {
+            Ok(())
+        }
     }
 }
 

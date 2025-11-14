@@ -1,4 +1,8 @@
 use std::env;
+use std::path::PathBuf;
+
+mod pandoc;
+mod pdfium;
 
 #[tokio::main]
 async fn main() {
@@ -53,4 +57,30 @@ async fn main() {
 
     // Set DATABASE_URL for SQLx compile-time verification
     println!("cargo:rustc-env=DATABASE_URL={}", database_url);
+
+    // Download Pandoc and PDFium binaries
+    setup_external_binaries();
+}
+
+fn setup_external_binaries() {
+    let target = env::var("TARGET").unwrap();
+    let out_dir = env::var("OUT_DIR").unwrap();
+
+    // Use server/binaries/{target}/ for embedding
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let binaries_dir = PathBuf::from(&manifest_dir)
+        .join("binaries")
+        .join(&target);
+
+    println!("Setting up external binaries for embedding at: {:?}", binaries_dir);
+
+    // Setup Pandoc - downloads to binaries/{target}/
+    if let Err(e) = pandoc::setup_pandoc(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to setup Pandoc: {}", e);
+    }
+
+    // Setup PDFium - downloads to binaries/{target}/
+    if let Err(e) = pdfium::setup_pdfium(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to setup PDFium: {}", e);
+    }
 }

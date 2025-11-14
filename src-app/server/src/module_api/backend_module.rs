@@ -3,6 +3,7 @@ use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::core::config::Config;
 use crate::core::EventHandler;
 
 /// Core trait that all app modules must implement
@@ -38,10 +39,11 @@ pub trait AppModule: Send + Sync {
 /// Context provided to modules during initialization
 pub struct ModuleContext {
     pub db_pool: Arc<PgPool>,
+    pub config: Arc<Config>,
 }
 
 impl ModuleContext {
-    pub fn new(db_pool: Arc<PgPool>) -> Self {
-        Self { db_pool }
+    pub fn new(db_pool: Arc<PgPool>, config: Arc<Config>) -> Self {
+        Self { db_pool, config }
     }
 }

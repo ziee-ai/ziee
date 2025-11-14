@@ -116,7 +116,7 @@ impl StreamingService {
                 };
 
                 // Get conversation history
-                let history = match msg_repo::get_conversation_history(&pool, branch_id).await {
+                let mut history = match msg_repo::get_conversation_history(&pool, branch_id).await {
                     Ok(h) => h,
                     Err(e) => {
                         let _ = tx.send(Err(e));
@@ -124,8 +124,65 @@ impl StreamingService {
                     }
                 };
 
+                // Process content from database through extensions (enrichment phase)
+                // This must happen before creating StreamContext to avoid borrowing issues
+                if let Some(registry) = &extension_registry {
+                    // Create temporary context for content processing
+                    let temp_context = StreamContext {
+                        conversation_id,
+                        branch_id,
+                        message_id: None,
+                        user_id,
+                        pool: pool.clone(),
+                        metadata: std::collections::HashMap::new(),
+                        iteration,
+                    };
+
+                    for msg_with_content in &mut history {
+                        for content in &mut msg_with_content.contents {
+                            let mut content_data = match content.parse_content() {
+                                Ok(d) => d,
+                                Err(e) => {
+                                    let _ = tx.send(Err(e));
+                                    break;
+                                }
+                            };
+
+                            // Allow extension to enrich content (e.g., add download URLs)
+                            if let Err(e) = registry
+                                .process_content_from_db(&mut content_data, &temp_context)
+                                .await
+                            {
+                                let _ = tx.send(Err(e));
+                                break;
+                            }
+
+                            // Update content in history
+                            // Note: We're working with a temporary structure here, so we don't persist changes
+                            // Extensions should use metadata or cache if they need to persist enriched data
+                        }
+                    }
+                }
+
+                // Create context for content transformation
+                let transform_context = StreamContext {
+                    conversation_id,
+                    branch_id,
+                    message_id: None,
+                    user_id,
+                    pool: pool.clone(),
+                    metadata: std::collections::HashMap::new(),
+                    iteration,
+                };
+
                 // Convert to AI provider format
-                let messages = match Self::convert_history_to_messages_static(&history) {
+                let messages = match Self::convert_history_to_messages_with_extensions(
+                    &history,
+                    extension_registry.as_ref(),
+                    &transform_context,
+                )
+                .await
+                {
                     Ok(m) => m,
                     Err(e) => {
                         let _ = tx.send(Err(e));
@@ -309,7 +366,63 @@ impl StreamingService {
         Ok(messages)
     }
 
-    /// Static version of convert_history_to_messages for use in spawned task
+    /// Convert history to messages with extension support for content transformation
+    /// This version supports extensions transforming content before sending to LLM
+    async fn convert_history_to_messages_with_extensions(
+        history: &[crate::modules::chat::core::types::MessageWithContent],
+        extension_registry: Option<&Arc<ExtensionRegistry>>,
+        context: &StreamContext,
+    ) -> Result<Vec<ChatMessage>, AppError> {
+        let mut messages = Vec::new();
+
+        for msg_with_content in history {
+            let role = msg_with_content
+                .message
+                .role_enum()
+                .map_err(|e| AppError::internal_error(format!("Invalid message role: {}", e)))?;
+
+            // Convert role to AI provider role
+            let ai_role = match role {
+                MessageRole::User => ai_providers::Role::User,
+                MessageRole::Assistant => ai_providers::Role::Assistant,
+                MessageRole::System => continue, // Skip system messages for now
+            };
+
+            // Convert content blocks
+            let mut content_blocks = Vec::new();
+            for content in &msg_with_content.contents {
+                let content_data = content.parse_content()?;
+
+                // Try extension transformation first
+                let block = if let Some(registry) = extension_registry {
+                    // Ask extension to transform content for LLM (e.g., file → text description)
+                    match registry
+                        .process_content_for_llm(&content_data, context)
+                        .await?
+                    {
+                        Some(transformed_block) => Some(transformed_block),
+                        None => content_data.to_content_block(), // Use default conversion
+                    }
+                } else {
+                    content_data.to_content_block() // Use default conversion
+                };
+
+                if let Some(b) = block {
+                    content_blocks.push(b);
+                }
+            }
+
+            messages.push(ChatMessage {
+                role: ai_role,
+                content: content_blocks,
+            });
+        }
+
+        Ok(messages)
+    }
+
+    /// Static version of convert_history_to_messages for use when extensions not available
+    /// Kept for backward compatibility
     fn convert_history_to_messages_static(
         history: &[crate::modules::chat::core::types::MessageWithContent],
     ) -> Result<Vec<ChatMessage>, AppError> {

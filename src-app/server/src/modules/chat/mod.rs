@@ -67,12 +67,15 @@ impl AppModule for ChatModule {
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
             if let Some(registry) = &self.extension_registry {
-                // Create chat router with pool state and extension registry as extension
+                // First, register extension routes (extensions may add their own endpoints)
+                let router_with_extension_routes = registry.register_routes(router);
+
+                // Then create chat router with pool state and extension registry as extension
                 let chat_module_router = ApiRouter::new()
                     .merge(chat_router())
                     .layer(Extension(registry.clone()));
 
-                router.merge(chat_module_router)
+                router_with_extension_routes.merge(chat_module_router)
             } else {
                 tracing::error!(
                     "ChatModule: Extension registry not initialized during route registration"

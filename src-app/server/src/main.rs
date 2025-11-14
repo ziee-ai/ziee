@@ -126,7 +126,7 @@ async fn main() {
     tracing::info!("Global repository factory initialized");
 
     // Initialize modules
-    let module_context = ModuleContext::new(pool.clone());
+    let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
     let mut modules = core::app_builder::create_modules();
 
     // Initialize all modules
