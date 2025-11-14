@@ -82,7 +82,7 @@ impl ImageGenerator for ImageProcessor {
         };
 
         Ok(ProcessingResult {
-            text_content: None,
+            text_pages: vec![],
             metadata,
             thumbnails: vec![thumbnail_bytes],
             images: vec![high_quality_bytes],

@@ -71,12 +71,12 @@ impl ContentProcessor for OfficeProcessor {
         )
     }
 
-    async fn extract_text(&self, data: &[u8], mime_type: &str) -> Result<Option<String>, AppError> {
+    async fn extract_text(&self, data: &[u8], mime_type: &str) -> Result<Vec<String>, AppError> {
         let extension = Self::extension_from_mime(mime_type)
             .ok_or_else(|| AppError::internal_error("Unsupported office document type"))?;
 
         match mime_type {
-            // Word documents - use Pandoc for markdown conversion
+            // Word documents - convert to PDF then extract text per-page
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             | "application/msword"
             | "application/rtf"
@@ -84,38 +84,72 @@ impl ContentProcessor for OfficeProcessor {
             | "application/vnd.oasis.opendocument.text" => {
                 let temp_path = Self::write_temp_file(data, extension)?;
 
-                let result = pandoc::convert_to_markdown(&temp_path, mime_type).await;
+                // Create temp directory for PDF output
+                let temp_dir = std::env::temp_dir().join(format!("office_text_pdf_{}", Uuid::new_v4()));
+                fs::create_dir_all(&temp_dir)
+                    .map_err(|e| AppError::internal_error(format!("Failed to create temp dir: {}", e)))?;
 
+                let temp_pdf = temp_dir.join("document.pdf");
+
+                // Convert to PDF using Pandoc
+                let result = pandoc::convert_to_pdf(&temp_path, &temp_pdf).await;
+
+                // Clean up source file
                 Self::cleanup_temp_file(&temp_path);
 
                 match result {
-                    Ok(markdown) => {
-                        tracing::info!("Extracted {} characters from {} document", markdown.len(), extension);
-                        Ok(Some(markdown))
+                    Ok(_) => {
+                        // Read the generated PDF
+                        let pdf_data = fs::read(&temp_pdf)
+                            .map_err(|e| {
+                                let _ = fs::remove_dir_all(&temp_dir);
+                                AppError::internal_error(format!("Failed to read generated PDF: {}", e))
+                            })?;
+
+                        // Use PDF processor to extract text per-page
+                        let pdf_processor = PdfProcessor;
+                        let text_pages = pdf_processor.extract_text(&pdf_data, "application/pdf").await;
+
+                        // Clean up temp directory
+                        let _ = fs::remove_dir_all(&temp_dir);
+
+                        match text_pages {
+                            Ok(pages) => {
+                                let total_chars: usize = pages.iter().map(|p| p.len()).sum();
+                                tracing::info!("Extracted {} pages ({} total chars) from {} document via PDF conversion", pages.len(), total_chars, extension);
+                                Ok(pages)
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to extract text from {} PDF: {}", extension, e);
+                                Ok(vec![])
+                            }
+                        }
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to extract text from {} document: {}", extension, e);
-                        Ok(None)
+                        tracing::warn!("Failed to convert {} to PDF: {}", extension, e);
+                        let _ = fs::remove_dir_all(&temp_dir);
+                        Ok(vec![])
                     }
                 }
             }
 
-            // Spreadsheets - use calamine for CSV conversion
+            // Spreadsheets - extract per-sheet text
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
                 let temp_path = Self::write_temp_file(data, extension)?;
 
-                let result = spreadsheet::convert_xlsx_to_text(&temp_path);
+                let result = spreadsheet::convert_xlsx_to_pages(&temp_path);
 
                 Self::cleanup_temp_file(&temp_path);
 
                 match result {
-                    Ok(text) => {
-                        tracing::info!("Extracted {} characters from XLSX spreadsheet", text.len());
-                        Ok(Some(text))
+                    Ok(pages) => {
+                        let total_chars: usize = pages.iter().map(|p| p.len()).sum();
+                        tracing::info!("Extracted {} pages ({} total chars) from XLSX spreadsheet", pages.len(), total_chars);
+                        Ok(pages)
                     }
                     Err(e) => {
                         tracing::warn!("Failed to extract text from XLSX: {}", e);
-                        Ok(None)
+                        Ok(vec![])
                     }
                 }
             }
@@ -123,18 +157,19 @@ impl ContentProcessor for OfficeProcessor {
             "application/vnd.ms-excel" => {
                 let temp_path = Self::write_temp_file(data, extension)?;
 
-                let result = spreadsheet::convert_xls_to_text(&temp_path);
+                let result = spreadsheet::convert_xls_to_pages(&temp_path);
 
                 Self::cleanup_temp_file(&temp_path);
 
                 match result {
-                    Ok(text) => {
-                        tracing::info!("Extracted {} characters from XLS spreadsheet", text.len());
-                        Ok(Some(text))
+                    Ok(pages) => {
+                        let total_chars: usize = pages.iter().map(|p| p.len()).sum();
+                        tracing::info!("Extracted {} pages ({} total chars) from XLS spreadsheet", pages.len(), total_chars);
+                        Ok(pages)
                     }
                     Err(e) => {
                         tracing::warn!("Failed to extract text from XLS: {}", e);
-                        Ok(None)
+                        Ok(vec![])
                     }
                 }
             }
@@ -142,49 +177,78 @@ impl ContentProcessor for OfficeProcessor {
             "application/vnd.oasis.opendocument.spreadsheet" => {
                 let temp_path = Self::write_temp_file(data, extension)?;
 
-                let result = spreadsheet::convert_ods_to_text(&temp_path);
+                let result = spreadsheet::convert_ods_to_pages(&temp_path);
 
                 Self::cleanup_temp_file(&temp_path);
 
                 match result {
-                    Ok(text) => {
-                        tracing::info!("Extracted {} characters from ODS spreadsheet", text.len());
-                        Ok(Some(text))
+                    Ok(pages) => {
+                        let total_chars: usize = pages.iter().map(|p| p.len()).sum();
+                        tracing::info!("Extracted {} pages ({} total chars) from ODS spreadsheet", pages.len(), total_chars);
+                        Ok(pages)
                     }
                     Err(e) => {
                         tracing::warn!("Failed to extract text from ODS: {}", e);
-                        Ok(None)
+                        Ok(vec![])
                     }
                 }
             }
 
-            // Presentations - use Pandoc to extract speaker notes
+            // Presentations - convert to PDF then extract text per-page (slide)
             "application/vnd.openxmlformats-officedocument.presentationml.presentation"
             | "application/vnd.ms-powerpoint" => {
                 let temp_path = Self::write_temp_file(data, extension)?;
 
-                let result = pandoc::convert_to_markdown(&temp_path, mime_type).await;
+                // Create temp directory for PDF output
+                let temp_dir = std::env::temp_dir().join(format!("office_text_pdf_{}", Uuid::new_v4()));
+                fs::create_dir_all(&temp_dir)
+                    .map_err(|e| AppError::internal_error(format!("Failed to create temp dir: {}", e)))?;
 
+                let temp_pdf = temp_dir.join("presentation.pdf");
+
+                // Convert to PDF using Pandoc
+                let result = pandoc::convert_to_pdf(&temp_path, &temp_pdf).await;
+
+                // Clean up source file
                 Self::cleanup_temp_file(&temp_path);
 
                 match result {
-                    Ok(markdown) => {
-                        if markdown.trim().is_empty() {
-                            tracing::info!("No speaker notes found in {} presentation", extension);
-                            Ok(None)
-                        } else {
-                            tracing::info!("Extracted {} characters from {} presentation", markdown.len(), extension);
-                            Ok(Some(markdown))
+                    Ok(_) => {
+                        // Read the generated PDF
+                        let pdf_data = fs::read(&temp_pdf)
+                            .map_err(|e| {
+                                let _ = fs::remove_dir_all(&temp_dir);
+                                AppError::internal_error(format!("Failed to read generated PDF: {}", e))
+                            })?;
+
+                        // Use PDF processor to extract text per-page (per slide)
+                        let pdf_processor = PdfProcessor;
+                        let text_pages = pdf_processor.extract_text(&pdf_data, "application/pdf").await;
+
+                        // Clean up temp directory
+                        let _ = fs::remove_dir_all(&temp_dir);
+
+                        match text_pages {
+                            Ok(pages) => {
+                                let total_chars: usize = pages.iter().map(|p| p.len()).sum();
+                                tracing::info!("Extracted {} slides ({} total chars) from {} presentation via PDF conversion", pages.len(), total_chars, extension);
+                                Ok(pages)
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to extract text from {} PDF: {}", extension, e);
+                                Ok(vec![])
+                            }
                         }
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to extract text from {} presentation: {}", extension, e);
-                        Ok(None)
+                        tracing::warn!("Failed to convert {} to PDF: {}", extension, e);
+                        let _ = fs::remove_dir_all(&temp_dir);
+                        Ok(vec![])
                     }
                 }
             }
 
-            _ => Ok(None),
+            _ => Ok(vec![]),
         }
     }
 

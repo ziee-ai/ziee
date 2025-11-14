@@ -57,18 +57,19 @@ impl FileStorage for FilesystemStorage {
         Ok(path)
     }
 
-    async fn save_text(
+    async fn save_text_page(
         &self,
         user_id: Uuid,
         file_id: Uuid,
+        page_num: u32,
         text: &str,
     ) -> StorageResult<PathBuf> {
-        let path = self.get_text_path(user_id, file_id);
+        let path = self.get_text_path(user_id, file_id, page_num);
         self.ensure_dir(&path).await?;
 
         fs::write(&path, text)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to write text: {}", e)))?;
+            .map_err(|e| AppError::internal_error(format!("Failed to write text page: {}", e)))?;
 
         Ok(path)
     }
@@ -101,9 +102,10 @@ impl FileStorage for FilesystemStorage {
             .join(format!("{}.{}", file_id, extension))
     }
 
-    fn get_text_path(&self, user_id: Uuid, file_id: Uuid) -> PathBuf {
+    fn get_text_path(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> PathBuf {
         self.get_user_path(user_id, "text")
-            .join(format!("{}.txt", file_id))
+            .join(file_id.to_string())
+            .join(format!("page_{}.txt", page_num))
     }
 
     fn get_image_path(
@@ -138,34 +140,41 @@ impl FileStorage for FilesystemStorage {
             .map_err(|e| AppError::not_found(&format!("File not found: {}", e)))
     }
 
-    async fn load_text(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<String> {
-        let path = self.get_text_path(user_id, file_id);
+    async fn load_text_page(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> StorageResult<String> {
+        let path = self.get_text_path(user_id, file_id, page_num);
 
         fs::read_to_string(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("Text content not found: {}", e)))
+            .map_err(|e| AppError::not_found(&format!("Text page {} not found: {}", page_num, e)))
     }
 
-    async fn load_image(
+    async fn load_preview(
         &self,
         user_id: Uuid,
         file_id: Uuid,
         page_num: u32,
-        is_thumbnail: bool,
     ) -> StorageResult<Vec<u8>> {
-        let path = self.get_image_path(user_id, file_id, page_num, is_thumbnail);
+        let path = self.get_image_path(user_id, file_id, page_num, false);
 
         fs::read(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("Image not found: {}", e)))
+            .map_err(|e| AppError::not_found(&format!("Preview image not found: {}", e)))
+    }
+
+    async fn load_thumbnail(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<Vec<u8>> {
+        let path = self.get_image_path(user_id, file_id, 1, true);
+
+        fs::read(&path)
+            .await
+            .map_err(|e| AppError::not_found(&format!("Thumbnail not found: {}", e)))
     }
 
     async fn delete_all(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<()> {
         // Delete from all possible locations
         let locations = vec![
             ("originals", None),
-            ("text", None),
-            ("images", Some(file_id.to_string())), // Directory with multiple pages
+            ("text", Some(file_id.to_string())),   // Directory with text pages
+            ("images", Some(file_id.to_string())), // Directory with image pages
         ];
 
         for (subdir, file_subdir) in locations {

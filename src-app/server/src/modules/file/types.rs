@@ -48,6 +48,12 @@ fn default_preview_page() -> u32 {
     1
 }
 
+/// Text page query params
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TextPageQuery {
+    pub page: Option<u32>, // If None, return all pages concatenated
+}
+
 /// Download token query params
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DownloadTokenQuery {
@@ -62,3 +68,7 @@ pub struct DownloadTokenClaims {
     pub exp: usize,
     pub iat: usize,
 }
+
+/// Helper type for documenting binary responses in OpenAPI
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct BlobType {}

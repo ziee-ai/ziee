@@ -41,15 +41,6 @@ impl PermissionCheck for AssistantsDelete {
     const MODULE: &'static str = "assistant";
 }
 
-#[allow(dead_code)]
-pub struct AssistantsSetDefault;
-impl PermissionCheck for AssistantsSetDefault {
-    const NAME: &'static str = "AssistantsSetDefault";
-    const PERMISSION: &'static str = "assistants::set_default";
-    const DESCRIPTION: &'static str = "Set default user assistant";
-    const MODULE: &'static str = "assistant";
-}
-
 // ============================================================
 // Template Assistants Permissions (assistant_templates::*)
 // ============================================================
@@ -83,14 +74,5 @@ impl PermissionCheck for AssistantsTemplateDelete {
     const NAME: &'static str = "AssistantsTemplateDelete";
     const PERMISSION: &'static str = "assistant_templates::delete";
     const DESCRIPTION: &'static str = "Delete system-wide template assistants";
-    const MODULE: &'static str = "assistant";
-}
-
-#[allow(dead_code)]
-pub struct AssistantsTemplateSetDefault;
-impl PermissionCheck for AssistantsTemplateSetDefault {
-    const NAME: &'static str = "AssistantsTemplateSetDefault";
-    const PERMISSION: &'static str = "assistant_templates::set_default";
-    const DESCRIPTION: &'static str = "Set default template assistant";
     const MODULE: &'static str = "assistant";
 }

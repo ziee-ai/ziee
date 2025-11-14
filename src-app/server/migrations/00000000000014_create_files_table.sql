@@ -6,8 +6,9 @@ CREATE TABLE files (
     file_size BIGINT NOT NULL,
     mime_type VARCHAR(100),
     checksum VARCHAR(64),
-    thumbnail_count INTEGER DEFAULT 0 NOT NULL,
-    page_count INTEGER DEFAULT 0 NOT NULL,
+    has_thumbnail BOOLEAN DEFAULT false NOT NULL,
+    preview_page_count INTEGER DEFAULT 0 NOT NULL,
+    text_page_count INTEGER DEFAULT 0 NOT NULL,
     processing_metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

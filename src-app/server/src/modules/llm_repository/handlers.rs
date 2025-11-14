@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
-    core::events::EventBus,
+    core::{events::EventBus, repository::Repos},
     modules::permissions::{RequirePermissions, with_permission},
 };
 use std::sync::Arc;
@@ -21,7 +21,6 @@ use super::{
     events::LlmRepositoryEvent,
     models::LlmRepository,
     permissions::*,
-    repository::LlmRepositoryRepository,
     types::{
         CreateLlmRepositoryRequest, LlmRepositoryListResponse, TestRepositoryConnectionRequest,
         TestRepositoryConnectionResponse, UpdateLlmRepositoryRequest,
@@ -38,10 +37,9 @@ use super::{
 pub async fn list_repositories(
     _auth: RequirePermissions<(LlmRepositoriesRead,)>,
     Query(params): Query<PaginationQuery>,
-    Extension(repo): Extension<LlmRepositoryRepository>,
 ) -> ApiResult<Json<LlmRepositoryListResponse>> {
     // Get all repositories
-    let all_repositories = repo.list().await.map_err(|e| {
+    let all_repositories = Repos.llm_repository.list().await.map_err(|e| {
         eprintln!("Failed to get repositories: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
@@ -83,9 +81,8 @@ pub fn list_repositories_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_repository(
     _auth: RequirePermissions<(LlmRepositoriesRead,)>,
     Path(repository_id): Path<Uuid>,
-    Extension(repo): Extension<LlmRepositoryRepository>,
 ) -> ApiResult<Json<LlmRepository>> {
-    let repository = repo
+    let repository = Repos.llm_repository
         .get_by_id(repository_id)
         .await
         .map_err(|e| {
@@ -113,7 +110,6 @@ pub fn get_repository_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_repository(
     _auth: RequirePermissions<(LlmRepositoriesCreate,)>,
-    Extension(repo): Extension<LlmRepositoryRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateLlmRepositoryRequest>,
 ) -> ApiResult<Json<LlmRepository>> {
@@ -127,7 +123,7 @@ pub async fn create_repository(
     utils::validate_auth_config_for_create(&request)?;
 
     // Create repository
-    let repository = repo.create(request).await.map_err(|e| {
+    let repository = Repos.llm_repository.create(request).await.map_err(|e| {
         eprintln!("Failed to create repository: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
@@ -155,7 +151,6 @@ pub fn create_repository_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_repository(
     _auth: RequirePermissions<(LlmRepositoriesEdit,)>,
     Path(repository_id): Path<Uuid>,
-    Extension(repo): Extension<LlmRepositoryRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<UpdateLlmRepositoryRequest>,
 ) -> ApiResult<Json<LlmRepository>> {
@@ -170,7 +165,7 @@ pub async fn update_repository(
     }
 
     // Get current repository to validate auth config updates
-    let current_repository = repo
+    let current_repository = Repos.llm_repository
         .get_by_id(repository_id)
         .await
         .map_err(|e| {
@@ -183,7 +178,7 @@ pub async fn update_repository(
     utils::validate_auth_config_for_update(&current_repository, &request)?;
 
     // Update repository
-    let updated_repository = repo
+    let updated_repository = Repos.llm_repository
         .update(repository_id, request)
         .await
         .map_err(|e| {
@@ -216,11 +211,10 @@ pub fn update_repository_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_repository(
     _auth: RequirePermissions<(LlmRepositoriesDelete,)>,
     Path(repository_id): Path<Uuid>,
-    Extension(repo): Extension<LlmRepositoryRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
     // Get repository name before deletion for event
-    let repository_name = repo
+    let repository_name = Repos.llm_repository
         .get_by_id(repository_id)
         .await
         .ok()
@@ -228,7 +222,7 @@ pub async fn delete_repository(
         .map(|r| r.name.clone())
         .unwrap_or_else(|| "Unknown".to_string());
 
-    match repo.delete(repository_id).await {
+    match Repos.llm_repository.delete(repository_id).await {
         Ok(Ok(true)) => {
             // Emit event
             event_bus

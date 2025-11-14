@@ -21,23 +21,25 @@ impl FileRepository {
             File,
             r#"
             INSERT INTO files (
-                user_id, filename, file_size, mime_type, checksum,
-                thumbnail_count, page_count, processing_metadata
+                id, user_id, filename, file_size, mime_type, checksum,
+                has_thumbnail, preview_page_count, text_page_count, processing_metadata
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id, user_id, filename, file_size, mime_type, checksum,
-                      thumbnail_count, page_count,
+                      has_thumbnail, preview_page_count, text_page_count,
                       processing_metadata as "processing_metadata!: _",
                       created_at as "created_at: _",
                       updated_at as "updated_at: _"
             "#,
+            data.id,
             data.user_id,
             data.filename,
             data.file_size,
             data.mime_type,
             data.checksum,
-            data.thumbnail_count,
-            data.page_count,
+            data.has_thumbnail,
+            data.preview_page_count,
+            data.text_page_count,
             data.processing_metadata
         )
         .fetch_one(&self.pool)
@@ -57,7 +59,7 @@ impl FileRepository {
             File,
             r#"
             SELECT id, user_id, filename, file_size, mime_type, checksum,
-                   thumbnail_count, page_count,
+                   has_thumbnail, preview_page_count, text_page_count,
                    processing_metadata as "processing_metadata!: _",
                    created_at as "created_at: _",
                    updated_at as "updated_at: _"
@@ -97,7 +99,7 @@ impl FileRepository {
             File,
             r#"
             SELECT id, user_id, filename, file_size, mime_type, checksum,
-                   thumbnail_count, page_count,
+                   has_thumbnail, preview_page_count, text_page_count,
                    processing_metadata as "processing_metadata!: _",
                    created_at as "created_at: _",
                    updated_at as "updated_at: _"

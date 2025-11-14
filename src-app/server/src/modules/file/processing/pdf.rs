@@ -64,24 +64,33 @@ impl ContentProcessor for PdfProcessor {
         mime_type == "application/pdf"
     }
 
-    async fn extract_text(&self, data: &[u8], _mime_type: &str) -> Result<Option<String>, AppError> {
-        // Extract text from PDF bytes using pdf-extract
-        let data_owned = data.to_vec();
-        let extracted_text = tokio::task::spawn_blocking(move || {
-            pdf_extract::extract_text_from_mem(&data_owned)
-        })
-        .await
-        .map_err(|e| AppError::internal_error(format!("Task join error: {}", e)))?
-        .map_err(|e| AppError::internal_error(format!("PDF text extraction failed: {}", e)))?;
+    async fn extract_text(&self, data: &[u8], _mime_type: &str) -> Result<Vec<String>, AppError> {
+        // Initialize PDFium
+        let pdfium = init_pdfium()
+            .map_err(|e| AppError::internal_error(format!("PDFium initialization failed: {}", e)))?;
 
-        // Clean up the extracted text
-        let cleaned_text = self.clean_extracted_text(&extracted_text);
+        // Load PDF document
+        let document = pdfium
+            .load_pdf_from_byte_slice(data, None)
+            .map_err(|e| AppError::internal_error(format!("Failed to load PDF: {}", e)))?;
 
-        if cleaned_text.trim().is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(cleaned_text))
+        let mut text_pages = Vec::new();
+
+        // Extract text from each page
+        for page_index in 0..document.pages().len() {
+            let page = document.pages().get(page_index as u16)
+                .map_err(|e| AppError::internal_error(format!("Failed to get page {}: {}", page_index + 1, e)))?;
+
+            let page_text = page.text()
+                .map_err(|e| AppError::internal_error(format!("Failed to extract text from page {}: {}", page_index + 1, e)))?;
+
+            let all_text = page_text.all();
+            let cleaned_text = self.clean_extracted_text(&all_text);
+
+            text_pages.push(cleaned_text);
         }
+
+        Ok(text_pages)
     }
 
     async fn extract_metadata(
@@ -158,7 +167,7 @@ impl ImageGenerator for PdfProcessor {
         };
 
         Ok(ProcessingResult {
-            text_content: None, // Text is extracted separately via ContentProcessor
+            text_pages: vec![], // Text is extracted separately via ContentProcessor
             metadata,
             thumbnails, // Single element array
             images,     // Multiple elements (one per page)

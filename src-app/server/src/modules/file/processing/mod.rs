@@ -15,7 +15,7 @@ use traits::{ContentProcessor, ImageGenerator};
 /// Processing result
 #[derive(Debug, Clone, Default)]
 pub struct ProcessingResult {
-    pub text_content: Option<String>,
+    pub text_pages: Vec<String>,
     pub metadata: ProcessingMetadata,
     pub thumbnails: Vec<Vec<u8>>,
     pub images: Vec<Vec<u8>>,
@@ -60,7 +60,7 @@ impl ProcessingManager {
         // Extract text content
         for processor in &self.content_processors {
             if processor.can_process(mime_type) {
-                result.text_content = processor.extract_text(data, mime_type).await?;
+                result.text_pages = processor.extract_text(data, mime_type).await?;
                 let metadata_json = processor.extract_metadata(data, mime_type).await?;
                 result.metadata = serde_json::from_value(metadata_json)
                     .unwrap_or_default();
@@ -86,8 +86,9 @@ impl ProcessingManager {
         }
 
         // Update metadata
-        if let Some(ref text) = result.text_content {
-            result.metadata.text_length = Some(text.len());
+        if !result.text_pages.is_empty() {
+            let total_text_length: usize = result.text_pages.iter().map(|s| s.len()).sum();
+            result.metadata.text_length = Some(total_text_length);
             result.metadata.has_text = Some(true);
         }
 

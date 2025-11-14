@@ -23,11 +23,12 @@ pub trait FileStorage: Send + Sync {
         data: &[u8],
     ) -> StorageResult<PathBuf>;
 
-    /// Save extracted text
-    async fn save_text(
+    /// Save text page
+    async fn save_text_page(
         &self,
         user_id: Uuid,
         file_id: Uuid,
+        page_num: u32,
         text: &str,
     ) -> StorageResult<PathBuf>;
 
@@ -49,8 +50,8 @@ pub trait FileStorage: Send + Sync {
         extension: &str,
     ) -> PathBuf;
 
-    /// Get text file path
-    fn get_text_path(&self, user_id: Uuid, file_id: Uuid) -> PathBuf;
+    /// Get text page path
+    fn get_text_path(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> PathBuf;
 
     /// Get image path
     fn get_image_path(
@@ -69,17 +70,19 @@ pub trait FileStorage: Send + Sync {
         extension: &str,
     ) -> StorageResult<Vec<u8>>;
 
-    /// Load text content
-    async fn load_text(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<String>;
+    /// Load text page
+    async fn load_text_page(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> StorageResult<String>;
 
-    /// Load image
-    async fn load_image(
+    /// Load preview image (high quality, 2000px)
+    async fn load_preview(
         &self,
         user_id: Uuid,
         file_id: Uuid,
         page_num: u32,
-        is_thumbnail: bool,
     ) -> StorageResult<Vec<u8>>;
+
+    /// Load thumbnail (300px, always from first page)
+    async fn load_thumbnail(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<Vec<u8>>;
 
     /// Delete all files for a file_id
     async fn delete_all(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<()>;

@@ -1,0 +1,8 @@
+Line 1: This is a multiline text file for testing.
+Line 2: It contains multiple lines of text.
+Line 3: Each line should be properly extracted.
+Line 4: Testing line-by-line processing.
+Line 5: This helps verify text extraction.
+Line 6: The file should still count as 1 page.
+Line 7: Even with many lines.
+Line 8: End of multiline test file.

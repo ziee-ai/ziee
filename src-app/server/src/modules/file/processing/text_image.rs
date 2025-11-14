@@ -299,7 +299,7 @@ impl ImageGenerator for TextImageGenerator {
         };
 
         Ok(ProcessingResult {
-            text_content: None, // Text extraction is handled by TextProcessor
+            text_pages: vec![], // Text extraction is handled by TextProcessor
             metadata: Default::default(),
             thumbnails, // Single element array
             images,     // Multiple elements (one per page)

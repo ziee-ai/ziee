@@ -101,7 +101,6 @@ macro_rules! declare_repositories {
         // SECTION 4: REPOS ACCESSOR
         // ============================================
         paste::paste! {
-            #[allow(dead_code)]
             pub struct ReposAccessor {
                 $(
                     pub $field: [<$type Repos>],

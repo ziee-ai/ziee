@@ -17,15 +17,17 @@ impl ContentProcessor for TextProcessor {
         )
     }
 
-    async fn extract_text(&self, data: &[u8], _mime_type: &str) -> Result<Option<String>, AppError> {
-        // Try UTF-8 decoding
-        match String::from_utf8(data.to_vec()) {
-            Ok(text) => Ok(Some(text)),
+    async fn extract_text(&self, data: &[u8], _mime_type: &str) -> Result<Vec<String>, AppError> {
+        // Try UTF-8 decoding - entire file is one page
+        let text = match String::from_utf8(data.to_vec()) {
+            Ok(text) => text,
             Err(_) => {
                 // Try lossy conversion for non-UTF8 text
-                Ok(Some(String::from_utf8_lossy(data).to_string()))
+                String::from_utf8_lossy(data).to_string()
             }
-        }
+        };
+
+        Ok(vec![text])
     }
 
     async fn extract_metadata(

@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError, PaginationQuery},
-    core::events::EventBus,
+    core::{events::EventBus, repository::Repos},
     modules::{
         permissions::{RequirePermissions, with_permission},
         user::models::Group,
@@ -21,7 +21,6 @@ use super::{
     events::LlmProviderEvent,
     models::LlmProvider,
     permissions::*,
-    repository::LlmProviderRepository,
     types::{
         AssignProviderToGroupRequest, CreateLlmProviderRequest, GroupProvidersResponse,
         LlmProviderListResponse, UpdateGroupProvidersRequest, UpdateLlmProviderRequest,
@@ -38,10 +37,9 @@ use super::{
 pub async fn list_providers(
     _auth: RequirePermissions<(LlmProvidersRead,)>,
     Query(params): Query<PaginationQuery>,
-    Extension(repo): Extension<LlmProviderRepository>,
 ) -> ApiResult<Json<LlmProviderListResponse>> {
     // Get all providers
-    let all_providers = repo.list().await.map_err(|e| {
+    let all_providers = Repos.llm_provider.list().await.map_err(|e| {
         eprintln!("Failed to get providers: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
@@ -84,9 +82,8 @@ pub fn list_providers_docs(
 pub async fn get_provider(
     _auth: RequirePermissions<(LlmProvidersRead,)>,
     Path(provider_id): Path<Uuid>,
-    Extension(repo): Extension<LlmProviderRepository>,
 ) -> ApiResult<Json<LlmProvider>> {
-    let provider = repo
+    let provider = Repos.llm_provider
         .get_by_id(provider_id)
         .await
         .map_err(|e| {
@@ -114,7 +111,6 @@ pub fn get_provider_docs(
 #[debug_handler]
 pub async fn create_provider(
     _auth: RequirePermissions<(LlmProvidersCreate,)>,
-    Extension(repo): Extension<LlmProviderRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateLlmProviderRequest>,
 ) -> ApiResult<Json<LlmProvider>> {
@@ -122,7 +118,7 @@ pub async fn create_provider(
     utils::validate_create_request(&request)?;
 
     // Create provider
-    let provider = repo.create(request).await.map_err(|e| {
+    let provider = Repos.llm_provider.create(request).await.map_err(|e| {
         eprintln!("Failed to create provider: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
@@ -150,7 +146,6 @@ pub fn create_provider_docs(
 pub async fn update_provider(
     _auth: RequirePermissions<(LlmProvidersEdit,)>,
     Path(provider_id): Path<Uuid>,
-    Extension(repo): Extension<LlmProviderRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<UpdateLlmProviderRequest>,
 ) -> ApiResult<Json<LlmProvider>> {
@@ -158,7 +153,7 @@ pub async fn update_provider(
     utils::validate_update_request(&request)?;
 
     // Update provider
-    let provider = repo
+    let provider = Repos.llm_provider
         .update(provider_id, request)
         .await
         .map_err(|e| {
@@ -191,16 +186,15 @@ pub fn update_provider_docs(
 pub async fn delete_provider(
     _auth: RequirePermissions<(LlmProvidersDelete,)>,
     Path(provider_id): Path<Uuid>,
-    Extension(repo): Extension<LlmProviderRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
     // Get provider info before deleting (for event emission)
-    let provider = repo.get_by_id(provider_id).await.map_err(|e| {
+    let provider = Repos.llm_provider.get_by_id(provider_id).await.map_err(|e| {
         eprintln!("Failed to get provider {}: {}", provider_id, e);
         AppError::internal_error("Database operation failed")
     })?;
 
-    match repo.delete(provider_id).await {
+    match Repos.llm_provider.delete(provider_id).await {
         Ok(Ok(true)) => {
             // Emit event with provider name
             if let Some(p) = provider {
@@ -240,9 +234,8 @@ pub fn delete_provider_docs(
 pub async fn get_provider_groups(
     _auth: RequirePermissions<(LlmProvidersRead,)>,
     Path(provider_id): Path<Uuid>,
-    Extension(repo): Extension<LlmProviderRepository>,
 ) -> ApiResult<Json<Vec<Group>>> {
-    let groups = repo.get_provider_groups(provider_id).await.map_err(|e| {
+    let groups = Repos.llm_provider.get_provider_groups(provider_id).await.map_err(|e| {
         eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
         AppError::internal_error("Database operation failed")
     })?;
@@ -266,11 +259,10 @@ pub fn get_provider_groups_docs(
 pub async fn assign_provider_to_group(
     _auth: RequirePermissions<(LlmProvidersAssignGroups,)>,
     Path(provider_id): Path<Uuid>,
-    Extension(repo): Extension<LlmProviderRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<AssignProviderToGroupRequest>,
 ) -> ApiResult<StatusCode> {
-    repo.assign_to_group(provider_id, request.group_id)
+    Repos.llm_provider.assign_to_group(provider_id, request.group_id)
         .await
         .map_err(|e| {
             eprintln!(
@@ -281,7 +273,7 @@ pub async fn assign_provider_to_group(
         })?;
 
     // Get updated group list for event
-    let groups = repo.get_provider_groups(provider_id).await.map_err(|e| {
+    let groups = Repos.llm_provider.get_provider_groups(provider_id).await.map_err(|e| {
         eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
         AppError::internal_error("Database operation failed")
     })?;
@@ -311,10 +303,9 @@ pub fn assign_provider_to_group_docs(
 pub async fn remove_provider_from_group(
     _auth: RequirePermissions<(LlmProvidersAssignGroups,)>,
     Path((provider_id, group_id)): Path<(Uuid, Uuid)>,
-    Extension(repo): Extension<LlmProviderRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
-    let removed = repo
+    let removed = Repos.llm_provider
         .remove_from_group(group_id, provider_id)
         .await
         .map_err(|e| {
@@ -327,7 +318,7 @@ pub async fn remove_provider_from_group(
 
     if removed {
         // Get updated group list for event
-        let groups = repo.get_provider_groups(provider_id).await.map_err(|e| {
+        let groups = Repos.llm_provider.get_provider_groups(provider_id).await.map_err(|e| {
             eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
             AppError::internal_error("Database operation failed")
         })?;
@@ -367,9 +358,8 @@ pub fn remove_provider_from_group_docs(
 pub async fn get_group_providers(
     _auth: RequirePermissions<(LlmProvidersRead,)>,
     Path(group_id): Path<Uuid>,
-    Extension(repo): Extension<LlmProviderRepository>,
 ) -> ApiResult<Json<GroupProvidersResponse>> {
-    let providers = repo.get_for_group(group_id).await.map_err(|e| {
+    let providers = Repos.llm_provider.get_for_group(group_id).await.map_err(|e| {
         eprintln!("Failed to get providers for group {}: {}", group_id, e);
         AppError::internal_error("Database operation failed")
     })?;
@@ -394,14 +384,13 @@ pub fn get_group_providers_docs(
 pub async fn update_group_providers(
     _auth: RequirePermissions<(LlmProvidersAssignGroups,)>,
     Path(group_id): Path<Uuid>,
-    Extension(repo): Extension<LlmProviderRepository>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<UpdateGroupProvidersRequest>,
 ) -> ApiResult<Json<GroupProvidersResponse>> {
     use std::collections::HashSet;
 
     // Get current assignments
-    let current = repo.get_for_group(group_id).await.map_err(|e| {
+    let current = Repos.llm_provider.get_for_group(group_id).await.map_err(|e| {
         eprintln!(
             "Failed to get current providers for group {}: {}",
             group_id, e
@@ -421,7 +410,7 @@ pub async fn update_group_providers(
 
     // Apply changes - remove first, then add
     for provider_id in to_remove {
-        repo.remove_from_group(group_id, provider_id)
+        Repos.llm_provider.remove_from_group(group_id, provider_id)
             .await
             .map_err(|e| {
                 eprintln!(
@@ -434,7 +423,7 @@ pub async fn update_group_providers(
     }
 
     for provider_id in to_add {
-        repo.assign_to_group(provider_id, group_id)
+        Repos.llm_provider.assign_to_group(provider_id, group_id)
             .await
             .map_err(|e| {
                 eprintln!(
@@ -448,7 +437,7 @@ pub async fn update_group_providers(
 
     // Emit events for all affected providers
     for provider_id in affected_provider_ids {
-        let groups = repo.get_provider_groups(provider_id).await.map_err(|e| {
+        let groups = Repos.llm_provider.get_provider_groups(provider_id).await.map_err(|e| {
             eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
             AppError::internal_error("Database operation failed")
         })?;
@@ -458,7 +447,7 @@ pub async fn update_group_providers(
     }
 
     // Return updated list
-    let providers = repo.get_for_group(group_id).await.map_err(|e| {
+    let providers = Repos.llm_provider.get_for_group(group_id).await.map_err(|e| {
         eprintln!(
             "Failed to get updated providers for group {}: {}",
             group_id, e

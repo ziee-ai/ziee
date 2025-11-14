@@ -10,8 +10,8 @@ pub trait ContentProcessor: Send + Sync {
     /// Check if this processor can handle the given MIME type
     fn can_process(&self, mime_type: &str) -> bool;
 
-    /// Extract text content from file
-    async fn extract_text(&self, data: &[u8], mime_type: &str) -> Result<Option<String>, AppError>;
+    /// Extract text content from file (per-page)
+    async fn extract_text(&self, data: &[u8], mime_type: &str) -> Result<Vec<String>, AppError>;
 
     /// Extract metadata
     async fn extract_metadata(&self, data: &[u8], mime_type: &str) -> Result<serde_json::Value, AppError>;

@@ -14,8 +14,9 @@ pub struct File {
     pub file_size: i64,
     pub mime_type: Option<String>,
     pub checksum: Option<String>,
-    pub thumbnail_count: i32,
-    pub page_count: i32,
+    pub has_thumbnail: bool,
+    pub preview_page_count: i32,
+    pub text_page_count: i32,
     pub processing_metadata: serde_json::Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -24,13 +25,15 @@ pub struct File {
 /// Data for creating a file
 #[derive(Debug, Clone)]
 pub struct FileCreateData {
+    pub id: Uuid,
     pub user_id: Uuid,
     pub filename: String,
     pub file_size: i64,
     pub mime_type: Option<String>,
     pub checksum: Option<String>,
-    pub thumbnail_count: i32,
-    pub page_count: i32,
+    pub has_thumbnail: bool,
+    pub preview_page_count: i32,
+    pub text_page_count: i32,
     pub processing_metadata: serde_json::Value,
 }
 

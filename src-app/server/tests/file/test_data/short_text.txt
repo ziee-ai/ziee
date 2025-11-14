@@ -1,0 +1,6 @@
+This is a short text file for testing.
+It has less than 2000 characters.
+Expected: text_page_count=1, preview_page_count=1
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. 
+Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.

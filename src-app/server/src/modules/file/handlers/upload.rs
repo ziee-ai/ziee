@@ -86,9 +86,11 @@ pub async fn upload_file(
         .save_original(user_id, file_id, &extension, &file_data)
         .await?;
 
-    // Save extracted text if available
-    if let Some(ref text) = processing_result.text_content {
-        storage.save_text(user_id, file_id, text).await?;
+    // Save extracted text pages
+    for (page_num, text) in processing_result.text_pages.iter().enumerate() {
+        storage
+            .save_text_page(user_id, file_id, (page_num + 1) as u32, text)
+            .await?;
     }
 
     // Save single thumbnail (page_num parameter ignored for thumbnails, but pass 1 for consistency)
@@ -108,13 +110,15 @@ pub async fn upload_file(
     // Create database record
     let file = Repos.file
         .create(FileCreateData {
+            id: file_id,
             user_id,
             filename,
             file_size: file_data.len() as i64,
             mime_type,
             checksum: Some(checksum),
-            thumbnail_count: processing_result.thumbnails.len() as i32,
-            page_count: processing_result.images.len() as i32,
+            has_thumbnail: !processing_result.thumbnails.is_empty(),
+            preview_page_count: processing_result.images.len() as i32,
+            text_page_count: processing_result.text_pages.len() as i32,
             processing_metadata: serde_json::to_value(&processing_result.metadata)
                 .unwrap_or(serde_json::json!({})),
         })

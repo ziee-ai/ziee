@@ -12,19 +12,16 @@ fn escape_csv_cell(cell_str: &str) -> String {
     }
 }
 
-/// Convert XLSX file to CSV format and return the content as a string
-/// Each sheet is separated by a header with the sheet name
-pub fn convert_xlsx_to_text(
+/// Convert XLSX file to per-sheet text (one string per sheet)
+pub fn convert_xlsx_to_pages(
     file_path: &Path,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut workbook: Xlsx<_> = open_workbook(file_path)?;
-    let mut content = String::new();
+    let mut pages = Vec::new();
 
-    for (sheet_index, sheet_name) in workbook.sheet_names().iter().enumerate() {
-        if let Ok(range) = workbook.worksheet_range(sheet_name) {
-            if sheet_index > 0 {
-                content.push_str("\n\n");
-            }
+    for sheet_name in workbook.sheet_names() {
+        if let Ok(range) = workbook.worksheet_range(&sheet_name) {
+            let mut content = String::new();
             content.push_str(&format!("=== Sheet: {} ===\n", sheet_name));
 
             for row in range.rows() {
@@ -34,25 +31,24 @@ pub fn convert_xlsx_to_text(
                     .collect();
                 content.push_str(&format!("{}\n", csv_row.join(",")));
             }
+
+            pages.push(content);
         }
     }
 
-    Ok(content)
+    Ok(pages)
 }
 
-/// Convert XLS file to CSV format and return the content as a string
-/// Each sheet is separated by a header with the sheet name
-pub fn convert_xls_to_text(
+/// Convert XLS file to per-sheet text (one string per sheet)
+pub fn convert_xls_to_pages(
     file_path: &Path,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut workbook: Xls<_> = open_workbook(file_path)?;
-    let mut content = String::new();
+    let mut pages = Vec::new();
 
-    for (sheet_index, sheet_name) in workbook.sheet_names().iter().enumerate() {
-        if let Ok(range) = workbook.worksheet_range(sheet_name) {
-            if sheet_index > 0 {
-                content.push_str("\n\n");
-            }
+    for sheet_name in workbook.sheet_names() {
+        if let Ok(range) = workbook.worksheet_range(&sheet_name) {
+            let mut content = String::new();
             content.push_str(&format!("=== Sheet: {} ===\n", sheet_name));
 
             for row in range.rows() {
@@ -62,25 +58,24 @@ pub fn convert_xls_to_text(
                     .collect();
                 content.push_str(&format!("{}\n", csv_row.join(",")));
             }
+
+            pages.push(content);
         }
     }
 
-    Ok(content)
+    Ok(pages)
 }
 
-/// Convert ODS file to CSV format and return the content as a string
-/// Each sheet is separated by a header with the sheet name
-pub fn convert_ods_to_text(
+/// Convert ODS file to per-sheet text (one string per sheet)
+pub fn convert_ods_to_pages(
     file_path: &Path,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut workbook: Ods<_> = open_workbook(file_path)?;
-    let mut content = String::new();
+    let mut pages = Vec::new();
 
-    for (sheet_index, sheet_name) in workbook.sheet_names().iter().enumerate() {
-        if let Ok(range) = workbook.worksheet_range(sheet_name) {
-            if sheet_index > 0 {
-                content.push_str("\n\n");
-            }
+    for sheet_name in workbook.sheet_names() {
+        if let Ok(range) = workbook.worksheet_range(&sheet_name) {
+            let mut content = String::new();
             content.push_str(&format!("=== Sheet: {} ===\n", sheet_name));
 
             for row in range.rows() {
@@ -90,9 +85,11 @@ pub fn convert_ods_to_text(
                     .collect();
                 content.push_str(&format!("{}\n", csv_row.join(",")));
             }
+
+            pages.push(content);
         }
     }
 
-    Ok(content)
+    Ok(pages)
 }
 
