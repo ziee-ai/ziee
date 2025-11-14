@@ -89,7 +89,7 @@ fn collect_hardware_usage(sys: &mut System) -> HardwareUsageUpdate {
     let timestamp = chrono::Utc::now().to_rfc3339();
 
     // CPU usage (average of all cores)
-    let cpu_usage = sys.global_cpu_info().cpu_usage();
+    let cpu_usage = sys.global_cpu_usage();
     let cpu = CPUUsage {
         usage_percentage: cpu_usage,
         temperature: None, // sysinfo doesn't provide CPU temperature on all platforms

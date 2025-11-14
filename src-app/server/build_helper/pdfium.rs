@@ -9,10 +9,9 @@ fn download_binary(
     println!("Downloading {} from: {}", name, url);
 
     let response = ureq::get(url).call()?;
-    let mut reader = response.into_reader();
+    let bytes = response.into_body().read_to_vec()?;
 
-    let mut file = fs::File::create(target_path)?;
-    std::io::copy(&mut reader, &mut file)?;
+    fs::write(target_path, &bytes)?;
 
     Ok(())
 }

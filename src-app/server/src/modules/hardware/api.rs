@@ -46,7 +46,7 @@ pub async fn get_hardware_info(
             .map(|cpu| cpu.brand().to_string())
             .unwrap_or_else(|| "Unknown".to_string()),
         architecture: std::env::consts::ARCH.to_string(),
-        cores: sys.physical_core_count().unwrap_or(cpus.len()),
+        cores: sysinfo::System::physical_core_count().unwrap_or(cpus.len()),
         threads: Some(cpus.len()),
         base_frequency: cpus.first().map(|cpu| cpu.frequency()),
         max_frequency: None, // sysinfo doesn't provide max frequency directly
