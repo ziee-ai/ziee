@@ -132,24 +132,25 @@ impl ImageGenerator for PdfProcessor {
         let page_count = document.pages().len() as u32;
         let max_pages = page_count.min(max_thumbnails);
 
-        let mut thumbnails = Vec::new();
+        // Generate all preview images at full size
         let mut images = Vec::new();
-
-        // Generate images for each page
         for page_index in 0..max_pages {
             let page = document
                 .pages()
                 .get(page_index as u16)
                 .map_err(|e| AppError::internal_error(format!("Failed to get page {}: {}", page_index + 1, e)))?;
 
-            // Generate thumbnail (300px)
-            let thumbnail_bytes = render_page_to_jpeg(&page, 300)?;
-            thumbnails.push(thumbnail_bytes);
-
             // Generate high-quality image (2000px)
             let image_bytes = render_page_to_jpeg(&page, MAX_IMAGE_DIM)?;
             images.push(image_bytes);
         }
+
+        // Generate single 300px thumbnail from first page only
+        let thumbnails = if let Some(first_page) = document.pages().get(0) {
+            vec![render_page_to_jpeg(&first_page, 300)?]
+        } else {
+            vec![]
+        };
 
         let metadata = ProcessingMetadata {
             has_text: Some(true),
@@ -159,8 +160,8 @@ impl ImageGenerator for PdfProcessor {
         Ok(ProcessingResult {
             text_content: None, // Text is extracted separately via ContentProcessor
             metadata,
-            thumbnails,
-            images,
+            thumbnails, // Single element array
+            images,     // Multiple elements (one per page)
         })
     }
 }

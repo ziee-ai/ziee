@@ -177,18 +177,6 @@ pub async fn download_with_token(
     Ok((headers, file_data))
 }
 
-/// Download file OpenAPI documentation
-pub fn download_file_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(FilesDownload,)>(op)
-        .id("File.download")
-        .tag("Files")
-        .summary("Download file")
-        .description("Download a file with authentication")
-        .response_with::<200, (), _>(|res| res.description("File content"))
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<404, (), _>(|res| res.description("File not found"))
-}
-
 /// Generate download token OpenAPI documentation
 pub fn generate_download_token_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(FilesGenerateToken,)>(op)
@@ -198,16 +186,5 @@ pub fn generate_download_token_docs(op: TransformOperation) -> TransformOperatio
         .description("Generate a time-limited token for downloading a file without authentication")
         .response::<200, Json<DownloadTokenResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<404, (), _>(|res| res.description("File not found"))
-}
-
-/// Download with token OpenAPI documentation
-pub fn download_with_token_docs(op: TransformOperation) -> TransformOperation {
-    op.id("File.downloadWithToken")
-        .tag("Files")
-        .summary("Download file with token")
-        .description("Download a file using a time-limited token (no authentication required)")
-        .response_with::<200, (), _>(|res| res.description("File content"))
-        .response_with::<401, (), _>(|res| res.description("Invalid or expired token"))
         .response_with::<404, (), _>(|res| res.description("File not found"))
 }

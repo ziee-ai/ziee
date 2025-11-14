@@ -1,7 +1,9 @@
 use std::env;
 use std::path::PathBuf;
 
+#[path = "build_helper/pandoc.rs"]
 mod pandoc;
+#[path = "build_helper/pdfium.rs"]
 mod pdfium;
 
 #[tokio::main]

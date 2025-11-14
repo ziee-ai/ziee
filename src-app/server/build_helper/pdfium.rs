@@ -1,4 +1,3 @@
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -93,13 +92,14 @@ pub fn setup_pdfium(
         panic!("Unsupported platform for PDFium: {}", target);
     };
 
-    // Use target triple format for dynamic library naming
+    // Use simple platform-specific naming (not target triple)
+    // This matches what embedded.rs expects in include_bytes!
     let pdfium_binary_name = if target.contains("windows") {
-        format!("pdfium-{}.dll", target)
+        "pdfium.dll".to_string()
     } else if target.contains("darwin") {
-        format!("libpdfium-{}.dylib", target)
+        "libpdfium.dylib".to_string()
     } else {
-        format!("libpdfium-{}.so", target)
+        "libpdfium.so".to_string()
     };
 
     let pdfium_target_path = pdfium_dir.join(&pdfium_binary_name);

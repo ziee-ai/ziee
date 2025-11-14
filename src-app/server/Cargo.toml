@@ -1,7 +1,7 @@
 [package]
 name = "ziee-chat"
 version = "0.1.0"
-description = "Ziee Chat"
+description = "Ziee Chat Server"
 authors = ["Ziee Team"]
 license = ""
 repository = ""
@@ -58,6 +58,9 @@ tempfile = "3.15"
 
 # File processing
 image = "0.25"
+imageproc = "0.25"
+ab_glyph = "0.2"
+encoding_rs = "0.8"
 mime_guess = "2.0"
 pdfium-render = "0.8"
 pdf-extract = "0.9"
@@ -82,8 +85,8 @@ oauth2 = "5.0.0"
 openidconnect = "4.0.1"
 reqwest = { version = "0.12", features = ["json"] }
 
-# AI providers (workspace member)
-ai-providers = { path = "../ai-providers" }
+# AI providers (local package)
+ai-providers = { path = "./ai-providers" }
 
 [lib]
 name = "ziee_chat"

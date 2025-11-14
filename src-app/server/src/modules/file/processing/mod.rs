@@ -2,6 +2,8 @@
 
 pub mod traits;
 pub mod text;
+pub mod text_image;
+pub mod spreadsheet_image;
 pub mod image;
 pub mod pdf;
 pub mod office;
@@ -30,10 +32,15 @@ impl ProcessingManager {
     pub fn new() -> Self {
         let content_processors: Vec<Box<dyn ContentProcessor>> = vec![
             Box::new(text::TextProcessor),
+            Box::new(pdf::PdfProcessor),
+            Box::new(office::OfficeProcessor),
         ];
 
         let image_generators: Vec<Box<dyn ImageGenerator>> = vec![
             Box::new(image::ImageProcessor),
+            Box::new(pdf::PdfProcessor),
+            Box::new(spreadsheet_image::SpreadsheetImageGenerator),
+            Box::new(text_image::TextImageGenerator),
         ];
 
         Self {

@@ -40,9 +40,6 @@ pub enum AppEvent {
 
     /// Hub module events (catalog refreshes, entity creation from hub)
     Hub(crate::modules::hub::events::HubEvent),
-
-    /// File module events (file uploads, downloads, deletions)
-    File(crate::modules::file::events::FileEvent),
     // Add new module events here as the application grows
 }
 

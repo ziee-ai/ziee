@@ -9,8 +9,6 @@ pub struct Config {
     pub jwt: JwtConfig,
     #[serde(default)]
     pub app: Option<AppConfig>,
-    #[serde(default)]
-    pub file_storage_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

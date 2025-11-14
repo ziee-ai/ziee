@@ -113,10 +113,16 @@ impl FileStorage for FilesystemStorage {
         page_num: u32,
         is_thumbnail: bool,
     ) -> PathBuf {
-        let subdir = if is_thumbnail { "thumbnails" } else { "images" };
-        self.get_user_path(user_id, subdir)
-            .join(file_id.to_string())
-            .join(format!("page_{}.jpg", page_num))
+        if is_thumbnail {
+            // Single thumbnail: thumbnails/{user_id}/{file_id}.jpg
+            self.get_user_path(user_id, "thumbnails")
+                .join(format!("{}.jpg", file_id))
+        } else {
+            // Multiple images: images/{user_id}/{file_id}/page_N.jpg
+            self.get_user_path(user_id, "images")
+                .join(file_id.to_string())
+                .join(format!("page_{}.jpg", page_num))
+        }
     }
 
     async fn load_original(
@@ -159,8 +165,7 @@ impl FileStorage for FilesystemStorage {
         let locations = vec![
             ("originals", None),
             ("text", None),
-            ("images", Some(file_id.to_string())),
-            ("thumbnails", Some(file_id.to_string())),
+            ("images", Some(file_id.to_string())), // Directory with multiple pages
         ];
 
         for (subdir, file_subdir) in locations {
@@ -183,6 +188,13 @@ impl FileStorage for FilesystemStorage {
                     }
                 }
             }
+        }
+
+        // Delete single thumbnail file: thumbnails/{user_id}/{file_id}.jpg
+        let thumbnail_path = self.get_user_path(user_id, "thumbnails")
+            .join(format!("{}.jpg", file_id));
+        if thumbnail_path.exists() {
+            let _ = fs::remove_file(&thumbnail_path).await;
         }
 
         Ok(())

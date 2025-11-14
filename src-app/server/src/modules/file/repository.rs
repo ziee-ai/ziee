@@ -47,28 +47,6 @@ impl FileRepository {
         Ok(file)
     }
 
-    /// Get file by ID
-    pub async fn get_by_id(&self, file_id: Uuid) -> Result<Option<File>, AppError> {
-        let file = sqlx::query_as!(
-            File,
-            r#"
-            SELECT id, user_id, filename, file_size, mime_type, checksum,
-                   thumbnail_count, page_count,
-                   processing_metadata as "processing_metadata!: _",
-                   created_at as "created_at: _",
-                   updated_at as "updated_at: _"
-            FROM files
-            WHERE id = $1
-            "#,
-            file_id
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-
-        Ok(file)
-    }
-
     /// Get file by ID and verify user ownership
     pub async fn get_by_id_and_user(
         &self,
@@ -157,21 +135,4 @@ impl FileRepository {
         Ok(())
     }
 
-    /// Update processing metadata
-    pub async fn update_processing_metadata(
-        &self,
-        file_id: Uuid,
-        metadata: serde_json::Value,
-    ) -> Result<(), AppError> {
-        sqlx::query!(
-            "UPDATE files SET processing_metadata = $1, updated_at = NOW() WHERE id = $2",
-            metadata,
-            file_id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(AppError::database_error)?;
-
-        Ok(())
-    }
 }

@@ -55,7 +55,7 @@ pub struct DownloadTokenQuery {
 }
 
 /// JWT claims for download tokens
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadTokenClaims {
     pub file_id: String,
     pub user_id: String,

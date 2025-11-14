@@ -151,30 +151,6 @@ pub fn get_file_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<404, (), _>(|res| res.description("File not found"))
 }
 
-/// Get preview OpenAPI documentation
-pub fn get_preview_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(FilesPreview,)>(op)
-        .id("File.getPreview")
-        .tag("Files")
-        .summary("Get file thumbnail")
-        .description("Retrieve a thumbnail image for a file (page parameter for multi-page files)")
-        .response_with::<200, (), _>(|res| res.description("JPEG image data"))
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<404, (), _>(|res| res.description("File or thumbnail not found"))
-}
-
-/// Get text content OpenAPI documentation
-pub fn get_text_content_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(FilesRead,)>(op)
-        .id("File.getTextContent")
-        .tag("Files")
-        .summary("Get extracted text content")
-        .description("Retrieve extracted text content from a file")
-        .response_with::<200, (), _>(|res| res.description("Plain text content"))
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<404, (), _>(|res| res.description("File or text content not found"))
-}
-
 /// Delete file OpenAPI documentation
 pub fn delete_file_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(FilesDelete,)>(op)

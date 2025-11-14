@@ -91,10 +91,10 @@ pub async fn upload_file(
         storage.save_text(user_id, file_id, text).await?;
     }
 
-    // Save thumbnails
-    for (idx, thumbnail_data) in processing_result.thumbnails.iter().enumerate() {
+    // Save single thumbnail (page_num parameter ignored for thumbnails, but pass 1 for consistency)
+    if let Some(thumbnail_data) = processing_result.thumbnails.first() {
         storage
-            .save_image(user_id, file_id, (idx + 1) as u32, true, thumbnail_data)
+            .save_image(user_id, file_id, 1, true, thumbnail_data)
             .await?;
     }
 
