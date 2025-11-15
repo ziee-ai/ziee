@@ -3,6 +3,7 @@
 
 mod assistant;
 mod auth;
+mod chat;
 mod common;
 mod file;
 mod hardware;

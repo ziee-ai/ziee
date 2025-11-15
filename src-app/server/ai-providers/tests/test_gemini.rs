@@ -8,6 +8,11 @@ use serde_json::json;
 
 // Models used in tests
 const MODEL_GEMINI_25_FLASH: &str = "models/gemini-2.5-flash";
+const MODEL_GEMINI_25_PRO: &str = "models/gemini-2.5-pro";
+const MODEL_GEMINI_20_FLASH: &str = "models/gemini-2.0-flash";
+const MODEL_GEMINI_20_PRO: &str = "models/gemini-2.0-pro-exp";
+const MODEL_GEMINI_THINKING: &str = "models/gemini-2.0-flash-thinking-exp";
+const MODEL_GEMINI_LITE: &str = "models/gemini-2.0-flash-lite";
 const EMBEDDING_MODEL: &str = "models/text-embedding-004";
 
 fn get_api_key() -> String {
@@ -353,4 +358,285 @@ async fn test_gemini_streaming_long_response() {
     assert!(!full_content.is_empty());
     assert!(full_content.len() > 20, "Response should contain the count");
     assert!(chunk_count > 1, "Should receive multiple chunks for streaming verification");
+}
+
+// ==================== PRIORITY 1: CRITICAL MISSING MODELS ====================
+
+#[tokio::test]
+#[ignore]
+async fn test_gemini_20_pro_large_context() {
+    use futures_util::StreamExt;
+
+    let api_key = get_api_key();
+    let provider = Provider::new("gemini", &api_key, "").expect("Failed to create provider");
+
+    let request = ChatRequest {
+        model: MODEL_GEMINI_20_PRO.to_string(),
+        messages: vec![ChatMessage::user("Write a Python function to find the nth Fibonacci number.")],
+        temperature: Some(0.1),
+        max_tokens: Some(500),
+        ..Default::default()
+    };
+
+    println!("\n=== Testing Gemini 2.0 Pro Experimental (2M context, best coding performance) ===");
+
+    let mut stream = provider
+        .chat_stream(request)
+        .await
+        .expect("Gemini 2.0 Pro stream chat request failed");
+
+    let mut full_content = String::new();
+    let mut chunk_count = 0;
+
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(chunk) => {
+                for delta in &chunk.content {
+                    match delta {
+                        ai_providers::ContentBlockDelta::TextDelta { delta, .. } => {
+                            full_content.push_str(delta);
+                            print!("{}", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ThinkingDelta { delta, .. } => {
+                            full_content.push_str(&format!("[THINKING: {}]", delta));
+                            print!("[THINKING: {}]", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                    }
+                }
+                chunk_count += 1;
+            }
+            Err(e) => panic!("Gemini 2.0 Pro stream error: {:?}", e),
+        }
+    }
+
+    println!("\n\nGemini 2.0 Pro: Received {} chunks", chunk_count);
+    println!("Full content: {}", full_content);
+
+    assert!(chunk_count > 0, "Expected at least one chunk");
+    assert!(!full_content.is_empty(), "Expected non-empty content");
+}
+
+// ==================== PRIORITY 2: LATEST GENERATION MODELS ====================
+
+#[tokio::test]
+#[ignore]
+async fn test_gemini_25_pro_streaming() {
+    use futures_util::StreamExt;
+
+    let api_key = get_api_key();
+    let provider = Provider::new("gemini", &api_key, "").expect("Failed to create provider");
+
+    let request = ChatRequest {
+        model: MODEL_GEMINI_25_PRO.to_string(),
+        messages: vec![ChatMessage::user("Count from 1 to 5, one number per line.")],
+        temperature: Some(0.1),
+        max_tokens: Some(100),
+        ..Default::default()
+    };
+
+    println!("\n=== Testing Gemini 2.5 Pro (latest generation, evolution beyond 2.0) ===");
+
+    let mut stream = provider
+        .chat_stream(request)
+        .await
+        .expect("Gemini 2.5 Pro stream chat request failed");
+
+    let mut full_content = String::new();
+    let mut chunk_count = 0;
+
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(chunk) => {
+                for delta in &chunk.content {
+                    match delta {
+                        ai_providers::ContentBlockDelta::TextDelta { delta, .. } => {
+                            full_content.push_str(delta);
+                            print!("{}", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ThinkingDelta { delta, .. } => {
+                            full_content.push_str(&format!("[THINKING: {}]", delta));
+                            print!("[THINKING: {}]", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                    }
+                }
+                chunk_count += 1;
+            }
+            Err(e) => panic!("Gemini 2.5 Pro stream error: {:?}", e),
+        }
+    }
+
+    println!("\n\nGemini 2.5 Pro: Received {} chunks", chunk_count);
+    println!("Full content: {}", full_content);
+
+    assert!(chunk_count > 0, "Expected at least one chunk");
+    assert!(!full_content.is_empty(), "Expected non-empty content");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_gemini_20_flash_streaming() {
+    use futures_util::StreamExt;
+
+    let api_key = get_api_key();
+    let provider = Provider::new("gemini", &api_key, "").expect("Failed to create provider");
+
+    let request = ChatRequest {
+        model: MODEL_GEMINI_20_FLASH.to_string(),
+        messages: vec![ChatMessage::user("Count from 1 to 5, one number per line.")],
+        temperature: Some(0.1),
+        max_tokens: Some(100),
+        ..Default::default()
+    };
+
+    println!("\n=== Testing Gemini 2.0 Flash GA (production-ready, 1M context, native tool use) ===");
+
+    let mut stream = provider
+        .chat_stream(request)
+        .await
+        .expect("Gemini 2.0 Flash stream chat request failed");
+
+    let mut full_content = String::new();
+    let mut chunk_count = 0;
+
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(chunk) => {
+                for delta in &chunk.content {
+                    match delta {
+                        ai_providers::ContentBlockDelta::TextDelta { delta, .. } => {
+                            full_content.push_str(delta);
+                            print!("{}", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ThinkingDelta { delta, .. } => {
+                            full_content.push_str(&format!("[THINKING: {}]", delta));
+                            print!("[THINKING: {}]", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                    }
+                }
+                chunk_count += 1;
+            }
+            Err(e) => panic!("Gemini 2.0 Flash stream error: {:?}", e),
+        }
+    }
+
+    println!("\n\nGemini 2.0 Flash: Received {} chunks", chunk_count);
+    println!("Full content: {}", full_content);
+
+    assert!(chunk_count > 0, "Expected at least one chunk");
+    assert!(!full_content.is_empty(), "Expected non-empty content");
+}
+
+// ==================== PRIORITY 3: COMPLETE COVERAGE ====================
+
+#[tokio::test]
+#[ignore]
+async fn test_gemini_thinking_reasoning() {
+    use futures_util::StreamExt;
+
+    let api_key = get_api_key();
+    let provider = Provider::new("gemini", &api_key, "").expect("Failed to create provider");
+
+    let request = ChatRequest {
+        model: MODEL_GEMINI_THINKING.to_string(),
+        messages: vec![ChatMessage::user("What are the first 5 prime numbers? Explain why.")],
+        temperature: Some(0.1),
+        max_tokens: Some(500),
+        ..Default::default()
+    };
+
+    println!("\n=== Testing Gemini 2.0 Flash Thinking (reasoning before answering) ===");
+
+    let mut stream = provider
+        .chat_stream(request)
+        .await
+        .expect("Gemini Thinking stream chat request failed");
+
+    let mut full_content = String::new();
+    let mut chunk_count = 0;
+
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(chunk) => {
+                for delta in &chunk.content {
+                    match delta {
+                        ai_providers::ContentBlockDelta::TextDelta { delta, .. } => {
+                            full_content.push_str(delta);
+                            print!("{}", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ThinkingDelta { delta, .. } => {
+                            full_content.push_str(&format!("[THINKING: {}]", delta));
+                            print!("[THINKING: {}]", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                    }
+                }
+                chunk_count += 1;
+            }
+            Err(e) => panic!("Gemini Thinking stream error: {:?}", e),
+        }
+    }
+
+    println!("\n\nGemini Thinking: Received {} chunks", chunk_count);
+    println!("Full content: {}", full_content);
+
+    assert!(chunk_count > 0, "Expected at least one chunk");
+    assert!(!full_content.is_empty(), "Expected non-empty content");
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_gemini_lite_cost_optimization() {
+    use futures_util::StreamExt;
+
+    let api_key = get_api_key();
+    let provider = Provider::new("gemini", &api_key, "").expect("Failed to create provider");
+
+    let request = ChatRequest {
+        model: MODEL_GEMINI_LITE.to_string(),
+        messages: vec![ChatMessage::user("Count from 1 to 10, one number per line.")],
+        temperature: Some(0.1),
+        max_tokens: Some(100),
+        ..Default::default()
+    };
+
+    println!("\n=== Testing Gemini 2.0 Flash-Lite (cost-optimized for bulk text generation) ===");
+
+    let mut stream = provider
+        .chat_stream(request)
+        .await
+        .expect("Gemini Lite stream chat request failed");
+
+    let mut full_content = String::new();
+    let mut chunk_count = 0;
+
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(chunk) => {
+                for delta in &chunk.content {
+                    match delta {
+                        ai_providers::ContentBlockDelta::TextDelta { delta, .. } => {
+                            full_content.push_str(delta);
+                            print!("{}", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ThinkingDelta { delta, .. } => {
+                            full_content.push_str(&format!("[THINKING: {}]", delta));
+                            print!("[THINKING: {}]", delta);
+                        }
+                        ai_providers::ContentBlockDelta::ToolUseDelta { .. } => {}
+                    }
+                }
+                chunk_count += 1;
+            }
+            Err(e) => panic!("Gemini Lite stream error: {:?}", e),
+        }
+    }
+
+    println!("\n\nGemini Lite: Received {} chunks", chunk_count);
+    println!("Full content: {}", full_content);
+
+    assert!(chunk_count > 0, "Expected at least one chunk");
+    assert!(!full_content.is_empty(), "Expected non-empty content");
 }
