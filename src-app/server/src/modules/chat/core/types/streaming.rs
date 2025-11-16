@@ -9,7 +9,7 @@ use uuid::Uuid;
 /// A chunk of streamed chat content (extends ai-providers StreamChatChunk)
 /// Extension fields (e.g., title) are automatically added by the compose_chat_stream_chunk_extensions macro
 #[macros::compose_chat_stream_chunk_extensions]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, schemars::JsonSchema)]
 pub struct ChatStreamChunk {
     /// Content block deltas
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -43,7 +43,7 @@ pub struct ChatStreamChunk {
 /// Content block delta - Base types (extensions can add more variants)
 /// Extension variants (e.g., ToolUseDelta) are automatically added by the compose_content_block_delta_variants macro
 #[macros::compose_content_block_delta_variants]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlockDelta {
     /// Text content delta
@@ -110,7 +110,7 @@ impl ContentBlockDelta {
 }
 
 /// Usage metadata from AI provider
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Usage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<u32>,
@@ -128,9 +128,105 @@ impl From<ai_providers::StreamUsage> for Usage {
 }
 
 /// Stream error information
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StreamError {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+}
+
+// ===================================================================
+// Server-Sent Event Types
+// ===================================================================
+
+/// Data for the Complete SSE event
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct SSEChatStreamCompleteData {
+    /// Finish reason
+    pub finish_reason: String,
+
+    /// Usage metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Usage>,
+}
+
+/// Data for the Error SSE event
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct SSEChatStreamErrorData {
+    /// Error message
+    pub message: String,
+
+    /// Error code
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+}
+
+/// SSE event enum for chat streaming
+///
+/// This enum represents all possible Server-Sent Events that can be streamed
+/// during a chat message request. Extensions can add additional event variants
+/// through the SSEChatStreamEventVariants enum.
+///
+/// Events are sent with proper `event:` names (e.g., "content", "complete", "error")
+/// for type-safe client-side handling.
+#[macros::compose_chat_stream_events]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum SSEChatStreamEvent {
+    /// Content chunk event (streamed content deltas)
+    Content(ChatStreamChunk),
+
+    /// Stream completion event
+    Complete(SSEChatStreamCompleteData),
+
+    /// Error event
+    Error(SSEChatStreamErrorData),
+}
+
+// Generic implementation that works for all variants (including extension-added ones)
+impl SSEChatStreamEvent {
+    /// Get the event name for this SSE event
+    /// Uses serde's tag to extract the variant name in camelCase format
+    pub fn event_name(&self) -> &'static str {
+        // For core variants, return static strings (avoids allocation/conversion overhead)
+        // Extension variants are handled dynamically
+        // Extract variant name from Debug representation
+        let debug_str = format!("{:?}", self);
+        let variant_name = debug_str.split('(').next().unwrap_or("unknown");
+
+        // Return static strings for known core variants only
+        match variant_name {
+            "Content" => "content",
+            "Complete" => "complete",
+            "Error" => "error",
+            // Extension variants: convert PascalCase to camelCase dynamically
+            _ => {
+                // Convert first character to lowercase for camelCase
+                // Note: This leaks a small amount of memory for each unique extension variant
+                // but is only called once per variant type
+                Box::leak(
+                    variant_name
+                        .chars()
+                        .enumerate()
+                        .map(|(i, c)| if i == 0 { c.to_lowercase().to_string() } else { c.to_string() })
+                        .collect::<String>()
+                        .into_boxed_str()
+                )
+            }
+        }
+    }
+
+    /// Serialize the inner event data to JSON
+    pub fn data(&self) -> Result<String, serde_json::Error> {
+        // Serialize the entire variant - serde will handle it correctly with the tag
+        serde_json::to_string(self)
+    }
+}
+
+impl Into<axum::response::sse::Event> for SSEChatStreamEvent {
+    fn into(self) -> axum::response::sse::Event {
+        axum::response::sse::Event::default()
+            .event(self.event_name())
+            .data(self.data().unwrap_or_default())
+    }
 }

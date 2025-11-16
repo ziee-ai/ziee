@@ -13,14 +13,39 @@ async fn test_create_branch_minimal() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["conversations::create", "branches::create"],
+        &[
+            "conversations::create",
+            "branches::create",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+        ],
     )
     .await;
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    // Create conversation with model
+    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+    let conversation = super::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let payload = json!({});
+    // Send a message to create a message in the branch
+    let message = super::helpers::send_message(
+        &server,
+        &user.token,
+        conversation_id,
+        branch_id,
+        model_id,
+        "Test message",
+    )
+    .await;
+    let message_id = super::helpers::parse_uuid(&message["id"]);
+
+    // Now create a branch from that message
+    let payload = json!({
+        "from_message_id": message_id.to_string()
+    });
 
     let response = reqwest::Client::new()
         .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
@@ -48,7 +73,10 @@ async fn test_create_branch_conversation_not_found() {
     .await;
 
     let fake_id = uuid::Uuid::new_v4();
-    let payload = json!({});
+    let fake_message_id = uuid::Uuid::new_v4();
+    let payload = json!({
+        "from_message_id": fake_message_id.to_string()
+    });
 
     let response = reqwest::Client::new()
         .post(&server.api_url(&format!("/conversations/{}/branches", fake_id)))
@@ -86,9 +114,8 @@ async fn test_list_branches_default() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body: serde_json::Value = response.json().await.unwrap();
+    let branches: Vec<serde_json::Value> = response.json().await.unwrap();
 
-    let branches = body["branches"].as_array().unwrap();
     assert_eq!(branches.len(), 1, "New conversation should have 1 default branch");
 }
 
@@ -102,16 +129,35 @@ async fn test_list_branches_multiple() {
             "conversations::create",
             "conversations::read",
             "branches::create",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
         ],
     )
     .await;
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    // Create conversation with model
+    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+    let conversation = super::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    // Create 2 additional branches
-    super::helpers::create_branch(&server, &user.token, conversation_id, None).await;
-    super::helpers::create_branch(&server, &user.token, conversation_id, None).await;
+    // Send a message to create a message in the branch
+    let message = super::helpers::send_message(
+        &server,
+        &user.token,
+        conversation_id,
+        branch_id,
+        model_id,
+        "Test message",
+    )
+    .await;
+    let message_id = super::helpers::parse_uuid(&message["id"]);
+
+    // Create 2 additional branches from the same message
+    super::helpers::create_branch(&server, &user.token, conversation_id, Some(message_id)).await;
+    super::helpers::create_branch(&server, &user.token, conversation_id, Some(message_id)).await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
@@ -121,9 +167,8 @@ async fn test_list_branches_multiple() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body: serde_json::Value = response.json().await.unwrap();
+    let branches: Vec<serde_json::Value> = response.json().await.unwrap();
 
-    let branches = body["branches"].as_array().unwrap();
     assert_eq!(branches.len(), 3, "Should have 3 branches total (1 default + 2 created)");
 }
 
@@ -164,16 +209,34 @@ async fn test_activate_branch_updates_active_branch_id() {
             "conversations::read",
             "branches::create",
             "branches::switch",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
         ],
     )
     .await;
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    // Create conversation with model
+    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+    let conversation = super::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let original_branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    // Create a new branch
-    let new_branch = super::helpers::create_branch(&server, &user.token, conversation_id, None).await;
+    // Send a message to create a branching point
+    let message = super::helpers::send_message(
+        &server,
+        &user.token,
+        conversation_id,
+        original_branch_id,
+        model_id,
+        "Test message",
+    )
+    .await;
+    let message_id = super::helpers::parse_uuid(&message["id"]);
+
+    // Create a new branch from that message
+    let new_branch = super::helpers::create_branch(&server, &user.token, conversation_id, Some(message_id)).await;
     let new_branch_id = super::helpers::parse_uuid(&new_branch["id"]);
 
     // Activate the new branch
@@ -187,11 +250,11 @@ async fn test_activate_branch_updates_active_branch_id() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    // Verify active_branch_id changed
-    super::helpers::assert_uuid_eq(&body["active_branch_id"], new_branch_id, "active_branch_id");
+    // Verify active_branch_id changed by fetching the conversation
+    let conversation = super::helpers::get_conversation(&server, &user.token, conversation_id).await;
+    super::helpers::assert_uuid_eq(&conversation["active_branch_id"], new_branch_id, "active_branch_id");
     assert!(original_branch_id != new_branch_id, "Branch should have changed");
 }
 
@@ -292,14 +355,36 @@ async fn test_created_branch_structure() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["conversations::create", "branches::create"],
+        &[
+            "conversations::create",
+            "branches::create",
+            "messages::create",
+            "messages::read",
+            "llm_models::read",
+        ],
     )
     .await;
 
-    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    // Create conversation with model
+    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+    let conversation = super::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let new_branch = super::helpers::create_branch(&server, &user.token, conversation_id, None).await;
+    // Send a message to create a branching point
+    let message = super::helpers::send_message(
+        &server,
+        &user.token,
+        conversation_id,
+        branch_id,
+        model_id,
+        "Test message",
+    )
+    .await;
+    let message_id = super::helpers::parse_uuid(&message["id"]);
+
+    let new_branch = super::helpers::create_branch(&server, &user.token, conversation_id, Some(message_id)).await;
     let new_branch_id = super::helpers::parse_uuid(&new_branch["id"]);
 
     // Verify branch structure

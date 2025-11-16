@@ -128,7 +128,6 @@ pub struct CreateModelWithFilesRequest {
 
 /// Shared model creation and file processing logic
 async fn create_model_with_files(
-    pool: &sqlx::PgPool,
     repo: &repository::LlmModelRepository,
     request: CreateModelWithFilesRequest,
 ) -> Result<LlmModel, AppError> {
@@ -139,7 +138,7 @@ async fn create_model_with_files(
 
     // Validate provider exists and is of type 'local'
     let provider =
-        crate::modules::llm_provider::repository::get_llm_provider_by_id(pool, request.provider_id)
+        Repos.llm_provider.get_by_id(request.provider_id)
             .await
             .map_err(|e| AppError::internal_error(&e.to_string()))?
             .ok_or_else(|| AppError::bad_request("NOT_FOUND", "Provider not found"))?;
@@ -833,7 +832,6 @@ pub async fn upload_multiple_files_and_commit(
 
     // Create model using the existing function
     let model = create_model_with_files(
-        Repos.pool(),
         &*Repos.llm_model,
         CreateModelWithFilesRequest {
             provider_id,
@@ -997,10 +995,7 @@ pub async fn initiate_repository_download(
     Json(request): Json<DownloadFromRepositoryRequest>,
 ) -> ApiResult<Json<DownloadInstance>> {
     // Get repository information
-    let repository = crate::modules::llm_repository::repository::get_llm_repository_by_id(
-        Repos.pool(),
-        request.repository_id,
-    )
+    let repository = Repos.llm_repository.get_by_id(request.repository_id)
     .await
     .map_err(|e| {
         (
@@ -1074,9 +1069,6 @@ pub async fn initiate_repository_download(
         "none" | _ => None,
     };
 
-    // Clone pool for background task
-    let bg_pool = Repos.pool().clone();
-
     // Clone clear_cache flag for background task
     let clear_cache = request.clear_cache.unwrap_or(false);
 
@@ -1086,12 +1078,8 @@ pub async fn initiate_repository_download(
 
     // Spawn background task to handle the download
     tokio::spawn(async move {
-        // Create repository instances for background task
-        let download_repo = repository::DownloadInstanceRepository::new(bg_pool.clone());
-        let model_repo = repository::LlmModelRepository::new(bg_pool.clone());
-
         // Update status to downloading
-        if let Err(e) = download_repo
+        if let Err(e) = Repos.download_instance
             .update_status(
                 download_id,
                 types::UpdateDownloadStatusRequest {
@@ -1139,7 +1127,6 @@ pub async fn initiate_repository_download(
 
         // Spawn task to update download progress in database
         let download_id_progress = download_id;
-        let download_repo_progress = Repos.download_instance.clone();
         let progress_task = tokio::spawn(async move {
             let mut tracker = ProgressTracker::new();
             while let Some(git_progress) = progress_rx.recv().await {
@@ -1166,7 +1153,7 @@ pub async fn initiate_repository_download(
                     _ => None,
                 };
 
-                let _ = download_repo_progress
+                let _ = Repos.download_instance
                     .update_progress(
                         download_id_progress,
                         types::UpdateDownloadProgressRequest {
@@ -1206,7 +1193,7 @@ pub async fn initiate_repository_download(
         match clone_result {
             Ok(cache_path) => {
                 // Update progress: Analyzing files
-                let _ = download_repo
+                let _ = Repos.download_instance
                     .update_progress(
                         download_id,
                         types::UpdateDownloadProgressRequest {
@@ -1237,7 +1224,7 @@ pub async fn initiate_repository_download(
                         tracing::error!("Failed to read repository directory: {}", e);
                         crate::utils::cancellation::remove_download_tracking(download_id).await;
 
-                        let _ = download_repo
+                        let _ = Repos.download_instance
                             .update_status(
                                 download_id,
                                 types::UpdateDownloadStatusRequest {
@@ -1262,7 +1249,7 @@ pub async fn initiate_repository_download(
                             tracing::error!("Failed to determine files to copy: {}", e);
                             crate::utils::cancellation::remove_download_tracking(download_id).await;
 
-                            let _ = download_repo
+                            let _ = Repos.download_instance
                                 .update_status(
                                     download_id,
                                     types::UpdateDownloadStatusRequest {
@@ -1280,7 +1267,7 @@ pub async fn initiate_repository_download(
                     };
 
                 // Update progress: Downloading LFS files
-                let _ = download_repo
+                let _ = Repos.download_instance
                     .update_progress(
                         download_id,
                         types::UpdateDownloadProgressRequest {
@@ -1328,7 +1315,7 @@ pub async fn initiate_repository_download(
 
                     crate::utils::cancellation::remove_download_tracking(download_id).await;
 
-                    let _ = download_repo
+                    let _ = Repos.download_instance
                         .update_status(
                             download_id,
                             types::UpdateDownloadStatusRequest {
@@ -1342,7 +1329,7 @@ pub async fn initiate_repository_download(
                 }
 
                 // Update progress: Creating model
-                let _ = download_repo
+                let _ = Repos.download_instance
                     .update_progress(
                         download_id,
                         types::UpdateDownloadProgressRequest {
@@ -1361,8 +1348,7 @@ pub async fn initiate_repository_download(
 
                 // Create model with files
                 match create_model_with_files(
-                    &bg_pool,
-                    &model_repo,
+                    &*Repos.llm_model,
                     CreateModelWithFilesRequest {
                         provider_id: request.provider_id,
                         name: request.name,
@@ -1387,7 +1373,7 @@ pub async fn initiate_repository_download(
                         );
 
                         // Update download as completed with model ID
-                        let _ = download_repo
+                        let _ = Repos.download_instance
                             .update_status(
                                 download_id,
                                 types::UpdateDownloadStatusRequest {
@@ -1408,7 +1394,7 @@ pub async fn initiate_repository_download(
                         tracing::error!("Failed to create model: {}", e);
                         crate::utils::cancellation::remove_download_tracking(download_id).await;
 
-                        let _ = download_repo
+                        let _ = Repos.download_instance
                             .update_status(
                                 download_id,
                                 types::UpdateDownloadStatusRequest {
@@ -1462,7 +1448,7 @@ pub async fn initiate_repository_download(
                     error_msg
                 );
 
-                if let Err(e) = download_repo
+                if let Err(e) = Repos.download_instance
                     .update_status(
                         download_id,
                         types::UpdateDownloadStatusRequest {

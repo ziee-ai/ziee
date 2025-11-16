@@ -163,4 +163,5 @@ declare_repositories! {
     app: AppRepository => crate::modules::app,
     auth: AuthRepository => crate::modules::auth,
     file: FileRepository => crate::modules::file,
+    chat: ChatRepository => crate::modules::chat::core,
 }

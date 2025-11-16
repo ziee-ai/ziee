@@ -18,6 +18,8 @@ async fn test_send_message_returns_sse_content_type() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;
@@ -58,6 +60,8 @@ async fn test_send_message_stream_contains_data_events() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;
@@ -97,6 +101,8 @@ async fn test_send_message_stream_parses_json_chunks() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;
@@ -139,6 +145,8 @@ async fn test_stream_chunks_have_expected_fields() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;
@@ -208,4 +216,48 @@ async fn test_stream_error_on_invalid_model() {
 
     // Should return 404 before streaming starts
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_sse_stream_has_event_names() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["conversations::create", "messages::create", "llm_models::read"],
+    ).await;
+
+    let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+
+    let payload = serde_json::json!({
+        "content": "Hello",
+        "model_id": model_id.to_string(),
+        "branch_id": branch_id.to_string()
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    let bytes = response.bytes().await.unwrap();
+    let text = String::from_utf8(bytes.to_vec()).unwrap();
+
+    // SSE format should have "event:" lines followed by "data:" lines
+    assert!(text.contains("event: content"), "Stream should contain 'event: content' lines");
+    assert!(text.contains("data: "), "Stream should contain 'data:' lines");
+
+    // Count event lines
+    let event_count = text.lines().filter(|line| line.starts_with("event:")).count();
+    assert!(event_count > 0, "Stream should have at least one event line");
+
+    eprintln!("✅ SSE stream properly formatted with {} event lines", event_count);
 }

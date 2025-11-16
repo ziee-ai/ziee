@@ -5,85 +5,6 @@
     "version": ""
   },
   "paths": {
-    "/api/health": {
-      "get": {
-        "tags": [
-          "health"
-        ],
-        "description": "Health check endpoint",
-        "operationId": "Health.check",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/app/setup/status": {
-      "get": {
-        "tags": [
-          "app"
-        ],
-        "description": "Check if initial admin setup is required",
-        "operationId": "App.getSetupStatus",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SetupStatusResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/app/setup/admin": {
-      "post": {
-        "tags": [
-          "app"
-        ],
-        "description": "Create the first administrator account",
-        "operationId": "App.setupAdmin",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetupAdminRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "JWT token pair (access + refresh)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "no content"
-          }
-        }
-      }
-    },
     "/api/auth/register": {
       "post": {
         "tags": [
@@ -1143,30 +1064,136 @@
         ]
       }
     },
-    "/api/hardware": {
+    "/api/llm-repositories": {
       "get": {
         "tags": [
-          "Hardware"
+          "LLM Repositories"
         ],
-        "summary": "Get Hardware Information",
-        "description": "Get static hardware information including OS, CPU, Memory, and GPU details",
-        "operationId": "Hardware.info",
+        "summary": "List all LLM repositories with pagination",
+        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
+        "operationId": "LlmRepository.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
-            "description": "no content"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM repositories and list repositories",
+                        "name": "LlmRepositoriesRead",
+                        "value": "llm_repositories::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HardwareInfoResponse"
+                  "$ref": "#/components/schemas/LlmRepositoryListResponse"
                 }
               }
             }
           },
           "401": {
-            "description": "no content"
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Create a new LLM repository",
+        "description": "\n\n**Required Permission:** `llm_repositories::create`\n\nCreate new LLM repositories",
+        "operationId": "LlmRepository.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new LLM repositories",
+                        "name": "LlmRepositoriesCreate",
+                        "value": "llm_repositories::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRepository"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
@@ -1176,30 +1203,60 @@
         ]
       }
     },
-    "/api/hardware/usage-stream": {
-      "get": {
+    "/api/llm-repositories/test": {
+      "post": {
         "tags": [
-          "Hardware"
+          "LLM Repositories"
         ],
-        "summary": "Subscribe to Hardware Usage Stream",
-        "description": "Subscribe to real-time hardware usage updates via Server-Sent Events (SSE)",
-        "operationId": "Hardware.stream",
+        "summary": "Test repository connection without saving",
+        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
+        "operationId": "LlmRepository.test",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRepositoryConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "403": {
-            "description": "no content"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM repositories and list repositories",
+                        "name": "LlmRepositoriesRead",
+                        "value": "llm_repositories::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SSEHardwareUsageEvent"
+                  "$ref": "#/components/schemas/TestRepositoryConnectionResponse"
                 }
               }
             }
           },
           "401": {
-            "description": "no content"
+            "description": "Unauthorized"
           }
         },
         "security": [
@@ -1209,31 +1266,177 @@
         ]
       }
     },
-    "/api/hardware/types": {
+    "/api/llm-repositories/{repository_id}": {
       "get": {
-        "description": "Types for OpenAPI generation",
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Get LLM repository by ID",
+        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
+        "operationId": "LlmRepository.get",
         "responses": {
-          "200": {
-            "description": "",
+          "403": {
+            "description": "Forbidden - Missing required permission",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HardwareUsageUpdate"
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View LLM repositories and list repositories",
+                        "name": "LlmRepositoriesRead",
+                        "value": "llm_repositories::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
-          "600": {
-            "description": "",
+          "200": {
+            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HardwareUsageUpdate"
+                  "$ref": "#/components/schemas/LlmRepository"
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
           }
-        }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Update an existing LLM repository",
+        "description": "\n\n**Required Permission:** `llm_repositories::edit`\n\nEdit existing LLM repository information and authentication",
+        "operationId": "LlmRepository.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit existing LLM repository information and authentication",
+                        "name": "LlmRepositoriesEdit",
+                        "value": "llm_repositories::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmRepository"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "LLM Repositories"
+        ],
+        "summary": "Delete an LLM repository",
+        "description": "\n\n**Required Permission:** `llm_repositories::delete`\n\nDelete non-built-in LLM repositories",
+        "operationId": "LlmRepository.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete non-built-in LLM repositories",
+                        "name": "LlmRepositoriesDelete",
+                        "value": "llm_repositories::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_repositories::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "Cannot delete built-in repository"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Repository not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/llm-providers": {
@@ -1821,14 +2024,61 @@
         ]
       }
     },
-    "/api/llm-repositories": {
+    "/api/files/upload": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Upload a file",
+        "description": "Upload a file for storage and processing. Supports text extraction and thumbnail generation.",
+        "operationId": "File.upload",
+        "requestBody": {
+          "description": "multipart form data",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          },
+          "201": {
+            "description": "File entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid file or file too large"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files": {
       "get": {
         "tags": [
-          "LLM Repositories"
+          "Files"
         ],
-        "summary": "List all LLM repositories with pagination",
-        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
-        "operationId": "LlmRepository.list",
+        "summary": "List user's files",
+        "description": "Get paginated list of files uploaded by the current user",
+        "operationId": "File.list",
         "parameters": [
           {
             "in": "query",
@@ -1863,151 +2113,24 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "View LLM repositories and list repositories",
-                        "name": "LlmRepositoriesRead",
-                        "value": "llm_repositories::read"
+                        "description": "View file metadata and list files",
+                        "name": "FilesRead",
+                        "value": "files::read"
                       }
                     ]
                   },
-                  "error": "Missing required permission: llm_repositories::read",
+                  "error": "Missing required permission: files::read",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
           "200": {
-            "description": "",
+            "description": "File list response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LlmRepositoryListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "LLM Repositories"
-        ],
-        "summary": "Create a new LLM repository",
-        "description": "\n\n**Required Permission:** `llm_repositories::create`\n\nCreate new LLM repositories",
-        "operationId": "LlmRepository.create",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateLlmRepositoryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Create new LLM repositories",
-                        "name": "LlmRepositoriesCreate",
-                        "value": "llm_repositories::create"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: llm_repositories::create",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LlmRepository"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/llm-repositories/test": {
-      "post": {
-        "tags": [
-          "LLM Repositories"
-        ],
-        "summary": "Test repository connection without saving",
-        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
-        "operationId": "LlmRepository.test",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TestRepositoryConnectionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View LLM repositories and list repositories",
-                        "name": "LlmRepositoriesRead",
-                        "value": "llm_repositories::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: llm_repositories::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TestRepositoryConnectionResponse"
+                  "$ref": "#/components/schemas/FileListResponse"
                 }
               }
             }
@@ -2023,14 +2146,27 @@
         ]
       }
     },
-    "/api/llm-repositories/{repository_id}": {
+    "/api/files/{file_id}/preview": {
       "get": {
         "tags": [
-          "LLM Repositories"
+          "Files"
         ],
-        "summary": "Get LLM repository by ID",
-        "description": "\n\n**Required Permission:** `llm_repositories::read`\n\nView LLM repositories and list repositories",
-        "operationId": "LlmRepository.get",
+        "summary": "Get preview image",
+        "description": "Get high-quality preview image for a specific page (2000px height)",
+        "operationId": "File.getPreview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "format": "uint32",
+              "default": 1,
+              "minimum": 0
+            },
+            "style": "form"
+          }
+        ],
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -2043,24 +2179,24 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "View LLM repositories and list repositories",
-                        "name": "LlmRepositoriesRead",
-                        "value": "llm_repositories::read"
+                        "description": "View file thumbnails and previews",
+                        "name": "FilesPreview",
+                        "value": "files::preview"
                       }
                     ]
                   },
-                  "error": "Missing required permission: llm_repositories::read",
+                  "error": "Missing required permission: files::preview",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
           "200": {
-            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
+            "description": "Helper type for documenting binary responses in OpenAPI",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LlmRepository"
+                  "$ref": "#/components/schemas/BlobType"
                 }
               }
             }
@@ -2069,7 +2205,7 @@
             "description": "Unauthorized"
           },
           "404": {
-            "description": "Repository not found"
+            "description": "File or preview not found"
           }
         },
         "security": [
@@ -2077,24 +2213,16 @@
             "bearerAuth": []
           }
         ]
-      },
-      "post": {
+      }
+    },
+    "/api/files/{file_id}/thumbnail": {
+      "get": {
         "tags": [
-          "LLM Repositories"
+          "Files"
         ],
-        "summary": "Update an existing LLM repository",
-        "description": "\n\n**Required Permission:** `llm_repositories::edit`\n\nEdit existing LLM repository information and authentication",
-        "operationId": "LlmRepository.update",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateLlmRepositoryRequest"
-              }
-            }
-          },
-          "required": true
-        },
+        "summary": "Get thumbnail",
+        "description": "Get thumbnail image from first page (300px height)",
+        "operationId": "File.getThumbnail",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -2107,36 +2235,258 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "Edit existing LLM repository information and authentication",
-                        "name": "LlmRepositoriesEdit",
-                        "value": "llm_repositories::edit"
+                        "description": "View file thumbnails and previews",
+                        "name": "FilesPreview",
+                        "value": "files::preview"
                       }
                     ]
                   },
-                  "error": "Missing required permission: llm_repositories::edit",
+                  "error": "Missing required permission: files::preview",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
           "200": {
-            "description": "LLM Repository database entity\n Represents a row in the llm_repositories table",
+            "description": "Helper type for documenting binary responses in OpenAPI",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LlmRepository"
+                  "$ref": "#/components/schemas/BlobType"
                 }
               }
             }
-          },
-          "400": {
-            "description": "Invalid input"
           },
           "401": {
             "description": "Unauthorized"
           },
           "404": {
-            "description": "Repository not found"
+            "description": "File or thumbnail not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/text": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Get extracted text",
+        "description": "Get extracted text content for a specific page or all pages",
+        "operationId": "File.getTextContent",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View file metadata and list files",
+                        "name": "FilesRead",
+                        "value": "files::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Helper type for documenting binary responses in OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlobType"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid page number"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "File not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/download": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Download file",
+        "description": "Download the original file (requires authentication)",
+        "operationId": "File.download",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Download file content",
+                        "name": "FilesDownload",
+                        "value": "files::download"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::download",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Helper type for documenting binary responses in OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlobType"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "File not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/download-with-token": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Download file with token",
+        "description": "Download file using a time-limited token (no authentication required)",
+        "operationId": "File.downloadWithToken",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Helper type for documenting binary responses in OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlobType"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid token"
+          },
+          "404": {
+            "description": "File not found"
+          }
+        }
+      }
+    },
+    "/api/files/{file_id}": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Get file metadata",
+        "description": "Retrieve metadata for a specific file",
+        "operationId": "File.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View file metadata and list files",
+                        "name": "FilesRead",
+                        "value": "files::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "File entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "File not found"
           }
         },
         "security": [
@@ -2147,11 +2497,11 @@
       },
       "delete": {
         "tags": [
-          "LLM Repositories"
+          "Files"
         ],
-        "summary": "Delete an LLM repository",
-        "description": "\n\n**Required Permission:** `llm_repositories::delete`\n\nDelete non-built-in LLM repositories",
-        "operationId": "LlmRepository.delete",
+        "summary": "Delete file",
+        "description": "Delete a file and all associated data (thumbnails, extracted text, etc.)",
+        "operationId": "File.delete",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -2164,29 +2514,82 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "Delete non-built-in LLM repositories",
-                        "name": "LlmRepositoriesDelete",
-                        "value": "llm_repositories::delete"
+                        "description": "Delete files",
+                        "name": "FilesDelete",
+                        "value": "files::delete"
                       }
                     ]
                   },
-                  "error": "Missing required permission: llm_repositories::delete",
+                  "error": "Missing required permission: files::delete",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
             }
           },
           "204": {
-            "description": "no content"
-          },
-          "400": {
-            "description": "Cannot delete built-in repository"
+            "description": "File deleted successfully"
           },
           "401": {
             "description": "Unauthorized"
           },
           "404": {
-            "description": "Repository not found"
+            "description": "File not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/files/{file_id}/download-token": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Generate download token",
+        "description": "Generate a time-limited token for downloading a file without authentication",
+        "operationId": "File.generateDownloadToken",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Generate download tokens",
+                        "name": "FilesGenerateToken",
+                        "value": "files::generate_token"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::generate_token",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Download token response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadTokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "File not found"
           }
         },
         "security": [
@@ -3425,6 +3828,793 @@
           },
           "404": {
             "description": "Assistant template not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "List conversations",
+        "description": "List all conversations for the authenticated user with pagination",
+        "operationId": "Conversation.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "description": "Items per page (max 100)",
+            "schema": {
+              "description": "Items per page (max 100)",
+              "type": "integer",
+              "format": "int64",
+              "default": 20
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "description": "Page number (1-indexed)",
+            "schema": {
+              "description": "Page number (1-indexed)",
+              "type": "integer",
+              "format": "int64",
+              "default": 1
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Create a new conversation",
+        "description": "Create a new chat conversation with a default branch",
+        "operationId": "Conversation.create",
+        "requestBody": {
+          "description": "Request to create a new conversation",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create new chat conversations",
+                        "name": "ConversationsCreate",
+                        "value": "conversations::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Conversation entity - Represents a chat conversation with an AI assistant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get conversation by ID",
+        "description": "Get a conversation by its ID. Only accessible to the owner.",
+        "operationId": "Conversation.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Conversation entity - Represents a chat conversation with an AI assistant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Update conversation",
+        "description": "Update conversation metadata (currently only title)",
+        "operationId": "Conversation.update",
+        "requestBody": {
+          "description": "Request to update conversation metadata",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Conversation entity - Represents a chat conversation with an AI assistant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Delete conversation",
+        "description": "Delete a conversation and all its branches, messages, and content",
+        "operationId": "Conversation.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete chat conversations",
+                        "name": "ConversationsDelete",
+                        "value": "conversations::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Conversation deleted successfully"
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/messages": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get conversation history",
+        "description": "Get all messages with content for the active branch of a conversation",
+        "operationId": "Message.getHistory",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read messages in conversations",
+                        "name": "MessagesRead",
+                        "value": "messages::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessageWithContent"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/messages/stream": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Send message and stream AI response",
+        "description": "Send a user message to a conversation and receive the AI response as a Server-Sent Events (SSE) stream. Events include: 'content' (incremental content deltas), 'complete' (stream finished), 'error' (stream error), and extension events like 'titleUpdated'.",
+        "operationId": "Message.sendStream",
+        "requestBody": {
+          "description": "Request to send a message in a conversation\n\n Extensions contribute fields by creating an extension.rs file with a RequestFields struct.\n The build script automatically discovers and registers these extensions.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Send messages in conversations",
+                        "name": "MessagesCreate",
+                        "value": "messages::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request. Extensions can add additional event variants\n through the SSEChatStreamEventVariants enum.\n\n Events are sent with proper `event:` names (e.g., \"content\", \"complete\", \"error\")\n for type-safe client-side handling.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEChatStreamEvent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no content"
+          },
+          "401": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/messages/{id}": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get message with content",
+        "description": "Get a specific message with all its content blocks",
+        "operationId": "Message.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read messages in conversations",
+                        "name": "MessagesRead",
+                        "value": "messages::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Message with its content blocks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageWithContent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Delete message",
+        "description": "Delete a message and all its descendants. This cascades to all content blocks.",
+        "operationId": "Message.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete messages from conversations",
+                        "name": "MessagesDelete",
+                        "value": "messages::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Message deleted successfully"
+          },
+          "404": {
+            "description": "Message not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{conversation_id}/messages/{message_id}": {
+      "put": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Edit message",
+        "description": "Edit a message. Creates a new branch with the updated message and clones all messages before it.",
+        "operationId": "Message.edit",
+        "requestBody": {
+          "description": "Request to edit an existing message",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Send messages in conversations",
+                        "name": "MessagesCreate",
+                        "value": "messages::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: messages::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response when editing a message (creates new branch)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditMessageResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message or conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/branches": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "List branches",
+        "description": "List all branches for a conversation",
+        "operationId": "Branch.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Branch"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Create a new branch",
+        "description": "Create a new conversation branch for edit/regenerate functionality. Optionally copy messages up to a specific point.",
+        "operationId": "Branch.create",
+        "requestBody": {
+          "description": "Request to create a new branch (for edit/regenerate)\n Both parent_branch_id (from conversation's active branch) and from_message_id are required",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBranchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create message branches for edit/regenerate",
+                        "name": "BranchesCreate",
+                        "value": "branches::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: branches::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Branch entity - Represents a branch in conversation history (for edit/regenerate)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branch"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/conversations/{id}/branches/{branch_id}/activate": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Activate a branch",
+        "description": "Switch the active branch for a conversation",
+        "operationId": "Branch.activate",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Switch between conversation branches",
+                        "name": "BranchesSwitch",
+                        "value": "branches::switch"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: branches::switch",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Branch activated successfully"
+          },
+          "404": {
+            "description": "Conversation or branch not found"
+          },
+          "400": {
+            "description": "Branch does not belong to conversation"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
@@ -5085,6 +6275,178 @@
           }
         ]
       }
+    },
+    "/api/hardware": {
+      "get": {
+        "tags": [
+          "Hardware"
+        ],
+        "summary": "Get Hardware Information",
+        "description": "Get static hardware information including OS, CPU, Memory, and GPU details",
+        "operationId": "Hardware.info",
+        "responses": {
+          "403": {
+            "description": "no content"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareInfoResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hardware/usage-stream": {
+      "get": {
+        "tags": [
+          "Hardware"
+        ],
+        "summary": "Subscribe to Hardware Usage Stream",
+        "description": "Subscribe to real-time hardware usage updates via Server-Sent Events (SSE)",
+        "operationId": "Hardware.stream",
+        "responses": {
+          "403": {
+            "description": "no content"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEHardwareUsageEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no content"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/hardware/types": {
+      "get": {
+        "description": "Types for OpenAPI generation",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareUsageUpdate"
+                }
+              }
+            }
+          },
+          "600": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HardwareUsageUpdate"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "description": "Health check endpoint",
+        "operationId": "Health.check",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/app/setup/status": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "description": "Check if initial admin setup is required",
+        "operationId": "App.getSetupStatus",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/app/setup/admin": {
+      "post": {
+        "tags": [
+          "app"
+        ],
+        "description": "Create the first administrator account",
+        "operationId": "App.setupAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "no content"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5259,6 +6621,47 @@
           "expires_in"
         ]
       },
+      "BlobType": {
+        "description": "Helper type for documenting binary responses in OpenAPI",
+        "type": "object"
+      },
+      "Branch": {
+        "description": "Branch entity - Represents a branch in conversation history (for edit/regenerate)",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_from_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parent_branch_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "created_at"
+        ]
+      },
       "CPUInfo": {
         "type": "object",
         "properties": {
@@ -5329,6 +6732,247 @@
         },
         "required": [
           "usage_percentage"
+        ]
+      },
+      "ChatStreamChunk": {
+        "description": "A chunk of streamed chat content (extends ai-providers StreamChatChunk)\n Extension fields (e.g., title) are automatically added by the compose_chat_stream_chunk_extensions macro",
+        "type": "object",
+        "properties": {
+          "title": {
+            "description": "Auto-generated title (when available)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "branch_id": {
+            "description": "Branch ID (sent in first chunk)",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "content": {
+            "description": "Content block deltas",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContentBlockDelta"
+            }
+          },
+          "conversation_id": {
+            "description": "Conversation ID (sent in first chunk)",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "error": {
+            "description": "Error information",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StreamError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finish_reason": {
+            "description": "Finish reason (when stream completes)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_id": {
+            "description": "Message ID (sent in first chunk)",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "usage": {
+            "description": "Usage metadata (when stream completes)",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ContentBlockDelta": {
+        "description": "Content block delta - Base types (extensions can add more variants)\n Extension variants (e.g., ToolUseDelta) are automatically added by the compose_content_block_delta_variants macro",
+        "oneOf": [
+          {
+            "description": "Text content delta",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "text_delta"
+              },
+              "content_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "delta": {
+                "type": "string"
+              },
+              "index": {
+                "type": "integer",
+                "format": "uint",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "type",
+              "index",
+              "delta"
+            ]
+          },
+          {
+            "description": "Thinking content delta",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "thinking_delta"
+              },
+              "content_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "delta": {
+                "type": "string"
+              },
+              "index": {
+                "type": "integer",
+                "format": "uint",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "type",
+              "index",
+              "delta"
+            ]
+          }
+        ]
+      },
+      "Conversation": {
+        "description": "Conversation entity - Represents a chat conversation with an AI assistant",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active_branch_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "model_id": {
+            "description": "Optional model ID for display/history purposes\n Actual model selection happens per-message via SendMessageRequest",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ConversationResponse": {
+        "description": "Conversation response with additional metadata",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active_branch_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "model_id": {
+            "description": "Optional model ID for display/history purposes\n Actual model selection happens per-message via SendMessageRequest",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "created_at",
+          "updated_at",
+          "message_count"
         ]
       },
       "CreateAssistantFromHubRequest": {
@@ -5434,6 +7078,39 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "CreateBranchRequest": {
+        "description": "Request to create a new branch (for edit/regenerate)\n Both parent_branch_id (from conversation's active branch) and from_message_id are required",
+        "type": "object",
+        "properties": {
+          "from_message_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "from_message_id"
+        ]
+      },
+      "CreateConversationRequest": {
+        "description": "Request to create a new conversation",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_id": {
+            "description": "Optional model ID for display/history purposes\n Actual model selection happens per-message via SendMessageRequest",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -6291,12 +7968,134 @@
           "cancelled"
         ]
       },
+      "DownloadTokenQuery": {
+        "description": "Download token query params",
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "DownloadTokenResponse": {
+        "description": "Download token response",
+        "type": "object",
+        "properties": {
+          "expires_in": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_in"
+        ]
+      },
+      "EditMessageRequest": {
+        "description": "Request to edit an existing message",
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "EditMessageResponse": {
+        "description": "Response when editing a message (creates new branch)",
+        "type": "object",
+        "properties": {
+          "branch": {
+            "$ref": "#/components/schemas/Branch"
+          },
+          "message": {
+            "$ref": "#/components/schemas/Message"
+          }
+        },
+        "required": [
+          "message",
+          "branch"
+        ]
+      },
       "EngineType": {
         "type": "string",
         "enum": [
           "mistralrs",
           "llamacpp",
           "none"
+        ]
+      },
+      "File": {
+        "description": "File entity",
+        "type": "object",
+        "properties": {
+          "checksum": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "file_size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "has_thumbnail": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preview_page_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "processing_metadata": true,
+          "text_page_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "filename",
+          "file_size",
+          "has_thumbnail",
+          "preview_page_count",
+          "text_page_count",
+          "processing_metadata",
+          "created_at",
+          "updated_at"
         ]
       },
       "FileFormat": {
@@ -6314,6 +8113,36 @@
           "gguf",
           "safetensors",
           "pytorch"
+        ]
+      },
+      "FileListResponse": {
+        "description": "File list response",
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/File"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "files",
+          "total",
+          "page",
+          "per_page"
         ]
       },
       "GPUComputeCapabilities": {
@@ -6697,9 +8526,9 @@
           },
           "parameters": true,
           "popularity_score": {
-            "type": "integer",
-            "format": "int32",
-            "default": 0
+            "type": "number",
+            "format": "double",
+            "default": 0.0
           },
           "recommended_models": {
             "type": [
@@ -7119,21 +8948,23 @@
       "HubModelQuantizationOption": {
         "type": "object",
         "properties": {
-          "filename": {
+          "main_filename": {
             "type": "string"
           },
           "name": {
             "type": "string"
           },
           "size_gb": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "format": "double"
           }
         },
         "required": [
           "name",
-          "filename",
-          "size_gb"
+          "main_filename"
         ]
       },
       "HubQuery": {
@@ -7939,6 +9770,116 @@
           "usage_percentage"
         ]
       },
+      "Message": {
+        "description": "Message entity - Represents a single message in a conversation\n Messages belong to branches via the branch_messages junction table",
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "edit_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "originated_from_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "originated_from_id",
+          "edit_count",
+          "created_at"
+        ]
+      },
+      "MessageContent": {
+        "description": "Message content entity - Represents a content block within a message",
+        "type": "object",
+        "properties": {
+          "content": true,
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sequence_order": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "message_id",
+          "content_type",
+          "content",
+          "sequence_order",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "MessageWithContent": {
+        "description": "Message with its content blocks",
+        "type": "object",
+        "properties": {
+          "contents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageContent"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "edit_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "originated_from_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "originated_from_id",
+          "edit_count",
+          "created_at",
+          "contents"
+        ]
+      },
       "MistralRsCommand": {
         "description": "MistralRS command types for different model formats and use cases",
         "oneOf": [
@@ -8511,10 +10452,43 @@
         }
       },
       "PaginationQuery2": {
+        "description": "Pagination query params",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "default": 1
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int32",
+            "default": 20
+          }
+        }
+      },
+      "PaginationQuery3": {
         "type": "object",
         "properties": {
           "limit": {
             "description": "Items per page",
+            "type": "integer",
+            "format": "int64",
+            "default": 20
+          },
+          "page": {
+            "description": "Page number (1-indexed)",
+            "type": "integer",
+            "format": "int64",
+            "default": 1
+          }
+        }
+      },
+      "PaginationQuery4": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "description": "Items per page (max 100)",
             "type": "integer",
             "format": "int64",
             "default": 20
@@ -8579,6 +10553,18 @@
         "required": [
           "required_permissions"
         ]
+      },
+      "PreviewQuery": {
+        "description": "Preview query params",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 1,
+            "minimum": 0
+          }
+        }
       },
       "ProxySettings": {
         "description": "Proxy settings for LLM providers",
@@ -8698,6 +10684,139 @@
           "new_password"
         ]
       },
+      "SSEChatStreamCompleteData": {
+        "description": "Data for the Complete SSE event",
+        "type": "object",
+        "properties": {
+          "finish_reason": {
+            "description": "Finish reason",
+            "type": "string"
+          },
+          "usage": {
+            "description": "Usage metadata",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "finish_reason"
+        ]
+      },
+      "SSEChatStreamErrorData": {
+        "description": "Data for the Error SSE event",
+        "type": "object",
+        "properties": {
+          "code": {
+            "description": "Error code",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "description": "Error message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "SSEChatStreamEvent": {
+        "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request. Extensions can add additional event variants\n through the SSEChatStreamEventVariants enum.\n\n Events are sent with proper `event:` names (e.g., \"content\", \"complete\", \"error\")\n for type-safe client-side handling.",
+        "oneOf": [
+          {
+            "description": "Content chunk event (streamed content deltas)",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "content"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChatStreamChunk"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "description": "Stream completion event",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "complete"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamCompleteData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "description": "Error event",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "error"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamErrorData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "titleUpdated"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamTitleUpdatedData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          }
+        ]
+      },
+      "SSEChatStreamTitleUpdatedData": {
+        "description": "Data for the TitleUpdated SSE event",
+        "type": "object",
+        "properties": {
+          "title": {
+            "description": "The auto-generated title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
       "SSEDownloadProgressConnectedData": {
         "description": "SSE connected event data",
         "type": "object",
@@ -8804,6 +10923,47 @@
           }
         ]
       },
+      "SendMessageRequest": {
+        "description": "Request to send a message in a conversation\n\n Extensions contribute fields by creating an extension.rs file with a RequestFields struct.\n The build script automatically discovers and registers these extensions.",
+        "type": "object",
+        "properties": {
+          "assistant_id": {
+            "description": "Optional assistant ID to use for this message.\n The assistant's instructions will be injected as a system message.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "branch_id": {
+            "description": "Branch ID to send message to (required)\n This branch will be used as the parent when creating a new branch",
+            "type": "string",
+            "format": "uuid"
+          },
+          "content": {
+            "description": "User message content (text)",
+            "type": "string"
+          },
+          "create_branch_from_message_id": {
+            "description": "If set, creates a new branch from this message before sending\n The message must belong to the specified branch_id\n The new branch becomes the active branch",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "model_id": {
+            "description": "Model ID to use for this message (required)",
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "content",
+          "model_id",
+          "branch_id"
+        ]
+      },
       "ServerGroupsRequest": {
         "type": "object",
         "properties": {
@@ -8863,6 +11023,24 @@
           "version"
         ]
       },
+      "StreamError": {
+        "description": "Stream error information",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
       "TestRepositoryConnectionRequest": {
         "type": "object",
         "properties": {
@@ -8906,6 +11084,20 @@
           "success",
           "message"
         ]
+      },
+      "TextPageQuery": {
+        "description": "Text page query params",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
       },
       "TokenPair": {
         "description": "JWT token pair (access + refresh)",
@@ -8990,6 +11182,19 @@
               {
                 "type": "null"
               }
+            ]
+          }
+        }
+      },
+      "UpdateConversationRequest": {
+        "description": "Request to update conversation metadata",
+        "type": "object",
+        "properties": {
+          "title": {
+            "description": "Title update: None = don't update, Some(None) = clear to null, Some(Some(value)) = set value",
+            "type": [
+              "string",
+              "null"
             ]
           }
         }
@@ -9331,6 +11536,28 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "Usage": {
+        "description": "Usage metadata from AI provider",
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
           }
         }
       },

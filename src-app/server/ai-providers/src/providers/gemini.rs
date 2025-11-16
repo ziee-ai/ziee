@@ -4,7 +4,7 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk, FileUpload, FileUploadResponse},
     traits::AIProvider,
 };
 use async_stream::stream;
@@ -45,7 +45,7 @@ struct GeminiContent {
     parts: Vec<GeminiPart>,
 }
 
-/// Gemini part (text or inline_data)
+/// Gemini part (text, inline_data, or file_data)
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 enum GeminiPart {
@@ -56,6 +56,9 @@ enum GeminiPart {
     },
     InlineData {
         inline_data: GeminiInlineData,
+    },
+    FileData {
+        file_data: GeminiFileData,
     },
     FunctionCall {
         #[serde(rename = "functionCall")]
@@ -68,6 +71,13 @@ enum GeminiPart {
 struct GeminiInlineData {
     mime_type: String,
     data: String,
+}
+
+/// Gemini file data (for uploaded files via File API)
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct GeminiFileData {
+    mime_type: String,
+    file_uri: String,
 }
 
 /// Gemini function call
@@ -289,6 +299,31 @@ impl GeminiProvider {
                             }
                             ContentBlock::ToolUse { .. } => {
                                 // Tool use should only appear in assistant messages
+                            }
+                            ContentBlock::Document { source } => {
+                                match source {
+                                    crate::models::DocumentSource::Base64 { media_type, data } => {
+                                        parts.push(GeminiPart::InlineData {
+                                            inline_data: GeminiInlineData {
+                                                mime_type: media_type.clone(),
+                                                data: data.clone(),
+                                            },
+                                        });
+                                    }
+                                    crate::models::DocumentSource::File { file_id } => {
+                                        // file_id is the Gemini file URI
+                                        parts.push(GeminiPart::FileData {
+                                            file_data: GeminiFileData {
+                                                mime_type: "application/pdf".to_string(), // Default
+                                                file_uri: file_id.clone(),
+                                            },
+                                        });
+                                    }
+                                    crate::models::DocumentSource::Url { url } => {
+                                        // Gemini doesn't support document URLs directly
+                                        eprintln!("Warning: Gemini doesn't support document URLs directly: {}", url);
+                                    }
+                                }
                             }
                         }
                     }
@@ -771,5 +806,160 @@ impl AIProvider for GeminiProvider {
                 usage: None,
             })
         }
+    }
+
+    async fn upload_file(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        upload: FileUpload,
+    ) -> Result<Option<FileUploadResponse>, ProviderError> {
+        let client = Client::new();
+
+        // Gemini uses resumable upload protocol (2-step process)
+        // Step 1: Initiate resumable upload and get upload URL
+
+        // Build base URL (remove /v1beta if present, we'll add /upload/v1beta/files)
+        let upload_base = base_url.trim_end_matches("/v1beta").trim_end_matches('/');
+        let init_url = format!("{}/upload/v1beta/files", upload_base);
+
+        let file_size = upload.file_data.len();
+        let metadata = serde_json::json!({
+            "file": {
+                "display_name": upload.filename
+            }
+        });
+
+        // Step 1: Initiate resumable upload
+        let init_response = client
+            .post(&init_url)
+            .header("x-goog-api-key", api_key)
+            .header("X-Goog-Upload-Protocol", "resumable")
+            .header("X-Goog-Upload-Command", "start")
+            .header("X-Goog-Upload-Header-Content-Length", file_size.to_string())
+            .header("X-Goog-Upload-Header-Content-Type", &upload.mime_type)
+            .header("Content-Type", "application/json")
+            .json(&metadata)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e))?;
+
+        // Check status
+        let status = init_response.status();
+        if !status.is_success() {
+            let error_text = init_response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        // Get upload URL from response headers
+        let upload_url = init_response
+            .headers()
+            .get("x-goog-upload-url")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| ProviderError::file_upload("No upload URL in response"))?
+            .to_string();
+
+        // Step 2: Upload file bytes
+        let upload_response = client
+            .post(&upload_url)
+            .header("Content-Length", file_size.to_string())
+            .header("X-Goog-Upload-Offset", "0")
+            .header("X-Goog-Upload-Command", "upload, finalize")
+            .body(upload.file_data.clone())
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e))?;
+
+        // Check status
+        let status = upload_response.status();
+        if !status.is_success() {
+            let error_text = upload_response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        // Parse response
+        #[derive(Deserialize)]
+        struct GeminiFileUploadResponse {
+            file: GeminiFileMetadata,
+        }
+
+        #[derive(Deserialize)]
+        struct GeminiFileMetadata {
+            name: String,
+            uri: String,
+            #[serde(rename = "mimeType")]
+            mime_type: String,
+            #[serde(rename = "sizeBytes")]
+            size_bytes: String,
+            state: String,
+        }
+
+        let upload_response: GeminiFileUploadResponse = upload_response.json().await
+            .map_err(|e| ProviderError::file_upload(format!("Failed to parse upload response: {}", e)))?;
+
+        // Gemini files expire after 48 hours
+        let expires_at = chrono::Utc::now() + chrono::Duration::hours(48);
+
+        Ok(Some(FileUploadResponse {
+            provider_file_id: upload_response.file.uri,
+            expires_at: Some(expires_at),
+            metadata: Some(serde_json::json!({
+                "filename": upload.filename,
+                "mime_type": upload_response.file.mime_type,
+                "size_bytes": upload_response.file.size_bytes,
+                "state": upload_response.file.state,
+                "name": upload_response.file.name,
+            })),
+        }))
+    }
+
+    fn supports_file_api(&self) -> bool {
+        true
+    }
+
+    fn file_expiration(&self) -> Option<chrono::Duration> {
+        Some(chrono::Duration::hours(48))  // Gemini files expire after 48 hours
+    }
+
+    async fn delete_file(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        provider_file_id: &str,
+    ) -> Result<(), ProviderError> {
+        let client = Client::new();
+
+        // provider_file_id could be:
+        // - Full URL: "https://generativelanguage.googleapis.com/v1beta/files/abc123"
+        // - Relative path: "files/abc123"
+        // Extract the file name part (after "/files/")
+        let file_name = if provider_file_id.starts_with("http") {
+            // Extract from URL
+            provider_file_id
+                .split("/files/")
+                .nth(1)
+                .unwrap_or(provider_file_id)
+        } else {
+            // Already a path like "files/abc123"
+            provider_file_id.strip_prefix("files/").unwrap_or(provider_file_id)
+        };
+
+        // Use x-goog-api-key header instead of query parameter
+        let delete_url = format!("{}/files/{}", base_url, file_name);
+
+        let response = client
+            .delete(&delete_url)
+            .header("x-goog-api-key", api_key)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        Ok(())
     }
 }

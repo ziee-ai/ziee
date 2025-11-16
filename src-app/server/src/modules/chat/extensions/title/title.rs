@@ -1,3 +1,4 @@
+use crate::core::Repos;
 // Title generation extension implementation
 
 use async_trait::async_trait;
@@ -12,8 +13,10 @@ use crate::common::AppError;
 use crate::modules::chat::core::{
     extension::{ChatExtension, ExtensionAction, StreamContext},
     models::Message,
-    repository::{conversations as conv_repo, messages as msg_repo},
+    
+    types::streaming::SSEChatStreamEvent,
 };
+use crate::modules::chat::extensions::title::extension::SSEChatStreamTitleUpdatedData;
 
 /// Title generation extension
 ///
@@ -111,16 +114,11 @@ impl TitleGenerationExtension {
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) {
         if let Some(tx) = tx {
-            let event_data = serde_json::json!({
-                "type": "title_updated",
-                "title": title
+            let event = SSEChatStreamEvent::TitleUpdated(SSEChatStreamTitleUpdatedData {
+                title: title.to_string(),
             });
 
-            let event = Event::default()
-                .event("title_updated")
-                .data(event_data.to_string());
-
-            let _ = tx.send(Ok(event));
+            let _ = tx.send(Ok(event.into()));
         }
     }
 }
@@ -144,7 +142,7 @@ impl ChatExtension for TitleGenerationExtension {
     ) -> Result<ExtensionAction, AppError> {
         // Check if conversation needs a title
         let conversation =
-            conv_repo::get_conversation(&self.pool, context.conversation_id, context.user_id)
+            Repos.chat.get_conversation( context.conversation_id, context.user_id)
                 .await?
                 .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -154,7 +152,7 @@ impl ChatExtension for TitleGenerationExtension {
         }
 
         // Get conversation history
-        let history = msg_repo::get_conversation_history(&self.pool, context.branch_id).await?;
+        let history = Repos.chat.get_conversation_history( context.branch_id).await?;
 
         // Count user and assistant messages (skip system messages)
         let message_count = history
@@ -247,13 +245,9 @@ impl ChatExtension for TitleGenerationExtension {
         };
 
         // Update conversation title
-        conv_repo::update_conversation(
-            &self.pool,
-            context.conversation_id,
-            context.user_id,
-            Some(title.clone()),
-        )
-        .await?;
+        Repos.chat
+            .update_conversation(context.conversation_id, context.user_id, Some(Some(title.clone())))
+            .await?;
 
         // Send title event
         self.send_title_event(&title, tx);

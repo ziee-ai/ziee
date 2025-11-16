@@ -79,6 +79,8 @@ async fn test_create_conversation_with_model() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;
@@ -115,6 +117,8 @@ async fn test_create_conversation_with_title_and_model() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;

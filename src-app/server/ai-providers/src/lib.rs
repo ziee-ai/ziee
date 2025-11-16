@@ -69,3 +69,9 @@ pub use provider::Provider;
 // Re-export commonly used types
 pub use error::ProviderError;
 pub use models::*;
+
+// Re-export individual providers for testing
+pub use providers::{AnthropicProvider, GeminiProvider, OpenAIProvider};
+
+// Re-export AIProvider trait for testing
+pub use traits::AIProvider;

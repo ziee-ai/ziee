@@ -21,6 +21,22 @@ pub async fn create_conversation(
     model_id: Option<Uuid>,
     title: Option<String>,
 ) -> Result<Conversation, AppError> {
+    // Validate model_id exists if provided
+    if let Some(mid) = model_id {
+        let model_exists = sqlx::query_scalar!(
+            "SELECT EXISTS(SELECT 1 FROM llm_models WHERE id = $1)",
+            mid
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::database_error)?
+        .unwrap_or(false);
+
+        if !model_exists {
+            return Err(AppError::not_found("Model"));
+        }
+    }
+
     // Start transaction to ensure conversation and default branch are created atomically
     let mut tx = pool.begin().await.map_err(AppError::database_error)?;
 
@@ -155,26 +171,52 @@ pub async fn update_conversation(
     pool: &PgPool,
     id: Uuid,
     user_id: Uuid,
-    title: Option<String>,
+    title: Option<Option<String>>,
 ) -> Result<Option<Conversation>, AppError> {
-    let conversation = sqlx::query_as!(
-        Conversation,
-        r#"
-        UPDATE conversations
-        SET
-            title = COALESCE($1, title),
-            updated_at = NOW()
-        WHERE id = $2 AND user_id = $3
-        RETURNING id, user_id, model_id as "model_id: _", title, active_branch_id,
-                  created_at as "created_at: _", updated_at as "updated_at: _"
-        "#,
-        title,
-        id,
-        user_id
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(AppError::database_error)?;
+    // Handle optional updates:
+    // - None = field not provided, don't update
+    // - Some(None) = explicitly set to NULL
+    // - Some(Some(value)) = set to value
+    let conversation = match title {
+        None => {
+            // Don't update title, just return current conversation
+            sqlx::query_as!(
+                Conversation,
+                r#"
+                SELECT id, user_id, model_id as "model_id: _", title, active_branch_id,
+                       created_at as "created_at: _", updated_at as "updated_at: _"
+                FROM conversations
+                WHERE id = $1 AND user_id = $2
+                "#,
+                id,
+                user_id
+            )
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::database_error)?
+        }
+        Some(new_title) => {
+            // Update title (could be None for NULL or Some(value) for a string)
+            sqlx::query_as!(
+                Conversation,
+                r#"
+                UPDATE conversations
+                SET
+                    title = $1,
+                    updated_at = NOW()
+                WHERE id = $2 AND user_id = $3
+                RETURNING id, user_id, model_id as "model_id: _", title, active_branch_id,
+                          created_at as "created_at: _", updated_at as "updated_at: _"
+                "#,
+                new_title as Option<String>,
+                id,
+                user_id
+            )
+            .fetch_optional(pool)
+            .await
+            .map_err(AppError::database_error)?
+        }
+    };
 
     Ok(conversation)
 }

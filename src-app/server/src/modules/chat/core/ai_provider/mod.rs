@@ -61,7 +61,7 @@ pub async fn create_provider_from_model_id(
         .base_url
         .as_deref()
         .unwrap_or_else(|| match provider_type {
-            "anthropic" => "https://api.anthropic.com",
+            "anthropic" => "https://api.anthropic.com/v1",
             "gemini" => "https://generativelanguage.googleapis.com",
             _ => "https://api.openai.com/v1",
         });

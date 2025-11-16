@@ -38,6 +38,21 @@ pub struct ChatStreamChunkFields {
     pub title: Option<String>,
 }
 
+/// Data for the TitleUpdated SSE event
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
+pub struct SSEChatStreamTitleUpdatedData {
+    /// The auto-generated title
+    pub title: String,
+}
+
+/// SSE event variants contributed by the title extension
+///
+/// These variants will be composed into the main SSEChatStreamEvent enum
+pub enum SSEChatStreamEventVariants {
+    /// Title generation complete event
+    TitleUpdated(SSEChatStreamTitleUpdatedData),
+}
+
 /// Factory function to create the extension instance
 /// Called by the auto-registration system
 pub fn create(pool: PgPool) -> Arc<dyn ChatExtension> {

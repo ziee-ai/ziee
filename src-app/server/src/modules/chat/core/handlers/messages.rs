@@ -10,7 +10,7 @@ use crate::{
     modules::{
         chat::core::{
             permissions::*,
-            repository::{conversations as conv_repo, messages as msg_repo},
+            
             types::{EditMessageRequest, EditMessageResponse, MessageWithContent},
         },
         permissions::{extractors::RequirePermissions, with_permission},
@@ -29,7 +29,7 @@ pub async fn get_conversation_history(
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<MessageWithContent>>> {
     // Verify conversation exists and user owns it
-    let conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
+    let conversation = Repos.chat.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -39,7 +39,7 @@ pub async fn get_conversation_history(
         .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
 
     // Get conversation history
-    let history = msg_repo::get_conversation_history(Repos.pool(), branch_id).await?;
+    let history = Repos.chat.get_conversation_history( branch_id).await?;
 
     Ok((StatusCode::OK, Json(history)))
 }
@@ -62,7 +62,7 @@ pub async fn get_message(
 
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<Json<MessageWithContent>> {
-    let message_with_content = msg_repo::get_message_with_content(Repos.pool(), message_id)
+    let message_with_content = Repos.chat.get_message_with_content( message_id)
         .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 
@@ -91,8 +91,13 @@ pub async fn edit_message(
     Path((conversation_id, message_id)): Path<(Uuid, Uuid)>,
     Json(request): Json<EditMessageRequest>,
 ) -> ApiResult<Json<EditMessageResponse>> {
+    // Validate content is not empty
+    if request.content.trim().is_empty() {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "Message content cannot be empty").into());
+    }
+
     // Verify conversation exists and user owns it
-    let conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
+    let conversation = Repos.chat.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -102,14 +107,9 @@ pub async fn edit_message(
         .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
 
     // Edit message (creates new branch with edited message)
-    let response = msg_repo::edit_message(
-        Repos.pool(),
-        message_id,
-        conversation_id,
-        request,
-        current_branch_id,
-    )
-    .await?;
+    let response = Repos.chat
+        .edit_message(message_id, conversation_id, request, current_branch_id)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -134,7 +134,7 @@ pub async fn delete_message(
 ) -> ApiResult<StatusCode> {
     // TODO: Verify user owns the conversation containing this message
 
-    let deleted_count = msg_repo::delete_message_and_descendants(Repos.pool(), message_id).await?;
+    let deleted_count = Repos.chat.delete_message_and_descendants( message_id).await?;
 
     if deleted_count == 0 {
         return Err(AppError::not_found("Message").into());

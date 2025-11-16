@@ -13,6 +13,7 @@ struct ExtensionInfo {
     request_fields: Vec<String>,
     response_fields: Vec<String>,
     delta_variants: Vec<String>,
+    stream_event_variants: Vec<String>,
 }
 
 fn main() {
@@ -50,6 +51,7 @@ fn main() {
                         let mut request_fields = Vec::new();
                         let mut response_fields = Vec::new();
                         let mut delta_variants = Vec::new();
+                        let mut stream_event_variants = Vec::new();
 
                         // Extract metadata and fields
                         for item in parsed.items {
@@ -102,6 +104,50 @@ fn main() {
                                         delta_variants.push(variant_tokens.to_string());
                                     }
                                 }
+                                // Extract SSEChatStreamEventVariants enum
+                                syn::Item::Enum(item_enum) if item_enum.ident == "SSEChatStreamEventVariants" => {
+                                    for variant in &item_enum.variants {
+                                        // Build fully-qualified variant with module path
+                                        // e.g., TitleUpdated(SSEChatStreamTitleUpdatedData) -> TitleUpdated(crate::modules::chat::extensions::title::extension::SSEChatStreamTitleUpdatedData)
+                                        let variant_name = &variant.ident;
+
+                                        if let syn::Fields::Unnamed(ref fields) = variant.fields {
+                                            for field in &fields.unnamed {
+                                                if let syn::Type::Path(ref type_path) = field.ty {
+                                                    // Get the type name
+                                                    let type_name = type_path.path.segments.last().unwrap().ident.to_string();
+
+                                                    // Build fully-qualified path
+                                                    let full_path = format!(
+                                                        "crate::modules::chat::{}::extension::{}",
+                                                        module_path,
+                                                        type_name
+                                                    );
+
+                                                    // Store as string with docs if present
+                                                    let docs = variant.attrs.iter()
+                                                        .filter_map(|attr| {
+                                                            if attr.path().is_ident("doc") {
+                                                                Some(quote! { #attr }.to_string())
+                                                            } else {
+                                                                None
+                                                            }
+                                                        })
+                                                        .collect::<Vec<_>>()
+                                                        .join("\n    ");
+
+                                                    let variant_str = if docs.is_empty() {
+                                                        format!("{}({})", variant_name, full_path)
+                                                    } else {
+                                                        format!("{}\n    {}({})", docs, variant_name, full_path)
+                                                    };
+
+                                                    stream_event_variants.push(variant_str);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 _ => {}
                             }
                         }
@@ -113,6 +159,7 @@ fn main() {
                             request_fields,
                             response_fields,
                             delta_variants,
+                            stream_event_variants,
                         });
                     }
                 }
@@ -189,6 +236,19 @@ fn generate_extensions_file(extensions: &[ExtensionInfo], dest_path: &PathBuf) {
         .collect::<Vec<_>>()
         .join("\n");
 
+    // Generate enum variants for SSEChatStreamEvent
+    let all_stream_event_variants: Vec<String> = extensions
+        .iter()
+        .flat_map(|ext| ext.stream_event_variants.iter())
+        .cloned()
+        .collect();
+
+    let stream_event_variants_code = all_stream_event_variants
+        .iter()
+        .map(|variant| format!("    {},", variant))
+        .collect::<Vec<_>>()
+        .join("\n");
+
     let generated = format!(
         r#"// Auto-generated list of chat extension fields
 // DO NOT EDIT - Generated by build.rs
@@ -207,10 +267,16 @@ pub const RESPONSE_FIELDS: &[&str] = &[
 pub const DELTA_VARIANTS: &[&str] = &[
 {}
 ];
+
+// SSEChatStreamEvent enum variants
+pub const STREAM_EVENT_VARIANTS: &[&str] = &[
+{}
+];
 "#,
         request_fields_code,
         response_fields_code,
-        delta_variants_code
+        delta_variants_code,
+        stream_event_variants_code
     );
 
     fs::write(dest_path, generated).unwrap();

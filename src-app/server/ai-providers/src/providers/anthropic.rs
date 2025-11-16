@@ -4,7 +4,8 @@ use crate::{
     error::ProviderError,
     models::{
         ChatMessage, ChatRequest, EmbeddingsRequest, EmbeddingsResponse,
-        Role, StreamChatChunk, Tool, ToolChoice,
+        Role, StreamChatChunk, Tool, ToolChoice, FileUpload, FileUploadResponse,
+        DocumentSource,
     },
     traits::AIProvider,
 };
@@ -45,6 +46,9 @@ enum AnthropicContentBlock {
     Image {
         source: AnthropicImageSource,
     },
+    Document {
+        source: AnthropicDocumentSource,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -61,9 +65,23 @@ enum AnthropicContentBlock {
 #[derive(Serialize)]
 struct AnthropicImageSource {
     #[serde(rename = "type")]
-    source_type: String, // "base64"
+    source_type: String, // "base64" or "file"
     media_type: String,  // "image/jpeg", "image/png", etc.
     data: String,        // base64 encoded image data
+}
+
+#[derive(Serialize)]
+struct AnthropicDocumentSource {
+    #[serde(rename = "type")]
+    source_type: String, // "base64", "url", or "file"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    media_type: Option<String>,  // "application/pdf", etc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<String>,        // base64 encoded document data
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,         // URL to document
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_id: Option<String>,     // Anthropic file ID (from Files API)
 }
 
 /// Anthropic streaming chunk
@@ -208,6 +226,40 @@ impl AnthropicProvider {
                                     tool_use_id: tool_use_id.clone(),
                                     content: result_content,
                                     is_error: *is_error,
+                                });
+                            }
+                            ContentBlock::Document { source } => {
+                                let anthropic_source = match source {
+                                    DocumentSource::Base64 { media_type, data } => {
+                                        AnthropicDocumentSource {
+                                            source_type: "base64".to_string(),
+                                            media_type: Some(media_type.clone()),
+                                            data: Some(data.clone()),
+                                            url: None,
+                                            file_id: None,
+                                        }
+                                    }
+                                    DocumentSource::Url { url } => {
+                                        AnthropicDocumentSource {
+                                            source_type: "url".to_string(),
+                                            media_type: None,
+                                            data: None,
+                                            url: Some(url.clone()),
+                                            file_id: None,
+                                        }
+                                    }
+                                    DocumentSource::File { file_id } => {
+                                        AnthropicDocumentSource {
+                                            source_type: "file".to_string(),
+                                            media_type: None,
+                                            data: None,
+                                            url: None,
+                                            file_id: Some(file_id.clone()),
+                                        }
+                                    }
+                                };
+                                anthropic_blocks.push(AnthropicContentBlock::Document {
+                                    source: anthropic_source,
                                 });
                             }
                         }
@@ -550,5 +602,98 @@ impl AIProvider for AnthropicProvider {
         Err(ProviderError::not_supported(
             "Anthropic does not support embeddings",
         ))
+    }
+
+    async fn upload_file(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        upload: FileUpload,
+    ) -> Result<Option<FileUploadResponse>, ProviderError> {
+        let client = Client::new();
+
+        // Create multipart form with file data
+        let file_part = reqwest::multipart::Part::bytes(upload.file_data)
+            .file_name(upload.filename.clone())
+            .mime_str(&upload.mime_type)
+            .map_err(|e| ProviderError::InvalidRequest(format!("Invalid MIME type: {}", e)))?;
+
+        let form = reqwest::multipart::Form::new().part("file", file_part);
+
+        // Upload to Anthropic Files API
+        let response = client
+            .post(format!("{}/files", base_url))
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "files-api-2025-04-14")
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e))?;
+
+        // Check status
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        // Parse response
+        #[derive(Deserialize)]
+        struct AnthropicFileUploadResponse {
+            id: String,
+            #[serde(rename = "type")]
+            file_type: String,
+            filename: String,
+            size_bytes: u64,
+        }
+
+        let upload_response: AnthropicFileUploadResponse = response.json().await
+            .map_err(|e| ProviderError::file_upload(format!("Failed to parse upload response: {}", e)))?;
+
+        Ok(Some(FileUploadResponse {
+            provider_file_id: upload_response.id,
+            expires_at: None,  // Anthropic files don't expire
+            metadata: Some(json!({
+                "filename": upload_response.filename,
+                "file_type": upload_response.file_type,
+                "size_bytes": upload_response.size_bytes,
+                "mime_type": upload.mime_type,
+            })),
+        }))
+    }
+
+    fn supports_file_api(&self) -> bool {
+        true
+    }
+
+    fn file_expiration(&self) -> Option<chrono::Duration> {
+        None  // Anthropic files don't expire
+    }
+
+    async fn delete_file(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        provider_file_id: &str,
+    ) -> Result<(), ProviderError> {
+        let client = Client::new();
+
+        let response = client
+            .delete(format!("{}/files/{}", base_url, provider_file_id))
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "files-api-2025-04-14")
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        Ok(())
     }
 }

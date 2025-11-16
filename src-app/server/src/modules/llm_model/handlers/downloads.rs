@@ -4,7 +4,7 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    Extension, Json, debug_handler,
+    Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
     response::sse::{Event, Sse},
@@ -20,13 +20,13 @@ use uuid::Uuid;
 
 use crate::{
     common::{ApiResult, AppError},
+    core::repository::Repos,
     modules::permissions::{RequirePermissions, with_permission},
 };
 
 use super::super::{
     models::{DownloadInstance, DownloadPhase, DownloadStatus},
     permissions::*,
-    repository::DownloadInstanceRepository,
     types::{DownloadInstanceListResponse, UpdateDownloadStatusRequest},
 };
 
@@ -124,7 +124,7 @@ lazy_static::lazy_static! {
 pub async fn list_all_downloads(
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
     Query(params): Query<DownloadPaginationQuery>,
-    Extension(repo): Extension<DownloadInstanceRepository>,
+    
 ) -> ApiResult<Json<DownloadInstanceListResponse>> {
     let page = params.page.unwrap_or(1);
     let per_page = params.per_page.unwrap_or(20);
@@ -135,7 +135,7 @@ pub async fn list_all_downloads(
         .as_ref()
         .and_then(|s| DownloadStatus::from_str(s));
 
-    let response = repo
+    let response = Repos.download_instance
         .list(page, per_page, status_filter)
         .await
         .map_err(|e| {
@@ -163,9 +163,9 @@ pub fn list_all_downloads_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_download(
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
     Path(download_id): Path<Uuid>,
-    Extension(repo): Extension<DownloadInstanceRepository>,
+    
 ) -> ApiResult<Json<DownloadInstance>> {
-    let download = repo
+    let download = Repos.download_instance
         .get_by_id(download_id)
         .await
         .map_err(|e| {
@@ -195,10 +195,10 @@ pub fn get_download_docs(op: TransformOperation) -> TransformOperation {
 pub async fn cancel_download(
     _auth: RequirePermissions<(LlmModelsDownloadsCancel,)>,
     Path(download_id): Path<Uuid>,
-    Extension(repo): Extension<DownloadInstanceRepository>,
+    
 ) -> ApiResult<StatusCode> {
     // Verify the download exists and user has access
-    let download = repo
+    let download = Repos.download_instance
         .get_by_id(download_id)
         .await
         .map_err(|e| {
@@ -240,7 +240,7 @@ pub async fn cancel_download(
         model_id: None,
     };
 
-    let _updated = repo
+    let _updated = Repos.download_instance
         .update_status(download_id, cancel_request)
         .await
         .map_err(|e| {
@@ -252,7 +252,7 @@ pub async fn cancel_download(
     tracing::info!("Download {} marked as cancelled", download_id);
 
     // Spawn a background task to delete the cancelled download after 60 seconds
-    let repo_clone = repo.clone();
+    let repo_clone = Repos.download_instance.clone();
     tokio::spawn(async move {
         tracing::info!(
             "Scheduling deletion of cancelled download {} in 60 seconds",
@@ -302,10 +302,10 @@ pub fn cancel_download_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_download(
     _auth: RequirePermissions<(LlmModelsDownloadsDelete,)>,
     Path(download_id): Path<Uuid>,
-    Extension(repo): Extension<DownloadInstanceRepository>,
+    
 ) -> ApiResult<StatusCode> {
     // Verify the download exists and user has access
-    let download = repo
+    let download = Repos.download_instance
         .get_by_id(download_id)
         .await
         .map_err(|e| {
@@ -322,7 +322,7 @@ pub async fn delete_download(
         ));
     }
 
-    let deleted = repo.delete(download_id).await.map_err(|e| {
+    let deleted = Repos.download_instance.delete(download_id).await.map_err(|e| {
         tracing::error!("Failed to delete download {}: {}", download_id, e);
         AppError::internal_error("Failed to delete download").to_api_error()
     })?;
@@ -352,7 +352,7 @@ pub fn delete_download_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn subscribe_download_progress(
     _auth: RequirePermissions<(LlmModelsDownloadsRead,)>,
-    Extension(repo): Extension<DownloadInstanceRepository>,
+    
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
     let client_id = Uuid::new_v4();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -371,7 +371,7 @@ pub async fn subscribe_download_progress(
     let _ = tx.send(Ok(connected_event.into()));
 
     // Start monitoring if not already active
-    start_download_monitoring(repo).await;
+    start_download_monitoring().await;
 
     // Create the SSE stream with proper cleanup
     let stream = async_stream::stream! {
@@ -406,7 +406,7 @@ pub fn subscribe_download_progress_docs(op: TransformOperation) -> TransformOper
 // =====================================================
 
 /// Start download monitoring service
-async fn start_download_monitoring(repo: DownloadInstanceRepository) {
+async fn start_download_monitoring() {
     let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
     if *monitoring_active {
         return; // Already running
@@ -438,7 +438,7 @@ async fn start_download_monitoring(repo: DownloadInstanceRepository) {
             }
 
             // Fetch active downloads
-            let downloads = repo.get_all_active().await;
+            let downloads = Repos.download_instance.get_all_active().await;
 
             match downloads {
                 Ok(downloads) => {

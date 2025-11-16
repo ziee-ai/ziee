@@ -74,12 +74,38 @@ pub fn compose_chat_stream_chunk_extensions(_attr: TokenStream, item: TokenStrea
 /// Extensions are discovered by the build script and variants are added directly.
 #[proc_macro_attribute]
 pub fn compose_content_block_delta_variants(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    compose_enum_variants(item, "DELTA_VARIANTS")
+}
+
+/// Attribute macro to compose SSEChatStreamEvent enum variants from extensions
+///
+/// This macro automatically discovers all extension.rs files in modules/chat/**/
+/// parses their SSEChatStreamEventVariants, and adds the variants to the target enum.
+///
+/// Usage:
+/// ```
+/// #[compose_chat_stream_events]
+/// pub enum SSEChatStreamEvent {
+///     Content(ChatStreamChunk),
+///     Complete(SSEChatStreamCompleteData),
+///     Error(SSEChatStreamErrorData),
+/// }
+/// ```
+///
+/// Extensions are discovered by the build script and variants are added directly.
+#[proc_macro_attribute]
+pub fn compose_chat_stream_events(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    compose_enum_variants(item, "STREAM_EVENT_VARIANTS")
+}
+
+/// Helper function to compose enum variants from generated code
+fn compose_enum_variants(item: TokenStream, const_name: &str) -> TokenStream {
     let mut item_enum = parse_macro_input!(item as ItemEnum);
 
     // Parse extension enum variant definitions from the embedded code
     let extension_variants: Vec<syn::Variant> = EXTENSIONS_CODE
         .lines()
-        .skip_while(|line| !line.contains("DELTA_VARIANTS"))  // Skip until we find the right const
+        .skip_while(|line| !line.contains(const_name))  // Skip until we find the right const
         .skip(1)  // Skip the const declaration line
         .take_while(|line| !line.contains("];"))  // Take until end of array
         .filter_map(|line| {

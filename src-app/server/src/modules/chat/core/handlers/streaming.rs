@@ -18,9 +18,8 @@ use crate::{
         chat::core::{
             extension::{ExtensionRegistry, SendMessageRequest},
             permissions::*,
-            repository::conversations as conv_repo,
             services::StreamingService,
-            types::{ChatStreamChunk, StreamError},
+            types::streaming::{SSEChatStreamEvent, SSEChatStreamErrorData},
         },
         permissions::{extractors::RequirePermissions, with_permission},
     },
@@ -36,21 +35,38 @@ pub async fn send_message(
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<SendMessageRequest>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    // Validate request
+    if request.content.trim().is_empty() {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "Message content cannot be empty").into());
+    }
+
     // Verify conversation exists and user owns it
-    let _conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
+    let _conversation = Repos.chat
+        .get_conversation(conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
+
+    // Validate model exists
+    Repos.llm_model
+        .get_by_id(request.model_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Model"))?;
+
+    // Validate branch exists and belongs to this conversation
+    let branch = Repos.chat
+        .get_branch(request.branch_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Branch"))?;
+
+    if branch.conversation_id != conversation_id {
+        return Err(AppError::bad_request("INVALID_BRANCH", "Branch does not belong to this conversation").into());
+    }
 
     // Handle branch creation if requested (for edit/regenerate flow)
     let branch_id = if let Some(message_id) = request.create_branch_from_message_id {
         // Create new branch from the specified message
-        let new_branch =
-            crate::modules::chat::core::repository::messages::create_branch_from_message(
-                Repos.pool(),
-                conversation_id,
-                request.branch_id,
-                message_id,
-            )
+        let new_branch = Repos.chat
+            .create_branch_from_message(conversation_id, request.branch_id, message_id)
             .await?;
 
         new_branch.id
@@ -60,14 +76,9 @@ pub async fn send_message(
     };
 
     // Update conversation state with the active branch and model
-    conv_repo::update_conversation_state(
-        Repos.pool(),
-        conversation_id,
-        auth.user.id,
-        request.model_id,
-        Some(branch_id),
-    )
-    .await?;
+    Repos.chat
+        .update_conversation_state(conversation_id, auth.user.id, request.model_id, Some(branch_id))
+        .await?;
 
     // Create streaming service with extensions
     // Provider is created inside send_message based on request.model_id
@@ -79,58 +90,21 @@ pub async fn send_message(
         .send_message(branch_id, conversation_id, auth.user.id, request)
         .await?;
 
-    // Clone IDs for use in closure (they're Copy types)
-    let conv_id = conversation_id;
-    let br_id = branch_id;
-
     // Transform chunk stream to SSE Event stream
     let sse_stream = chunk_stream.map(move |result| {
         match result {
             Ok(chunk) => {
-                // Serialize chunk to JSON
-                match serde_json::to_string(&chunk) {
-                    Ok(json) => Ok(Event::default().data(json)),
-                    Err(e) => {
-                        // If serialization fails, send error event
-                        let error_chunk = ChatStreamChunk {
-                            content: Vec::new(),
-                            message_id: chunk.message_id,
-                            conversation_id: chunk.conversation_id,
-                            branch_id: chunk.branch_id,
-                            finish_reason: None,
-                            usage: None,
-                            title: None,
-                            error: Some(StreamError {
-                                message: format!("Serialization error: {}", e),
-                                code: Some("SERIALIZATION_ERROR".to_string()),
-                            }),
-                        };
-                        match serde_json::to_string(&error_chunk) {
-                            Ok(json) => Ok(Event::default().data(json)),
-                            Err(_) => Ok(Event::default().data(r#"{"error":{"message":"Failed to serialize chunk","code":"SERIALIZATION_ERROR"}}"#)),
-                        }
-                    }
-                }
+                // Wrap chunk in SSE event
+                let event = SSEChatStreamEvent::Content(chunk);
+                Ok(event.into())
             }
             Err(e) => {
                 // Send error as SSE event
-                let error_chunk = ChatStreamChunk {
-                    content: Vec::new(),
-                    message_id: None,
-                    conversation_id: Some(conv_id),
-                    branch_id: Some(br_id),
-                    finish_reason: None,
-                    usage: None,
-                    title: None,
-                    error: Some(StreamError {
-                        message: e.to_string(),
-                        code: Some("STREAM_ERROR".to_string()),
-                    }),
-                };
-                match serde_json::to_string(&error_chunk) {
-                    Ok(json) => Ok(Event::default().data(json)),
-                    Err(_) => Ok(Event::default().data(r#"{"error":{"message":"Stream error","code":"STREAM_ERROR"}}"#)),
-                }
+                let event = SSEChatStreamEvent::Error(SSEChatStreamErrorData {
+                    message: e.to_string(),
+                    code: Some("STREAM_ERROR".to_string()),
+                });
+                Ok(event.into())
             }
         }
     });
@@ -149,17 +123,10 @@ pub fn send_message_docs(op: TransformOperation) -> TransformOperation {
         .summary("Send message and stream AI response")
         .description(
             "Send a user message to a conversation and receive the AI response as a Server-Sent Events (SSE) stream. \
-             Each event contains a ChatStreamChunk with incremental content deltas.",
+             Events include: 'content' (incremental content deltas), 'complete' (stream finished), 'error' (stream error), \
+             and extension events like 'titleUpdated'.",
         )
-        .response_with::<200, (), _>(|res| {
-            res.description(
-                "SSE stream of ChatStreamChunk objects. Each event contains JSON with incremental content deltas. \
-                 Example events:\n\
-                 data: {\"content\":[{\"TextDelta\":{\"index\":0,\"delta\":\"Hello\"}}],\"message_id\":\"...\",\"finish_reason\":null}\n\
-                 data: {\"content\":[{\"TextDelta\":{\"index\":0,\"delta\":\" world\"}}],\"message_id\":\"...\",\"finish_reason\":null}\n\
-                 data: {\"content\":[],\"message_id\":\"...\",\"finish_reason\":\"stop\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}"
-            )
-        })
-        .response_with::<404, (), _>(|res| res.description("Conversation not found"))
-        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response::<200, Json<SSEChatStreamEvent>>()
+        .response::<404, ()>()
+        .response::<401, ()>()
 }

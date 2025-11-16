@@ -1,0 +1,45 @@
+# Minimal config for OpenAPI generation using docker build database
+app:
+  data_dir: "/tmp/ziee-openapi-gen"
+
+postgresql:
+  use_embedded: false
+  external:
+    host: "127.0.0.1"
+    port: 54321
+    username: "postgres"
+    password: "password"
+    database: "postgres"
+  pool:
+    max_connections: 2
+    min_connections: 1
+    acquire_timeout_secs: 5
+    idle_timeout_secs: 30
+    max_lifetime_secs: 300
+
+server:
+  host: "127.0.0.1"
+  port: 0
+  api_prefix: "/api"
+  cors:
+    allow_origins:
+      - "http://localhost:5173"
+    allow_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+    allow_headers:
+      - "Content-Type"
+      - "Authorization"
+
+logging:
+  level: "error"
+  format: "pretty"
+
+jwt:
+  secret: "dev-secret-change-in-production-min-32-chars-long"
+  issuer: "ziee-chat"
+  audience: "ziee-chat-api"
+  access_token_expiry_hours: 24
+  refresh_token_expiry_days: 30

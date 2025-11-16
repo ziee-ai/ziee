@@ -75,6 +75,12 @@ pub enum ContentBlock {
         source: ImageSource,
     },
 
+    /// Document content (PDFs, etc.)
+    Document {
+        #[serde(flatten)]
+        source: DocumentSource,
+    },
+
     /// Tool use request (model wants to call a tool)
     ToolUse {
         id: String,
@@ -108,6 +114,54 @@ pub enum ImageSource {
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
     },
+}
+
+/// Document source for PDFs and other documents
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DocumentSource {
+    /// Base64-encoded document data
+    Base64 {
+        media_type: String,
+        data: String,
+    },
+    /// URL to document
+    Url {
+        url: String,
+    },
+    /// Provider file reference (Anthropic/Gemini Files API)
+    File {
+        file_id: String,
+    },
+}
+
+/// File upload request for provider Files APIs
+#[derive(Debug, Clone)]
+pub struct FileUpload {
+    /// Original filename
+    pub filename: String,
+    /// Raw file data
+    pub file_data: Vec<u8>,
+    /// MIME type (e.g., "application/pdf", "image/jpeg")
+    pub mime_type: String,
+}
+
+/// File upload response from provider Files API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileUploadResponse {
+    /// Provider's file ID or URI
+    pub provider_file_id: String,
+
+    /// When the file expires (None = no expiration)
+    /// - Anthropic: None (no expiration)
+    /// - Gemini: Some(timestamp) - 48 hours from upload
+    /// - OpenAI: None (no expiration for Assistants API)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+
+    /// Provider-specific metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 impl ChatMessage {

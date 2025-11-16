@@ -16,7 +16,7 @@ use crate::{
         chat::core::{
             models::Conversation,
             permissions::*,
-            repository::conversations as repo,
+            
             types::{ConversationResponse, CreateConversationRequest, UpdateConversationRequest},
         },
         permissions::{extractors::RequirePermissions, with_permission},
@@ -34,7 +34,7 @@ pub struct PaginationQuery {
     pub page: i64,
 
     /// Items per page (max 100)
-    #[serde(default = "default_limit")]
+    #[serde(default = "default_limit", alias = "per_page")]
     pub limit: i64,
 }
 
@@ -56,8 +56,15 @@ pub async fn create_conversation(
 
     Json(request): Json<CreateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
+    // Validate title length if provided
+    if let Some(title) = &request.title {
+        if title.len() > 500 {
+            return Err(AppError::bad_request("VALIDATION_ERROR", "Title must not exceed 500 characters").into());
+        }
+    }
+
     let conversation =
-        repo::create_conversation(Repos.pool(), auth.user.id, request.model_id, request.title)
+        Repos.chat.create_conversation( auth.user.id, request.model_id, request.title)
             .await?;
 
     Ok((StatusCode::CREATED, Json(conversation)))
@@ -81,7 +88,7 @@ pub async fn get_conversation(
 
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Conversation>> {
-    let conversation = repo::get_conversation(Repos.pool(), id, auth.user.id)
+    let conversation = Repos.chat.get_conversation( id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -111,7 +118,7 @@ pub async fn list_conversations(
     let page = params.page.max(1);
     let offset = (page - 1) * limit;
 
-    let conversations = repo::list_conversations(Repos.pool(), auth.user.id, limit, offset).await?;
+    let conversations = Repos.chat.list_conversations( auth.user.id, limit, offset).await?;
 
     Ok((StatusCode::OK, Json(conversations)))
 }
@@ -134,7 +141,14 @@ pub async fn update_conversation(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
-    let conversation = repo::update_conversation(Repos.pool(), id, auth.user.id, request.title)
+    // Validate title length if provided
+    if let Some(Some(title)) = &request.title {
+        if title.len() > 500 {
+            return Err(AppError::bad_request("VALIDATION_ERROR", "Title must not exceed 500 characters").into());
+        }
+    }
+
+    let conversation = Repos.chat.update_conversation( id, auth.user.id, request.title)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -159,7 +173,7 @@ pub async fn delete_conversation(
 
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    let deleted = repo::delete_conversation(Repos.pool(), id, auth.user.id).await?;
+    let deleted = Repos.chat.delete_conversation( id, auth.user.id).await?;
 
     if !deleted {
         return Err(AppError::not_found("Conversation").into());

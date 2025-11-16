@@ -416,6 +416,11 @@ impl OpenAIProvider {
                                 }
                             }
                         }
+                        ContentBlock::Document { .. } => {
+                            // OpenAI chat doesn't support document uploads via vision API
+                            // Documents are only supported via Assistants API
+                            eprintln!("Warning: OpenAI chat doesn't support document uploads (use Assistants API instead)");
+                        }
                     }
                 }
 

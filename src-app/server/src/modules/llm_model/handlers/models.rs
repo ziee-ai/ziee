@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     common::r#type::{ApiResult, AppError},
-    core::events::EventBus,
+    core::{events::EventBus, repository::Repos},
     modules::permissions::{RequirePermissions, with_permission},
 };
 use std::sync::Arc;
@@ -21,7 +21,6 @@ use super::super::{
     events::LlmModelEvent,
     models::{DownloadInstance, LlmModel},
     permissions::*,
-    repository::LlmModelRepository,
     types::{CreateLlmModelRequest, ListModelsQuery, LlmModelListResponse, UpdateLlmModelRequest},
     utils,
 };
@@ -36,15 +35,14 @@ use super::super::{
 pub async fn list_models(
     _auth: RequirePermissions<(LlmModelsRead,)>,
     Query(params): Query<ListModelsQuery>,
-    Extension(repo): Extension<LlmModelRepository>,
 ) -> ApiResult<Json<LlmModelListResponse>> {
     // Get models based on whether provider_id filter is provided
     let all_models = if let Some(provider_id) = params.provider_id {
         // Filter by provider
-        repo.list_by_provider(provider_id).await?
+        Repos.llm_model.list_by_provider(provider_id).await?
     } else {
         // Get all models across all providers
-        repo.list_all().await?
+        Repos.llm_model.list_all().await?
     };
 
     // Calculate pagination
@@ -84,9 +82,9 @@ pub fn list_models_docs(op: TransformOperation) -> TransformOperation {
 pub async fn get_model(
     _auth: RequirePermissions<(LlmModelsRead,)>,
     Path(model_id): Path<Uuid>,
-    Extension(repo): Extension<LlmModelRepository>,
+    
 ) -> ApiResult<Json<LlmModel>> {
-    let model = repo
+    let model = Repos.llm_model
         .get_by_id(model_id)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
@@ -108,7 +106,7 @@ pub fn get_model_docs(op: TransformOperation) -> TransformOperation {
 #[debug_handler]
 pub async fn create_model(
     _auth: RequirePermissions<(LlmModelsCreate,)>,
-    Extension(repo): Extension<LlmModelRepository>,
+    
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateLlmModelRequest>,
 ) -> ApiResult<Json<LlmModel>> {
@@ -116,7 +114,7 @@ pub async fn create_model(
     utils::validate_create_request(&request)?;
 
     // Create model
-    let model = repo.create(request).await?;
+    let model = Repos.llm_model.create(request).await?;
 
     // Emit event
     event_bus.emit_async(LlmModelEvent::created(model.clone()).into());
@@ -139,7 +137,7 @@ pub fn create_model_docs(op: TransformOperation) -> TransformOperation {
 pub async fn update_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
-    Extension(repo): Extension<LlmModelRepository>,
+    
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<UpdateLlmModelRequest>,
 ) -> ApiResult<Json<LlmModel>> {
@@ -147,7 +145,7 @@ pub async fn update_model(
     utils::validate_update_request(&request)?;
 
     // Update model
-    let model = repo
+    let model = Repos.llm_model
         .update(model_id, request)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
@@ -174,11 +172,11 @@ pub fn update_model_docs(op: TransformOperation) -> TransformOperation {
 pub async fn delete_model(
     _auth: RequirePermissions<(LlmModelsDelete,)>,
     Path(model_id): Path<Uuid>,
-    Extension(repo): Extension<LlmModelRepository>,
+    
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<StatusCode> {
     // Get model details before deletion (need provider_id for file path)
-    let model = repo.get_by_id(model_id).await?;
+    let model = Repos.llm_model.get_by_id(model_id).await?;
 
     if model.is_none() {
         return Err(AppError::not_found("Model").to_api_error());
@@ -189,7 +187,7 @@ pub async fn delete_model(
     let model_name = model.name.clone();
 
     // Delete from database first
-    let deleted = repo.delete(model_id).await?;
+    let deleted = Repos.llm_model.delete(model_id).await?;
 
     if !deleted {
         return Err(AppError::not_found("Model").to_api_error());
@@ -240,7 +238,7 @@ pub fn delete_model_docs(op: TransformOperation) -> TransformOperation {
 pub async fn enable_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
-    Extension(repo): Extension<LlmModelRepository>,
+    
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<Json<LlmModel>> {
     let request = UpdateLlmModelRequest {
@@ -248,7 +246,7 @@ pub async fn enable_model(
         ..Default::default()
     };
 
-    let model = repo
+    let model = Repos.llm_model
         .update(model_id, request)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
@@ -274,7 +272,7 @@ pub fn enable_model_docs(op: TransformOperation) -> TransformOperation {
 pub async fn disable_model(
     _auth: RequirePermissions<(LlmModelsEdit,)>,
     Path(model_id): Path<Uuid>,
-    Extension(repo): Extension<LlmModelRepository>,
+    
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> ApiResult<Json<LlmModel>> {
     let request = UpdateLlmModelRequest {
@@ -282,7 +280,7 @@ pub async fn disable_model(
         ..Default::default()
     };
 
-    let model = repo
+    let model = Repos.llm_model
         .update(model_id, request)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;

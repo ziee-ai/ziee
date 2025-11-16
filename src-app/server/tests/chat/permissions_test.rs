@@ -167,6 +167,8 @@ async fn test_send_message_requires_permission() {
             "conversations::create",
             "llm_models::read",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;

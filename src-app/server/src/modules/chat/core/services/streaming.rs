@@ -124,6 +124,12 @@ impl StreamingService {
                     }
                 };
 
+                // Filter out the just-created assistant message (it has no content yet)
+                // This prevents sending empty messages to the AI provider
+                history.retain(|msg_with_content| {
+                    msg_with_content.message.id != assistant_message.id
+                });
+
                 // Process content from database through extensions (enrichment phase)
                 // This must happen before creating StreamContext to avoid borrowing issues
                 if let Some(registry) = &extension_registry {

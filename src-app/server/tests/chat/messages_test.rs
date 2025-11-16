@@ -28,9 +28,8 @@ async fn test_get_conversation_history_empty() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body: serde_json::Value = response.json().await.unwrap();
+    let messages: Vec<serde_json::Value> = response.json().await.unwrap();
 
-    let messages = body["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 0, "New conversation should have no messages");
 }
 
@@ -214,6 +213,8 @@ async fn test_send_message_empty_content() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;
@@ -254,6 +255,8 @@ async fn test_send_message_invalid_branch_id() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;
@@ -365,6 +368,8 @@ async fn test_send_message_returns_sse_stream() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;

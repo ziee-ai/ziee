@@ -2,9 +2,10 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk, FileUpload, FileUploadResponse},
 };
 use async_trait::async_trait;
+use chrono::Duration;
 use futures_core::Stream;
 use std::pin::Pin;
 
@@ -108,4 +109,80 @@ pub trait AIProvider: Send + Sync {
         base_url: &str,
         request: EmbeddingsRequest,
     ) -> Result<EmbeddingsResponse, ProviderError>;
+
+    /// Uploads a file to the provider's Files API (if supported)
+    ///
+    /// Returns `None` if the provider doesn't support file uploads.
+    /// This is used for caching files across multiple messages to reduce costs.
+    ///
+    /// # Parameters
+    ///
+    /// - `api_key`: The API key for authentication
+    /// - `base_url`: The base URL for the provider's API
+    /// - `upload`: The file upload request containing filename, data, and MIME type
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(FileUploadResponse))` if upload succeeds
+    /// - `Ok(None)` if provider doesn't support file uploads
+    /// - `Err(ProviderError)` if upload fails
+    ///
+    /// # Provider Support
+    ///
+    /// - **Anthropic**: ✅ Supported (no expiration, workspace-scoped)
+    /// - **Gemini**: ✅ Supported (48-hour expiration, project-scoped)
+    /// - **OpenAI**: ❌ Not supported for chat vision (use base64 instead)
+    /// - **Others**: ❌ Not supported
+    async fn upload_file(
+        &self,
+        _api_key: &str,
+        _base_url: &str,
+        _upload: FileUpload,
+    ) -> Result<Option<FileUploadResponse>, ProviderError> {
+        Ok(None) // Default: no file API support
+    }
+
+    /// Checks if this provider supports file upload APIs
+    ///
+    /// # Returns
+    ///
+    /// - `true` if provider has a Files API (Anthropic, Gemini)
+    /// - `false` otherwise (OpenAI, Groq, etc.)
+    fn supports_file_api(&self) -> bool {
+        false
+    }
+
+    /// Returns the file expiration duration for this provider
+    ///
+    /// # Returns
+    ///
+    /// - `None`: Files don't expire (Anthropic)
+    /// - `Some(Duration::hours(48))`: Files expire after 48 hours (Gemini)
+    ///
+    /// # Default
+    ///
+    /// Returns `None` (no expiration)
+    fn file_expiration(&self) -> Option<Duration> {
+        None
+    }
+
+    /// Deletes a file from the provider's storage (if supported)
+    ///
+    /// # Parameters
+    ///
+    /// - `api_key`: The API key for authentication
+    /// - `base_url`: The base URL for the provider's API
+    /// - `provider_file_id`: The provider's file ID to delete
+    ///
+    /// # Default
+    ///
+    /// Does nothing (no-op) for providers that don't support file deletion.
+    async fn delete_file(
+        &self,
+        _api_key: &str,
+        _base_url: &str,
+        _provider_file_id: &str,
+    ) -> Result<(), ProviderError> {
+        Ok(()) // Default: no-op
+    }
 }

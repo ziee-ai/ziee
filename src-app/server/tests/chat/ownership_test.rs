@@ -35,7 +35,7 @@ async fn test_user_cannot_get_other_users_conversation() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -71,7 +71,7 @@ async fn test_user_cannot_update_other_users_conversation() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -102,7 +102,7 @@ async fn test_user_cannot_delete_other_users_conversation() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -133,9 +133,8 @@ async fn test_user_cannot_see_other_users_conversation_in_list() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body: serde_json::Value = response.json().await.unwrap();
+    let conversations: Vec<serde_json::Value> = response.json().await.unwrap();
 
-    let conversations = body["conversations"].as_array().unwrap();
     assert_eq!(conversations.len(), 0, "User2 should not see User1's conversation");
 }
 
@@ -171,7 +170,7 @@ async fn test_user_cannot_get_other_users_messages() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -185,6 +184,8 @@ async fn test_user_cannot_send_to_other_users_conversation() {
             "llm_models::read",
             "llm_models::create",
             "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
         ],
     )
     .await;
@@ -221,7 +222,7 @@ async fn test_user_cannot_send_to_other_users_conversation() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 // =====================================================
@@ -248,7 +249,11 @@ async fn test_user_cannot_create_branch_in_other_users_conversation() {
     let conversation = super::helpers::create_conversation(&server, &user1.token, None, None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
 
-    let payload = json!({});
+    // Use a fake but valid UUID for from_message_id
+    let fake_message_id = uuid::Uuid::new_v4();
+    let payload = json!({
+        "from_message_id": fake_message_id.to_string()
+    });
 
     // User2 tries to create a branch
     let response = reqwest::Client::new()
@@ -259,7 +264,7 @@ async fn test_user_cannot_create_branch_in_other_users_conversation() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -290,7 +295,7 @@ async fn test_user_cannot_list_other_users_branches() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -325,7 +330,7 @@ async fn test_user_cannot_activate_other_users_branch() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 // =====================================================

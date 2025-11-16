@@ -255,6 +255,9 @@ impl MessageContentData {
                     is_error: *is_error,
                 })
             }
+
+            // Document blocks are not supported in chat storage
+            ai_providers::ContentBlock::Document { .. } => None,
         }
     }
 

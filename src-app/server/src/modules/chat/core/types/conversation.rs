@@ -30,8 +30,28 @@ pub struct CreateConversationRequest {
 /// Request to update conversation metadata
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UpdateConversationRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
+    /// Title update: None = don't update, Some(None) = clear to null, Some(Some(value)) = set value
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_nullable_field"
+    )]
+    pub title: Option<Option<String>>,
+}
+
+/// Custom deserializer to distinguish between missing field and explicit null
+fn deserialize_nullable_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    use serde::Deserialize;
+
+    // This deserializes to Option<T>:
+    // - Missing field -> Ok(None)
+    // - "field": null -> Ok(Some(None))
+    // - "field": value -> Ok(Some(Some(value)))
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
 }
 
 /// Conversation response with additional metadata

@@ -11,7 +11,6 @@ use crate::{
         chat::core::{
             models::Branch,
             permissions::*,
-            repository::{branches as branch_repo, conversations as conv_repo},
             types::CreateBranchRequest,
         },
         permissions::{extractors::RequirePermissions, with_permission},
@@ -31,7 +30,7 @@ pub async fn create_branch(
     Json(request): Json<CreateBranchRequest>,
 ) -> ApiResult<Json<Branch>> {
     // Verify conversation exists and user owns it
-    let conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
+    let conversation = Repos.chat.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -44,13 +43,9 @@ pub async fn create_branch(
     })?;
 
     // Create new branch with message cloning (handled in repository)
-    let branch = branch_repo::create_branch(
-        Repos.pool(),
-        conversation_id,
-        parent_branch_id,
-        request.from_message_id,
-    )
-    .await?;
+    let branch = Repos.chat
+        .create_branch(conversation_id, parent_branch_id, request.from_message_id)
+        .await?;
 
     Ok((StatusCode::CREATED, Json(branch)))
 }
@@ -74,11 +69,11 @@ pub async fn list_branches(
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<Branch>>> {
     // Verify conversation exists and user owns it
-    let _conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
+    let _conversation = Repos.chat.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
-    let branches = branch_repo::list_branches(Repos.pool(), conversation_id).await?;
+    let branches = Repos.chat.list_branches( conversation_id).await?;
 
     Ok((StatusCode::OK, Json(branches)))
 }
@@ -102,12 +97,13 @@ pub async fn activate_branch(
     Path((conversation_id, branch_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<StatusCode> {
     // Verify conversation exists and user owns it
-    let _conversation = conv_repo::get_conversation(Repos.pool(), conversation_id, auth.user.id)
+    let _conversation = Repos.chat.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
     // Verify branch exists and belongs to this conversation
-    let branch = branch_repo::get_branch(Repos.pool(), branch_id)
+    let branch = Repos.chat
+        .get_branch(branch_id)
         .await?
         .ok_or_else(|| AppError::not_found("Branch"))?;
 
@@ -120,7 +116,7 @@ pub async fn activate_branch(
     }
 
     // Activate the branch
-    branch_repo::set_active_branch(Repos.pool(), conversation_id, branch_id).await?;
+    Repos.chat.set_active_branch( conversation_id, branch_id).await?;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

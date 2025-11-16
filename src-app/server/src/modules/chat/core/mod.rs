@@ -11,6 +11,7 @@ pub mod services;
 pub mod types;
 
 // Re-export for convenience
+pub use repository::ChatRepository;
 
 // Re-export DB entities from models
 
