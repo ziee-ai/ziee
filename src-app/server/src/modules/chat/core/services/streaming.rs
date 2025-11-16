@@ -14,10 +14,10 @@ use uuid::Uuid;
 use ai_providers::{ChatMessage, ChatRequest, StreamChatChunk as AiStreamChunk};
 
 use crate::common::AppError;
+use crate::core::Repos;
 use crate::modules::chat::core::{
     extension::{ExtensionRegistry, SendMessageRequest, StreamContext},
     models::{MessageContentData, MessageRole},
-    repository::{contents as content_repo, messages as msg_repo},
     types::{ChatStreamChunk, ContentBlockDelta},
 };
 
@@ -59,12 +59,12 @@ impl StreamingService {
 
         // Create initial user message
         let user_message =
-            msg_repo::create_message(&self.pool, branch_id, MessageRole::User.as_str()).await?;
+            Repos.chat.create_message( branch_id, MessageRole::User.as_str()).await?;
 
         let user_content_data = MessageContentData::Text {
             text: request.content.clone(),
         };
-        content_repo::create_content(&self.pool, user_message.id, "text", user_content_data, 0)
+        Repos.chat.create_content( user_message.id, "text", user_content_data, 0)
             .await?;
 
         // Create channel for streaming output
@@ -90,7 +90,6 @@ impl StreamingService {
                         branch_id: Some(branch_id),
                         finish_reason: Some("max_iterations".to_string()),
                         usage: None,
-                        title: None,
                         error: Some(crate::modules::chat::core::types::StreamError {
                             message: "Maximum tool calling iterations exceeded".to_string(),
                             code: Some("MAX_ITERATIONS_EXCEEDED".to_string()),
@@ -101,8 +100,7 @@ impl StreamingService {
                 }
 
                 // Create assistant message for this iteration
-                let assistant_message = match msg_repo::create_message(
-                    &pool,
+                let assistant_message = match Repos.chat.create_message(
                     branch_id,
                     MessageRole::Assistant.as_str(),
                 )
@@ -116,7 +114,7 @@ impl StreamingService {
                 };
 
                 // Get conversation history
-                let mut history = match msg_repo::get_conversation_history(&pool, branch_id).await {
+                let mut history = match Repos.chat.get_conversation_history( branch_id).await {
                     Ok(h) => h,
                     Err(e) => {
                         let _ = tx.send(Err(e));
@@ -306,7 +304,6 @@ impl StreamingService {
                     }) => {
                         // Create continuation message with tool results
                         match Self::create_continuation_message_static(
-                            &pool,
                             branch_id,
                             user_message_content,
                         )
@@ -468,18 +465,16 @@ impl StreamingService {
     /// Create continuation message with tool results
     /// Returns the ID of the created message
     async fn create_continuation_message_static(
-        pool: &PgPool,
         branch_id: Uuid,
         user_message_content: Vec<MessageContentData>,
     ) -> Result<Uuid, AppError> {
         // Create user message for tool results
         let continuation_message =
-            msg_repo::create_message(pool, branch_id, MessageRole::User.as_str()).await?;
+            Repos.chat.create_message( branch_id, MessageRole::User.as_str()).await?;
 
         // Store content blocks (tool results, etc.)
         for (index, content_data) in user_message_content.iter().enumerate() {
-            content_repo::create_content(
-                pool,
+            Repos.chat.create_content(
                 continuation_message.id,
                 content_data.content_type(),
                 content_data.clone(),
@@ -563,7 +558,6 @@ impl DeltaAccumulator {
                     input_tokens: Some(u.prompt_tokens),
                     output_tokens: Some(u.completion_tokens),
                 }),
-            title: None,
             error: None,
         };
 
@@ -678,7 +672,7 @@ impl DeltaAccumulator {
         // Call extension hooks after database write completes
         if let Some(registry) = &self.extension_registry {
             // Fetch the complete message from database
-            let final_message = msg_repo::get_message(&self.pool, self.assistant_message_id)
+            let final_message = Repos.chat.get_message( self.assistant_message_id)
                 .await?
                 .ok_or_else(|| AppError::internal_error("Message not found after finalize"))?;
 

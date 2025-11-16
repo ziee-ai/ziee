@@ -6,9 +6,12 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// A chunk of streamed chat content (extends ai-providers StreamChatChunk)
-/// Extension fields (e.g., title) are automatically added by the compose_chat_stream_chunk_extensions macro
-#[macros::compose_chat_stream_chunk_extensions]
+/// A chunk of streamed chat content (core streaming response from LLM)
+///
+/// IMPORTANT: Extensions should NOT add fields to this struct.
+/// Instead, extensions should:
+/// - Send their own SSE events via SSEChatStreamEvent variants
+/// - Add new ContentBlockDelta variants if needed
 #[derive(Debug, Clone, Serialize, Deserialize, Default, schemars::JsonSchema)]
 pub struct ChatStreamChunk {
     /// Content block deltas
@@ -40,8 +43,13 @@ pub struct ChatStreamChunk {
     pub error: Option<StreamError>,
 }
 
-/// Content block delta - Base types (extensions can add more variants)
-/// Extension variants (e.g., ToolUseDelta) are automatically added by the compose_content_block_delta_variants macro
+/// Content block delta - Base types (extensions CAN add more variants)
+///
+/// EXTENSIONS MAY extend this enum with new variants using the
+/// compose_content_block_delta_variants macro. For example, the MCP extension
+/// adds ToolUseDelta and ToolResultDelta variants.
+///
+/// Extension variants are automatically added by the compose_content_block_delta_variants macro.
 #[macros::compose_content_block_delta_variants]
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -164,10 +172,18 @@ pub struct SSEChatStreamErrorData {
 /// SSE event enum for chat streaming
 ///
 /// This enum represents all possible Server-Sent Events that can be streamed
-/// during a chat message request. Extensions can add additional event variants
-/// through the SSEChatStreamEventVariants enum.
+/// during a chat message request.
 ///
-/// Events are sent with proper `event:` names (e.g., "content", "complete", "error")
+/// # Extension Architecture
+///
+/// **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.
+/// Extensions add new event variants through the SSEChatStreamEventVariants enum using
+/// the compose_chat_stream_events macro.
+///
+/// Example: The title extension sends a separate `TitleUpdated` event instead of
+/// adding a title field to ChatStreamChunk.
+///
+/// Events are sent with proper `event:` names (e.g., "content", "complete", "error", "titleUpdated")
 /// for type-safe client-side handling.
 #[macros::compose_chat_stream_events]
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]

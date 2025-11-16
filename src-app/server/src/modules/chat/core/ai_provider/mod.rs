@@ -9,8 +9,7 @@ use uuid::Uuid;
 use ai_providers::Provider;
 
 use crate::common::AppError;
-use crate::modules::llm_model::repository::LlmModelRepository;
-use crate::modules::llm_provider::repository::LlmProviderRepository;
+use crate::core::Repos;
 
 /// Create an AI provider instance from a model ID
 ///
@@ -20,20 +19,17 @@ use crate::modules::llm_provider::repository::LlmProviderRepository;
 /// 3. Validates the provider is enabled
 /// 4. Creates and configures the provider instance
 pub async fn create_provider_from_model_id(
-    pool: &PgPool,
+    _pool: &PgPool,
     model_id: Uuid,
 ) -> Result<(Arc<Provider>, String, Uuid, Uuid), AppError> {
-    let model_repo = LlmModelRepository::new(pool.clone());
-    let provider_repo = LlmProviderRepository::new(pool.clone());
-
     // Get model information
-    let model = model_repo
+    let model = Repos.llm_model
         .get_by_id(model_id)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
 
     // Get provider information
-    let provider_info = provider_repo
+    let provider_info = Repos.llm_provider
         .get_by_id(model.provider_id)
         .await
         .map_err(AppError::database_error)?

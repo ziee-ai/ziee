@@ -5,8 +5,9 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use super::{AuthError, AuthProvider, AuthProviderTrait, AuthResult, UserAttributes};
+use crate::core::Repos;
 use crate::modules::auth::password;
-use crate::modules::user::{User, UserRepository};
+use crate::modules::user::User;
 
 /// Local authentication provider using database-stored passwords
 pub struct LocalAuthProvider {
@@ -25,10 +26,8 @@ impl LocalAuthProvider {
     }
 
     async fn get_user(&self, username: &str) -> Result<Option<User>, AuthError> {
-        let repo = UserRepository::new(self.pool.clone());
-
         // Try username first
-        if let Some(user) = repo
+        if let Some(user) = Repos.user
             .get_by_username(username)
             .await
             .map_err(|e| AuthError::InternalError(format!("Database error: {}", e)))?
@@ -37,7 +36,7 @@ impl LocalAuthProvider {
         }
 
         // Try email
-        repo.get_by_email(username)
+        Repos.user.get_by_email(username)
             .await
             .map_err(|e| AuthError::InternalError(format!("Database error: {}", e)))
     }
@@ -97,8 +96,7 @@ impl AuthProviderTrait for LocalAuthProvider {
 
     async fn test_connection(&self) -> Result<(), AuthError> {
         // For local provider, just verify database connectivity
-        let repo = UserRepository::new(self.pool.clone());
-        repo.get_by_username("__test_connection__")
+        Repos.user.get_by_username("__test_connection__")
             .await
             .map_err(|e| {
                 AuthError::ConnectionFailed(format!("Database connection failed: {}", e))

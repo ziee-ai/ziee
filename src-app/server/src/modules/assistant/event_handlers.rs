@@ -5,9 +5,10 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-use super::{repository, types};
+use super::types;
 use crate::common::AppError;
 use crate::core::events::{AppEvent, EventHandler};
+use crate::core::Repos;
 use crate::modules::user::events::UserEvent;
 
 /// Clones enabled default template assistants to newly created users
@@ -21,7 +22,7 @@ impl CloneTemplateAssistantsHandler {
 
 #[async_trait]
 impl EventHandler for CloneTemplateAssistantsHandler {
-    async fn handle(&self, event: &AppEvent, pool: &PgPool) -> Result<(), AppError> {
+    async fn handle(&self, event: &AppEvent, _pool: &PgPool) -> Result<(), AppError> {
         match event {
             AppEvent::User(UserEvent::Created { user }) => {
                 tracing::info!(
@@ -31,8 +32,8 @@ impl EventHandler for CloneTemplateAssistantsHandler {
                 );
 
                 // Get all template assistants
-                let templates = repository::list_assistants(
-                    pool, None, true, // Only templates
+                let templates = Repos.assistant.list(
+                    None, true, // Only templates
                     1, 100, // Get up to 100 templates
                 )
                 .await?;
@@ -65,7 +66,7 @@ impl EventHandler for CloneTemplateAssistantsHandler {
                             enabled: Some(template.enabled),
                         };
 
-                        match repository::create_assistant(pool, Some(user.id), request).await {
+                        match Repos.assistant.create(Some(user.id), request).await {
                             Ok(_) => {
                                 cloned_count += 1;
                                 tracing::debug!(

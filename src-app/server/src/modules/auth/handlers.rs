@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::common::{ApiResult, AppError};
 use crate::core::{EventBus, Repos};
 use crate::modules::user::events::UserEvent;
-use crate::modules::user::{GroupRepository, UserRepository, UserService};
+use crate::modules::user::UserService;
 
 use super::jwt::{JwtService, TokenPair};
 use super::jwt_extractor::JwtAuth;
@@ -412,8 +412,8 @@ pub async fn me(auth: JwtAuth) -> ApiResult<Json<MeResponse>> {
 
     // Get effective permissions (union of user permissions + group permissions)
     let user_service = UserService::new(
-        UserRepository::new(Repos.pool().clone()),
-        GroupRepository::new(Repos.pool().clone()),
+        (**Repos.user).clone(),
+        (**Repos.group).clone(),
     );
     let permissions = user_service
         .get_effective_permissions(user_id)

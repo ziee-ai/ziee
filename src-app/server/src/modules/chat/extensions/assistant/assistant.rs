@@ -16,13 +16,11 @@ use crate::modules::chat::core::extension::{
 ///
 /// Injects system messages from assistant configurations based on assistant_id
 /// in the SendMessageRequest.
-pub struct AssistantExtension {
-    pool: PgPool,
-}
+pub struct AssistantExtension {}
 
 impl AssistantExtension {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(_pool: PgPool) -> Self {
+        Self {}
     }
 }
 

@@ -2,6 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
+use crate::modules::auth::providers::models::OAuthSession;
 use crate::modules::user::Group;
 
 /// Auth Repository
@@ -144,5 +145,65 @@ impl AuthRepository {
         self.assign_user_to_default_group(user_id).await?;
 
         Ok(user_id)
+    }
+
+    /// Create OAuth session for OAuth/OIDC flows
+    pub async fn create_oauth_session(&self, session: &OAuthSession) -> Result<(), AppError> {
+        let expires_at_timestamp = session.expires_at.timestamp() as f64;
+        sqlx::query!(
+            r#"
+            INSERT INTO oauth_sessions (id, state, provider_id, pkce_verifier, nonce, redirect_uri, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7))
+            "#,
+            session.id,
+            session.state,
+            session.provider_id,
+            session.pkce_verifier,
+            session.nonce,
+            session.redirect_uri,
+            expires_at_timestamp
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok(())
+    }
+
+    /// Get OAuth session by state
+    pub async fn get_oauth_session_by_state(
+        &self,
+        state: &str,
+    ) -> Result<Option<OAuthSession>, AppError> {
+        sqlx::query_as!(
+            OAuthSession,
+            r#"
+            SELECT id, state, provider_id, pkce_verifier, nonce, redirect_uri,
+                   created_at as "created_at: _",
+                   expires_at as "expires_at: _"
+            FROM oauth_sessions
+            WHERE state = $1 AND expires_at > NOW()
+            "#,
+            state
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
+    /// Delete OAuth session by state
+    pub async fn delete_oauth_session(&self, state: &str) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            DELETE FROM oauth_sessions
+            WHERE state = $1
+            "#,
+            state
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok(())
     }
 }

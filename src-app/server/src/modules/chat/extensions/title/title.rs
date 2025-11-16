@@ -21,13 +21,11 @@ use crate::modules::chat::extensions::title::extension::SSEChatStreamTitleUpdate
 /// Title generation extension
 ///
 /// Generates conversation titles automatically after the first message exchange.
-pub struct TitleGenerationExtension {
-    pool: PgPool,
-}
+pub struct TitleGenerationExtension {}
 
 impl TitleGenerationExtension {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(_pool: PgPool) -> Self {
+        Self {}
     }
 
     /// Generate title using AI
@@ -207,10 +205,7 @@ impl ChatExtension for TitleGenerationExtension {
             .map_err(|_| AppError::internal_error("Invalid provider ID in context"))?;
 
         // Fetch provider from database for api_key and base_url (not in context for security)
-        use crate::modules::llm_provider::repository as provider_repo;
-
-        let provider_repo = provider_repo::LlmProviderRepository::new(self.pool.clone());
-        let provider_info = provider_repo
+        let provider_info = Repos.llm_provider
             .get_by_id(provider_id)
             .await
             .map_err(AppError::database_error)?

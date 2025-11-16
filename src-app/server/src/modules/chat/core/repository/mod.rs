@@ -9,7 +9,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::chat::core::models::{Branch, Conversation};
+use crate::modules::chat::core::models::{Branch, Conversation, MessageContent, MessageContentData};
 use crate::modules::chat::core::types::{ConversationResponse, EditMessageRequest, EditMessageResponse, MessageWithContent};
 
 /// Repository for chat database operations
@@ -178,6 +178,36 @@ impl ChatRepository {
             message_id,
         )
         .await
+    }
+
+    /// Create a new message
+    pub async fn create_message(
+        &self,
+        branch_id: Uuid,
+        role: &str,
+    ) -> Result<crate::modules::chat::core::models::Message, AppError> {
+        messages::create_message(&self.pool, branch_id, role).await
+    }
+
+    /// Get a message by ID
+    pub async fn get_message(
+        &self,
+        message_id: Uuid,
+    ) -> Result<Option<crate::modules::chat::core::models::Message>, AppError> {
+        messages::get_message(&self.pool, message_id).await
+    }
+
+    // ===== Content Operations =====
+
+    /// Create content for a message
+    pub async fn create_content(
+        &self,
+        message_id: Uuid,
+        content_type: &str,
+        data: MessageContentData,
+        index: i32,
+    ) -> Result<MessageContent, AppError> {
+        contents::create_content(&self.pool, message_id, content_type, data, index).await
     }
 }
 

@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::repository;
+use crate::core::Repos;
 use super::{
     AuthError, AuthProvider, AuthProviderTrait, AuthResult, OAuthResult, OAuthSession,
     UserAttributes,
@@ -419,7 +419,7 @@ impl AuthProviderTrait for OAuth2Provider {
             expires_at,
         };
 
-        repository::create_oauth_session(&self.pool, &session)
+        Repos.auth.create_oauth_session(&session)
             .await
             .map_err(|e| AuthError::InternalError(format!("Failed to create session: {}", e)))?;
 
@@ -436,7 +436,7 @@ impl AuthProviderTrait for OAuth2Provider {
         _session_key: &str, // Not used - we use state directly
     ) -> Result<AuthResult, AuthError> {
         // Get and validate session by state
-        let session = repository::get_oauth_session_by_state(&self.pool, state)
+        let session = Repos.auth.get_oauth_session_by_state(state)
             .await
             .map_err(|e| AuthError::InternalError(format!("Failed to get session: {}", e)))?
             .ok_or_else(|| {
@@ -564,7 +564,7 @@ impl AuthProviderTrait for OAuth2Provider {
             .to_string();
 
         // Delete session after successful authentication
-        let _ = repository::delete_oauth_session(&self.pool, state).await;
+        let _ = Repos.auth.delete_oauth_session(state).await;
 
         Ok(AuthResult {
             external_id,

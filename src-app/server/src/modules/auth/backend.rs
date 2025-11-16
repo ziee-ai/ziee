@@ -9,7 +9,8 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::user::{User, UserRepository};
+use crate::core::Repos;
+use crate::modules::user::User;
 
 use super::password;
 
@@ -86,10 +87,8 @@ impl AuthBackend {
         username: &str,
         password_input: &str,
     ) -> Result<Option<User>, AppError> {
-        let user_repo = UserRepository::new(self.pool.clone());
-
         // Get user by username or email
-        let user = user_repo.get_by_username_or_email(username).await?;
+        let user = Repos.user.get_by_username_or_email(username).await?;
 
         if let Some(user) = user {
             // Check if user is active
@@ -108,7 +107,7 @@ impl AuthBackend {
 
                 if valid {
                     // Update last login
-                    user_repo.update_last_login(user.id).await?;
+                    Repos.user.update_last_login(user.id).await?;
                     return Ok(Some(user));
                 }
             } else {
@@ -143,8 +142,7 @@ impl AuthBackend {
         .map_err(AppError::database_error)?;
 
         if let Some(link) = link {
-            let user_repo = UserRepository::new(self.pool.clone());
-            let user = user_repo.get_by_id(link.user_id).await?;
+            let user = Repos.user.get_by_id(link.user_id).await?;
 
             if let Some(user) = user {
                 // Check if user is active
@@ -156,7 +154,7 @@ impl AuthBackend {
                 }
 
                 // Update last login
-                user_repo.update_last_login(user.id).await?;
+                Repos.user.update_last_login(user.id).await?;
 
                 // Update auth link last login
                 sqlx::query!(
@@ -207,10 +205,8 @@ impl AuthnBackend for AuthBackend {
         user_id: &UserId<Self>,
     ) -> impl std::future::Future<Output = Result<Option<Self::User>, Self::Error>> + Send {
         let user_id = *user_id;
-        let pool = self.pool.clone();
         async move {
-            let user_repo = UserRepository::new(pool);
-            user_repo.get_by_id(user_id).await
+            Repos.user.get_by_id(user_id).await
         }
     }
 }
