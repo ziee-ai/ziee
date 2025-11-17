@@ -7,7 +7,7 @@ use axum::{
     extract::Path,
     response::sse::{Event, KeepAlive, Sse},
 };
-use futures_util::{Stream, StreamExt};
+use futures_util::Stream;
 use std::convert::Infallible;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -19,7 +19,7 @@ use crate::{
             extension::{ExtensionRegistry, SendMessageRequest},
             permissions::*,
             services::StreamingService,
-            types::streaming::{SSEChatStreamEvent, SSEChatStreamErrorData},
+            types::streaming::{SSEChatStreamEvent, SSEChatStreamErrorData, SSEChatStreamCompleteData},
         },
         permissions::{extractors::RequirePermissions, with_permission},
     },
@@ -85,17 +85,26 @@ pub async fn send_message(
     let streaming_service =
         StreamingService::new(Repos.pool().clone()).with_extensions(extension_registry);
 
-    // Send message and get stream
-    let chunk_stream = streaming_service
+    // Send message and get both chunk stream and extension event receiver
+    let (chunk_stream, ext_rx) = streaming_service
         .send_message(branch_id, conversation_id, auth.user.id, request)
         .await?;
 
     // Transform chunk stream to SSE Event stream
-    let sse_stream = chunk_stream.map(move |result| {
+    let chunk_sse_stream = chunk_stream.map(move |result| {
         match result {
             Ok(chunk) => {
-                // Wrap chunk in SSE event
-                let event = SSEChatStreamEvent::Content(chunk);
+                // Check if this is a completion chunk (has finish_reason)
+                let event = if let Some(finish_reason) = chunk.finish_reason {
+                    // Convert to Complete event
+                    SSEChatStreamEvent::Complete(SSEChatStreamCompleteData {
+                        finish_reason,
+                        usage: chunk.usage,
+                    })
+                } else {
+                    // Wrap chunk in Content event
+                    SSEChatStreamEvent::Content(chunk)
+                };
                 Ok(event.into())
             }
             Err(e) => {
@@ -109,10 +118,19 @@ pub async fn send_message(
         }
     });
 
+    // Convert extension event receiver to stream and merge with chunk stream
+    use tokio_stream::wrappers::UnboundedReceiverStream;
+    use tokio_stream::StreamExt;
+
+    let ext_event_stream = UnboundedReceiverStream::new(ext_rx);
+
+    // Merge both streams: chunk events and extension events
+    let merged_stream = chunk_sse_stream.merge(ext_event_stream);
+
     // Create SSE response with keep-alive
     Ok((
         axum::http::StatusCode::OK,
-        Sse::new(sse_stream).keep_alive(KeepAlive::default()),
+        Sse::new(merged_stream).keep_alive(KeepAlive::default()),
     ))
 }
 

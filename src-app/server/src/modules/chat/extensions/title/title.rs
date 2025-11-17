@@ -116,7 +116,9 @@ impl TitleGenerationExtension {
                 title: title.to_string(),
             });
 
-            let _ = tx.send(Ok(event.into()));
+            if let Err(e) = tx.send(Ok(event.into())) {
+                eprintln!("ERROR: Failed to send titleUpdated event: {:?}", e);
+            }
         }
     }
 }

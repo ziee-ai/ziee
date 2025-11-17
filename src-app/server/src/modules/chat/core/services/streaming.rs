@@ -43,13 +43,19 @@ impl StreamingService {
     /// Send a message and stream the AI response
     /// This creates both the user message and assistant message, then streams content
     /// Supports extension-driven loop continuation for tool calling
+    ///
+    /// Returns a tuple of (content_stream, extension_event_receiver)
+    /// The extension_event_receiver can be used to receive SSE events from extensions
     pub async fn send_message(
         &self,
         branch_id: Uuid,
         conversation_id: Uuid,
         user_id: Uuid,
         request: SendMessageRequest,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, AppError>> + Send>>, AppError>
+    ) -> Result<(
+        Pin<Box<dyn Stream<Item = Result<ChatStreamChunk, AppError>> + Send>>,
+        tokio::sync::mpsc::UnboundedReceiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    ), AppError>
     {
         // Create provider from model_id
         use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
@@ -70,13 +76,19 @@ impl StreamingService {
         // Create channel for streaming output
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
+        // Create channel for extension events (SSE)
+        let (ext_tx, ext_rx) = tokio::sync::mpsc::unbounded_channel();
+
         // Clone data for spawned task
         let pool = self.pool.clone();
         let provider_for_task = provider.clone();
         let extension_registry = self.extension_registry.clone();
 
+        // Move ext_tx into the spawned task to keep it alive
         // Spawn task to handle loop
         tokio::spawn(async move {
+            // ext_tx is now owned by this task and will be kept alive
+            // It's cloned for each accumulator iteration below
             const MAX_ITERATIONS: u32 = 5;
             let mut iteration = 1u32;
 
@@ -252,7 +264,8 @@ impl StreamingService {
                     }
                 };
 
-                // Create accumulator
+                // Create accumulator with extension event channel
+                // Clone ext_tx for this iteration (allows multiple iterations with same channel)
                 let accumulator = Arc::new(Mutex::new(DeltaAccumulator {
                     pool: pool.clone(),
                     assistant_message_id: assistant_message.id,
@@ -262,6 +275,10 @@ impl StreamingService {
                     extension_registry: extension_registry.clone(),
                     stream_context: stream_context.clone(),
                     extension_action: None,
+                    finish_reason: None,
+                    usage: None,
+                    extension_tx: Some(ext_tx.clone()),
+                    finalized: false,
                 }));
 
                 // Stream chunks through accumulator
@@ -290,6 +307,41 @@ impl StreamingService {
                             return;
                         }
                     }
+                }
+
+                // Finalize the accumulator (write to database, call extensions)
+                // This must happen BEFORE sending the Complete event
+                {
+                    let mut acc = accumulator.lock().await;
+                    if let Err(e) = acc.finalize().await {
+                        let _ = tx.send(Err(e));
+                        return;
+                    }
+                }
+
+                // Always send Complete event after stream ends
+                let (finish_reason, usage) = {
+                    let acc = accumulator.lock().await;
+                    (acc.finish_reason.clone(), acc.usage.clone())
+                };
+
+                // Use finish_reason from provider, or default to "stop" if not provided
+                let final_finish_reason = finish_reason.unwrap_or_else(|| "stop".to_string());
+
+                // Send a special ChatStreamChunk with finish_reason set (handler will convert to Complete event)
+                let complete_chunk = ChatStreamChunk {
+                    content: Vec::new(),
+                    message_id: None,
+                    conversation_id: Some(conversation_id),
+                    branch_id: Some(branch_id),
+                    finish_reason: Some(final_finish_reason),
+                    usage,
+                    error: None,
+                };
+
+                if tx.send(Ok(complete_chunk)).is_err() {
+                    // Channel closed, stop streaming
+                    return;
                 }
 
                 // Check extension action
@@ -327,8 +379,8 @@ impl StreamingService {
             }
         });
 
-        // Return channel receiver as stream
-        Ok(Box::pin(UnboundedReceiverStream::new(rx)))
+        // Return channel receiver as stream and extension event receiver
+        Ok((Box::pin(UnboundedReceiverStream::new(rx)), ext_rx))
     }
 
     /// Convert conversation history to AI provider message format
@@ -537,6 +589,14 @@ struct DeltaAccumulator {
     stream_context: StreamContext,
     /// Action returned by extensions after LLM call (set after finalize)
     extension_action: Option<crate::modules::chat::core::extension::ExtensionAction>,
+    /// Finish reason from AI provider (stored when stream completes)
+    finish_reason: Option<String>,
+    /// Usage data from AI provider (stored when stream completes)
+    usage: Option<crate::modules::chat::core::types::Usage>,
+    /// Channel for extension events (SSE)
+    extension_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+    /// Flag to track if finalize() has been called (prevents double-finalization)
+    finalized: bool,
 }
 
 impl DeltaAccumulator {
@@ -545,19 +605,24 @@ impl DeltaAccumulator {
         &mut self,
         ai_chunk: AiStreamChunk,
     ) -> Result<ChatStreamChunk, AppError> {
+        // Store finish_reason and usage when stream completes
+        if let Some(finish_reason) = ai_chunk.finish_reason.clone() {
+            self.finish_reason = Some(finish_reason);
+        }
+        if let Some(usage) = ai_chunk.usage.as_ref() {
+            self.usage = Some(crate::modules::chat::core::types::Usage {
+                input_tokens: Some(usage.prompt_tokens),
+                output_tokens: Some(usage.completion_tokens),
+            });
+        }
+
         let mut output_chunk = ChatStreamChunk {
             content: Vec::new(),
             message_id: Some(self.assistant_message_id),
             conversation_id: Some(self.conversation_id),
             branch_id: Some(self.branch_id),
-            finish_reason: ai_chunk.finish_reason.clone(),
-            usage: ai_chunk
-                .usage
-                .as_ref()
-                .map(|u| crate::modules::chat::core::types::Usage {
-                    input_tokens: Some(u.prompt_tokens),
-                    output_tokens: Some(u.completion_tokens),
-                }),
+            finish_reason: None,  // Don't include finish_reason in content chunks
+            usage: None,          // Don't include usage in content chunks
             error: None,
         };
 
@@ -626,6 +691,11 @@ impl DeltaAccumulator {
     /// Finalize accumulation - write all accumulated content to database
     /// This is called ONCE when streaming completes (finish_reason is received)
     async fn finalize(&mut self) -> Result<(), AppError> {
+        // Check if already finalized (prevents double-finalization)
+        if self.finalized {
+            return Ok(());
+        }
+
         // Write all accumulated content blocks to database in a single transaction
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
 
@@ -677,9 +747,9 @@ impl DeltaAccumulator {
                 .ok_or_else(|| AppError::internal_error("Message not found after finalize"))?;
 
             // Call after_llm_call hooks and store the result
-            // (no SSE channel since stream already closed)
+            // Pass the SSE channel so extensions can send events
             match registry
-                .call_after_llm_call(&self.stream_context, &final_message, None)
+                .call_after_llm_call(&self.stream_context, &final_message, self.extension_tx.as_ref())
                 .await
             {
                 Ok(action) => {
@@ -694,6 +764,9 @@ impl DeltaAccumulator {
                 }
             }
         }
+
+        // Mark as finalized to prevent double-finalization
+        self.finalized = true;
 
         Ok(())
     }

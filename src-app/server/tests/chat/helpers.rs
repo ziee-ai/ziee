@@ -535,6 +535,42 @@ pub async fn parse_sse_stream(response: reqwest::Response) -> Vec<Value> {
     chunks
 }
 
+/// SSE Event with event name and data
+#[derive(Debug, Clone)]
+pub struct SSEEvent {
+    pub event: String,
+    pub data: Value,
+}
+
+/// Parse SSE stream into events with their event names
+/// Returns a vector of SSEEvent structs with event name and parsed data
+pub async fn parse_sse_events(response: reqwest::Response) -> Vec<SSEEvent> {
+    let bytes = response.bytes().await.unwrap();
+    let text = String::from_utf8(bytes.to_vec()).unwrap();
+
+    let mut events = Vec::new();
+    let mut current_event = String::from("message"); // Default SSE event type
+
+    for line in text.lines() {
+        if line.starts_with("event: ") {
+            current_event = line[7..].trim().to_string();
+        } else if line.starts_with("data: ") {
+            let json_str = &line[6..]; // Remove "data: " prefix
+            if json_str != "[DONE]" {
+                if let Ok(data) = serde_json::from_str::<Value>(json_str) {
+                    events.push(SSEEvent {
+                        event: current_event.clone(),
+                        data,
+                    });
+                }
+            }
+            // Reset to default after consuming data
+            current_event = String::from("message");
+        }
+    }
+    events
+}
+
 /// Query branch_messages junction table to verify message-branch relationships
 /// Returns vector of (message_id, is_clone) tuples
 pub async fn get_branch_messages(
