@@ -280,6 +280,14 @@ impl GeminiProvider {
                                         // Would need to fetch and encode - skip for now
                                         eprintln!("Warning: Gemini doesn't support image URLs directly: {}", url);
                                     }
+                                    ImageSource::File { file_id } => {
+                                        parts.push(GeminiPart::FileData {
+                                            file_data: GeminiFileData {
+                                                mime_type: "image/jpeg".to_string(), // Default, actual type in metadata
+                                                file_uri: file_id.clone(),
+                                            },
+                                        });
+                                    }
                                 }
                             }
                             ContentBlock::ToolResult {

@@ -65,9 +65,13 @@ enum AnthropicContentBlock {
 #[derive(Serialize)]
 struct AnthropicImageSource {
     #[serde(rename = "type")]
-    source_type: String, // "base64" or "file"
-    media_type: String,  // "image/jpeg", "image/png", etc.
-    data: String,        // base64 encoded image data
+    source_type: String, // "base64", "url", or "file"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    media_type: Option<String>,  // "image/jpeg", "image/png", etc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<String>,        // base64 encoded image data or URL
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_id: Option<String>,     // Anthropic file ID (from Files API)
 }
 
 #[derive(Serialize)]
@@ -179,14 +183,22 @@ impl AnthropicProvider {
                                     ImageSource::Base64 { media_type, data } => {
                                         AnthropicImageSource {
                                             source_type: "base64".to_string(),
-                                            media_type: media_type.clone(),
-                                            data: data.clone(),
+                                            media_type: Some(media_type.clone()),
+                                            data: Some(data.clone()),
+                                            file_id: None,
                                         }
                                     }
                                     ImageSource::Url { url, .. } => AnthropicImageSource {
                                         source_type: "url".to_string(),
-                                        media_type: "image/jpeg".to_string(), // Default
-                                        data: url.clone(),
+                                        media_type: None,
+                                        data: Some(url.clone()),
+                                        file_id: None,
+                                    },
+                                    ImageSource::File { file_id } => AnthropicImageSource {
+                                        source_type: "file".to_string(),
+                                        media_type: None,
+                                        data: None,
+                                        file_id: Some(file_id.clone()),
                                     },
                                 };
                                 anthropic_blocks.push(AnthropicContentBlock::Image {
@@ -437,6 +449,7 @@ impl AIProvider for AnthropicProvider {
             .post(format!("{}/messages", base_url))
             .header("x-api-key", api_key)
             .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "files-api-2025-04-14")  // Enable Files API beta
             .header("content-type", "application/json")
             .json(&body)
             .send()

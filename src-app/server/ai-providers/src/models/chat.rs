@@ -98,7 +98,7 @@ pub enum ContentBlock {
     },
 }
 
-/// Image source (URL or base64 data)
+/// Image source (URL, base64 data, or provider file reference)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ImageSource {
@@ -113,6 +113,10 @@ pub enum ImageSource {
         /// OpenAI-specific: image detail level
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
+    },
+    /// Provider file reference (Anthropic/Gemini Files API)
+    File {
+        file_id: String,
     },
 }
 

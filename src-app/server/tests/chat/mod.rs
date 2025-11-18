@@ -20,3 +20,5 @@ mod messages_test;
 mod branches_test;
 mod streaming_test;
 mod ownership_test;
+mod file_attachments_test;
+mod file_attachments_real_providers_test;

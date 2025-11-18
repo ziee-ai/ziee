@@ -43,6 +43,7 @@ pub struct ThinkingMetadata {
 pub enum ImageSource {
     Url { url: String },
     Base64 { media_type: String, data: String },
+    File { file_id: String },
 }
 
 /// Macro to define MessageContentData with all content types
@@ -183,6 +184,9 @@ impl MessageContentData {
                         media_type: media_type.clone(),
                         data: data.clone(),
                     },
+                    ImageSource::File { file_id } => ai_providers::ImageSource::File {
+                        file_id: file_id.clone(),
+                    },
                 },
             }),
 
@@ -223,6 +227,9 @@ impl MessageContentData {
                     ai_providers::ImageSource::Base64 { media_type, data } => ImageSource::Base64 {
                         media_type: media_type.clone(),
                         data: data.clone(),
+                    },
+                    ai_providers::ImageSource::File { file_id } => ImageSource::File {
+                        file_id: file_id.clone(),
                     },
                 },
                 alt_text: None,

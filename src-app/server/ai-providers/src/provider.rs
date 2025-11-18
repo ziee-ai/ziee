@@ -37,7 +37,7 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, StreamChatChunk},
+    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload, FileUploadResponse, StreamChatChunk},
     providers::{AnthropicProvider, GeminiProvider, OpenAIProvider},
     traits::AIProvider,
 };
@@ -231,6 +231,88 @@ impl Provider {
     ) -> Result<EmbeddingsResponse, ProviderError> {
         self.inner
             .embeddings(&self.api_key, &self.base_url, request)
+            .await
+    }
+
+    /// Uploads a file to the provider's Files API (if supported)
+    ///
+    /// Returns `None` if the provider doesn't support file uploads.
+    ///
+    /// # Arguments
+    ///
+    /// * `upload` - The file upload request containing filename, data, and MIME type
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(FileUploadResponse))` if upload succeeds
+    /// - `Ok(None)` if provider doesn't support file uploads
+    /// - `Err(ProviderError)` if upload fails
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use ai_providers::{Provider, FileUpload};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let provider = Provider::new("anthropic", "sk-ant-...", "https://api.anthropic.com/v1")?;
+    ///
+    /// let upload = FileUpload {
+    ///     filename: "document.pdf".to_string(),
+    ///     file_data: vec![/* PDF bytes */],
+    ///     mime_type: "application/pdf".to_string(),
+    /// };
+    ///
+    /// if let Some(result) = provider.upload_file(upload).await? {
+    ///     println!("Uploaded file ID: {}", result.provider_file_id);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn upload_file(
+        &self,
+        upload: FileUpload,
+    ) -> Result<Option<FileUploadResponse>, ProviderError> {
+        self.inner
+            .upload_file(&self.api_key, &self.base_url, upload)
+            .await
+    }
+
+    /// Checks if this provider supports file upload APIs
+    ///
+    /// # Returns
+    ///
+    /// - `true` if provider has a Files API (Anthropic, Gemini)
+    /// - `false` otherwise (OpenAI, Groq, etc.)
+    pub fn supports_file_api(&self) -> bool {
+        self.inner.supports_file_api()
+    }
+
+    /// Deletes a file from the provider's storage (if supported)
+    ///
+    /// # Arguments
+    ///
+    /// * `provider_file_id` - The provider's file ID to delete
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProviderError` if deletion fails
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use ai_providers::Provider;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let provider = Provider::new("anthropic", "sk-ant-...", "https://api.anthropic.com/v1")?;
+    /// provider.delete_file("file-abc123").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn delete_file(&self, provider_file_id: &str) -> Result<(), ProviderError> {
+        self.inner
+            .delete_file(&self.api_key, &self.base_url, provider_file_id)
             .await
     }
 }

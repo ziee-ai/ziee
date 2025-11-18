@@ -372,19 +372,24 @@ impl OpenAIProvider {
                             });
                         }
                         ContentBlock::Image { source } => {
-                            let url = match source {
+                            match source {
                                 ImageSource::Base64 { media_type, data } => {
-                                    format!("data:{};base64,{}", media_type, data)
+                                    let url = format!("data:{};base64,{}", media_type, data);
+                                    openai_parts.push(OpenAIContentPart::ImageUrl {
+                                        image_url: OpenAIImageUrl { url, detail: None },
+                                    });
                                 }
-                                ImageSource::Url { url, .. } => url.clone(),
-                            };
-                            let detail = match source {
-                                ImageSource::Url { detail, .. } => detail.clone(),
-                                _ => None,
-                            };
-                            openai_parts.push(OpenAIContentPart::ImageUrl {
-                                image_url: OpenAIImageUrl { url, detail },
-                            });
+                                ImageSource::Url { url, detail } => {
+                                    openai_parts.push(OpenAIContentPart::ImageUrl {
+                                        image_url: OpenAIImageUrl { url: url.clone(), detail: detail.clone() },
+                                    });
+                                }
+                                ImageSource::File { file_id } => {
+                                    // OpenAI doesn't support file references for images
+                                    eprintln!("Warning: OpenAI doesn't support file references for images, file_id: {}", file_id);
+                                    // Skip this image - caller should use base64 instead
+                                }
+                            }
                         }
                         ContentBlock::Thinking { .. } => {
                             // OpenAI doesn't support thinking in requests - skip
