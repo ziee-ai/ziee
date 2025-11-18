@@ -9,6 +9,7 @@ use crate::common::AppError;
 pub struct Tool {
     pub name: String,
     pub description: Option<String>,
+    #[serde(alias = "inputSchema")]
     pub input_schema: Value,
 }
 

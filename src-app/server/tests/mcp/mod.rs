@@ -1195,4 +1195,6 @@ async fn test_duplicate_server_name_allowed() {
 // Runtime Tests
 // ============================================================================
 
-mod runtime;
+mod runtime;              // Stdio transport tests (18 tests)
+mod http_transport_test;  // HTTP transport tests (12 tests)
+mod sse_transport_test;   // SSE transport tests (12 tests)

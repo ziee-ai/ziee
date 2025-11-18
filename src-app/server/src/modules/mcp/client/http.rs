@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::Value;
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 use super::traits::{McpClient, Tool, Resource, ToolResult};
@@ -15,6 +16,7 @@ pub struct HttpMcpClient {
     client: Client,
     base_url: String,
     connected: bool,
+    session_id: Arc<RwLock<Option<String>>>,
 }
 
 impl HttpMcpClient {
@@ -54,6 +56,7 @@ impl HttpMcpClient {
                 .map_err(|e| AppError::internal_error(format!("Failed to create HTTP client: {}", e)))?,
             base_url,
             connected: false,
+            session_id: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -69,15 +72,59 @@ impl HttpMcpClient {
             "params": params
         });
 
-        let response = self.client
-            .post(&self.base_url)
-            .json(&request_body)
-            .send()
+        // Use /mcp endpoint for Streamable HTTP protocol
+        let url = if self.base_url.ends_with('/') {
+            format!("{}mcp", self.base_url)
+        } else {
+            format!("{}/mcp", self.base_url)
+        };
+
+        let mut request = self.client
+            .post(&url)
+            .header("Accept", "application/json, text/event-stream")
+            .json(&request_body);
+
+        // Add session ID if available
+        if let Ok(session_guard) = self.session_id.read() {
+            if let Some(ref session_id) = *session_guard {
+                request = request.header("mcp-session-id", session_id);
+            }
+        }
+
+        let response = request.send()
             .await
             .map_err(|e| AppError::internal_error(format!("HTTP request failed: {}", e)))?;
 
-        let response_json: Value = response.json().await
-            .map_err(|e| AppError::internal_error(format!("Failed to parse response: {}", e)))?;
+        // Extract session ID from response headers if present
+        if let Some(session_id) = response.headers().get("mcp-session-id") {
+            if let Ok(session_str) = session_id.to_str() {
+                if let Ok(mut session_guard) = self.session_id.write() {
+                    *session_guard = Some(session_str.to_string());
+                }
+            }
+        }
+
+        // Get response text and parse SSE format
+        let response_text = response.text().await
+            .map_err(|e| AppError::internal_error(format!("Failed to get response text: {}", e)))?;
+
+        // Parse SSE format: extract JSON from "data: {...}" lines
+        let response_json: Value = if response_text.starts_with("event:") {
+            // SSE format - extract data line
+            let mut found_data = None;
+            for line in response_text.lines() {
+                if let Some(data) = line.strip_prefix("data: ") {
+                    found_data = Some(serde_json::from_str(data)
+                        .map_err(|e| AppError::internal_error(format!("Failed to parse SSE data: {}", e)))?);
+                    break;
+                }
+            }
+            found_data.ok_or_else(|| AppError::internal_error("No data found in SSE response"))?
+        } else {
+            // Plain JSON format
+            serde_json::from_str(&response_text)
+                .map_err(|e| AppError::internal_error(format!("Failed to parse response: {}", e)))?
+        };
 
         if let Some(error) = response_json.get("error") {
             return Err(AppError::internal_error(format!("MCP error: {}", error)));
