@@ -165,6 +165,45 @@ impl McpRepository {
             total_pages,
         })
     }
+
+    // Check if user has access to a server
+    pub async fn can_user_access_server(&self, user_id: Uuid, server_id: Uuid) -> Result<bool, AppError> {
+        // Check if user owns this server
+        let user_server = self.get_user_server(server_id, user_id).await;
+        if user_server.is_ok() {
+            return Ok(true);
+        }
+
+        // Check if user has access via system server and groups
+        // Get user's groups
+        let user_groups = sqlx::query!(
+            "SELECT group_id FROM user_groups WHERE user_id = $1",
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let group_ids: Vec<Uuid> = user_groups.iter().map(|r| r.group_id).collect();
+
+        if group_ids.is_empty() {
+            return Ok(false);
+        }
+
+        // Check if any group has access to this system server
+        let has_access = sqlx::query!(
+            "SELECT EXISTS(
+                SELECT 1 FROM user_group_mcp_servers
+                WHERE mcp_server_id = $1
+                AND group_id = ANY($2)
+            ) as has_access",
+            server_id,
+            &group_ids
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(has_access.has_access.unwrap_or(false))
+    }
 }
 
 // =====================================================

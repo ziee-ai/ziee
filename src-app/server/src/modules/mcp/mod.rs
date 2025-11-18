@@ -1,9 +1,11 @@
+pub mod client;
 pub mod events;
 mod handlers;
 mod models;
 mod permissions;
 mod repository;
 mod routes;
+pub mod runtime_types;
 mod types;
 
 pub use models::*;

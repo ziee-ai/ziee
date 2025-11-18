@@ -152,6 +152,12 @@ async fn main() {
     let jwt_service = std::sync::Arc::new(modules::auth::JwtService::new(config.jwt.clone()));
     tracing::info!("JWT service initialized");
 
+    // Set up MCP session manager
+    let mcp_session_manager = std::sync::Arc::new(modules::mcp::client::McpSessionManager::new(
+        (*pool).clone(),
+    ));
+    tracing::info!("MCP session manager initialized");
+
     // Build API router with all module routes (including auth)
     let (api_router, mut api_doc) = core::app_builder::build_api_router(
         &modules,
@@ -166,6 +172,7 @@ async fn main() {
         .layer(axum::extract::DefaultBodyLimit::disable())
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service))
+        .layer(axum::Extension(mcp_session_manager.clone()))
         .layer(cors);
 
     // Get server address
@@ -190,6 +197,12 @@ async fn main() {
         .expect("Failed to start server");
 
     tracing::info!("Shutting down...");
+
+    // Close all MCP sessions
+    if let Err(e) = mcp_session_manager.close_all().await {
+        tracing::warn!("Error closing MCP sessions during shutdown: {}", e);
+    }
+
     core::database::cleanup_database().await;
 }
 

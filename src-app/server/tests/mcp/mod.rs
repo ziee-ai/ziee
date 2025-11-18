@@ -1190,3 +1190,9 @@ async fn test_duplicate_server_name_allowed() {
         "Second server with duplicate name should be allowed"
     );
 }
+
+// ============================================================================
+// Runtime Tests
+// ============================================================================
+
+mod runtime;

@@ -9,6 +9,7 @@ pub mod health;
 pub mod hub;
 pub mod llm_model;
 pub mod llm_provider;
+pub mod llm_provider_files;
 pub mod llm_repository;
 pub mod mcp;
 pub mod permissions;

@@ -49,6 +49,28 @@ impl FileRepository {
         Ok(file)
     }
 
+    /// Get file by ID (internal use)
+    pub async fn get_by_id(&self, file_id: Uuid) -> Result<Option<File>, AppError> {
+        let file = sqlx::query_as!(
+            File,
+            r#"
+            SELECT id, user_id, filename, file_size, mime_type, checksum,
+                   has_thumbnail, preview_page_count, text_page_count,
+                   processing_metadata as "processing_metadata!: _",
+                   created_at as "created_at: _",
+                   updated_at as "updated_at: _"
+            FROM files
+            WHERE id = $1
+            "#,
+            file_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok(file)
+    }
+
     /// Get file by ID and verify user ownership
     pub async fn get_by_id_and_user(
         &self,

@@ -2,6 +2,7 @@
 // Organizes all handler functions for MCP server operations
 
 pub mod groups;
+pub mod runtime;
 pub mod system;
 pub mod user;
 
@@ -13,3 +14,5 @@ pub use system::*;
 
 // Re-export group assignment handlers
 pub use groups::*;
+
+// Runtime handlers are accessed via runtime:: prefix in routes

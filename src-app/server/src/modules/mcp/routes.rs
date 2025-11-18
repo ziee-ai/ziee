@@ -34,6 +34,27 @@ pub fn user_routes() -> ApiRouter {
             "/mcp/servers/{id}",
             delete_with(delete_user_server, delete_user_server_docs),
         )
+        // Runtime operations
+        .api_route(
+            "/mcp/servers/{id}/tools",
+            get_with(runtime::list_server_tools, runtime::list_server_tools_docs),
+        )
+        .api_route(
+            "/mcp/servers/{id}/tools/{name}/call",
+            post_with(runtime::call_server_tool, runtime::call_server_tool_docs),
+        )
+        .api_route(
+            "/mcp/servers/{id}/resources",
+            get_with(runtime::list_server_resources, runtime::list_server_resources_docs),
+        )
+        .api_route(
+            "/mcp/servers/{id}/resources/read",
+            post_with(runtime::read_server_resource, runtime::read_server_resource_docs),
+        )
+        .api_route(
+            "/mcp/servers/{id}/disconnect",
+            delete_with(runtime::disconnect_server, runtime::disconnect_server_docs),
+        )
 }
 
 // =====================================================

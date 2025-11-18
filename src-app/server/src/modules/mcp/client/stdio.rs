@@ -1,0 +1,233 @@
+use async_trait::async_trait;
+use rmcp::{ServiceExt, transport::TokioChildProcess, service::RunningService};
+use rmcp::model::{CallToolRequestParam, ReadResourceRequestParam};
+use std::borrow::Cow;
+use tokio::process::Command;
+use uuid::Uuid;
+
+use super::traits::{McpClient, Tool, Resource, ToolResult, ToolContent};
+use crate::common::AppError;
+use crate::modules::mcp::models::{McpServer, TransportType};
+
+// Security: Command allowlist (Phase 1)
+const ALLOWED_COMMANDS: &[&str] = &["npx", "uvx", "python", "python3", "node", "deno"];
+
+// Security: Environment variable blocklist (Phase 1)
+const BLOCKED_ENV_VARS: &[&str] = &[
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SECRET_KEY",
+    "DATABASE_PASSWORD",
+    "DB_PASSWORD",
+    "PGPASSWORD",
+    "MYSQL_PASSWORD",
+    "REDIS_PASSWORD",
+    "API_SECRET",
+    "SECRET_KEY",
+    "PRIVATE_KEY",
+    "JWT_SECRET",
+    "ENCRYPTION_KEY",
+];
+
+pub struct StdioMcpClient {
+    server_id: Uuid,
+    server_config: McpServer,
+    service: Option<RunningService<rmcp::RoleClient, ()>>,
+}
+
+impl StdioMcpClient {
+    pub fn new(server: McpServer) -> Result<Self, AppError> {
+        if server.transport_type != TransportType::Stdio {
+            return Err(AppError::bad_request("INVALID_TRANSPORT", "Only stdio transport supported"));
+        }
+
+        Ok(Self {
+            server_id: server.id,
+            server_config: server,
+            service: None,
+        })
+    }
+
+    fn create_command(&self) -> Result<Command, AppError> {
+        let cmd = self.server_config.command.as_ref()
+            .ok_or_else(|| AppError::bad_request("MISSING_COMMAND", "Missing command"))?;
+
+        // Security: Validate command against allowlist
+        if !ALLOWED_COMMANDS.contains(&cmd.as_str()) {
+            return Err(AppError::bad_request(
+                "INVALID_COMMAND",
+                &format!("Command '{}' is not allowed. Allowed commands: {:?}", cmd, ALLOWED_COMMANDS)
+            ));
+        }
+
+        let mut command = Command::new(cmd);
+
+        // Add arguments
+        if let Some(arr) = self.server_config.args.as_array() {
+            for arg in arr {
+                if let Some(arg_str) = arg.as_str() {
+                    command.arg(arg_str);
+                }
+            }
+        }
+
+        // Add environment variables
+        if let Some(obj) = self.server_config.environment_variables.as_object() {
+            for (key, value) in obj {
+                // Security: Block dangerous environment variables
+                if BLOCKED_ENV_VARS.contains(&key.as_str()) {
+                    tracing::warn!(
+                        server_id = %self.server_id,
+                        env_var = %key,
+                        "Blocked attempt to set dangerous environment variable"
+                    );
+                    continue;
+                }
+
+                if let Some(val) = value.as_str() {
+                    command.env(key, val);
+                }
+            }
+        }
+
+        Ok(command)
+    }
+}
+
+#[async_trait]
+impl McpClient for StdioMcpClient {
+    async fn connect(&mut self) -> Result<(), AppError> {
+        if self.is_connected() {
+            return Ok(());
+        }
+
+        // Audit logging
+        tracing::info!(
+            server_id = %self.server_id,
+            server_name = %self.server_config.name,
+            transport = "stdio",
+            "MCP server connection initiated"
+        );
+
+        let command = self.create_command()?;
+        let transport = TokioChildProcess::new(command)
+            .map_err(|e| {
+                tracing::error!(
+                    server_id = %self.server_id,
+                    error = %e,
+                    "Failed to create transport"
+                );
+                AppError::internal_error(format!("Failed to create transport: {}", e))
+            })?;
+
+        let service = ().serve(transport).await
+            .map_err(|e| {
+                tracing::error!(
+                    server_id = %self.server_id,
+                    error = %e,
+                    "Failed to connect to MCP server"
+                );
+                AppError::internal_error(format!("Failed to connect: {}", e))
+            })?;
+
+        self.service = Some(service);
+
+        tracing::info!(
+            server_id = %self.server_id,
+            "MCP server connection established"
+        );
+
+        Ok(())
+    }
+
+    async fn disconnect(&mut self) -> Result<(), AppError> {
+        if let Some(service) = self.service.take() {
+            tracing::info!(
+                server_id = %self.server_id,
+                "MCP server disconnection initiated"
+            );
+            let _ = service.cancel().await;
+            tracing::info!(
+                server_id = %self.server_id,
+                "MCP server disconnected"
+            );
+        }
+        Ok(())
+    }
+
+    fn is_connected(&self) -> bool {
+        self.service.is_some()
+    }
+
+    async fn list_tools(&mut self) -> Result<Vec<Tool>, AppError> {
+        let service = self.service.as_ref()
+            .ok_or_else(|| AppError::internal_error("Not connected"))?;
+
+        let result = service.list_tools(Default::default()).await
+            .map_err(|e| AppError::internal_error(format!("Failed to list tools: {}", e)))?;
+
+        Ok(result.tools.into_iter().map(|t| Tool {
+            name: t.name.to_string(),
+            description: t.description.map(|d| d.to_string()),
+            input_schema: serde_json::Value::Object((*t.input_schema).clone()),
+        }).collect())
+    }
+
+    async fn call_tool(
+        &mut self,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<ToolResult, AppError> {
+        let service = self.service.as_ref()
+            .ok_or_else(|| AppError::internal_error("Not connected"))?;
+
+        let args_map = if let Some(obj) = arguments.as_object() {
+            Some(obj.clone())
+        } else {
+            None
+        };
+
+        let result = service.call_tool(CallToolRequestParam {
+            name: Cow::Owned(name.to_string()),
+            arguments: args_map,
+        }).await
+        .map_err(|e| AppError::internal_error(format!("Tool call failed: {}", e)))?;
+
+        Ok(ToolResult {
+            content: result.content.into_iter().map(|c| {
+                // Convert rmcp ToolContent to our ToolContent
+                ToolContent {
+                    content: serde_json::to_value(c).unwrap_or_default(),
+                }
+            }).collect(),
+            is_error: result.is_error.unwrap_or(false),
+        })
+    }
+
+    async fn list_resources(&mut self) -> Result<Vec<Resource>, AppError> {
+        let service = self.service.as_ref()
+            .ok_or_else(|| AppError::internal_error("Not connected"))?;
+
+        let result = service.list_resources(Default::default()).await
+            .map_err(|e| AppError::internal_error(format!("Failed to list resources: {}", e)))?;
+
+        Ok(result.resources.into_iter().map(|r| Resource {
+            uri: r.uri.to_string(),
+            name: r.name.to_string(),
+            description: r.description.as_ref().map(|d| d.to_string()),
+            mime_type: r.mime_type.as_ref().map(|m| m.to_string()),
+        }).collect())
+    }
+
+    async fn read_resource(&mut self, uri: &str) -> Result<serde_json::Value, AppError> {
+        let service = self.service.as_ref()
+            .ok_or_else(|| AppError::internal_error("Not connected"))?;
+
+        let result = service.read_resource(ReadResourceRequestParam {
+            uri: uri.to_string(),
+        }).await
+        .map_err(|e| AppError::internal_error(format!("Failed to read resource: {}", e)))?;
+
+        serde_json::to_value(result.contents)
+            .map_err(|e| AppError::internal_error(format!("Failed to serialize resource: {}", e)))
+    }
+}
