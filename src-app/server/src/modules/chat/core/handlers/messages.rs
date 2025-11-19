@@ -29,7 +29,7 @@ pub async fn get_conversation_history(
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<MessageWithContent>>> {
     // Verify conversation exists and user owns it
-    let conversation = Repos.chat.get_conversation( conversation_id, auth.user.id)
+    let conversation = Repos.chat.core.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -39,7 +39,7 @@ pub async fn get_conversation_history(
         .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
 
     // Get conversation history
-    let history = Repos.chat.get_conversation_history( branch_id).await?;
+    let history = Repos.chat.core.get_conversation_history( branch_id).await?;
 
     Ok((StatusCode::OK, Json(history)))
 }
@@ -62,7 +62,7 @@ pub async fn get_message(
 
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<Json<MessageWithContent>> {
-    let message_with_content = Repos.chat.get_message_with_content( message_id)
+    let message_with_content = Repos.chat.core.get_message_with_content( message_id)
         .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 
@@ -97,7 +97,7 @@ pub async fn edit_message(
     }
 
     // Verify conversation exists and user owns it
-    let conversation = Repos.chat.get_conversation( conversation_id, auth.user.id)
+    let conversation = Repos.chat.core.get_conversation( conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -107,7 +107,7 @@ pub async fn edit_message(
         .ok_or_else(|| AppError::internal_error("Conversation has no active branch"))?;
 
     // Edit message (creates new branch with edited message)
-    let response = Repos.chat
+    let response = Repos.chat.core
         .edit_message(message_id, conversation_id, request, current_branch_id)
         .await?;
 
@@ -134,7 +134,7 @@ pub async fn delete_message(
 ) -> ApiResult<StatusCode> {
     // TODO: Verify user owns the conversation containing this message
 
-    let deleted_count = Repos.chat.delete_message_and_descendants( message_id).await?;
+    let deleted_count = Repos.chat.core.delete_message_and_descendants( message_id).await?;
 
     if deleted_count == 0 {
         return Err(AppError::not_found("Message").into());

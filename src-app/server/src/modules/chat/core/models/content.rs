@@ -135,27 +135,15 @@ define_message_content_data! {
             "Image content"
         ),
 
-        // MCP extension content types (for tool calling)
+        // Generic extension content type (for extension-specific content)
         (
-            ToolUse,
+            Extension,
             {
-                id: String,
-                name: String,
-                input: serde_json::Value
+                extension_name: String,
+                content: serde_json::Value
             },
-            "tool_use",
-            "Tool use request (AI wants to call a tool)"
-        ),
-        (
-            ToolResult,
-            {
-                tool_use_id: String,
-                content: String,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                is_error: Option<bool>
-            },
-            "tool_result",
-            "Tool result (response from tool execution)"
+            "extension",
+            "Extension-specific content (delegated to extension for conversion)"
         ),
     ]
 }
@@ -164,6 +152,9 @@ define_message_content_data! {
 // When adding a new content type above, add its conversion logic here
 impl MessageContentData {
     /// Convert to ai-providers ContentBlock
+    ///
+    /// Note: Extension variants return None because they must be converted
+    /// via ExtensionRegistry which delegates to the appropriate extension.
     pub fn to_content_block(&self) -> Option<ai_providers::ContentBlock> {
         match self {
             // Base types
@@ -190,23 +181,8 @@ impl MessageContentData {
                 },
             }),
 
-            // MCP extension types
-            Self::ToolUse { id, name, input } => Some(ai_providers::ContentBlock::ToolUse {
-                id: id.clone(),
-                name: name.clone(),
-                input: input.clone(),
-            }),
-            Self::ToolResult {
-                tool_use_id,
-                content,
-                is_error,
-            } => Some(ai_providers::ContentBlock::ToolResult {
-                tool_use_id: tool_use_id.clone(),
-                content: vec![ai_providers::ContentBlock::Text {
-                    text: content.clone(),
-                }],
-                is_error: *is_error,
-            }),
+            // Extension content - must be converted via ExtensionRegistry
+            Self::Extension { .. } => None,
         }
     }
 
@@ -235,33 +211,9 @@ impl MessageContentData {
                 alt_text: None,
             }),
 
-            // MCP extension types
-            ai_providers::ContentBlock::ToolUse { id, name, input } => Some(Self::ToolUse {
-                id: id.clone(),
-                name: name.clone(),
-                input: input.clone(),
-            }),
-            ai_providers::ContentBlock::ToolResult {
-                tool_use_id,
-                content,
-                is_error,
-            } => {
-                // Extract text from content blocks
-                let text = content
-                    .iter()
-                    .filter_map(|block| match block {
-                        ai_providers::ContentBlock::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                Some(Self::ToolResult {
-                    tool_use_id: tool_use_id.clone(),
-                    content: text,
-                    is_error: *is_error,
-                })
-            }
+            // Extension types - must be converted via ExtensionRegistry
+            ai_providers::ContentBlock::ToolUse { .. } => None,
+            ai_providers::ContentBlock::ToolResult { .. } => None,
 
             // Document blocks are not supported in chat storage
             ai_providers::ContentBlock::Document { .. } => None,

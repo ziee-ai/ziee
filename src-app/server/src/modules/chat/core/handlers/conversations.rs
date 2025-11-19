@@ -64,7 +64,7 @@ pub async fn create_conversation(
     }
 
     let conversation =
-        Repos.chat.create_conversation( auth.user.id, request.model_id, request.title)
+        Repos.chat.core.create_conversation( auth.user.id, request.model_id, request.title)
             .await?;
 
     Ok((StatusCode::CREATED, Json(conversation)))
@@ -88,7 +88,7 @@ pub async fn get_conversation(
 
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Conversation>> {
-    let conversation = Repos.chat.get_conversation( id, auth.user.id)
+    let conversation = Repos.chat.core.get_conversation( id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -118,7 +118,7 @@ pub async fn list_conversations(
     let page = params.page.max(1);
     let offset = (page - 1) * limit;
 
-    let conversations = Repos.chat.list_conversations( auth.user.id, limit, offset).await?;
+    let conversations = Repos.chat.core.list_conversations( auth.user.id, limit, offset).await?;
 
     Ok((StatusCode::OK, Json(conversations)))
 }
@@ -148,7 +148,7 @@ pub async fn update_conversation(
         }
     }
 
-    let conversation = Repos.chat.update_conversation( id, auth.user.id, request.title)
+    let conversation = Repos.chat.core.update_conversation( id, auth.user.id, request.title)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -173,7 +173,7 @@ pub async fn delete_conversation(
 
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    let deleted = Repos.chat.delete_conversation( id, auth.user.id).await?;
+    let deleted = Repos.chat.core.delete_conversation( id, auth.user.id).await?;
 
     if !deleted {
         return Err(AppError::not_found("Conversation").into());

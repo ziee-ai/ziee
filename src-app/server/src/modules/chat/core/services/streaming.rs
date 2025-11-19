@@ -65,12 +65,12 @@ impl StreamingService {
 
         // Create initial user message
         let user_message =
-            Repos.chat.create_message( branch_id, MessageRole::User.as_str()).await?;
+            Repos.chat.core.create_message( branch_id, MessageRole::User.as_str()).await?;
 
         let user_content_data = MessageContentData::Text {
             text: request.content.clone(),
         };
-        Repos.chat.create_content( user_message.id, "text", user_content_data, 0)
+        Repos.chat.core.create_content( user_message.id, "text", user_content_data, 0)
             .await?;
 
         // Create channel for streaming output
@@ -112,7 +112,7 @@ impl StreamingService {
                 }
 
                 // Create assistant message for this iteration
-                let assistant_message = match Repos.chat.create_message(
+                let assistant_message = match Repos.chat.core.create_message(
                     branch_id,
                     MessageRole::Assistant.as_str(),
                 )
@@ -126,7 +126,7 @@ impl StreamingService {
                 };
 
                 // Get conversation history
-                let mut history = match Repos.chat.get_conversation_history( branch_id).await {
+                let mut history = match Repos.chat.core.get_conversation_history( branch_id).await {
                     Ok(h) => h,
                     Err(e) => {
                         let _ = tx.send(Err(e));
@@ -448,18 +448,32 @@ impl StreamingService {
             for content in &msg_with_content.contents {
                 let content_data = content.parse_content()?;
 
-                // Try extension transformation first
-                let block = if let Some(registry) = extension_registry {
-                    // Ask extension to transform content for LLM (e.g., file → text description)
-                    match registry
-                        .process_content_for_llm(&content_data, context)
-                        .await?
-                    {
-                        Some(transformed_block) => Some(transformed_block),
-                        None => content_data.to_content_block(), // Use default conversion
+                // Handle Extension variants via registry
+                let block = if let MessageContentData::Extension {
+                    extension_name,
+                    content: ext_content,
+                } = &content_data
+                {
+                    // Extension content must be converted via registry
+                    if let Some(registry) = extension_registry {
+                        registry.convert_to_content_block(extension_name, ext_content)
+                    } else {
+                        None // No registry, skip extension content
                     }
                 } else {
-                    content_data.to_content_block() // Use default conversion
+                    // Non-extension content: try extension transformation first
+                    if let Some(registry) = extension_registry {
+                        // Ask extension to transform content for LLM (e.g., file → text description)
+                        match registry
+                            .process_content_for_llm(&content_data, context)
+                            .await?
+                        {
+                            Some(transformed_block) => Some(transformed_block),
+                            None => content_data.to_content_block(), // Use default conversion
+                        }
+                    } else {
+                        content_data.to_content_block() // Use default conversion
+                    }
                 };
 
                 if let Some(b) = block {
@@ -522,11 +536,11 @@ impl StreamingService {
     ) -> Result<Uuid, AppError> {
         // Create user message for tool results
         let continuation_message =
-            Repos.chat.create_message( branch_id, MessageRole::User.as_str()).await?;
+            Repos.chat.core.create_message( branch_id, MessageRole::User.as_str()).await?;
 
         // Store content blocks (tool results, etc.)
         for (index, content_data) in user_message_content.iter().enumerate() {
-            Repos.chat.create_content(
+            Repos.chat.core.create_content(
                 continuation_message.id,
                 content_data.content_type(),
                 content_data.clone(),
@@ -742,7 +756,7 @@ impl DeltaAccumulator {
         // Call extension hooks after database write completes
         if let Some(registry) = &self.extension_registry {
             // Fetch the complete message from database
-            let final_message = Repos.chat.get_message( self.assistant_message_id)
+            let final_message = Repos.chat.core.get_message( self.assistant_message_id)
                 .await?
                 .ok_or_else(|| AppError::internal_error("Message not found after finalize"))?;
 

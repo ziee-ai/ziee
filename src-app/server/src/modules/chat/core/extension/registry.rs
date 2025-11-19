@@ -136,6 +136,26 @@ pub trait ChatExtension: Send + Sync {
     ) -> Result<(), AppError> {
         Ok(()) // Default: no processing
     }
+
+    // ========== CONTENT CONVERSION (for Extension variant) ==========
+
+    /// Convert Extension variant to ContentBlock
+    /// Called when Extension content needs to be converted for LLM
+    /// Return None if this extension doesn't handle the extension_name
+    fn convert_extension_content(
+        &self,
+        _extension_name: &str,
+        _content: &serde_json::Value,
+    ) -> Option<ContentBlock> {
+        None // Default: doesn't handle extension content
+    }
+
+    /// Convert ContentBlock to Extension variant
+    /// Called when ContentBlock from LLM needs to be stored as extension content
+    /// Return None if this extension doesn't handle this ContentBlock type
+    fn convert_from_content_block(&self, _block: &ContentBlock) -> Option<MessageContentData> {
+        None // Default: doesn't handle conversion
+    }
 }
 
 /// Registry for managing chat extensions
@@ -252,6 +272,34 @@ impl ExtensionRegistry {
         } else {
             Ok(())
         }
+    }
+
+    // ========== EXTENSION CONTENT CONVERSION ==========
+
+    /// Convert Extension variant to ContentBlock
+    /// Delegates to the appropriate extension based on extension_name
+    pub fn convert_to_content_block(
+        &self,
+        extension_name: &str,
+        content: &serde_json::Value,
+    ) -> Option<ContentBlock> {
+        for ext in &self.extensions {
+            if let Some(block) = ext.convert_extension_content(extension_name, content) {
+                return Some(block);
+            }
+        }
+        None
+    }
+
+    /// Convert ContentBlock to MessageContentData (potentially Extension variant)
+    /// Tries each extension until one successfully converts the block
+    pub fn convert_from_content_block(&self, block: &ContentBlock) -> Option<MessageContentData> {
+        for ext in &self.extensions {
+            if let Some(content) = ext.convert_from_content_block(block) {
+                return Some(content);
+            }
+        }
+        None
     }
 }
 

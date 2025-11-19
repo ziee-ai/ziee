@@ -1,3 +1,5 @@
+mod approval_test;
+
 use crate::common::test_helpers::{self, TestUser};
 use serde_json::json;
 use uuid::Uuid;

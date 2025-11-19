@@ -41,7 +41,7 @@ pub async fn send_message(
     }
 
     // Verify conversation exists and user owns it
-    let _conversation = Repos.chat
+    let _conversation = Repos.chat.core
         .get_conversation(conversation_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
@@ -53,7 +53,7 @@ pub async fn send_message(
         .ok_or_else(|| AppError::not_found("Model"))?;
 
     // Validate branch exists and belongs to this conversation
-    let branch = Repos.chat
+    let branch = Repos.chat.core
         .get_branch(request.branch_id)
         .await?
         .ok_or_else(|| AppError::not_found("Branch"))?;
@@ -65,7 +65,7 @@ pub async fn send_message(
     // Handle branch creation if requested (for edit/regenerate flow)
     let branch_id = if let Some(message_id) = request.create_branch_from_message_id {
         // Create new branch from the specified message
-        let new_branch = Repos.chat
+        let new_branch = Repos.chat.core
             .create_branch_from_message(conversation_id, request.branch_id, message_id)
             .await?;
 
@@ -76,7 +76,7 @@ pub async fn send_message(
     };
 
     // Update conversation state with the active branch and model
-    Repos.chat
+    Repos.chat.core
         .update_conversation_state(conversation_id, auth.user.id, request.model_id, Some(branch_id))
         .await?;
 

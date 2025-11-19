@@ -23,7 +23,7 @@ pub struct SendMessageRequestFields {
 
 /// Extension factory function
 pub fn create(pool: PgPool) -> Arc<dyn ChatExtension> {
-    Arc::new(super::file_extension::FileExtension::new(pool))
+    Arc::new(super::file::FileExtension::new(pool))
 }
 
 /// Self-registration via distributed slice

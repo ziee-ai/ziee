@@ -142,7 +142,7 @@ impl ChatExtension for TitleGenerationExtension {
     ) -> Result<ExtensionAction, AppError> {
         // Check if conversation needs a title
         let conversation =
-            Repos.chat.get_conversation( context.conversation_id, context.user_id)
+            Repos.chat.core.get_conversation( context.conversation_id, context.user_id)
                 .await?
                 .ok_or_else(|| AppError::not_found("Conversation"))?;
 
@@ -152,7 +152,7 @@ impl ChatExtension for TitleGenerationExtension {
         }
 
         // Get conversation history
-        let history = Repos.chat.get_conversation_history( context.branch_id).await?;
+        let history = Repos.chat.core.get_conversation_history( context.branch_id).await?;
 
         // Count user and assistant messages (skip system messages)
         let message_count = history
@@ -242,7 +242,7 @@ impl ChatExtension for TitleGenerationExtension {
         };
 
         // Update conversation title
-        Repos.chat
+        Repos.chat.core
             .update_conversation(context.conversation_id, context.user_id, Some(Some(title.clone())))
             .await?;
 
