@@ -28,6 +28,13 @@ pub struct McpServerConfig {
     pub tools: Vec<String>,
 }
 
+/// MCP configuration for chat requests
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct McpConfig {
+    /// List of MCP servers with optional tool filtering
+    pub mcp_servers: Vec<McpServerConfig>,
+}
+
 /// Request fields for MCP extension
 /// These fields are auto-merged into SendMessageRequest by the macro system
 #[derive(Debug, Deserialize, schemars::JsonSchema, Default)]
@@ -36,15 +43,13 @@ pub struct SendMessageRequestFields {
     #[serde(default)]
     pub enable_mcp: bool,
 
-    /// MCP configuration (JSON value to be deserialized in extension)
-    /// Contains: { "mcp_servers": [...] }
+    /// MCP configuration specifying which servers and tools to enable
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mcp_config: Option<serde_json::Value>,
+    pub mcp_config: Option<crate::modules::chat::extensions::mcp::McpConfig>,
 
     /// Tool approval decisions for resuming after approval workflow
-    /// Format: [{"tool_use_id": "...", "decision": "approve", "note": "..."}]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_approvals: Option<serde_json::Value>,
+    pub tool_approvals: Option<Vec<crate::modules::chat::extensions::mcp::ToolApprovalDecision>>,
 }
 
 /// Factory function to create the extension instance
@@ -60,3 +65,82 @@ static MCP_EXTENSION: ExtensionEntry = ExtensionEntry {
     order: METADATA.order,
     factory: create,
 };
+
+// ============================================================================
+// SSE Event Data Structs
+// ============================================================================
+
+/// Event data for MCP tool execution start
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SSEChatStreamMcpToolStartData {
+    /// Unique identifier for this tool use
+    pub tool_use_id: String,
+    /// Name of the tool being executed
+    pub tool_name: String,
+    /// MCP server executing the tool
+    pub server: String,
+}
+
+/// Event data for MCP tool execution completion
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SSEChatStreamMcpToolCompleteData {
+    /// Unique identifier for this tool use
+    pub tool_use_id: String,
+    /// Name of the completed tool
+    pub tool_name: String,
+    /// MCP server that executed the tool
+    pub server: String,
+    /// Whether the tool execution resulted in an error
+    pub is_error: bool,
+}
+
+/// Event data for MCP tool approval required
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SSEChatStreamMcpApprovalRequiredData {
+    /// Unique identifier for this tool use requiring approval
+    pub tool_use_id: String,
+    /// Name of the tool requiring approval
+    pub tool_name: String,
+    /// MCP server requesting tool execution
+    pub server: String,
+    /// Tool input parameters
+    pub input: serde_json::Value,
+}
+
+// ============================================================================
+// SSE Event Variants
+// ============================================================================
+
+/// MCP extension's SSE event variants
+/// These are merged into SSEChatStreamEvent by the compose_chat_stream_events macro
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum SSEChatStreamEventVariants {
+    /// Tool execution started
+    McpToolStart(SSEChatStreamMcpToolStartData),
+    /// Tool execution completed
+    McpToolComplete(SSEChatStreamMcpToolCompleteData),
+    /// Tool requires approval before execution
+    McpApprovalRequired(SSEChatStreamMcpApprovalRequiredData),
+}
+
+// ============================================================================
+// Content Block Delta Variants
+// ============================================================================
+
+/// MCP extension's content block delta variants
+/// These are merged into ContentBlockDelta by the compose_content_block_delta_variants macro
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentBlockDeltaVariants {
+    /// Tool use delta (incremental JSON)
+    ToolUseDelta {
+        index: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        input_delta: Option<String>,
+    },
+}

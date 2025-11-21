@@ -3837,6 +3837,177 @@
         ]
       }
     },
+    "/api/conversations/{id}/mcp-settings": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get MCP settings for a conversation",
+        "description": "Get the MCP approval settings for a conversation",
+        "operationId": "Conversation.getMcpSettings",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpSettingsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Update MCP settings for a conversation",
+        "description": "Create or update the MCP approval settings for a conversation",
+        "operationId": "Conversation.updateMcpSettings",
+        "requestBody": {
+          "description": "Request to create MCP settings",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertMcpSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Conversation MCP settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationMcpSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/branches/{branch_id}/pending-approvals": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get pending tool approvals for a branch",
+        "description": "Get all pending tool use approvals for a specific branch (active conversation)",
+        "operationId": "Branch.getPendingApprovals",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingApprovalsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Branch not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/conversations": {
       "get": {
         "tags": [
@@ -4255,7 +4426,7 @@
             }
           },
           "200": {
-            "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request. Extensions can add additional event variants\n through the SSEChatStreamEventVariants enum.\n\n Events are sent with proper `event:` names (e.g., \"content\", \"complete\", \"error\")\n for type-safe client-side handling.",
+            "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request.\n\n # Extension Architecture\n\n **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.\n Extensions add new event variants through the SSEChatStreamEventVariants enum using\n the compose_chat_stream_events macro.\n\n Example: The title extension sends a separate `TitleUpdated` event instead of\n adding a title field to ChatStreamChunk.\n\n Events are sent with proper `event:` names (e.g., \"content\", \"complete\", \"error\", \"titleUpdated\")\n for type-safe client-side handling.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4927,6 +5098,191 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/tools": {
+      "get": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "List MCP server tools",
+        "description": "List tools available from an MCP server",
+        "operationId": "McpServerRuntime.listTools",
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListToolsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/tools/{name}/call": {
+      "post": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "Call MCP server tool",
+        "description": "Execute a tool on an MCP server",
+        "operationId": "McpServerRuntime.callTool",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallToolRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallToolResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server or tool not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/resources": {
+      "get": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "List MCP server resources",
+        "description": "List resources available from an MCP server",
+        "operationId": "McpServerRuntime.listResources",
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResourcesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/resources/read": {
+      "post": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "Read MCP server resource",
+        "description": "Read the contents of a resource from an MCP server",
+        "operationId": "McpServerRuntime.readResource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadResourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadResourceResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server or resource not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/disconnect": {
+      "delete": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "Disconnect MCP server",
+        "description": "Disconnect from an MCP server and clean up the session",
+        "operationId": "McpServerRuntime.disconnect",
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null"
+                }
+              }
+            }
           },
           "404": {
             "description": "Server not found"
@@ -6451,6 +6807,26 @@
   },
   "components": {
     "schemas": {
+      "ApprovalMode": {
+        "description": "Approval mode for conversation MCP settings",
+        "oneOf": [
+          {
+            "description": "MCP is disabled for this conversation",
+            "type": "string",
+            "const": "disabled"
+          },
+          {
+            "description": "All tools are auto-approved",
+            "type": "string",
+            "const": "auto_approve"
+          },
+          {
+            "description": "Manual approval required for each tool use",
+            "type": "string",
+            "const": "manual_approve"
+          }
+        ]
+      },
       "AssignProviderToGroupRequest": {
         "type": "object",
         "properties": {
@@ -6734,17 +7110,37 @@
           "usage_percentage"
         ]
       },
-      "ChatStreamChunk": {
-        "description": "A chunk of streamed chat content (extends ai-providers StreamChatChunk)\n Extension fields (e.g., title) are automatically added by the compose_chat_stream_chunk_extensions macro",
+      "CallToolRequest": {
         "type": "object",
         "properties": {
-          "title": {
-            "description": "Auto-generated title (when available)",
-            "type": [
-              "string",
-              "null"
-            ]
+          "arguments": true
+        },
+        "required": [
+          "arguments"
+        ]
+      },
+      "CallToolResponse": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolContent"
+            }
           },
+          "is_error": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content",
+          "is_error"
+        ]
+      },
+      "ChatStreamChunk": {
+        "description": "A chunk of streamed chat content (core streaming response from LLM)\n\n IMPORTANT: Extensions should NOT add fields to this struct.\n Instead, extensions should:\n - Send their own SSE events via SSEChatStreamEvent variants\n - Add new ContentBlockDelta variants if needed",
+        "type": "object",
+        "properties": {
           "branch_id": {
             "description": "Branch ID (sent in first chunk)",
             "type": [
@@ -6808,7 +7204,7 @@
         }
       },
       "ContentBlockDelta": {
-        "description": "Content block delta - Base types (extensions can add more variants)\n Extension variants (e.g., ToolUseDelta) are automatically added by the compose_content_block_delta_variants macro",
+        "description": "Content block delta - Base types (extensions CAN add more variants)\n\n EXTENSIONS MAY extend this enum with new variants using the\n compose_content_block_delta_variants macro. For example, the MCP extension\n adds ToolUseDelta and ToolResultDelta variants.\n\n Extension variants are automatically added by the compose_content_block_delta_variants macro.",
         "oneOf": [
           {
             "description": "Text content delta",
@@ -6917,6 +7313,43 @@
         "required": [
           "id",
           "user_id",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "ConversationMcpSettings": {
+        "description": "Conversation MCP settings",
+        "type": "object",
+        "properties": {
+          "auto_approved_tools": {
+            "description": "Auto-approved tools (JSON array of tool names)"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "user_id",
+          "auto_approved_tools",
           "created_at",
           "updated_at"
         ]
@@ -9048,6 +9481,34 @@
           }
         }
       },
+      "ListResourcesResponse": {
+        "type": "object",
+        "properties": {
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Resource"
+            }
+          }
+        },
+        "required": [
+          "resources"
+        ]
+      },
+      "ListToolsResponse": {
+        "type": "object",
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            }
+          }
+        },
+        "required": [
+          "tools"
+        ]
+      },
       "LlamaCppSettings": {
         "description": "LlamaCpp-specific settings for llama-server configuration",
         "type": "object",
@@ -9552,6 +10013,22 @@
           "password"
         ]
       },
+      "McpConfig": {
+        "description": "MCP configuration for chat requests",
+        "type": "object",
+        "properties": {
+          "mcp_servers": {
+            "description": "List of MCP servers with optional tool filtering",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServerConfig"
+            }
+          }
+        },
+        "required": [
+          "mcp_servers"
+        ]
+      },
       "McpServer": {
         "type": "object",
         "properties": {
@@ -9630,6 +10107,28 @@
           "updated_at"
         ]
       },
+      "McpServerConfig": {
+        "description": "MCP server configuration for fine-grained tool selection",
+        "type": "object",
+        "properties": {
+          "server_id": {
+            "description": "MCP server ID",
+            "type": "string",
+            "format": "uuid"
+          },
+          "tools": {
+            "description": "Specific tools to enable (empty = all tools from this server)",
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "server_id"
+        ]
+      },
       "McpServerFromHubResponse": {
         "description": "Response for MCP server created from hub",
         "type": "object",
@@ -9689,6 +10188,21 @@
           "per_page",
           "total_pages"
         ]
+      },
+      "McpSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationMcpSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "MeResponse": {
         "type": "object",
@@ -10501,6 +11015,20 @@
           }
         }
       },
+      "PendingApprovalsResponse": {
+        "type": "object",
+        "properties": {
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolUseApproval"
+            }
+          }
+        },
+        "required": [
+          "approvals"
+        ]
+      },
       "PermissionDetail": {
         "type": "object",
         "properties": {
@@ -10596,6 +11124,26 @@
           }
         }
       },
+      "ReadResourceRequest": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri"
+        ]
+      },
+      "ReadResourceResponse": {
+        "type": "object",
+        "properties": {
+          "content": true
+        },
+        "required": [
+          "content"
+        ]
+      },
       "RefreshTokenRequest": {
         "type": "object",
         "properties": {
@@ -10684,6 +11232,33 @@
           "new_password"
         ]
       },
+      "Resource": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri",
+          "name"
+        ]
+      },
       "SSEChatStreamCompleteData": {
         "description": "Data for the Complete SSE event",
         "type": "object",
@@ -10729,7 +11304,7 @@
         ]
       },
       "SSEChatStreamEvent": {
-        "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request. Extensions can add additional event variants\n through the SSEChatStreamEventVariants enum.\n\n Events are sent with proper `event:` names (e.g., \"content\", \"complete\", \"error\")\n for type-safe client-side handling.",
+        "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request.\n\n # Extension Architecture\n\n **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.\n Extensions add new event variants through the SSEChatStreamEventVariants enum using\n the compose_chat_stream_events macro.\n\n Example: The title extension sends a separate `TitleUpdated` event instead of\n adding a title field to ChatStreamChunk.\n\n Events are sent with proper `event:` names (e.g., \"content\", \"complete\", \"error\", \"titleUpdated\")\n for type-safe client-side handling.",
         "oneOf": [
           {
             "description": "Content chunk event (streamed content deltas)",
@@ -10790,6 +11365,57 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "mcpToolStart"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamMcpToolStartData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "mcpToolComplete"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamMcpToolCompleteData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "mcpApprovalRequired"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamMcpApprovalRequiredData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "titleUpdated"
               }
             },
@@ -10802,6 +11428,84 @@
               "type"
             ]
           }
+        ]
+      },
+      "SSEChatStreamMcpApprovalRequiredData": {
+        "description": "Event data for MCP tool approval required",
+        "type": "object",
+        "properties": {
+          "input": {
+            "description": "Tool input parameters"
+          },
+          "server": {
+            "description": "MCP server requesting tool execution",
+            "type": "string"
+          },
+          "tool_name": {
+            "description": "Name of the tool requiring approval",
+            "type": "string"
+          },
+          "tool_use_id": {
+            "description": "Unique identifier for this tool use requiring approval",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_use_id",
+          "tool_name",
+          "server",
+          "input"
+        ]
+      },
+      "SSEChatStreamMcpToolCompleteData": {
+        "description": "Event data for MCP tool execution completion",
+        "type": "object",
+        "properties": {
+          "is_error": {
+            "description": "Whether the tool execution resulted in an error",
+            "type": "boolean"
+          },
+          "server": {
+            "description": "MCP server that executed the tool",
+            "type": "string"
+          },
+          "tool_name": {
+            "description": "Name of the completed tool",
+            "type": "string"
+          },
+          "tool_use_id": {
+            "description": "Unique identifier for this tool use",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_use_id",
+          "tool_name",
+          "server",
+          "is_error"
+        ]
+      },
+      "SSEChatStreamMcpToolStartData": {
+        "description": "Event data for MCP tool execution start",
+        "type": "object",
+        "properties": {
+          "server": {
+            "description": "MCP server executing the tool",
+            "type": "string"
+          },
+          "tool_name": {
+            "description": "Name of the tool being executed",
+            "type": "string"
+          },
+          "tool_use_id": {
+            "description": "Unique identifier for this tool use",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_use_id",
+          "tool_name",
+          "server"
         ]
       },
       "SSEChatStreamTitleUpdatedData": {
@@ -10952,10 +11656,47 @@
             ],
             "format": "uuid"
           },
+          "enable_mcp": {
+            "description": "Enable MCP tool calling for this request",
+            "type": "boolean",
+            "default": false
+          },
+          "file_ids": {
+            "description": "Array of file IDs to attach to the message",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "mcp_config": {
+            "description": "MCP configuration specifying which servers and tools to enable",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "model_id": {
             "description": "Model ID to use for this message (required)",
             "type": "string",
             "format": "uuid"
+          },
+          "tool_approvals": {
+            "description": "Tool approval decisions for resuming after approval workflow",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ToolApprovalDecision"
+            }
           }
         },
         "required": [
@@ -11122,6 +11863,139 @@
           "refresh_token",
           "token_type",
           "expires_in"
+        ]
+      },
+      "Tool": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input_schema": true,
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "input_schema"
+        ]
+      },
+      "ToolApprovalDecision": {
+        "description": "Single tool approval decision",
+        "type": "object",
+        "properties": {
+          "decision": {
+            "description": "Decision: \"approve\" | \"deny\"",
+            "type": "string"
+          },
+          "note": {
+            "description": "Optional note",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool_use_id": {
+            "description": "Tool use ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_use_id",
+          "decision"
+        ]
+      },
+      "ToolContent": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "ToolUseApproval": {
+        "description": "Tool use approval record",
+        "type": "object",
+        "properties": {
+          "approval_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "approved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "approved_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "server_id": {
+            "description": "Server identification (hybrid approach)",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "server_name": {
+            "type": "string"
+          },
+          "tool_input": true,
+          "tool_name": {
+            "type": "string"
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "branch_id",
+          "message_id",
+          "user_id",
+          "tool_use_id",
+          "tool_name",
+          "tool_input",
+          "server_name",
+          "created_at",
+          "updated_at"
         ]
       },
       "TransportType": {
@@ -11538,6 +12412,27 @@
             ]
           }
         }
+      },
+      "UpsertMcpSettingsRequest": {
+        "description": "Request to create MCP settings",
+        "type": "object",
+        "properties": {
+          "approval_mode": {
+            "description": "Approval mode",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              }
+            ]
+          },
+          "auto_approved_tools": {
+            "description": "Auto-approved tools (supports 3 formats):\n   1. String: \"server_name::tool_name\"\n   2. Object with ID: {\"server_id\": \"uuid\", \"tool_name\": \"name\"}\n   3. Object with name: {\"server_name\": \"name\", \"tool_name\": \"name\"}",
+            "default": null
+          }
+        },
+        "required": [
+          "approval_mode"
+        ]
       },
       "Usage": {
         "description": "Usage metadata from AI provider",

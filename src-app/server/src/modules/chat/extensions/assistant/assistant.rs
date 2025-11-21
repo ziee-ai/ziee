@@ -35,6 +35,7 @@ impl ChatExtension for AssistantExtension {
         _context: &mut StreamContext,
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
+        _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     ) -> Result<(), AppError> {
         // Check if assistant_id is provided (added directly by the macro)
         if let Some(assistant_id) = send_request.assistant_id {

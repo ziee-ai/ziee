@@ -182,6 +182,7 @@ impl ChatExtension for FileExtension {
         context: &mut StreamContext,
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
+        _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     ) -> Result<(), AppError> {
         // Access file_ids directly from composed request!
         if let Some(file_ids) = &send_request.file_ids {

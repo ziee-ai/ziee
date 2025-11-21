@@ -13,6 +13,10 @@ pub use approval::{
     ToolUseApproval, UpsertMcpSettingsRequest,
 };
 pub use content::McpContentData;
-pub use extension::{McpServerConfig, SendMessageRequestFields};
+pub use extension::{
+    McpConfig, McpServerConfig, SendMessageRequestFields,
+    SSEChatStreamEventVariants, SSEChatStreamMcpApprovalRequiredData,
+    SSEChatStreamMcpToolCompleteData, SSEChatStreamMcpToolStartData,
+};
 pub use mcp::McpChatExtension;
 pub use repository::McpChatRepository;

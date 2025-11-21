@@ -65,7 +65,7 @@ pub enum AutoApprovedTool {
 }
 
 impl AutoApprovedTool {
-    /// Normalize to canonical string format "server_name::tool_name"
+    /// Normalize to canonical string format "server_name__tool_name"
     /// For server_id format, you must provide server_name_map to lookup the name
     pub fn to_canonical_string(&self, server_name_map: Option<&std::collections::HashMap<Uuid, String>>) -> Option<String> {
         match self {
@@ -73,10 +73,10 @@ impl AutoApprovedTool {
             AutoApprovedTool::WithServerId { server_id, tool_name } => {
                 server_name_map
                     .and_then(|map| map.get(server_id))
-                    .map(|server_name| format!("{}::{}", server_name, tool_name))
+                    .map(|server_name| format!("{}__{}",server_name, tool_name))
             }
             AutoApprovedTool::WithServerName { server_name, tool_name } => {
-                Some(format!("{}::{}", server_name, tool_name))
+                Some(format!("{}__{}",server_name, tool_name))
             }
         }
     }
@@ -89,8 +89,7 @@ pub struct ConversationMcpSettings {
     pub conversation_id: Uuid,
     pub user_id: Uuid,
 
-    /// Approval mode
-    #[serde(skip)]
+    /// Approval mode (stored as VARCHAR in DB, serialized as String for API)
     pub approval_mode: String, // Stored as VARCHAR, converted to/from ApprovalMode
 
     /// Auto-approved tools (JSON array of tool names)
@@ -160,13 +159,16 @@ pub struct ToolUseApproval {
 
     pub tool_use_id: String,
     pub tool_name: String,
+
+    /// Tool input (serialized as "input" for API compatibility)
+    #[serde(rename = "input")]
     pub tool_input: serde_json::Value,
 
     /// Server identification (hybrid approach)
     pub server_id: Option<Uuid>,
     pub server_name: String,
 
-    #[serde(skip)]
+    /// Approval status (stored as VARCHAR in DB, serialized as String for API)
     pub status: String, // Stored as VARCHAR, converted to/from ApprovalStatus
 
     pub approved_at: Option<DateTime<Utc>>,

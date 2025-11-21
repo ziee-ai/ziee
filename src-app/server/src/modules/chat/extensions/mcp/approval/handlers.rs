@@ -31,12 +31,6 @@ pub struct McpSettingsResponse {
     pub settings: Option<models::ConversationMcpSettings>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ApproveToolsRequest {
-    /// List of tool approval decisions
-    pub approvals: Vec<models::ToolApprovalDecision>,
-}
-
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct PendingApprovalsResponse {
     pub approvals: Vec<models::ToolUseApproval>,
@@ -109,14 +103,14 @@ pub async fn update_mcp_settings(
             )
         })?;
 
-    // Additional validation: ensure string format tools contain "::"
+    // Additional validation: ensure string format tools contain "__"
     if let Ok(tools) = serde_json::from_value::<Vec<models::AutoApprovedTool>>(request.auto_approved_tools.clone()) {
         for tool in tools {
             if let models::AutoApprovedTool::String(ref tool_name) = tool {
-                if !tool_name.contains("::") {
+                if !tool_name.contains("__") {
                     return Err(AppError::bad_request(
                         "INVALID_TOOL_NAME",
-                        format!("Invalid tool name format: {}. Expected 'server_name::tool_name'", tool_name),
+                        format!("Invalid tool name format: {}. Expected 'server_name__tool_name'", tool_name),
                     )
                     .into());
                 }
@@ -150,90 +144,28 @@ pub fn update_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<404, (), _>(|res| res.description("Conversation not found"))
 }
 
-/// Get pending tool approvals for a message
+/// Get pending tool approvals for a branch
 #[debug_handler]
-pub async fn get_pending_approvals(
-    auth: RequirePermissions<(MessagesRead,)>,
-    Path((_conversation_id, message_id)): Path<(Uuid, Uuid)>,
+pub async fn get_pending_approvals_for_branch(
+    _auth: RequirePermissions<(ConversationsRead,)>,
+    Path(branch_id): Path<Uuid>,
 ) -> ApiResult<Json<PendingApprovalsResponse>> {
-    // TODO: Verify user owns the conversation containing this message
-
-    // Get pending approvals
+    // Get pending approvals for the branch
     let approvals = crate::core::Repos
         .chat
         .mcp
-        .get_pending_approvals_for_message(message_id)
+        .get_pending_approvals_for_branch(branch_id)
         .await?;
 
     Ok((StatusCode::OK, Json(PendingApprovalsResponse { approvals })))
 }
 
-pub fn get_pending_approvals_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(MessagesRead,)>(op)
-        .id("Message.getPendingApprovals")
+pub fn get_pending_approvals_for_branch_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(ConversationsRead,)>(op)
+        .id("Branch.getPendingApprovals")
         .tag("Chat")
-        .summary("Get pending tool approvals for a message")
-        .description("Get all pending tool use approvals for a specific message")
+        .summary("Get pending tool approvals for a branch")
+        .description("Get all pending tool use approvals for a specific branch (active conversation)")
         .response::<200, Json<PendingApprovalsResponse>>()
-        .response_with::<404, (), _>(|res| res.description("Message not found"))
-}
-
-/// Approve or deny tool uses
-#[debug_handler]
-pub async fn approve_tools(
-    auth: RequirePermissions<(MessagesCreate,)>,
-    Path((_conversation_id, message_id)): Path<(Uuid, Uuid)>,
-    Json(request): Json<ApproveToolsRequest>,
-) -> ApiResult<StatusCode> {
-    // TODO: Verify user owns the conversation containing this message
-
-    // Process each approval decision
-    for approval in request.approvals {
-        match approval.decision.as_str() {
-            "approve" => {
-                crate::core::Repos
-                    .chat
-                    .mcp
-                    .approve_tool_use(
-                        approval.tool_use_id,
-                        message_id,
-                        auth.user.id,
-                        approval.note,
-                    )
-                    .await?;
-            }
-            "deny" => {
-                crate::core::Repos
-                    .chat
-                    .mcp
-                    .deny_tool_use(
-                        approval.tool_use_id,
-                        message_id,
-                        auth.user.id,
-                        approval.note,
-                    )
-                    .await?;
-            }
-            _ => {
-                return Err(AppError::bad_request(
-                    "INVALID_DECISION",
-                    format!("Invalid decision: {}", approval.decision),
-                )
-                .into());
-            }
-        }
-    }
-
-    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
-}
-
-pub fn approve_tools_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(MessagesCreate,)>(op)
-        .id("Message.approveTools")
-        .tag("Chat")
-        .summary("Approve or deny tool uses")
-        .description("Approve or deny pending tool use requests for a message")
-        .response_with::<204, (), _>(|res| res.description("Tools approved/denied successfully"))
-        .response_with::<400, (), _>(|res| res.description("Invalid request"))
-        .response_with::<404, (), _>(|res| res.description("Message not found"))
+        .response_with::<404, (), _>(|res| res.description("Branch not found"))
 }

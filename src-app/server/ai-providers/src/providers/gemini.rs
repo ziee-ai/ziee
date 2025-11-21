@@ -64,6 +64,10 @@ enum GeminiPart {
         #[serde(rename = "functionCall")]
         function_call: GeminiFunctionCall,
     },
+    FunctionResponse {
+        #[serde(rename = "functionResponse")]
+        function_response: GeminiFunctionResponse,
+    },
 }
 
 /// Gemini inline data (for images)
@@ -85,6 +89,13 @@ struct GeminiFileData {
 struct GeminiFunctionCall {
     name: String,
     args: serde_json::Value,
+}
+
+/// Gemini function response
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct GeminiFunctionResponse {
+    name: String,
+    response: serde_json::Value,
 }
 
 /// Gemini system instruction
@@ -292,18 +303,43 @@ impl GeminiProvider {
                             }
                             ContentBlock::ToolResult {
                                 tool_use_id: _,
+                                name,
                                 content,
-                                is_error: _,
+                                is_error,
                             } => {
-                                // Convert tool result content blocks to text
-                                for sub_block in content {
-                                    if let ContentBlock::Text { text } = sub_block {
-                                        parts.push(GeminiPart::Text {
-                                            text: text.clone(),
-                                            thought: None,
-                                        });
-                                    }
-                                }
+                                // Convert tool result to functionResponse
+                                // Extract the response value from content
+                                let response_value = if let Some(ContentBlock::Text { text }) = content.first() {
+                                    // Try to parse as JSON, fallback to wrapping in result object
+                                    serde_json::from_str(text).unwrap_or_else(|_| {
+                                        serde_json::json!({ "result": text })
+                                    })
+                                } else {
+                                    serde_json::json!({ "result": "Empty response" })
+                                };
+
+                                // If error, wrap in error structure
+                                let final_response = if is_error.unwrap_or(false) {
+                                    serde_json::json!({
+                                        "error": response_value,
+                                        "is_error": true
+                                    })
+                                } else {
+                                    response_value
+                                };
+
+                                // Use function name from ToolResult if available, otherwise use placeholder
+                                let function_name = name.clone().unwrap_or_else(|| {
+                                    tracing::warn!("ToolResult missing function name - using placeholder");
+                                    "unknown_function".to_string()
+                                });
+
+                                parts.push(GeminiPart::FunctionResponse {
+                                    function_response: GeminiFunctionResponse {
+                                        name: function_name,
+                                        response: final_response,
+                                    },
+                                });
                             }
                             ContentBlock::ToolUse { .. } => {
                                 // Tool use should only appear in assistant messages
@@ -416,19 +452,58 @@ impl GeminiProvider {
     }
 
     /// Converts our tools to Gemini format
+    /// Sanitize JSON schema to remove fields unsupported by Gemini API
+    /// Gemini doesn't support: exclusiveMinimum, exclusiveMaximum, and other advanced JSON Schema keywords
+    fn sanitize_schema_for_gemini(schema: &mut serde_json::Value) {
+        if let Some(obj) = schema.as_object_mut() {
+            // Remove unsupported keywords
+            let had_exclusive_min = obj.remove("exclusiveMinimum").is_some();
+            let had_exclusive_max = obj.remove("exclusiveMaximum").is_some();
+            let had_title = obj.remove("title").is_some();
+
+            if had_exclusive_min || had_exclusive_max || had_title {
+                eprintln!("!!!! SANITIZED: min={}, max={}, title={}", had_exclusive_min, had_exclusive_max, had_title);
+            }
+
+            // Recursively sanitize nested objects
+            for value in obj.values_mut() {
+                Self::sanitize_schema_for_gemini(value);
+            }
+        } else if let Some(arr) = schema.as_array_mut() {
+            for item in arr {
+                Self::sanitize_schema_for_gemini(item);
+            }
+        }
+    }
+
     fn convert_tools(tools: &[crate::models::Tool]) -> Vec<GeminiTool> {
+        eprintln!("!!!!! CONVERT_TOOLS CALLED WITH {} TOOLS !!!!!", tools.len());
+
         if tools.is_empty() {
             return vec![];
         }
 
         let function_declarations: Vec<GeminiFunctionDeclaration> = tools
             .iter()
-            .map(|t| GeminiFunctionDeclaration {
-                name: t.function.name.clone(),
-                description: t.function.description.clone().unwrap_or_default(),
-                parameters: Some(t.function.parameters.clone()),
+            .map(|t| {
+                // Clone and sanitize the parameters schema
+                let mut parameters = t.function.parameters.clone();
+
+                eprintln!("BEFORE: {}", serde_json::to_string(&parameters).unwrap_or_default());
+
+                Self::sanitize_schema_for_gemini(&mut parameters);
+
+                eprintln!("AFTER: {}", serde_json::to_string(&parameters).unwrap_or_default());
+
+                GeminiFunctionDeclaration {
+                    name: t.function.name.clone(),
+                    description: t.function.description.clone().unwrap_or_default(),
+                    parameters: Some(parameters),
+                }
             })
             .collect();
+
+        eprintln!("!!!!! CONVERT_TOOLS RETURNING {} FUNCTION DECLARATIONS !!!!!", function_declarations.len());
 
         vec![GeminiTool {
             function_declarations,
@@ -479,9 +554,13 @@ impl GeminiProvider {
                     }
                 }
                 GeminiPart::FunctionCall { function_call } => {
+                    // Generate a unique ID for Gemini function calls
+                    // (Gemini API doesn't provide IDs like Anthropic/OpenAI do)
+                    let tool_use_id = format!("gemini_{}", uuid::Uuid::new_v4());
+
                     content_deltas.push(crate::models::ContentBlockDelta::ToolUseDelta {
                         index: idx,
-                        id: None,
+                        id: Some(tool_use_id),
                         name: Some(function_call.name.clone()),
                         input_delta: Some(function_call.args.to_string()),
                     });
@@ -553,9 +632,11 @@ impl AIProvider for GeminiProvider {
         Pin<Box<dyn Stream<Item = Result<StreamChatChunk, ProviderError>> + Send>>,
         ProviderError,
     > {
+        eprintln!("!!!!! GEMINI STREAM_CHAT CALLED, model={} !!!!!", request.model);
         let client = Client::new();
         let base_url = Self::get_base_url(base_url);
         let model = Self::normalize_model(&request.model);
+        eprintln!("!!!!! GEMINI: client created, normalized model={} !!!!!", model);
 
         // Build request body
         let mut generation_config = GeminiGenerationConfig {
@@ -600,18 +681,40 @@ impl AIProvider for GeminiProvider {
                 .map(|tc| Self::convert_tool_config(tc)),
         };
 
+        // Log request details
+        if !request.tools.is_empty() {
+            tracing::info!("Gemini: Sending {} tools to API", request.tools.len());
+            if let Some(ref tc) = request.tool_choice {
+                let mode = match tc {
+                    crate::models::ToolChoice::Auto => "AUTO",
+                    crate::models::ToolChoice::Required => "ANY",
+                    crate::models::ToolChoice::Specific { .. } => "ANY (specific)",
+                };
+                tracing::info!("Gemini: Tool choice mode: {}", mode);
+            } else {
+                tracing::info!("Gemini: No tool_choice set (defaults to AUTO)");
+            }
+        }
+
+        // Log the full request body for debugging
+        if let Ok(request_json) = serde_json::to_string_pretty(&gemini_request) {
+            tracing::info!("Gemini API Request Body: {}", request_json);
+        }
+
         // Make streaming request
         let url = format!(
             "{}/{}:streamGenerateContent?alt=sse&key={}",
             base_url, model, api_key
         );
 
+        eprintln!("!!!!! GEMINI: About to send HTTP POST to: {} !!!!!", url);
         let response = client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(&gemini_request)
             .send()
             .await?;
+        eprintln!("!!!!! GEMINI: HTTP POST completed, status={} !!!!!", response.status());
 
         // Check status
         let status = response.status();
@@ -634,6 +737,8 @@ impl AIProvider for GeminiProvider {
             while let Some(chunk_result) = byte_stream.next().await {
                 match chunk_result {
                     Ok(chunk) => {
+                        tracing::info!("Gemini: Received chunk ({} bytes)", chunk.len());
+
                         // Convert bytes to string
                         let chunk_str = match std::str::from_utf8(&chunk) {
                             Ok(s) => s,
@@ -652,13 +757,19 @@ impl AIProvider for GeminiProvider {
                             let drain_len = if buffer[index..].starts_with("\r\n\r\n") { index + 4 } else { index + 2 };
                             buffer.drain(..drain_len);
 
+                            tracing::info!("Gemini: Found complete SSE event ({} bytes)", event.len());
+
                             // Parse event
                             if event.starts_with("data: ") {
                                 let data = &event[6..]; // Skip "data: "
+                                tracing::info!("Gemini: Parsing SSE data: {}", if data.len() > 200 { &data[..200] } else { data });
 
                                 // Try to parse as JSON
                                 match serde_json::from_str::<GeminiResponse>(data) {
                                     Ok(response) => {
+                                    // Log the raw response for debugging
+                                    tracing::info!("Gemini API Response: {}", data);
+
                                     // Check for prompt feedback (prompt blocking)
                                     if let Some(prompt_feedback) = response.prompt_feedback {
                                         if let Some(block_reason) = prompt_feedback.block_reason {
@@ -689,6 +800,25 @@ impl AIProvider for GeminiProvider {
 
                                     // Extract content from candidate
                                     if let Some(candidate) = response.candidates.first() {
+                                        // Log candidate parts for debugging
+                                        tracing::info!("Gemini candidate has {} parts", candidate.content.parts.len());
+                                        for (i, part) in candidate.content.parts.iter().enumerate() {
+                                            match part {
+                                                GeminiPart::Text { text, .. } => {
+                                                    tracing::info!("  Part {}: Text ({}chars)", i, text.len());
+                                                }
+                                                GeminiPart::FunctionCall { function_call } => {
+                                                    tracing::info!("  Part {}: FunctionCall name={}", i, function_call.name);
+                                                }
+                                                GeminiPart::FunctionResponse { function_response } => {
+                                                    tracing::info!("  Part {}: FunctionResponse name={}", i, function_response.name);
+                                                }
+                                                _ => {
+                                                    tracing::info!("  Part {}: Other", i);
+                                                }
+                                            }
+                                        }
+
                                         if let Some(chunk) = Self::convert_stream_chunk(candidate) {
                                             yield Ok(chunk);
                                         }

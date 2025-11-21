@@ -160,4 +160,13 @@ impl McpChatRepository {
     ) -> Result<Option<ToolUseApproval>, AppError> {
         repository::get_tool_approval(&self.pool, tool_use_id, message_id).await
     }
+
+    /// Delete tool use approval record (after execution)
+    pub async fn delete_tool_approval(
+        &self,
+        tool_use_id: String,
+        message_id: Uuid,
+    ) -> Result<bool, AppError> {
+        repository::delete_tool_approval(&self.pool, tool_use_id, message_id).await
+    }
 }

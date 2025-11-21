@@ -20,6 +20,7 @@ use ai_providers::{ChatRequest, ContentBlock};
 use super::request::SendMessageRequest;
 use crate::common::AppError;
 use crate::modules::chat::core::models::{Message, content::MessageContentData};
+use crate::modules::chat::core::types::streaming::ContentBlockDelta;
 
 /// Extension registration entry for distributed collection
 #[derive(Debug, Clone, Copy)]
@@ -74,6 +75,7 @@ pub trait ChatExtension: Send + Sync {
         _context: &mut StreamContext,
         _request: &mut ChatRequest,
         _send_request: &SendMessageRequest,
+        _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<(), AppError> {
         Ok(())
     }
@@ -88,6 +90,39 @@ pub trait ChatExtension: Send + Sync {
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<ExtensionAction, AppError> {
         Ok(ExtensionAction::Complete)
+    }
+
+    /// Process a streaming delta during LLM response
+    /// Called for each content delta that core streaming doesn't handle
+    /// Extensions can convert ai-providers deltas to their own ContentBlockDelta variants
+    /// Return Some(ContentBlockDelta) to accumulate and stream, None to ignore
+    async fn process_delta(
+        &self,
+        _delta: &ai_providers::ContentBlockDelta,
+        _context: &StreamContext,
+    ) -> Result<Option<ContentBlockDelta>, AppError> {
+        Ok(None) // Default: don't handle this delta
+    }
+
+    /// Accumulate a delta in extension-specific storage
+    /// Called during streaming for deltas that this extension handles
+    /// Extensions maintain their own accumulation state
+    async fn accumulate_delta(
+        &self,
+        _delta: &ContentBlockDelta,
+        _context: &StreamContext,
+    ) -> Result<(), AppError> {
+        Ok(()) // Default: no accumulation
+    }
+
+    /// Get accumulated content from extension
+    /// Called during finalize to retrieve accumulated content blocks
+    /// Returns Vec of (index, MessageContentData) tuples
+    async fn get_accumulated_content(
+        &self,
+        _context: &StreamContext,
+    ) -> Result<Vec<(usize, MessageContentData)>, AppError> {
+        Ok(Vec::new()) // Default: no content
     }
 
     /// Initialize extension (called once at startup)
@@ -191,9 +226,10 @@ impl ExtensionRegistry {
         context: &mut StreamContext,
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
+        tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<(), AppError> {
         for ext in &self.extensions {
-            ext.before_llm_call(context, request, send_request).await?;
+            ext.before_llm_call(context, request, send_request, tx).await?;
         }
         Ok(())
     }
@@ -217,6 +253,47 @@ impl ExtensionRegistry {
 
         // All extensions returned Complete
         Ok(ExtensionAction::Complete)
+    }
+
+    /// Process delta through extensions
+    /// Returns first successful conversion, or None if no extension handles this delta
+    pub async fn process_delta(
+        &self,
+        delta: &ai_providers::ContentBlockDelta,
+        context: &StreamContext,
+    ) -> Result<Option<ContentBlockDelta>, AppError> {
+        for ext in &self.extensions {
+            if let Some(converted) = ext.process_delta(delta, context).await? {
+                return Ok(Some(converted));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Accumulate delta across all extensions
+    pub async fn accumulate_delta(
+        &self,
+        delta: &ContentBlockDelta,
+        context: &StreamContext,
+    ) -> Result<(), AppError> {
+        for ext in &self.extensions {
+            ext.accumulate_delta(delta, context).await?;
+        }
+        Ok(())
+    }
+
+    /// Get accumulated content from all extensions
+    /// Returns combined content from all extensions
+    pub async fn get_accumulated_content(
+        &self,
+        context: &StreamContext,
+    ) -> Result<Vec<(usize, MessageContentData)>, AppError> {
+        let mut all_content = Vec::new();
+        for ext in &self.extensions {
+            let ext_content = ext.get_accumulated_content(context).await?;
+            all_content.extend(ext_content);
+        }
+        Ok(all_content)
     }
 
     // ========== ROUTE REGISTRATION ==========

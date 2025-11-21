@@ -91,6 +91,9 @@ pub enum ContentBlock {
     /// Tool result (response from tool execution)
     ToolResult {
         tool_use_id: String,
+        /// Function/tool name (required for some providers like Gemini)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
         /// Can contain text, images, or structured data (recursive)
         content: Vec<ContentBlock>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -248,11 +251,12 @@ impl ChatMessage {
     }
 
     /// Creates a tool result message
-    pub fn tool_result(tool_use_id: impl Into<String>, content: Vec<ContentBlock>) -> Self {
+    pub fn tool_result(tool_use_id: impl Into<String>, name: Option<String>, content: Vec<ContentBlock>) -> Self {
         Self::with_blocks(
             Role::Tool,
             vec![ContentBlock::ToolResult {
                 tool_use_id: tool_use_id.into(),
+                name,
                 content,
                 is_error: None,
             }],
@@ -262,10 +266,12 @@ impl ChatMessage {
     /// Creates a tool result with simple text
     pub fn tool_result_text(
         tool_use_id: impl Into<String>,
+        name: Option<String>,
         text: impl Into<String>,
     ) -> Self {
         Self::tool_result(
             tool_use_id,
+            name,
             vec![ContentBlock::Text {
                 text: text.into(),
             }],

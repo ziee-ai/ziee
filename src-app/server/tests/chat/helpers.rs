@@ -8,6 +8,154 @@ use uuid::Uuid;
 /// Returns a model with chat capability that can be used in conversations
 /// Uses real AI providers (Anthropic, OpenAI, etc.) with API keys from environment
 /// Creates models using admin permissions to avoid permission issues in tests
+/// Model configuration for testing
+pub struct TestModelConfig {
+    pub provider_type: &'static str,
+    pub model_name: &'static str,
+    pub display_name: &'static str,
+}
+
+/// Get all test models from ai-providers crate
+pub fn get_test_model_configs() -> Vec<TestModelConfig> {
+    vec![
+        // Anthropic models (from ai-providers/tests/test_anthropic.rs)
+        TestModelConfig {
+            provider_type: "anthropic",
+            model_name: "claude-opus-4-1-20250805",
+            display_name: "Claude Opus 4.1",
+        },
+        TestModelConfig {
+            provider_type: "anthropic",
+            model_name: "claude-sonnet-4-5-20250929",
+            display_name: "Claude Sonnet 4.5",
+        },
+        TestModelConfig {
+            provider_type: "anthropic",
+            model_name: "claude-haiku-4-5-20251001",
+            display_name: "Claude Haiku 4.5",
+        },
+        TestModelConfig {
+            provider_type: "anthropic",
+            model_name: "claude-3-5-haiku-20241022",
+            display_name: "Claude 3.5 Haiku",
+        },
+        // OpenAI models (from ai-providers/tests/test_openai.rs)
+        TestModelConfig {
+            provider_type: "openai",
+            model_name: "gpt-4o",
+            display_name: "GPT-4o",
+        },
+        TestModelConfig {
+            provider_type: "openai",
+            model_name: "gpt-4o-mini",
+            display_name: "GPT-4o Mini",
+        },
+        TestModelConfig {
+            provider_type: "openai",
+            model_name: "gpt-4-turbo",
+            display_name: "GPT-4 Turbo",
+        },
+        TestModelConfig {
+            provider_type: "openai",
+            model_name: "gpt-3.5-turbo",
+            display_name: "GPT-3.5 Turbo",
+        },
+        // Gemini models (from ai-providers/tests/test_gemini.rs)
+        TestModelConfig {
+            provider_type: "gemini",
+            model_name: "models/gemini-2.5-flash",
+            display_name: "Gemini 2.5 Flash",
+        },
+        TestModelConfig {
+            provider_type: "gemini",
+            model_name: "models/gemini-2.5-pro",
+            display_name: "Gemini 2.5 Pro",
+        },
+        TestModelConfig {
+            provider_type: "gemini",
+            model_name: "models/gemini-2.0-flash",
+            display_name: "Gemini 2.0 Flash",
+        },
+        TestModelConfig {
+            provider_type: "gemini",
+            model_name: "models/gemini-2.0-flash-lite",
+            display_name: "Gemini 2.0 Flash Lite",
+        },
+    ]
+}
+
+/// Create a specific model (used by MCP tests for multi-model testing)
+pub async fn create_test_model_with_config(
+    server: &crate::common::TestServer,
+    config: &TestModelConfig,
+) -> Value {
+    // Create admin user with necessary permissions for model setup
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "model_admin",
+        &[
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
+
+    let (env_var, provider_name) = match config.provider_type {
+        "anthropic" => ("ANTHROPIC_API_KEY", "Anthropic"),
+        "openai" => ("OPENAI_API_KEY", "OpenAI"),
+        "gemini" => ("GEMINI_API_KEY", "Google Gemini"),
+        "groq" => ("GROQ_API_KEY", "Groq"),
+        _ => panic!("Unsupported provider type: {}", config.provider_type),
+    };
+
+    // Check if provider API key is available
+    if std::env::var(env_var).is_err() {
+        eprintln!("Skipping {} model '{}' - {} not set", provider_name, config.display_name, env_var);
+        return json!(null);
+    }
+
+    eprintln!("Configuring provider '{}' with API key from {}", provider_name, env_var);
+    let provider = configure_provider_with_api_key(server, &admin.token, provider_name, env_var).await;
+
+    eprintln!("Creating test model '{}' for provider '{}'", config.display_name, provider_name);
+
+    let payload = json!({
+        "provider_id": provider["id"],
+        "name": config.model_name,
+        "display_name": config.display_name,
+        "description": format!("{} model for chat testing", provider_name),
+        "enabled": true,
+        "engine_type": "none",
+        "file_format": "gguf",  // Placeholder for API models (not actually used)
+        "capabilities": {
+            "chat": true,
+            "completion": true,
+            "embedding": false
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-models"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    if status != StatusCode::CREATED {
+        let error_body = response.text().await.unwrap();
+        eprintln!("Model creation failed with status {}: {}", status, error_body);
+        panic!("Failed to create test model. Status: {}, Body: {}", status, error_body);
+    }
+
+    let model = response.json().await.unwrap();
+    eprintln!("Successfully created model: {}", config.display_name);
+    model
+}
+
 pub async fn get_or_create_test_model(
     server: &crate::common::TestServer,
     _token: &str,
@@ -52,10 +200,16 @@ pub async fn get_or_create_test_model(
     let provider_name = provider["name"].as_str().unwrap();
 
     // Determine model name and engine type based on provider
+    // For MCP tool calling tests, prefer models with best tool use capabilities:
+    // 1. Claude Opus 4.1 - Best at tool calling
+    // 2. Claude Sonnet 4.5 - Excellent tool calling
+    // 3. GPT-4o - Good tool calling
+    // 4. Gemini 2.0 Flash - Native tool support
+    // Use specific model if provided, otherwise use default for provider
     let (model_name, model_display_name, engine_type) = match provider_type {
-        "anthropic" => ("claude-3-5-sonnet-20240620", "Claude 3.5 Sonnet", "none"),
-        "openai" => ("gpt-4o-mini", "GPT-4o Mini", "none"),
-        "gemini" => ("gemini-2.0-flash-exp", "Gemini 2.0 Flash", "none"),
+        "anthropic" => ("claude-opus-4-1-20250805", "Claude Opus 4.1", "none"),
+        "openai" => ("gpt-4o", "GPT-4o", "none"),
+        "gemini" => ("models/gemini-2.0-flash", "Gemini 2.0 Flash", "none"),
         "groq" => ("llama-3.3-70b-versatile", "Llama 3.3 70B", "none"),
         _ => panic!("Unsupported provider type: {}", provider_type),
     };
@@ -164,26 +318,26 @@ async fn configure_provider_with_api_key(
 }
 
 /// Get or create an AI provider with API key for chat testing
-/// Prioritizes Anthropic (Claude) as it's most reliable for testing
+/// Prioritizes Anthropic (Claude) as it's most reliable for tool calling tests
 async fn get_or_create_ai_provider(server: &crate::common::TestServer, token: &str) -> Value {
-    // Try OpenAI first (most compatible)
+    // Try Anthropic first (best at tool calling - Claude Opus 4.1)
+    if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+        return configure_provider_with_api_key(server, token, "Anthropic", "ANTHROPIC_API_KEY").await;
+    }
+
+    // Fallback to OpenAI (GPT-4o has good tool calling)
     if std::env::var("OPENAI_API_KEY").is_ok() {
         return configure_provider_with_api_key(server, token, "OpenAI", "OPENAI_API_KEY").await;
     }
 
-    // Fallback to Groq (OpenAI-compatible, often more accessible)
-    if std::env::var("GROQ_API_KEY").is_ok() {
-        return configure_provider_with_api_key(server, token, "Groq", "GROQ_API_KEY").await;
-    }
-
-    // Fallback to Gemini
+    // Fallback to Gemini (native tool support)
     if std::env::var("GEMINI_API_KEY").is_ok() {
         return configure_provider_with_api_key(server, token, "Google Gemini", "GEMINI_API_KEY").await;
     }
 
-    // Fallback to Anthropic
-    if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-        return configure_provider_with_api_key(server, token, "Anthropic", "ANTHROPIC_API_KEY").await;
+    // Fallback to Groq (OpenAI-compatible)
+    if std::env::var("GROQ_API_KEY").is_ok() {
+        return configure_provider_with_api_key(server, token, "Groq", "GROQ_API_KEY").await;
     }
 
     panic!("No AI provider API keys found. Please set at least one in tests/.env.test");

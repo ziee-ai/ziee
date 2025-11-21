@@ -20,6 +20,9 @@ pub enum McpContentData {
     /// Tool result (response from tool execution)
     ToolResult {
         tool_use_id: String,
+        /// Function/tool name (required for some providers like Gemini)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
@@ -62,10 +65,12 @@ impl McpContentData {
             }),
             Self::ToolResult {
                 tool_use_id,
+                name,
                 content,
                 is_error,
             } => Some(ai_providers::ContentBlock::ToolResult {
                 tool_use_id: tool_use_id.clone(),
+                name: name.clone(),
                 content: vec![ai_providers::ContentBlock::Text {
                     text: content.clone(),
                 }],
@@ -84,6 +89,7 @@ impl McpContentData {
             }),
             ai_providers::ContentBlock::ToolResult {
                 tool_use_id,
+                name,
                 content,
                 is_error,
             } => {
@@ -99,6 +105,7 @@ impl McpContentData {
 
                 Some(Self::ToolResult {
                     tool_use_id: tool_use_id.clone(),
+                    name: name.clone(),
                     content: text,
                     is_error: *is_error,
                 })
@@ -147,6 +154,7 @@ mod tests {
     fn test_tool_result_conversion() {
         let tool_result = McpContentData::ToolResult {
             tool_use_id: "toolu_01".to_string(),
+            name: Some("get_weather".to_string()),
             content: "Sunny, 72°F".to_string(),
             is_error: Some(false),
         };
@@ -159,10 +167,12 @@ mod tests {
         match recovered {
             McpContentData::ToolResult {
                 tool_use_id,
+                name,
                 content,
                 is_error,
             } => {
                 assert_eq!(tool_use_id, "toolu_01");
+                assert_eq!(name, Some("get_weather".to_string()));
                 assert_eq!(content, "Sunny, 72°F");
                 assert_eq!(is_error, Some(false));
             }

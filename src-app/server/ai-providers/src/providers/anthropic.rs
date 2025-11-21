@@ -101,6 +101,23 @@ struct AnthropicStreamChunk {
     message: Option<AnthropicMessageDelta>,
     #[serde(default)]
     usage: Option<AnthropicStreamUsage>,
+    #[serde(default)]
+    index: Option<usize>,
+    #[serde(default)]
+    content_block: Option<AnthropicContentBlockStart>,
+}
+
+/// Content block for content_block_start event
+#[derive(Deserialize)]
+struct AnthropicContentBlockStart {
+    #[serde(rename = "type")]
+    block_type: String,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    text: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -221,6 +238,7 @@ impl AnthropicProvider {
                             }
                             ContentBlock::ToolResult {
                                 tool_use_id,
+                                name: _,
                                 content,
                                 is_error,
                             } => {
@@ -425,13 +443,24 @@ impl AIProvider for AnthropicProvider {
         // Add tools if provided
         if !request.tools.is_empty() {
             let tools = Self::convert_tools(&request.tools);
+            tracing::info!("Anthropic: Sending {} tools to API", tools.len());
+            tracing::debug!("Anthropic: Tools JSON: {}", serde_json::to_string_pretty(&tools).unwrap_or_default());
             body["tools"] = json!(tools);
+        } else {
+            tracing::warn!("Anthropic: No tools in request!");
         }
 
         // Add tool choice if provided
         if let Some(ref tool_choice) = request.tool_choice {
-            body["tool_choice"] = Self::convert_tool_choice(tool_choice);
+            let converted = Self::convert_tool_choice(tool_choice);
+            tracing::info!("Anthropic: Setting tool_choice: {}", serde_json::to_string(&converted).unwrap_or_default());
+            body["tool_choice"] = converted;
+        } else {
+            tracing::info!("Anthropic: No tool_choice set (defaults to AUTO)");
         }
+
+        // DEBUG: Log the full request body
+        tracing::info!("Anthropic API Request Body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
 
         // Add thinking configuration if provided
         if let Some(ref thinking) = request.thinking {
@@ -498,8 +527,12 @@ impl AIProvider for AnthropicProvider {
                                         break;
                                     }
 
+                                    // DEBUG: Log raw SSE event
+                                    tracing::info!("Anthropic SSE event: {}", if data.len() > 200 { &data[..200] } else { data });
+
                                     // Try to parse as JSON
                                     if let Ok(chunk_data) = serde_json::from_str::<AnthropicStreamChunk>(data) {
+                                        tracing::info!("Anthropic: Parsed event type: {}", chunk_data.event_type);
                                         // Handle error events
                                         if chunk_data.event_type == "error" {
                                             if let Some(error) = chunk_data.error {
@@ -543,14 +576,48 @@ impl AIProvider for AnthropicProvider {
                                             }
                                         }
 
+                                        // Handle content_block_start for tool_use
+                                        if chunk_data.event_type == "content_block_start" {
+                                            tracing::info!("Anthropic: Processing content_block_start, has content_block: {}, block_type: {:?}",
+                                                chunk_data.content_block.is_some(),
+                                                chunk_data.content_block.as_ref().map(|b| b.block_type.as_str()));
+
+                                            if let Some(content_block) = chunk_data.content_block {
+                                                if content_block.block_type == "tool_use" {
+                                                    let index = chunk_data.index.unwrap_or(0);
+                                                    tracing::info!(
+                                                        "Anthropic: Tool use start at index {}: id={:?}, name={:?}",
+                                                        index,
+                                                        content_block.id,
+                                                        content_block.name
+                                                    );
+
+                                                    yield Ok(StreamChatChunk {
+                                                        content: vec![crate::models::ContentBlockDelta::ToolUseDelta {
+                                                            index,
+                                                            id: content_block.id,
+                                                            name: content_block.name,
+                                                            input_delta: None,
+                                                        }],
+                                                        finish_reason: None,
+                                                        usage: None,
+                                                        refusal: None,
+                                                        safety_ratings: Vec::new(),
+                                                        safety_blocked: false,
+                                                    });
+                                                }
+                                            }
+                                        }
+
                                         // Handle content_block_delta
                                         if chunk_data.event_type == "content_block_delta" {
                                             if let Some(delta) = chunk_data.delta {
+                                                let index = chunk_data.index.unwrap_or(0);
                                                 let content_delta = match delta.delta_type.as_str() {
                                                     "text_delta" => {
                                                         delta.text.map(|text| {
                                                             crate::models::ContentBlockDelta::TextDelta {
-                                                                index: 0, // TODO: track block index
+                                                                index,
                                                                 delta: text,
                                                             }
                                                         })
@@ -558,7 +625,7 @@ impl AIProvider for AnthropicProvider {
                                                     "thinking_delta" => {
                                                         delta.thinking.map(|thinking| {
                                                             crate::models::ContentBlockDelta::ThinkingDelta {
-                                                                index: 0, // TODO: track block index
+                                                                index,
                                                                 delta: thinking,
                                                             }
                                                         })
@@ -566,7 +633,7 @@ impl AIProvider for AnthropicProvider {
                                                     "input_json_delta" => {
                                                         delta.partial_json.map(|partial_json| {
                                                             crate::models::ContentBlockDelta::ToolUseDelta {
-                                                                index: 0, // TODO: track block index
+                                                                index,
                                                                 id: None,
                                                                 name: None,
                                                                 input_delta: Some(partial_json),

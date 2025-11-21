@@ -9,12 +9,16 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::common::AppError;
+use crate::modules::chat::core::types::streaming::SSEChatStreamEvent;
 use crate::modules::mcp::client::session::McpSession;
 use crate::modules::mcp::client::traits::{Tool, ToolResult};
 use crate::modules::mcp::{McpRepository, McpServer};
 
 use super::content::McpContentData;
-use super::extension::McpServerConfig;
+use super::extension::{
+    McpServerConfig, SSEChatStreamMcpApprovalRequiredData, SSEChatStreamMcpToolCompleteData,
+    SSEChatStreamMcpToolStartData,
+};
 
 /// Get all MCP servers accessible to the user
 pub async fn get_all_accessible_config(
@@ -81,8 +85,10 @@ pub fn convert_mcp_tool_to_ai_tool(
     server_name: &str,
     mcp_tool: &Tool,
 ) -> ai_providers::Tool {
+    // Use double underscore separator for compatibility with Anthropic's naming rules
+    // Anthropic requires: ^[a-zA-Z0-9_-]{1,128}$ (no colons allowed)
     ai_providers::Tool::function(
-        format!("{}::{}", server_name, mcp_tool.name),
+        format!("{}__{}",  server_name, mcp_tool.name),
         mcp_tool.description.clone().unwrap_or_default(),
         mcp_tool.input_schema.clone(),
     )
@@ -96,8 +102,8 @@ pub async fn execute_tool(
     server_name: &str,
     timeout_seconds: Option<i32>,
 ) -> McpContentData {
-    // Parse tool name (format: "server_name::tool_name")
-    let actual_tool_name = if let Some(idx) = tool_name.rfind("::") {
+    // Parse tool name (format: "server_name__tool_name")
+    let actual_tool_name = if let Some(idx) = tool_name.rfind("__") {
         &tool_name[idx + 2..]
     } else {
         tool_name
@@ -135,6 +141,7 @@ pub async fn execute_tool(
 
             McpContentData::ToolResult {
                 tool_use_id: String::new(), // Will be set by caller
+                name: Some(tool_name.to_string()),
                 content: final_content,
                 is_error: Some(tool_result.is_error),
             }
@@ -143,6 +150,7 @@ pub async fn execute_tool(
             // MCP error
             McpContentData::ToolResult {
                 tool_use_id: String::new(),
+                name: Some(tool_name.to_string()),
                 content: format!("Tool execution failed: {}", e),
                 is_error: Some(true),
             }
@@ -151,6 +159,7 @@ pub async fn execute_tool(
             // Timeout
             McpContentData::ToolResult {
                 tool_use_id: String::new(),
+                name: Some(tool_name.to_string()),
                 content: format!(
                     "Tool execution timed out after {}s",
                     timeout_seconds.unwrap_or(30)
@@ -162,6 +171,7 @@ pub async fn execute_tool(
 }
 
 /// Send SSE event for tool start
+/// Non-fatal: logs warning if send fails but doesn't return error
 pub async fn send_tool_start_event(
     tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     tool_use_id: &str,
@@ -169,25 +179,22 @@ pub async fn send_tool_start_event(
     server: &str,
 ) -> Result<(), AppError> {
     if let Some(tx) = tx {
-        let event = Event::default()
-            .event("mcp.tool.start")
-            .data(
-                json!({
-                    "tool_use_id": tool_use_id,
-                    "tool_name": tool_name,
-                    "server": server,
-                })
-                .to_string(),
-            );
+        let event = SSEChatStreamEvent::McpToolStart(SSEChatStreamMcpToolStartData {
+            tool_use_id: tool_use_id.to_string(),
+            tool_name: tool_name.to_string(),
+            server: server.to_string(),
+        });
 
-        tx.send(Ok(event))
-            .map_err(|_| AppError::internal_error("Failed to send SSE event"))?;
+        if let Err(e) = tx.send(Ok(event.into())) {
+            tracing::warn!("Failed to send SSE tool start event: {:?}", e);
+        }
     }
 
     Ok(())
 }
 
 /// Send SSE event for tool complete
+/// Non-fatal: logs warning if send fails but doesn't return error
 pub async fn send_tool_complete_event(
     tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     tool_use_id: &str,
@@ -196,20 +203,16 @@ pub async fn send_tool_complete_event(
     is_error: bool,
 ) -> Result<(), AppError> {
     if let Some(tx) = tx {
-        let event = Event::default()
-            .event("mcp.tool.complete")
-            .data(
-                json!({
-                    "tool_use_id": tool_use_id,
-                    "tool_name": tool_name,
-                    "server": server,
-                    "is_error": is_error,
-                })
-                .to_string(),
-            );
+        let event = SSEChatStreamEvent::McpToolComplete(SSEChatStreamMcpToolCompleteData {
+            tool_use_id: tool_use_id.to_string(),
+            tool_name: tool_name.to_string(),
+            server: server.to_string(),
+            is_error,
+        });
 
-        tx.send(Ok(event))
-            .map_err(|_| AppError::internal_error("Failed to send SSE event"))?;
+        if let Err(e) = tx.send(Ok(event.into())) {
+            tracing::warn!("Failed to send SSE tool complete event: {:?}", e);
+        }
     }
 
     Ok(())
@@ -221,20 +224,17 @@ pub async fn send_approval_required_event(
     tool_use_id: &str,
     tool_name: &str,
     server: &str,
+    input: &serde_json::Value,
 ) -> Result<(), AppError> {
     if let Some(tx) = tx {
-        let event = Event::default()
-            .event("mcp.approval.required")
-            .data(
-                json!({
-                    "tool_use_id": tool_use_id,
-                    "tool_name": tool_name,
-                    "server": server,
-                })
-                .to_string(),
-            );
+        let event = SSEChatStreamEvent::McpApprovalRequired(SSEChatStreamMcpApprovalRequiredData {
+            tool_use_id: tool_use_id.to_string(),
+            tool_name: tool_name.to_string(),
+            server: server.to_string(),
+            input: input.clone(),
+        });
 
-        tx.send(Ok(event))
+        tx.send(Ok(event.into()))
             .map_err(|_| AppError::internal_error("Failed to send SSE event"))?;
     }
 

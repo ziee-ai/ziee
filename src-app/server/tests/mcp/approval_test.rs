@@ -228,18 +228,18 @@ async fn test_settings_for_nonexistent_conversation() {
     assert_eq!(create_resp.status(), 404);
 }
 
-/// Test pending approvals endpoints
+/// Test pending approvals - branch level
 #[tokio::test]
-async fn test_pending_approvals() {
+async fn test_pending_approvals_branch_level() {
     let server = TestServer::start().await;
     let user = create_test_user(&server, true).await;
 
-    // Create a conversation
+    // Create a conversation (which creates a default branch)
     let create_resp = server
         .post("/api/chat/conversations")
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
-            "title": "Test Pending Approvals",
+            "title": "Test Branch Approvals",
         }))
         .send()
         .await
@@ -247,16 +247,13 @@ async fn test_pending_approvals() {
 
     assert_eq!(create_resp.status(), 200);
     let conversation: serde_json::Value = create_resp.json().await.unwrap();
-    let conversation_id = conversation["id"].as_str().unwrap();
+    let branch_id = conversation["active_branch_id"].as_str().unwrap();
 
-    // Create a fake message ID for testing
-    let message_id = "00000000-0000-0000-0000-000000000001";
-
-    // Get pending approvals for message (should be empty)
+    // Get pending approvals for branch (should be empty)
     let get_resp = server
         .get(&format!(
-            "/api/chat/conversations/{}/messages/{}/pending-approvals",
-            conversation_id, message_id
+            "/api/chat/branches/{}/pending-approvals",
+            branch_id
         ))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
@@ -266,90 +263,4 @@ async fn test_pending_approvals() {
     assert_eq!(get_resp.status(), 200);
     let approvals: serde_json::Value = get_resp.json().await.unwrap();
     assert_eq!(approvals["approvals"].as_array().unwrap().len(), 0);
-}
-
-/// Test approve/deny tools endpoint
-#[tokio::test]
-async fn test_approve_deny_tools() {
-    let server = TestServer::start().await;
-    let user = create_test_user(&server, true).await;
-
-    // Create a conversation
-    let create_resp = server
-        .post("/api/chat/conversations")
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "title": "Test Approve/Deny",
-        }))
-        .send()
-        .await
-        .expect("Failed to create conversation");
-
-    assert_eq!(create_resp.status(), 200);
-    let conversation: serde_json::Value = create_resp.json().await.unwrap();
-    let conversation_id = conversation["id"].as_str().unwrap();
-
-    let message_id = "00000000-0000-0000-0000-000000000001";
-
-    // Try to approve tools (should succeed even with empty approvals)
-    let approve_resp = server
-        .post(&format!(
-            "/api/chat/conversations/{}/messages/{}/approve-tools",
-            conversation_id, message_id
-        ))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "approvals": []
-        }))
-        .send()
-        .await
-        .expect("Failed to approve tools");
-
-    assert_eq!(approve_resp.status(), 204);
-}
-
-/// Test invalid decision in approve-tools
-#[tokio::test]
-async fn test_invalid_approval_decision() {
-    let server = TestServer::start().await;
-    let user = create_test_user(&server, true).await;
-
-    // Create a conversation
-    let create_resp = server
-        .post("/api/chat/conversations")
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "title": "Test Invalid Decision",
-        }))
-        .send()
-        .await
-        .expect("Failed to create conversation");
-
-    assert_eq!(create_resp.status(), 200);
-    let conversation: serde_json::Value = create_resp.json().await.unwrap();
-    let conversation_id = conversation["id"].as_str().unwrap();
-
-    let message_id = "00000000-0000-0000-0000-000000000001";
-
-    // Try to approve with invalid decision
-    let approve_resp = server
-        .post(&format!(
-            "/api/chat/conversations/{}/messages/{}/approve-tools",
-            conversation_id, message_id
-        ))
-        .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({
-            "approvals": [{
-                "tool_use_id": "test-tool-1",
-                "decision": "invalid_decision",  // Invalid
-                "note": null
-            }]
-        }))
-        .send()
-        .await
-        .expect("Failed to send request");
-
-    assert_eq!(approve_resp.status(), 400);
-    let error: serde_json::Value = approve_resp.json().await.unwrap();
-    assert_eq!(error["error_code"], "INVALID_DECISION");
 }

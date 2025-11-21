@@ -244,7 +244,7 @@ impl StreamingService {
                 // Call before_llm_call hooks
                 if let Some(registry) = &extension_registry {
                     if let Err(e) = registry
-                        .call_before_llm_call(&mut stream_context, &mut chat_request, &request)
+                        .call_before_llm_call(&mut stream_context, &mut chat_request, &request, Some(&ext_tx))
                         .await
                     {
                         let _ = tx.send(Err(e));
@@ -253,9 +253,14 @@ impl StreamingService {
                 }
 
                 // Call AI provider
+                eprintln!("===== CALLING PROVIDER.CHAT_STREAM =====");
                 let mut ai_stream = match provider_for_task.chat_stream(chat_request).await {
-                    Ok(stream) => stream,
+                    Ok(stream) => {
+                        eprintln!("===== PROVIDER.CHAT_STREAM SUCCEEDED =====");
+                        stream
+                    }
                     Err(e) => {
+                        eprintln!("===== PROVIDER.CHAT_STREAM FAILED: {} =====", e);
                         let _ = tx.send(Err(AppError::internal_error(format!(
                             "AI provider error: {}",
                             e
@@ -282,9 +287,22 @@ impl StreamingService {
                 }));
 
                 // Stream chunks through accumulator
+                let mut chunk_count = 0;
+                eprintln!("===== STARTING STREAM LOOP =====");
                 while let Some(chunk_result) = ai_stream.next().await {
+                    eprintln!("===== RECEIVED CHUNK FROM STREAM =====");
                     match chunk_result {
                         Ok(ai_chunk) => {
+                            chunk_count += 1;
+                            eprintln!("===== CHUNK #{} OK: {} deltas, finish={:?} =====",
+                                chunk_count, ai_chunk.content.len(), ai_chunk.finish_reason);
+                            tracing::info!(
+                                "Chunk #{} with {} deltas, finish_reason={:?}",
+                                chunk_count,
+                                ai_chunk.content.len(),
+                                ai_chunk.finish_reason
+                            );
+
                             let mut acc = accumulator.lock().await;
                             match acc.process_chunk(ai_chunk).await {
                                 Ok(output_chunk) => {
@@ -308,6 +326,8 @@ impl StreamingService {
                         }
                     }
                 }
+
+                tracing::info!("Streaming completed, total {} chunks", chunk_count);
 
                 // Finalize the accumulator (write to database, call extensions)
                 // This must happen BEFORE sending the Complete event
@@ -642,9 +662,19 @@ impl DeltaAccumulator {
 
         // Process each content delta - accumulate in memory
         for ai_delta in &ai_chunk.content {
-            if let Some(delta) = ContentBlockDelta::from_ai_providers_delta(ai_delta) {
+            // Try core conversion first
+            let delta = if let Some(core_delta) = ContentBlockDelta::from_ai_providers_delta(ai_delta) {
+                Some(core_delta)
+            } else if let Some(registry) = &self.extension_registry {
+                // Let extensions handle unknown deltas
+                registry.process_delta(ai_delta, &self.stream_context).await?
+            } else {
+                None
+            };
+
+            if let Some(delta) = delta {
                 // Accumulate delta in memory (no DB write)
-                self.accumulate_delta_in_memory(&delta);
+                self.accumulate_delta_in_memory(&delta).await;
 
                 // Add to output chunk for streaming to client
                 output_chunk.content.push(delta);
@@ -660,26 +690,24 @@ impl DeltaAccumulator {
     }
 
     /// Accumulate a delta in memory (no database writes during streaming)
-    fn accumulate_delta_in_memory(&mut self, delta: &ContentBlockDelta) {
+    async fn accumulate_delta_in_memory(&mut self, delta: &ContentBlockDelta) {
         match delta {
-            ContentBlockDelta::TextDelta {
-                index,
-                delta,
-                content_id: _,
-            } => {
+            ContentBlockDelta::TextDelta { index, delta } => {
                 self.ensure_content_block_exists(*index, "text");
                 if let Some(block) = self.content_blocks.get_mut(*index) {
                     block.accumulated_text.push_str(delta);
                 }
             }
-            ContentBlockDelta::ThinkingDelta {
-                index,
-                delta,
-                content_id: _,
-            } => {
+            ContentBlockDelta::ThinkingDelta { index, delta } => {
                 self.ensure_content_block_exists(*index, "thinking");
                 if let Some(block) = self.content_blocks.get_mut(*index) {
                     block.accumulated_text.push_str(delta);
+                }
+            }
+            // Extension deltas - delegate to extensions
+            _ => {
+                if let Some(registry) = &self.extension_registry {
+                    registry.accumulate_delta(delta, &self.stream_context).await.ok();
                 }
             }
         }
@@ -705,8 +733,14 @@ impl DeltaAccumulator {
     /// Finalize accumulation - write all accumulated content to database
     /// This is called ONCE when streaming completes (finish_reason is received)
     async fn finalize(&mut self) -> Result<(), AppError> {
+        tracing::info!(
+            "Finalize called for message_id={}",
+            self.assistant_message_id
+        );
+
         // Check if already finalized (prevents double-finalization)
         if self.finalized {
+            tracing::info!("Already finalized, skipping");
             return Ok(());
         }
 
@@ -728,7 +762,7 @@ impl DeltaAccumulator {
                     thinking: accumulated.accumulated_text.clone(),
                     metadata: None,
                 },
-                _ => continue, // Skip unknown types
+                _ => continue, // Skip unknown types (extensions handle their own)
             };
 
             // Serialize to JSON
@@ -749,6 +783,45 @@ impl DeltaAccumulator {
             .execute(&mut *tx)
             .await
             .map_err(AppError::database_error)?;
+        }
+
+        // Get accumulated content from extensions and persist to database
+        if let Some(registry) = &self.extension_registry {
+            let extension_content = registry
+                .get_accumulated_content(&self.stream_context)
+                .await?;
+
+            tracing::info!(
+                "Extension get_accumulated_content returned {} items for message {}",
+                extension_content.len(),
+                self.assistant_message_id
+            );
+
+            for (index, content_data) in extension_content {
+                let content_type = content_data.content_type();
+                let content_json = serde_json::to_value(&content_data)
+                    .map_err(|e| AppError::database_error(e))?;
+
+                tracing::info!(
+                    "Persisting extension content at index {}: type={}",
+                    index,
+                    content_type
+                );
+
+                sqlx::query!(
+                    r#"
+                    INSERT INTO message_contents (message_id, content_type, content, sequence_order)
+                    VALUES ($1, $2, $3, $4)
+                    "#,
+                    self.assistant_message_id,
+                    content_type,
+                    content_json,
+                    index as i32
+                )
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::database_error)?;
+            }
         }
 
         tx.commit().await.map_err(AppError::database_error)?;

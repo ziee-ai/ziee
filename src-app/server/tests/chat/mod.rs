@@ -23,3 +23,4 @@ mod ownership_test;
 mod file_attachments_test;
 mod file_attachments_real_providers_test;
 mod mcp_extension_test;
+mod mcp_approval_workflow_test;

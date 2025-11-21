@@ -243,11 +243,36 @@ pub async fn get_pending_approvals_for_branch(
     Ok(approvals)
 }
 
+/// Get all approved tools for a branch
+pub async fn get_approved_tools_for_branch(
+    pool: &PgPool,
+    branch_id: Uuid,
+) -> Result<Vec<ToolUseApproval>, AppError> {
+    let approvals = sqlx::query_as!(
+        ToolUseApproval,
+        r#"
+        SELECT
+            id, conversation_id, branch_id, message_id, user_id,
+            tool_use_id, tool_name, tool_input, server_id, server_name, status,
+            approved_at as "approved_at: _", approved_by, approval_note,
+            created_at as "created_at: _", updated_at as "updated_at: _"
+        FROM tool_use_approvals
+        WHERE branch_id = $1 AND status = 'approved'
+        ORDER BY created_at ASC
+        "#,
+        branch_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(approvals)
+}
+
 /// Approve a tool use
 pub async fn approve_tool_use(
     pool: &PgPool,
     tool_use_id: String,
-    message_id: Uuid,
+    branch_id: Uuid,
     approved_by: Uuid,
     note: Option<String>,
 ) -> Result<ToolUseApproval, AppError> {
@@ -261,7 +286,7 @@ pub async fn approve_tool_use(
             approved_by = $3,
             approval_note = $4,
             updated_at = NOW()
-        WHERE tool_use_id = $1 AND message_id = $2 AND status = 'pending'
+        WHERE tool_use_id = $1 AND branch_id = $2 AND status = 'pending'
         RETURNING
             id, conversation_id, branch_id, message_id, user_id,
             tool_use_id, tool_name, tool_input, server_id, server_name, status,
@@ -269,7 +294,7 @@ pub async fn approve_tool_use(
             created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         tool_use_id,
-        message_id,
+        branch_id,
         approved_by,
         note
     )
@@ -283,7 +308,7 @@ pub async fn approve_tool_use(
 pub async fn deny_tool_use(
     pool: &PgPool,
     tool_use_id: String,
-    message_id: Uuid,
+    branch_id: Uuid,
     approved_by: Uuid,
     note: Option<String>,
 ) -> Result<ToolUseApproval, AppError> {
@@ -297,7 +322,7 @@ pub async fn deny_tool_use(
             approved_by = $3,
             approval_note = $4,
             updated_at = NOW()
-        WHERE tool_use_id = $1 AND message_id = $2 AND status = 'pending'
+        WHERE tool_use_id = $1 AND branch_id = $2 AND status = 'pending'
         RETURNING
             id, conversation_id, branch_id, message_id, user_id,
             tool_use_id, tool_name, tool_input, server_id, server_name, status,
@@ -305,7 +330,7 @@ pub async fn deny_tool_use(
             created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         tool_use_id,
-        message_id,
+        branch_id,
         approved_by,
         note
     )
@@ -426,4 +451,24 @@ pub async fn get_tool_approval(
     .await?;
 
     Ok(approval)
+}
+
+/// Delete tool use approval record (after execution)
+pub async fn delete_tool_approval(
+    pool: &PgPool,
+    tool_use_id: String,
+    message_id: Uuid,
+) -> Result<bool, AppError> {
+    let result = sqlx::query!(
+        r#"
+        DELETE FROM tool_use_approvals
+        WHERE tool_use_id = $1 AND message_id = $2
+        "#,
+        tool_use_id,
+        message_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
 }

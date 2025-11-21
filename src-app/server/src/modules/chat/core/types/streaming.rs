@@ -57,16 +57,12 @@ pub enum ContentBlockDelta {
     /// Text content delta
     TextDelta {
         index: usize,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        content_id: Option<Uuid>,
         delta: String,
     },
 
     /// Thinking content delta
     ThinkingDelta {
         index: usize,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        content_id: Option<Uuid>,
         delta: String,
     },
 }
@@ -77,22 +73,7 @@ impl ContentBlockDelta {
         match self {
             Self::TextDelta { index, .. } => *index,
             Self::ThinkingDelta { index, .. } => *index,
-        }
-    }
-
-    /// Get the content_id if present
-    pub fn content_id(&self) -> Option<Uuid> {
-        match self {
-            Self::TextDelta { content_id, .. } => *content_id,
-            Self::ThinkingDelta { content_id, .. } => *content_id,
-        }
-    }
-
-    /// Set the content_id
-    pub fn set_content_id(&mut self, id: Uuid) {
-        match self {
-            Self::TextDelta { content_id, .. } => *content_id = Some(id),
-            Self::ThinkingDelta { content_id, .. } => *content_id = Some(id),
+            Self::ToolUseDelta { index, .. } => *index,
         }
     }
 
@@ -101,13 +82,11 @@ impl ContentBlockDelta {
         match delta {
             ai_providers::ContentBlockDelta::TextDelta { index, delta } => Some(Self::TextDelta {
                 index: *index,
-                content_id: None,
                 delta: delta.clone(),
             }),
             ai_providers::ContentBlockDelta::ThinkingDelta { index, delta } => {
                 Some(Self::ThinkingDelta {
                     index: *index,
-                    content_id: None,
                     delta: delta.clone(),
                 })
             }

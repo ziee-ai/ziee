@@ -34,6 +34,12 @@ base64 = "0.22"
 # Date/time handling (for file expiration)
 chrono = { version = "0.4", features = ["serde"] }
 
+# Logging
+tracing = "0.1"
+
+# UUID generation (for Gemini tool use IDs)
+uuid = { version = "1.0", features = ["v4"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 dotenv = "0.15"
