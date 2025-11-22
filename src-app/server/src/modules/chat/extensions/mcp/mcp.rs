@@ -162,6 +162,37 @@ impl ChatExtension for McpChatExtension {
         "mcp"
     }
 
+    /// Don't create user message if we're resuming with tool approvals
+    /// Tool approval resumption continues the existing conversation turn
+    fn should_create_user_message(&self, request: &SendMessageRequest) -> bool {
+        request.tool_approvals.is_none()
+    }
+
+    /// Provide existing assistant message when resuming with tool approvals
+    /// Tool results append to the existing assistant message, not a new one
+    async fn provide_assistant_message(
+        &self,
+        request: &SendMessageRequest,
+        branch_id: Uuid,
+    ) -> Result<Option<Uuid>, AppError> {
+        // Only provide message if resuming with tool approvals
+        if request.tool_approvals.is_some() {
+            // Get last assistant message in branch
+            let history = Repos.chat.core.get_conversation_history(branch_id).await?;
+
+            // Find last assistant message
+            let last_assistant = history.iter()
+                .rev()
+                .find(|msg| msg.message.role == "assistant");
+
+            if let Some(msg) = last_assistant {
+                return Ok(Some(msg.message.id));
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Register MCP approval workflow routes
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         router.merge(super::approval::mcp_approval_router())
@@ -446,10 +477,10 @@ impl ChatExtension for McpChatExtension {
             ).await?;
             tracing::info!("after_llm_call: Executed {} tools successfully", tool_results.len());
 
-            // Return Continue action to send tool results back to LLM
-            tracing::info!("Returning {} approved tool results to LLM", tool_results.len());
+            // Return Continue action to append tool results to assistant message
+            tracing::info!("Returning {} approved tool results to append to assistant message", tool_results.len());
             return Ok(ExtensionAction::Continue {
-                user_message_content: tool_results,
+                assistant_message_content: tool_results,
             });
         }
 
@@ -707,9 +738,9 @@ impl ChatExtension for McpChatExtension {
             tool_results.push(result.to_message_content());
         }
 
-        // Return Continue action to send tool results back to LLM
+        // Return Continue action to append tool results to assistant message
         Ok(ExtensionAction::Continue {
-            user_message_content: tool_results,
+            assistant_message_content: tool_results,
         })
     }
 

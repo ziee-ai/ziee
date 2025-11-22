@@ -652,20 +652,44 @@ function generateSSEEventType(name: string, oneOfVariants: (SchemaReference | Sc
   const eventTypes: string[] = []
 
   for (const variant of oneOfVariants) {
+    // Handle discriminated union pattern (e.g., SSEChatStreamEvent)
+    // Schema structure: { type: 'object', properties: { type: { const: "eventName" } }, allOf: [...] }
+    if (variant.type === 'object' && variant.properties && variant.properties.type) {
+      const typeProperty = variant.properties.type
+      if (typeProperty.const) {
+        const eventName = String(typeProperty.const)
+
+        // Extract data type from allOf (the actual event data schema)
+        let dataType = 'any'
+        if (variant.allOf && Array.isArray(variant.allOf) && variant.allOf.length > 0) {
+          const dataSchema = variant.allOf[0]
+          if (isSchemaReference(dataSchema)) {
+            dataType = extractSchemaName(dataSchema.$ref)
+          } else {
+            dataType = getTypeFromSchema(dataSchema)
+          }
+        }
+
+        eventTypes.push(`  ${eventName}: ${dataType}`)
+        continue
+      }
+    }
+
+    // Handle simple object-based pattern (e.g., SSEHardwareUsageEvent)
+    // Schema structure: { type: 'object', properties: { eventName: EventDataSchema } }
     if (variant.type === 'object' && variant.properties) {
-      // Extract the event name and data type from the variant
       const eventNames = Object.keys(variant.properties)
       if (eventNames.length === 1) {
         const eventName = eventNames[0]
         const eventDataSchema = variant.properties[eventName]
-        
+
         let dataType = 'any'
         if (isSchemaReference(eventDataSchema)) {
           dataType = extractSchemaName(eventDataSchema.$ref)
         } else {
           dataType = getTypeFromSchema(eventDataSchema)
         }
-        
+
         eventTypes.push(`  ${eventName}: ${dataType}`)
       }
     }

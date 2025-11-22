@@ -63,21 +63,64 @@ impl StreamingService {
         let (provider, model_name, model_id, provider_id) =
             create_provider_from_model_id(&self.pool, request.model_id).await?;
 
-        // Create initial user message
-        let user_message =
-            Repos.chat.core.create_message( branch_id, MessageRole::User.as_str()).await?;
+        // Conditionally create user message (check extensions)
+        // Extensions can prevent user message creation (e.g., MCP tool approval resumption)
+        let user_message_id = if self.extension_registry
+            .as_ref()
+            .map(|reg| reg.should_create_user_message(&request))
+            .unwrap_or(true)  // Default to true if no registry
+        {
+            let user_message =
+                Repos.chat.core.create_message(branch_id, MessageRole::User.as_str()).await?;
 
-        let user_content_data = MessageContentData::Text {
-            text: request.content.clone(),
+            let user_content_data = MessageContentData::Text {
+                text: request.content.clone(),
+            };
+            Repos.chat.core.create_content(user_message.id, "text", user_content_data, 0)
+                .await?;
+
+            Some(user_message.id)
+        } else {
+            None  // Extension prevented user message creation
         };
-        Repos.chat.core.create_content( user_message.id, "text", user_content_data, 0)
-            .await?;
+
+        // Get or create assistant message (BEFORE loop)
+        // Extensions can provide existing message for continuation (e.g., MCP tool approval)
+        let assistant_message_id = if let Some(reg) = &self.extension_registry {
+            if let Some(msg_id) = reg.provide_assistant_message(&request, branch_id).await? {
+                msg_id
+            } else {
+                // No extension provided message, create new one
+                let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str()).await?;
+                msg.id
+            }
+        } else {
+            // No extension registry, create new message
+            let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str()).await?;
+            msg.id
+        };
 
         // Create channel for streaming output
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         // Create channel for extension events (SSE)
         let (ext_tx, ext_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        // Emit 'started' event BEFORE loop
+        // This event communicates message IDs to client before content streaming begins
+        {
+            use crate::modules::chat::core::types::streaming::{SSEChatStreamEvent, SSEChatStreamStartedData};
+
+            let started_event = SSEChatStreamEvent::Started(SSEChatStreamStartedData {
+                user_message_id,
+                conversation_id,
+                branch_id,
+            });
+
+            if let Err(e) = ext_tx.send(Ok(started_event.into())) {
+                return Err(AppError::internal_error(format!("Failed to send started event: {:?}", e)));
+            }
+        }
 
         // Clone data for spawned task
         let pool = self.pool.clone();
@@ -111,20 +154,6 @@ impl StreamingService {
                     break;
                 }
 
-                // Create assistant message for this iteration
-                let assistant_message = match Repos.chat.core.create_message(
-                    branch_id,
-                    MessageRole::Assistant.as_str(),
-                )
-                .await
-                {
-                    Ok(msg) => msg,
-                    Err(e) => {
-                        let _ = tx.send(Err(e));
-                        break;
-                    }
-                };
-
                 // Get conversation history
                 let mut history = match Repos.chat.core.get_conversation_history( branch_id).await {
                     Ok(h) => h,
@@ -137,7 +166,7 @@ impl StreamingService {
                 // Filter out the just-created assistant message (it has no content yet)
                 // This prevents sending empty messages to the AI provider
                 history.retain(|msg_with_content| {
-                    msg_with_content.message.id != assistant_message.id
+                    msg_with_content.message.id != assistant_message_id
                 });
 
                 // Process content from database through extensions (enrichment phase)
@@ -225,7 +254,7 @@ impl StreamingService {
                 let mut stream_context = StreamContext {
                     conversation_id,
                     branch_id,
-                    message_id: Some(assistant_message.id),
+                    message_id: Some(assistant_message_id),
                     user_id,
                     pool: pool.clone(),
                     metadata: context_metadata,
@@ -253,14 +282,11 @@ impl StreamingService {
                 }
 
                 // Call AI provider
-                eprintln!("===== CALLING PROVIDER.CHAT_STREAM =====");
                 let mut ai_stream = match provider_for_task.chat_stream(chat_request).await {
                     Ok(stream) => {
-                        eprintln!("===== PROVIDER.CHAT_STREAM SUCCEEDED =====");
                         stream
                     }
                     Err(e) => {
-                        eprintln!("===== PROVIDER.CHAT_STREAM FAILED: {} =====", e);
                         let _ = tx.send(Err(AppError::internal_error(format!(
                             "AI provider error: {}",
                             e
@@ -273,7 +299,7 @@ impl StreamingService {
                 // Clone ext_tx for this iteration (allows multiple iterations with same channel)
                 let accumulator = Arc::new(Mutex::new(DeltaAccumulator {
                     pool: pool.clone(),
-                    assistant_message_id: assistant_message.id,
+                    assistant_message_id,
                     content_blocks: Vec::new(),
                     conversation_id,
                     branch_id,
@@ -288,14 +314,10 @@ impl StreamingService {
 
                 // Stream chunks through accumulator
                 let mut chunk_count = 0;
-                eprintln!("===== STARTING STREAM LOOP =====");
                 while let Some(chunk_result) = ai_stream.next().await {
-                    eprintln!("===== RECEIVED CHUNK FROM STREAM =====");
                     match chunk_result {
                         Ok(ai_chunk) => {
                             chunk_count += 1;
-                            eprintln!("===== CHUNK #{} OK: {} deltas, finish={:?} =====",
-                                chunk_count, ai_chunk.content.len(), ai_chunk.finish_reason);
                             tracing::info!(
                                 "Chunk #{} with {} deltas, finish_reason={:?}",
                                 chunk_count,
@@ -372,24 +394,41 @@ impl StreamingService {
 
                 match action {
                     Some(crate::modules::chat::core::extension::ExtensionAction::Continue {
-                        user_message_content,
+                        assistant_message_content,
                     }) => {
-                        // Create continuation message with tool results
-                        match Self::create_continuation_message_static(
-                            branch_id,
-                            user_message_content,
-                        )
-                        .await
-                        {
-                            Ok(_continuation_msg_id) => {
-                                iteration += 1;
-                                // Continue loop
-                            }
+                        // Append tool results to existing assistant message
+                        // Get current content count to calculate proper indices
+                        let content_offset = match Repos.chat.core.get_message_with_content(assistant_message_id).await {
+                            Ok(Some(msg_with_content)) => msg_with_content.contents.len() as i32,
+                            Ok(None) => 0,  // No content yet (shouldn't happen)
                             Err(e) => {
                                 let _ = tx.send(Err(e));
                                 break;
                             }
+                        };
+
+                        // Tool results are added as content blocks to the same message
+                        for (offset_index, content) in assistant_message_content.iter().enumerate() {
+                            let content_type = content.content_type();
+                            let actual_index = content_offset + offset_index as i32;
+                            match Repos.chat.core.create_content(
+                                assistant_message_id,
+                                content_type,
+                                content.clone(),
+                                actual_index,
+                            ).await {
+                                Ok(_) => {
+                                    tracing::info!("Appended content block {} to assistant message", actual_index);
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(Err(e));
+                                    break;
+                                }
+                            }
                         }
+
+                        iteration += 1;
+                        // Continue loop with next LLM call
                     }
                     _ => {
                         // Complete or None - stop looping
@@ -546,30 +585,6 @@ impl StreamingService {
         }
 
         Ok(messages)
-    }
-
-    /// Create continuation message with tool results
-    /// Returns the ID of the created message
-    async fn create_continuation_message_static(
-        branch_id: Uuid,
-        user_message_content: Vec<MessageContentData>,
-    ) -> Result<Uuid, AppError> {
-        // Create user message for tool results
-        let continuation_message =
-            Repos.chat.core.create_message( branch_id, MessageRole::User.as_str()).await?;
-
-        // Store content blocks (tool results, etc.)
-        for (index, content_data) in user_message_content.iter().enumerate() {
-            Repos.chat.core.create_content(
-                continuation_message.id,
-                content_data.content_type(),
-                content_data.clone(),
-                index as i32,
-            )
-            .await?;
-        }
-
-        Ok(continuation_message.id)
     }
 
     /// Transform AI provider stream to our ChatStreamChunk format with accumulation

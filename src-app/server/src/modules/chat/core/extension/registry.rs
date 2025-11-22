@@ -41,10 +41,11 @@ pub enum ExtensionAction {
     Complete,
 
     /// Continue with another LLM call (for tool execution, etc.)
-    /// Extension provides content to send back to LLM as user message
+    /// Extension provides content to append to SAME assistant message
     Continue {
-        /// Content blocks to send as user message (tool results, etc.)
-        user_message_content: Vec<MessageContentData>,
+        /// Content blocks to append to assistant message (tool results, etc.)
+        /// These are appended to the existing assistant message, NOT sent as new user message
+        assistant_message_content: Vec<MessageContentData>,
     },
 }
 
@@ -128,6 +129,28 @@ pub trait ChatExtension: Send + Sync {
     /// Initialize extension (called once at startup)
     async fn initialize(&self, _pool: &PgPool) -> Result<(), AppError> {
         Ok(())
+    }
+
+    // ========== MESSAGE CREATION CONTROL ==========
+
+    /// Check if a user message should be created for this request
+    /// Extensions can return false to prevent user message creation
+    /// Example: MCP extension returns false when resuming with tool approvals
+    /// Default: true (always create user message)
+    fn should_create_user_message(&self, _request: &SendMessageRequest) -> bool {
+        true
+    }
+
+    /// Provide an existing assistant message for continuation/resumption
+    /// Extensions can return Some(message_id) to reuse an existing assistant message
+    /// Example: MCP extension returns last assistant message when resuming with tool approvals
+    /// Default: None (create new assistant message)
+    async fn provide_assistant_message(
+        &self,
+        _request: &SendMessageRequest,
+        _branch_id: Uuid,
+    ) -> Result<Option<Uuid>, AppError> {
+        Ok(None)
     }
 
     // ========== ROUTE REGISTRATION ==========
@@ -294,6 +317,36 @@ impl ExtensionRegistry {
             all_content.extend(ext_content);
         }
         Ok(all_content)
+    }
+
+    // ========== MESSAGE CREATION CONTROL ==========
+
+    /// Check if user message should be created by consulting all extensions
+    /// Returns false if ANY extension says no
+    /// Example: MCP extension returns false when resuming with tool approvals
+    pub fn should_create_user_message(&self, request: &SendMessageRequest) -> bool {
+        for ext in &self.extensions {
+            if !ext.should_create_user_message(request) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Get assistant message from extensions for continuation/resumption
+    /// Returns first Some(message_id) from any extension
+    /// Example: MCP extension provides last assistant message when resuming with tool approvals
+    pub async fn provide_assistant_message(
+        &self,
+        request: &SendMessageRequest,
+        branch_id: Uuid,
+    ) -> Result<Option<Uuid>, AppError> {
+        for ext in &self.extensions {
+            if let Some(message_id) = ext.provide_assistant_message(request, branch_id).await? {
+                return Ok(Some(message_id));
+            }
+        }
+        Ok(None)
     }
 
     // ========== ROUTE REGISTRATION ==========

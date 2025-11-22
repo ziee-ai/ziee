@@ -4426,7 +4426,7 @@
             }
           },
           "200": {
-            "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request.\n\n # Extension Architecture\n\n **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.\n Extensions add new event variants through the SSEChatStreamEventVariants enum using\n the compose_chat_stream_events macro.\n\n Example: The title extension sends a separate `TitleUpdated` event instead of\n adding a title field to ChatStreamChunk.\n\n Events are sent with proper `event:` names (e.g., \"content\", \"complete\", \"error\", \"titleUpdated\")\n for type-safe client-side handling.",
+            "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request.\n\n # Extension Architecture\n\n **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.\n Extensions add new event variants through the SSEChatStreamEventVariants enum using\n the compose_chat_stream_events macro.\n\n Example: The title extension sends a separate `TitleUpdated` event instead of\n adding a title field to ChatStreamChunk.\n\n Events are sent with proper `event:` names (e.g., \"started\", \"content\", \"complete\", \"error\", \"titleUpdated\")\n for type-safe client-side handling.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7214,13 +7214,6 @@
                 "type": "string",
                 "const": "text_delta"
               },
-              "content_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "uuid"
-              },
               "delta": {
                 "type": "string"
               },
@@ -7244,13 +7237,6 @@
                 "type": "string",
                 "const": "thinking_delta"
               },
-              "content_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "uuid"
-              },
               "delta": {
                 "type": "string"
               },
@@ -7264,6 +7250,43 @@
               "type",
               "index",
               "delta"
+            ]
+          },
+          {
+            "description": "Tool use delta (incremental JSON)",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_use_delta"
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "index": {
+                "type": "integer",
+                "format": "uint",
+                "minimum": 0
+              },
+              "input_delta": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "index"
             ]
           }
         ]
@@ -7321,6 +7344,10 @@
         "description": "Conversation MCP settings",
         "type": "object",
         "properties": {
+          "approval_mode": {
+            "description": "Approval mode (stored as VARCHAR in DB, serialized as String for API)",
+            "type": "string"
+          },
           "auto_approved_tools": {
             "description": "Auto-approved tools (JSON array of tool names)"
           },
@@ -7349,6 +7376,7 @@
           "id",
           "conversation_id",
           "user_id",
+          "approval_mode",
           "auto_approved_tools",
           "created_at",
           "updated_at"
@@ -11304,8 +11332,26 @@
         ]
       },
       "SSEChatStreamEvent": {
-        "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request.\n\n # Extension Architecture\n\n **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.\n Extensions add new event variants through the SSEChatStreamEventVariants enum using\n the compose_chat_stream_events macro.\n\n Example: The title extension sends a separate `TitleUpdated` event instead of\n adding a title field to ChatStreamChunk.\n\n Events are sent with proper `event:` names (e.g., \"content\", \"complete\", \"error\", \"titleUpdated\")\n for type-safe client-side handling.",
+        "description": "SSE event enum for chat streaming\n\n This enum represents all possible Server-Sent Events that can be streamed\n during a chat message request.\n\n # Extension Architecture\n\n **EXTENSIONS SHOULD send their own SSE events** instead of adding fields to ChatStreamChunk.\n Extensions add new event variants through the SSEChatStreamEventVariants enum using\n the compose_chat_stream_events macro.\n\n Example: The title extension sends a separate `TitleUpdated` event instead of\n adding a title field to ChatStreamChunk.\n\n Events are sent with proper `event:` names (e.g., \"started\", \"content\", \"complete\", \"error\", \"titleUpdated\")\n for type-safe client-side handling.",
         "oneOf": [
+          {
+            "description": "Streaming started event (sent before content with message IDs)",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "started"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamStartedData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
           {
             "description": "Content chunk event (streamed content deltas)",
             "type": "object",
@@ -11506,6 +11552,34 @@
           "tool_use_id",
           "tool_name",
           "server"
+        ]
+      },
+      "SSEChatStreamStartedData": {
+        "description": "Data for the Started SSE event\n Sent before content streaming begins to communicate conversation context\n Client learns assistant_message_id from content chunks (message_id field)",
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "description": "Branch ID",
+            "type": "string",
+            "format": "uuid"
+          },
+          "conversation_id": {
+            "description": "Conversation ID",
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_message_id": {
+            "description": "User message ID (None if resuming with tool approvals or regenerating)",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "branch_id"
         ]
       },
       "SSEChatStreamTitleUpdatedData": {
@@ -11953,6 +12027,9 @@
             "type": "string",
             "format": "uuid"
           },
+          "input": {
+            "description": "Tool input (serialized as \"input\" for API compatibility)"
+          },
           "message_id": {
             "type": "string",
             "format": "uuid"
@@ -11968,7 +12045,10 @@
           "server_name": {
             "type": "string"
           },
-          "tool_input": true,
+          "status": {
+            "description": "Approval status (stored as VARCHAR in DB, serialized as String for API)",
+            "type": "string"
+          },
           "tool_name": {
             "type": "string"
           },
@@ -11992,8 +12072,9 @@
           "user_id",
           "tool_use_id",
           "tool_name",
-          "tool_input",
+          "input",
           "server_name",
+          "status",
           "created_at",
           "updated_at"
         ]

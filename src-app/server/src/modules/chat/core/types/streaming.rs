@@ -126,6 +126,22 @@ pub struct StreamError {
 // Server-Sent Event Types
 // ===================================================================
 
+/// Data for the Started SSE event
+/// Sent before content streaming begins to communicate conversation context
+/// Client learns assistant_message_id from content chunks (message_id field)
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct SSEChatStreamStartedData {
+    /// User message ID (None if resuming with tool approvals or regenerating)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_message_id: Option<Uuid>,
+
+    /// Conversation ID
+    pub conversation_id: Uuid,
+
+    /// Branch ID
+    pub branch_id: Uuid,
+}
+
 /// Data for the Complete SSE event
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct SSEChatStreamCompleteData {
@@ -162,12 +178,15 @@ pub struct SSEChatStreamErrorData {
 /// Example: The title extension sends a separate `TitleUpdated` event instead of
 /// adding a title field to ChatStreamChunk.
 ///
-/// Events are sent with proper `event:` names (e.g., "content", "complete", "error", "titleUpdated")
+/// Events are sent with proper `event:` names (e.g., "started", "content", "complete", "error", "titleUpdated")
 /// for type-safe client-side handling.
 #[macros::compose_chat_stream_events]
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum SSEChatStreamEvent {
+    /// Streaming started event (sent before content with message IDs)
+    Started(SSEChatStreamStartedData),
+
     /// Content chunk event (streamed content deltas)
     Content(ChatStreamChunk),
 
@@ -191,6 +210,7 @@ impl SSEChatStreamEvent {
 
         // Return static strings for known core variants only
         match variant_name {
+            "Started" => "started",
             "Content" => "content",
             "Complete" => "complete",
             "Error" => "error",

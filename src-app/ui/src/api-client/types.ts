@@ -10,6 +10,8 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
+
 export interface AssignProviderToGroupRequest {
   group_id: string
 }
@@ -51,6 +53,14 @@ export interface AuthResponse {
   user: User
 }
 
+export interface Branch {
+  conversation_id: string
+  created_at: string
+  created_from_message_id?: string
+  id: string
+  parent_branch_id?: string
+}
+
 export interface CPUInfo {
   architecture: string
   base_frequency?: number
@@ -64,6 +74,72 @@ export interface CPUUsage {
   frequency?: number
   temperature?: number
   usage_percentage: number
+}
+
+export interface CallToolRequest {
+  arguments: any
+}
+
+export interface CallToolResponse {
+  content: ToolContent[]
+  is_error: boolean
+}
+
+export interface ChatStreamChunk {
+  branch_id?: string
+  content?: ContentBlockDelta[]
+  conversation_id?: string
+  error?: StreamError
+  finish_reason?: string
+  message_id?: string
+  usage?: Usage
+}
+
+export type ContentBlockDelta = {
+  type: 'text_delta'
+  delta: string
+  index: number
+} | {
+  type: 'thinking_delta'
+  delta: string
+  index: number
+} | {
+  type: 'tool_use_delta'
+  id?: string | null
+  index: number
+  input_delta?: string | null
+  name?: string | null
+}
+
+export interface Conversation {
+  title?: string
+  active_branch_id?: string
+  created_at: string
+  id: string
+  model_id?: string
+  updated_at: string
+  user_id: string
+}
+
+export interface ConversationMcpSettings {
+  approval_mode: string
+  auto_approved_tools: any
+  conversation_id: string
+  created_at: string
+  id: string
+  updated_at: string
+  user_id: string
+}
+
+export interface ConversationResponse {
+  title?: string
+  active_branch_id?: string
+  created_at: string
+  id: string
+  message_count: number
+  model_id?: string
+  updated_at: string
+  user_id: string
 }
 
 export interface CreateAssistantFromHubRequest {
@@ -84,6 +160,15 @@ export interface CreateAssistantRequest {
   is_template?: boolean
   name?: string
   parameters?: ModelParameters
+}
+
+export interface CreateBranchRequest {
+  from_message_id: string
+}
+
+export interface CreateConversationRequest {
+  title?: string
+  model_id?: string
 }
 
 export interface CreateGroupRequest {
@@ -249,11 +334,51 @@ export interface DownloadRequestData {
 
 export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
+export interface DownloadTokenQuery {
+  token: string
+}
+
+export interface DownloadTokenResponse {
+  expires_in: number
+  token: string
+}
+
+export interface EditMessageRequest {
+  content: string
+}
+
+export interface EditMessageResponse {
+  branch: Branch
+  message: Message
+}
+
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
+
+export interface File {
+  checksum?: string
+  created_at: string
+  file_size: number
+  filename: string
+  has_thumbnail: boolean
+  id: string
+  mime_type?: string
+  preview_page_count: number
+  processing_metadata: any
+  text_page_count: number
+  updated_at: string
+  user_id: string
+}
 
 export type FileFormat = 'safetensors' | 'pytorch' | 'gguf'
 
 export type FileFormat2 = 'gguf' | 'safetensors' | 'pytorch'
+
+export interface FileListResponse {
+  files: File[]
+  page: number
+  per_page: number
+  total: number
+}
 
 export interface GPUComputeCapabilities {
   cuda_support: boolean
@@ -423,9 +548,9 @@ export interface HubModel {
 }
 
 export interface HubModelQuantizationOption {
-  filename: string
+  main_filename: string
   name: string
-  size_gb: number
+  size_gb?: number
 }
 
 export interface HubQuery {
@@ -446,6 +571,14 @@ export interface ListModelsQuery {
   page?: number
   perPage?: number
   providerId?: string
+}
+
+export interface ListResourcesResponse {
+  resources: Resource[]
+}
+
+export interface ListToolsResponse {
+  tools: Tool[]
 }
 
 export interface LlamaCppSettings {
@@ -551,6 +684,10 @@ export interface LoginRequest {
   username: string
 }
 
+export interface McpConfig {
+  mcp_servers: McpServerConfig[]
+}
+
 export interface McpServer {
   description?: string
   args: any
@@ -570,6 +707,11 @@ export interface McpServer {
   user_id?: string
 }
 
+export interface McpServerConfig {
+  server_id: string
+  tools?: string[]
+}
+
 export interface McpServerFromHubResponse {
   hub_tracking: HubEntity
   server: McpServer
@@ -581,6 +723,10 @@ export interface McpServerListResponse {
   servers: McpServer[]
   total: number
   total_pages: number
+}
+
+export interface McpSettingsResponse {
+  settings?: ConversationMcpSettings
 }
 
 export interface MeResponse {
@@ -599,6 +745,33 @@ export interface MemoryUsage {
   usage_percentage: number
   used_ram: number
   used_swap?: number
+}
+
+export interface Message {
+  created_at: string
+  edit_count: number
+  id: string
+  originated_from_id: string
+  role: string
+}
+
+export interface MessageContent {
+  content: any
+  content_type: string
+  created_at: string
+  id: string
+  message_id: string
+  sequence_order: number
+  updated_at: string
+}
+
+export interface MessageWithContent {
+  contents: MessageContent[]
+  created_at: string
+  edit_count: number
+  id: string
+  originated_from_id: string
+  role: string
 }
 
 export type MistralRsCommand = 'plain' | 'gguf' | 'run' | 'vision-plain' | 'x-lora' | 'lora' | 'toml'
@@ -700,8 +873,22 @@ export interface PaginationQuery {
 }
 
 export interface PaginationQuery2 {
+  page?: number
+  per_page?: number
+}
+
+export interface PaginationQuery3 {
   limit?: number
   page?: number
+}
+
+export interface PaginationQuery4 {
+  limit?: number
+  page?: number
+}
+
+export interface PendingApprovalsResponse {
+  approvals: ToolUseApproval[]
 }
 
 export interface PermissionDetail {
@@ -720,6 +907,10 @@ export interface PermissionErrorDetails {
   required_permissions: PermissionDetail[]
 }
 
+export interface PreviewQuery {
+  page?: number
+}
+
 export interface ProxySettings {
   enabled?: boolean
   ignore_ssl_certificates?: boolean
@@ -727,6 +918,14 @@ export interface ProxySettings {
   password?: string
   url?: string
   username?: string
+}
+
+export interface ReadResourceRequest {
+  uri: string
+}
+
+export interface ReadResourceResponse {
+  content: any
 }
 
 export interface RefreshTokenRequest {
@@ -753,6 +952,64 @@ export interface ResetPasswordRequest {
   user_id: string
 }
 
+export interface Resource {
+  description?: string
+  mime_type?: string
+  name: string
+  uri: string
+}
+
+export interface SSEChatStreamCompleteData {
+  finish_reason: string
+  usage?: Usage
+}
+
+export interface SSEChatStreamErrorData {
+  code?: string
+  message: string
+}
+
+export type SSEChatStreamEvent = {
+  started: SSEChatStreamStartedData
+  content: ChatStreamChunk
+  complete: SSEChatStreamCompleteData
+  error: SSEChatStreamErrorData
+  mcpToolStart: SSEChatStreamMcpToolStartData
+  mcpToolComplete: SSEChatStreamMcpToolCompleteData
+  mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
+  titleUpdated: SSEChatStreamTitleUpdatedData
+}
+
+export interface SSEChatStreamMcpApprovalRequiredData {
+  input: any
+  server: string
+  tool_name: string
+  tool_use_id: string
+}
+
+export interface SSEChatStreamMcpToolCompleteData {
+  is_error: boolean
+  server: string
+  tool_name: string
+  tool_use_id: string
+}
+
+export interface SSEChatStreamMcpToolStartData {
+  server: string
+  tool_name: string
+  tool_use_id: string
+}
+
+export interface SSEChatStreamStartedData {
+  branch_id: string
+  conversation_id: string
+  user_message_id?: string
+}
+
+export interface SSEChatStreamTitleUpdatedData {
+  title: string
+}
+
 export interface SSEDownloadProgressConnectedData {
   message?: string
 }
@@ -773,6 +1030,18 @@ export type SSEHardwareUsageEvent = {
   update: HardwareUsageUpdate
 }
 
+export interface SendMessageRequest {
+  assistant_id?: string
+  branch_id: string
+  content: string
+  create_branch_from_message_id?: string
+  enable_mcp?: boolean
+  file_ids?: string[]
+  mcp_config?: McpConfig
+  model_id: string
+  tool_approvals?: ToolApprovalDecision[]
+}
+
 export interface ServerGroupsRequest {
   group_ids: string[]
 }
@@ -790,6 +1059,11 @@ export interface SetupStatusResponse {
   version: string
 }
 
+export interface StreamError {
+  code?: string
+  message: string
+}
+
 export interface TestRepositoryConnectionRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -802,11 +1076,48 @@ export interface TestRepositoryConnectionResponse {
   success: boolean
 }
 
+export interface TextPageQuery {
+  page?: number
+}
+
 export interface TokenPair {
   access_token: string
   expires_in: number
   refresh_token: string
   token_type: string
+}
+
+export interface Tool {
+  description?: string
+  input_schema: any
+  name: string
+}
+
+export interface ToolApprovalDecision {
+  decision: string
+  note?: string
+  tool_use_id: string
+}
+
+export type ToolContent = any
+
+export interface ToolUseApproval {
+  approval_note?: string
+  approved_at?: string
+  approved_by?: string
+  branch_id: string
+  conversation_id: string
+  created_at: string
+  id: string
+  input: any
+  message_id: string
+  server_id?: string
+  server_name: string
+  status: string
+  tool_name: string
+  tool_use_id: string
+  updated_at: string
+  user_id: string
 }
 
 export type TransportType = 'stdio' | 'http' | 'sse'
@@ -818,6 +1129,10 @@ export interface UpdateAssistantRequest {
   is_default?: boolean
   name?: string
   parameters?: ModelParameters
+}
+
+export interface UpdateConversationRequest {
+  title?: string
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -885,6 +1200,16 @@ export interface UpdateUserRequest {
   username?: string
 }
 
+export interface UpsertMcpSettingsRequest {
+  approval_mode: ApprovalMode
+  auto_approved_tools?: any
+}
+
+export interface Usage {
+  input_tokens?: number
+  output_tokens?: number
+}
+
 export interface User {
   avatar_url?: string
   created_at: string
@@ -917,6 +1242,17 @@ export interface UserListResponse {
 // =============================================================================
 
 export enum Permissions {
+  BranchesCreate = 'branches::create',
+  BranchesSwitch = 'branches::switch',
+  ConversationsCreate = 'conversations::create',
+  ConversationsDelete = 'conversations::delete',
+  ConversationsEdit = 'conversations::edit',
+  ConversationsRead = 'conversations::read',
+  FilesDelete = 'files::delete',
+  FilesDownload = 'files::download',
+  FilesGenerateToken = 'files::generate_token',
+  FilesPreview = 'files::preview',
+  FilesRead = 'files::read',
   GroupsAssignUsers = 'groups::assign_users',
   GroupsCreate = 'groups::create',
   GroupsDelete = 'groups::delete',
@@ -955,6 +1291,9 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  MessagesCreate = 'messages::create',
+  MessagesDelete = 'messages::delete',
+  MessagesRead = 'messages::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
   UsersEdit = 'users::edit',
@@ -964,6 +1303,17 @@ export enum Permissions {
 }
 
 export const PermissionDescriptions: Record<string, string> = {
+  BranchesCreate: 'Create message branches for edit/regenerate',
+  BranchesSwitch: 'Switch between conversation branches',
+  ConversationsCreate: 'Create new chat conversations',
+  ConversationsDelete: 'Delete chat conversations',
+  ConversationsEdit: 'Edit conversation titles and metadata',
+  ConversationsRead: 'View chat conversations',
+  FilesDelete: 'Delete files',
+  FilesDownload: 'Download file content',
+  FilesGenerateToken: 'Generate download tokens',
+  FilesPreview: 'View file thumbnails and previews',
+  FilesRead: 'View file metadata and list files',
   GroupsAssignUsers: 'Assign users to groups and remove users from groups',
   GroupsCreate: 'Create new groups',
   GroupsDelete: 'Delete non-system groups',
@@ -1002,6 +1352,9 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  MessagesCreate: 'Send messages in conversations',
+  MessagesDelete: 'Delete messages from conversations',
+  MessagesRead: 'Read messages in conversations',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
   UsersEdit: 'Edit existing user information',
@@ -1035,6 +1388,27 @@ export const ApiEndpoints = {
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
+  'Branch.create': 'POST /api/conversations/{id}/branches',
+  'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
+  'Branch.list': 'GET /api/conversations/{id}/branches',
+  'Conversation.create': 'POST /api/conversations',
+  'Conversation.delete': 'DELETE /api/conversations/{id}',
+  'Conversation.get': 'GET /api/conversations/{id}',
+  'Conversation.getMcpSettings': 'GET /api/conversations/{id}/mcp-settings',
+  'Conversation.list': 'GET /api/conversations',
+  'Conversation.update': 'PUT /api/conversations/{id}',
+  'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
+  'File.delete': 'DELETE /api/files/{file_id}',
+  'File.download': 'GET /api/files/{file_id}/download',
+  'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
+  'File.generateDownloadToken': 'POST /api/files/{file_id}/download-token',
+  'File.get': 'GET /api/files/{file_id}',
+  'File.getPreview': 'GET /api/files/{file_id}/preview',
+  'File.getTextContent': 'GET /api/files/{file_id}/text',
+  'File.getThumbnail': 'GET /api/files/{file_id}/thumbnail',
+  'File.list': 'GET /api/files',
+  'File.upload': 'POST /api/files/upload',
   'Group.getProviders': 'GET /api/groups/{group_id}/providers',
   'Group.getSystemServers': 'GET /api/groups/{group_id}/system-servers',
   'Group.updateProviders': 'PUT /api/groups/{group_id}/providers',
@@ -1087,6 +1461,11 @@ export const ApiEndpoints = {
   'McpServer.get': 'GET /api/mcp/servers/{id}',
   'McpServer.listAccessible': 'GET /api/mcp/servers',
   'McpServer.update': 'PUT /api/mcp/servers/{id}',
+  'McpServerRuntime.callTool': 'POST /api/mcp/servers/{id}/tools/{name}/call',
+  'McpServerRuntime.disconnect': 'DELETE /api/mcp/servers/{id}/disconnect',
+  'McpServerRuntime.listResources': 'GET /api/mcp/servers/{id}/resources',
+  'McpServerRuntime.listTools': 'GET /api/mcp/servers/{id}/tools',
+  'McpServerRuntime.readResource': 'POST /api/mcp/servers/{id}/resources/read',
   'McpServerSystem.assignServerToGroups': 'POST /api/mcp/system-servers/{id}/groups',
   'McpServerSystem.create': 'POST /api/mcp/system-servers',
   'McpServerSystem.delete': 'DELETE /api/mcp/system-servers/{id}',
@@ -1095,6 +1474,11 @@ export const ApiEndpoints = {
   'McpServerSystem.list': 'GET /api/mcp/system-servers',
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'Message.delete': 'DELETE /api/messages/{id}',
+  'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
+  'Message.get': 'GET /api/messages/{id}',
+  'Message.getHistory': 'GET /api/conversations/{id}/messages',
+  'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -1133,6 +1517,27 @@ export type ApiEndpointParameters = {
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'Branch.activate': { id: string; branch_id: string }
+  'Branch.create': { id: string } & CreateBranchRequest
+  'Branch.getPendingApprovals': { branch_id: string }
+  'Branch.list': { id: string }
+  'Conversation.create': CreateConversationRequest
+  'Conversation.delete': { id: string }
+  'Conversation.get': { id: string }
+  'Conversation.getMcpSettings': { id: string }
+  'Conversation.list': { limit?: number; page?: number }
+  'Conversation.update': { id: string } & UpdateConversationRequest
+  'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
+  'File.delete': { file_id: string }
+  'File.download': { file_id: string }
+  'File.downloadWithToken': { file_id: string; token: string }
+  'File.generateDownloadToken': { file_id: string }
+  'File.get': { file_id: string }
+  'File.getPreview': { file_id: string; page?: number }
+  'File.getTextContent': { file_id: string; page?: number }
+  'File.getThumbnail': { file_id: string }
+  'File.list': PaginationQuery
+  'File.upload': FormData
   'Group.getProviders': { group_id: string }
   'Group.getSystemServers': { group_id: string }
   'Group.updateProviders': { group_id: string } & UpdateGroupProvidersRequest
@@ -1185,6 +1590,11 @@ export type ApiEndpointParameters = {
   'McpServer.get': { id: string }
   'McpServer.listAccessible': PaginationQuery
   'McpServer.update': { id: string } & UpdateMcpServerRequest
+  'McpServerRuntime.callTool': { id: string; name: string } & CallToolRequest
+  'McpServerRuntime.disconnect': { id: string }
+  'McpServerRuntime.listResources': { id: string }
+  'McpServerRuntime.listTools': { id: string }
+  'McpServerRuntime.readResource': { id: string } & ReadResourceRequest
   'McpServerSystem.assignServerToGroups': { id: string } & ServerGroupsRequest
   'McpServerSystem.create': CreateMcpServerRequest
   'McpServerSystem.delete': { id: string }
@@ -1193,6 +1603,11 @@ export type ApiEndpointParameters = {
   'McpServerSystem.list': PaginationQuery
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'Message.delete': { id: string }
+  'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
+  'Message.get': { id: string }
+  'Message.getHistory': { id: string }
+  'Message.sendStream': { id: string } & SendMessageRequest
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -1231,6 +1646,27 @@ export type ApiEndpointResponses = {
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'Branch.activate': void
+  'Branch.create': Branch
+  'Branch.getPendingApprovals': PendingApprovalsResponse
+  'Branch.list': Branch[]
+  'Conversation.create': Conversation
+  'Conversation.delete': void
+  'Conversation.get': Conversation
+  'Conversation.getMcpSettings': McpSettingsResponse
+  'Conversation.list': ConversationResponse[]
+  'Conversation.update': Conversation
+  'Conversation.updateMcpSettings': ConversationMcpSettings
+  'File.delete': void
+  'File.download': Blob
+  'File.downloadWithToken': Blob
+  'File.generateDownloadToken': DownloadTokenResponse
+  'File.get': File
+  'File.getPreview': Blob
+  'File.getTextContent': Blob
+  'File.getThumbnail': Blob
+  'File.list': FileListResponse
+  'File.upload': File
   'Group.getProviders': GroupProvidersResponse
   'Group.getSystemServers': GroupSystemServersResponse
   'Group.updateProviders': GroupProvidersResponse
@@ -1283,6 +1719,11 @@ export type ApiEndpointResponses = {
   'McpServer.get': McpServer
   'McpServer.listAccessible': McpServerListResponse
   'McpServer.update': McpServer
+  'McpServerRuntime.callTool': CallToolResponse
+  'McpServerRuntime.disconnect': any
+  'McpServerRuntime.listResources': ListResourcesResponse
+  'McpServerRuntime.listTools': ListToolsResponse
+  'McpServerRuntime.readResource': ReadResourceResponse
   'McpServerSystem.assignServerToGroups': void
   'McpServerSystem.create': McpServer
   'McpServerSystem.delete': void
@@ -1291,6 +1732,11 @@ export type ApiEndpointResponses = {
   'McpServerSystem.list': McpServerListResponse
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.update': McpServer
+  'Message.delete': void
+  'Message.edit': EditMessageResponse
+  'Message.get': MessageWithContent
+  'Message.getHistory': MessageWithContent[]
+  'Message.sendStream': SSEChatStreamEvent
   'User.create': User
   'User.delete': void
   'User.get': User
