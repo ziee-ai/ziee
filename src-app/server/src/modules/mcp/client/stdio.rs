@@ -2,12 +2,14 @@ use async_trait::async_trait;
 use rmcp::{ServiceExt, transport::TokioChildProcess, service::RunningService};
 use rmcp::model::{CallToolRequestParam, ReadResourceRequestParam};
 use std::borrow::Cow;
+use std::path::PathBuf;
 use tokio::process::Command;
 use uuid::Uuid;
 
 use super::traits::{McpClient, Tool, Resource, ToolResult, ToolContent};
 use crate::common::AppError;
 use crate::modules::mcp::models::{McpServer, TransportType};
+use crate::modules::mcp::utils::embedded;
 
 // Security: Command allowlist (Phase 1)
 const ALLOWED_COMMANDS: &[&str] = &["npx", "uvx", "python", "python3", "node", "deno"];
@@ -27,6 +29,39 @@ const BLOCKED_ENV_VARS: &[&str] = &[
     "JWT_SECRET",
     "ENCRYPTION_KEY",
 ];
+
+/// Resolve command to embedded binary if applicable
+/// Returns (resolved_command, prepended_args)
+fn resolve_command(cmd: &str) -> Result<(PathBuf, Vec<String>), AppError> {
+    match cmd {
+        "uvx" => {
+            // Resolve to embedded UV binary: uvx → {uv_path} tool run
+            let uv_path = embedded::get_uv_path()?;
+            Ok((uv_path.clone(), vec!["tool".to_string(), "run".to_string()]))
+        }
+        "npx" => {
+            // Resolve to embedded Bun binary: npx → {bun_path} x
+            let bun_path = embedded::get_bun_path()?;
+            Ok((bun_path.clone(), vec!["x".to_string()]))
+        }
+        "python" | "python3" => {
+            // Resolve to embedded UV binary: python → {uv_path} run python
+            // UV bundles Python, so this provides a self-contained Python runtime
+            let uv_path = embedded::get_uv_path()?;
+            Ok((uv_path.clone(), vec!["run".to_string(), cmd.to_string()]))
+        }
+        "node" => {
+            // Resolve to embedded Bun binary: node → {bun_path} run
+            // Bun is Node.js compatible and can run JavaScript files
+            let bun_path = embedded::get_bun_path()?;
+            Ok((bun_path.clone(), vec!["run".to_string()]))
+        }
+        _ => {
+            // Use command as-is (deno, etc. need to be installed separately)
+            Ok((PathBuf::from(cmd), vec![]))
+        }
+    }
+}
 
 pub struct StdioMcpClient {
     server_id: Uuid,
@@ -59,9 +94,25 @@ impl StdioMcpClient {
             ));
         }
 
-        let mut command = Command::new(cmd);
+        // Transparent command resolution: uvx → uv, npx → bun
+        let (resolved_cmd, prepended_args) = resolve_command(cmd)?;
 
-        // Add arguments
+        tracing::debug!(
+            server_id = %self.server_id,
+            original_cmd = %cmd,
+            resolved_cmd = ?resolved_cmd,
+            prepended_args = ?prepended_args,
+            "Resolved MCP server command"
+        );
+
+        let mut command = Command::new(&resolved_cmd);
+
+        // Add prepended arguments (e.g., "tool run" for uvx, "x" for npx)
+        for arg in prepended_args {
+            command.arg(arg);
+        }
+
+        // Add original arguments from server config
         if let Some(arr) = self.server_config.args.as_array() {
             for arg in arr {
                 if let Some(arg_str) = arg.as_str() {

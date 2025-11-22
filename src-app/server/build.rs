@@ -5,6 +5,10 @@ use std::path::PathBuf;
 mod pandoc;
 #[path = "build_helper/pdfium.rs"]
 mod pdfium;
+#[path = "build_helper/uv.rs"]
+mod uv;
+#[path = "build_helper/bun.rs"]
+mod bun;
 
 #[tokio::main]
 async fn main() {
@@ -68,8 +72,13 @@ async fn main() {
 }
 
 fn setup_external_binaries() {
+    println!("=== SETUP_EXTERNAL_BINARIES CALLED ===");
+
     let target = env::var("TARGET").unwrap();
     let out_dir = env::var("OUT_DIR").unwrap();
+
+    println!("TARGET: {}", target);
+    println!("OUT_DIR: {}", out_dir);
 
     // Use server/binaries/{target}/ for embedding
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -87,6 +96,16 @@ fn setup_external_binaries() {
     // Setup PDFium - downloads to binaries/{target}/
     if let Err(e) = pdfium::setup_pdfium(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup PDFium: {}", e);
+    }
+
+    // Setup UV - downloads to binaries/{target}/
+    if let Err(e) = uv::setup_uv(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to setup UV: {}", e);
+    }
+
+    // Setup Bun - downloads to binaries/{target}/
+    if let Err(e) = bun::setup_bun(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to setup Bun: {}", e);
     }
 }
 

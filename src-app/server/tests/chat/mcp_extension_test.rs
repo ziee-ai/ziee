@@ -67,7 +67,7 @@ async fn create_user_mcp_server(
         "timeout_seconds": 30
     });
 
-    let url = server.api_url("/mcp/user-servers");
+    let url = server.api_url("/mcp/servers");
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user.token))
@@ -88,23 +88,26 @@ async fn assign_server_to_group(
     server_id: Uuid,
     group_id: Uuid,
 ) {
-    let url = server.api_url(&format!("/mcp/servers/{}/groups", server_id));
+    let url = server.api_url(&format!("/mcp/system-servers/{}/groups", server_id));
     let payload = json!({
         "group_ids": [group_id]
     });
 
     let response = reqwest::Client::new()
-        .put(&url)
+        .post(&url)
         .header("Authorization", format!("Bearer {}", admin_token))
         .json(&payload)
         .send()
         .await
         .expect("Failed to assign server to group");
 
-    assert!(
-        response.status().is_success(),
-        "Should assign server to group successfully"
-    );
+    let status = response.status();
+    if !status.is_success() {
+        eprintln!("Group assignment failed:");
+        eprintln!("  Status: {}", status);
+        eprintln!("  Body: {}", response.text().await.unwrap_or_default());
+        panic!("Should assign server to group successfully. Status: {}", status);
+    }
 }
 
 // ============================================================================
@@ -186,7 +189,7 @@ async fn test_mcp_extension_enabled_with_no_servers() {
         "enable_mcp": true
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user.token))
@@ -253,7 +256,7 @@ async fn test_mcp_tools_added_to_llm_request() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -342,7 +345,7 @@ async fn test_mcp_user_can_only_access_own_servers() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user2.token))
@@ -377,10 +380,12 @@ async fn test_mcp_user_can_access_group_servers() {
             "llm_providers::create",
             "llm_providers::edit",
             "mcp_servers_admin::create",
+            "mcp_servers_admin::edit",
             "mcp_servers::read",
             "groups::read",
             "groups::create",
             "groups::edit",
+            "groups::assign_users",
         ],
     )
     .await;
@@ -465,7 +470,7 @@ async fn test_mcp_user_can_access_group_servers() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", user.token))
@@ -533,7 +538,7 @@ async fn test_mcp_specific_tool_selection() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -599,7 +604,7 @@ async fn test_mcp_all_tools_with_empty_array() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -663,7 +668,7 @@ async fn test_mcp_disabled_servers_ignored() {
         }
     });
 
-    let url = server.api_url(&format!("/conversations/{}/messages", conversation_id));
+    let url = server.api_url(&format!("/conversations/{}/messages/stream", conversation_id));
     let response = reqwest::Client::new()
         .post(&url)
         .header("Authorization", format!("Bearer {}", admin.token))

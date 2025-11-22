@@ -7,6 +7,7 @@ mod repository;
 mod routes;
 pub mod runtime_types;
 mod types;
+mod utils;
 
 pub use models::*;
 pub use repository::*;
@@ -54,6 +55,13 @@ impl AppModule for McpModule {
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
+
+        // Extract embedded UV and Bun binaries on first startup
+        tracing::info!("MCP: Ensuring embedded binaries (UV, Bun) are extracted");
+        utils::embedded::ensure_binaries_extracted()
+            .map_err(|e| format!("Failed to extract MCP embedded binaries: {}", e))?;
+        tracing::info!("MCP: Embedded binaries ready");
+
         Ok(())
     }
 
