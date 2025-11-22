@@ -1929,3 +1929,521 @@ async fn test_multiple_hub_entities_cleanup_when_multiple_assistants_deleted() {
         "All hub tracking should be cleaned up after deleting all assistants"
     );
 }
+
+// =====================================================
+// MODEL FROM HUB TESTS
+// =====================================================
+
+#[tokio::test]
+async fn test_create_model_from_hub() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user with necessary permissions
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_model_user",
+        &[
+            "hub::models::download",
+            "hub::models::read",
+            "llm_models::create",
+            "llm_models::read",
+            "llm_providers::create",
+            "llm_providers::read",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    // Get provider
+    let provider = crate::llm_model::download_test::get_local_provider(&server, &user.token).await;
+    let provider_id = provider.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Get available hub models
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(
+        models.as_array().unwrap().len() > 0,
+        "Should have at least one hub model"
+    );
+
+    // Get first model hub_id
+    let first_model = &models.as_array().unwrap()[0];
+    let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Verify created_ids is initially empty
+    let created_ids = first_model.get("created_ids").and_then(|v| v.as_array());
+    assert!(
+        created_ids.is_none() || created_ids.unwrap().is_empty(),
+        "Created IDs should be empty initially"
+    );
+
+    // Create model download from hub
+    let url = server.api_url("/hub/models/download");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "provider_id": provider_id,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    if status != 201 {
+        let error_body = response.text().await.expect("Failed to read error body");
+        panic!("Should create model download successfully. Status: {}, Body: {}", status, error_body);
+    }
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    // Verify response structure
+    assert!(
+        body.get("download").is_some(),
+        "Response should contain download instance"
+    );
+    assert!(
+        body.get("hub_tracking").is_some(),
+        "Response should contain hub_tracking"
+    );
+
+    let download_id = body
+        .get("download")
+        .and_then(|d| d.get("id"))
+        .and_then(|v| v.as_str())
+        .expect("Should have download ID");
+
+    // Verify hub tracking
+    let hub_tracking = body.get("hub_tracking").unwrap();
+    assert_eq!(
+        hub_tracking
+            .get("entity_type")
+            .and_then(|v| v.as_str())
+            .unwrap(),
+        "llm_model"
+    );
+    assert_eq!(
+        hub_tracking.get("hub_id").and_then(|v| v.as_str()).unwrap(),
+        hub_id
+    );
+    assert_eq!(
+        hub_tracking
+            .get("hub_category")
+            .and_then(|v| v.as_str())
+            .unwrap(),
+        "model"
+    );
+
+    // Get hub models again and verify created_ids is populated
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    let updated_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .expect("Should find the hub model");
+
+    let created_ids = updated_model
+        .get("created_ids")
+        .and_then(|v| v.as_array())
+        .expect("Should have created_ids");
+
+    assert_eq!(created_ids.len(), 1, "Should have exactly one created ID");
+    assert_eq!(
+        created_ids[0].as_str().unwrap(),
+        download_id,
+        "Created ID should match the download instance we just created"
+    );
+}
+
+#[tokio::test]
+async fn test_create_model_from_hub_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    // Create user WITHOUT hub::models::download permission
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "no_permission_user",
+        &[
+            "hub::models::read",
+            "llm_models::create",
+            "llm_providers::read",
+        ],
+    )
+    .await;
+
+    // Get provider
+    let provider = crate::llm_model::download_test::get_local_provider(&server, &user.token).await;
+    let provider_id = provider.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Get hub models
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200);
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let first_model = &models.as_array().unwrap()[0];
+    let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Try to create model download without permission
+    let url = server.api_url("/hub/models/download");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "provider_id": provider_id,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "Should return 403 Forbidden without hub::models::download permission"
+    );
+
+    let error_body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(
+        error_body
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .contains("hub::models::download"),
+        "Error should mention missing permission"
+    );
+}
+
+#[tokio::test]
+async fn test_create_model_from_hub_invalid_hub_id() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &[
+            "hub::models::download",
+            "llm_providers::read",
+            "llm_providers::create",
+        ],
+    )
+    .await;
+
+    // Get provider
+    let provider = crate::llm_model::download_test::get_local_provider(&server, &user.token).await;
+    let provider_id = provider.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Try to create download with invalid hub_id
+    let url = server.api_url("/hub/models/download");
+    let request_body = serde_json::json!({
+        "hub_id": "nonexistent-hub-model-id",
+        "provider_id": provider_id,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        404,
+        "Should return 404 for nonexistent hub model"
+    );
+}
+
+#[tokio::test]
+async fn test_create_model_from_hub_invalid_provider_id() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &[
+            "hub::models::download",
+            "hub::models::read",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    // Get hub models
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let first_model = &models.as_array().unwrap()[0];
+    let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Try to create download with invalid provider_id
+    let url = server.api_url("/hub/models/download");
+    let invalid_provider_id = uuid::Uuid::new_v4();
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "provider_id": invalid_provider_id,
+        "enabled": true
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert!(
+        response.status().is_client_error() || response.status().is_server_error(),
+        "Should return error for invalid provider_id"
+    );
+}
+
+#[tokio::test]
+async fn test_create_model_from_hub_with_quantization() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &[
+            "hub::models::download",
+            "hub::models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    // Get provider
+    let provider = crate::llm_model::download_test::get_local_provider(&server, &user.token).await;
+    let provider_id = provider.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Get hub models
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    // Find a model with quantization options
+    let model_with_quant = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| {
+            m.get("quantization_options")
+                .and_then(|q| q.as_array())
+                .map(|arr| !arr.is_empty())
+                .unwrap_or(false)
+        });
+
+    if model_with_quant.is_none() {
+        println!("No models with quantization options found, skipping test");
+        return;
+    }
+
+    let model = model_with_quant.unwrap();
+    let hub_id = model.get("id").and_then(|v| v.as_str()).unwrap();
+    let quant_options = model.get("quantization_options").and_then(|v| v.as_array()).unwrap();
+    let first_quant = &quant_options[0];
+    let quant_name = first_quant.get("name").and_then(|v| v.as_str()).unwrap();
+
+    // Create download with specific quantization
+    let url = server.api_url("/hub/models/download");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "provider_id": provider_id,
+        "enabled": true,
+        "quantization_name": quant_name
+    });
+
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        201,
+        "Should create download with quantization selection"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let download = body.get("download").expect("Should have download");
+
+    // Verify the download was created (we can't easily verify the quantization was applied
+    // without checking the download instance's request_data, which is internal)
+    assert!(download.get("id").is_some(), "Download should have an ID");
+}
+
+#[tokio::test]
+async fn test_duplicate_download_prevention() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_user",
+        &[
+            "hub::models::download",
+            "hub::models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_repositories::read",
+        ],
+    )
+    .await;
+
+    // Get provider
+    let provider = crate::llm_model::download_test::get_local_provider(&server, &user.token).await;
+    let provider_id = provider.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Get hub models
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let first_model = &models.as_array().unwrap()[0];
+    let hub_id = first_model.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Create first download
+    let url = server.api_url("/hub/models/download");
+    let request_body = serde_json::json!({
+        "hub_id": hub_id,
+        "provider_id": provider_id,
+        "enabled": true
+    });
+
+    let response1 = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response1.status(), 201);
+    let body1: serde_json::Value = response1.json().await.expect("Failed to parse JSON");
+    let download_id1 = body1
+        .get("download")
+        .and_then(|d| d.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Try to create second download from same hub model (should return existing)
+    let response2 = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response2.status(), 201);
+    let body2: serde_json::Value = response2.json().await.expect("Failed to parse JSON");
+    let download_id2 = body2
+        .get("download")
+        .and_then(|d| d.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap();
+
+    // Verify they have the SAME ID (deduplication working)
+    assert_eq!(
+        download_id1, download_id2,
+        "Duplicate download should return the same download instance"
+    );
+
+    // Get hub models again and verify created_ids contains only one entry
+    let url = server.api_url("/hub/models?lang=en");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let updated_model = models
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(hub_id))
+        .expect("Should find the hub model");
+
+    let created_ids = updated_model
+        .get("created_ids")
+        .and_then(|v| v.as_array())
+        .expect("Should have created_ids");
+
+    assert_eq!(
+        created_ids.len(),
+        1,
+        "Should have only 1 download ID (deduplicated)"
+    );
+
+    assert_eq!(
+        created_ids[0].as_str().unwrap(),
+        download_id1,
+        "Should contain the original download ID"
+    );
+}

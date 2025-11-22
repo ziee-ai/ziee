@@ -218,11 +218,9 @@ impl ChatExtension for TitleGenerationExtension {
         let base_url = provider_info
             .base_url
             .as_deref()
-            .unwrap_or_else(|| match provider_type {
-                "anthropic" => "https://api.anthropic.com",
-                "gemini" => "https://generativelanguage.googleapis.com",
-                _ => "https://api.openai.com/v1",
-            });
+            .ok_or_else(|| AppError::internal_error(
+                format!("Provider '{}' has no base_url configured", provider_info.name)
+            ))?;
 
         // Create provider for title generation
         let provider = Provider::new(provider_type, api_key, base_url)

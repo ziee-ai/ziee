@@ -139,6 +139,15 @@ impl ChatCoreRepository {
         messages::get_conversation_history(&self.pool, branch_id).await
     }
 
+    /// Verify that a message exists and user owns the conversation containing it
+    pub async fn verify_message_ownership(
+        &self,
+        message_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<Conversation>, AppError> {
+        messages::verify_message_ownership(&self.pool, message_id, user_id).await
+    }
+
     /// Edit a message
     pub async fn edit_message(
         &self,

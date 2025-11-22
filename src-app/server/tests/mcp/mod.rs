@@ -2,7 +2,7 @@
 // Comprehensive approval workflow tests are now in tests/chat/mcp_approval_workflow_test.rs
 // mod approval_test;
 
-use crate::common::test_helpers::{self, TestUser};
+use crate::common::test_helpers::{self};
 use serde_json::json;
 use uuid::Uuid;
 

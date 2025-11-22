@@ -402,14 +402,137 @@ pub async fn create_mcp_server_from_hub(
 #[debug_handler]
 pub async fn create_model_from_hub(
     _auth: RequirePermissions<(HubModelsCreate,)>,
-
-    Json(_request): Json<CreateModelFromHubRequest>,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+    Json(request): Json<CreateModelFromHubRequest>,
 ) -> ApiResult<Json<ModelFromHubResponse>> {
-    // Implementation for model download
-    // TODO: Implement full model download logic
-    Err((
-        StatusCode::INTERNAL_SERVER_ERROR,
-        AppError::internal_error("Model download from hub not yet implemented"),
+    use crate::modules::llm_model::models::FileFormat as LlmFileFormat;
+
+    // 1. Load hub model
+    let app_data_dir = crate::core::get_app_data_dir();
+    let hub_manager = HubManager::new(app_data_dir)?;
+    let hub_data = hub_manager.load_hub_data_with_locale("en").await?;
+
+    let hub_model = hub_data
+        .models
+        .into_iter()
+        .find(|m| m.id == request.hub_id)
+        .ok_or_else(|| AppError::not_found(&format!("Hub model '{}'", request.hub_id)))?;
+
+    // 2. Find repository by URL
+    let repository = Repos
+        .llm_repository
+        .find_by_url(&hub_model.repository_url)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error(&format!("Database error: {}", e)),
+            )
+        })?
+        .ok_or_else(|| {
+            AppError::not_found(&format!(
+                "Repository with URL '{}' not found",
+                hub_model.repository_url
+            ))
+        })?;
+
+    // 3. Select quantization option if specified
+    let main_filename = if let Some(ref quant_name) = request.quantization_name {
+        hub_model
+            .quantization_options
+            .as_ref()
+            .and_then(|opts| {
+                opts.iter()
+                    .find(|o| &o.name == quant_name)
+                    .map(|opt| opt.main_filename.clone())
+            })
+            .unwrap_or_else(|| hub_model.main_filename.clone())
+    } else {
+        hub_model.main_filename.clone()
+    };
+
+    // 4. Convert FileFormat from hub to llm_model
+    let file_format = match hub_model.file_format {
+        super::models::FileFormat::GGUF => LlmFileFormat::Gguf,
+        super::models::FileFormat::SafeTensors => LlmFileFormat::Safetensors,
+        super::models::FileFormat::PyTorch => LlmFileFormat::Pytorch,
+    };
+
+    // 5. Convert capabilities from hub to llm_model format
+    let capabilities = hub_model.capabilities.map(|hub_caps| {
+        crate::modules::llm_model::models::ModelCapabilities {
+            vision: Some(hub_caps.vision),
+            audio: Some(hub_caps.audio),
+            tools: Some(hub_caps.tools),
+            code_interpreter: Some(hub_caps.code_interpreter),
+            chat: Some(hub_caps.chat),
+            text_embedding: Some(hub_caps.text_embedding),
+            image_generator: Some(hub_caps.image_generator),
+        }
+    });
+
+    // 6. Build download request for initiate_repository_download
+    let download_request = crate::modules::llm_model::handlers::uploads::DownloadFromRepositoryRequest {
+        provider_id: request.provider_id,
+        repository_id: repository.id,
+        repository_path: hub_model.repository_path.clone(),
+        repository_branch: None,
+        name: hub_model.name.clone(),
+        display_name: request
+            .display_name
+            .unwrap_or_else(|| hub_model.display_name.clone()),
+        description: hub_model.description.clone(),
+        file_format: file_format,
+        main_filename,
+        capabilities,
+        parameters: hub_model
+            .recommended_parameters
+            .and_then(|p| serde_json::from_value(p).ok()),
+        engine_type: hub_model
+            .recommended_engine
+            .and_then(|e| crate::modules::llm_model::models::EngineType::from_str(&e)),
+        engine_settings: hub_model
+            .recommended_engine_settings
+            .and_then(|s| serde_json::from_value(s).ok()),
+        clear_cache: None,
+    };
+
+    // 7. Initiate the actual download (this creates the download instance AND spawns the background task)
+    let download = crate::modules::llm_model::handlers::uploads::initiate_repository_download_internal(
+        download_request,
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(&format!("Failed to initiate download: {}", e)),
+        )
+    })?;
+
+    // 8. Track in hub_entities
+    let hub_tracking = Repos
+        .hub
+        .track_hub_entity(
+            HubEntityType::LlmModel,
+            download.id,
+            &request.hub_id,
+            HubCategory::Model,
+            None, // Models are system-wide, not user-specific
+        )
+        .await?;
+
+    // 9. Emit event
+    event_bus.emit_async(
+        HubEvent::model_download_started_from_hub(download.id, request.hub_id.clone()).into(),
+    );
+
+    // 10. Return response
+    Ok((
+        StatusCode::CREATED,
+        Json(ModelFromHubResponse {
+            download,
+            hub_tracking,
+        }),
     ))
 }
 

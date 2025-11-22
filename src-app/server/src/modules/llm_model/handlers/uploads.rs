@@ -324,9 +324,6 @@ async fn create_model_with_files(
         );
     }
 
-    // Create all file records in the database
-    // TODO: Add model_files table support when repository functions are ready
-
     // Update model with total size and validation status using the correct model ID
     repo.set_validation_status(model_db.id, "completed", None)
         .await?;
@@ -986,32 +983,33 @@ impl std::fmt::Display for ModelFileType {
     }
 }
 
-/// Initiate repository download (returns immediately with download instance ID)
-/// The actual download happens in a background task
-#[debug_handler]
-pub async fn initiate_repository_download(
-    _auth: RequirePermissions<(LlmModelsCreate,)>,
+/// Internal function to initiate repository download without auth check
+/// Used by both the public API endpoint and the hub module
+/// Returns download instance immediately; actual download happens in background task
+pub async fn initiate_repository_download_internal(
+    request: DownloadFromRepositoryRequest,
+) -> Result<DownloadInstance, String> {
+    // Check if an identical download is already in progress
+    if let Some(existing_download) = Repos
+        .download_instance
+        .find_existing_in_progress(
+            request.repository_id,
+            request.provider_id,
+            &request.repository_path,
+            &request.main_filename,
+        )
+        .await
+        .map_err(|e| format!("Database error: {}", e))?
+    {
+        // Return the existing download instance instead of creating a new one
+        return Ok(existing_download);
+    }
 
-    Json(request): Json<DownloadFromRepositoryRequest>,
-) -> ApiResult<Json<DownloadInstance>> {
     // Get repository information
     let repository = Repos.llm_repository.get_by_id(request.repository_id)
     .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(&format!("Database error: {}", e)),
-        )
-    })?
-    .ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            AppError::not_found(&format!(
-                "Repository with ID {} not found",
-                request.repository_id
-            )),
-        )
-    })?;
+    .map_err(|e| format!("Database error: {}", e))?
+    .ok_or_else(|| format!("Repository with ID {} not found", request.repository_id))?;
 
     // Create download instance in the database
     let download_request = CreateDownloadInstanceRequest {
@@ -1038,12 +1036,7 @@ pub async fn initiate_repository_download(
         .download_instance
         .create(download_request)
         .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(&format!("Database error: {}", e)),
-            )
-        })?;
+        .map_err(|e| format!("Database error: {}", e))?;
 
     // Clone necessary data for the background task
     let download_id = download_instance.id;
@@ -1477,5 +1470,23 @@ pub async fn initiate_repository_download(
     });
 
     // Return the download instance immediately
+    Ok(download_instance)
+}
+
+/// Public API endpoint for initiating repository download
+#[debug_handler]
+pub async fn initiate_repository_download(
+    _auth: RequirePermissions<(LlmModelsCreate,)>,
+    Json(request): Json<DownloadFromRepositoryRequest>,
+) -> ApiResult<Json<DownloadInstance>> {
+    let download_instance = initiate_repository_download_internal(request)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error(&e),
+            )
+        })?;
+
     Ok((StatusCode::OK, Json(download_instance)))
 }

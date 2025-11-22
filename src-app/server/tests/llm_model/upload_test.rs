@@ -7,7 +7,6 @@ use reqwest::multipart::{Form, Part};
 use serde_json::json;
 use std::path::PathBuf;
 use tokio::fs;
-use uuid::Uuid;
 
 /// Test models to use for upload testing
 /// These are selected for being very small (1-3MB each for testing)

@@ -35,6 +35,10 @@ impl LlmRepositoryRepository {
         list_llm_repositories(&self.pool).await
     }
 
+    pub async fn find_by_url(&self, url: &str) -> Result<Option<LlmRepository>, sqlx::Error> {
+        find_llm_repository_by_url(&self.pool, url).await
+    }
+
     pub async fn create(
         &self,
         request: CreateLlmRepositoryRequest,
@@ -242,4 +246,33 @@ pub async fn delete_llm_repository(
         }
         None => Ok(Ok(false)),
     }
+}
+
+pub async fn find_llm_repository_by_url(
+    pool: &PgPool,
+    url: &str,
+) -> Result<Option<LlmRepository>, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"SELECT id, name, url, auth_type, auth_config, enabled, built_in, created_at, updated_at
+         FROM llm_repositories
+         WHERE url = $1"#,
+        url
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| LlmRepository {
+        id: r.id,
+        name: r.name,
+        url: r.url,
+        auth_type: r.auth_type,
+        auth_config: r
+            .auth_config
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or_default(),
+        enabled: r.enabled,
+        built_in: r.built_in,
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+    }))
 }

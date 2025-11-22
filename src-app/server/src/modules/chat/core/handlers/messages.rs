@@ -58,16 +58,19 @@ pub fn get_conversation_history_docs(op: TransformOperation) -> TransformOperati
 /// Get a specific message with its content
 #[debug_handler]
 pub async fn get_message(
-    _auth: RequirePermissions<(MessagesRead,)>,
+    auth: RequirePermissions<(MessagesRead,)>,
 
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<Json<MessageWithContent>> {
-    let message_with_content = Repos.chat.core.get_message_with_content( message_id)
+    // Verify user owns the conversation containing this message
+    let _conversation = Repos.chat.core
+        .verify_message_ownership( message_id, auth.user.id)
         .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 
-    // TODO: Verify user owns the conversation containing this message
-    // For now, we'll allow any authenticated user with MessagesRead permission
+    let message_with_content = Repos.chat.core.get_message_with_content( message_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Message"))?;
 
     Ok((StatusCode::OK, Json(message_with_content)))
 }
@@ -128,11 +131,15 @@ pub fn edit_message_docs(op: TransformOperation) -> TransformOperation {
 /// Delete a message and all its descendants
 #[debug_handler]
 pub async fn delete_message(
-    _auth: RequirePermissions<(MessagesDelete,)>,
+    auth: RequirePermissions<(MessagesDelete,)>,
 
     Path(message_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
-    // TODO: Verify user owns the conversation containing this message
+    // Verify user owns the conversation containing this message
+    let _conversation = Repos.chat.core
+        .verify_message_ownership( message_id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Message"))?;
 
     let deleted_count = Repos.chat.core.delete_message_and_descendants( message_id).await?;
 

@@ -116,8 +116,6 @@ struct AnthropicContentBlockStart {
     id: Option<String>,
     #[serde(default)]
     name: Option<String>,
-    #[serde(default)]
-    text: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -22,7 +22,6 @@ use crate::modules::mcp::client::manager::McpSessionManager;
 use crate::core::repository::Repos;
 
 use super::content::McpContentData;
-use super::extension::{McpServerConfig, SendMessageRequestFields};
 use super::helpers;
 
 /// Accumulated tool use data during streaming
@@ -63,8 +62,8 @@ impl McpChatExtension {
         context: &StreamContext,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<Vec<MessageContentData>, AppError> {
-        use axum::response::sse::Event;
-        use std::convert::Infallible;
+        
+        
 
         let mut tool_results = Vec::new();
         let accessible_servers =

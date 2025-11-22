@@ -64,12 +64,3 @@ impl std::str::FromStr for UploadStatus {
         }
     }
 }
-
-/// Request to create or update a provider file mapping
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpsertProviderFileMapping {
-    pub file_id: Uuid,
-    pub provider_id: Uuid,
-    pub provider_file_id: String,
-    pub provider_metadata: serde_json::Value,
-}

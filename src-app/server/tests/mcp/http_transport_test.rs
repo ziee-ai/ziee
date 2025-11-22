@@ -142,7 +142,7 @@ async fn test_http_list_tools_server_not_found() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404, "Should return 404 for unknown server");
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server (more secure - doesn't reveal if server exists)");
 }
 
 // ============================================================================
@@ -277,7 +277,7 @@ async fn test_http_call_tool_server_not_found() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404, "Should return 404 for unknown server");
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server (more secure - doesn't reveal if server exists)");
 }
 
 // ============================================================================

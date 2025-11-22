@@ -7,7 +7,6 @@
 //! - Fine-grained tool selection
 //! - SSE event emission for tool execution
 
-use reqwest::StatusCode;
 use serde_json::json;
 use uuid::Uuid;
 

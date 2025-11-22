@@ -183,7 +183,7 @@ impl Drop for TestServer {
 
 /// Common test helpers for creating users and managing permissions
 pub mod test_helpers {
-    use super::{TestServer, database_url};
+    use super::TestServer;
     use serde_json::json;
     use uuid::Uuid;
 

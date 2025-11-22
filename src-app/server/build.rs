@@ -146,6 +146,7 @@ fn generate_chat_repository() {
     code.push_str("\n/// Chat repository with core and extension repositories\n");
     code.push_str("#[derive(Clone, Debug)]\n");
     code.push_str("pub struct ChatRepository {\n");
+    code.push_str("    #[allow(dead_code)] // Pool is stored but not directly accessed; used to create sub-repositories\n");
     code.push_str("    pool: PgPool,\n");
     code.push_str("    pub core: ChatCoreRepository,\n");
 

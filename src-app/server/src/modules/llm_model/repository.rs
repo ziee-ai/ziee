@@ -174,6 +174,26 @@ impl DownloadInstanceRepository {
             .await
             .map_err(AppError::database_error)
     }
+
+    /// Find an existing in-progress download for the same model
+    /// Returns the existing download if one exists with status Pending or Downloading
+    pub async fn find_existing_in_progress(
+        &self,
+        repository_id: Uuid,
+        provider_id: Uuid,
+        repository_path: &str,
+        main_filename: &str,
+    ) -> Result<Option<DownloadInstance>, AppError> {
+        find_existing_in_progress_download(
+            &self.pool,
+            repository_id,
+            provider_id,
+            repository_path,
+            main_filename,
+        )
+        .await
+        .map_err(AppError::database_error)
+    }
 }
 
 pub async fn get_llm_model_by_id(
@@ -894,6 +914,42 @@ pub async fn get_all_active_downloads(pool: &PgPool) -> Result<Vec<DownloadInsta
          ORDER BY created_at ASC"#
     )
     .fetch_all(pool)
+    .await
+}
+
+pub async fn find_existing_in_progress_download(
+    pool: &PgPool,
+    repository_id: Uuid,
+    provider_id: Uuid,
+    repository_path: &str,
+    main_filename: &str,
+) -> Result<Option<DownloadInstance>, sqlx::Error> {
+    sqlx::query_as!(
+        DownloadInstance,
+        r#"SELECT id, provider_id, repository_id,
+                 request_data,
+                 status,
+                 progress_data,
+                 error_message,
+                 started_at as "started_at: _",
+                 completed_at as "completed_at: _",
+                 model_id,
+                 created_at as "created_at: _",
+                 updated_at as "updated_at: _"
+         FROM download_instances
+         WHERE repository_id = $1
+           AND provider_id = $2
+           AND status IN ('pending', 'downloading')
+           AND request_data->>'repository_path' = $3
+           AND request_data->>'main_filename' = $4
+         ORDER BY created_at DESC
+         LIMIT 1"#,
+        repository_id,
+        provider_id,
+        repository_path,
+        main_filename
+    )
+    .fetch_optional(pool)
     .await
 }
 

@@ -157,61 +157,6 @@ async fn save_upload_response(
     Ok(upload_response.provider_file_id)
 }
 
-/// Delete file from provider and remove mapping
-///
-/// This is called when a file is deleted from the system.
-pub async fn delete_provider_file(
-    pool: &PgPool,
-    file_id: Uuid,
-    provider: &LlmProvider,
-    ai_provider: &dyn AIProvider,
-) -> Result<(), AppError> {
-    // Get mapping
-    let mapping = repository::get_provider_file_mapping(pool, file_id, provider.id).await?;
-
-    if let Some(mapping) = mapping {
-        if let Some(provider_file_id) = mapping.provider_file_id {
-            // Delete from provider
-            if let Some(api_key) = &provider.api_key {
-                let base_url = provider.base_url.as_deref().unwrap_or_else(|| {
-                    match provider.provider_type.as_str() {
-                        "anthropic" => "https://api.anthropic.com/v1",
-                        "gemini" => "https://generativelanguage.googleapis.com/v1beta",
-                        "openai" => "https://api.openai.com/v1",
-                        _ => "http://localhost:8000/v1",
-                    }
-                });
-
-                // Ignore errors from provider deletion (file might already be deleted)
-                let _ = ai_provider
-                    .delete_file(api_key, base_url, &provider_file_id)
-                    .await;
-            }
-        }
-
-        // Delete mapping from database
-        repository::delete_provider_file_mapping(pool, file_id, provider.id).await?;
-    }
-
-    Ok(())
-}
-
-/// Background job: Cleanup expired Gemini files
-///
-/// Should be run periodically (e.g., daily) to remove expired file mappings.
-pub async fn cleanup_expired_files(pool: &PgPool) -> Result<u64, AppError> {
-    let deleted_count = repository::delete_expired_mappings(pool).await?;
-    Ok(deleted_count)
-}
-
-/// Invalidate all provider file mappings when API key changes
-///
-/// This marks all files as expired so they will be re-uploaded on next use.
-pub async fn invalidate_provider_files(pool: &PgPool, provider_id: Uuid) -> Result<u64, AppError> {
-    let invalidated_count = repository::invalidate_provider_mappings(pool, provider_id).await?;
-    Ok(invalidated_count)
-}
-
 /// Helper function to extract file extension
 fn get_extension(filename: &str) -> String {
     std::path::Path::new(filename)

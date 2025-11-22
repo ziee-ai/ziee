@@ -37,6 +37,8 @@ pub struct McpConfig {
 
 /// Request fields for MCP extension
 /// These fields are auto-merged into SendMessageRequest by the macro system
+/// Note: Not directly constructed - used by compose_send_message_request macro
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, schemars::JsonSchema, Default)]
 pub struct SendMessageRequestFields {
     /// Enable MCP tool calling for this request
@@ -113,6 +115,8 @@ pub struct SSEChatStreamMcpApprovalRequiredData {
 
 /// MCP extension's SSE event variants
 /// These are merged into SSEChatStreamEvent by the compose_chat_stream_events macro
+/// Note: Not directly constructed - variants merged by macro into main SSEChatStreamEvent enum
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum SSEChatStreamEventVariants {
@@ -130,6 +134,8 @@ pub enum SSEChatStreamEventVariants {
 
 /// MCP extension's content block delta variants
 /// These are merged into ContentBlockDelta by the compose_content_block_delta_variants macro
+/// Note: Not directly constructed - variants merged by macro into main ContentBlockDelta enum
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlockDeltaVariants {

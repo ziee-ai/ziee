@@ -106,46 +106,6 @@ impl ConversationMcpSettings {
             .parse()
             .unwrap_or(ApprovalMode::ManualApprove)
     }
-
-    /// Get auto-approved tools as Vec<String>
-    pub fn get_auto_approved_tools(&self) -> Vec<String> {
-        serde_json::from_value(self.auto_approved_tools.clone()).unwrap_or_default()
-    }
-}
-
-/// Tool use approval status
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ApprovalStatus {
-    Pending,
-    Approved,
-    Denied,
-    Cancelled,
-}
-
-impl std::fmt::Display for ApprovalStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ApprovalStatus::Pending => write!(f, "pending"),
-            ApprovalStatus::Approved => write!(f, "approved"),
-            ApprovalStatus::Denied => write!(f, "denied"),
-            ApprovalStatus::Cancelled => write!(f, "cancelled"),
-        }
-    }
-}
-
-impl std::str::FromStr for ApprovalStatus {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "pending" => Ok(ApprovalStatus::Pending),
-            "approved" => Ok(ApprovalStatus::Approved),
-            "denied" => Ok(ApprovalStatus::Denied),
-            "cancelled" => Ok(ApprovalStatus::Cancelled),
-            _ => Err(format!("Invalid approval status: {}", s)),
-        }
-    }
 }
 
 /// Tool use approval record
@@ -179,13 +139,6 @@ pub struct ToolUseApproval {
     pub updated_at: DateTime<Utc>,
 }
 
-impl ToolUseApproval {
-    /// Get approval status as enum
-    pub fn get_status(&self) -> ApprovalStatus {
-        self.status.parse().unwrap_or(ApprovalStatus::Pending)
-    }
-}
-
 /// Request to create MCP settings
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct UpsertMcpSettingsRequest {
@@ -198,13 +151,6 @@ pub struct UpsertMcpSettingsRequest {
     ///   3. Object with name: {"server_name": "name", "tool_name": "name"}
     #[serde(default)]
     pub auto_approved_tools: serde_json::Value,
-}
-
-/// Request to approve/deny tool uses
-#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
-pub struct ApproveToolUsesRequest {
-    /// List of approval decisions
-    pub approvals: Vec<ToolApprovalDecision>,
 }
 
 /// Single tool approval decision

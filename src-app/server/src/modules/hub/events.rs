@@ -31,6 +31,9 @@ pub enum HubEvent {
 
     /// An MCP server was created from hub catalog
     McpServerCreatedFromHub { server_id: Uuid, hub_id: String },
+
+    /// A model download was started from hub catalog
+    ModelDownloadStartedFromHub { download_id: Uuid, hub_id: String },
 }
 
 impl HubEvent {
@@ -69,6 +72,14 @@ impl HubEvent {
     /// Create an McpServerCreatedFromHub event
     pub fn mcp_server_created_from_hub(server_id: Uuid, hub_id: String) -> Self {
         Self::McpServerCreatedFromHub { server_id, hub_id }
+    }
+
+    /// Create a ModelDownloadStartedFromHub event
+    pub fn model_download_started_from_hub(download_id: Uuid, hub_id: String) -> Self {
+        Self::ModelDownloadStartedFromHub {
+            download_id,
+            hub_id,
+        }
     }
 }
 

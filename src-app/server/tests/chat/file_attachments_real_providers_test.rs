@@ -9,7 +9,6 @@
 //! cargo test --test integration_tests chat::file_attachments_real_providers_test -- --nocapture --test-threads=1
 //! ```
 
-use serde_json::json;
 use std::fs;
 use futures_util::StreamExt;
 

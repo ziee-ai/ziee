@@ -7,7 +7,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-use super::{models, repository};
+use super::models;
 
 // =====================================================
 // Request/Response Types
@@ -47,7 +47,7 @@ pub async fn get_mcp_settings(
     Path(conversation_id): Path<Uuid>,
 ) -> ApiResult<Json<McpSettingsResponse>> {
     // Verify user owns this conversation
-    let conversation = crate::core::Repos
+    let _conversation = crate::core::Repos
         .chat
         .core
         .get_conversation(conversation_id, auth.user.id)
@@ -82,7 +82,7 @@ pub async fn update_mcp_settings(
     Json(request): Json<models::UpsertMcpSettingsRequest>,
 ) -> ApiResult<Json<models::ConversationMcpSettings>> {
     // Verify user owns this conversation
-    let conversation = crate::core::Repos
+    let _conversation = crate::core::Repos
         .chat
         .core
         .get_conversation(conversation_id, auth.user.id)

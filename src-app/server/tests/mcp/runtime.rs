@@ -171,7 +171,7 @@ async fn test_list_tools_server_not_found() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404, "Should return 404 for unknown server");
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server (more secure - doesn't reveal if server exists)");
 }
 
 // ============================================================================
@@ -286,7 +286,7 @@ async fn test_call_tool_server_not_found() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404, "Should return 404 for unknown server");
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server (more secure - doesn't reveal if server exists)");
 }
 
 #[tokio::test]
@@ -427,7 +427,7 @@ async fn test_list_resources_server_not_found() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404, "Should return 404 for unknown server");
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server (more secure - doesn't reveal if server exists)");
 }
 
 // ============================================================================
@@ -592,7 +592,7 @@ async fn test_disconnect_server_not_found() {
         .await
         .expect("Request failed");
 
-    assert_eq!(response.status(), 404, "Should return 404 for unknown server");
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server (more secure - doesn't reveal if server exists)");
 }
 
 #[tokio::test]
@@ -725,4 +725,337 @@ async fn test_concurrent_tool_calls() {
             i
         );
     }
+}
+
+// ============================================================================
+// Access Control Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_runtime_user_cannot_access_other_user_server_tools() {
+    let server = crate::common::TestServer::start().await;
+    let user1 = test_helpers::create_user_with_permissions(
+        &server,
+        "user1",
+        &["mcp_servers::read", "mcp_servers::create"],
+    )
+    .await;
+    let user2 = test_helpers::create_user_with_permissions(&server, "user2", &["mcp_servers::read"])
+        .await;
+
+    // User1 creates a personal server
+    let payload = json!({
+        "name": "user1_private_server",
+        "display_name": "User1 Private Server",
+        "transport_type": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-fetch"],
+        "timeout_seconds": 30
+    });
+
+    let create_url = server.api_url("/mcp/servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", user1.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // User2 tries to list tools on User1's server - should get 403
+    let list_tools_url = server.api_url(&format!("/mcp/servers/{}/tools", server_id));
+    let response = reqwest::Client::new()
+        .get(&list_tools_url)
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "User2 should not be able to list tools on User1's server"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "USER_NO_ACCESS");
+
+    // User2 tries to call a tool on User1's server - should get 403
+    let call_tool_url = server.api_url(&format!("/mcp/servers/{}/tools/fetch/call", server_id));
+    let call_payload = json!({
+        "arguments": {
+            "url": "https://example.com"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&call_tool_url)
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&call_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "User2 should not be able to call tools on User1's server"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "USER_NO_ACCESS");
+
+    // User2 tries to list resources on User1's server - should get 403
+    let list_resources_url = server.api_url(&format!("/mcp/servers/{}/resources", server_id));
+    let response = reqwest::Client::new()
+        .get(&list_resources_url)
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "User2 should not be able to list resources on User1's server"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "USER_NO_ACCESS");
+
+    // User2 tries to read a resource on User1's server - should get 403
+    let read_resource_url = server.api_url(&format!("/mcp/servers/{}/resources/read", server_id));
+    let read_payload = json!({
+        "uri": "file:///some/path"
+    });
+
+    let response = reqwest::Client::new()
+        .post(&read_resource_url)
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .json(&read_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "User2 should not be able to read resources on User1's server"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "USER_NO_ACCESS");
+
+    // User2 tries to disconnect User1's server - should get 403
+    let disconnect_url = server.api_url(&format!("/mcp/servers/{}/disconnect", server_id));
+    let response = reqwest::Client::new()
+        .delete(&disconnect_url)
+        .header("Authorization", format!("Bearer {}", user2.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "User2 should not be able to disconnect User1's server"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "USER_NO_ACCESS");
+}
+
+#[tokio::test]
+async fn test_runtime_user_can_access_group_system_server() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create", "mcp_servers_admin::edit"],
+    )
+    .await;
+
+    // Create a regular user with mcp_servers::read permission
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read"])
+        .await;
+
+    // Get a group to assign the user to (use the default group)
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let group_result = sqlx::query!("SELECT id FROM groups WHERE is_default = true LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to get default group");
+    let group_id = group_result.id;
+
+    // Note: User is already assigned to default group by create_user_with_permissions
+    // but we'll ensure it's there (idempotent operation)
+    let user_uuid = Uuid::parse_str(&user.user_id).expect("Invalid user ID");
+    sqlx::query(
+        "INSERT INTO user_groups (user_id, group_id, assigned_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(user_uuid)
+    .bind(group_id)
+    .execute(&pool)
+    .await
+    .expect("Failed to assign user to group");
+
+    pool.close().await;
+
+    // Admin creates a system server
+    let server_id = create_fetch_server(&server, &admin).await;
+
+    // Admin assigns the system server to the group
+    let assign_url = server.api_url(&format!("/mcp/system-servers/{}/groups", server_id));
+    let assign_payload = json!({
+        "group_ids": [group_id]
+    });
+
+    let assign_response = reqwest::Client::new()
+        .post(&assign_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&assign_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        assign_response.status(),
+        204,
+        "Should assign server to group"
+    );
+
+    // User (who is in the group) should be able to list tools
+    let list_tools_url = server.api_url(&format!("/mcp/servers/{}/tools", server_id));
+    let response = reqwest::Client::new()
+        .get(&list_tools_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        200,
+        "User in group should be able to list tools on group-assigned system server"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert!(body["tools"].is_array(), "Should return tools array");
+
+    // User should be able to call a tool
+    let call_tool_url = server.api_url(&format!("/mcp/servers/{}/tools/fetch/call", server_id));
+    let call_payload = json!({
+        "arguments": {
+            "url": "https://example.com"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&call_tool_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&call_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    if status != 200 {
+        let error_body = response.text().await.expect("Failed to read error body");
+        eprintln!("Error calling tool: {} - {}", status, error_body);
+    }
+
+    assert_eq!(
+        status,
+        200,
+        "User in group should be able to call tools on group-assigned system server"
+    );
+}
+
+#[tokio::test]
+async fn test_runtime_user_cannot_access_unassigned_system_server() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create", "mcp_servers::read"],
+    )
+    .await;
+
+    // Create a regular user with mcp_servers::read permission
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read"])
+        .await;
+
+    // Admin creates a system server but does NOT assign it to any group
+    let server_id = create_fetch_server(&server, &admin).await;
+
+    // User tries to list tools on the unassigned system server - should get 403
+    let list_tools_url = server.api_url(&format!("/mcp/servers/{}/tools", server_id));
+    let response = reqwest::Client::new()
+        .get(&list_tools_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "User should not be able to list tools on unassigned system server"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "USER_NO_ACCESS");
+
+    // User tries to call a tool - should get 403
+    let call_tool_url = server.api_url(&format!("/mcp/servers/{}/tools/fetch/call", server_id));
+    let call_payload = json!({
+        "arguments": {
+            "url": "https://example.com"
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .post(&call_tool_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&call_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        response.status(),
+        403,
+        "User should not be able to call tools on unassigned system server"
+    );
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "USER_NO_ACCESS");
+
+    // Admin users with mcp_servers_admin::* permissions can access ALL servers
+    // This allows admins to debug and manage servers without needing group assignments
+    let admin_response = reqwest::Client::new()
+        .get(&list_tools_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(
+        admin_response.status(),
+        200,
+        "Admin with mcp_servers_admin::* permissions can access unassigned system servers"
+    );
+
+    let admin_body: serde_json::Value = admin_response.json().await.expect("Failed to parse JSON");
+    assert!(admin_body["tools"].is_array(), "Admin should get tools list");
 }

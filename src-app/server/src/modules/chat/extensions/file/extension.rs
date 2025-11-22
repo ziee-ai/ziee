@@ -13,6 +13,8 @@ pub const METADATA: ExtensionMetadata = ExtensionMetadata {
 };
 
 /// Request fields that will be auto-merged into SendMessageRequest by the macro system
+/// Note: Not directly constructed - used by compose_send_message_request macro
+#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema, Default)]
 pub struct SendMessageRequestFields {
     /// File IDs to attach to this message

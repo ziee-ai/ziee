@@ -1,17 +1,15 @@
 // MCP extension helper functions
 
 use axum::response::sse::Event;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::convert::Infallible;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::common::AppError;
 use crate::modules::chat::core::types::streaming::SSEChatStreamEvent;
 use crate::modules::mcp::client::session::McpSession;
-use crate::modules::mcp::client::traits::{Tool, ToolResult};
+use crate::modules::mcp::client::traits::Tool;
 use crate::modules::mcp::{McpRepository, McpServer};
 
 use super::content::McpContentData;
@@ -47,8 +45,6 @@ pub async fn validate_and_build_config(
     user_id: Uuid,
     requested_servers: Option<Vec<McpServerConfig>>,
 ) -> Result<(Vec<(Uuid, Vec<String>)>, Vec<Uuid>), AppError> {
-    let repo = McpRepository::new(pool.clone());
-
     // Get all accessible servers
     let accessible_servers = get_all_accessible_config(pool, user_id).await?;
     let accessible_ids: Vec<Uuid> = accessible_servers.iter().map(|s| s.id).collect();
@@ -99,7 +95,7 @@ pub async fn execute_tool(
     session: &mut McpSession,
     tool_name: &str,
     input: Value,
-    server_name: &str,
+    _server_name: &str,
     timeout_seconds: Option<i32>,
 ) -> McpContentData {
     // Parse tool name (format: "server_name__tool_name")

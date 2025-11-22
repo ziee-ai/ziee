@@ -36,12 +36,12 @@ CREATE TRIGGER update_llm_providers_updated_at
     FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
--- Insert built-in providers
-INSERT INTO llm_providers (name, provider_type, enabled, built_in) VALUES
-    ('OpenAI', 'openai', false, true),
-    ('Anthropic', 'anthropic', false, true),
-    ('Groq', 'groq', false, true),
-    ('Google Gemini', 'gemini', false, true),
-    ('Mistral AI', 'mistral', false, true),
-    ('DeepSeek', 'deepseek', false, true),
-    ('Local', 'local', false, true);
+-- Insert built-in providers with base URLs
+INSERT INTO llm_providers (name, provider_type, enabled, built_in, base_url) VALUES
+    ('OpenAI', 'openai', false, true, 'https://api.openai.com/v1'),
+    ('Anthropic', 'anthropic', false, true, 'https://api.anthropic.com/v1'),
+    ('Groq', 'groq', false, true, 'https://api.groq.com/openai/v1'),
+    ('Google Gemini', 'gemini', false, true, 'https://generativelanguage.googleapis.com/v1beta'),
+    ('Mistral AI', 'mistral', false, true, 'https://api.mistral.ai/v1'),
+    ('DeepSeek', 'deepseek', false, true, 'https://api.deepseek.com'),
+    ('Local', 'local', false, true, 'http://localhost:8080/v1');

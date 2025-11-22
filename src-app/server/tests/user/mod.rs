@@ -1,4 +1,4 @@
-use crate::common::test_helpers::{self, TestUser};
+use crate::common::test_helpers::{self};
 use serde_json::json;
 use uuid::Uuid;
 

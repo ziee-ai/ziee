@@ -57,14 +57,6 @@ impl McpChatRepository {
         .await
     }
 
-    /// Delete MCP settings for a conversation
-    pub async fn delete_conversation_settings(
-        &self,
-        conversation_id: Uuid,
-    ) -> Result<bool, AppError> {
-        repository::delete_conversation_settings(&self.pool, conversation_id).await
-    }
-
     // ===== Tool Use Approvals =====
 
     /// Create a pending tool use approval
@@ -95,70 +87,12 @@ impl McpChatRepository {
         .await
     }
 
-    /// Get pending approvals for a message
-    pub async fn get_pending_approvals_for_message(
-        &self,
-        message_id: Uuid,
-    ) -> Result<Vec<ToolUseApproval>, AppError> {
-        repository::get_pending_approvals_for_message(&self.pool, message_id).await
-    }
-
     /// Get all pending approvals for a branch
     pub async fn get_pending_approvals_for_branch(
         &self,
         branch_id: Uuid,
     ) -> Result<Vec<ToolUseApproval>, AppError> {
         repository::get_pending_approvals_for_branch(&self.pool, branch_id).await
-    }
-
-    /// Approve a tool use
-    pub async fn approve_tool_use(
-        &self,
-        tool_use_id: String,
-        message_id: Uuid,
-        approved_by: Uuid,
-        note: Option<String>,
-    ) -> Result<ToolUseApproval, AppError> {
-        repository::approve_tool_use(&self.pool, tool_use_id, message_id, approved_by, note).await
-    }
-
-    /// Deny a tool use
-    pub async fn deny_tool_use(
-        &self,
-        tool_use_id: String,
-        message_id: Uuid,
-        approved_by: Uuid,
-        note: Option<String>,
-    ) -> Result<ToolUseApproval, AppError> {
-        repository::deny_tool_use(&self.pool, tool_use_id, message_id, approved_by, note).await
-    }
-
-    /// Cancel all pending approvals for a branch
-    pub async fn cancel_pending_approvals_for_branch(
-        &self,
-        branch_id: Uuid,
-    ) -> Result<u64, AppError> {
-        repository::cancel_pending_approvals_for_branch(&self.pool, branch_id).await
-    }
-
-    /// Batch approve multiple tool uses
-    pub async fn batch_approve_tool_uses(
-        &self,
-        message_id: Uuid,
-        tool_use_ids: Vec<String>,
-        approved_by: Uuid,
-    ) -> Result<Vec<ToolUseApproval>, AppError> {
-        repository::batch_approve_tool_uses(&self.pool, message_id, tool_use_ids, approved_by)
-            .await
-    }
-
-    /// Get approval by tool_use_id and message_id
-    pub async fn get_tool_approval(
-        &self,
-        tool_use_id: String,
-        message_id: Uuid,
-    ) -> Result<Option<ToolUseApproval>, AppError> {
-        repository::get_tool_approval(&self.pool, tool_use_id, message_id).await
     }
 
     /// Delete tool use approval record (after execution)

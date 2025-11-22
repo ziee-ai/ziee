@@ -377,6 +377,37 @@ pub async fn edit_message(
     })
 }
 
+/// Verify that a message exists and user owns the conversation containing it
+/// Returns the conversation if ownership is verified, None otherwise
+///
+/// This joins through: messages → branch_messages → branches → conversations
+/// to verify ownership since messages don't have a direct conversation_id FK
+pub async fn verify_message_ownership(
+    pool: &PgPool,
+    message_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<crate::modules::chat::core::models::Conversation>, AppError> {
+    let result = sqlx::query_as!(
+        crate::modules::chat::core::models::Conversation,
+        r#"
+        SELECT DISTINCT c.id, c.user_id, c.model_id as "model_id: _", c.title, c.active_branch_id,
+               c.created_at as "created_at: _", c.updated_at as "updated_at: _"
+        FROM conversations c
+        INNER JOIN branches b ON b.conversation_id = c.id
+        INNER JOIN branch_messages bm ON bm.branch_id = b.id
+        WHERE bm.message_id = $1 AND c.user_id = $2
+        LIMIT 1
+        "#,
+        message_id,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(result)
+}
+
 /// Delete message and all its descendants
 /// Note: This only removes the junction records if message is only in one branch
 /// If message is cloned to multiple branches, it won't be deleted

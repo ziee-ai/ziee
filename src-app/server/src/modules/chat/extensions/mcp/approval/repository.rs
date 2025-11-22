@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::common::AppError;
 
 use super::models::{
-    ApprovalMode, ApprovalStatus, AutoApprovedTool, ConversationMcpSettings, ToolUseApproval,
+    ApprovalMode, AutoApprovedTool, ConversationMcpSettings, ToolUseApproval,
 };
 
 // ============================================================================
@@ -128,24 +128,6 @@ pub async fn upsert_conversation_settings(
     Ok(settings)
 }
 
-/// Delete MCP settings for a conversation
-pub async fn delete_conversation_settings(
-    pool: &PgPool,
-    conversation_id: Uuid,
-) -> Result<bool, AppError> {
-    let result = sqlx::query!(
-        r#"
-        DELETE FROM conversation_mcp_settings
-        WHERE conversation_id = $1
-        "#,
-        conversation_id
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(result.rows_affected() > 0)
-}
-
 // ============================================================================
 // Tool Use Approvals
 // ============================================================================
@@ -191,31 +173,6 @@ pub async fn create_tool_approval(
     .await?;
 
     Ok(approval)
-}
-
-/// Get pending approvals for a message
-pub async fn get_pending_approvals_for_message(
-    pool: &PgPool,
-    message_id: Uuid,
-) -> Result<Vec<ToolUseApproval>, AppError> {
-    let approvals = sqlx::query_as!(
-        ToolUseApproval,
-        r#"
-        SELECT
-            id, conversation_id, branch_id, message_id, user_id,
-            tool_use_id, tool_name, tool_input, server_id, server_name, status,
-            approved_at as "approved_at: _", approved_by, approval_note,
-            created_at as "created_at: _", updated_at as "updated_at: _"
-        FROM tool_use_approvals
-        WHERE message_id = $1 AND status = 'pending'
-        ORDER BY created_at ASC
-        "#,
-        message_id
-    )
-    .fetch_all(pool)
-    .await?;
-
-    Ok(approvals)
 }
 
 /// Get all pending approvals for a branch
@@ -360,97 +317,6 @@ pub async fn cancel_pending_approvals_for_branch(
     .await?;
 
     Ok(result.rows_affected())
-}
-
-/// Batch approve multiple tool uses (all-or-nothing)
-/// Returns the number of approvals updated
-pub async fn batch_approve_tool_uses(
-    pool: &PgPool,
-    message_id: Uuid,
-    tool_use_ids: Vec<String>,
-    approved_by: Uuid,
-) -> Result<Vec<ToolUseApproval>, AppError> {
-    // Start a transaction for all-or-nothing semantics
-    let mut tx = pool.begin().await?;
-
-    // Check that all tool uses exist and are pending
-    let pending_count = sqlx::query_scalar!(
-        r#"
-        SELECT COUNT(*) as "count!"
-        FROM tool_use_approvals
-        WHERE message_id = $1 AND tool_use_id = ANY($2) AND status = 'pending'
-        "#,
-        message_id,
-        &tool_use_ids
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-
-    if pending_count != tool_use_ids.len() as i64 {
-        return Err(AppError::bad_request(
-            "INVALID_APPROVAL_BATCH",
-            format!(
-                "Not all tool uses are pending. Expected {}, found {}",
-                tool_use_ids.len(),
-                pending_count
-            ),
-        ));
-    }
-
-    // Approve all tool uses
-    let approvals = sqlx::query_as!(
-        ToolUseApproval,
-        r#"
-        UPDATE tool_use_approvals
-        SET
-            status = 'approved',
-            approved_at = NOW(),
-            approved_by = $3,
-            updated_at = NOW()
-        WHERE message_id = $1 AND tool_use_id = ANY($2) AND status = 'pending'
-        RETURNING
-            id, conversation_id, branch_id, message_id, user_id,
-            tool_use_id, tool_name, tool_input, server_id, server_name, status,
-            approved_at as "approved_at: _", approved_by, approval_note,
-            created_at as "created_at: _", updated_at as "updated_at: _"
-        "#,
-        message_id,
-        &tool_use_ids,
-        approved_by
-    )
-    .fetch_all(&mut *tx)
-    .await?;
-
-    // Commit transaction
-    tx.commit().await?;
-
-    Ok(approvals)
-}
-
-/// Get approval by tool_use_id and message_id
-pub async fn get_tool_approval(
-    pool: &PgPool,
-    tool_use_id: String,
-    message_id: Uuid,
-) -> Result<Option<ToolUseApproval>, AppError> {
-    let approval = sqlx::query_as!(
-        ToolUseApproval,
-        r#"
-        SELECT
-            id, conversation_id, branch_id, message_id, user_id,
-            tool_use_id, tool_name, tool_input, server_id, server_name, status,
-            approved_at as "approved_at: _", approved_by, approval_note,
-            created_at as "created_at: _", updated_at as "updated_at: _"
-        FROM tool_use_approvals
-        WHERE tool_use_id = $1 AND message_id = $2
-        "#,
-        tool_use_id,
-        message_id
-    )
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(approval)
 }
 
 /// Delete tool use approval record (after execution)

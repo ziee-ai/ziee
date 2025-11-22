@@ -4,7 +4,6 @@
 /// Docker will be started automatically if not already running.
 use crate::common::oauth_mock::OAuthMockServer;
 use serde_json::json;
-use sqlx::PgPool;
 
 /// Test that we can start an OAuth mock server and connect to it
 #[tokio::test]

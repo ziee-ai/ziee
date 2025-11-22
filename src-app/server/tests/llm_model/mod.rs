@@ -2,7 +2,7 @@
 
 mod download_management_test;
 mod download_progress_test;
-mod download_test;
+pub mod download_test;
 mod storage_test;
 mod upload_test;
 

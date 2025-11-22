@@ -169,8 +169,8 @@ impl McpRepository {
     // Check if user has access to a server
     pub async fn can_user_access_server(&self, user_id: Uuid, server_id: Uuid) -> Result<bool, AppError> {
         // Check if user owns this server
-        let user_server = self.get_user_server(server_id, user_id).await;
-        if user_server.is_ok() {
+        let user_server = self.get_user_server(server_id, user_id).await?;
+        if user_server.is_some() {
             return Ok(true);
         }
 

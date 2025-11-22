@@ -9,14 +9,7 @@ pub mod repository;
 
 // Re-export key types
 pub use approval::{
-    ApprovalMode, ApprovalStatus, ConversationMcpSettings, ToolApprovalDecision,
-    ToolUseApproval, UpsertMcpSettingsRequest,
+    ApprovalMode, ToolApprovalDecision,
 };
-pub use content::McpContentData;
-pub use extension::{
-    McpConfig, McpServerConfig, SendMessageRequestFields,
-    SSEChatStreamEventVariants, SSEChatStreamMcpApprovalRequiredData,
-    SSEChatStreamMcpToolCompleteData, SSEChatStreamMcpToolStartData,
-};
-pub use mcp::McpChatExtension;
+pub use extension::McpConfig;
 pub use repository::McpChatRepository;

@@ -15,7 +15,10 @@ use uuid::Uuid;
 use crate::{
     common::{ApiResult, AppError},
     core::Repos,
-    modules::permissions::{RequirePermissions, with_permission},
+    modules::{
+        permissions::{RequirePermissions, with_permission},
+        user::models::Group,
+    },
 };
 
 use super::super::{
@@ -26,22 +29,43 @@ use super::super::{
 };
 
 // =====================================================
+// Helper Functions
+// =====================================================
+
+/// Check if user has admin permissions for MCP servers
+/// Admins can access all servers for administrative/debugging purposes
+fn has_admin_access(groups: &[Group]) -> bool {
+    groups.iter().any(|group| {
+        group.permissions.iter().any(|perm| {
+            perm.starts_with("mcp_servers_admin::")
+        })
+    })
+}
+
+// =====================================================
 // Handlers
 // =====================================================
 
 #[debug_handler]
 pub async fn list_server_tools(
-    _auth: RequirePermissions<(McpServersRead,)>,
+    auth: RequirePermissions<(McpServersRead,)>,
     Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Path(server_id): Path<Uuid>,
 ) -> ApiResult<Json<ListToolsResponse>> {
-    // Verify server exists and user can access it
-    // For now, we'll check if server exists
-    // TODO: Add proper user access check when user context is available
-    let repo = McpRepository::new(Repos.pool().clone());
-    repo.get_system_server(server_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Server"))?;
+    // Check if user has access to this server
+    // Admins with mcp_servers_admin::* permissions bypass access control
+    if !has_admin_access(&auth.groups) {
+        let repo = McpRepository::new(Repos.pool().clone());
+        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+
+        if !has_access {
+            return Err(AppError::forbidden(
+                "USER_NO_ACCESS",
+                "You do not have access to this server"
+            )
+            .into());
+        }
+    }
 
     // Get or create session
     let session = session_manager.get_or_create(server_id).await?;
@@ -55,16 +79,25 @@ pub async fn list_server_tools(
 
 #[debug_handler]
 pub async fn call_server_tool(
-    _auth: RequirePermissions<(McpServersRead,)>,
+    auth: RequirePermissions<(McpServersRead,)>,
     Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Path((server_id, tool_name)): Path<(Uuid, String)>,
     Json(request): Json<CallToolRequest>,
 ) -> ApiResult<Json<CallToolResponse>> {
-    // Verify server exists
-    let repo = McpRepository::new(Repos.pool().clone());
-    repo.get_system_server(server_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Server"))?;
+    // Check if user has access to this server
+    // Admins with mcp_servers_admin::* permissions bypass access control
+    if !has_admin_access(&auth.groups) {
+        let repo = McpRepository::new(Repos.pool().clone());
+        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+
+        if !has_access {
+            return Err(AppError::forbidden(
+                "USER_NO_ACCESS",
+                "You do not have access to this server"
+            )
+            .into());
+        }
+    }
 
     // Get session
     let session = session_manager.get_or_create(server_id).await?;
@@ -84,15 +117,24 @@ pub async fn call_server_tool(
 
 #[debug_handler]
 pub async fn list_server_resources(
-    _auth: RequirePermissions<(McpServersRead,)>,
+    auth: RequirePermissions<(McpServersRead,)>,
     Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Path(server_id): Path<Uuid>,
 ) -> ApiResult<Json<ListResourcesResponse>> {
-    // Verify server exists
-    let repo = McpRepository::new(Repos.pool().clone());
-    repo.get_system_server(server_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Server"))?;
+    // Check if user has access to this server
+    // Admins with mcp_servers_admin::* permissions bypass access control
+    if !has_admin_access(&auth.groups) {
+        let repo = McpRepository::new(Repos.pool().clone());
+        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+
+        if !has_access {
+            return Err(AppError::forbidden(
+                "USER_NO_ACCESS",
+                "You do not have access to this server"
+            )
+            .into());
+        }
+    }
 
     // Get session
     let session = session_manager.get_or_create(server_id).await?;
@@ -106,16 +148,25 @@ pub async fn list_server_resources(
 
 #[debug_handler]
 pub async fn read_server_resource(
-    _auth: RequirePermissions<(McpServersRead,)>,
+    auth: RequirePermissions<(McpServersRead,)>,
     Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Path(server_id): Path<Uuid>,
     Json(request): Json<ReadResourceRequest>,
 ) -> ApiResult<Json<ReadResourceResponse>> {
-    // Verify server exists
-    let repo = McpRepository::new(Repos.pool().clone());
-    repo.get_system_server(server_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Server"))?;
+    // Check if user has access to this server
+    // Admins with mcp_servers_admin::* permissions bypass access control
+    if !has_admin_access(&auth.groups) {
+        let repo = McpRepository::new(Repos.pool().clone());
+        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+
+        if !has_access {
+            return Err(AppError::forbidden(
+                "USER_NO_ACCESS",
+                "You do not have access to this server"
+            )
+            .into());
+        }
+    }
 
     // Get session
     let session = session_manager.get_or_create(server_id).await?;
@@ -129,15 +180,24 @@ pub async fn read_server_resource(
 
 #[debug_handler]
 pub async fn disconnect_server(
-    _auth: RequirePermissions<(McpServersRead,)>,
+    auth: RequirePermissions<(McpServersRead,)>,
     Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Path(server_id): Path<Uuid>,
 ) -> ApiResult<Json<()>> {
-    // Verify server exists
-    let repo = McpRepository::new(Repos.pool().clone());
-    repo.get_system_server(server_id)
-        .await?
-        .ok_or_else(|| AppError::not_found("Server"))?;
+    // Check if user has access to this server
+    // Admins with mcp_servers_admin::* permissions bypass access control
+    if !has_admin_access(&auth.groups) {
+        let repo = McpRepository::new(Repos.pool().clone());
+        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+
+        if !has_access {
+            return Err(AppError::forbidden(
+                "USER_NO_ACCESS",
+                "You do not have access to this server"
+            )
+            .into());
+        }
+    }
 
     // Close session
     session_manager.close(server_id).await?;
