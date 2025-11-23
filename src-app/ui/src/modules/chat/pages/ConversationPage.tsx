@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
-import { Typography, Spin, Button, Alert } from 'antd'
-import { ArrowLeftOutlined } from '@ant-design/icons'
+import { Spin, Alert } from 'antd'
 import { useChatStore } from '../stores/Chat.store'
 import { MessageList } from '../components/MessageList'
 import { ChatInput } from '../components/ChatInput'
-
-const { Title } = Typography
+import { TitleEditor } from '../components/TitleEditor'
+import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
@@ -24,6 +23,7 @@ export default function ConversationPage() {
     loadConversation,
     loadMessages,
     sendMessage,
+    updateConversation,
     clearError,
     reset
   } = useChatStore()
@@ -49,8 +49,7 @@ export default function ConversationPage() {
     ) {
       pendingMessageSent.current = true
 
-      // Get first available model (simplified - in production you'd have model selection)
-      // For now, we'll just use a hardcoded model ID or fetch from a default
+      // Use conversation's model_id (should always be set when conversation is created)
       const defaultModelId = conversation.model_id || '00000000-0000-0000-0000-000000000000'
 
       sendMessage(state.pendingMessage, defaultModelId)
@@ -66,11 +65,18 @@ export default function ConversationPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleSend = (content: string) => {
+  const handleSend = (content: string, modelId: string) => {
     if (conversation) {
-      const defaultModelId = conversation.model_id || '00000000-0000-0000-0000-000000000000'
-      sendMessage(content, defaultModelId)
+      sendMessage(content, modelId)
     }
+  }
+
+  const handleTitleSave = async (title: string) => {
+    await updateConversation({ title })
+  }
+
+  const handleBack = () => {
+    navigate('/chat')
   }
 
   // Loading state
@@ -92,13 +98,6 @@ export default function ConversationPage() {
           description="This conversation may have been deleted or you don't have access to it."
           showIcon
         />
-        <Button
-          type="primary"
-          onClick={() => navigate('/chat')}
-          className="mt-4"
-        >
-          Start New Chat
-        </Button>
       </div>
     )
   }
@@ -106,45 +105,48 @@ export default function ConversationPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
-        <Button
-          type="text"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate('/chat')}
-        />
-        <Title level={4} className="m-0">
-          {conversation?.title || 'Untitled Conversation'}
-        </Title>
-      </div>
+      <HeaderBarContainer>
+        <div className="w-full max-w-4xl mx-auto flex items-center">
+          <TitleEditor
+            conversation={conversation}
+            onSave={handleTitleSave}
+            onBack={handleBack}
+          />
+        </div>
+      </HeaderBarContainer>
 
       {/* Error banner */}
       {error && (
-        <Alert
-          type="error"
-          message={error}
-          closable
-          onClose={clearError}
-          className="m-4"
-        />
+        <div className="w-full max-w-4xl mx-auto px-4 pt-4">
+          <Alert
+            type="error"
+            message={error}
+            closable
+            onClose={clearError}
+          />
+        </div>
       )}
 
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4">
-        <MessageList
-          messages={messages}
-          loading={loading}
-          isStreaming={isStreaming}
-        />
-        <div ref={messagesEndRef} />
+      {/* Messages area - centered with max-width */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="w-full max-w-4xl mx-auto px-4 pt-4">
+          <MessageList
+            messages={messages}
+            loading={loading}
+            isStreaming={isStreaming}
+          />
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Input area */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+      {/* Input area - centered with max-width */}
+      <div className="w-full max-w-4xl mx-auto p-4 border-t border-gray-200 dark:border-gray-700">
         <ChatInput
           onSend={handleSend}
           disabled={sending || isStreaming}
           loading={sending}
           placeholder="Type your message..."
+          defaultModelId={conversation?.model_id}
         />
       </div>
     </div>

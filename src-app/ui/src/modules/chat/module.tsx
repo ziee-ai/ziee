@@ -2,6 +2,8 @@ import { createModule } from '@/core'
 import { PlusOutlined, HistoryOutlined } from '@ant-design/icons'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { useChatLlmProviderStore } from './stores/LlmProvider.store'
+import './types'
 
 const NewChatPage = lazyWithPreload(() => import('./pages/NewChatPage'))
 const ConversationPage = lazyWithPreload(() => import('./pages/ConversationPage'))
@@ -13,6 +15,12 @@ export default createModule({
     description: 'Chat module for conversations',
   },
   dependencies: ['router'],
+  stores: [
+    {
+      name: 'ChatLlmProvider',
+      store: useChatLlmProviderStore,
+    },
+  ],
   routes: [
     {
       path: '/chat',

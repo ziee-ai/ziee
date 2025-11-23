@@ -5,13 +5,13 @@ import type { MessageWithContent } from '@/api-client/types'
 const { Text } = Typography
 
 interface MessageListProps {
-  messages: MessageWithContent[]
+  messages: Map<string, MessageWithContent>
   loading?: boolean
   isStreaming?: boolean
 }
 
 export function MessageList({ messages, loading = false, isStreaming = false }: MessageListProps) {
-  if (loading && messages.length === 0) {
+  if (loading && messages.size === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <Spin size="large" />
@@ -19,7 +19,7 @@ export function MessageList({ messages, loading = false, isStreaming = false }: 
     )
   }
 
-  if (messages.length === 0) {
+  if (messages.size === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <Empty description="No messages yet. Start the conversation!" />
@@ -27,9 +27,12 @@ export function MessageList({ messages, loading = false, isStreaming = false }: 
     )
   }
 
+  // Convert Map to array for rendering
+  const messagesArray = Array.from(messages.values())
+
   return (
-    <div className="flex flex-col gap-4 pb-4">
-      {messages.map((message) => {
+    <div className="flex flex-col gap-4 pb-4" data-testid="chat-messages">
+      {messagesArray.map((message) => {
         const isUser = message.role === 'user'
         const textContent = message.contents.find(c => c.content_type === 'text')
         const text = textContent?.content?.text || ''
@@ -38,6 +41,8 @@ export function MessageList({ messages, loading = false, isStreaming = false }: 
           <div
             key={message.id}
             className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+            data-testid="chat-message"
+            data-role={message.role}
           >
             {/* Avatar */}
             <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${

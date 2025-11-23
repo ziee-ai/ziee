@@ -1,23 +1,18 @@
 import { useNavigate } from 'react-router-dom'
 import { Typography, message as antMessage } from 'antd'
 import { ChatInput } from '../components/ChatInput'
-import { ApiClient } from '@/api-client'
-import { useState } from 'react'
+import { useChatStore } from '../stores/Chat.store'
 
 const { Title, Text } = Typography
 
 export default function NewChatPage() {
   const navigate = useNavigate()
-  const [creating, setCreating] = useState(false)
+  const { createConversation, loading } = useChatStore()
 
-  const handleFirstMessage = async (content: string) => {
-    setCreating(true)
+  const handleFirstMessage = async (content: string, modelId: string) => {
     try {
-      // Create new conversation
-      const conversation = await ApiClient.Conversation.create({
-        model_id: undefined, // Optional: will use default
-        title: undefined, // Will be auto-generated
-      })
+      // Create new conversation with the selected model
+      const conversation = await createConversation(modelId)
 
       // Navigate to conversation page with pending message
       // We'll pass the message content via state
@@ -27,7 +22,6 @@ export default function NewChatPage() {
     } catch (error: any) {
       console.error('Failed to create conversation:', error)
       antMessage.error(error.message || 'Failed to create conversation')
-      setCreating(false)
     }
   }
 
@@ -46,8 +40,8 @@ export default function NewChatPage() {
         <div className="w-full">
           <ChatInput
             onSend={handleFirstMessage}
-            disabled={creating}
-            loading={creating}
+            disabled={loading}
+            loading={loading}
             placeholder="Type your message to start a conversation..."
           />
         </div>

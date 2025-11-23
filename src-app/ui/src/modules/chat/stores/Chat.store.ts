@@ -1,11 +1,17 @@
 import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
+import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import type { Conversation, MessageWithContent } from '@/api-client/types'
+
+// Enable Map and Set support in Immer
+enableMapSet()
 
 interface ChatState {
   // Data
   conversation: Conversation | null
-  messages: MessageWithContent[]
+  messages: Map<string, MessageWithContent>
 
   // Loading states
   loading: boolean
@@ -15,24 +21,49 @@ interface ChatState {
 
   // Streaming message assembly
   streamingMessage: MessageWithContent | null
+  tempUserMessageId: string | null
 
   // Actions
+  createConversation: (modelId: string, title?: string) => Promise<Conversation>
   loadConversation: (id: string) => Promise<void>
   loadMessages: (id: string) => Promise<void>
   sendMessage: (content: string, modelId: string) => Promise<void>
+  updateConversation: (updates: { title?: string }) => Promise<void>
   clearError: () => void
   reset: () => void
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
-  // Initial state
-  conversation: null,
-  messages: [],
-  loading: false,
-  sending: false,
-  isStreaming: false,
-  error: null,
-  streamingMessage: null,
+export const useChatStore = create<ChatState>()(
+  subscribeWithSelector(
+    immer((set, get) => ({
+      // Initial state
+      conversation: null,
+      messages: new Map<string, MessageWithContent>(),
+      loading: false,
+      sending: false,
+      isStreaming: false,
+      error: null,
+      streamingMessage: null,
+      tempUserMessageId: null,
+
+  // Create new conversation
+  createConversation: async (modelId: string, title?: string) => {
+    set({ loading: true, error: null })
+    try {
+      const conversation = await ApiClient.Conversation.create({
+        model_id: modelId,
+        title: title,
+      })
+      set({ conversation, loading: false })
+      return conversation
+    } catch (error: any) {
+      set({
+        error: error.message || 'Failed to create conversation',
+        loading: false
+      })
+      throw error
+    }
+  },
 
   // Load conversation by ID
   loadConversation: async (id: string) => {
@@ -52,8 +83,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadMessages: async (id: string) => {
     set({ loading: true, error: null })
     try {
-      const messages = await ApiClient.Message.getHistory({ id })
-      set({ messages, loading: false })
+      const messagesArray = await ApiClient.Message.getHistory({ id })
+      set({
+        messages: new Map(messagesArray.map(msg => [msg.id, msg])),
+        loading: false
+      })
     } catch (error: any) {
       set({
         error: error.message || 'Failed to load messages',
@@ -91,10 +125,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       created_at: new Date().toISOString(),
     }
 
-    // Add optimistic user message
-    set(state => ({
-      messages: [...state.messages, tempUserMessage]
-    }))
+    // Add optimistic user message and track its temp ID
+    set(state => {
+      state.messages.set(tempUserMessage.id, tempUserMessage)
+      state.tempUserMessageId = tempUserMessage.id
+    })
 
     try {
       await ApiClient.Message.sendStream(
@@ -110,6 +145,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
               console.log('Chat SSE initialized with abortController')
               set({ sending: false })
             },
+            started: (data) => {
+              // Handle started event - update optimistic user message with real IDs
+              const state = get()
+              if (data.user_message_id && data.user_content_id && state.tempUserMessageId) {
+                const tempMessage = state.messages.get(state.tempUserMessageId)
+                if (tempMessage) {
+                  set(state => {
+                    state.messages.delete(state.tempUserMessageId!)
+
+                    // Update message with real IDs
+                    const updatedMessage = {
+                      ...tempMessage,
+                      id: data.user_message_id!,
+                      contents: tempMessage.contents.map(content => ({
+                        ...content,
+                        id: data.user_content_id!,
+                        message_id: data.user_message_id!,
+                      })),
+                    }
+
+                    state.messages.set(data.user_message_id!, updatedMessage)
+                    state.tempUserMessageId = null
+                  })
+                }
+              }
+              console.log('Chat stream started:', {
+                user_message_id: data.user_message_id,
+                user_content_id: data.user_content_id,
+                conversation_id: data.conversation_id,
+                branch_id: data.branch_id,
+              })
+            },
             content: (data) => {
               const state = get()
 
@@ -119,13 +186,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   if (block.type === 'text_delta') {
                     // Initialize or update streaming message
                     if (!state.streamingMessage) {
-                      // Create new assistant message
+                      // Create new assistant message with real ID from backend
+                      const messageId = data.message_id || `streaming-${Date.now()}`
                       const newMessage: MessageWithContent = {
-                        id: `streaming-${Date.now()}`,
+                        id: messageId,
                         role: 'assistant',
                         contents: [{
-                          id: `streaming-content-${Date.now()}`,
-                          message_id: `streaming-${Date.now()}`,
+                          id: `${messageId}-content-0`,
+                          message_id: messageId,
                           content_type: 'text',
                           content: { text: block.delta || '' },
                           sequence_order: 0,
@@ -137,9 +205,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         created_at: new Date().toISOString(),
                       }
 
-                      set({
-                        streamingMessage: newMessage,
-                        messages: [...state.messages, newMessage]
+                      set(state => {
+                        state.streamingMessage = newMessage
+                        state.messages.set(newMessage.id, newMessage)
                       })
                     } else {
                       // Append to existing message
@@ -154,12 +222,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
                         }))
                       }
 
-                      set(state => ({
-                        streamingMessage: updatedMessage,
-                        messages: state.messages.map(m =>
-                          m.id === state.streamingMessage?.id ? updatedMessage : m
-                        )
-                      }))
+                      set(state => {
+                        state.streamingMessage = updatedMessage
+                        if (state.streamingMessage) {
+                          state.messages.set(state.streamingMessage.id, updatedMessage)
+                        }
+                      })
                     }
                   }
                 }
@@ -198,15 +266,48 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  // Update conversation properties (e.g., title)
+  updateConversation: async (updates: { title?: string }) => {
+    const { conversation } = get()
+    if (!conversation) {
+      set({ error: 'No active conversation' })
+      return
+    }
+
+    try {
+      await ApiClient.Conversation.update({
+        id: conversation.id,
+        ...updates,
+      })
+
+      set(state => {
+        if (state.conversation) {
+          state.conversation = {
+            ...state.conversation,
+            ...updates,
+          }
+        }
+      })
+    } catch (error: any) {
+      set({
+        error: error.message || 'Failed to update conversation',
+      })
+      throw error
+    }
+  },
+
   clearError: () => set({ error: null }),
 
   reset: () => set({
     conversation: null,
-    messages: [],
+    messages: new Map<string, MessageWithContent>(),
     loading: false,
     sending: false,
     isStreaming: false,
     error: null,
     streamingMessage: null,
+    tempUserMessageId: null,
   }),
-}))
+    })),
+  ),
+)
