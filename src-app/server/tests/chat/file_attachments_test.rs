@@ -74,7 +74,7 @@ async fn test_send_message_with_single_file() {
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
     // Get test model
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with file attachment
@@ -144,7 +144,7 @@ async fn test_send_message_with_multiple_files() {
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
     // Get test model
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with multiple file attachments
@@ -214,7 +214,7 @@ async fn test_cannot_attach_other_users_file() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user2.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user2.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let payload = json!({
@@ -263,7 +263,7 @@ async fn test_send_message_with_nonexistent_file() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Use a random UUID that doesn't exist
@@ -315,7 +315,7 @@ async fn test_send_message_with_empty_file_list() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with empty file_ids array

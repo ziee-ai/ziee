@@ -40,7 +40,7 @@ async fn test_single_assistant_message_with_tool_execution() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual approval mode

@@ -210,7 +210,7 @@ async fn test_auto_approve_executes_tools_immediately() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set auto-approve mode
@@ -260,7 +260,7 @@ async fn test_auto_approve_emits_correct_sse_events() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set auto-approve mode
@@ -331,7 +331,7 @@ async fn test_auto_approve_multiple_tools() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set auto-approve mode
@@ -385,7 +385,7 @@ async fn test_manual_approve_creates_pending_approval() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode
@@ -436,7 +436,7 @@ async fn test_manual_approve_emits_approval_required_event() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode
@@ -495,7 +495,7 @@ async fn test_approve_tool_and_resume_execution() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode
@@ -577,7 +577,7 @@ async fn test_pending_approvals_cancelled_on_new_message() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode
@@ -640,7 +640,7 @@ async fn test_auto_approved_tool_executes_immediately() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode with auto-approved tools
@@ -707,7 +707,7 @@ async fn test_mcp_tool_start_event_structure() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set auto-approve mode for simple flow
@@ -760,7 +760,7 @@ async fn test_mcp_tool_complete_event_structure() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set auto-approve mode
@@ -812,7 +812,7 @@ async fn test_mcp_approval_required_event_structure() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode
@@ -866,7 +866,7 @@ async fn test_sse_events_order_and_timing() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set auto-approve mode for complete flow
@@ -920,7 +920,7 @@ async fn test_approve_multiple_tools_batch() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode
@@ -1000,7 +1000,7 @@ async fn test_tool_execution_error_emits_complete_with_error() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set auto-approve mode to execute immediately
@@ -1050,7 +1050,7 @@ async fn test_invalid_tool_approvals_field_rejected() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode
@@ -1149,8 +1149,8 @@ async fn test_approval_workflow_multi_model() {
         // Create user for this model test
         let user = test_helpers::create_user_with_permissions(&server, "user", MCP_TEST_PERMISSIONS).await;
 
-        // Try to create the model
-        let model = super::helpers::create_test_model_with_config(&server, config).await;
+        // Try to create the model and grant user access
+        let model = super::helpers::create_test_model_with_config(&server, config, Some(&user.user_id)).await;
 
         if model.is_null() {
             skipped += 1;
@@ -1271,7 +1271,7 @@ async fn test_server_not_found_during_execution() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Use a non-existent MCP server ID

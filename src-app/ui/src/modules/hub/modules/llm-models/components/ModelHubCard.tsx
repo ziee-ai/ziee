@@ -137,7 +137,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                     <div className="flex flex-col">
                       <Text strong>{option.name.toUpperCase()}</Text>
                       <Text type="secondary" className="text-xs">
-                        Main file: {option.filename}
+                        Main file: {option.main_filename}
                       </Text>
                     </div>
                   ),
@@ -184,13 +184,13 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         return
       }
 
-      selectedFilename = selectedQuantization.filename
+      selectedFilename = selectedQuantization.main_filename
     } else if (
       model.quantization_options &&
       model.quantization_options.length === 1
     ) {
       selectedQuantization = model.quantization_options[0]
-      selectedFilename = model.quantization_options[0].filename
+      selectedFilename = model.quantization_options[0].main_filename
     }
 
     if (localProviders.length > 1) {

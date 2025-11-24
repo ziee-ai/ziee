@@ -57,12 +57,52 @@ interface TestFixtures {
 }
 
 export const test = base.extend<TestFixtures>({
-  // Auto-capture HTML snapshot on test failure
+  // Auto-capture HTML snapshot, console logs, and network requests on test failure
   page: async ({ page }, use, testInfo) => {
+    // Capture console logs
+    const consoleLogs: string[] = []
+    page.on('console', msg => {
+      const logEntry = `[${msg.type().toUpperCase()}] ${msg.text()}`
+      consoleLogs.push(logEntry)
+      // Also log to test output for real-time debugging
+      console.log(`[Browser Console] ${logEntry}`)
+    })
+
+    // Capture network requests
+    const networkRequests: string[] = []
+    page.on('request', request => {
+      const entry = `${request.method()} ${request.url()}`
+      networkRequests.push(entry)
+      // Log API requests (not static assets)
+      if (request.url().includes('/api/')) {
+        console.log(`[Network Request] ${entry}`)
+      }
+    })
+
+    // Capture network responses with body for API calls
+    page.on('response', async response => {
+      const entry = `${response.status()} ${response.url()}`
+      networkRequests.push(entry)
+      // Log API responses (not static assets)
+      if (response.url().includes('/api/')) {
+        console.log(`[Network Response] ${entry}`)
+        // Capture response body for failed tests
+        try {
+          const body = await response.text()
+          if (body) {
+            networkRequests.push(`  Response Body: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`)
+          }
+        } catch (e) {
+          // Body not available or already consumed
+        }
+      }
+    })
+
     await use(page)
 
-    // After test completes, save HTML if it failed
+    // After test completes, save artifacts if it failed
     if (testInfo.status !== testInfo.expectedStatus) {
+      // Save HTML
       const htmlContent = await page.content()
       const prettifiedHTML = prettifyHTML(htmlContent)
       const htmlPath = testInfo.outputPath('page.html')
@@ -72,6 +112,28 @@ export const test = base.extend<TestFixtures>({
         path: htmlPath,
         contentType: 'text/html',
       })
+
+      // Save console logs
+      if (consoleLogs.length > 0) {
+        const consoleLogPath = testInfo.outputPath('console.log')
+        writeFileSync(consoleLogPath, consoleLogs.join('\n'))
+        testInfo.attachments.push({
+          name: 'console.log',
+          path: consoleLogPath,
+          contentType: 'text/plain',
+        })
+      }
+
+      // Save network logs
+      if (networkRequests.length > 0) {
+        const networkLogPath = testInfo.outputPath('network.log')
+        writeFileSync(networkLogPath, networkRequests.join('\n'))
+        testInfo.attachments.push({
+          name: 'network.log',
+          path: networkLogPath,
+          contentType: 'text/plain',
+        })
+      }
     }
   },
 

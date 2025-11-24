@@ -4,10 +4,10 @@ import { navigateToHub, waitForHubDataLoad } from './helpers/hub-navigation'
 import {
   downloadModelFromHub,
   getModelCards,
-  isModelDownloaded,
-  getModelCardStatus,
+  isModelDownloaded as _isModelDownloaded,
+  getModelCardStatus as _getModelCardStatus,
   hasAuthRequiredBadge,
-  handleAuthRequiredModal,
+  handleAuthRequiredModal as _handleAuthRequiredModal,
 } from './helpers/hub-models'
 
 test.describe('Hub Models', () => {
@@ -100,8 +100,6 @@ test.describe('Hub Models', () => {
     // Find a model with auth_required
     const modelCards = await getModelCards(page)
     const firstCard = modelCards.first()
-    const testId = await firstCard.getAttribute('data-testid')
-    const modelId = testId?.replace('hub-model-card-', '') || ''
 
     // Trigger auth modal
     await firstCard.getByRole('button', { name: /download/i }).click()
@@ -193,7 +191,7 @@ test.describe('Hub Models', () => {
     expect(typeof hasPopularity).toBe('boolean')
   })
 
-  test.skip('should prevent download without required permissions', async ({ page }) => {
+  test.skip('should prevent download without required permissions', async ({ page: _page }) => {
     // TODO: Implement test with user permission system
     // This requires creating a non-admin user without llm_model::create permission
   })

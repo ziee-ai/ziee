@@ -85,7 +85,7 @@ async fn test_create_conversation_with_model() {
     )
     .await;
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let payload = json!({
@@ -123,7 +123,7 @@ async fn test_create_conversation_with_title_and_model() {
     )
     .await;
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let payload = json!({

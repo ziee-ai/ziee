@@ -199,7 +199,7 @@ test.describe('Hub MCP Servers', () => {
     expect(urlChanged || drawerVisible).toBe(true)
   })
 
-  test.skip('should prevent installation without required permissions', async ({ page }) => {
+  test.skip('should prevent installation without required permissions', async ({ page: _page }) => {
     // TODO: Implement test with user permission system
     // This requires creating a non-admin user without hub::mcp_servers::create permission
   })

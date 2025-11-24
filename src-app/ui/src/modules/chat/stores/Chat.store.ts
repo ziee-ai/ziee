@@ -298,16 +298,18 @@ export const useChatStore = create<ChatState>()(
 
   clearError: () => set({ error: null }),
 
-  reset: () => set({
-    conversation: null,
-    messages: new Map<string, MessageWithContent>(),
-    loading: false,
-    sending: false,
-    isStreaming: false,
-    error: null,
-    streamingMessage: null,
-    tempUserMessageId: null,
-  }),
+  reset: () => {
+    set({
+      conversation: null,
+      messages: new Map<string, MessageWithContent>(),
+      loading: false,
+      sending: false,
+      isStreaming: false,
+      error: null,
+      streamingMessage: null,
+      tempUserMessageId: null,
+    })
+  },
     })),
   ),
 )

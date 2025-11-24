@@ -180,7 +180,7 @@ async fn test_send_message_requires_permission() {
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
     // Get a test model
-    let model = super::helpers::get_or_create_test_model(&server, &admin.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &admin.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let payload = json!({

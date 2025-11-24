@@ -5,16 +5,16 @@ import {
   navigateToUserGroups,
   openCreateUserDrawer,
   openCreateGroupDrawer,
-  openGroupMembersDrawer,
+  openGroupMembersDrawer as _openGroupMembersDrawer,
   openUserGroupsDrawer,
 } from './helpers/user-navigation'
 import { createUser } from './helpers/user-actions'
 import { createGroup, viewGroupMembers } from './helpers/group-actions'
 import {
-  assertUserExists,
-  assertGroupExists,
-  assertUserInGroup,
-  assertUserNotInGroup,
+  assertUserExists as _assertUserExists,
+  assertGroupExists as _assertGroupExists,
+  assertUserInGroup as _assertUserInGroup,
+  assertUserNotInGroup as _assertUserNotInGroup,
   assertDrawerOpen,
 } from './helpers/user-assertions'
 

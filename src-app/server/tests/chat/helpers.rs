@@ -85,9 +85,11 @@ pub fn get_test_model_configs() -> Vec<TestModelConfig> {
 }
 
 /// Create a specific model (used by MCP tests for multi-model testing)
+/// If user_id is provided, grants access to the model through group assignments
 pub async fn create_test_model_with_config(
     server: &crate::common::TestServer,
     config: &TestModelConfig,
+    user_id: Option<&str>,
 ) -> Value {
     // Create admin user with necessary permissions for model setup
     let admin = crate::common::test_helpers::create_user_with_permissions(
@@ -153,12 +155,18 @@ pub async fn create_test_model_with_config(
 
     let model = response.json().await.unwrap();
     eprintln!("Successfully created model: {}", config.display_name);
+
+    // Grant user access if user_id provided
+    if let Some(uid) = user_id {
+        ensure_user_has_model_access(server, uid, &model).await;
+    }
+
     model
 }
 
 pub async fn get_or_create_test_model(
     server: &crate::common::TestServer,
-    _token: &str,
+    user_id: &str,
 ) -> Value {
     // Create admin user with necessary permissions for model setup
     let admin = crate::common::test_helpers::create_user_with_permissions(
@@ -188,6 +196,8 @@ pub async fn get_or_create_test_model(
             for model in models {
                 if model["enabled"].as_bool().unwrap_or(false) {
                     eprintln!("Using existing model: {}", model["display_name"]);
+                    // Grant the user access to this existing model
+                    ensure_user_has_model_access(server, user_id, &model).await;
                     return model.clone();
                 }
             }
@@ -248,7 +258,80 @@ pub async fn get_or_create_test_model(
 
     let model = response.json().await.unwrap();
     eprintln!("Successfully created model: {}", model_display_name);
+
+    // Grant the user access to this model through group assignments
+    ensure_user_has_model_access(server, user_id, &model).await;
+
     model
+}
+
+/// Ensure a user has access to a model by setting up the group assignment chain
+/// Creates: group → assigns user to group → assigns provider to group
+/// This is required for the send_message access control validation
+pub async fn ensure_user_has_model_access(
+    server: &crate::common::TestServer,
+    user_id: &str,
+    model: &Value,
+) {
+    let provider_id = model["provider_id"].as_str().unwrap();
+
+    // Create admin user with permissions to manage groups and providers
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "access_admin",
+        &[
+            "groups::create",
+            "groups::assign_users",
+            "llm_providers::assign_groups",
+        ],
+    )
+    .await;
+
+    // Create a group for this test
+    let group_response = reqwest::Client::new()
+        .post(&server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "name": format!("test_access_group_{}", &Uuid::new_v4().to_string()[..8]),
+            "description": "Test group for model access",
+            "permissions": []
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(group_response.status(), StatusCode::CREATED, "Failed to create group");
+    let group: Value = group_response.json().await.unwrap();
+    let group_id = group["id"].as_str().unwrap();
+
+    // Assign user to group
+    let assign_user_response = reqwest::Client::new()
+        .post(&server.api_url("/groups/assign"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "user_id": user_id,
+            "group_id": group_id
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(assign_user_response.status(), StatusCode::NO_CONTENT, "Failed to assign user to group");
+
+    // Assign provider to group
+    let assign_provider_response = reqwest::Client::new()
+        .put(&server.api_url(&format!("/groups/{}/providers", group_id)))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "provider_ids": [provider_id]
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(assign_provider_response.status(), StatusCode::OK, "Failed to assign provider to group");
+
+    eprintln!("✓ User {} granted access to model {} via group {}", user_id, model["display_name"], group_id);
 }
 
 /// Configure a built-in provider with API key from environment

@@ -24,7 +24,7 @@ async fn test_create_branch_minimal() {
     .await;
 
     // Create conversation with model
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
     let conversation = super::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
@@ -137,7 +137,7 @@ async fn test_list_branches_multiple() {
     .await;
 
     // Create conversation with model
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
     let conversation = super::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
@@ -217,7 +217,7 @@ async fn test_activate_branch_updates_active_branch_id() {
     .await;
 
     // Create conversation with model
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
     let conversation = super::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
@@ -366,7 +366,7 @@ async fn test_created_branch_structure() {
     .await;
 
     // Create conversation with model
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
     let conversation = super::helpers::create_conversation(&server, &user.token, Some(model_id), None).await;
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);

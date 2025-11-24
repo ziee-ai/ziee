@@ -136,7 +136,7 @@ async fn test_mcp_extension_disabled_by_default() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message without enable_mcp flag
@@ -178,7 +178,7 @@ async fn test_mcp_extension_enabled_with_no_servers() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with enable_mcp but no servers configured
@@ -237,7 +237,7 @@ async fn test_mcp_tools_added_to_llm_request() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &admin.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &admin.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with MCP enabled
@@ -326,7 +326,7 @@ async fn test_mcp_user_can_only_access_own_servers() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user2.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user2.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // User2 tries to use User1's server
@@ -451,7 +451,7 @@ async fn test_mcp_user_can_access_group_servers() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // User sends message with group's MCP server
@@ -519,7 +519,7 @@ async fn test_mcp_specific_tool_selection() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &admin.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &admin.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with only specific tool selected
@@ -585,7 +585,7 @@ async fn test_mcp_all_tools_with_empty_array() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &admin.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &admin.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with empty tools array (should get all tools)
@@ -649,7 +649,7 @@ async fn test_mcp_disabled_servers_ignored() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &admin.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &admin.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with disabled server

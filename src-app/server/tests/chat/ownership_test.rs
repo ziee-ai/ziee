@@ -204,7 +204,7 @@ async fn test_user_cannot_send_to_other_users_conversation() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user1.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user1.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let payload = json!({

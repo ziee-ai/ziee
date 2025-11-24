@@ -172,6 +172,8 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
 
   return new Proxy({} as Readonly<ExtractZustandState<T>>, {
     get: (_, prop) => {
+      console.log(`[StoreProxy GET] Accessing prop: ${String(prop)}`)
+
       // Special properties
       if (prop === '__state') {
         return useStore.getState()
@@ -193,10 +195,15 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
 
       // Store-level initialization (only if not destroyed)
       if (!storeInitialized && state.__init__?.__store__) {
+        console.log(`[StoreProxy] Initializing store for prop: ${String(prop)}`)
         if (typeof state.__init__.__store__ === 'function') {
+          console.log(`[StoreProxy] Calling __init__.__store__()`)
           state.__init__.__store__()
+          console.log(`[StoreProxy] __init__.__store__() completed`)
         }
         storeInitialized = true
+      } else if (!storeInitialized) {
+        console.log(`[StoreProxy] Store NOT initialized for prop: ${String(prop)}, __init__.__store__: ${typeof state.__init__?.__store__}`)
       }
 
       // Property-specific initialization
@@ -263,8 +270,11 @@ export interface RegisteredStores {
 // But typed via RegisteredStores interface for IntelliSense
 export const Stores = new Proxy({} as RegisteredStores, {
   get: (_, prop) => {
+    console.log(`[Stores GET] Accessing store: ${String(prop)}`)
     const moduleSystemState = useModuleSystemStore.getState()
-    return moduleSystemState.stores[prop as string]
+    const store = moduleSystemState.stores[prop as string]
+    console.log(`[Stores GET] Store ${String(prop)} exists:`, !!store)
+    return store
   },
 })
 

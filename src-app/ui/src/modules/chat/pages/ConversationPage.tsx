@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useParams, useLocation, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Spin, Alert } from 'antd'
 import { useChatStore } from '../stores/Chat.store'
 import { MessageList } from '../components/MessageList'
@@ -9,9 +9,7 @@ import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/Head
 
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
-  const location = useLocation()
   const navigate = useNavigate()
-  const pendingMessageSent = useRef(false)
 
   const {
     conversation,
@@ -22,7 +20,6 @@ export default function ConversationPage() {
     error,
     loadConversation,
     loadMessages,
-    sendMessage,
     updateConversation,
     clearError,
     reset
@@ -37,39 +34,11 @@ export default function ConversationPage() {
     }
   }, [conversationId])
 
-  // Handle pending message from NewChatPage
-  useEffect(() => {
-    const state = location.state as { pendingMessage?: string } | null
-
-    if (
-      state?.pendingMessage &&
-      !pendingMessageSent.current &&
-      conversation &&
-      !loading
-    ) {
-      pendingMessageSent.current = true
-
-      // Use conversation's model_id (should always be set when conversation is created)
-      const defaultModelId = conversation.model_id || '00000000-0000-0000-0000-000000000000'
-
-      sendMessage(state.pendingMessage, defaultModelId)
-
-      // Clear the navigation state
-      navigate(location.pathname, { replace: true, state: {} })
-    }
-  }, [conversation, loading, location])
-
   // Scroll to bottom when new messages arrive
   const messagesEndRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  const handleSend = (content: string, modelId: string) => {
-    if (conversation) {
-      sendMessage(content, modelId)
-    }
-  }
 
   const handleTitleSave = async (title: string) => {
     await updateConversation({ title })
@@ -82,28 +51,28 @@ export default function ConversationPage() {
   // Loading state
   if (loading && !conversation) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <main className="flex items-center justify-center h-full">
         <Spin size="large" />
-      </div>
+      </main>
     )
   }
 
   // Error state
   if (!loading && !conversation) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8">
+      <main className="flex flex-col items-center justify-center h-full p-8">
         <Alert
           type="error"
           message="Conversation not found"
           description="This conversation may have been deleted or you don't have access to it."
           showIcon
         />
-      </div>
+      </main>
     )
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <main className="flex flex-col h-full">
       {/* Header */}
       <HeaderBarContainer>
         <div className="w-full max-w-4xl mx-auto flex items-center">
@@ -142,13 +111,10 @@ export default function ConversationPage() {
       {/* Input area - centered with max-width */}
       <div className="w-full max-w-4xl mx-auto p-4 border-t border-gray-200 dark:border-gray-700">
         <ChatInput
-          onSend={handleSend}
-          disabled={sending || isStreaming}
-          loading={sending}
           placeholder="Type your message..."
           defaultModelId={conversation?.model_id}
         />
       </div>
-    </div>
+    </main>
   )
 }

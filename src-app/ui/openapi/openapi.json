@@ -4795,6 +4795,59 @@
         ]
       }
     },
+    "/api/chat/llm-providers": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get user's accessible LLM providers",
+        "description": "Returns all enabled LLM providers assigned to the user's active groups, with their enabled and active models included inline.",
+        "operationId": "Chat.getUserLlmProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response containing all providers accessible to the user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUserProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/servers": {
       "get": {
         "tags": [
@@ -8733,6 +8786,21 @@
           "device_name"
         ]
       },
+      "GetUserProvidersResponse": {
+        "description": "Response containing all providers accessible to the user",
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderWithModels"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ]
+      },
       "Group": {
         "type": "object",
         "properties": {
@@ -11122,6 +11190,68 @@
           }
         }
       },
+      "ProviderWithModels": {
+        "description": "Provider with its available models",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "llm_models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmModel"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string"
+          },
+          "proxy_settings": {
+            "$ref": "#/components/schemas/ProxySettings"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "enabled",
+          "built_in",
+          "proxy_settings",
+          "created_at",
+          "updated_at",
+          "llm_models"
+        ]
+      },
       "ProxySettings": {
         "description": "Proxy settings for LLM providers",
         "type": "object",
@@ -11566,6 +11696,14 @@
           "conversation_id": {
             "description": "Conversation ID",
             "type": "string",
+            "format": "uuid"
+          },
+          "user_content_id": {
+            "description": "User message content ID (None if resuming with tool approvals or regenerating)",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "user_message_id": {

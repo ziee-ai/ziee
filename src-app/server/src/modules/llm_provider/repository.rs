@@ -80,6 +80,14 @@ impl LlmProviderRepository {
     pub async fn get_for_user(&self, user_id: Uuid) -> Result<Vec<LlmProvider>, sqlx::Error> {
         get_providers_for_user(&self.pool, user_id).await
     }
+
+    pub async fn user_has_access_to_provider(
+        &self,
+        user_id: Uuid,
+        provider_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        user_has_access_to_provider(&self.pool, user_id, provider_id).await
+    }
 }
 
 // =====================================================
@@ -446,4 +454,31 @@ pub async fn get_providers_for_user(
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
         .collect())
+}
+
+/// Check if a user has access to a specific provider through their group assignments
+pub async fn user_has_access_to_provider(
+    pool: &PgPool,
+    user_id: Uuid,
+    provider_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"SELECT EXISTS(
+             SELECT 1
+             FROM user_group_llm_providers ugp
+             INNER JOIN user_groups ug ON ugp.group_id = ug.group_id
+             INNER JOIN groups g ON ug.group_id = g.id
+             INNER JOIN llm_providers p ON ugp.provider_id = p.id
+             WHERE ug.user_id = $1
+               AND ugp.provider_id = $2
+               AND g.is_active = true
+               AND p.enabled = true
+           ) as "has_access!""#,
+        user_id,
+        provider_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(result.has_access)
 }

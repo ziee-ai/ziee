@@ -62,4 +62,9 @@ pub fn chat_router() -> ApiRouter {
             "/conversations/{id}/branches/{branch_id}/activate",
             post_with(activate_branch, activate_branch_docs),
         )
+        // LLM Provider access
+        .api_route(
+            "/chat/llm-providers",
+            get_with(get_user_llm_providers, get_user_llm_providers_docs),
+        )
 }

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Card, Flex, Form, Input, theme } from 'antd'
+import { Button, Card, Flex, Form, Input, theme, message as antMessage } from 'antd'
 import { SendOutlined } from '@ant-design/icons'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ModelSelector } from './ModelSelector'
 import { Stores } from '@/core/stores'
+import { useChatStore } from '../stores/Chat.store'
 import type { LlmProviderWithModels } from '@/modules/llm-provider/stores/LlmProvider.store'
 import type { LlmModel } from '@/api-client/types'
 
@@ -13,9 +15,7 @@ const UI_BREAKPOINT = 480
 const calculateIsBreaking = (width: number): boolean => width <= UI_BREAKPOINT
 
 interface ChatInputProps {
-  onSend: (content: string, modelId: string) => void
   disabled?: boolean
-  loading?: boolean
   placeholder?: string
   defaultModelId?: string
   className?: string
@@ -23,10 +23,8 @@ interface ChatInputProps {
 }
 
 export function ChatInput({
-  onSend,
   disabled = false,
-  loading = false,
-  placeholder = 'Message...',
+  placeholder = 'Type your message...',
   defaultModelId,
   className = '',
   style,
@@ -36,9 +34,12 @@ export function ChatInput({
   const [isBreaking, setIsBreaking] = useState<boolean>(false)
   const [isFocused, setIsFocused] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
+  const { conversationId } = useParams<{ conversationId?: string }>()
 
-  // Get available models from ChatLlmProvider store (user-scoped)
+  // Get stores
   const { providers } = Stores.ChatLlmProvider
+  const { createConversation, sendMessage, sending, isStreaming } = useChatStore()
 
   // Build available models list
   const availableModels = useMemo(() => {
@@ -49,9 +50,9 @@ export function ChatInput({
 
     providers.forEach((provider: LlmProviderWithModels) => {
       if (provider.llm_models && provider.llm_models.length > 0) {
-        // Only include enabled and active models
+        // Only include enabled models (local models will be spawned on-demand if not running)
         const enabledModels = provider.llm_models.filter(
-          (model: LlmModel) => model.enabled && model.is_active
+          (model: LlmModel) => model.enabled
         )
 
         if (enabledModels.length > 0) {
@@ -117,7 +118,7 @@ export function ChatInput({
   }, [defaultModelId, availableModels, form])
 
   const handleSend = async () => {
-    if (loading || disabled) return
+    if (sending || isStreaming || disabled) return
 
     const formValues = form.getFieldsValue()
     const { message: messageToSend, model: selectedModel } = formValues
@@ -130,10 +131,24 @@ export function ChatInput({
       return
     }
 
+    const [, modelId] = selectedModel.split(':')
     form.setFieldValue('message', '')
 
-    const [, modelId] = selectedModel.split(':')
-    onSend(messageToSend.trim(), modelId)
+    try {
+      if (conversationId) {
+        // Existing conversation - just send message
+        await sendMessage(messageToSend.trim(), modelId)
+      } else {
+        // New conversation - create it, send message, then navigate
+        const conversation = await createConversation(modelId)
+        await sendMessage(messageToSend.trim(), modelId)
+        navigate(`/chat/${conversation.id}`)
+      }
+    } catch (error: any) {
+      console.error('Failed to send message:', error)
+      antMessage.error(error.message || 'Failed to send message')
+      form.setFieldValue('message', messageToSend)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -202,8 +217,9 @@ export function ChatInput({
                       type="primary"
                       icon={<SendOutlined rotate={270} />}
                       onClick={handleSend}
-                      disabled={loading || disabled}
-                      loading={loading}
+                      disabled={sending || disabled}
+                      loading={sending}
+                      aria-label="Send message"
                     />
                   </div>
                 </div>

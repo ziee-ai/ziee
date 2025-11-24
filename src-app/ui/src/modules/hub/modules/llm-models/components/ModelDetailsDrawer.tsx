@@ -142,7 +142,7 @@ export function ModelDetailsDrawer({ model, open, onClose }: ModelDetailsDrawerP
                         <Text strong>{option.name}</Text>
                         <br />
                         <Text type="secondary" className="text-xs">
-                          {option.filename}
+                          {option.main_filename}
                         </Text>
                       </div>
                       <Text>{option.size_gb} GB</Text>

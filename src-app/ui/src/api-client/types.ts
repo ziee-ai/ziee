@@ -408,6 +408,10 @@ export interface GPUUsage {
   utilization_percentage?: number
 }
 
+export interface GetUserProvidersResponse {
+  providers: ProviderWithModels[]
+}
+
 export interface Group {
   description?: string
   created_at: string
@@ -911,6 +915,20 @@ export interface PreviewQuery {
   page?: number
 }
 
+export interface ProviderWithModels {
+  api_key?: string
+  base_url?: string
+  built_in: boolean
+  created_at: string
+  enabled: boolean
+  id: string
+  llm_models: LlmModel[]
+  name: string
+  provider_type: string
+  proxy_settings: ProxySettings
+  updated_at: string
+}
+
 export interface ProxySettings {
   enabled?: boolean
   ignore_ssl_certificates?: boolean
@@ -1003,6 +1021,7 @@ export interface SSEChatStreamMcpToolStartData {
 export interface SSEChatStreamStartedData {
   branch_id: string
   conversation_id: string
+  user_content_id?: string
   user_message_id?: string
 }
 
@@ -1392,6 +1411,7 @@ export const ApiEndpoints = {
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
+  'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
@@ -1521,6 +1541,7 @@ export type ApiEndpointParameters = {
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
+  'Chat.getUserLlmProviders': void
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
@@ -1650,6 +1671,7 @@ export type ApiEndpointResponses = {
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
+  'Chat.getUserLlmProviders': GetUserProvidersResponse
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation

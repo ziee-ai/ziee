@@ -65,7 +65,7 @@ impl StreamingService {
 
         // Conditionally create user message (check extensions)
         // Extensions can prevent user message creation (e.g., MCP tool approval resumption)
-        let user_message_id = if self.extension_registry
+        let (user_message_id, user_content_id) = if self.extension_registry
             .as_ref()
             .map(|reg| reg.should_create_user_message(&request))
             .unwrap_or(true)  // Default to true if no registry
@@ -76,12 +76,12 @@ impl StreamingService {
             let user_content_data = MessageContentData::Text {
                 text: request.content.clone(),
             };
-            Repos.chat.core.create_content(user_message.id, "text", user_content_data, 0)
+            let user_content = Repos.chat.core.create_content(user_message.id, "text", user_content_data, 0)
                 .await?;
 
-            Some(user_message.id)
+            (Some(user_message.id), Some(user_content.id))
         } else {
-            None  // Extension prevented user message creation
+            (None, None)  // Extension prevented user message creation
         };
 
         // Get or create assistant message (BEFORE loop)
@@ -113,6 +113,7 @@ impl StreamingService {
 
             let started_event = SSEChatStreamEvent::Started(SSEChatStreamStartedData {
                 user_message_id,
+                user_content_id,
                 conversation_id,
                 branch_id,
             });

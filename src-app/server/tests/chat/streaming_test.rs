@@ -28,7 +28,7 @@ async fn test_send_message_returns_sse_content_type() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let response = super::helpers::send_message_simple(
@@ -70,7 +70,7 @@ async fn test_send_message_stream_contains_data_events() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let response = super::helpers::send_message_simple(
@@ -111,7 +111,7 @@ async fn test_send_message_stream_parses_json_chunks() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let response = super::helpers::send_message_simple(
@@ -155,7 +155,7 @@ async fn test_stream_chunks_have_expected_fields() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let response = super::helpers::send_message_simple(
@@ -169,15 +169,21 @@ async fn test_stream_chunks_have_expected_fields() {
 
     let chunks = super::helpers::parse_sse_stream(response).await;
 
-    // If we have chunks, verify they have expected fields
-    if !chunks.is_empty() {
-        let first_chunk = &chunks[0];
+    // Filter to content chunks only (exclude titleUpdated, etc.)
+    let content_chunks: Vec<_> = chunks
+        .iter()
+        .filter(|chunk| chunk.get("type").and_then(|t| t.as_str()) == Some("content"))
+        .collect();
+
+    // If we have content chunks, verify they have expected fields
+    if !content_chunks.is_empty() {
+        let first_content_chunk = content_chunks[0];
 
         // ChatStreamChunk should have these fields (may be null/empty)
-        assert!(first_chunk.get("content").is_some(), "Should have content field");
-        assert!(first_chunk.get("message_id").is_some(), "Should have message_id field");
-        assert!(first_chunk.get("conversation_id").is_some(), "Should have conversation_id field");
-        assert!(first_chunk.get("branch_id").is_some(), "Should have branch_id field");
+        assert!(first_content_chunk.get("content").is_some(), "Should have content field");
+        assert!(first_content_chunk.get("message_id").is_some(), "Should have message_id field");
+        assert!(first_content_chunk.get("conversation_id").is_some(), "Should have conversation_id field");
+        assert!(first_content_chunk.get("branch_id").is_some(), "Should have branch_id field");
     }
 }
 
@@ -231,7 +237,7 @@ async fn test_sse_stream_has_event_names() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let payload = serde_json::json!({
@@ -280,7 +286,7 @@ async fn test_title_extension_sends_title_updated_event() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send first message to trigger title generation
@@ -352,7 +358,7 @@ async fn test_title_not_generated_for_subsequent_messages() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send first message
@@ -404,7 +410,7 @@ async fn test_sse_events_have_correct_structure() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     let response = super::helpers::send_message_simple(
@@ -482,7 +488,7 @@ async fn test_title_persisted_in_database() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Verify conversation has no title initially
@@ -569,7 +575,7 @@ async fn test_assistant_extension_injects_system_message() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with assistant_id
@@ -623,7 +629,7 @@ async fn test_assistant_extension_handles_missing_assistant() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
     let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
 
-    let model = super::helpers::get_or_create_test_model(&server, &user.token).await;
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Send message with non-existent assistant_id

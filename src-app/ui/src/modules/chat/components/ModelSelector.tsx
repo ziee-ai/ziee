@@ -17,7 +17,7 @@ export function ModelSelector({
   availableModels,
 }: ModelSelectorProps) {
   return (
-    <Form.Item name="model" noStyle>
+    <Form.Item name="model" label="Model" className="mb-0" style={{ display: 'inline-block' }}>
       <Select
         popupMatchSelectWidth={false}
         placeholder="Model"

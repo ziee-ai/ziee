@@ -112,6 +112,109 @@ export async function loginAsAdmin(
 }
 
 /**
+ * Login as a specific user
+ */
+export async function login(
+  page: Page,
+  baseURL: string,
+  username: string,
+  password: string
+) {
+  await page.goto(`${baseURL}/auth`)
+  await page.waitForSelector('#login_username', { timeout: 30000 })
+  await page.fill('#login_username', username)
+  await page.fill('#login_password', password)
+  await page.click('button:has-text("Sign In")')
+
+  // Wait for navigation to home
+  await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+
+  // Wait for token to be stored
+  await page.waitForFunction(
+    () => {
+      const authStorage = localStorage.getItem('auth-storage')
+      if (!authStorage) return false
+      try {
+        const parsed = JSON.parse(authStorage)
+        return parsed.state?.token !== null && parsed.state?.token !== undefined
+      } catch {
+        return false
+      }
+    },
+    { timeout: 10000 }
+  )
+}
+
+/**
+ * Create a test user via API
+ */
+export async function createTestUser(
+  apiURL: string,
+  adminToken: string,
+  username: string,
+  email: string,
+  password: string,
+  permissions: string[] = []
+): Promise<string> {
+  const response = await fetch(`${apiURL}/api/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({
+      username,
+      email,
+      password,
+      permissions,
+    }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Failed to create user: ${response.statusText} - ${text}`)
+  }
+
+  const data = await response.json()
+  return data.id
+}
+
+/**
+ * Get admin token for API calls
+ *
+ * This makes a direct API call to get a fresh token for API operations.
+ * Assumes admin user exists with default credentials.
+ */
+export async function getAdminToken(
+  apiURL: string,
+  credentials: AdminCredentials = DEFAULT_ADMIN_CREDENTIALS
+): Promise<string> {
+  const {
+    username = 'admin',
+    password = 'password123',
+  } = credentials
+
+  const response = await fetch(`${apiURL}/api/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      username,
+      password,
+    }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Failed to get admin token: ${response.statusText} - ${text}`)
+  }
+
+  const data = await response.json()
+  return data.access_token
+}
+
+/**
  * Clear authentication state (logout)
  *
  * Used in: auth.spec.ts and potentially others

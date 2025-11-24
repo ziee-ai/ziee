@@ -297,14 +297,12 @@ test.describe('Hub Search and Filters', () => {
       // Search for something
       await searchHubResources(page, 'llama')
 
-      const searchInput = page.getByRole('textbox', { name: /search/i })
-      const searchValue = await searchInput.inputValue()
-
       // Reload page
       await page.reload()
       await waitForHubDataLoad(page)
 
       // Check if search persisted (depends on implementation)
+      const searchInput = page.getByRole('textbox', { name: /search/i })
       const newSearchValue = await searchInput.inputValue()
 
       // Either persisted or cleared is acceptable

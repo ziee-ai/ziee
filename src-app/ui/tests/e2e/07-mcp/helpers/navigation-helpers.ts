@@ -36,7 +36,7 @@ export async function waitForMcpAdminPageLoad(page: Page) {
   await page.waitForSelector('button:has-text("Add Server")', { timeout: 10000 })
 }
 
-export async function clickServerCard(page: Page, serverDisplayName: string, isAdmin: boolean = false) {
+export async function clickServerCard(page: Page, serverDisplayName: string, _isAdmin: boolean = false) {
   // Wait for server card to be visible and scroll into view
   // Note: There's no separate detail page - cards are shown inline on the list page
   const serverCard = page.locator(`.ant-card:has-text("${serverDisplayName}")`).first()

@@ -17,6 +17,7 @@ interface ChatLlmProviderState {
 
   __init__: {
     __store__?: () => void
+    providers?: () => void
   }
 
   __destroy__?: () => void
@@ -37,6 +38,7 @@ export const useChatLlmProviderStore = create<ChatLlmProviderState>()(
           const response = await ApiClient.Chat.getUserLlmProviders()
           set({ providers: response.providers, loading: false })
         } catch (error: any) {
+          console.error('[ChatLlmProvider] loadProviders error:', error)
           set({
             error: error.message || 'Failed to load providers',
             loading: false,
@@ -49,12 +51,8 @@ export const useChatLlmProviderStore = create<ChatLlmProviderState>()(
           const eventBus = Stores.EventBus
           const GROUP = 'ChatLlmProviderStore'
 
-          // Load providers when store initializes
-          get().loadProviders()
-
           // Subscribe to llm_provider.created
           eventBus.on('llm_provider.created', async () => {
-            // Reload providers to get updated list based on user's group access
             await get().loadProviders()
           }, GROUP)
 
@@ -63,7 +61,7 @@ export const useChatLlmProviderStore = create<ChatLlmProviderState>()(
             const { provider } = event.data
             set(state => {
               const existingProvider = state.providers.find(p => p.id === provider.id)
-              if (!existingProvider) return state // User doesn't have access to this provider
+              if (!existingProvider) return state
 
               const updatedProvider: LlmProviderWithModels = {
                 ...provider,
@@ -124,10 +122,10 @@ export const useChatLlmProviderStore = create<ChatLlmProviderState>()(
 
           // Subscribe to group-provider assignment changes
           eventBus.on('llm_provider.group_providers_changed', async () => {
-            // User's accessible providers may have changed, reload
             await get().loadProviders()
           }, GROUP)
         },
+        providers: () => get().loadProviders(),
       },
 
       __destroy__: () => {

@@ -35,11 +35,6 @@ pub async fn send_message(
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<SendMessageRequest>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
-    // Validate request
-    if request.content.trim().is_empty() {
-        return Err(AppError::bad_request("VALIDATION_ERROR", "Message content cannot be empty").into());
-    }
-
     // Verify conversation exists and user owns it
     let _conversation = Repos.chat.core
         .get_conversation(conversation_id, auth.user.id)
@@ -47,10 +42,31 @@ pub async fn send_message(
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
     // Validate model exists
-    Repos.llm_model
+    let model = Repos.llm_model
         .get_by_id(request.model_id)
         .await?
         .ok_or_else(|| AppError::not_found("Model"))?;
+
+    // Verify model is enabled
+    if !model.enabled {
+        return Err(AppError::bad_request(
+            "MODEL_DISABLED",
+            "This model is currently disabled and cannot be used.",
+        ).into());
+    }
+
+    // Verify user has access to this model's provider through their group assignments
+    let has_access = Repos.llm_provider
+        .user_has_access_to_provider(auth.user.id, model.provider_id)
+        .await
+        .map_err(|e| AppError::from(e))?;
+
+    if !has_access {
+        return Err(AppError::forbidden(
+            "ACCESS_DENIED",
+            "You do not have access to this model. Contact your administrator to request access.",
+        ).into());
+    }
 
     // Validate branch exists and belongs to this conversation
     let branch = Repos.chat.core
