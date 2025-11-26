@@ -3,7 +3,11 @@ import { theme, Typography, Divider } from 'antd'
 import { useWindowMinSize } from '../hooks/useWindowMinSize'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
-import type { SidebarNavItem, SidebarToolItem, SidebarActionItem } from '../types'
+import type {
+  SidebarNavItem,
+  SidebarToolItem,
+  SidebarActionItem,
+} from '../types'
 
 const { Text } = Typography
 
@@ -83,7 +87,8 @@ export function LeftSidebar() {
   }
 
   // Get and sort items from slots
-  const primaryActions = (slots.get('sidebarPrimaryActions') || []) as SidebarActionItem[]
+  const primaryActions = (slots.get('sidebarPrimaryActions') ||
+    []) as SidebarActionItem[]
   const navigation = (slots.get('sidebarNavigation') || []) as SidebarNavItem[]
   const tools = (slots.get('sidebarTools') || []) as SidebarToolItem[]
   const contentWidgets = slots.get('sidebarContent') || []
@@ -96,9 +101,7 @@ export function LeftSidebar() {
   const sortedNavigation = [...navigation].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
-  const sortedTools = [...tools].sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
-  )
+  const sortedTools = [...tools].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   return (
     <div

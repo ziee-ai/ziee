@@ -19,10 +19,14 @@ const validatePermissions = (_: any, value: string) => {
 
     // Check if all values are valid permissions
     const validPermissions = Object.values(Permissions)
-    const invalidPermissions = parsed.filter(perm => !validPermissions.includes(perm))
+    const invalidPermissions = parsed.filter(
+      perm => !validPermissions.includes(perm),
+    )
 
     if (invalidPermissions.length > 0) {
-      return Promise.reject(`Invalid permissions: ${invalidPermissions.join(', ')}`)
+      return Promise.reject(
+        `Invalid permissions: ${invalidPermissions.join(', ')}`,
+      )
     }
 
     return Promise.resolve()
@@ -101,7 +105,12 @@ export function EditUserGroupDrawer() {
       width={600}
       maskClosable={false}
     >
-      <Form name="edit-user-group-form" form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form
+        name="edit-user-group-form"
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+      >
         <Form.Item
           name="name"
           label="Group Name"
@@ -127,10 +136,7 @@ export function EditUserGroupDrawer() {
           label="Permissions (JSON Array)"
           rules={[{ validator: validatePermissions }]}
         >
-          <TextArea
-            placeholder='["users::read", "users::edit"]'
-            rows={6}
-          />
+          <TextArea placeholder='["users::read", "users::edit"]' rows={6} />
         </Form.Item>
 
         <Form.Item name="is_active" label="Active" valuePropName="checked">
@@ -141,11 +147,7 @@ export function EditUserGroupDrawer() {
           <Button onClick={handleClose} disabled={loading}>
             Cancel
           </Button>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={loading}
-          >
+          <Button type="primary" htmlType="submit" loading={loading}>
             Update Group
           </Button>
         </div>

@@ -31,10 +31,17 @@ interface LlmRepositoryState {
 
   // Actions
   loadLlmRepositories: () => Promise<void>
-  createLlmRepository: (data: CreateLlmRepositoryRequest) => Promise<LlmRepository>
-  updateLlmRepository: (id: string, data: UpdateLlmRepositoryRequest) => Promise<LlmRepository>
+  createLlmRepository: (
+    data: CreateLlmRepositoryRequest,
+  ) => Promise<LlmRepository>
+  updateLlmRepository: (
+    id: string,
+    data: UpdateLlmRepositoryRequest,
+  ) => Promise<LlmRepository>
   deleteLlmRepository: (id: string) => Promise<void>
-  testLlmRepositoryConnection: (data: TestRepositoryConnectionRequest) => Promise<{ success: boolean; message: string }>
+  testLlmRepositoryConnection: (
+    data: TestRepositoryConnectionRequest,
+  ) => Promise<{ success: boolean; message: string }>
   clearLlmRepositoryStoreError: () => void
   findLlmRepositoryById: (id: string) => LlmRepository | undefined
   llmRepositoryHasCredentials: (repository: LlmRepository) => boolean
@@ -82,7 +89,9 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to load repositories',
+              error instanceof Error
+                ? error.message
+                : 'Failed to load repositories',
             loading: false,
           })
           throw error
@@ -105,7 +114,10 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           try {
             await emitLlmRepositoryCreated(repository)
           } catch (eventError) {
-            console.error('Failed to emit llm repository created event:', eventError)
+            console.error(
+              'Failed to emit llm repository created event:',
+              eventError,
+            )
           }
 
           set({ creating: false })
@@ -114,14 +126,19 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to create repository',
+              error instanceof Error
+                ? error.message
+                : 'Failed to create repository',
             creating: false,
           })
           throw error
         }
       },
 
-      updateLlmRepository: async (id: string, data: UpdateLlmRepositoryRequest) => {
+      updateLlmRepository: async (
+        id: string,
+        data: UpdateLlmRepositoryRequest,
+      ) => {
         const state = get()
         if (state.updating) {
           return Promise.resolve(null as any)
@@ -140,7 +157,10 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           try {
             await emitLlmRepositoryUpdated(repository)
           } catch (eventError) {
-            console.error('Failed to emit llm repository updated event:', eventError)
+            console.error(
+              'Failed to emit llm repository updated event:',
+              eventError,
+            )
           }
 
           set({ updating: false })
@@ -149,7 +169,9 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to update repository',
+              error instanceof Error
+                ? error.message
+                : 'Failed to update repository',
             updating: false,
           })
           throw error
@@ -172,21 +194,28 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           try {
             await emitLlmRepositoryDeleted(id)
           } catch (eventError) {
-            console.error('Failed to emit llm repository deleted event:', eventError)
+            console.error(
+              'Failed to emit llm repository deleted event:',
+              eventError,
+            )
           }
 
           set({ deleting: false })
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to delete repository',
+              error instanceof Error
+                ? error.message
+                : 'Failed to delete repository',
             deleting: false,
           })
           throw error
         }
       },
 
-      testLlmRepositoryConnection: async (data: TestRepositoryConnectionRequest) => {
+      testLlmRepositoryConnection: async (
+        data: TestRepositoryConnectionRequest,
+      ) => {
         const state = get()
         if (state.testing) {
           return {
@@ -238,7 +267,8 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
         switch (repository.auth_type) {
           case 'api_key':
             return !!(
-              repository.auth_config.api_key && repository.auth_config.api_key.trim()
+              repository.auth_config.api_key &&
+              repository.auth_config.api_key.trim()
             )
 
           case 'basic_auth':
@@ -251,7 +281,8 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
 
           case 'bearer_token':
             return !!(
-              repository.auth_config.token && repository.auth_config.token.trim()
+              repository.auth_config.token &&
+              repository.auth_config.token.trim()
             )
 
           default:
@@ -265,30 +296,44 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
           const GROUP = 'LlmRepositoryStore'
 
           // Subscribe to llm_repository.created
-          eventBus.on('llm_repository.created', async event => {
-            const { repository } = event.data
-            set(state => ({
-              repositories: [...state.repositories, repository],
-            }))
-          }, GROUP)
+          eventBus.on(
+            'llm_repository.created',
+            async event => {
+              const { repository } = event.data
+              set(state => ({
+                repositories: [...state.repositories, repository],
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_repository.updated
-          eventBus.on('llm_repository.updated', async event => {
-            const { repository } = event.data
-            set(state => ({
-              repositories: state.repositories.map(r =>
-                r.id === repository.id ? repository : r,
-              ),
-            }))
-          }, GROUP)
+          eventBus.on(
+            'llm_repository.updated',
+            async event => {
+              const { repository } = event.data
+              set(state => ({
+                repositories: state.repositories.map(r =>
+                  r.id === repository.id ? repository : r,
+                ),
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_repository.deleted
-          eventBus.on('llm_repository.deleted', async event => {
-            const { repositoryId } = event.data
-            set(state => ({
-              repositories: state.repositories.filter(r => r.id !== repositoryId),
-            }))
-          }, GROUP)
+          eventBus.on(
+            'llm_repository.deleted',
+            async event => {
+              const { repositoryId } = event.data
+              set(state => ({
+                repositories: state.repositories.filter(
+                  r => r.id !== repositoryId,
+                ),
+              }))
+            },
+            GROUP,
+          )
         },
         repositories: () => get().loadLlmRepositories(),
       },

@@ -53,7 +53,10 @@ export function RemoteProviderSettings() {
     if (!currentProvider || !pendingSettings) return
 
     try {
-      await Stores.LlmProvider.updateLlmProvider(currentProvider.id, pendingSettings)
+      await Stores.LlmProvider.updateLlmProvider(
+        currentProvider.id,
+        pendingSettings,
+      )
 
       setHasUnsavedChanges(false)
       setPendingSettings(null)

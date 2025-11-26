@@ -5,7 +5,9 @@ import { useModelDetailsDrawerStore } from './components/ModelDetailsDrawer.stor
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
 
-const ModelsHubTab = lazyWithPreload(() => import('./components/ModelsHubTab').then(m => ({ default: m.ModelsHubTab })))
+const ModelsHubTab = lazyWithPreload(() =>
+  import('./components/ModelsHubTab').then(m => ({ default: m.ModelsHubTab })),
+)
 
 export default createModule({
   metadata: {

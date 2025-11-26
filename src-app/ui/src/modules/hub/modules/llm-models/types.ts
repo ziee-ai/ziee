@@ -5,7 +5,9 @@ import type { useModelDetailsDrawerStore } from './components/ModelDetailsDrawer
 declare module '@/core/stores' {
   interface RegisteredStores {
     HubModels: StoreProxy<ReturnType<typeof useHubModelsStore.getState>>
-    ModelDetailsDrawer: StoreProxy<ReturnType<typeof useModelDetailsDrawerStore.getState>>
+    ModelDetailsDrawer: StoreProxy<
+      ReturnType<typeof useModelDetailsDrawerStore.getState>
+    >
   }
 }
 

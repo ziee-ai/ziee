@@ -48,12 +48,19 @@ interface LlmProviderState {
   // Actions
   loadLlmProviders: () => Promise<void>
   loadModelsForProvider: (providerId: string) => Promise<void>
-  createLlmProvider: (data: CreateLlmProviderRequest) => Promise<LlmProviderWithModels>
-  updateLlmProvider: (id: string, data: UpdateLlmProviderRequest) => Promise<LlmProviderWithModels>
+  createLlmProvider: (
+    data: CreateLlmProviderRequest,
+  ) => Promise<LlmProviderWithModels>
+  updateLlmProvider: (
+    id: string,
+    data: UpdateLlmProviderRequest,
+  ) => Promise<LlmProviderWithModels>
   deleteLlmProvider: (id: string) => Promise<void>
   clearLlmProviderStoreError: () => void
   findLlmProviderById: (id: string) => LlmProviderWithModels | undefined
-  llmProviderHasCredentials: (provider: BaseLlmProvider | LlmProviderWithModels) => boolean
+  llmProviderHasCredentials: (
+    provider: BaseLlmProvider | LlmProviderWithModels,
+  ) => boolean
 
   // LLM Model actions
   enableLlmModel: (modelId: string) => Promise<LlmModel>
@@ -61,16 +68,26 @@ interface LlmProviderState {
   deleteLlmModel: (modelId: string) => Promise<void>
   findLlmModelById: (modelId: string) => LlmModel | undefined
   addLlmModelToProvider: (providerId: string, model: LlmModel) => void
-  updateLlmModelInProvider: (providerId: string, modelId: string, updatedModel: LlmModel) => void
+  updateLlmModelInProvider: (
+    providerId: string,
+    modelId: string,
+    updatedModel: LlmModel,
+  ) => void
 
   // Group assignment actions
   getProvidersForGroup: (groupId: string) => Promise<BaseLlmProvider[]>
-  updateGroupProviders: (groupId: string, providerIds: string[]) => Promise<void>
+  updateGroupProviders: (
+    groupId: string,
+    providerIds: string[],
+  ) => Promise<void>
 
   // Provider group assignment methods
   getGroupsForProvider: (providerId: string) => Promise<Group[]>
   assignGroupToProvider: (providerId: string, groupId: string) => Promise<void>
-  removeGroupFromProvider: (providerId: string, groupId: string) => Promise<void>
+  removeGroupFromProvider: (
+    providerId: string,
+    groupId: string,
+  ) => Promise<void>
 
   __init__: {
     __store__?: () => void
@@ -141,9 +158,11 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           // Update each provider with its models
           const providersWithModels = providers.map(provider => {
             const result = results.find(
-              r => r.status === 'fulfilled' && r.value.providerId === provider.id,
+              r =>
+                r.status === 'fulfilled' && r.value.providerId === provider.id,
             )
-            const models = result?.status === 'fulfilled' ? result.value.models : []
+            const models =
+              result?.status === 'fulfilled' ? result.value.models : []
             return { ...provider, llm_models: models }
           })
 
@@ -153,7 +172,9 @@ export const useLlmProviderStore = create<LlmProviderState>()(
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to load providers',
+              error instanceof Error
+                ? error.message
+                : 'Failed to load providers',
             loading: false,
           })
           throw error
@@ -176,16 +197,27 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           // Update provider with fresh models
           set(state => ({
             providers: state.providers.map(p =>
-              p.id === providerId ? { ...p, llm_models: modelsResponse.models } : p,
+              p.id === providerId
+                ? { ...p, llm_models: modelsResponse.models }
+                : p,
             ),
-            llmModelsLoading: { ...state.llmModelsLoading, [providerId]: false },
+            llmModelsLoading: {
+              ...state.llmModelsLoading,
+              [providerId]: false,
+            },
           }))
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : 'Failed to load models'
-          console.error(`Failed to load models for provider ${providerId}:`, error)
+          console.error(
+            `Failed to load models for provider ${providerId}:`,
+            error,
+          )
           set(state => ({
-            llmModelsLoading: { ...state.llmModelsLoading, [providerId]: false },
+            llmModelsLoading: {
+              ...state.llmModelsLoading,
+              [providerId]: false,
+            },
             modelError: { ...state.modelError, [providerId]: errorMessage },
           }))
         }
@@ -207,7 +239,10 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           try {
             await emitLlmProviderCreated(provider)
           } catch (eventError) {
-            console.error('Failed to emit llm provider created event:', eventError)
+            console.error(
+              'Failed to emit llm provider created event:',
+              eventError,
+            )
           }
 
           set({ creating: false })
@@ -220,7 +255,9 @@ export const useLlmProviderStore = create<LlmProviderState>()(
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to create provider',
+              error instanceof Error
+                ? error.message
+                : 'Failed to create provider',
             creating: false,
           })
           throw error
@@ -246,7 +283,10 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           try {
             await emitLlmProviderUpdated(provider)
           } catch (eventError) {
-            console.error('Failed to emit llm provider updated event:', eventError)
+            console.error(
+              'Failed to emit llm provider updated event:',
+              eventError,
+            )
           }
 
           set({ updating: false })
@@ -260,7 +300,9 @@ export const useLlmProviderStore = create<LlmProviderState>()(
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to update provider',
+              error instanceof Error
+                ? error.message
+                : 'Failed to update provider',
             updating: false,
           })
           throw error
@@ -283,14 +325,19 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           try {
             await emitLlmProviderDeleted(id)
           } catch (eventError) {
-            console.error('Failed to emit llm provider deleted event:', eventError)
+            console.error(
+              'Failed to emit llm provider deleted event:',
+              eventError,
+            )
           }
 
           set({ deleting: false })
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to delete provider',
+              error instanceof Error
+                ? error.message
+                : 'Failed to delete provider',
             deleting: false,
           })
           throw error
@@ -305,7 +352,9 @@ export const useLlmProviderStore = create<LlmProviderState>()(
         return get().providers.find(p => p.id === id)
       },
 
-      llmProviderHasCredentials: (provider: BaseLlmProvider | LlmProviderWithModels) => {
+      llmProviderHasCredentials: (
+        provider: BaseLlmProvider | LlmProviderWithModels,
+      ) => {
         // Local providers don't need credentials
         if (provider.provider_type === 'local') {
           return true
@@ -324,7 +373,10 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       enableLlmModel: async (modelId: string) => {
         try {
           set(state => ({
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: true },
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: true,
+            },
             error: null,
           }))
 
@@ -335,7 +387,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
 
           // Find provider ID for this model
           const providerId = get().providers.find(p =>
-            p.llm_models?.some(m => m.id === modelId)
+            p.llm_models?.some(m => m.id === modelId),
           )?.id
 
           // Emit event after successful API call
@@ -344,19 +396,29 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             try {
               await emitLlmModelEnabled(modelId, providerId)
             } catch (eventError) {
-              console.error('Failed to emit llm model enabled event:', eventError)
+              console.error(
+                'Failed to emit llm model enabled event:',
+                eventError,
+              )
             }
           }
 
           set(state => ({
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: false,
+            },
           }))
 
           return model
         } catch (error) {
           set(state => ({
-            error: error instanceof Error ? error.message : 'Failed to enable model',
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+            error:
+              error instanceof Error ? error.message : 'Failed to enable model',
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: false,
+            },
           }))
           throw error
         }
@@ -365,7 +427,10 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       disableLlmModel: async (modelId: string) => {
         try {
           set(state => ({
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: true },
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: true,
+            },
             error: null,
           }))
 
@@ -376,7 +441,7 @@ export const useLlmProviderStore = create<LlmProviderState>()(
 
           // Find provider ID for this model
           const providerId = get().providers.find(p =>
-            p.llm_models?.some(m => m.id === modelId)
+            p.llm_models?.some(m => m.id === modelId),
           )?.id
 
           // Emit event after successful API call
@@ -385,19 +450,31 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             try {
               await emitLlmModelDisabled(modelId, providerId)
             } catch (eventError) {
-              console.error('Failed to emit llm model disabled event:', eventError)
+              console.error(
+                'Failed to emit llm model disabled event:',
+                eventError,
+              )
             }
           }
 
           set(state => ({
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: false,
+            },
           }))
 
           return model
         } catch (error) {
           set(state => ({
-            error: error instanceof Error ? error.message : 'Failed to disable model',
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to disable model',
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: false,
+            },
           }))
           throw error
         }
@@ -406,13 +483,16 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       deleteLlmModel: async (modelId: string) => {
         try {
           set(state => ({
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: true },
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: true,
+            },
             error: null,
           }))
 
           // Find provider ID for this model before deletion
           const providerId = get().providers.find(p =>
-            p.llm_models?.some(m => m.id === modelId)
+            p.llm_models?.some(m => m.id === modelId),
           )?.id
 
           await ApiClient.LlmModel.delete({ model_id: modelId })
@@ -423,17 +503,27 @@ export const useLlmProviderStore = create<LlmProviderState>()(
             try {
               await emitLlmModelDeleted(modelId, providerId)
             } catch (eventError) {
-              console.error('Failed to emit llm model deleted event:', eventError)
+              console.error(
+                'Failed to emit llm model deleted event:',
+                eventError,
+              )
             }
           }
 
           set(state => ({
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: false,
+            },
           }))
         } catch (error) {
           set(state => ({
-            error: error instanceof Error ? error.message : 'Failed to delete model',
-            llmModelOperations: { ...state.llmModelOperations, [modelId]: false },
+            error:
+              error instanceof Error ? error.message : 'Failed to delete model',
+            llmModelOperations: {
+              ...state.llmModelOperations,
+              [modelId]: false,
+            },
           }))
           throw error
         }
@@ -462,7 +552,11 @@ export const useLlmProviderStore = create<LlmProviderState>()(
         }))
       },
 
-      updateLlmModelInProvider: (providerId: string, modelId: string, updatedModel: LlmModel) => {
+      updateLlmModelInProvider: (
+        providerId: string,
+        modelId: string,
+        updatedModel: LlmModel,
+      ) => {
         set(state => ({
           providers: state.providers.map(p => {
             if (p.id === providerId) {
@@ -481,7 +575,9 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       // Group assignment actions
       getProvidersForGroup: async (groupId: string) => {
         try {
-          const response = await ApiClient.Group.getProviders({ group_id: groupId })
+          const response = await ApiClient.Group.getProviders({
+            group_id: groupId,
+          })
           return response.providers
         } catch (error) {
           console.error('Failed to get providers for group:', error)
@@ -505,7 +601,9 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       // Provider group assignment methods
       getGroupsForProvider: async (providerId: string) => {
         try {
-          const groups = await ApiClient.LlmProvider.getGroups({ provider_id: providerId })
+          const groups = await ApiClient.LlmProvider.getGroups({
+            provider_id: providerId,
+          })
           return groups
         } catch (error) {
           console.error('Failed to get groups for provider:', error)
@@ -522,10 +620,18 @@ export const useLlmProviderStore = create<LlmProviderState>()(
 
           // Fetch updated group list and emit event
           try {
-            const groups = await ApiClient.LlmProvider.getGroups({ provider_id: providerId })
-            await emitLlmProviderGroupsChanged(providerId, groups.map(g => g.id))
+            const groups = await ApiClient.LlmProvider.getGroups({
+              provider_id: providerId,
+            })
+            await emitLlmProviderGroupsChanged(
+              providerId,
+              groups.map(g => g.id),
+            )
           } catch (eventError) {
-            console.error('Failed to emit llm provider groups changed event:', eventError)
+            console.error(
+              'Failed to emit llm provider groups changed event:',
+              eventError,
+            )
           }
         } catch (error) {
           console.error('Failed to assign group to provider:', error)
@@ -542,10 +648,18 @@ export const useLlmProviderStore = create<LlmProviderState>()(
 
           // Fetch updated group list and emit event
           try {
-            const groups = await ApiClient.LlmProvider.getGroups({ provider_id: providerId })
-            await emitLlmProviderGroupsChanged(providerId, groups.map(g => g.id))
+            const groups = await ApiClient.LlmProvider.getGroups({
+              provider_id: providerId,
+            })
+            await emitLlmProviderGroupsChanged(
+              providerId,
+              groups.map(g => g.id),
+            )
           } catch (eventError) {
-            console.error('Failed to emit llm provider groups changed event:', eventError)
+            console.error(
+              'Failed to emit llm provider groups changed event:',
+              eventError,
+            )
           }
         } catch (error) {
           console.error('Failed to remove group from provider:', error)
@@ -559,88 +673,115 @@ export const useLlmProviderStore = create<LlmProviderState>()(
           const GROUP = 'LlmProviderStore'
 
           // Subscribe to llm_provider.created
-          eventBus.on('llm_provider.created', async event => {
-            const { provider } = event.data
-            const providerWithModels: LlmProviderWithModels = {
-              ...provider,
-              llm_models: [],
-            }
-            set(state => ({
-              providers: [...state.providers, providerWithModels],
-            }))
-          }, GROUP)
+          eventBus.on(
+            'llm_provider.created',
+            async event => {
+              const { provider } = event.data
+              const providerWithModels: LlmProviderWithModels = {
+                ...provider,
+                llm_models: [],
+              }
+              set(state => ({
+                providers: [...state.providers, providerWithModels],
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_provider.updated
-          eventBus.on('llm_provider.updated', async event => {
-            const { provider } = event.data
-            set(state => {
-              // Find existing provider to preserve llm_models
-              const existingProvider = state.providers.find(p => p.id === provider.id)
-              const updatedProvider: LlmProviderWithModels = {
-                ...provider,
-                llm_models: existingProvider?.llm_models || [],
-              }
-              return {
-                providers: state.providers.map(p =>
-                  p.id === provider.id ? updatedProvider : p,
-                ),
-              }
-            })
-          }, GROUP)
+          eventBus.on(
+            'llm_provider.updated',
+            async event => {
+              const { provider } = event.data
+              set(state => {
+                // Find existing provider to preserve llm_models
+                const existingProvider = state.providers.find(
+                  p => p.id === provider.id,
+                )
+                const updatedProvider: LlmProviderWithModels = {
+                  ...provider,
+                  llm_models: existingProvider?.llm_models || [],
+                }
+                return {
+                  providers: state.providers.map(p =>
+                    p.id === provider.id ? updatedProvider : p,
+                  ),
+                }
+              })
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_provider.deleted
-          eventBus.on('llm_provider.deleted', async event => {
-            const { providerId } = event.data
-            set(state => {
-              // Clean up loading and error states for this provider
-              const { [providerId]: _loading, ...remainingLoading } =
-                state.llmModelsLoading
-              const { [providerId]: _error, ...remainingErrors } = state.modelError
+          eventBus.on(
+            'llm_provider.deleted',
+            async event => {
+              const { providerId } = event.data
+              set(state => {
+                // Clean up loading and error states for this provider
+                const { [providerId]: _loading, ...remainingLoading } =
+                  state.llmModelsLoading
+                const { [providerId]: _error, ...remainingErrors } =
+                  state.modelError
 
-              return {
-                providers: state.providers.filter(p => p.id !== providerId),
-                llmModelsLoading: remainingLoading,
-                modelError: remainingErrors,
-              }
-            })
-          }, GROUP)
+                return {
+                  providers: state.providers.filter(p => p.id !== providerId),
+                  llmModelsLoading: remainingLoading,
+                  modelError: remainingErrors,
+                }
+              })
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_model.enabled
-          eventBus.on('llm_model.enabled', async event => {
-            const { modelId } = event.data
-            set(state => ({
-              providers: state.providers.map(p => ({
-                ...p,
-                llm_models: p.llm_models?.map(m =>
-                  m.id === modelId ? { ...m, enabled: true } : m,
-                ),
-              })),
-            }))
-          }, GROUP)
+          eventBus.on(
+            'llm_model.enabled',
+            async event => {
+              const { modelId } = event.data
+              set(state => ({
+                providers: state.providers.map(p => ({
+                  ...p,
+                  llm_models: p.llm_models?.map(m =>
+                    m.id === modelId ? { ...m, enabled: true } : m,
+                  ),
+                })),
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_model.disabled
-          eventBus.on('llm_model.disabled', async event => {
-            const { modelId } = event.data
-            set(state => ({
-              providers: state.providers.map(p => ({
-                ...p,
-                llm_models: p.llm_models?.map(m =>
-                  m.id === modelId ? { ...m, enabled: false } : m,
-                ),
-              })),
-            }))
-          }, GROUP)
+          eventBus.on(
+            'llm_model.disabled',
+            async event => {
+              const { modelId } = event.data
+              set(state => ({
+                providers: state.providers.map(p => ({
+                  ...p,
+                  llm_models: p.llm_models?.map(m =>
+                    m.id === modelId ? { ...m, enabled: false } : m,
+                  ),
+                })),
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_model.deleted
-          eventBus.on('llm_model.deleted', async event => {
-            const { modelId } = event.data
-            set(state => ({
-              providers: state.providers.map(p => ({
-                ...p,
-                llm_models: p.llm_models?.filter(m => m.id !== modelId),
-              })),
-            }))
-          }, GROUP)
+          eventBus.on(
+            'llm_model.deleted',
+            async event => {
+              const { modelId } = event.data
+              set(state => ({
+                providers: state.providers.map(p => ({
+                  ...p,
+                  llm_models: p.llm_models?.filter(m => m.id !== modelId),
+                })),
+              }))
+            },
+            GROUP,
+          )
         },
         providers: () => get().loadLlmProviders(),
       },

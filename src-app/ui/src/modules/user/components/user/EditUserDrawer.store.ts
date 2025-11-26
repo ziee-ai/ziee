@@ -38,22 +38,30 @@ export const useEditUserDrawerStore = create<EditUserDrawerState>()(
             const eventBus = Stores.EventBus
 
             // Update editingUser when user is updated
-            eventBus.on('user.updated', async event => {
-              const { user } = event.data
-              const state = get()
-              if (state.editingUser?.id === user.id) {
-                set({ editingUser: user })
-              }
-            }, GROUP)
+            eventBus.on(
+              'user.updated',
+              async event => {
+                const { user } = event.data
+                const state = get()
+                if (state.editingUser?.id === user.id) {
+                  set({ editingUser: user })
+                }
+              },
+              GROUP,
+            )
 
             // Close drawer when user is deleted
-            eventBus.on('user.deleted', async event => {
-              const { userId } = event.data
-              const state = get()
-              if (state.editingUser?.id === userId) {
-                get().closeEditUserDrawer()
-              }
-            }, GROUP)
+            eventBus.on(
+              'user.deleted',
+              async event => {
+                const { userId } = event.data
+                const state = get()
+                if (state.editingUser?.id === userId) {
+                  get().closeEditUserDrawer()
+                }
+              },
+              GROUP,
+            )
           },
         },
 

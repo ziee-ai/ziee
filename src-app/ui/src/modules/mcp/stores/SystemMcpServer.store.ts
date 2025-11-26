@@ -52,7 +52,10 @@ interface SystemMcpServersState {
   // Actions
   loadSystemServers: (page?: number, pageSize?: number) => Promise<void>
   createSystemServer: (data: CreateMcpServerRequest) => Promise<McpServer>
-  updateSystemServer: (id: string, data: UpdateMcpServerRequest) => Promise<McpServer>
+  updateSystemServer: (
+    id: string,
+    data: UpdateMcpServerRequest,
+  ) => Promise<McpServer>
   deleteSystemServer: (id: string) => Promise<void>
   getServerGroups: (serverId: string) => Promise<string[]>
   assignServerToGroups: (serverId: string, groupIds: string[]) => Promise<void>
@@ -131,7 +134,9 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
             eventBus.on('mcp_server.deleted', async event => {
               const { serverId } = event.data
               set(state => ({
-                systemServers: state.systemServers.filter(s => s.id !== serverId),
+                systemServers: state.systemServers.filter(
+                  s => s.id !== serverId,
+                ),
                 systemServersTotal: state.systemServersTotal - 1,
               }))
             }),
@@ -146,10 +151,17 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
       },
 
       // Actions
-      loadSystemServers: async (page?: number, pageSize?: number): Promise<void> => {
+      loadSystemServers: async (
+        page?: number,
+        pageSize?: number,
+      ): Promise<void> => {
         const state = get()
 
-        if (state.systemServersInitialized && state.systemServersLoading && !page) {
+        if (
+          state.systemServersInitialized &&
+          state.systemServersLoading &&
+          !page
+        ) {
           return
         }
 
@@ -181,7 +193,9 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           set({
             systemServersLoading: false,
             systemServersError:
-              error instanceof Error ? error.message : 'Failed to load system servers',
+              error instanceof Error
+                ? error.message
+                : 'Failed to load system servers',
           })
           throw error
         }
@@ -202,7 +216,10 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           try {
             await emitMcpServerCreated(newServer)
           } catch (eventError) {
-            console.error('Failed to emit mcp server created event:', eventError)
+            console.error(
+              'Failed to emit mcp server created event:',
+              eventError,
+            )
           }
 
           set(state => ({
@@ -235,13 +252,19 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
             systemServersError: null,
           })
 
-          const updatedServer = await ApiClient.McpServerSystem.update({ id, ...data })
+          const updatedServer = await ApiClient.McpServerSystem.update({
+            id,
+            ...data,
+          })
 
           // Emit event after successful API call
           try {
             await emitMcpServerUpdated(updatedServer)
           } catch (eventError) {
-            console.error('Failed to emit mcp server updated event:', eventError)
+            console.error(
+              'Failed to emit mcp server updated event:',
+              eventError,
+            )
           }
 
           set(state => ({
@@ -278,11 +301,16 @@ export const useSystemMcpServersStore = create<SystemMcpServersState>()(
           try {
             await emitMcpServerDeleted(id)
           } catch (eventError) {
-            console.error('Failed to emit mcp server deleted event:', eventError)
+            console.error(
+              'Failed to emit mcp server deleted event:',
+              eventError,
+            )
           }
 
           set(state => ({
-            systemServers: state.systemServers.filter(server => server.id !== id),
+            systemServers: state.systemServers.filter(
+              server => server.id !== id,
+            ),
             systemServersTotal: state.systemServersTotal - 1,
             deleting: false,
           }))

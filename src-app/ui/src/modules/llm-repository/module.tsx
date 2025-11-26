@@ -7,8 +7,16 @@ import './types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
-const LlmRepositorySettings = lazyWithPreload(() => import('./components/LlmRepositorySettings').then(m => ({ default: m.LlmRepositorySettings })))
-const LlmRepositoryDrawer = lazyWithPreload(() => import('./components/LlmRepositoryDrawer').then(m => ({ default: m.LlmRepositoryDrawer })))
+const LlmRepositorySettings = lazyWithPreload(() =>
+  import('./components/LlmRepositorySettings').then(m => ({
+    default: m.LlmRepositorySettings,
+  })),
+)
+const LlmRepositoryDrawer = lazyWithPreload(() =>
+  import('./components/LlmRepositoryDrawer').then(m => ({
+    default: m.LlmRepositoryDrawer,
+  })),
+)
 
 export default createModule({
   metadata: {

@@ -52,9 +52,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
 
   const handleDownload = async () => {
     // Find repository by checking if model's repository_url starts with the repo URL
-    const repo = repositories.find(r =>
-      model.repository_url.startsWith(r.url)
-    )
+    const repo = repositories.find(r => model.repository_url.startsWith(r.url))
 
     if (!repo) {
       message.error(
@@ -72,7 +70,8 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
 
     // Check if model requires authentication
     if (model.auth_required) {
-      const hasCredentials = Stores.LlmRepository.llmRepositoryHasCredentials(repo)
+      const hasCredentials =
+        Stores.LlmRepository.llmRepositoryHasCredentials(repo)
 
       if (!hasCredentials || repo.auth_type === 'none') {
         // Show modal prompting user to configure authentication
@@ -81,8 +80,8 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
           content: (
             <div>
               <Paragraph>
-                The model <strong>{model.display_name}</strong> requires authentication
-                to download from <strong>{repo.name}</strong>.
+                The model <strong>{model.display_name}</strong> requires
+                authentication to download from <strong>{repo.name}</strong>.
               </Paragraph>
               <Paragraph>
                 Please configure authentication credentials for this repository.
@@ -281,7 +280,9 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
         },
       }
 
-      await Stores.LlmModelDownload.downloadLlmModelFromRepository(downloadRequest)
+      await Stores.LlmModelDownload.downloadLlmModelFromRepository(
+        downloadRequest,
+      )
 
       message.success(
         `Download started for ${model.display_name}. You can monitor the progress in the download view.`,
@@ -374,34 +375,62 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   <Text type="secondary" className="text-xs mr-2">
                     Capabilities:
                   </Text>
-                  <Flex wrap className="gap-1" style={{ display: 'inline-flex' }}>
+                  <Flex
+                    wrap
+                    className="gap-1"
+                    style={{ display: 'inline-flex' }}
+                  >
                     {model.capabilities.vision && (
-                      <Tag color="purple" icon={<EyeOutlined />} className="text-xs">
+                      <Tag
+                        color="purple"
+                        icon={<EyeOutlined />}
+                        className="text-xs"
+                      >
                         Vision
                       </Tag>
                     )}
                     {model.capabilities.tools && (
-                      <Tag color="blue" icon={<ToolOutlined />} className="text-xs">
+                      <Tag
+                        color="blue"
+                        icon={<ToolOutlined />}
+                        className="text-xs"
+                      >
                         Tools
                       </Tag>
                     )}
                     {model.capabilities.code_interpreter && (
-                      <Tag color="orange" icon={<AppstoreOutlined />} className="text-xs">
+                      <Tag
+                        color="orange"
+                        icon={<AppstoreOutlined />}
+                        className="text-xs"
+                      >
                         Code
                       </Tag>
                     )}
                     {model.capabilities.chat && (
-                      <Tag color="green" icon={<MessageOutlined />} className="text-xs">
+                      <Tag
+                        color="green"
+                        icon={<MessageOutlined />}
+                        className="text-xs"
+                      >
                         Chat
                       </Tag>
                     )}
                     {model.capabilities.text_embedding && (
-                      <Tag color="cyan" icon={<SearchOutlined />} className="text-xs">
+                      <Tag
+                        color="cyan"
+                        icon={<SearchOutlined />}
+                        className="text-xs"
+                      >
                         Embedding
                       </Tag>
                     )}
                     {model.capabilities.image_generator && (
-                      <Tag color="magenta" icon={<PictureOutlined />} className="text-xs">
+                      <Tag
+                        color="magenta"
+                        icon={<PictureOutlined />}
+                        className="text-xs"
+                      >
                         Image Gen
                       </Tag>
                     )}
@@ -415,7 +444,11 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                   <Text type="secondary" className="text-xs mr-2">
                     Tags:
                   </Text>
-                  <Flex wrap className="gap-1" style={{ display: 'inline-flex' }}>
+                  <Flex
+                    wrap
+                    className="gap-1"
+                    style={{ display: 'inline-flex' }}
+                  >
                     {model.tags.map(tag => (
                       <Tag key={tag} color="default" className="text-xs">
                         {tag}
@@ -429,19 +462,31 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
               <div className="mb-2">
                 <Flex wrap className="gap-x-4 text-xs">
                   <span>
-                    <Text type="secondary" className="text-xs">Size:</Text> {model.size_gb} GB
+                    <Text type="secondary" className="text-xs">
+                      Size:
+                    </Text>{' '}
+                    {model.size_gb} GB
                   </span>
                   <span>
-                    <Text type="secondary" className="text-xs">Format:</Text> {model.file_format?.toUpperCase()}
+                    <Text type="secondary" className="text-xs">
+                      Format:
+                    </Text>{' '}
+                    {model.file_format?.toUpperCase()}
                   </span>
                   {model.license && (
                     <span>
-                      <Text type="secondary" className="text-xs">License:</Text> {model.license}
+                      <Text type="secondary" className="text-xs">
+                        License:
+                      </Text>{' '}
+                      {model.license}
                     </span>
                   )}
                   {model.author && (
                     <span>
-                      <Text type="secondary" className="text-xs">Author:</Text> {model.author}
+                      <Text type="secondary" className="text-xs">
+                        Author:
+                      </Text>{' '}
+                      {model.author}
                     </span>
                   )}
                 </Flex>

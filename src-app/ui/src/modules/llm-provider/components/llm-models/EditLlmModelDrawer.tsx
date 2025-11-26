@@ -1,9 +1,7 @@
 import { App, Button, Card, Flex, Form } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
-import {
-  Stores,
-} from '@/modules/llm-provider/stores'
+import { Stores } from '@/modules/llm-provider/stores'
 import { ApiClient } from '@/api-client'
 import { LlmModelCapabilitiesSection } from './shared/LlmModelCapabilitiesSection'
 import { LlmModelParametersSection } from './shared/LlmModelParametersSection'
@@ -22,7 +20,9 @@ export function EditLlmModelDrawer() {
   const [loading, setLoading] = useState(false)
 
   const { open, modelId } = Stores.EditLlmModelDrawer
-  const currentModel = modelId ? Stores.LlmProvider.findLlmModelById(modelId) : null
+  const currentModel = modelId
+    ? Stores.LlmProvider.findLlmModelById(modelId)
+    : null
 
   // Find provider that owns this model
   const currentProvider = Stores.LlmProvider.providers.find(p =>

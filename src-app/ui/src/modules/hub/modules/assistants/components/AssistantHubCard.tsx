@@ -1,5 +1,9 @@
 import { App, Card, Tag, Typography, Button, Flex } from 'antd'
-import { InfoCircleOutlined, RobotOutlined, EyeOutlined } from '@ant-design/icons'
+import {
+  InfoCircleOutlined,
+  RobotOutlined,
+  EyeOutlined,
+} from '@ant-design/icons'
 import type { HubAssistant } from '@/api-client/types'
 import { useState } from 'react'
 import { AssistantDetailsDrawer } from './AssistantDetailsDrawer'
@@ -19,7 +23,8 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   const [isCreating, setIsCreating] = useState(false)
 
   // Check if assistant was already created from this hub assistant
-  const isAlreadyCreated = assistant.created_ids && assistant.created_ids.length > 0
+  const isAlreadyCreated =
+    assistant.created_ids && assistant.created_ids.length > 0
 
   const handleUseAssistant = async () => {
     setIsCreating(true)
@@ -35,7 +40,9 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
         enabled: true,
       })
 
-      message.success(`Assistant "${assistant.display_name}" created successfully!`)
+      message.success(
+        `Assistant "${assistant.display_name}" created successfully!`,
+      )
 
       // Navigate to /assistants to see the created assistant
       navigate('/assistants')
@@ -119,7 +126,11 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                   <Text type="secondary" className="text-xs mr-2">
                     Tags:
                   </Text>
-                  <Flex wrap className="gap-1" style={{ display: 'inline-flex' }}>
+                  <Flex
+                    wrap
+                    className="gap-1"
+                    style={{ display: 'inline-flex' }}
+                  >
                     {assistant.tags.map(tag => (
                       <Tag key={tag} color="default" className="text-xs">
                         {tag}
@@ -140,15 +151,16 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                       {assistant.author}
                     </span>
                   )}
-                  {assistant.recommended_models && assistant.recommended_models.length > 0 && (
-                    <span>
-                      <Text type="secondary" className="text-xs">
-                        Models:
-                      </Text>{' '}
-                      {assistant.recommended_models.slice(0, 2).join(', ')}
-                      {assistant.recommended_models.length > 2 && '...'}
-                    </span>
-                  )}
+                  {assistant.recommended_models &&
+                    assistant.recommended_models.length > 0 && (
+                      <span>
+                        <Text type="secondary" className="text-xs">
+                          Models:
+                        </Text>{' '}
+                        {assistant.recommended_models.slice(0, 2).join(', ')}
+                        {assistant.recommended_models.length > 2 && '...'}
+                      </span>
+                    )}
                 </Flex>
               </div>
             </div>

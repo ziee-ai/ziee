@@ -47,7 +47,10 @@ interface McpState {
   // Actions
   loadMcpServers: () => Promise<void>
   createMcpServer: (data: CreateMcpServerRequest) => Promise<McpServer>
-  updateMcpServer: (serverId: string, data: UpdateMcpServerRequest) => Promise<McpServer>
+  updateMcpServer: (
+    serverId: string,
+    data: UpdateMcpServerRequest,
+  ) => Promise<McpServer>
   deleteMcpServer: (serverId: string) => Promise<void>
   getMcpServer: (serverId: string) => Promise<McpServer>
   clearMcpError: () => void
@@ -85,49 +88,73 @@ export const useMcpStore = create<McpState>()(
             const GROUP = 'McpServerStore'
 
             // Subscribe to mcp_server.created
-            eventBus.on('mcp_server.created', async event => {
-              const { server } = event.data
-              set(draft => {
-                draft.servers.push(server)
-              })
-            }, GROUP)
+            eventBus.on(
+              'mcp_server.created',
+              async event => {
+                const { server } = event.data
+                set(draft => {
+                  draft.servers.push(server)
+                })
+              },
+              GROUP,
+            )
 
             // Subscribe to mcp_server.updated
-            eventBus.on('mcp_server.updated', async event => {
-              const { server } = event.data
-              set(draft => {
-                const index = draft.servers.findIndex(s => s.id === server.id)
-                if (index !== -1) {
-                  draft.servers[index] = server
-                }
-              })
-            }, GROUP)
+            eventBus.on(
+              'mcp_server.updated',
+              async event => {
+                const { server } = event.data
+                set(draft => {
+                  const index = draft.servers.findIndex(s => s.id === server.id)
+                  if (index !== -1) {
+                    draft.servers[index] = server
+                  }
+                })
+              },
+              GROUP,
+            )
 
             // Subscribe to mcp_server.deleted
-            eventBus.on('mcp_server.deleted', async event => {
-              const { serverId } = event.data
-              set(draft => {
-                draft.servers = draft.servers.filter(s => s.id !== serverId)
-              })
-            }, GROUP)
+            eventBus.on(
+              'mcp_server.deleted',
+              async event => {
+                const { serverId } = event.data
+                set(draft => {
+                  draft.servers = draft.servers.filter(s => s.id !== serverId)
+                })
+              },
+              GROUP,
+            )
 
             // Subscribe to mcp_server.groups_changed
-            eventBus.on('mcp_server.groups_changed', async () => {
-              // Reload servers list to get fresh accessible servers
-              await get().loadMcpServers()
-            }, GROUP)
+            eventBus.on(
+              'mcp_server.groups_changed',
+              async () => {
+                // Reload servers list to get fresh accessible servers
+                await get().loadMcpServers()
+              },
+              GROUP,
+            )
 
             // Subscribe to group.member_added
-            eventBus.on('group.member_added', async () => {
-              // Reload servers list (user might gain access to system servers)
-              await get().loadMcpServers()
-            }, GROUP)
+            eventBus.on(
+              'group.member_added',
+              async () => {
+                // Reload servers list (user might gain access to system servers)
+                await get().loadMcpServers()
+              },
+              GROUP,
+            )
 
             // Subscribe to group.member_removed
-            eventBus.on('group.member_removed', async () => {
-              // Reload servers list (user might lose access to system servers)
-              await get().loadMcpServers()
-            }, GROUP)
+            eventBus.on(
+              'group.member_removed',
+              async () => {
+                // Reload servers list (user might lose access to system servers)
+                await get().loadMcpServers()
+              },
+              GROUP,
+            )
           },
           servers: () => get().loadMcpServers(),
         },
@@ -160,7 +187,9 @@ export const useMcpStore = create<McpState>()(
             set(draft => {
               draft.loading = false
               draft.error =
-                error instanceof Error ? error.message : 'Failed to load MCP servers'
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to load MCP servers'
             })
             throw error
           }
@@ -182,7 +211,10 @@ export const useMcpStore = create<McpState>()(
             try {
               await emitMcpServerCreated(newServer)
             } catch (eventError) {
-              console.error('Failed to emit mcp server created event:', eventError)
+              console.error(
+                'Failed to emit mcp server created event:',
+                eventError,
+              )
             }
 
             set({ creating: false })
@@ -193,7 +225,9 @@ export const useMcpStore = create<McpState>()(
             set(draft => {
               draft.creating = false
               draft.error =
-                error instanceof Error ? error.message : 'Failed to create MCP server'
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to create MCP server'
             })
             throw error
           }
@@ -220,7 +254,10 @@ export const useMcpStore = create<McpState>()(
             try {
               await emitMcpServerUpdated(updatedServer)
             } catch (eventError) {
-              console.error('Failed to emit mcp server updated event:', eventError)
+              console.error(
+                'Failed to emit mcp server updated event:',
+                eventError,
+              )
             }
 
             // Clear operation loading state
@@ -237,7 +274,7 @@ export const useMcpStore = create<McpState>()(
                 return {
                   ...state,
                   systemServers: state.systemServers.map(server =>
-                    server.id === updatedServer.id ? updatedServer : server
+                    server.id === updatedServer.id ? updatedServer : server,
                   ),
                 }
               }
@@ -250,7 +287,9 @@ export const useMcpStore = create<McpState>()(
             set(draft => {
               draft.operationsLoading.delete(serverId)
               draft.error =
-                error instanceof Error ? error.message : 'Failed to update MCP server'
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to update MCP server'
             })
             throw error
           }
@@ -270,7 +309,10 @@ export const useMcpStore = create<McpState>()(
             try {
               await emitMcpServerDeleted(serverId)
             } catch (eventError) {
-              console.error('Failed to emit mcp server deleted event:', eventError)
+              console.error(
+                'Failed to emit mcp server deleted event:',
+                eventError,
+              )
             }
 
             // Clear operation loading state
@@ -290,7 +332,9 @@ export const useMcpStore = create<McpState>()(
             set(draft => {
               draft.operationsLoading.delete(serverId)
               draft.error =
-                error instanceof Error ? error.message : 'Failed to delete MCP server'
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to delete MCP server'
             })
             throw error
           }
@@ -302,9 +346,7 @@ export const useMcpStore = create<McpState>()(
 
             // Update server in main store
             set(draft => {
-              const index = draft.servers.findIndex(
-                s => s.id === server.id,
-              )
+              const index = draft.servers.findIndex(s => s.id === server.id)
               if (index >= 0) {
                 draft.servers[index] = server
               }
@@ -319,7 +361,7 @@ export const useMcpStore = create<McpState>()(
                 return {
                   ...state,
                   systemServers: state.systemServers.map(s =>
-                    s.id === server.id ? server : s
+                    s.id === server.id ? server : s,
                   ),
                 }
               }
@@ -358,14 +400,12 @@ export const useMcpStore = create<McpState>()(
         ): McpServer[] => {
           return servers.filter(
             server =>
-              server.transport_type.toLowerCase() === transportType.toLowerCase(),
+              server.transport_type.toLowerCase() ===
+              transportType.toLowerCase(),
           )
         },
 
-        searchServers: (
-          servers: McpServer[],
-          query: string,
-        ): McpServer[] => {
+        searchServers: (servers: McpServer[], query: string): McpServer[] => {
           if (!query.trim()) return servers
 
           const searchTerm = query.toLowerCase()

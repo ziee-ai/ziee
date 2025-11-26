@@ -17,7 +17,9 @@ interface McpServerGroupsAssignmentCardProps {
  * IMPORTANT: Card fetches data on mount AND listens to events for real-time updates.
  * This ensures data is loaded even after page reloads.
  */
-export function McpServerGroupsAssignmentCard({ serverId }: McpServerGroupsAssignmentCardProps) {
+export function McpServerGroupsAssignmentCard({
+  serverId,
+}: McpServerGroupsAssignmentCardProps) {
   // Get data from store
   const serverData = Stores.SystemMcpServerGroupCard.serverGroups.get(serverId)
   const assignedGroups = serverData?.groups || []

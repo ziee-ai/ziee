@@ -14,8 +14,16 @@ import './types/GroupWidget' // Register userGroup widget slot
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
-const UsersSettings = lazyWithPreload(() => import('./components/user/UsersSettings').then(m => ({ default: m.UsersSettings })))
-const UserGroupsSettings = lazyWithPreload(() => import('./components/group/UserGroupsSettings').then(m => ({ default: m.UserGroupsSettings })))
+const UsersSettings = lazyWithPreload(() =>
+  import('./components/user/UsersSettings').then(m => ({
+    default: m.UsersSettings,
+  })),
+)
+const UserGroupsSettings = lazyWithPreload(() =>
+  import('./components/group/UserGroupsSettings').then(m => ({
+    default: m.UserGroupsSettings,
+  })),
+)
 
 export default createModule({
   metadata: {

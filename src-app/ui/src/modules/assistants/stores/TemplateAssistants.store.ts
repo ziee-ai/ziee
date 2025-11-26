@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type { Assistant, CreateAssistantRequest, UpdateAssistantRequest } from '@/api-client/types'
+import type {
+  Assistant,
+  CreateAssistantRequest,
+  UpdateAssistantRequest,
+} from '@/api-client/types'
 import {
   emitAssistantTemplateCreated,
   emitAssistantTemplateUpdated,
@@ -34,8 +38,13 @@ interface TemplateAssistantsState {
 
   // Actions
   loadTemplateAssistants: (page?: number, pageSize?: number) => Promise<void>
-  createTemplateAssistant: (data: CreateAssistantRequest) => Promise<Assistant | undefined>
-  updateTemplateAssistant: (id: string, data: UpdateAssistantRequest) => Promise<Assistant | undefined>
+  createTemplateAssistant: (
+    data: CreateAssistantRequest,
+  ) => Promise<Assistant | undefined>
+  updateTemplateAssistant: (
+    id: string,
+    data: UpdateAssistantRequest,
+  ) => Promise<Assistant | undefined>
   deleteTemplateAssistant: (id: string) => Promise<void>
   clearTemplateAssistantsStoreError: () => void
   getTemplateDefaultAssistant: () => Assistant | undefined
@@ -65,28 +74,43 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
             const eventBus = Stores.EventBus
 
             // Subscribe to assistant_template.created
-            eventBus.on('assistant_template.created', async () => {
-              // Reload the list to maintain pagination consistency
-              await get().loadTemplateAssistants()
-            }, GROUP)
+            eventBus.on(
+              'assistant_template.created',
+              async () => {
+                // Reload the list to maintain pagination consistency
+                await get().loadTemplateAssistants()
+              },
+              GROUP,
+            )
 
             // Subscribe to assistant_template.updated
-            eventBus.on('assistant_template.updated', async () => {
-              // Reload the list to ensure fresh data
-              await get().loadTemplateAssistants()
-            }, GROUP)
+            eventBus.on(
+              'assistant_template.updated',
+              async () => {
+                // Reload the list to ensure fresh data
+                await get().loadTemplateAssistants()
+              },
+              GROUP,
+            )
 
             // Subscribe to assistant_template.deleted
-            eventBus.on('assistant_template.deleted', async () => {
-              // Reload the list to maintain pagination consistency
-              await get().loadTemplateAssistants()
-            }, GROUP)
+            eventBus.on(
+              'assistant_template.deleted',
+              async () => {
+                // Reload the list to maintain pagination consistency
+                await get().loadTemplateAssistants()
+              },
+              GROUP,
+            )
           },
           assistants: () => get().loadTemplateAssistants(),
         },
 
         // Actions
-        loadTemplateAssistants: async (page?: number, pageSize?: number): Promise<void> => {
+        loadTemplateAssistants: async (
+          page?: number,
+          pageSize?: number,
+        ): Promise<void> => {
           try {
             const currentState = get()
             const requestPage = page || currentState.currentPage
@@ -141,7 +165,10 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
             try {
               await emitAssistantTemplateCreated(assistant)
             } catch (eventError) {
-              console.error('Failed to emit assistant template created event:', eventError)
+              console.error(
+                'Failed to emit assistant template created event:',
+                eventError,
+              )
             }
 
             // Reload the list to maintain pagination consistency
@@ -183,7 +210,10 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
             try {
               await emitAssistantTemplateUpdated(assistant)
             } catch (eventError) {
-              console.error('Failed to emit assistant template updated event:', eventError)
+              console.error(
+                'Failed to emit assistant template updated event:',
+                eventError,
+              )
             }
 
             // Reload the list to maintain pagination consistency
@@ -219,7 +249,10 @@ export const useTemplateAssistantsStore = create<TemplateAssistantsState>()(
             try {
               await emitAssistantTemplateDeleted(id)
             } catch (eventError) {
-              console.error('Failed to emit assistant template deleted event:', eventError)
+              console.error(
+                'Failed to emit assistant template deleted event:',
+                eventError,
+              )
             }
 
             // Reload the list to maintain pagination consistency

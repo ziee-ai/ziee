@@ -12,8 +12,12 @@ import type { useMcpServerGroupsAssignmentStore } from './components/system/McpS
 declare module '@/core/stores' {
   interface RegisteredStores {
     McpServer: StoreProxy<ReturnType<typeof useMcpStore.getState>>
-    SystemMcpServer: StoreProxy<ReturnType<typeof useSystemMcpServersStore.getState>>
-    McpServerDrawer: StoreProxy<ReturnType<typeof useMcpServerDrawerStore.getState>>
+    SystemMcpServer: StoreProxy<
+      ReturnType<typeof useSystemMcpServersStore.getState>
+    >
+    McpServerDrawer: StoreProxy<
+      ReturnType<typeof useMcpServerDrawerStore.getState>
+    >
     GroupSystemMcpServersWidget: StoreProxy<
       ReturnType<typeof useGroupSystemMcpServersWidgetStore.getState>
     >

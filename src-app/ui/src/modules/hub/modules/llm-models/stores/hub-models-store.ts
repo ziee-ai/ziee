@@ -77,7 +77,7 @@ export const useHubModelsStore = create<HubModelsState>()(
         __init__: {
           models: () => get().loadModels(),
         },
-      })
-    )
-  )
+      }),
+    ),
+  ),
 )

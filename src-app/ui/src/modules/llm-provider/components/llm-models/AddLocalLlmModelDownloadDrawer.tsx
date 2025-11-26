@@ -11,8 +11,7 @@ import {
   Typography,
 } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import {
-} from '@/modules/llm-provider/stores'
+import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
 import { LocalLlmModelCommonFields } from './shared/LocalLlmModelCommonFields'
 import { ApiClient } from '@/api-client'
@@ -219,7 +218,9 @@ export function AddLocalLlmModelDownloadDrawer() {
                     danger
                     onClick={async () => {
                       try {
-                        await Stores.LlmModelDownload.cancelLlmModelDownload(viewDownload.id)
+                        await Stores.LlmModelDownload.cancelLlmModelDownload(
+                          viewDownload.id,
+                        )
                         message.success('Download cancelled successfully')
                       } catch (error: any) {
                         console.error('Failed to cancel download:', error)

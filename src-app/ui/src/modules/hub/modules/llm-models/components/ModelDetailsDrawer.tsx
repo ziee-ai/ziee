@@ -1,10 +1,6 @@
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Flex, Tag, Typography, Card } from 'antd'
-import {
-  EyeOutlined,
-  ToolOutlined,
-  MessageOutlined,
-} from '@ant-design/icons'
+import { EyeOutlined, ToolOutlined, MessageOutlined } from '@ant-design/icons'
 import type { HubModel } from '@/api-client/types'
 
 const { Title, Text } = Typography
@@ -15,15 +11,15 @@ interface ModelDetailsDrawerProps {
   onClose: () => void
 }
 
-export function ModelDetailsDrawer({ model, open, onClose }: ModelDetailsDrawerProps) {
+export function ModelDetailsDrawer({
+  model,
+  open,
+  onClose,
+}: ModelDetailsDrawerProps) {
   if (!model) return null
 
   return (
-    <Drawer
-      title={model.display_name}
-      open={open}
-      onClose={onClose}
-    >
+    <Drawer title={model.display_name} open={open} onClose={onClose}>
       <Flex vertical className="gap-4">
         {/* Basic Info */}
         <div>
@@ -42,7 +38,11 @@ export function ModelDetailsDrawer({ model, open, onClose }: ModelDetailsDrawerP
             <Flex justify="space-between">
               <Text type="secondary">Repository URL:</Text>
               <Text className="text-right break-all">
-                <a href={model.repository_url} target="_blank" rel="noopener noreferrer">
+                <a
+                  href={model.repository_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   {model.repository_url}
                 </a>
               </Text>

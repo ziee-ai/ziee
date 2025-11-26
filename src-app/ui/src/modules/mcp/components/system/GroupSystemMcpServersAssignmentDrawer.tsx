@@ -136,15 +136,24 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                           <Text strong style={{ fontSize: '14px' }}>
                             {server.display_name}
                           </Text>
-                          <Tag color="purple" style={{ fontSize: '11px', margin: 0 }}>
+                          <Tag
+                            color="purple"
+                            style={{ fontSize: '11px', margin: 0 }}
+                          >
                             {server.transport_type}
                           </Tag>
                           {server.enabled ? (
-                            <Tag color="green" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="green"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               Enabled
                             </Tag>
                           ) : (
-                            <Tag color="orange" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="orange"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               Disabled
                             </Tag>
                           )}

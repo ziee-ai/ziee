@@ -35,9 +35,11 @@ const GroupSystemMcpServersWidget = lazyWithPreload(() =>
 )
 
 const GroupSystemMcpServersAssignmentDrawer = lazyWithPreload(() =>
-  import('./components/system/GroupSystemMcpServersAssignmentDrawer').then(m => ({
-    default: m.GroupSystemMcpServersAssignmentDrawer,
-  })),
+  import('./components/system/GroupSystemMcpServersAssignmentDrawer').then(
+    m => ({
+      default: m.GroupSystemMcpServersAssignmentDrawer,
+    }),
+  ),
 )
 
 const McpServerGroupsAssignmentDrawer = lazyWithPreload(() =>

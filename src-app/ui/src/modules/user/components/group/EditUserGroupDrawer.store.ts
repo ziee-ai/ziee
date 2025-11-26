@@ -31,24 +31,32 @@ export const useUserGroupDrawerStore = create<UserGroupDrawerState>()(
           const eventBus = Stores.EventBus
 
           // Subscribe to group.updated
-          eventBus.on('group.updated', async event => {
-            const { group } = event.data
-            const state = get()
+          eventBus.on(
+            'group.updated',
+            async event => {
+              const { group } = event.data
+              const state = get()
 
-            if (state.editingGroup?.id === group.id) {
-              set({ editingGroup: group })
-            }
-          }, GROUP)
+              if (state.editingGroup?.id === group.id) {
+                set({ editingGroup: group })
+              }
+            },
+            GROUP,
+          )
 
           // Subscribe to group.deleted
-          eventBus.on('group.deleted', async event => {
-            const { groupId } = event.data
-            const state = get()
+          eventBus.on(
+            'group.deleted',
+            async event => {
+              const { groupId } = event.data
+              const state = get()
 
-            if (state.editingGroup?.id === groupId) {
-              get().closeUserGroupDrawer()
-            }
-          }, GROUP)
+              if (state.editingGroup?.id === groupId) {
+                get().closeUserGroupDrawer()
+              }
+            },
+            GROUP,
+          )
         },
       },
 

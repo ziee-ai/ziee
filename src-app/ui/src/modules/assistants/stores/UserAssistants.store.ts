@@ -3,7 +3,11 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import type { Assistant, CreateAssistantRequest, UpdateAssistantRequest } from '@/api-client/types'
+import type {
+  Assistant,
+  CreateAssistantRequest,
+  UpdateAssistantRequest,
+} from '@/api-client/types'
 import {
   emitAssistantCreated,
   emitAssistantUpdated,
@@ -38,7 +42,10 @@ interface UserAssistantsState {
   // Actions
   loadUserAssistants: () => Promise<void>
   createUserAssistant: (data: CreateAssistantRequest) => Promise<Assistant>
-  updateUserAssistant: (id: string, data: UpdateAssistantRequest) => Promise<Assistant>
+  updateUserAssistant: (
+    id: string,
+    data: UpdateAssistantRequest,
+  ) => Promise<Assistant>
   deleteUserAssistant: (id: string) => Promise<void>
   clearUserAssistantsStoreError: () => void
   getUserDefaultAssistant: () => Assistant | undefined
@@ -62,28 +69,40 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             const GROUP = 'UserAssistantsStore'
 
             // Subscribe to assistant.created
-            eventBus.on('assistant.created', async event => {
-              const { assistant } = event.data
-              set(state => {
-                state.assistants.set(assistant.id, assistant)
-              })
-            }, GROUP)
+            eventBus.on(
+              'assistant.created',
+              async event => {
+                const { assistant } = event.data
+                set(state => {
+                  state.assistants.set(assistant.id, assistant)
+                })
+              },
+              GROUP,
+            )
 
             // Subscribe to assistant.updated
-            eventBus.on('assistant.updated', async event => {
-              const { assistant } = event.data
-              set(state => {
-                state.assistants.set(assistant.id, assistant)
-              })
-            }, GROUP)
+            eventBus.on(
+              'assistant.updated',
+              async event => {
+                const { assistant } = event.data
+                set(state => {
+                  state.assistants.set(assistant.id, assistant)
+                })
+              },
+              GROUP,
+            )
 
             // Subscribe to assistant.deleted
-            eventBus.on('assistant.deleted', async event => {
-              const { assistantId } = event.data
-              set(state => {
-                state.assistants.delete(assistantId)
-              })
-            }, GROUP)
+            eventBus.on(
+              'assistant.deleted',
+              async event => {
+                const { assistantId } = event.data
+                set(state => {
+                  state.assistants.delete(assistantId)
+                })
+              },
+              GROUP,
+            )
           },
           assistants: () => get().loadUserAssistants(),
         },
@@ -104,7 +123,10 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
 
             set({
               assistants: new Map(
-                response.assistants.map((assistant: Assistant) => [assistant.id, assistant]),
+                response.assistants.map((assistant: Assistant) => [
+                  assistant.id,
+                  assistant,
+                ]),
               ),
               isInitialized: true,
               loading: false,
@@ -112,7 +134,9 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
           } catch (error) {
             set({
               error:
-                error instanceof Error ? error.message : 'Failed to load assistants',
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to load assistants',
               loading: false,
             })
             throw error
@@ -132,7 +156,10 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             try {
               await emitAssistantCreated(assistant)
             } catch (eventError) {
-              console.error('Failed to emit assistant created event:', eventError)
+              console.error(
+                'Failed to emit assistant created event:',
+                eventError,
+              )
             }
 
             set({ creating: false })
@@ -141,7 +168,9 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
           } catch (error) {
             set({
               error:
-                error instanceof Error ? error.message : 'Failed to create assistant',
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to create assistant',
               creating: false,
             })
             throw error
@@ -165,7 +194,10 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             try {
               await emitAssistantUpdated(assistant)
             } catch (eventError) {
-              console.error('Failed to emit assistant updated event:', eventError)
+              console.error(
+                'Failed to emit assistant updated event:',
+                eventError,
+              )
             }
 
             set({ updating: false })
@@ -174,7 +206,9 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
           } catch (error) {
             set({
               error:
-                error instanceof Error ? error.message : 'Failed to update assistant',
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to update assistant',
               updating: false,
             })
             throw error
@@ -192,14 +226,19 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
             try {
               await emitAssistantDeleted(id)
             } catch (eventError) {
-              console.error('Failed to emit assistant deleted event:', eventError)
+              console.error(
+                'Failed to emit assistant deleted event:',
+                eventError,
+              )
             }
 
             set({ deleting: false })
           } catch (error) {
             set({
               error:
-                error instanceof Error ? error.message : 'Failed to delete assistant',
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to delete assistant',
               deleting: false,
             })
             throw error
@@ -211,8 +250,7 @@ export const useUserAssistantsStore = create<UserAssistantsState>()(
         },
 
         getUserDefaultAssistant: (): Assistant | undefined => {
-          return Array.from(get().assistants.values())
-            .find(a => a.is_default)
+          return Array.from(get().assistants.values()).find(a => a.is_default)
         },
 
         __destroy__: () => {

@@ -34,23 +34,25 @@ export function ModelsHubTab() {
     // Search
     if (searchTerm) {
       const search = searchTerm.toLowerCase()
-      filtered = filtered.filter(m =>
-        m.name.toLowerCase().includes(search) ||
-        m.display_name.toLowerCase().includes(search) ||
-        m.description?.toLowerCase().includes(search)
+      filtered = filtered.filter(
+        m =>
+          m.name.toLowerCase().includes(search) ||
+          m.display_name.toLowerCase().includes(search) ||
+          m.description?.toLowerCase().includes(search),
       )
     }
 
     // Tags
     if (selectedTags.length > 0) {
       filtered = filtered.filter(m =>
-        selectedTags.some(tag => m.tags?.includes(tag))
+        selectedTags.some(tag => m.tags?.includes(tag)),
       )
     }
 
     // Sort (create a copy to avoid mutating read-only array from store)
     const sorted = [...filtered].sort((a, b) => {
-      if (sortBy === 'popular') return (b.popularity_score || 0) - (a.popularity_score || 0)
+      if (sortBy === 'popular')
+        return (b.popularity_score || 0) - (a.popularity_score || 0)
       if (sortBy === 'name') return a.name.localeCompare(b.name)
       if (sortBy === 'size') return (a.size_gb || 0) - (b.size_gb || 0)
       return 0
@@ -75,9 +77,7 @@ export function ModelsHubTab() {
       <div className="text-center py-12">
         <Text type="danger">Failed to load models: {error}</Text>
         <div className="mt-4">
-          <Button onClick={() => Stores.HubModels.loadModels()}>
-            Retry
-          </Button>
+          <Button onClick={() => Stores.HubModels.loadModels()}>Retry</Button>
         </div>
       </div>
     )

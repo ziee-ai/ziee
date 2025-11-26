@@ -16,7 +16,9 @@ const { Text } = Typography
  */
 export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   // Get data from store
-  const serverData = Stores.GroupSystemMcpServersWidget.groupServers.get(group.id)
+  const serverData = Stores.GroupSystemMcpServersWidget.groupServers.get(
+    group.id,
+  )
   const servers = serverData?.servers || []
   const loading = serverData?.loading || false
   const error = serverData?.error || null

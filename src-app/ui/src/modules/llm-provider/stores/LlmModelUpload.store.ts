@@ -107,7 +107,10 @@ export const useUploadStore = create<UploadState>()(
         }
 
         if (data.engine_settings) {
-          formData.append('engine_settings', JSON.stringify(data.engine_settings))
+          formData.append(
+            'engine_settings',
+            JSON.stringify(data.engine_settings),
+          )
         }
 
         // Call the upload API with file upload progress tracking
@@ -156,7 +159,9 @@ export const useUploadStore = create<UploadState>()(
               currentUploadXhr = null
 
               // Refresh the provider's models list (don't await to avoid blocking)
-              void useLlmProviderStore.getState().loadModelsForProvider(data.provider_id)
+              void useLlmProviderStore
+                .getState()
+                .loadModelsForProvider(data.provider_id)
             },
             onError: (error: string, fileName?: string) => {
               // Handle upload error

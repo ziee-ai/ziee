@@ -21,7 +21,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
 
   // Get the current provider name for display
   const currentProvider = Stores.LlmProvider.providers.find(
-    p => p.id === selectedProviderId
+    p => p.id === selectedProviderId,
   )
 
   // Load assigned groups when drawer opens
@@ -36,9 +36,8 @@ export function LlmProviderGroupsAssignmentDrawer() {
 
     setLoading(true)
     try {
-      const assigned = await Stores.LlmProvider.getGroupsForProvider(
-        selectedProviderId,
-      )
+      const assigned =
+        await Stores.LlmProvider.getGroupsForProvider(selectedProviderId)
       setAssignedIds(assigned.map(g => g.id))
     } catch (error) {
       console.error('Failed to load assigned groups:', error)
@@ -54,7 +53,8 @@ export function LlmProviderGroupsAssignmentDrawer() {
     setSaving(true)
     try {
       // Get current assignments
-      const currentGroups = await Stores.LlmProvider.getGroupsForProvider(selectedProviderId)
+      const currentGroups =
+        await Stores.LlmProvider.getGroupsForProvider(selectedProviderId)
       const currentIds = new Set(currentGroups.map(g => g.id))
       const newIds = new Set(assignedIds)
 
@@ -64,12 +64,18 @@ export function LlmProviderGroupsAssignmentDrawer() {
 
       // Add new groups
       for (const groupId of toAdd) {
-        await Stores.LlmProvider.assignGroupToProvider(selectedProviderId, groupId)
+        await Stores.LlmProvider.assignGroupToProvider(
+          selectedProviderId,
+          groupId,
+        )
       }
 
       // Remove unassigned groups
       for (const groupId of toRemove) {
-        await Stores.LlmProvider.removeGroupFromProvider(selectedProviderId, groupId)
+        await Stores.LlmProvider.removeGroupFromProvider(
+          selectedProviderId,
+          groupId,
+        )
       }
 
       message.success('Group assignments updated')
@@ -142,9 +148,7 @@ export function LlmProviderGroupsAssignmentDrawer() {
               {groups.map(group => {
                 const isChecked = assignedIds.includes(group.id)
                 return (
-                  <Card
-                    key={group.id}
-                  >
+                  <Card key={group.id}>
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
@@ -159,16 +163,25 @@ export function LlmProviderGroupsAssignmentDrawer() {
                             {group.name}
                           </Text>
                           {group.is_system && (
-                            <Tag color="orange" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="orange"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               System
                             </Tag>
                           )}
                           {group.is_active ? (
-                            <Tag color="green" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="green"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               Active
                             </Tag>
                           ) : (
-                            <Tag color="default" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="default"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               Inactive
                             </Tag>
                           )}

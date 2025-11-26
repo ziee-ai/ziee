@@ -136,10 +136,7 @@ export function SystemMcpServersPage() {
               data-server-id={server.id}
               data-server-name={server.display_name}
             >
-              <McpServerCard
-                server={server}
-                isEditable={true}
-              />
+              <McpServerCard server={server} isEditable={true} />
               <McpServerGroupsAssignmentCard serverId={server.id} />
             </div>
           ))}

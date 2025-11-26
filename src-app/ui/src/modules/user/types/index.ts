@@ -13,13 +13,27 @@ declare module '@/core/stores' {
   interface RegisteredStores {
     Users: StoreProxy<ReturnType<typeof useUsersStore.getState>>
     UserGroups: StoreProxy<ReturnType<typeof useUserGroupsStore.getState>>
-    EditUserGroupDrawer: StoreProxy<ReturnType<typeof useUserGroupDrawerStore.getState>>
-    GroupMembersDrawer: StoreProxy<ReturnType<typeof useGroupMembersDrawerStore.getState>>
-    CreateUserDrawer: StoreProxy<ReturnType<typeof useCreateUserDrawerStore.getState>>
-    EditUserDrawer: StoreProxy<ReturnType<typeof useEditUserDrawerStore.getState>>
-    ResetPasswordDrawer: StoreProxy<ReturnType<typeof useResetPasswordDrawerStore.getState>>
-    UserGroupsDrawer: StoreProxy<ReturnType<typeof useUserGroupsDrawerStore.getState>>
-    AssignGroupDrawer: StoreProxy<ReturnType<typeof useAssignGroupDrawerStore.getState>>
+    EditUserGroupDrawer: StoreProxy<
+      ReturnType<typeof useUserGroupDrawerStore.getState>
+    >
+    GroupMembersDrawer: StoreProxy<
+      ReturnType<typeof useGroupMembersDrawerStore.getState>
+    >
+    CreateUserDrawer: StoreProxy<
+      ReturnType<typeof useCreateUserDrawerStore.getState>
+    >
+    EditUserDrawer: StoreProxy<
+      ReturnType<typeof useEditUserDrawerStore.getState>
+    >
+    ResetPasswordDrawer: StoreProxy<
+      ReturnType<typeof useResetPasswordDrawerStore.getState>
+    >
+    UserGroupsDrawer: StoreProxy<
+      ReturnType<typeof useUserGroupsDrawerStore.getState>
+    >
+    AssignGroupDrawer: StoreProxy<
+      ReturnType<typeof useAssignGroupDrawerStore.getState>
+    >
   }
 }
 

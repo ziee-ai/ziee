@@ -88,7 +88,8 @@ export const useHardwareStore = create<HardwareState>()(
           console.error('Hardware info loading failed:', error)
           set({
             hardwareLoading: false,
-            hardwareError: error instanceof Error ? error.message : 'Unknown error',
+            hardwareError:
+              error instanceof Error ? error.message : 'Unknown error',
             hardwareInitialized: false,
           })
           throw error
@@ -140,7 +141,9 @@ export const useHardwareStore = create<HardwareState>()(
         })
 
         try {
-          console.log('Establishing SSE connection for hardware usage monitoring')
+          console.log(
+            'Establishing SSE connection for hardware usage monitoring',
+          )
 
           // Reset disconnection flag
           isIntentionallyDisconnecting = false
@@ -205,7 +208,8 @@ export const useHardwareStore = create<HardwareState>()(
           set({
             sseConnected: false,
             sseConnecting: false,
-            sseError: error instanceof Error ? error.message : 'Failed to connect',
+            sseError:
+              error instanceof Error ? error.message : 'Failed to connect',
             usageLoading: false,
           })
         }

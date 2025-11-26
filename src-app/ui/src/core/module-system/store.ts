@@ -1,9 +1,5 @@
 import { create } from 'zustand'
-import type {
-  AppModule,
-  Slots,
-  ComponentRegistration,
-} from './types'
+import type { AppModule, Slots, ComponentRegistration } from './types'
 import { createStoreProxy } from '../stores'
 import { useEventBusStore } from '../events'
 import './types-store' // Register ModuleSystem store type
@@ -60,7 +56,10 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
                 try {
                   oldStoreProxy.__state.__destroy__()
                 } catch (error) {
-                  console.error(`Failed to destroy old store ${reg.name}:`, error)
+                  console.error(
+                    `Failed to destroy old store ${reg.name}:`,
+                    error,
+                  )
                 }
               }
 
@@ -72,7 +71,9 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
           // Re-register components - remove old ones first
           const oldComponents = oldModule.registerComponents?.()
           const oldComponentIds = new Set(oldComponents?.map(c => c.id) || [])
-          let newComponents = state.components.filter(c => !oldComponentIds.has(c.id))
+          let newComponents = state.components.filter(
+            c => !oldComponentIds.has(c.id),
+          )
 
           if (module.registerComponents) {
             const components = module.registerComponents()

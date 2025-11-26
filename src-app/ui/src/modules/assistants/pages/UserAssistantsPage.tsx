@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react'
 import { App, Button, Dropdown, Input, Typography } from 'antd'
-import {
-  PlusOutlined,
-  RobotOutlined,
-  SearchOutlined,
-} from '@ant-design/icons'
+import { PlusOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons'
 import { PiSortAscending } from 'react-icons/pi'
-import {
-  Stores,
-} from '../stores'
+import { Stores } from '../stores'
 import type { Assistant } from '@/api-client/types'
 import { AssistantCard } from '../components/AssistantCard'
 import { AssistantFormDrawer } from '../components/AssistantFormDrawer'
@@ -22,14 +16,12 @@ export function UserAssistantsPage() {
   const pageMinSize = useMainContentMinSize()
   const [isSearchBoxVisible, setIsSearchBoxVisible] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<'activity' | 'name' | 'created'>('activity')
+  const [sortBy, setSortBy] = useState<'activity' | 'name' | 'created'>(
+    'activity',
+  )
 
   // Destructure store values
-  const {
-    assistants: assistantsMap,
-    loading,
-    error,
-  } = Stores.UserAssistants
+  const { assistants: assistantsMap, loading, error } = Stores.UserAssistants
 
   // Convert Map to Array
   const assistants = Array.from(assistantsMap.values())
@@ -54,7 +46,7 @@ export function UserAssistantsPage() {
     try {
       await Stores.UserAssistants.deleteUserAssistant(assistant.id)
       message.success('Assistant deleted successfully')
-    } catch (error) {
+    } catch (_error) {
       message.error('Failed to delete assistant')
     }
   }

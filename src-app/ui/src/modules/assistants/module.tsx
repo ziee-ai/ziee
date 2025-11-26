@@ -8,14 +8,23 @@ import './types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
-const UserAssistantsPage = lazyWithPreload(() => import('./pages/UserAssistantsPage').then(m => ({ default: m.UserAssistantsPage })))
-const AssistantsSettings = lazyWithPreload(() => import('./pages/AssistantsSettings').then(m => ({ default: m.AssistantsSettings })))
+const UserAssistantsPage = lazyWithPreload(() =>
+  import('./pages/UserAssistantsPage').then(m => ({
+    default: m.UserAssistantsPage,
+  })),
+)
+const AssistantsSettings = lazyWithPreload(() =>
+  import('./pages/AssistantsSettings').then(m => ({
+    default: m.AssistantsSettings,
+  })),
+)
 
 export default createModule({
   metadata: {
     name: 'assistants',
     version: '1.0.0',
-    description: 'AI Assistants module for managing user and template assistants',
+    description:
+      'AI Assistants module for managing user and template assistants',
   },
   dependencies: ['router'],
   routes: [

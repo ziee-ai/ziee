@@ -21,9 +21,9 @@ import { createProvider } from '../../05-llm/helpers/provider-helpers'
  * This bypasses the complex UI file upload/download flows
  */
 export async function createModelViaAPI(
-  page: Page,
-  providerName: string,
-  modelDisplayName: string
+  _page: Page,
+  _providerName: string,
+  _modelDisplayName: string
 ): Promise<void> {
   // We'll use the API client to create a model
   // First, we need to get the provider ID by navigating and extracting it

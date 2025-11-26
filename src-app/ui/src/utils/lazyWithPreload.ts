@@ -20,7 +20,7 @@ import type { ComponentType } from 'react'
  * 3. Multiple calls return the same cached promise
  */
 export function lazyWithPreload<T extends ComponentType<any>>(
-  factory: () => Promise<{ default: T }>
+  factory: () => Promise<{ default: T }>,
 ): () => Promise<{ default: T }> {
   let promise: Promise<{ default: T }> | null = null
 

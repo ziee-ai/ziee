@@ -6,11 +6,7 @@ import type {
   CreateUserRequest,
   UpdateUserRequest,
 } from '@/api-client/types'
-import {
-  emitUserCreated,
-  emitUserUpdated,
-  emitUserDeleted,
-} from '../events'
+import { emitUserCreated, emitUserUpdated, emitUserDeleted } from '../events'
 import { Stores } from '@/core/stores'
 
 interface UsersState {
@@ -101,7 +97,8 @@ export const useUsersStore = create<UsersState>()(
           })
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to load users',
+            error:
+              error instanceof Error ? error.message : 'Failed to load users',
             loading: false,
           })
           throw error
@@ -135,7 +132,8 @@ export const useUsersStore = create<UsersState>()(
           return user
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to create user',
+            error:
+              error instanceof Error ? error.message : 'Failed to create user',
             creating: false,
           })
           throw error
@@ -169,7 +167,8 @@ export const useUsersStore = create<UsersState>()(
           return user
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to update user',
+            error:
+              error instanceof Error ? error.message : 'Failed to update user',
             updating: false,
           })
           throw error
@@ -204,7 +203,10 @@ export const useUsersStore = create<UsersState>()(
           set({ updating: false })
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to reset password',
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to reset password',
             updating: false,
           })
           throw error
@@ -227,7 +229,10 @@ export const useUsersStore = create<UsersState>()(
           // Get current user state to emit event
           const currentUser = get().users.find(u => u.id === id)
           if (currentUser) {
-            const updatedUser = { ...currentUser, is_active: !currentUser.is_active }
+            const updatedUser = {
+              ...currentUser,
+              is_active: !currentUser.is_active,
+            }
 
             // Emit event after successful API call
             // Event handler will update state (no manual state update here)
@@ -241,7 +246,10 @@ export const useUsersStore = create<UsersState>()(
           set({ updating: false })
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to toggle user status',
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to toggle user status',
             updating: false,
           })
           throw error
@@ -272,7 +280,8 @@ export const useUsersStore = create<UsersState>()(
           set({ deleting: false })
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to delete user',
+            error:
+              error instanceof Error ? error.message : 'Failed to delete user',
             deleting: false,
           })
           throw error
@@ -351,21 +360,29 @@ export const useUsersStore = create<UsersState>()(
           const GROUP = 'UsersStore'
 
           // Subscribe to user.updated
-          eventBus.on('user.updated', async event => {
-            const { user } = event.data
-            set(state => ({
-              users: state.users.map(u => (u.id === user.id ? user : u)),
-            }))
-          }, GROUP)
+          eventBus.on(
+            'user.updated',
+            async event => {
+              const { user } = event.data
+              set(state => ({
+                users: state.users.map(u => (u.id === user.id ? user : u)),
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to user.deleted
-          eventBus.on('user.deleted', async event => {
-            const { userId } = event.data
-            set(state => ({
-              users: state.users.filter(u => u.id !== userId),
-              total: state.total - 1,
-            }))
-          }, GROUP)
+          eventBus.on(
+            'user.deleted',
+            async event => {
+              const { userId } = event.data
+              set(state => ({
+                users: state.users.filter(u => u.id !== userId),
+                total: state.total - 1,
+              }))
+            },
+            GROUP,
+          )
         },
         users: () => get().loadUsers(),
       },

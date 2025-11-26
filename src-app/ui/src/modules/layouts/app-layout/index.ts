@@ -19,4 +19,8 @@ export const AppLayoutDef: LayoutDefinition<undefined> = {
 
 // Re-export for convenience
 export { AppLayout }
-export type { SidebarNavItem, SidebarToolItem, SidebarActionItem } from './types'
+export type {
+  SidebarNavItem,
+  SidebarToolItem,
+  SidebarActionItem,
+} from './types'

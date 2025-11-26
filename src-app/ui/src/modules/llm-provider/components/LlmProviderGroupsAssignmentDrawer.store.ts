@@ -31,14 +31,18 @@ export const useLlmProviderGroupsAssignmentStore =
             const eventBus = Stores.EventBus
 
             // Subscribe to llm_provider.deleted
-            eventBus.on('llm_provider.deleted', async event => {
-              const { providerId } = event.data
-              const state = get()
+            eventBus.on(
+              'llm_provider.deleted',
+              async event => {
+                const { providerId } = event.data
+                const state = get()
 
-              if (state.selectedProviderId === providerId) {
-                get().closeDrawer()
-              }
-            }, GROUP)
+                if (state.selectedProviderId === providerId) {
+                  get().closeDrawer()
+                }
+              },
+              GROUP,
+            )
           },
         },
 
@@ -51,7 +55,9 @@ export const useLlmProviderGroupsAssignmentStore =
         },
 
         __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('LlmProviderGroupsAssignmentDrawerStore')
+          Stores.EventBus.removeGroupListeners(
+            'LlmProviderGroupsAssignmentDrawerStore',
+          )
         },
       }),
     ),

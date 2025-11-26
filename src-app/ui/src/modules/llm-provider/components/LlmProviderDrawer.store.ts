@@ -30,24 +30,32 @@ export const useLlmProviderDrawerStore = create<LlmProviderDrawerState>()(
           const eventBus = Stores.EventBus
 
           // Subscribe to llm_provider.updated
-          eventBus.on('llm_provider.updated', async event => {
-            const { provider } = event.data
-            const state = get()
+          eventBus.on(
+            'llm_provider.updated',
+            async event => {
+              const { provider } = event.data
+              const state = get()
 
-            if (state.editingProvider?.id === provider.id) {
-              set({ editingProvider: provider })
-            }
-          }, GROUP)
+              if (state.editingProvider?.id === provider.id) {
+                set({ editingProvider: provider })
+              }
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_provider.deleted
-          eventBus.on('llm_provider.deleted', async event => {
-            const { providerId } = event.data
-            const state = get()
+          eventBus.on(
+            'llm_provider.deleted',
+            async event => {
+              const { providerId } = event.data
+              const state = get()
 
-            if (state.editingProvider?.id === providerId) {
-              get().closeLlmProviderDrawer()
-            }
-          }, GROUP)
+              if (state.editingProvider?.id === providerId) {
+                get().closeLlmProviderDrawer()
+              }
+            },
+            GROUP,
+          )
         },
       },
 

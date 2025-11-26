@@ -23,8 +23,12 @@ export function createModule(options: CreateModuleOptions): AppModule {
     ...options, // Spread all fields (including routes added via declaration merging)
     metadata: options.metadata,
     registerStores: options.stores ? () => options.stores! : undefined,
-    registerComponents: options.components ? () => options.components! : undefined,
-    registerDependencies: options.dependencies ? () => options.dependencies! : undefined,
+    registerComponents: options.components
+      ? () => options.components!
+      : undefined,
+    registerDependencies: options.dependencies
+      ? () => options.dependencies!
+      : undefined,
     registerSlots: options.slots ? () => options.slots! : undefined,
     onModuleRegister: options.onModuleRegister,
     initialize: options.initialize,

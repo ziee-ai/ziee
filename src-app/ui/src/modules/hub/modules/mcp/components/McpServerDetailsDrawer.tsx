@@ -11,15 +11,15 @@ interface McpServerDetailsDrawerProps {
   onClose: () => void
 }
 
-export function McpServerDetailsDrawer({ server, open, onClose }: McpServerDetailsDrawerProps) {
+export function McpServerDetailsDrawer({
+  server,
+  open,
+  onClose,
+}: McpServerDetailsDrawerProps) {
   if (!server) return null
 
   return (
-    <Drawer
-      title={server.display_name}
-      open={open}
-      onClose={onClose}
-    >
+    <Drawer title={server.display_name} open={open} onClose={onClose}>
       <Flex vertical className="gap-4">
         {/* Basic Info */}
         <div>
@@ -47,16 +47,17 @@ export function McpServerDetailsDrawer({ server, open, onClose }: McpServerDetai
         </div>
 
         {/* Environment Variables */}
-        {server.environment_variables && Object.keys(server.environment_variables).length > 0 && (
-          <div>
-            <Title level={5}>Environment Variables</Title>
-            <Card size="small">
-              <pre className="text-xs overflow-auto m-0">
-                {JSON.stringify(server.environment_variables, null, 2)}
-              </pre>
-            </Card>
-          </div>
-        )}
+        {server.environment_variables &&
+          Object.keys(server.environment_variables).length > 0 && (
+            <div>
+              <Title level={5}>Environment Variables</Title>
+              <Card size="small">
+                <pre className="text-xs overflow-auto m-0">
+                  {JSON.stringify(server.environment_variables, null, 2)}
+                </pre>
+              </Card>
+            </div>
+          )}
 
         {/* Server Details */}
         <div>

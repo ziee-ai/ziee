@@ -36,7 +36,8 @@ export function AddLocalLlmModelUploadDrawer() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [filteredFiles, setFilteredFiles] = useState<FilteredFile[]>([])
 
-  const { uploading, uploadProgress, overallUploadProgress } = Stores.LlmModelUpload
+  const { uploading, uploadProgress, overallUploadProgress } =
+    Stores.LlmModelUpload
   const { open, providerId } = Stores.AddLocalLlmModelUploadDrawer
 
   /**

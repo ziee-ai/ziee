@@ -25,9 +25,7 @@ export function SidebarToggleButton() {
           borderRadius: '4px',
           minWidth: '20px',
         }}
-        aria-label={
-          isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
-        }
+        aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {isSidebarCollapsed ? (
           <GoSidebarCollapse aria-hidden="true" />

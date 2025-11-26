@@ -69,22 +69,28 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
 
             // Subscribe to provider group assignment changes
             // When groups are assigned to a provider, update the cache directly
-            eventBus.on('llm_provider.groups_changed', async event => {
-              const { providerId, groupIds } = event.data
-              await get().loadAllGroups()
-              const allGroups = get().allGroups
-              const assignedGroups = allGroups.filter(g => groupIds.includes(g.id))
+            eventBus.on(
+              'llm_provider.groups_changed',
+              async event => {
+                const { providerId, groupIds } = event.data
+                await get().loadAllGroups()
+                const allGroups = get().allGroups
+                const assignedGroups = allGroups.filter(g =>
+                  groupIds.includes(g.id),
+                )
 
-              set(state => {
-                state.providerGroups.set(providerId, {
-                  providerId,
-                  groups: assignedGroups,
-                  loading: false,
-                  error: null,
-                  lastFetched: Date.now(),
+                set(state => {
+                  state.providerGroups.set(providerId, {
+                    providerId,
+                    groups: assignedGroups,
+                    loading: false,
+                    error: null,
+                    lastFetched: Date.now(),
+                  })
                 })
-              })
-            }, GROUP)
+              },
+              GROUP,
+            )
           },
 
           // Property-specific initialization - runs when allGroups is first accessed
@@ -116,7 +122,10 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
           })
 
           try {
-            const response = await ApiClient.UserGroup.list({ page: 1, per_page: 1000 })
+            const response = await ApiClient.UserGroup.list({
+              page: 1,
+              per_page: 1000,
+            })
 
             set(state => {
               state.allGroups = response.groups
@@ -129,7 +138,8 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
 
             set(state => {
               state.groupsLoading = false
-              state.groupsError = error instanceof Error ? error.message : 'Failed to load groups'
+              state.groupsError =
+                error instanceof Error ? error.message : 'Failed to load groups'
             })
 
             throw error
@@ -140,7 +150,10 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
          * Load groups for a specific provider
          * Uses cached groups instead of fetching every time
          */
-        loadGroupsForProvider: async (providerId: string, force = false): Promise<void> => {
+        loadGroupsForProvider: async (
+          providerId: string,
+          force = false,
+        ): Promise<void> => {
           const state = get()
           const existing = state.providerGroups.get(providerId)
 
@@ -172,7 +185,9 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
 
           try {
             // Get groups for this provider (API returns full Group objects)
-            const groups = await ApiClient.LlmProvider.getGroups({ provider_id: providerId })
+            const groups = await ApiClient.LlmProvider.getGroups({
+              provider_id: providerId,
+            })
 
             set(state => {
               state.providerGroups.set(providerId, {
@@ -184,14 +199,20 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
               })
             })
           } catch (error) {
-            console.error(`Failed to load groups for provider ${providerId}:`, error)
+            console.error(
+              `Failed to load groups for provider ${providerId}:`,
+              error,
+            )
 
             set(state => {
               state.providerGroups.set(providerId, {
                 providerId,
                 groups: existing?.groups || [],
                 loading: false,
-                error: error instanceof Error ? error.message : 'Failed to load groups',
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : 'Failed to load groups',
                 lastFetched: existing?.lastFetched || null,
               })
             })
@@ -221,7 +242,9 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
         /**
          * Get groups for a specific provider from the store
          */
-        getProviderGroupsData: (providerId: string): ProviderGroups | undefined => {
+        getProviderGroupsData: (
+          providerId: string,
+        ): ProviderGroups | undefined => {
           return get().providerGroups.get(providerId)
         },
 
@@ -229,7 +252,9 @@ export const useProviderGroupCardStore = create<ProviderGroupCardState>()(
          * Cleanup method - removes all event listeners for this store
          */
         __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('ProviderGroupAssignmentCardStore')
+          Stores.EventBus.removeGroupListeners(
+            'ProviderGroupAssignmentCardStore',
+          )
         },
       }),
     ),

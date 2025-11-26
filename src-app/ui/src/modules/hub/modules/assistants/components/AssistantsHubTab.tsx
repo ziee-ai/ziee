@@ -35,23 +35,25 @@ export function AssistantsHubTab() {
     // Search
     if (searchTerm) {
       const search = searchTerm.toLowerCase()
-      filtered = filtered.filter(a =>
-        a.name.toLowerCase().includes(search) ||
-        a.display_name.toLowerCase().includes(search) ||
-        a.description?.toLowerCase().includes(search)
+      filtered = filtered.filter(
+        a =>
+          a.name.toLowerCase().includes(search) ||
+          a.display_name.toLowerCase().includes(search) ||
+          a.description?.toLowerCase().includes(search),
       )
     }
 
     // Tags
     if (selectedTags.length > 0) {
       filtered = filtered.filter(a =>
-        selectedTags.some(tag => a.tags?.includes(tag))
+        selectedTags.some(tag => a.tags?.includes(tag)),
       )
     }
 
     // Sort (create a copy to avoid mutating read-only array from store)
     const sorted = [...filtered].sort((a, b) => {
-      if (sortBy === 'popular') return (b.popularity_score || 0) - (a.popularity_score || 0)
+      if (sortBy === 'popular')
+        return (b.popularity_score || 0) - (a.popularity_score || 0)
       if (sortBy === 'name') return a.name.localeCompare(b.name)
       return 0
     })

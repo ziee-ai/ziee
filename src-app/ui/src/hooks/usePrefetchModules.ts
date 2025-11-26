@@ -13,8 +13,15 @@ export function usePrefetchModules() {
     const prefetch = () => {
       routes.forEach(route => {
         // If element is a function (preload function), call it to trigger the import
-        if (typeof route.element === 'function' && !isValidElement(route.element)) {
-          ;(route.element as () => Promise<{ default: React.ComponentType<any> }>)()
+        if (
+          typeof route.element === 'function' &&
+          !isValidElement(route.element)
+        ) {
+          ;(
+            route.element as () => Promise<{
+              default: React.ComponentType<any>
+            }>
+          )()
         }
       })
     }

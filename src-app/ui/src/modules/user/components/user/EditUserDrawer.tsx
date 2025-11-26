@@ -19,10 +19,14 @@ const validatePermissions = (_: any, value: string) => {
 
     // Check if all values are valid permissions
     const validPermissions = Object.values(Permissions)
-    const invalidPermissions = parsed.filter(perm => !validPermissions.includes(perm))
+    const invalidPermissions = parsed.filter(
+      perm => !validPermissions.includes(perm),
+    )
 
     if (invalidPermissions.length > 0) {
-      return Promise.reject(`Invalid permissions: ${invalidPermissions.join(', ')}`)
+      return Promise.reject(
+        `Invalid permissions: ${invalidPermissions.join(', ')}`,
+      )
     }
 
     return Promise.resolve()
@@ -43,9 +47,10 @@ export function EditUserDrawer() {
         username: editingUser.username,
         email: editingUser.email,
         is_active: editingUser.is_active,
-        permissions: editingUser.permissions?.length > 0
-          ? JSON.stringify(editingUser.permissions, null, 2)
-          : '',
+        permissions:
+          editingUser.permissions?.length > 0
+            ? JSON.stringify(editingUser.permissions, null, 2)
+            : '',
       })
     }
   }, [editingUser, editForm])
@@ -58,7 +63,9 @@ export function EditUserDrawer() {
         username: values.username,
         email: values.email,
         is_active: values.is_active,
-        permissions: values.permissions ? JSON.parse(values.permissions) : undefined,
+        permissions: values.permissions
+          ? JSON.parse(values.permissions)
+          : undefined,
       }
 
       await Stores.Users.updateUser(editingUser.id, updateData)
@@ -84,7 +91,12 @@ export function EditUserDrawer() {
       width={600}
       maskClosable={false}
     >
-      <Form name="edit-user-form" form={editForm} layout="vertical" onFinish={handleEditUser}>
+      <Form
+        name="edit-user-form"
+        form={editForm}
+        layout="vertical"
+        onFinish={handleEditUser}
+      >
         <Form.Item
           name="username"
           label="Username"
@@ -105,11 +117,7 @@ export function EditUserDrawer() {
         >
           <Input placeholder="Enter email" />
         </Form.Item>
-        <Form.Item
-          name="is_active"
-          label="Active"
-          valuePropName="checked"
-        >
+        <Form.Item name="is_active" label="Active" valuePropName="checked">
           <Switch />
         </Form.Item>
         <Form.Item
@@ -117,10 +125,7 @@ export function EditUserDrawer() {
           label="Permissions (JSON Array)"
           rules={[{ validator: validatePermissions }]}
         >
-          <TextArea
-            rows={6}
-            placeholder='["users::read", "users::edit"]'
-          />
+          <TextArea rows={6} placeholder='["users::read", "users::edit"]' />
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="gap-2">

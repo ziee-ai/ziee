@@ -46,9 +46,7 @@ export function ResetPasswordDrawer() {
             { min: 6, message: 'Password must be at least 6 characters' },
           ]}
         >
-          <Input.Password
-            placeholder="Enter new password"
-          />
+          <Input.Password placeholder="Enter new password" />
         </Form.Item>
         <Form.Item
           name="confirm_password"
@@ -66,9 +64,7 @@ export function ResetPasswordDrawer() {
             }),
           ]}
         >
-          <Input.Password
-            placeholder="Confirm new password"
-          />
+          <Input.Password placeholder="Confirm new password" />
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="gap-2">

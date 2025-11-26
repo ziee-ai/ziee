@@ -13,14 +13,23 @@ loadModules()
 /**
  * ConditionalComponent - Wrapper that checks shouldMount hook before rendering
  */
-function ConditionalComponent({ registration }: { registration: ComponentRegistration }) {
+function ConditionalComponent({
+  registration,
+}: {
+  registration: ComponentRegistration
+}) {
   // Call shouldMount hook if provided, default to true
   const shouldMount = registration.shouldMount?.() ?? true
 
   // Memoize the component renderer to prevent recreating it when shouldMount changes
   const renderer = useMemo(
-    () => <LazyComponentRenderer component={registration.component} fallback={null} />,
-    [registration.component]
+    () => (
+      <LazyComponentRenderer
+        component={registration.component}
+        fallback={null}
+      />
+    ),
+    [registration.component],
   )
 
   if (!shouldMount) {

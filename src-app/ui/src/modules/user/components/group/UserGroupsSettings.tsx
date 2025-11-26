@@ -34,10 +34,14 @@ const validatePermissions = (_: any, value: string) => {
 
     // Check if all values are valid permissions
     const validPermissions = Object.values(Permissions)
-    const invalidPermissions = parsed.filter(perm => !validPermissions.includes(perm))
+    const invalidPermissions = parsed.filter(
+      perm => !validPermissions.includes(perm),
+    )
 
     if (invalidPermissions.length > 0) {
-      return Promise.reject(`Invalid permissions: ${invalidPermissions.join(', ')}`)
+      return Promise.reject(
+        `Invalid permissions: ${invalidPermissions.join(', ')}`,
+      )
     }
 
     return Promise.resolve()
@@ -135,7 +139,7 @@ export function UserGroupsSettings() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {groups.map((group) => (
+              {groups.map(group => (
                 <GroupListItem
                   key={group.id}
                   group={group}
@@ -200,10 +204,7 @@ export function UserGroupsSettings() {
               label="Permissions (JSON Array)"
               rules={[{ validator: validatePermissions }]}
             >
-              <TextArea
-                rows={6}
-                placeholder='["users::read", "users::edit"]'
-              />
+              <TextArea rows={6} placeholder='["users::read", "users::edit"]' />
             </Form.Item>
 
             <Form.Item className="mb-0">

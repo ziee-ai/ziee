@@ -1,4 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+} from 'react-router-dom'
 import { Spin } from 'antd'
 import { Stores } from '@/core/stores'
 import { AuthGuard } from '@/modules/auth'
@@ -29,7 +35,10 @@ export function RouterComponent() {
    */
   const renderRoutesForLayoutGroup = (routeList: RouteConfig<any>[]) => {
     // Group by layout
-    const routesByLayout = new Map<LayoutDefinition<any> | null, RouteConfig<any>[]>()
+    const routesByLayout = new Map<
+      LayoutDefinition<any> | null,
+      RouteConfig<any>[]
+    >()
 
     routeList.forEach(route => {
       const layoutKey = route.layout || null
@@ -39,41 +48,11 @@ export function RouterComponent() {
       routesByLayout.get(layoutKey)!.push(route)
     })
 
-    return Array.from(routesByLayout.entries()).map(([layoutDef, layoutRoutes]) => {
-      if (!layoutDef) {
-        // No layout - render routes directly
-        return layoutRoutes.map(route => (
-          <Route
-            key={route.path}
-            path={route.path}
-            element={
-              <LazyComponentRenderer
-                component={route.element}
-                fallback={
-                  <div className="h-full w-full flex items-center justify-center">
-                    <Spin size="large" />
-                  </div>
-                }
-              />
-            }
-            index={route.index}
-          />
-        ))
-      }
-
-      // Render layout with nested routes
-      const LayoutComponent = layoutDef.component
-
-      return (
-        <Route
-          key={layoutDef.component.name || 'layout'}
-          element={
-            <LayoutComponent>
-              <Outlet />
-            </LayoutComponent>
-          }
-        >
-          {layoutRoutes.map(route => (
+    return Array.from(routesByLayout.entries()).map(
+      ([layoutDef, layoutRoutes]) => {
+        if (!layoutDef) {
+          // No layout - render routes directly
+          return layoutRoutes.map(route => (
             <Route
               key={route.path}
               path={route.path}
@@ -89,10 +68,42 @@ export function RouterComponent() {
               }
               index={route.index}
             />
-          ))}
-        </Route>
-      )
-    })
+          ))
+        }
+
+        // Render layout with nested routes
+        const LayoutComponent = layoutDef.component
+
+        return (
+          <Route
+            key={layoutDef.component.name || 'layout'}
+            element={
+              <LayoutComponent>
+                <Outlet />
+              </LayoutComponent>
+            }
+          >
+            {layoutRoutes.map(route => (
+              <Route
+                key={route.path}
+                path={route.path}
+                element={
+                  <LazyComponentRenderer
+                    component={route.element}
+                    fallback={
+                      <div className="h-full w-full flex items-center justify-center">
+                        <Spin size="large" />
+                      </div>
+                    }
+                  />
+                }
+                index={route.index}
+              />
+            ))}
+          </Route>
+        )
+      },
+    )
   }
 
   return (

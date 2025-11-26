@@ -6,7 +6,7 @@ interface RoutesState {
   addRoutes: (routes: RouteConfig<any>[]) => void
 }
 
-export const useRoutesStore = create<RoutesState>((set) => ({
+export const useRoutesStore = create<RoutesState>(set => ({
   routes: [],
 
   addRoutes: (routes: RouteConfig<any>[]) => {

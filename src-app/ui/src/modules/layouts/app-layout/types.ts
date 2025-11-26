@@ -1,4 +1,9 @@
-import type { ReactNode, ReactElement, ComponentType, LazyExoticComponent } from 'react'
+import type {
+  ReactNode,
+  ReactElement,
+  ComponentType,
+  LazyExoticComponent,
+} from 'react'
 import type { StoreProxy } from '@/core/stores'
 import type { useAppLayoutStore } from './AppLayout.store'
 
@@ -49,7 +54,11 @@ export interface SidebarActionItem {
  */
 export interface SidebarWidgetItem {
   id: string
-  component: ComponentType<any> | ReactElement | LazyExoticComponent<ComponentType<any>> | (() => Promise<{ default: ComponentType<any> }>)
+  component:
+    | ComponentType<any>
+    | ReactElement
+    | LazyExoticComponent<ComponentType<any>>
+    | (() => Promise<{ default: ComponentType<any> }>)
   order: number
 }
 

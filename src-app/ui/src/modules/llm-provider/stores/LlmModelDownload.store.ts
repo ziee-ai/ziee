@@ -118,7 +118,9 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
 
           // Remove from local state immediately (backend will send update via SSE)
           set(state => ({
-            downloads: state.downloads.filter(download => download.id !== downloadId),
+            downloads: state.downloads.filter(
+              download => download.id !== downloadId,
+            ),
           }))
         } catch (error) {
           console.error('Failed to cancel download:', error)
@@ -133,7 +135,9 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
 
           // Remove from local state
           set(state => ({
-            downloads: state.downloads.filter(download => download.id !== downloadId),
+            downloads: state.downloads.filter(
+              download => download.id !== downloadId,
+            ),
           }))
         } catch (error) {
           console.error('Failed to delete download:', error)
@@ -143,7 +147,9 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
 
       clearLlmModelDownload: (downloadId: string): void => {
         set(state => ({
-          downloads: state.downloads.filter(download => download.id !== downloadId),
+          downloads: state.downloads.filter(
+            download => download.id !== downloadId,
+          ),
         }))
       },
 
@@ -216,13 +222,17 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                     providerIds,
                   )
                   for (const providerId of providerIds) {
-                    void useLlmProviderStore.getState().loadModelsForProvider(providerId)
+                    void useLlmProviderStore
+                      .getState()
+                      .loadModelsForProvider(providerId)
                   }
                 }
 
                 set(state => {
                   const updatedDownloads = state.downloads.map(download => {
-                    const update = updates.find((u: any) => u.id === download.id)
+                    const update = updates.find(
+                      (u: any) => u.id === download.id,
+                    )
                     return update ? { ...download, ...update } : download
                   })
 
@@ -256,7 +266,9 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
                   providerIds,
                 )
                 for (const providerId of providerIds) {
-                  void useLlmProviderStore.getState().loadModelsForProvider(providerId)
+                  void useLlmProviderStore
+                    .getState()
+                    .loadModelsForProvider(providerId)
                 }
 
                 // Disconnect and reload downloads

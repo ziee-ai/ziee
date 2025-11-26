@@ -100,11 +100,7 @@ export function TitleEditor({
         {conversation?.title || 'Untitled Conversation'}
       </Typography.Title>
       {canEdit && (
-        <Button
-          type="text"
-          icon={<EditOutlined />}
-          onClick={handleEditClick}
-        />
+        <Button type="text" icon={<EditOutlined />} onClick={handleEditClick} />
       )}
     </div>
   )

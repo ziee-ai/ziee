@@ -4,7 +4,11 @@ import { useHubAssistantsStore } from './stores/hub-assistants-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
 
-const AssistantsHubTab = lazyWithPreload(() => import('./components/AssistantsHubTab').then(m => ({ default: m.AssistantsHubTab })))
+const AssistantsHubTab = lazyWithPreload(() =>
+  import('./components/AssistantsHubTab').then(m => ({
+    default: m.AssistantsHubTab,
+  })),
+)
 
 export default createModule({
   metadata: {

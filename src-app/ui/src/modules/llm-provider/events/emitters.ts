@@ -22,21 +22,30 @@ export const emitLlmProviderDeleted = async (providerId: string) => {
   })
 }
 
-export const emitLlmModelEnabled = async (modelId: string, providerId: string) => {
+export const emitLlmModelEnabled = async (
+  modelId: string,
+  providerId: string,
+) => {
   await Stores.EventBus.emit({
     type: 'llm_model.enabled',
     data: { modelId, providerId },
   })
 }
 
-export const emitLlmModelDisabled = async (modelId: string, providerId: string) => {
+export const emitLlmModelDisabled = async (
+  modelId: string,
+  providerId: string,
+) => {
   await Stores.EventBus.emit({
     type: 'llm_model.disabled',
     data: { modelId, providerId },
   })
 }
 
-export const emitLlmModelDeleted = async (modelId: string, providerId: string) => {
+export const emitLlmModelDeleted = async (
+  modelId: string,
+  providerId: string,
+) => {
   await Stores.EventBus.emit({
     type: 'llm_model.deleted',
     data: { modelId, providerId },

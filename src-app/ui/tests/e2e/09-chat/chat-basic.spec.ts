@@ -12,9 +12,6 @@ import {
 } from '../../common/provider-helpers'
 import {
   goToNewChatPage,
-  waitForNewChatPageLoad,
-  goToChatPage,
-  selectModelInDropdown,
   sendChatMessage,
   createConversationWithModel,
   assertChatPageAccessibility,
@@ -133,7 +130,7 @@ test.describe('Chat - Basic Flow', () => {
     await createModelViaAPI(apiURL, adminToken, providerId, undefined, undefined, 'openai')
 
     // Create conversation (already navigates to conversation page)
-    const conversationId = await createConversationWithModel(
+    await createConversationWithModel(
       page,
       baseURL,
       'GPT-4o Mini',
@@ -185,7 +182,7 @@ test.describe('Chat - Basic Flow', () => {
     await page.waitForLoadState('load')
 
     // Create conversation with GPT-4o Mini (already navigates to conversation page)
-    const conversationId = await createConversationWithModel(
+    await createConversationWithModel(
       page,
       baseURL,
       'GPT-4o Mini',
@@ -237,7 +234,7 @@ test.describe('Chat - Basic Flow', () => {
     await login(page, baseURL, username, password)
 
     // Create conversation and send message
-    const conversationId = await createConversationWithModel(
+    await createConversationWithModel(
       page,
       baseURL,
       'GPT-4o Mini',

@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type { HubMCPServer, McpServer, CreateMcpServerFromHubRequest } from '@/api-client/types'
+import type {
+  HubMCPServer,
+  McpServer,
+  CreateMcpServerFromHubRequest,
+} from '@/api-client/types'
 
 interface HubMcpServersState {
   servers: HubMCPServer[]
@@ -77,7 +81,9 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
           }
         },
 
-        createFromHub: async (request: CreateMcpServerFromHubRequest): Promise<McpServer> => {
+        createFromHub: async (
+          request: CreateMcpServerFromHubRequest,
+        ): Promise<McpServer> => {
           set({ creating: true, error: null })
           try {
             const response = await ApiClient.Hub.createMcpServerFromHub(request)
@@ -107,7 +113,7 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
         __init__: {
           servers: () => get().loadServers(),
         },
-      })
-    )
-  )
+      }),
+    ),
+  ),
 )

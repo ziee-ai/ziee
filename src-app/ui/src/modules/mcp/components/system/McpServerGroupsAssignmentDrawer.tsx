@@ -130,9 +130,7 @@ export function McpServerGroupsAssignmentDrawer() {
               {groups.map(group => {
                 const isChecked = assignedIds.includes(group.id)
                 return (
-                  <Card
-                    key={group.id}
-                  >
+                  <Card key={group.id}>
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
@@ -147,7 +145,10 @@ export function McpServerGroupsAssignmentDrawer() {
                             {group.name}
                           </Text>
                           {group.is_default && (
-                            <Tag color="blue" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="blue"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               Default
                             </Tag>
                           )}

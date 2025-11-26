@@ -11,17 +11,20 @@ interface McpServerDetailsDrawerState {
   close: () => void
 }
 
-export const useMcpServerDetailsDrawerStore = create<McpServerDetailsDrawerState>()(
-  immer((set): McpServerDetailsDrawerState => ({
-    isOpen: false,
-    selectedServer: null,
+export const useMcpServerDetailsDrawerStore =
+  create<McpServerDetailsDrawerState>()(
+    immer(
+      (set): McpServerDetailsDrawerState => ({
+        isOpen: false,
+        selectedServer: null,
 
-    open: (server: HubMCPServer) => {
-      set({ isOpen: true, selectedServer: server })
-    },
+        open: (server: HubMCPServer) => {
+          set({ isOpen: true, selectedServer: server })
+        },
 
-    close: () => {
-      set({ isOpen: false, selectedServer: null })
-    },
-  })),
-)
+        close: () => {
+          set({ isOpen: false, selectedServer: null })
+        },
+      }),
+    ),
+  )

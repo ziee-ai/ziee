@@ -38,18 +38,26 @@ export const useUserGroupsDrawerStore = create<UserGroupsDrawerState>()(
             const eventBus = Stores.EventBus
 
             // Close drawer when user is deleted
-            eventBus.on('user.deleted', async event => {
-              const { userId } = event.data
-              const state = get()
-              if (state.user?.id === userId) {
-                get().closeUserGroupsDrawer()
-              }
-            }, GROUP)
+            eventBus.on(
+              'user.deleted',
+              async event => {
+                const { userId } = event.data
+                const state = get()
+                if (state.user?.id === userId) {
+                  get().closeUserGroupsDrawer()
+                }
+              },
+              GROUP,
+            )
 
             // Could refresh if currently viewing that group (optional)
-            eventBus.on('group.deleted', async () => {
-              // Optional: could trigger a refresh of the groups list
-            }, GROUP)
+            eventBus.on(
+              'group.deleted',
+              async () => {
+                // Optional: could trigger a refresh of the groups list
+              },
+              GROUP,
+            )
           },
         },
 

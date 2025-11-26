@@ -5,7 +5,9 @@ import type { useMcpServerDetailsDrawerStore } from './components/McpServerDetai
 declare module '@/core/stores' {
   interface RegisteredStores {
     HubMcpServers: StoreProxy<ReturnType<typeof useHubMcpServersStore.getState>>
-    McpServerDetailsDrawer: StoreProxy<ReturnType<typeof useMcpServerDetailsDrawerStore.getState>>
+    McpServerDetailsDrawer: StoreProxy<
+      ReturnType<typeof useMcpServerDetailsDrawerStore.getState>
+    >
   }
 }
 

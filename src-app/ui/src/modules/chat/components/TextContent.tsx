@@ -1,8 +1,8 @@
 import { memo } from 'react'
-import type { MessageContentItem } from '@/api-client/types'
+import type { MessageContent } from '@/api-client/types'
 
 interface TextContentProps {
-  content: MessageContentItem
+  content: MessageContent
   isUser: boolean
 }
 

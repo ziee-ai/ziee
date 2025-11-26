@@ -217,7 +217,7 @@ export function UsersSettings() {
                           colon={false}
                           styles={{
                             label: { fontSize: '12px', color: '#8c8c8c' },
-                            content: { fontSize: '12px' }
+                            content: { fontSize: '12px' },
                           }}
                         >
                           <Descriptions.Item label="Email">

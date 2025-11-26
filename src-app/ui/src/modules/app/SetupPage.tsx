@@ -75,7 +75,12 @@ export default function SetupPage() {
           />
         )}
 
-        <Form name="setup-form" form={form} layout="vertical" onFinish={onFinish}>
+        <Form
+          name="setup-form"
+          form={form}
+          layout="vertical"
+          onFinish={onFinish}
+        >
           <Form.Item
             label="Username"
             name="username"

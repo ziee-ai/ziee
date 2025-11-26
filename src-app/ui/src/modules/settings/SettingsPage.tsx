@@ -15,12 +15,14 @@ export default function SettingsPage() {
   const { slots } = Stores.ModuleSystem
 
   // Get and sort user settings from slots
-  const userSettingsItems = (slots.get('settingsUserPages') || [])
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const userSettingsItems = (slots.get('settingsUserPages') || []).sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  )
 
   // Get and sort admin settings from slots
-  const adminSettingsItems = (slots.get('settingsAdminPages') || [])
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const adminSettingsItems = (slots.get('settingsAdminPages') || []).sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  )
 
   // Build final menu
   const menuItems = [

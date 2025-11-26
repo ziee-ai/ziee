@@ -138,9 +138,12 @@ export function ProviderHeader() {
                 type={'primary'}
                 onClick={() => {
                   form.validateFields().then(async values => {
-                    await Stores.LlmProvider.updateLlmProvider(currentProvider.id, {
-                      name: values.name,
-                    })
+                    await Stores.LlmProvider.updateLlmProvider(
+                      currentProvider.id,
+                      {
+                        name: values.name,
+                      },
+                    )
                     setIsEditingName(false)
                   })
                 }}

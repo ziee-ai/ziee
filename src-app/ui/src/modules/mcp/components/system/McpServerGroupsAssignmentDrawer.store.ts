@@ -16,46 +16,53 @@ interface McpServerGroupsAssignmentState {
   __destroy__?: () => void
 }
 
-export const useMcpServerGroupsAssignmentStore = create<McpServerGroupsAssignmentState>()(
-  subscribeWithSelector(
-    immer((set, get) => ({
-      isOpen: false,
-      selectedServerId: null,
+export const useMcpServerGroupsAssignmentStore =
+  create<McpServerGroupsAssignmentState>()(
+    subscribeWithSelector(
+      immer((set, get) => ({
+        isOpen: false,
+        selectedServerId: null,
 
-      __init__: {
-        __store__: () => {
-          const GROUP = 'McpServerGroupsAssignmentDrawerStore'
-          const eventBus = Stores.EventBus
+        __init__: {
+          __store__: () => {
+            const GROUP = 'McpServerGroupsAssignmentDrawerStore'
+            const eventBus = Stores.EventBus
 
-          // Subscribe to mcp_server.deleted
-          eventBus.on('mcp_server.deleted', async event => {
-            const { serverId } = event.data
-            const state = get()
+            // Subscribe to mcp_server.deleted
+            eventBus.on(
+              'mcp_server.deleted',
+              async event => {
+                const { serverId } = event.data
+                const state = get()
 
-            if (state.selectedServerId === serverId) {
-              get().closeDrawer()
-            }
-          }, GROUP)
+                if (state.selectedServerId === serverId) {
+                  get().closeDrawer()
+                }
+              },
+              GROUP,
+            )
+          },
         },
-      },
 
-      openDrawer: (serverId: string) => {
-        set(state => {
-          state.isOpen = true
-          state.selectedServerId = serverId
-        })
-      },
+        openDrawer: (serverId: string) => {
+          set(state => {
+            state.isOpen = true
+            state.selectedServerId = serverId
+          })
+        },
 
-      closeDrawer: () => {
-        set(state => {
-          state.isOpen = false
-          state.selectedServerId = null
-        })
-      },
+        closeDrawer: () => {
+          set(state => {
+            state.isOpen = false
+            state.selectedServerId = null
+          })
+        },
 
-      __destroy__: () => {
-        Stores.EventBus.removeGroupListeners('McpServerGroupsAssignmentDrawerStore')
-      },
-    })),
-  ),
-)
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners(
+            'McpServerGroupsAssignmentDrawerStore',
+          )
+        },
+      })),
+    ),
+  )

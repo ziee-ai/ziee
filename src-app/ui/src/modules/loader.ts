@@ -54,7 +54,9 @@ function resolveDependencies(modules: AppModule[]): AppModule[] {
     const deps = graph.get(name) || []
     deps.forEach(dep => {
       if (!moduleMap.has(dep)) {
-        console.warn(`Module "${name}" depends on "${dep}" which is not loaded. Skipping dependency.`)
+        console.warn(
+          `Module "${name}" depends on "${dep}" which is not loaded. Skipping dependency.`,
+        )
         return
       }
       visit(dep, [...path, name])
@@ -115,7 +117,10 @@ export function loadModules(): void {
     // Phase 1: Meta-Framework - Call onModuleRegister hooks on all previously registered modules
     const { modules: registeredModules } = useModuleSystemStore.getState()
     registeredModules.forEach(registeredModule => {
-      if (registeredModule.metadata.name !== module.metadata.name && registeredModule.onModuleRegister) {
+      if (
+        registeredModule.metadata.name !== module.metadata.name &&
+        registeredModule.onModuleRegister
+      ) {
         registeredModule.onModuleRegister(module)
       }
     })

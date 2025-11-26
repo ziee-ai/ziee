@@ -23,10 +23,26 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
-const LlmProviderSettings = lazyWithPreload(() => import('./components/LlmProviderSettings').then(m => ({ default: m.LlmProviderSettings })))
-const GroupLlmProvidersAssignmentDrawer = lazyWithPreload(() => import('./components/GroupLlmProvidersAssignmentDrawer').then(m => ({ default: m.GroupLlmProvidersAssignmentDrawer })))
-const LlmProviderGroupsAssignmentDrawer = lazyWithPreload(() => import('./components/LlmProviderGroupsAssignmentDrawer').then(m => ({ default: m.LlmProviderGroupsAssignmentDrawer })))
-const LLMProviderGroupWidget = lazyWithPreload(() => import('./widgets/LLMProviderGroupWidget').then(m => ({ default: m.LLMProviderGroupWidget })))
+const LlmProviderSettings = lazyWithPreload(() =>
+  import('./components/LlmProviderSettings').then(m => ({
+    default: m.LlmProviderSettings,
+  })),
+)
+const GroupLlmProvidersAssignmentDrawer = lazyWithPreload(() =>
+  import('./components/GroupLlmProvidersAssignmentDrawer').then(m => ({
+    default: m.GroupLlmProvidersAssignmentDrawer,
+  })),
+)
+const LlmProviderGroupsAssignmentDrawer = lazyWithPreload(() =>
+  import('./components/LlmProviderGroupsAssignmentDrawer').then(m => ({
+    default: m.LlmProviderGroupsAssignmentDrawer,
+  })),
+)
+const LLMProviderGroupWidget = lazyWithPreload(() =>
+  import('./widgets/LLMProviderGroupWidget').then(m => ({
+    default: m.LLMProviderGroupWidget,
+  })),
+)
 
 export default createModule({
   metadata: {

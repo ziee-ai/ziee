@@ -33,24 +33,32 @@ export const useLlmRepositoryDrawerStore = create<LlmRepositoryDrawerState>()(
           const eventBus = Stores.EventBus
 
           // Subscribe to llm_repository.updated
-          eventBus.on('llm_repository.updated', async event => {
-            const { repository } = event.data
-            const state = get()
+          eventBus.on(
+            'llm_repository.updated',
+            async event => {
+              const { repository } = event.data
+              const state = get()
 
-            if (state.editingRepository?.id === repository.id) {
-              set({ editingRepository: repository })
-            }
-          }, GROUP)
+              if (state.editingRepository?.id === repository.id) {
+                set({ editingRepository: repository })
+              }
+            },
+            GROUP,
+          )
 
           // Subscribe to llm_repository.deleted
-          eventBus.on('llm_repository.deleted', async event => {
-            const { repositoryId } = event.data
-            const state = get()
+          eventBus.on(
+            'llm_repository.deleted',
+            async event => {
+              const { repositoryId } = event.data
+              const state = get()
 
-            if (state.editingRepository?.id === repositoryId) {
-              get().closeDrawer()
-            }
-          }, GROUP)
+              if (state.editingRepository?.id === repositoryId) {
+                get().closeDrawer()
+              }
+            },
+            GROUP,
+          )
         },
       },
 

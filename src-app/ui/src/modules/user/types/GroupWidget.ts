@@ -45,7 +45,9 @@ export interface GroupWidget {
    * Component function that renders the widget.
    * Should be a lazy-loaded component created with lazyWithPreload.
    */
-  component: React.ComponentType<GroupWidgetProps> | (() => Promise<{ default: React.ComponentType<GroupWidgetProps> }>)
+  component:
+    | React.ComponentType<GroupWidgetProps>
+    | (() => Promise<{ default: React.ComponentType<GroupWidgetProps> }>)
 }
 
 /**

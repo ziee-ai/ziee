@@ -115,14 +115,18 @@ export const useEditLlmModelDrawerStore = create<EditLlmModelDrawerState>()(
           const eventBus = Stores.EventBus
 
           // Subscribe to llm_model.deleted
-          eventBus.on('llm_model.deleted', async event => {
-            const { modelId } = event.data
-            const state = get()
+          eventBus.on(
+            'llm_model.deleted',
+            async event => {
+              const { modelId } = event.data
+              const state = get()
 
-            if (state.modelId === modelId) {
-              get().closeEditLlmModelDrawer()
-            }
-          }, GROUP)
+              if (state.modelId === modelId) {
+                get().closeEditLlmModelDrawer()
+              }
+            },
+            GROUP,
+          )
         },
       },
 
@@ -161,7 +165,10 @@ interface AddRemoteLlmModelDrawerState {
   providerType: string | null
 
   // Actions
-  openAddRemoteLlmModelDrawer: (providerId: string, providerType: string) => void
+  openAddRemoteLlmModelDrawer: (
+    providerId: string,
+    providerType: string,
+  ) => void
   closeAddRemoteLlmModelDrawer: () => void
   setAddRemoteLlmModelDrawerLoading: (loading: boolean) => void
 }
@@ -175,7 +182,10 @@ export const useAddRemoteLlmModelDrawerStore =
       providerType: null,
 
       // Actions
-      openAddRemoteLlmModelDrawer: (providerId: string, providerType: string) => {
+      openAddRemoteLlmModelDrawer: (
+        providerId: string,
+        providerType: string,
+      ) => {
         set({
           open: true,
           providerId,

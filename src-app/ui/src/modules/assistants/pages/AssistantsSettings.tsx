@@ -19,9 +19,7 @@ import {
   Typography,
 } from 'antd'
 import { useEffect } from 'react'
-import {
-  Stores,
-} from '../stores'
+import { Stores } from '../stores'
 import type { Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '../components/AssistantFormDrawer'
@@ -134,7 +132,10 @@ export function AssistantsSettings() {
           ) : (
             <div>
               {assistants.map((assistant, index) => (
-                <div key={assistant.id} data-test-assistant-id={`template-assistant-${assistant.id}`}>
+                <div
+                  key={assistant.id}
+                  data-test-assistant-id={`template-assistant-${assistant.id}`}
+                >
                   <div className="flex items-start gap-3 flex-wrap">
                     {/* Assistant Info */}
                     <div className="flex-1">
@@ -164,7 +165,7 @@ export function AssistantsSettings() {
                         colon={false}
                         styles={{
                           label: { fontSize: '12px' },
-                          content: { fontSize: '12px' }
+                          content: { fontSize: '12px' },
                         }}
                       >
                         <Descriptions.Item label="Description">

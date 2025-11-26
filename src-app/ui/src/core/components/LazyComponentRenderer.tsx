@@ -1,4 +1,12 @@
-import { Suspense, lazy, isValidElement, useMemo, type ReactNode, type ComponentType, type ReactElement } from 'react'
+import {
+  Suspense,
+  lazy,
+  isValidElement,
+  useMemo,
+  type ReactNode,
+  type ComponentType,
+  type ReactElement,
+} from 'react'
 import { Spin } from 'antd'
 
 type LazyComponent = () => Promise<{ default: ComponentType<any> }>

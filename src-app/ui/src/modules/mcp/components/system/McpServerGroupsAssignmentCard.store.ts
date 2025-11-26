@@ -40,45 +40,171 @@ interface SystemMcpServerGroupCardState {
   __destroy__?: () => void
 }
 
-export const useSystemMcpServerGroupCardStore = create<SystemMcpServerGroupCardState>()(
-  subscribeWithSelector(
-    immer(
-      (set, get): SystemMcpServerGroupCardState => ({
-        serverGroups: new Map(),
-        allGroups: [],
-        groupsLoading: false,
-        groupsError: null,
-        groupsInitialized: false,
-        __init__: {
-          // Store-level initialization - runs once on first access (any property)
-          __store__: () => {
-            const GROUP = 'McpServerGroupsAssignmentCardStore'
-            // Subscribe to group events for cache invalidation
-            const eventBus = Stores.EventBus
+export const useSystemMcpServerGroupCardStore =
+  create<SystemMcpServerGroupCardState>()(
+    subscribeWithSelector(
+      immer(
+        (set, get): SystemMcpServerGroupCardState => ({
+          serverGroups: new Map(),
+          allGroups: [],
+          groupsLoading: false,
+          groupsError: null,
+          groupsInitialized: false,
+          __init__: {
+            // Store-level initialization - runs once on first access (any property)
+            __store__: () => {
+              const GROUP = 'McpServerGroupsAssignmentCardStore'
+              // Subscribe to group events for cache invalidation
+              const eventBus = Stores.EventBus
 
-            // Common handler to invalidate cache and reload groups
-            const handleGroupChange = () => {
-              set(state => {
-                state.groupsInitialized = false
-              })
-              get().loadAllGroups()
+              // Common handler to invalidate cache and reload groups
+              const handleGroupChange = () => {
+                set(state => {
+                  state.groupsInitialized = false
+                })
+                get().loadAllGroups()
+              }
+
+              // Type-safe - TypeScript infers event types automatically
+              eventBus.on('group.created', handleGroupChange, GROUP)
+              eventBus.on('group.updated', handleGroupChange, GROUP)
+              eventBus.on('group.deleted', handleGroupChange, GROUP)
+
+              // When groups are assigned to a server, update the cache directly
+              eventBus.on(
+                'mcp_server.groups_changed',
+                async event => {
+                  const { serverId, groupIds } = event.data
+
+                  // Ensure groups are loaded
+                  await get().loadAllGroups()
+
+                  // Use cached groups to build the assigned list
+                  const allGroups = get().allGroups
+                  const assignedGroups = allGroups.filter(g =>
+                    groupIds.includes(g.id),
+                  )
+
+                  set(state => {
+                    state.serverGroups.set(serverId, {
+                      serverId,
+                      groups: assignedGroups,
+                      loading: false,
+                      error: null,
+                      lastFetched: Date.now(),
+                    })
+                  })
+                },
+                GROUP,
+              )
+            },
+
+            // Property-specific initialization - runs when allGroups is first accessed
+            allGroups: async () => {
+              await get().loadAllGroups()
+            },
+          },
+
+          /**
+           * Load all user groups (cached)
+           * Only fetches if not already initialized
+           */
+          loadAllGroups: async (): Promise<void> => {
+            const state = get()
+
+            // If already loading, don't start another fetch
+            if (state.groupsLoading) {
+              return
             }
 
-            // Type-safe - TypeScript infers event types automatically
-            eventBus.on('group.created', handleGroupChange, GROUP)
-            eventBus.on('group.updated', handleGroupChange, GROUP)
-            eventBus.on('group.deleted', handleGroupChange, GROUP)
+            // If already initialized, use cached data
+            if (state.groupsInitialized && !state.groupsError) {
+              return
+            }
 
-            // When groups are assigned to a server, update the cache directly
-            eventBus.on('mcp_server.groups_changed', async event => {
-              const { serverId, groupIds } = event.data
+            set(state => {
+              state.groupsLoading = true
+              state.groupsError = null
+            })
 
+            try {
+              const response = await ApiClient.UserGroup.list({
+                page: 1,
+                per_page: 1000,
+              })
+
+              set(state => {
+                state.allGroups = response.groups
+                state.groupsLoading = false
+                state.groupsError = null
+                state.groupsInitialized = true
+              })
+            } catch (error) {
+              console.error('Failed to load user groups:', error)
+
+              set(state => {
+                state.groupsLoading = false
+                state.groupsError =
+                  error instanceof Error
+                    ? error.message
+                    : 'Failed to load groups'
+              })
+
+              throw error
+            }
+          },
+
+          /**
+           * Load groups for a specific server
+           * Uses cached groups instead of fetching every time
+           */
+          loadGroupsForServer: async (
+            serverId: string,
+            force = false,
+          ): Promise<void> => {
+            const state = get()
+            const existing = state.serverGroups.get(serverId)
+
+            // If already loading, don't start another fetch
+            if (existing?.loading && !force) {
+              return
+            }
+
+            // If data is fresh (< 30 seconds old) and not forcing, use cached data
+            if (
+              !force &&
+              existing?.lastFetched &&
+              Date.now() - existing.lastFetched < 30000 &&
+              !existing.error
+            ) {
+              return
+            }
+
+            // Set loading state
+            set(state => {
+              state.serverGroups.set(serverId, {
+                serverId,
+                groups: existing?.groups || [],
+                loading: true,
+                error: null,
+                lastFetched: existing?.lastFetched || null,
+              })
+            })
+
+            try {
               // Ensure groups are loaded
               await get().loadAllGroups()
 
-              // Use cached groups to build the assigned list
+              // Get group IDs for this server
+              const groupIds = await ApiClient.McpServerSystem.getServerGroups({
+                id: serverId,
+              })
+
+              // Use cached groups instead of fetching
               const allGroups = get().allGroups
-              const assignedGroups = allGroups.filter(g => groupIds.includes(g.id))
+              const assignedGroups = allGroups.filter((g: Group) =>
+                groupIds.includes(g.id),
+              )
 
               set(state => {
                 state.serverGroups.set(serverId, {
@@ -89,163 +215,63 @@ export const useSystemMcpServerGroupCardStore = create<SystemMcpServerGroupCardS
                   lastFetched: Date.now(),
                 })
               })
-            }, GROUP)
+            } catch (error) {
+              console.error(
+                `Failed to load groups for server ${serverId}:`,
+                error,
+              )
+
+              set(state => {
+                state.serverGroups.set(serverId, {
+                  serverId,
+                  groups: existing?.groups || [],
+                  loading: false,
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : 'Failed to load groups',
+                  lastFetched: existing?.lastFetched || null,
+                })
+              })
+
+              throw error
+            }
           },
 
-          // Property-specific initialization - runs when allGroups is first accessed
-          allGroups: async () => {
-            await get().loadAllGroups()
+          /**
+           * Clear cached data for a specific server
+           */
+          clearServerGroups: (serverId: string): void => {
+            set(state => {
+              state.serverGroups.delete(serverId)
+            })
           },
-        },
 
-        /**
-         * Load all user groups (cached)
-         * Only fetches if not already initialized
-         */
-        loadAllGroups: async (): Promise<void> => {
-          const state = get()
-
-          // If already loading, don't start another fetch
-          if (state.groupsLoading) {
-            return
-          }
-
-          // If already initialized, use cached data
-          if (state.groupsInitialized && !state.groupsError) {
-            return
-          }
-
-          set(state => {
-            state.groupsLoading = true
-            state.groupsError = null
-          })
-
-          try {
-            const response = await ApiClient.UserGroup.list({ page: 1, per_page: 1000 })
-
+          /**
+           * Clear all cached group data
+           */
+          clearAllServerGroups: (): void => {
             set(state => {
-              state.allGroups = response.groups
-              state.groupsLoading = false
-              state.groupsError = null
-              state.groupsInitialized = true
+              state.serverGroups.clear()
             })
-          } catch (error) {
-            console.error('Failed to load user groups:', error)
+          },
 
-            set(state => {
-              state.groupsLoading = false
-              state.groupsError = error instanceof Error ? error.message : 'Failed to load groups'
-            })
+          /**
+           * Get groups for a specific server from the store
+           */
+          getServerGroupsData: (serverId: string): ServerGroups | undefined => {
+            return get().serverGroups.get(serverId)
+          },
 
-            throw error
-          }
-        },
-
-        /**
-         * Load groups for a specific server
-         * Uses cached groups instead of fetching every time
-         */
-        loadGroupsForServer: async (serverId: string, force = false): Promise<void> => {
-          const state = get()
-          const existing = state.serverGroups.get(serverId)
-
-          // If already loading, don't start another fetch
-          if (existing?.loading && !force) {
-            return
-          }
-
-          // If data is fresh (< 30 seconds old) and not forcing, use cached data
-          if (
-            !force &&
-            existing?.lastFetched &&
-            Date.now() - existing.lastFetched < 30000 &&
-            !existing.error
-          ) {
-            return
-          }
-
-          // Set loading state
-          set(state => {
-            state.serverGroups.set(serverId, {
-              serverId,
-              groups: existing?.groups || [],
-              loading: true,
-              error: null,
-              lastFetched: existing?.lastFetched || null,
-            })
-          })
-
-          try {
-            // Ensure groups are loaded
-            await get().loadAllGroups()
-
-            // Get group IDs for this server
-            const groupIds = await ApiClient.McpServerSystem.getServerGroups({ id: serverId })
-
-            // Use cached groups instead of fetching
-            const allGroups = get().allGroups
-            const assignedGroups = allGroups.filter((g: Group) =>
-              groupIds.includes(g.id),
+          /**
+           * Cleanup method - removes all event listeners for this store
+           */
+          __destroy__: () => {
+            Stores.EventBus.removeGroupListeners(
+              'McpServerGroupsAssignmentCardStore',
             )
-
-            set(state => {
-              state.serverGroups.set(serverId, {
-                serverId,
-                groups: assignedGroups,
-                loading: false,
-                error: null,
-                lastFetched: Date.now(),
-              })
-            })
-          } catch (error) {
-            console.error(`Failed to load groups for server ${serverId}:`, error)
-
-            set(state => {
-              state.serverGroups.set(serverId, {
-                serverId,
-                groups: existing?.groups || [],
-                loading: false,
-                error: error instanceof Error ? error.message : 'Failed to load groups',
-                lastFetched: existing?.lastFetched || null,
-              })
-            })
-
-            throw error
-          }
-        },
-
-        /**
-         * Clear cached data for a specific server
-         */
-        clearServerGroups: (serverId: string): void => {
-          set(state => {
-            state.serverGroups.delete(serverId)
-          })
-        },
-
-        /**
-         * Clear all cached group data
-         */
-        clearAllServerGroups: (): void => {
-          set(state => {
-            state.serverGroups.clear()
-          })
-        },
-
-        /**
-         * Get groups for a specific server from the store
-         */
-        getServerGroupsData: (serverId: string): ServerGroups | undefined => {
-          return get().serverGroups.get(serverId)
-        },
-
-        /**
-         * Cleanup method - removes all event listeners for this store
-         */
-        __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('McpServerGroupsAssignmentCardStore')
-        },
-      }),
+          },
+        }),
+      ),
     ),
-  ),
-)
+  )

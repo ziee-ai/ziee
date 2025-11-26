@@ -47,7 +47,10 @@ interface UserGroupsState {
   // Actions
   loadUserGroups: (page?: number, pageSize?: number) => Promise<void>
   createUserGroup: (data: CreateGroupRequest) => Promise<Group | undefined>
-  updateUserGroup: (id: string, data: UpdateGroupRequest) => Promise<Group | undefined>
+  updateUserGroup: (
+    id: string,
+    data: UpdateGroupRequest,
+  ) => Promise<Group | undefined>
   deleteUserGroup: (id: string) => Promise<void>
   loadUserGroupMembers: (groupId: string) => Promise<void>
   assignUserToUserGroup: (userId: string, groupId: string) => Promise<void>
@@ -89,7 +92,11 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           const requestPageSize = pageSize || currentState.pageSize
 
           // Skip if already initialized and loading first page without explicit page parameter
-          if (currentState.isInitialized && currentState.loadingGroups && !page) {
+          if (
+            currentState.isInitialized &&
+            currentState.loadingGroups &&
+            !page
+          ) {
             return
           }
 
@@ -110,7 +117,8 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           })
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to load groups',
+            error:
+              error instanceof Error ? error.message : 'Failed to load groups',
             loadingGroups: false,
           })
           throw error
@@ -141,7 +149,8 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           return group
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to create group',
+            error:
+              error instanceof Error ? error.message : 'Failed to create group',
             creating: false,
           })
           throw error
@@ -175,7 +184,8 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           return group
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to update group',
+            error:
+              error instanceof Error ? error.message : 'Failed to update group',
             updating: false,
           })
           throw error
@@ -206,7 +216,8 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           set({ deleting: false })
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to delete group',
+            error:
+              error instanceof Error ? error.message : 'Failed to delete group',
             deleting: false,
           })
           throw error
@@ -250,7 +261,9 @@ export const useUserGroupsStore = create<UserGroupsState>()(
         } catch (error) {
           set({
             error:
-              error instanceof Error ? error.message : 'Failed to load group members',
+              error instanceof Error
+                ? error.message
+                : 'Failed to load group members',
             loadingGroupMembers: false,
           })
           throw error
@@ -275,7 +288,10 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           try {
             await emitGroupMemberAdded(groupId, userId)
           } catch (eventError) {
-            console.error('Failed to emit group member added event:', eventError)
+            console.error(
+              'Failed to emit group member added event:',
+              eventError,
+            )
           }
 
           // Reload group members if we're viewing this group
@@ -315,7 +331,10 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           try {
             await emitGroupMemberRemoved(groupId, userId)
           } catch (eventError) {
-            console.error('Failed to emit group member removed event:', eventError)
+            console.error(
+              'Failed to emit group member removed event:',
+              eventError,
+            )
           }
 
           set({ updating: false })
@@ -341,64 +360,88 @@ export const useUserGroupsStore = create<UserGroupsState>()(
           const GROUP = 'UserGroupsStore'
 
           // Subscribe to group.created
-          eventBus.on('group.created', async event => {
-            const { group } = event.data
-            set(state => ({
-              groups: [...state.groups, group],
-              total: state.total + 1,
-            }))
-          }, GROUP)
+          eventBus.on(
+            'group.created',
+            async event => {
+              const { group } = event.data
+              set(state => ({
+                groups: [...state.groups, group],
+                total: state.total + 1,
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to group.updated
-          eventBus.on('group.updated', async event => {
-            const { group } = event.data
-            set(state => ({
-              groups: state.groups.map(g => (g.id === group.id ? group : g)),
-            }))
-          }, GROUP)
+          eventBus.on(
+            'group.updated',
+            async event => {
+              const { group } = event.data
+              set(state => ({
+                groups: state.groups.map(g => (g.id === group.id ? group : g)),
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to group.deleted
-          eventBus.on('group.deleted', async event => {
-            const { groupId } = event.data
-            set(state => ({
-              groups: state.groups.filter(g => g.id !== groupId),
-              total: state.total - 1,
-            }))
-          }, GROUP)
+          eventBus.on(
+            'group.deleted',
+            async event => {
+              const { groupId } = event.data
+              set(state => ({
+                groups: state.groups.filter(g => g.id !== groupId),
+                total: state.total - 1,
+              }))
+            },
+            GROUP,
+          )
 
           // Subscribe to group.member_added
-          eventBus.on('group.member_added', async event => {
-            const { groupId } = event.data
-            const state = get()
-            // If currentGroupId matches, reload group members
-            if (state.currentGroupId === groupId) {
-              await get().loadUserGroupMembers(groupId)
-            }
-          }, GROUP)
+          eventBus.on(
+            'group.member_added',
+            async event => {
+              const { groupId } = event.data
+              const state = get()
+              // If currentGroupId matches, reload group members
+              if (state.currentGroupId === groupId) {
+                await get().loadUserGroupMembers(groupId)
+              }
+            },
+            GROUP,
+          )
 
           // Subscribe to group.member_removed
-          eventBus.on('group.member_removed', async event => {
-            const { groupId, userId } = event.data
-            const state = get()
-            // If currentGroupId matches, remove member from currentGroupMembers
-            if (state.currentGroupId === groupId) {
+          eventBus.on(
+            'group.member_removed',
+            async event => {
+              const { groupId, userId } = event.data
+              const state = get()
+              // If currentGroupId matches, remove member from currentGroupMembers
+              if (state.currentGroupId === groupId) {
+                set(state => ({
+                  currentGroupMembers: state.currentGroupMembers.filter(
+                    m => m.id !== userId,
+                  ),
+                }))
+              }
+            },
+            GROUP,
+          )
+
+          // Subscribe to user.deleted
+          eventBus.on(
+            'user.deleted',
+            async event => {
+              const { userId } = event.data
               set(state => ({
                 currentGroupMembers: state.currentGroupMembers.filter(
                   m => m.id !== userId,
                 ),
               }))
-            }
-          }, GROUP)
-
-          // Subscribe to user.deleted
-          eventBus.on('user.deleted', async event => {
-            const { userId } = event.data
-            set(state => ({
-              currentGroupMembers: state.currentGroupMembers.filter(
-                m => m.id !== userId,
-              ),
-            }))
-          }, GROUP)
+            },
+            GROUP,
+          )
         },
         groups: () => get().loadUserGroups(),
       },

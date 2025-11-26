@@ -126,7 +126,9 @@ export function GroupLlmProvidersAssignmentDrawer() {
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
                           checked={isChecked}
-                          onChange={checked => handleToggle(provider.id, checked)}
+                          onChange={checked =>
+                            handleToggle(provider.id, checked)
+                          }
                           style={{ marginTop: '2px' }}
                         />
                       </div>
@@ -136,16 +138,25 @@ export function GroupLlmProvidersAssignmentDrawer() {
                             {provider.name}
                           </Text>
                           {provider.built_in && (
-                            <Tag color="blue" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="blue"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               Built-in
                             </Tag>
                           )}
                           {provider.enabled ? (
-                            <Tag color="green" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="green"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               Enabled
                             </Tag>
                           ) : (
-                            <Tag color="orange" style={{ fontSize: '11px', margin: 0 }}>
+                            <Tag
+                              color="orange"
+                              style={{ fontSize: '11px', margin: 0 }}
+                            >
                               Disabled
                             </Tag>
                           )}

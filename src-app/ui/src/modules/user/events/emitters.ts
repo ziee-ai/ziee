@@ -74,7 +74,10 @@ export const emitGroupMemberAdded = async (groupId: string, userId: string) => {
 /**
  * Emit group member removed event
  */
-export const emitGroupMemberRemoved = async (groupId: string, userId: string) => {
+export const emitGroupMemberRemoved = async (
+  groupId: string,
+  userId: string,
+) => {
   await Stores.EventBus.emit({
     type: 'group.member_removed',
     data: { groupId, userId },

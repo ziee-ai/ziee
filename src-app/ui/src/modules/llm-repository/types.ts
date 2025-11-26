@@ -6,7 +6,9 @@ import type { useLlmRepositoryDrawerStore } from './components/LlmRepositoryDraw
 declare module '@/core/stores' {
   interface RegisteredStores {
     LlmRepository: StoreProxy<ReturnType<typeof useLlmRepositoryStore.getState>>
-    LlmRepositoryDrawer: StoreProxy<ReturnType<typeof useLlmRepositoryDrawerStore.getState>>
+    LlmRepositoryDrawer: StoreProxy<
+      ReturnType<typeof useLlmRepositoryDrawerStore.getState>
+    >
   }
 }
 

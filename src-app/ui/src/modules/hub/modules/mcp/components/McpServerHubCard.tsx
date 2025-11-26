@@ -113,7 +113,9 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                 )}
                 <Button
                   type={isAlreadyInstalled ? undefined : 'primary'}
-                  icon={isAlreadyInstalled ? <EyeOutlined /> : <DownloadOutlined />}
+                  icon={
+                    isAlreadyInstalled ? <EyeOutlined /> : <DownloadOutlined />
+                  }
                   onClick={e => {
                     e.stopPropagation()
                     if (isAlreadyInstalled) {
@@ -143,7 +145,11 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   <Text type="secondary" className="text-xs mr-2">
                     Tags:
                   </Text>
-                  <Flex wrap className="gap-1" style={{ display: 'inline-flex' }}>
+                  <Flex
+                    wrap
+                    className="gap-1"
+                    style={{ display: 'inline-flex' }}
+                  >
                     {server.tags.slice(0, 3).map(tag => (
                       <Tag key={tag} color="default" className="text-xs">
                         {tag}

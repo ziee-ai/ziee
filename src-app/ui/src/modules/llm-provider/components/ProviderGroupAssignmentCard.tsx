@@ -14,7 +14,8 @@ export function ProviderGroupAssignmentCard() {
   const { providerId } = useParams<{ providerId?: string }>()
 
   // ✅ CORRECT: Destructure all needed values at top level
-  const { providerGroups, loadGroupsForProvider } = Stores.ProviderGroupAssignmentCard
+  const { providerGroups, loadGroupsForProvider } =
+    Stores.ProviderGroupAssignmentCard
   const { openDrawer } = Stores.LlmProviderGroupsAssignment
 
   const providerData = providerId ? providerGroups.get(providerId) : undefined

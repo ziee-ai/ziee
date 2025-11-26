@@ -32,24 +32,32 @@ export const useGroupLlmProvidersAssignmentStore =
             const eventBus = Stores.EventBus
 
             // Subscribe to group.updated
-            eventBus.on('group.updated', async event => {
-              const { group } = event.data
-              const state = get()
+            eventBus.on(
+              'group.updated',
+              async event => {
+                const { group } = event.data
+                const state = get()
 
-              if (state.selectedGroup?.id === group.id) {
-                set({ selectedGroup: group })
-              }
-            }, GROUP)
+                if (state.selectedGroup?.id === group.id) {
+                  set({ selectedGroup: group })
+                }
+              },
+              GROUP,
+            )
 
             // Subscribe to group.deleted
-            eventBus.on('group.deleted', async event => {
-              const { groupId } = event.data
-              const state = get()
+            eventBus.on(
+              'group.deleted',
+              async event => {
+                const { groupId } = event.data
+                const state = get()
 
-              if (state.selectedGroup?.id === groupId) {
-                get().closeDrawer()
-              }
-            }, GROUP)
+                if (state.selectedGroup?.id === groupId) {
+                  get().closeDrawer()
+                }
+              },
+              GROUP,
+            )
           },
         },
 
@@ -62,7 +70,9 @@ export const useGroupLlmProvidersAssignmentStore =
         },
 
         __destroy__: () => {
-          Stores.EventBus.removeGroupListeners('GroupLlmProvidersAssignmentDrawerStore')
+          Stores.EventBus.removeGroupListeners(
+            'GroupLlmProvidersAssignmentDrawerStore',
+          )
         },
       }),
     ),

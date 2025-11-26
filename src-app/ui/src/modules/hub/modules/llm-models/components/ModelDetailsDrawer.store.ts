@@ -12,16 +12,18 @@ interface ModelDetailsDrawerState {
 }
 
 export const useModelDetailsDrawerStore = create<ModelDetailsDrawerState>()(
-  immer((set): ModelDetailsDrawerState => ({
-    isOpen: false,
-    selectedModel: null,
+  immer(
+    (set): ModelDetailsDrawerState => ({
+      isOpen: false,
+      selectedModel: null,
 
-    open: (model: HubModel) => {
-      set({ isOpen: true, selectedModel: model })
-    },
+      open: (model: HubModel) => {
+        set({ isOpen: true, selectedModel: model })
+      },
 
-    close: () => {
-      set({ isOpen: false, selectedModel: null })
-    },
-  })),
+      close: () => {
+        set({ isOpen: false, selectedModel: null })
+      },
+    }),
+  ),
 )

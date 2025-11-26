@@ -1,10 +1,9 @@
-import { memo, useState } from 'react'
-import { Avatar, Flex, theme, Typography } from 'antd'
+import { memo } from 'react'
+import { Avatar, theme } from 'antd'
 import { UserOutlined } from '@ant-design/icons'
 import type { MessageWithContent } from '@/api-client/types'
+import { ExtensionSlot } from '../core/extensions'
 import { ContentRenderer } from './ContentRenderer'
-
-const { Text } = Typography
 
 export const ChatMessage = memo(function ChatMessage({
   message,
@@ -13,15 +12,6 @@ export const ChatMessage = memo(function ChatMessage({
 }) {
   const isUser = message.role === 'user'
   const { token } = theme.useToken()
-  const [isToolBoxVisible, setMessageToolBoxVisible] = useState(false)
-
-  const handleMouseOverOrClick = async (isClicked: boolean = false) => {
-    setMessageToolBoxVisible(p => (!isClicked ? true : !p))
-  }
-
-  const handleMouseLeave = () => {
-    setMessageToolBoxVisible(false)
-  }
 
   // Check if message has any content to render
   if (!message.contents || message.contents.length === 0) {
@@ -39,9 +29,6 @@ export const ChatMessage = memo(function ChatMessage({
           width: isUser ? 'fit-content' : '100%',
           padding: isUser ? '8px 8px' : '0px',
         }}
-        onMouseOver={() => handleMouseOverOrClick()}
-        onClick={() => handleMouseOverOrClick(true)}
-        onMouseLeave={handleMouseLeave}
       >
         <div className={'flex items-start gap-2 w-full relative'}>
           <div className={`flex ${!isUser ? 'hidden' : ''}`}>
@@ -67,6 +54,10 @@ export const ChatMessage = memo(function ChatMessage({
                   />
                 ))}
             </div>
+
+            {/* Extension slot: message actions (copy, edit, etc.) */}
+            {/* TODO: Pass messageId when extension needs message-specific actions */}
+            <ExtensionSlot name="message_actions" />
           </div>
         </div>
       </div>

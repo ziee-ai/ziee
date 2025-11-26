@@ -88,7 +88,8 @@ export function LlmRepositoryDrawer() {
         },
       }
 
-      const result = await Stores.LlmRepository.testLlmRepositoryConnection(testData)
+      const result =
+        await Stores.LlmRepository.testLlmRepositoryConnection(testData)
 
       if (result.success) {
         message.success(
@@ -144,7 +145,10 @@ export function LlmRepositoryDrawer() {
     try {
       if (repository) {
         // Update existing repository
-        await Stores.LlmRepository.updateLlmRepository(repository.id, repositoryData)
+        await Stores.LlmRepository.updateLlmRepository(
+          repository.id,
+          repositoryData,
+        )
         message.success('Repository updated successfully')
       } else {
         // Add new repository - need full CreateLlmRepositoryRequest

@@ -2,9 +2,7 @@ import { Button, Form, Input, Select, Switch, App } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
-import {
-  useMcpServerDrawerStore,
-} from '../../stores'
+import { useMcpServerDrawerStore } from '../../stores'
 import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
@@ -35,7 +33,7 @@ export function McpServerDrawer() {
   const [form] = Form.useForm()
   const { message } = App.useApp()
 
-  const { open, loading, mode, editingServer} = useMcpServerDrawerStore()
+  const { open, loading, mode, editingServer } = useMcpServerDrawerStore()
 
   // Populate form when editing server changes
   useEffect(() => {
@@ -47,9 +45,10 @@ export function McpServerDrawer() {
         transport_type: editingServer.transport_type,
         url: editingServer.url,
         command: editingServer.command,
-        args: editingServer.args && editingServer.args.length > 0
-          ? JSON.stringify(editingServer.args, null, 2)
-          : '',
+        args:
+          editingServer.args && editingServer.args.length > 0
+            ? JSON.stringify(editingServer.args, null, 2)
+            : '',
         env: editingServer.environment_variables
           ? JSON.stringify(editingServer.environment_variables, null, 2)
           : '',
@@ -81,7 +80,7 @@ export function McpServerDrawer() {
             return
           }
           args = parsed
-        } catch (error) {
+        } catch (_error) {
           message.error('Invalid JSON in arguments')
           Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
           return
@@ -93,12 +92,15 @@ export function McpServerDrawer() {
       if (values.env && values.env.trim()) {
         try {
           environmentVariables = JSON.parse(values.env)
-          if (typeof environmentVariables !== 'object' || Array.isArray(environmentVariables)) {
+          if (
+            typeof environmentVariables !== 'object' ||
+            Array.isArray(environmentVariables)
+          ) {
             message.error('Environment variables must be a JSON object')
             Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
             return
           }
-        } catch (error) {
+        } catch (_error) {
           message.error('Invalid JSON in environment variables')
           Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
           return
@@ -118,7 +120,9 @@ export function McpServerDrawer() {
       }
 
       if (mode === 'create') {
-        await Stores.McpServer.createMcpServer(serverData as CreateMcpServerRequest)
+        await Stores.McpServer.createMcpServer(
+          serverData as CreateMcpServerRequest,
+        )
         message.success('MCP server created successfully')
       } else if (mode === 'edit' && editingServer) {
         const updateData: UpdateMcpServerRequest = {
@@ -133,7 +137,9 @@ export function McpServerDrawer() {
         await Stores.McpServer.updateMcpServer(editingServer.id, updateData)
         message.success('MCP server updated successfully')
       } else if (mode === 'create-system') {
-        await Stores.SystemMcpServer.createSystemServer(serverData as CreateMcpServerRequest)
+        await Stores.SystemMcpServer.createSystemServer(
+          serverData as CreateMcpServerRequest,
+        )
         message.success('System MCP server created successfully')
       } else if (mode === 'edit-system' && editingServer) {
         const updateData: UpdateMcpServerRequest = {
@@ -145,7 +151,10 @@ export function McpServerDrawer() {
           environment_variables: environmentVariables,
           enabled: values.enabled ?? true,
         }
-        await Stores.SystemMcpServer.updateSystemServer(editingServer.id, updateData)
+        await Stores.SystemMcpServer.updateSystemServer(
+          editingServer.id,
+          updateData,
+        )
         message.success('System MCP server updated successfully')
       }
 
@@ -239,7 +248,9 @@ export function McpServerDrawer() {
           <Form.Item
             label="Transport Type"
             name="transport_type"
-            rules={[{ required: true, message: 'Please select a transport type' }]}
+            rules={[
+              { required: true, message: 'Please select a transport type' },
+            ]}
           >
             <Select
               disabled={mode === 'edit' || mode === 'edit-system'}

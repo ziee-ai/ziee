@@ -1,10 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin, login, createTestUser, clearAuthState, getAdminToken } from '../../common/auth-helpers'
-import {
-  createProviderViaAPI,
-  createModelViaAPI,
-  assignProviderToAdministratorsGroup,
-} from '../../common/provider-helpers'
+import { loginAsAdmin, login, createTestUser, clearAuthState } from '../../common/auth-helpers'
 import {
   goToNewChatPage,
   getVisibleModelsInDropdown,

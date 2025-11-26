@@ -31,7 +31,8 @@ declare module 'antd' {
    *
    * // Generated ID will be: login-form_username
    */
-  export interface FormProps<Values = any> extends Omit<AntFormProps<Values>, 'name'> {
+  export interface FormProps<Values = any>
+    extends Omit<AntFormProps<Values>, 'name'> {
     /**
      * Form name (REQUIRED)
      *

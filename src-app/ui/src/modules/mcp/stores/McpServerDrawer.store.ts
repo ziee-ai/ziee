@@ -41,27 +41,35 @@ export const useMcpServerDrawerStore = create<McpServerDrawerState>()(
           const eventBus = Stores.EventBus
 
           // Subscribe to mcp_server.updated
-          eventBus.on('mcp_server.updated', async event => {
-            const { server } = event.data
-            const state = get()
+          eventBus.on(
+            'mcp_server.updated',
+            async event => {
+              const { server } = event.data
+              const state = get()
 
-            if (
-              (state.mode === 'edit' || state.mode === 'edit-system') &&
-              state.editingServer?.id === server.id
-            ) {
-              set({ editingServer: server })
-            }
-          }, GROUP)
+              if (
+                (state.mode === 'edit' || state.mode === 'edit-system') &&
+                state.editingServer?.id === server.id
+              ) {
+                set({ editingServer: server })
+              }
+            },
+            GROUP,
+          )
 
           // Subscribe to mcp_server.deleted
-          eventBus.on('mcp_server.deleted', async event => {
-            const { serverId } = event.data
-            const state = get()
+          eventBus.on(
+            'mcp_server.deleted',
+            async event => {
+              const { serverId } = event.data
+              const state = get()
 
-            if (state.editingServer?.id === serverId) {
-              get().closeMcpServerDrawer()
-            }
-          }, GROUP)
+              if (state.editingServer?.id === serverId) {
+                get().closeMcpServerDrawer()
+              }
+            },
+            GROUP,
+          )
         },
       },
 

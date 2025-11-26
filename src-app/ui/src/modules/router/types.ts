@@ -1,4 +1,9 @@
-import type { ComponentType, ReactNode, ReactElement, LazyExoticComponent } from 'react'
+import type {
+  ComponentType,
+  ReactNode,
+  ReactElement,
+  LazyExoticComponent,
+} from 'react'
 
 /**
  * LayoutDefinition defines a layout component.
@@ -19,13 +24,16 @@ export interface LayoutDefinition<TOptions = any> {
  * @template TLayout - The layout definition type (undefined if no layout)
  */
 export interface RouteConfig<
-  TLayout extends LayoutDefinition<any> | undefined = undefined
+  TLayout extends LayoutDefinition<any> | undefined = undefined,
 > {
   /** Route path (e.g., "/chat", "/settings") */
   path: string
 
   /** Route element - React component (lazy or eager) */
-  element: ReactElement | LazyExoticComponent<ComponentType<any>> | (() => Promise<{ default: ComponentType<any> }>)
+  element:
+    | ReactElement
+    | LazyExoticComponent<ComponentType<any>>
+    | (() => Promise<{ default: ComponentType<any> }>)
 
   /** Whether route requires authentication (default: false) */
   requiresAuth?: boolean
@@ -43,7 +51,7 @@ export interface RouteConfig<
  */
 declare module '@/core/module' {
   interface CreateModuleOptions {
-    routes?: RouteConfig<any>[]  // Router module adds this!
+    routes?: RouteConfig<any>[] // Router module adds this!
   }
 }
 

@@ -11,9 +11,7 @@ import {
 } from 'antd'
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import {
-  Stores,
-} from '../stores'
+import { Stores } from '../stores'
 import { PROVIDER_ICONS } from '../constants'
 import { LlmProviderDrawer } from './LlmProviderDrawer'
 import { LocalProviderSettings } from './LocalProviderSettings'
@@ -128,7 +126,10 @@ export function LlmProviderSettings() {
     }
 
     // Render appropriate provider settings component based on type
-    console.log('[LlmProviderSettings] Provider type:', currentProvider.provider_type)
+    console.log(
+      '[LlmProviderSettings] Provider type:',
+      currentProvider.provider_type,
+    )
     if (currentProvider.provider_type === 'local') {
       console.log('[LlmProviderSettings] Rendering LocalProviderSettings')
       return <LocalProviderSettings />

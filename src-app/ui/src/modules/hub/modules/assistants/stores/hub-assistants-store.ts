@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type { HubAssistant, Assistant, CreateAssistantFromHubRequest } from '@/api-client/types'
+import type {
+  HubAssistant,
+  Assistant,
+  CreateAssistantFromHubRequest,
+} from '@/api-client/types'
 
 interface HubAssistantsState {
   assistants: HubAssistant[]
@@ -40,7 +44,9 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
           try {
             // Load with user's locale
             const locale = 'en' // TODO: Get from user settings
-            const assistants = await ApiClient.Hub.getAssistants({ lang: locale })
+            const assistants = await ApiClient.Hub.getAssistants({
+              lang: locale,
+            })
             const versionInfo = await ApiClient.Hub.getAssistantsVersion()
 
             set({
@@ -77,14 +83,18 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
           }
         },
 
-        createFromHub: async (request: CreateAssistantFromHubRequest): Promise<Assistant> => {
+        createFromHub: async (
+          request: CreateAssistantFromHubRequest,
+        ): Promise<Assistant> => {
           set({ creating: true, error: null })
           try {
             const response = await ApiClient.Hub.createAssistantFromHub(request)
 
             // Update the hub assistant's created_ids directly from response
             set(state => {
-              const assistant = state.assistants.find(a => a.id === request.hub_id)
+              const assistant = state.assistants.find(
+                a => a.id === request.hub_id,
+              )
               if (assistant) {
                 if (!assistant.created_ids) {
                   assistant.created_ids = []
@@ -107,7 +117,7 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
         __init__: {
           assistants: () => get().loadAssistants(),
         },
-      })
-    )
-  )
+      }),
+    ),
+  ),
 )

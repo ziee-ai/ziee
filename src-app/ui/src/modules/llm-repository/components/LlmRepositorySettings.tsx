@@ -44,7 +44,8 @@ export function LlmRepositorySettings() {
         auth_config: repository.auth_config,
       }
 
-      const result = await Stores.LlmRepository.testLlmRepositoryConnection(testData)
+      const result =
+        await Stores.LlmRepository.testLlmRepositoryConnection(testData)
 
       if (result.success) {
         message.success(

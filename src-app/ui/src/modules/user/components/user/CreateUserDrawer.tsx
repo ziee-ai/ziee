@@ -18,10 +18,14 @@ const validatePermissions = (_: any, value: string) => {
 
     // Check if all values are valid permissions
     const validPermissions = Object.values(Permissions)
-    const invalidPermissions = parsed.filter(perm => !validPermissions.includes(perm))
+    const invalidPermissions = parsed.filter(
+      perm => !validPermissions.includes(perm),
+    )
 
     if (invalidPermissions.length > 0) {
-      return Promise.reject(`Invalid permissions: ${invalidPermissions.join(', ')}`)
+      return Promise.reject(
+        `Invalid permissions: ${invalidPermissions.join(', ')}`,
+      )
     }
 
     return Promise.resolve()
@@ -43,7 +47,9 @@ export function CreateUserDrawer() {
         email: values.email,
         password: values.password,
         display_name: values.display_name,
-        permissions: values.permissions ? JSON.parse(values.permissions) : undefined,
+        permissions: values.permissions
+          ? JSON.parse(values.permissions)
+          : undefined,
       }
 
       await Stores.Users.createUser(userData)
@@ -69,11 +75,7 @@ export function CreateUserDrawer() {
       width={600}
       maskClosable={false}
     >
-      <Form
-        form={createForm}
-        layout="vertical"
-        onFinish={handleCreateUser}
-      >
+      <Form form={createForm} layout="vertical" onFinish={handleCreateUser}>
         <Form.Item
           name="username"
           label="Username"
@@ -104,10 +106,7 @@ export function CreateUserDrawer() {
         >
           <Input.Password placeholder="Enter password" />
         </Form.Item>
-        <Form.Item
-          name="display_name"
-          label="Display Name"
-        >
+        <Form.Item name="display_name" label="Display Name">
           <Input placeholder="Enter display name (optional)" />
         </Form.Item>
         <Form.Item
@@ -115,10 +114,7 @@ export function CreateUserDrawer() {
           label="Permissions (JSON Array)"
           rules={[{ validator: validatePermissions }]}
         >
-          <TextArea
-            rows={6}
-            placeholder='["users::read", "users::edit"]'
-          />
+          <TextArea rows={6} placeholder='["users::read", "users::edit"]' />
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="gap-2">

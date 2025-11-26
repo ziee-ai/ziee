@@ -19,7 +19,11 @@ interface AssistantCardProps {
   onDelete: () => void
 }
 
-export function AssistantCard({ assistant, onEdit, onDelete }: AssistantCardProps) {
+export function AssistantCard({
+  assistant,
+  onEdit,
+  onDelete,
+}: AssistantCardProps) {
   const { modal } = App.useApp()
 
   const handleEdit = () => {

@@ -38,13 +38,17 @@ export const useResetPasswordDrawerStore = create<ResetPasswordDrawerState>()(
             const eventBus = Stores.EventBus
 
             // Close drawer when user is deleted
-            eventBus.on('user.deleted', async event => {
-              const { userId } = event.data
-              const state = get()
-              if (state.user?.id === userId) {
-                get().closeResetPasswordDrawer()
-              }
-            }, GROUP)
+            eventBus.on(
+              'user.deleted',
+              async event => {
+                const { userId } = event.data
+                const state = get()
+                if (state.user?.id === userId) {
+                  get().closeResetPasswordDrawer()
+                }
+              },
+              GROUP,
+            )
           },
         },
 

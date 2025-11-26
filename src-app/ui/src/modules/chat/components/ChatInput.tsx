@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Card, Flex, Form, Input, theme, message as antMessage } from 'antd'
+import {
+  Button,
+  Card,
+  Flex,
+  Form,
+  Input,
+  theme,
+  message as antMessage,
+} from 'antd'
 import { SendOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ModelSelector } from './ModelSelector'
 import { Stores } from '@/core/stores'
-import { useChatStore } from '../stores/Chat.store'
+import { useChatStore } from '../core/stores/Chat.store'
 import type { LlmProviderWithModels } from '@/modules/llm-provider/stores/LlmProvider.store'
 import type { LlmModel } from '@/api-client/types'
+import { ExtensionSlot } from '../core/extensions'
 
 const { TextArea } = Input
 
@@ -39,7 +48,8 @@ export function ChatInput({
 
   // Get stores
   const { providers } = Stores.ChatLlmProvider
-  const { createConversation, sendMessage, sending, isStreaming } = useChatStore()
+  const { createConversation, sendMessage, sending, isStreaming } =
+    useChatStore()
 
   // Build available models list
   const availableModels = useMemo(() => {
@@ -52,7 +62,7 @@ export function ChatInput({
       if (provider.llm_models && provider.llm_models.length > 0) {
         // Only include enabled models (local models will be spawned on-demand if not running)
         const enabledModels = provider.llm_models.filter(
-          (model: LlmModel) => model.enabled
+          (model: LlmModel) => model.enabled,
         )
 
         if (enabledModels.length > 0) {
@@ -107,7 +117,7 @@ export function ChatInput({
       // Find matching model in format "providerId:modelId"
       for (const providerGroup of availableModels) {
         const matchingModel = providerGroup.options.find(model =>
-          model.value.endsWith(`:${defaultModelId}`)
+          model.value.endsWith(`:${defaultModelId}`),
         )
         if (matchingModel) {
           form.setFieldValue('model', matchingModel.value)
@@ -186,6 +196,9 @@ export function ChatInput({
         >
           <div style={{ padding: '8px' }}>
             <Flex className="flex-col gap-3 w-full">
+              {/* Extension slot: input area prefix */}
+              <ExtensionSlot name="input_area_prefix" />
+
               <div className="w-full">
                 <Form.Item name="message" className="mb-0" noStyle>
                   <TextArea
@@ -200,9 +213,14 @@ export function ChatInput({
                   />
                 </Form.Item>
               </div>
+
+              {/* Extension slot: input area suffix */}
+              <ExtensionSlot name="input_area_suffix" />
+
               <div className="w-full flex justify-between gap-0">
                 <div className="flex gap-1">
-                  {/* Placeholder for file upload and tools - not implemented */}
+                  {/* Extension slot: toolbar actions (file upload, tools, etc.) */}
+                  <ExtensionSlot name="toolbar_actions" />
                 </div>
 
                 <div className={'flex items-center gap-[6px]'}>

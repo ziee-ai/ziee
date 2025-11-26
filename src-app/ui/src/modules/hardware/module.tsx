@@ -8,7 +8,9 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const HardwareSettings = lazyWithPreload(() => import('./HardwareSettings'))
-const HardwareMonitor = lazyWithPreload(() => import('./HardwareMonitor').then(m => ({ default: m.HardwareMonitor })))
+const HardwareMonitor = lazyWithPreload(() =>
+  import('./HardwareMonitor').then(m => ({ default: m.HardwareMonitor })),
+)
 
 export default createModule({
   metadata: {

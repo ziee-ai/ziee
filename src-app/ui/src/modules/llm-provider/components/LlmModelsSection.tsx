@@ -55,7 +55,9 @@ export function LlmModelsSection() {
         // If no models remain enabled and provider is currently enabled, disable the provider
         if (remainingEnabledModels.length === 0 && currentProvider.enabled) {
           try {
-            await Stores.LlmProvider.updateLlmProvider(currentProvider.id, { enabled: false })
+            await Stores.LlmProvider.updateLlmProvider(currentProvider.id, {
+              enabled: false,
+            })
             const modelName =
               llmModels.find(m => m.id === modelId)?.name || 'Model'
             message.success(
@@ -106,7 +108,9 @@ export function LlmModelsSection() {
     if (!currentProvider) return
     if (currentProvider.provider_type === 'local') {
       // For local providers, open the upload drawer by default
-      Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(currentProvider.id)
+      Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
+        currentProvider.id,
+      )
     } else {
       Stores.AddRemoteLlmModelDrawer.openAddRemoteLlmModelDrawer(
         currentProvider.id,
@@ -195,14 +199,18 @@ export function LlmModelsSection() {
                 label: 'Upload from Files',
                 icon: <UploadOutlined />,
                 onClick: () =>
-                  Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(currentProvider.id),
+                  Stores.AddLocalLlmModelUploadDrawer.openAddLocalLlmModelUploadDrawer(
+                    currentProvider.id,
+                  ),
               },
               {
                 key: 'download',
                 label: 'Download from Repository',
                 icon: <PlusOutlined />,
                 onClick: () =>
-                  Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(currentProvider.id),
+                  Stores.AddLocalLlmModelDownloadDrawer.openAddLocalLlmModelDownloadDrawer(
+                    currentProvider.id,
+                  ),
               },
             ],
           }}

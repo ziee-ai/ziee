@@ -6,7 +6,11 @@ import './types' // CRITICAL: Enable type merging for CreateModuleOptions
 import './stores/types' // CRITICAL: Enable type merging for Stores
 
 // Lazy load RouterComponent
-const RouterComponent = lazyWithPreload(() => import('./components/RouterComponent').then(m => ({ default: m.RouterComponent })))
+const RouterComponent = lazyWithPreload(() =>
+  import('./components/RouterComponent').then(m => ({
+    default: m.RouterComponent,
+  })),
+)
 
 export default createModule({
   metadata: {
@@ -44,7 +48,9 @@ export default createModule({
     const moduleWithRoutes = module as AppModule & { routes?: any[] }
 
     if (moduleWithRoutes.routes && moduleWithRoutes.routes.length > 0) {
-      console.log(`🛣️  Router: Collecting ${moduleWithRoutes.routes.length} route(s) from module: ${module.metadata.name}`)
+      console.log(
+        `🛣️  Router: Collecting ${moduleWithRoutes.routes.length} route(s) from module: ${module.metadata.name}`,
+      )
       useRoutesStore.getState().addRoutes(moduleWithRoutes.routes)
     }
   },

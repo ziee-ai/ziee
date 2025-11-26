@@ -5,7 +5,11 @@ import { useMcpServerDetailsDrawerStore } from './components/McpServerDetailsDra
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
 
-const McpServersHubTab = lazyWithPreload(() => import('./components/McpServersHubTab').then(m => ({ default: m.McpServersHubTab })))
+const McpServersHubTab = lazyWithPreload(() =>
+  import('./components/McpServersHubTab').then(m => ({
+    default: m.McpServersHubTab,
+  })),
+)
 
 export default createModule({
   metadata: {

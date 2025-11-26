@@ -42,10 +42,7 @@ export function ThemeSettings() {
             </div>
           </div>
           <div className="flex-shrink-0">
-            <Form.Item
-              name="theme"
-              style={{ margin: 0 }}
-            >
+            <Form.Item name="theme" style={{ margin: 0 }}>
               <Select
                 aria-label="Theme"
                 style={{ minWidth: 120 }}

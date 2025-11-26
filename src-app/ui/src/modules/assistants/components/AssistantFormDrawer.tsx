@@ -1,9 +1,7 @@
 import { useEffect } from 'react'
 import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import {
-  Stores,
-} from '../stores'
+import { Stores } from '../stores'
 
 const { TextArea } = Input
 
@@ -15,7 +13,7 @@ const validateJSON = (_: any, value: string) => {
   try {
     JSON.parse(value)
     return Promise.resolve()
-  } catch (error) {
+  } catch (_error) {
     return Promise.reject(new Error('Please enter valid JSON'))
   }
 }
@@ -24,7 +22,7 @@ interface FormValues {
   name: string
   description?: string
   instructions?: string
-  parameters?: string  // JSON string
+  parameters?: string // JSON string
   is_default?: boolean
   enabled?: boolean
 }
@@ -34,7 +32,8 @@ export function AssistantFormDrawer() {
   const [form] = Form.useForm<FormValues>()
 
   // Use drawer store
-  const { open, loading, editingAssistant, isTemplate, isCloning } = Stores.AssistantDrawer
+  const { open, loading, editingAssistant, isTemplate, isCloning } =
+    Stores.AssistantDrawer
 
   // Initialize form when drawer opens or editing assistant changes
   useEffect(() => {
@@ -76,7 +75,7 @@ export function AssistantFormDrawer() {
       const parsed = JSON.parse(value)
       const prettified = JSON.stringify(parsed, null, 2)
       form.setFieldValue('parameters', prettified)
-    } catch (error) {
+    } catch (_error) {
       // Invalid JSON, leave as is - validation will show error
     }
   }
@@ -87,7 +86,7 @@ export function AssistantFormDrawer() {
     if (values.parameters && values.parameters.trim()) {
       try {
         parameters = JSON.parse(values.parameters)
-      } catch (error) {
+      } catch (_error) {
         // JSON validation should catch this, but handle it just in case
         message.error('Invalid JSON in parameters field')
         return
@@ -109,9 +108,15 @@ export function AssistantFormDrawer() {
       if (editingAssistant && !isCloning) {
         // Update existing assistant
         if (isTemplate) {
-          await Stores.TemplateAssistants.updateTemplateAssistant(editingAssistant.id, payload)
+          await Stores.TemplateAssistants.updateTemplateAssistant(
+            editingAssistant.id,
+            payload,
+          )
         } else {
-          await Stores.UserAssistants.updateUserAssistant(editingAssistant.id, payload)
+          await Stores.UserAssistants.updateUserAssistant(
+            editingAssistant.id,
+            payload,
+          )
         }
         message.success('Assistant updated successfully')
       } else {
@@ -165,13 +170,21 @@ export function AssistantFormDrawer() {
             { max: 255, message: 'Name must be less than 255 characters' },
           ]}
         >
-          <Input placeholder="Enter assistant name" aria-label="Assistant name" />
+          <Input
+            placeholder="Enter assistant name"
+            aria-label="Assistant name"
+          />
         </Form.Item>
 
         <Form.Item
           name="description"
           label="Description"
-          rules={[{ max: 1000, message: 'Description must be less than 1000 characters' }]}
+          rules={[
+            {
+              max: 1000,
+              message: 'Description must be less than 1000 characters',
+            },
+          ]}
         >
           <TextArea
             placeholder="Enter a brief description"

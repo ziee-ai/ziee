@@ -10,15 +10,15 @@ interface AssistantDetailsDrawerProps {
   onClose: () => void
 }
 
-export function AssistantDetailsDrawer({ assistant, open, onClose }: AssistantDetailsDrawerProps) {
+export function AssistantDetailsDrawer({
+  assistant,
+  open,
+  onClose,
+}: AssistantDetailsDrawerProps) {
   if (!assistant) return null
 
   return (
-    <Drawer
-      title={assistant.display_name}
-      open={open}
-      onClose={onClose}
-    >
+    <Drawer title={assistant.display_name} open={open} onClose={onClose}>
       <Flex vertical className="gap-4">
         {/* Basic Info */}
         <div>
@@ -93,16 +93,17 @@ export function AssistantDetailsDrawer({ assistant, open, onClose }: AssistantDe
         )}
 
         {/* Parameters */}
-        {assistant.parameters && Object.keys(assistant.parameters).length > 0 && (
-          <div>
-            <Title level={5}>Parameters</Title>
-            <Card size="small">
-              <pre className="text-xs overflow-auto m-0">
-                {JSON.stringify(assistant.parameters, null, 2)}
-              </pre>
-            </Card>
-          </div>
-        )}
+        {assistant.parameters &&
+          Object.keys(assistant.parameters).length > 0 && (
+            <div>
+              <Title level={5}>Parameters</Title>
+              <Card size="small">
+                <pre className="text-xs overflow-auto m-0">
+                  {JSON.stringify(assistant.parameters, null, 2)}
+                </pre>
+              </Card>
+            </div>
+          )}
       </Flex>
     </Drawer>
   )
