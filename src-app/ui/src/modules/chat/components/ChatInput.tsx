@@ -12,7 +12,6 @@ import { SendOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ModelSelector } from './ModelSelector'
 import { Stores } from '@/core/stores'
-import { useChatStore } from '../core/stores/Chat.store'
 import type { LlmProviderWithModels } from '@/modules/llm-provider/stores/LlmProvider.store'
 import type { LlmModel } from '@/api-client/types'
 import { ExtensionSlot } from '../core/extensions'
@@ -26,15 +25,17 @@ const calculateIsBreaking = (width: number): boolean => width <= UI_BREAKPOINT
 interface ChatInputProps {
   disabled?: boolean
   placeholder?: string
-  defaultModelId?: string
   className?: string
   style?: React.CSSProperties
 }
 
+/**
+ * ChatInput Component
+ * Self-contained component that accesses conversation and state from store
+ */
 export function ChatInput({
   disabled = false,
   placeholder = 'Type your message...',
-  defaultModelId,
   className = '',
   style,
 }: ChatInputProps) {
@@ -48,8 +49,8 @@ export function ChatInput({
 
   // Get stores
   const { providers } = Stores.ChatLlmProvider
-  const { createConversation, sendMessage, sending, isStreaming } =
-    useChatStore()
+  const { conversation, createConversation, sendMessage, sending, isStreaming } =
+    Stores.Chat
 
   // Build available models list
   const availableModels = useMemo(() => {
@@ -110,9 +111,11 @@ export function ChatInput({
     ) {
       form.setFieldValue('model', availableModels[0].options[0].value)
     }
-  }, [availableModels, form])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableModels])
 
   useEffect(() => {
+    const defaultModelId = conversation?.model_id
     if (defaultModelId) {
       // Find matching model in format "providerId:modelId"
       for (const providerGroup of availableModels) {
@@ -125,7 +128,8 @@ export function ChatInput({
         }
       }
     }
-  }, [defaultModelId, availableModels, form])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation?.model_id, availableModels])
 
   const handleSend = async () => {
     if (sending || isStreaming || disabled) return

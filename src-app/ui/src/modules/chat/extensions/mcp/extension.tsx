@@ -171,7 +171,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Type-safe SSE event handlers
   sseEventHandlers: {
-    mcpToolStart: async (data) => {
+    mcpToolStart: async (data, _get, _set) => {
       // data is automatically typed as SSEChatStreamMcpToolStartData
       // Access store via __state to avoid triggering React hooks outside component context
       const mcpStore = Stores.Chat.__state.McpStore
@@ -184,10 +184,9 @@ const mcpExtension: ChatExtension = createExtension({
       })
 
       console.log('[MCP Extension] Tool started:', data.tool_name)
-      return { handled: true, uiUpdates: [] }
     },
 
-    mcpApprovalRequired: async (data) => {
+    mcpApprovalRequired: async (data, _get, _set) => {
       // data is automatically typed as SSEChatStreamMcpApprovalRequiredData
       const mcpStore = Stores.Chat.__state.McpStore
 
@@ -198,10 +197,9 @@ const mcpExtension: ChatExtension = createExtension({
 
       console.log('[MCP Extension] Approval required for:', data.tool_name)
       // TODO: Show approval UI
-      return { handled: true, uiUpdates: [] }
     },
 
-    mcpToolComplete: async (data) => {
+    mcpToolComplete: async (data, _get, _set) => {
       // data is automatically typed as SSEChatStreamMcpToolCompleteData
       const mcpStore = Stores.Chat.__state.McpStore
 
@@ -215,7 +213,6 @@ const mcpExtension: ChatExtension = createExtension({
         data.tool_use_id,
         data.is_error ? '(error)' : '(success)',
       )
-      return { handled: true, uiUpdates: [] }
     },
   },
 

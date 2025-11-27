@@ -157,19 +157,21 @@ export interface HandleSSEEventResult {
 /**
  * Type-safe SSE event handler registry
  * Maps event types to handlers with correctly typed data parameters
+ * Handlers receive (data, get, set) where get and set are from Chat store
  *
  * @example
  * ```typescript
  * sseEventHandlers: {
- *   titleUpdated: (data) => {
+ *   titleUpdated: (data, get, set) => {
  *     // data is automatically typed as SSEChatStreamTitleUpdatedData
- *     console.log(data.title)
- *     return { handled: true }
+ *     // get() returns current Chat store state
+ *     // set() updates Chat store state (returns new state, no mutation)
+ *     const conversation = get().conversation
+ *     set(state => ({ conversation: { ...state.conversation, title: data.title } }))
  *   },
- *   mcpToolStart: (data) => {
+ *   mcpToolStart: (data, get, set) => {
  *     // data is automatically typed as SSEChatStreamMcpToolStartData
  *     console.log(data.tool_name)
- *     return { handled: true }
  *   }
  * }
  * ```
@@ -177,7 +179,9 @@ export interface HandleSSEEventResult {
 export type SSEEventHandlers = {
   [K in keyof SSEEventTypeRegistry]?: (
     data: SSEEventTypeRegistry[K],
-  ) => HandleSSEEventResult | Promise<HandleSSEEventResult>
+    get: () => any,
+    set: (partial: any | ((state: any) => any)) => void,
+  ) => void | Promise<void>
 }
 
 /**

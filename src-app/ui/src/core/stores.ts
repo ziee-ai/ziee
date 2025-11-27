@@ -263,10 +263,8 @@ export interface RegisteredStores {
 // But typed via RegisteredStores interface for IntelliSense
 export const Stores = new Proxy({} as RegisteredStores, {
   get: (_, prop) => {
-    console.log(`[Stores GET] Accessing store: ${String(prop)}`)
     const moduleSystemState = useModuleSystemStore.getState()
     const store = moduleSystemState.stores[prop as string]
-    console.log(`[Stores GET] Store ${String(prop)} exists:`, !!store)
     return store
   },
 })

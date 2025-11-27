@@ -7,7 +7,6 @@ import type {
   ChatSlotName,
   ExtensionRequestFields,
   ContentRendererProps,
-  HandleSSEEventResult,
 } from './types'
 import React from 'react'
 
@@ -48,7 +47,7 @@ export class ChatExtensionRegistry {
     keyof SSEEventTypeRegistry,
     Array<{
       extension: ChatExtension
-      handler: (data: any) => HandleSSEEventResult | Promise<HandleSSEEventResult>
+      handler: (data: any, get: () => any, set: (partial: any | ((state: any) => any)) => void) => void | Promise<void>
       priority: number
     }>
   > = new Map()
@@ -80,8 +79,7 @@ export class ChatExtensionRegistry {
       // Import happens at runtime when register() is called, not at module load time
       import('../stores/Chat.store').then(({ useChatStore }) => {
         // Inject store at root level of Chat store for reactive access via Stores.Chat.{extensionName}
-        // Directly mutate the state object to avoid triggering Immer's draft finalization
-        // which would access store proxy getters and trigger React hooks outside component context
+        // Direct mutation is safe now that Immer middleware has been removed
         const stateObject = useChatStore.getState()
         ;(stateObject as any)[extension.name] = store
 
@@ -195,6 +193,7 @@ export class ChatExtensionRegistry {
 
     // Remove extension store from Chat store (if it was injected)
     import('../stores/Chat.store').then(({ useChatStore }) => {
+      // Direct mutation is safe now that Immer middleware has been removed
       const stateObject = useChatStore.getState()
       if ((stateObject as any)[name]) {
         delete (stateObject as any)[name]
@@ -372,9 +371,8 @@ export class ChatExtensionRegistry {
   /**
    * Route SSE event to extensions
    * Uses registry for O(1) lookup, falls back to legacy handleSSEEvent hook
-   * Stops if any extension returns handled: true
    * Accepts both typed SSEEvent and GenericSSEEvent for unknown events
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions receive (data, get, set) where get and set are from Chat store
    */
   async handleSSEEvent(
     event: SSEEvent | import('./types').GenericSSEEvent,
@@ -384,6 +382,11 @@ export class ChatExtensionRegistry {
 
     // Try new registry-based handlers first (O(1) lookup)
     if (handlers && handlers.length > 0) {
+      // Get Chat store's get and set functions
+      const { useChatStore } = await import('../stores/Chat.store')
+      const chatGet = useChatStore.getState
+      const chatSet = useChatStore.setState
+
       // Filter enabled extensions and sort by priority
       const enabledHandlers = handlers
         .filter(({ extension }) => {
@@ -395,22 +398,10 @@ export class ChatExtensionRegistry {
       // Execute handlers in priority order
       for (const { extension, handler } of enabledHandlers) {
         try {
-          const result = await handler(event.data)
-
-          // Execute UI updates
-          if (result.uiUpdates) {
-            for (const update of result.uiUpdates) {
-              update()
-            }
-          }
-
-          // Stop propagation if handled
-          if (result.handled) {
-            console.log(
-              `[ChatExtensions] SSE event "${event.event_type}" handled by: ${extension.name}`,
-            )
-            return true
-          }
+          await handler(event.data, chatGet, chatSet)
+          console.log(
+            `[ChatExtensions] SSE event "${event.event_type}" handled by: ${extension.name}`,
+          )
         } catch (error) {
           console.error(
             `[ChatExtensions] Error in ${extension.name}.sseEventHandlers.${eventType}:`,
@@ -418,6 +409,7 @@ export class ChatExtensionRegistry {
           )
         }
       }
+      return true
     }
 
     // Fall back to legacy handleSSEEvent hook for backward compatibility

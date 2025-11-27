@@ -300,6 +300,68 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
       refreshConversations: async () => {
         await get().loadConversations(1)
       },
+
+      /**
+       * Lifecycle hooks
+       */
+      __init__: {
+        __store__: async () => {
+          // Subscribe to conversation.created event
+          const { Stores } = await import('@/core/stores')
+          Stores.EventBus.on(
+            'conversation.created',
+            async event => {
+              const { conversation } = event.data
+              set(draft => {
+                // Add to beginning of conversations array
+                // Convert Conversation to ConversationResponse by adding message_count
+                const conversationResponse: ConversationResponse = {
+                  ...conversation,
+                  message_count: 0,
+                }
+                draft.conversations.unshift(conversationResponse)
+                // Update recent conversations
+                draft.recentConversations = draft.conversations.slice(0, 20)
+                // Update total
+                draft.total = draft.conversations.length
+              })
+              console.log('[ChatHistory] Added new conversation:', conversation.id)
+            },
+            'ChatHistory',
+          )
+
+          // Subscribe to conversation.titleUpdated event
+          Stores.EventBus.on(
+            'conversation.titleUpdated',
+            async event => {
+              const { conversationId, title } = event.data
+              set(draft => {
+                const updateTitle = (conv: ConversationResponse) => {
+                  if (conv.id === conversationId) {
+                    conv.title = title
+                  }
+                }
+                draft.conversations.forEach(updateTitle)
+                draft.recentConversations.forEach(updateTitle)
+                draft.filteredConversations.forEach(updateTitle)
+              })
+              console.log('[ChatHistory] Updated conversation title:', conversationId)
+            },
+            'ChatHistory',
+          )
+        },
+      },
+
+      /**
+       * Cleanup lifecycle hook
+       * Called when store is destroyed
+       */
+      __destroy__: async () => {
+        // Unsubscribe from all event listeners for this store
+        const { Stores } = await import('@/core/stores')
+        Stores.EventBus.removeGroupListeners('ChatHistory')
+        console.log('[ChatHistory] Cleaned up event listeners')
+      },
     })),
   ),
 )

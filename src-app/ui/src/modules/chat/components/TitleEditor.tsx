@@ -2,23 +2,20 @@ import { useState } from 'react'
 import { Form, Input, Button, Typography } from 'antd'
 import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { IoIosArrowBack } from 'react-icons/io'
-import type { Conversation } from '@/api-client/types'
+import { useNavigate } from 'react-router-dom'
+import { Stores } from '@/core/stores'
 
-interface TitleEditorProps {
-  conversation: Conversation | null
-  onSave: (title: string) => Promise<void>
-  onBack: () => void
-  canEdit?: boolean
-}
-
-export function TitleEditor({
-  conversation,
-  onSave,
-  onBack,
-  canEdit = true,
-}: TitleEditorProps) {
+/**
+ * TitleEditor Component
+ * Self-contained component that accesses conversation from store and handles its own state/events
+ */
+export function TitleEditor() {
   const [form] = Form.useForm()
   const [isEditing, setIsEditing] = useState(false)
+  const navigate = useNavigate()
+
+  // Get conversation from store
+  const { conversation } = Stores.Chat
 
   const handleEditClick = () => {
     form.setFieldValue('title', conversation?.title || '')
@@ -29,7 +26,7 @@ export function TitleEditor({
     try {
       const values = await form.validateFields()
       if (conversation && values.title.trim()) {
-        await onSave(values.title.trim())
+        await Stores.Chat.updateConversation({ title: values.title.trim() })
         setIsEditing(false)
       }
     } catch (error) {
@@ -40,6 +37,10 @@ export function TitleEditor({
   const handleCancel = () => {
     form.resetFields()
     setIsEditing(false)
+  }
+
+  const handleBack = () => {
+    navigate('/chats')
   }
 
   if (isEditing) {
@@ -89,7 +90,7 @@ export function TitleEditor({
 
   return (
     <div className="flex gap-1 items-center justify-start overflow-hidden">
-      <Button type="text" className="!px-1" onClick={onBack}>
+      <Button type="text" className="!px-1" onClick={handleBack}>
         <IoIosArrowBack className="text-md" />
       </Button>
       <Typography.Title
@@ -99,9 +100,7 @@ export function TitleEditor({
       >
         {conversation?.title || 'Untitled Conversation'}
       </Typography.Title>
-      {canEdit && (
-        <Button type="text" icon={<EditOutlined />} onClick={handleEditClick} />
-      )}
+      <Button type="text" icon={<EditOutlined />} onClick={handleEditClick} />
     </div>
   )
 }

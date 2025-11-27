@@ -1,14 +1,9 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { immer } from 'zustand/middleware/immer'
-import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
 import type { Conversation, MessageWithContent } from '@/api-client/types'
 import { chatExtensionRegistry } from '../../extensions'
 import type { SSEEvent, GenericSSEEvent } from '../extensions/types'
-
-// Enable Map and Set support in Immer
-enableMapSet()
 
 /**
  * Snapshot of conversation state for caching
@@ -63,8 +58,7 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>()(
-  subscribeWithSelector(
-    immer((set, get) => ({
+  subscribeWithSelector((set, get) => ({
       // Initial state
       conversation: null,
       messages: new Map<string, MessageWithContent>(),
@@ -92,7 +86,9 @@ export const useChatStore = create<ChatState>()(
           tempUserMessageId: state.tempUserMessageId,
         }
         set(state => {
-          state.conversationStateCache.set(conversationId, snapshot)
+          const newCache = new Map(state.conversationStateCache)
+          newCache.set(conversationId, snapshot)
+          return { conversationStateCache: newCache }
         })
         console.log(
           `[Chat.store] Saved conversation state for: ${conversationId}`,
@@ -146,7 +142,9 @@ export const useChatStore = create<ChatState>()(
         }, delayMs)
 
         set(state => {
-          state.cacheClearTimers.set(conversationId, timer)
+          const newTimers = new Map(state.cacheClearTimers)
+          newTimers.set(conversationId, timer)
+          return { cacheClearTimers: newTimers }
         })
         const delayMinutes = Math.round(delayMs / 60000)
         console.log(
@@ -164,7 +162,9 @@ export const useChatStore = create<ChatState>()(
         if (timer) {
           clearTimeout(timer)
           set(state => {
-            state.cacheClearTimers.delete(conversationId)
+            const newTimers = new Map(state.cacheClearTimers)
+            newTimers.delete(conversationId)
+            return { cacheClearTimers: newTimers }
           })
           console.log(
             `[Chat.store] Cancelled cache clear for conversation: ${conversationId}`,
@@ -179,7 +179,9 @@ export const useChatStore = create<ChatState>()(
       clearConversationCache: (conversationId: string) => {
         get().cancelCacheClear(conversationId) // Cancel any pending timer
         set(state => {
-          state.conversationStateCache.delete(conversationId)
+          const newCache = new Map(state.conversationStateCache)
+          newCache.delete(conversationId)
+          return { conversationStateCache: newCache }
         })
         console.log(
           `[Chat.store] Cleared cache for conversation: ${conversationId}`,
@@ -195,6 +197,14 @@ export const useChatStore = create<ChatState>()(
             title: title,
           })
           set({ conversation, loading: false })
+
+          // Emit conversation.created event
+          const { Stores } = await import('@/core/stores')
+          await Stores.EventBus.emit({
+            type: 'conversation.created',
+            data: { conversation },
+          })
+
           return conversation
         } catch (error: any) {
           set({
@@ -239,6 +249,9 @@ export const useChatStore = create<ChatState>()(
         try {
           const conversation = await ApiClient.Conversation.get({ id })
           set({ conversation, loading: false })
+
+          // Load messages for this conversation
+          await get().loadMessages(id)
 
           // Initialize extensions for this conversation
           await chatExtensionRegistry.initialize()
@@ -323,8 +336,12 @@ export const useChatStore = create<ChatState>()(
 
         // Add optimistic user message and track its temp ID
         set(state => {
-          state.messages.set(tempUserMessage.id, tempUserMessage)
-          state.tempUserMessageId = tempUserMessage.id
+          const newMessages = new Map(state.messages)
+          newMessages.set(tempUserMessage.id, tempUserMessage)
+          return {
+            messages: newMessages,
+            tempUserMessageId: tempUserMessage.id,
+          }
         })
 
         try {
@@ -367,7 +384,8 @@ export const useChatStore = create<ChatState>()(
                       )
                       if (tempMessage) {
                         set(state => {
-                          state.messages.delete(state.tempUserMessageId!)
+                          const newMessages = new Map(state.messages)
+                          newMessages.delete(state.tempUserMessageId!)
 
                           // Update message with real IDs
                           const updatedMessage = {
@@ -380,11 +398,12 @@ export const useChatStore = create<ChatState>()(
                             })),
                           }
 
-                          state.messages.set(
-                            data.user_message_id!,
-                            updatedMessage,
-                          )
-                          state.tempUserMessageId = null
+                          newMessages.set(data.user_message_id!, updatedMessage)
+
+                          return {
+                            messages: newMessages,
+                            tempUserMessageId: null,
+                          }
                         })
                       }
                     }
@@ -439,8 +458,12 @@ export const useChatStore = create<ChatState>()(
                             }
 
                             set(state => {
-                              state.streamingMessage = newMessage
-                              state.messages.set(newMessage.id, newMessage)
+                              const newMessages = new Map(state.messages)
+                              newMessages.set(newMessage.id, newMessage)
+                              return {
+                                streamingMessage: newMessage,
+                                messages: newMessages,
+                              }
                             })
                           } else {
                             // Append to existing message
@@ -460,12 +483,11 @@ export const useChatStore = create<ChatState>()(
                             }
 
                             set(state => {
-                              state.streamingMessage = updatedMessage
-                              if (state.streamingMessage) {
-                                state.messages.set(
-                                  state.streamingMessage.id,
-                                  updatedMessage,
-                                )
+                              const newMessages = new Map(state.messages)
+                              newMessages.set(updatedMessage.id, updatedMessage)
+                              return {
+                                streamingMessage: updatedMessage,
+                                messages: newMessages,
                               }
                             })
                           }
@@ -553,14 +575,23 @@ export const useChatStore = create<ChatState>()(
             ...updates,
           })
 
-          set(state => {
-            if (state.conversation) {
-              state.conversation = {
-                ...state.conversation,
-                ...updates,
-              }
-            }
-          })
+          set(state => ({
+            conversation: state.conversation
+              ? { ...state.conversation, ...updates }
+              : null,
+          }))
+
+          // Emit titleUpdated event if title was updated
+          if (updates.title !== undefined) {
+            const { Stores } = await import('@/core/stores')
+            await Stores.EventBus.emit({
+              type: 'conversation.titleUpdated',
+              data: {
+                conversationId: conversation.id,
+                title: updates.title,
+              },
+            })
+          }
         } catch (error: any) {
           set({
             error: error.message || 'Failed to update conversation',
@@ -643,5 +674,4 @@ export const useChatStore = create<ChatState>()(
         console.log('[Chat.store] Destroyed successfully')
       },
     })),
-  ),
 )

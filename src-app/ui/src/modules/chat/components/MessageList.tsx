@@ -1,22 +1,19 @@
 import { Flex, Typography } from 'antd'
 import { LoadingOutlined, MessageOutlined } from '@ant-design/icons'
-import type { MessageWithContent } from '@/api-client/types'
 import { ExtensionSlot } from '../core/extensions'
 import { ChatMessage } from './ChatMessage'
+import { Stores } from '@/core/stores'
 
 const { Text } = Typography
 
-interface MessageListProps {
-  messages: Map<string, MessageWithContent>
-  loading?: boolean
-  isStreaming?: boolean
-}
+/**
+ * MessageList Component
+ * Self-contained component that accesses messages and loading state from store
+ */
+export function MessageList() {
+  // Get data from store
+  const { messages, loading, isStreaming } = Stores.Chat
 
-export function MessageList({
-  messages,
-  loading = false,
-  isStreaming = false,
-}: MessageListProps) {
   // Convert Map to array for rendering
   const messagesArray = Array.from(messages.values())
 
