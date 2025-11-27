@@ -3,9 +3,11 @@ import type {
   ExtensionRegistrationOptions,
   BeforeSendResult,
   SSEEvent,
+  SSEEventTypeRegistry,
   ChatSlotName,
   ExtensionRequestFields,
   ContentRendererProps,
+  HandleSSEEventResult,
 } from './types'
 import React from 'react'
 
@@ -36,6 +38,19 @@ export class ChatExtensionRegistry {
   private contentTypeRegistry: Map<
     string,
     Array<{ extension: ChatExtension; Component: React.ComponentType<ContentRendererProps> }>
+  > = new Map()
+
+  /**
+   * SSE event handler registry: Maps event types to handlers
+   * Built at registration time for efficient O(1) event routing
+   */
+  private sseEventHandlerRegistry: Map<
+    keyof SSEEventTypeRegistry,
+    Array<{
+      extension: ChatExtension
+      handler: (data: any) => HandleSSEEventResult | Promise<HandleSSEEventResult>
+      priority: number
+    }>
   > = new Map()
 
   /**
@@ -115,6 +130,26 @@ export class ChatExtensionRegistry {
       )
     }
 
+    // Register SSE event handlers in registry
+    if (extension.sseEventHandlers) {
+      for (const [eventType, handler] of Object.entries(extension.sseEventHandlers)) {
+        if (!this.sseEventHandlerRegistry.has(eventType as keyof SSEEventTypeRegistry)) {
+          this.sseEventHandlerRegistry.set(eventType as keyof SSEEventTypeRegistry, [])
+        }
+
+        this.sseEventHandlerRegistry.get(eventType as keyof SSEEventTypeRegistry)!.push({
+          extension,
+          handler,
+          priority: extension.priority ?? 100,
+        })
+      }
+
+      console.log(
+        `[ChatExtensions] Registered SSE event handlers for ${extension.name}:`,
+        Object.keys(extension.sseEventHandlers).join(', '),
+      )
+    }
+
     console.log(
       `[ChatExtensions] Registered extension: ${extension.name} (priority: ${extension.priority ?? 100})`,
     )
@@ -145,6 +180,16 @@ export class ChatExtensionRegistry {
         this.contentTypeRegistry.delete(contentType)
       } else {
         this.contentTypeRegistry.set(contentType, filtered)
+      }
+    }
+
+    // Clear SSE event handler registry entries for this extension
+    for (const [eventType, entries] of this.sseEventHandlerRegistry.entries()) {
+      const filtered = entries.filter(entry => entry.extension.name !== name)
+      if (filtered.length === 0) {
+        this.sseEventHandlerRegistry.delete(eventType)
+      } else {
+        this.sseEventHandlerRegistry.set(eventType, filtered)
       }
     }
 
@@ -326,6 +371,7 @@ export class ChatExtensionRegistry {
 
   /**
    * Route SSE event to extensions
+   * Uses registry for O(1) lookup, falls back to legacy handleSSEEvent hook
    * Stops if any extension returns handled: true
    * Accepts both typed SSEEvent and GenericSSEEvent for unknown events
    * Extensions access Stores.Chat directly for conversation data
@@ -333,14 +379,23 @@ export class ChatExtensionRegistry {
   async handleSSEEvent(
     event: SSEEvent | import('./types').GenericSSEEvent,
   ): Promise<boolean> {
-    const extensions = this.getExtensions().filter(ext =>
-      ext.handleSSEEvent !== undefined,
-    )
+    const eventType = event.event_type as keyof SSEEventTypeRegistry
+    const handlers = this.sseEventHandlerRegistry.get(eventType)
 
-    for (const extension of extensions) {
-      try {
-        if (extension.handleSSEEvent) {
-          const result = await extension.handleSSEEvent(event as SSEEvent)
+    // Try new registry-based handlers first (O(1) lookup)
+    if (handlers && handlers.length > 0) {
+      // Filter enabled extensions and sort by priority
+      const enabledHandlers = handlers
+        .filter(({ extension }) => {
+          const options = this.extensionOptions.get(extension.name)
+          return options?.enabled !== false
+        })
+        .sort((a, b) => a.priority - b.priority)
+
+      // Execute handlers in priority order
+      for (const { extension, handler } of enabledHandlers) {
+        try {
+          const result = await handler(event.data)
 
           // Execute UI updates
           if (result.uiUpdates) {
@@ -356,10 +411,43 @@ export class ChatExtensionRegistry {
             )
             return true
           }
+        } catch (error) {
+          console.error(
+            `[ChatExtensions] Error in ${extension.name}.sseEventHandlers.${eventType}:`,
+            error,
+          )
+        }
+      }
+    }
+
+    // Fall back to legacy handleSSEEvent hook for backward compatibility
+    const legacyExtensions = this.getExtensions().filter(ext =>
+      ext.handleSSEEvent !== undefined,
+    )
+
+    for (const extension of legacyExtensions) {
+      try {
+        if (extension.handleSSEEvent) {
+          const result = await extension.handleSSEEvent(event as SSEEvent)
+
+          // Execute UI updates
+          if (result.uiUpdates) {
+            for (const update of result.uiUpdates) {
+              update()
+            }
+          }
+
+          // Stop propagation if handled
+          if (result.handled) {
+            console.log(
+              `[ChatExtensions] SSE event "${event.event_type}" handled by: ${extension.name} (legacy)`,
+            )
+            return true
+          }
         }
       } catch (error) {
         console.error(
-          `[ChatExtensions] Error in ${extension.name}.handleSSEEvent:`,
+          `[ChatExtensions] Error in ${extension.name}.handleSSEEvent (legacy):`,
           error,
         )
       }

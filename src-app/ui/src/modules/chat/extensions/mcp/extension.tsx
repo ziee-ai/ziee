@@ -8,10 +8,7 @@ import {
 import {
   createExtension,
   type ChatExtension,
-  type SSEEvent,
-  type HandleSSEEventResult,
   type ContentRendererProps,
-  type SSEEventData,
 } from '../../core/extensions'
 import { Stores } from '@/core/stores'
 import { createMcpStore, type McpToolCall } from './McpStore.store'
@@ -172,51 +169,54 @@ const mcpExtension: ChatExtension = createExtension({
     console.log('[MCP Extension] Initialized')
   },
 
-  handleSSEEvent: async (event: SSEEvent): Promise<HandleSSEEventResult> => {
-    // Access store via __state to avoid triggering React hooks outside component context
-    const mcpStore = Stores.Chat.__state.McpStore
+  // Type-safe SSE event handlers
+  sseEventHandlers: {
+    mcpToolStart: async (data) => {
+      // data is automatically typed as SSEChatStreamMcpToolStartData
+      // Access store via __state to avoid triggering React hooks outside component context
+      const mcpStore = Stores.Chat.__state.McpStore
 
-    // Handle MCP tool start
-    if (event.event_type === 'mcpToolStart') {
-      const data = event.data as SSEEventData<'mcpToolStart'>
       mcpStore.addToolCall({
         tool_use_id: data.tool_use_id,
         server: data.server,
         tool_name: data.tool_name,
         status: 'started',
       })
+
       console.log('[MCP Extension] Tool started:', data.tool_name)
       return { handled: true, uiUpdates: [] }
-    }
+    },
 
-    // Handle MCP approval required
-    if (event.event_type === 'mcpApprovalRequired') {
-      const data = event.data as SSEEventData<'mcpApprovalRequired'>
+    mcpApprovalRequired: async (data) => {
+      // data is automatically typed as SSEChatStreamMcpApprovalRequiredData
+      const mcpStore = Stores.Chat.__state.McpStore
+
       mcpStore.updateToolCall(data.tool_use_id, {
         status: 'pending_approval',
         input: data.input,
       })
+
       console.log('[MCP Extension] Approval required for:', data.tool_name)
       // TODO: Show approval UI
       return { handled: true, uiUpdates: [] }
-    }
+    },
 
-    // Handle MCP tool complete
-    if (event.event_type === 'mcpToolComplete') {
-      const data = event.data as SSEEventData<'mcpToolComplete'>
+    mcpToolComplete: async (data) => {
+      // data is automatically typed as SSEChatStreamMcpToolCompleteData
+      const mcpStore = Stores.Chat.__state.McpStore
+
       mcpStore.updateToolCall(data.tool_use_id, {
         status: data.is_error ? 'error' : 'completed',
         error: data.is_error ? 'Tool execution failed' : undefined,
       })
+
       console.log(
         '[MCP Extension] Tool completed:',
         data.tool_use_id,
         data.is_error ? '(error)' : '(success)',
       )
       return { handled: true, uiUpdates: [] }
-    }
-
-    return { handled: false }
+    },
   },
 
   // Register content type components

@@ -30,6 +30,7 @@ export type {
   SlotRegistration,
   SSEEvent,
   SSEEventData,
+  SSEEventHandlers,
   GenericSSEEvent,
   SSEEventTypeRegistry,
   ExtensionRequestFields,
@@ -40,6 +41,9 @@ export type {
   ExtensionRegistrationOptions,
   ExtensionSliceCreator,
 } from './types'
+
+// Slot definitions
+export { CHAT_SLOTS } from './types'
 
 // Extension store utilities
 export {

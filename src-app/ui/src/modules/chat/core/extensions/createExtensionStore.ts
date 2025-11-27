@@ -7,61 +7,52 @@ import { createStoreProxy } from '@/core/stores'
  * Create an independent Zustand store for an extension
  * Each extension gets its own store with full reactivity and lifecycle management
  *
- * @param initialState - Default state for the extension
- * @param actions - Extension-specific actions (can access state via get/set)
+ * @param creator - Store creator function that returns state and actions
  * @returns Store proxy for the extension
  *
  * @example
  * ```typescript
- * interface MyExtensionState {
+ * interface MyExtensionStore {
+ *   // State
  *   selectedId: string | null
  *   items: Item[]
- * }
  *
- * interface MyExtensionActions {
+ *   // Actions
  *   selectItem: (id: string) => void
  *   loadItems: () => Promise<void>
  * }
  *
  * export const createMyExtensionStore = () =>
- *   createExtensionStore<MyExtensionState, MyExtensionActions>(
- *     { selectedId: null, items: [] },
- *     (set, get) => ({
- *       selectItem: (id: string) => {
- *         set(state => {
- *           state.selectedId = id
- *         })
- *       },
- *       loadItems: async () => {
- *         const items = await fetchItems()
- *         set(state => {
- *           state.items = items
- *         })
- *       }
- *     })
- *   )
+ *   createExtensionStore<MyExtensionStore>((set, get) => ({
+ *     // State
+ *     selectedId: null,
+ *     items: [],
+ *
+ *     // Actions
+ *     selectItem: (id: string) => {
+ *       set(state => {
+ *         state.selectedId = id
+ *       })
+ *     },
+ *     loadItems: async () => {
+ *       const items = await fetchItems()
+ *       set(state => {
+ *         state.items = items
+ *       })
+ *     }
+ *   }))
  * ```
  */
-export function createExtensionStore<
-  TState extends Record<string, any>,
-  TActions extends Record<string, any> = Record<string, any>,
->(
-  initialState: TState,
-  actions: (
-    set: (fn: (state: TState & TActions) => void) => void,
-    get: () => TState & TActions,
-  ) => TActions,
+export function createExtensionStore<TStore extends Record<string, any>>(
+  creator: (
+    set: (fn: (state: TStore) => void) => void,
+    get: () => TStore,
+  ) => TStore,
 ) {
   // Create Zustand store with immer and subscribeWithSelector
-  const useStore = create<TState & TActions>()(
+  const useStore = create<TStore>()(
     subscribeWithSelector(
-      immer((set, get) => ({
-        // Extension state
-        ...initialState,
-
-        // Extension actions
-        ...actions(set as any, get as any),
-      })),
+      immer((set, get) => creator(set as any, get as any)),
     ),
   )
 
@@ -83,8 +74,5 @@ export function createExtensionStore<
  * ```
  */
 export function createEmptyExtensionStore() {
-  return createExtensionStore<Record<string, never>, Record<string, never>>(
-    {},
-    () => ({}),
-  )
+  return createExtensionStore<Record<string, never>>(() => ({}))
 }

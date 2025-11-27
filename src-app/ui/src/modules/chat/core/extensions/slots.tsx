@@ -31,7 +31,7 @@ export function ExtensionSlot({
   }
 
   return (
-    <div className={className} data-extension-slot={name}>
+    <div className={className} data-chat-extension-slot={name}>
       {renderers.map((renderer, index) => (
         <Fragment key={`${name}-${index}`}>{renderer}</Fragment>
       ))}

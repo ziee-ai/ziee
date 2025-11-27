@@ -53,7 +53,24 @@ export function createStreamCompletionHandler(
 }
 
 /**
- * Helper to create an SSE event handler extension
+ * Helper to create an SSE event handler extension (DEPRECATED)
+ * @deprecated Use sseEventHandlers field instead for type-safe event handling
+ * @example
+ * ```typescript
+ * // Old pattern (deprecated):
+ * const ext = createSSEEventHandler('my-handler', (event) => {
+ *   if (event.event_type === 'foo') { ... }
+ * })
+ *
+ * // New pattern (recommended):
+ * const ext = createExtension({
+ *   name: 'my-extension',
+ *   sseEventHandlers: {
+ *     foo: (data) => { ... },  // Type-safe!
+ *     bar: (data) => { ... }
+ *   }
+ * })
+ * ```
  */
 export function createSSEEventHandler(
   name: string,

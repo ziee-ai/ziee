@@ -12,18 +12,59 @@ import type {
 export type SSEEventTypeRegistry = SSEChatStreamEvent
 
 /**
- * Available slot names for UI injection
+ * Available slots for UI injection
  * Extensions can register components to render in these slots
+ *
+ * Type is auto-extracted from CHAT_SLOTS object keys
  */
-export type ChatSlotName =
-  | 'message_list_header' // Above message list
-  | 'message_list_footer' // Below message list
-  | 'message_item_prefix' // Before each message
-  | 'message_item_suffix' // After each message
-  | 'input_area_prefix' // Before input textarea
-  | 'input_area_suffix' // After input textarea
-  | 'toolbar_actions' // Additional toolbar buttons
-  | 'message_actions' // Message-level actions (edit, copy, etc.)
+export const CHAT_SLOTS = {
+  /** Above message list */
+  message_list_header: {
+    description: 'Rendered above the message list',
+    component: 'MessageList',
+  },
+  /** Below message list */
+  message_list_footer: {
+    description: 'Rendered below the message list',
+    component: 'MessageList',
+  },
+  /** Before each message */
+  message_item_prefix: {
+    description: 'Rendered before each message',
+    component: 'ChatMessage',
+  },
+  /** After each message */
+  message_item_suffix: {
+    description: 'Rendered after each message',
+    component: 'ChatMessage',
+  },
+  /** Before input textarea */
+  input_area_prefix: {
+    description: 'Rendered before input textarea',
+    component: 'ChatInput',
+  },
+  /** After input textarea */
+  input_area_suffix: {
+    description: 'Rendered after input textarea',
+    component: 'ChatInput',
+  },
+  /** Additional toolbar buttons */
+  toolbar_actions: {
+    description: 'Additional toolbar buttons',
+    component: 'ChatInput',
+  },
+  /** Message-level actions (edit, copy, etc.) */
+  message_actions: {
+    description: 'Message-level actions',
+    component: 'ChatMessage',
+  },
+} as const
+
+/**
+ * Chat slot name type
+ * Auto-extracted from CHAT_SLOTS object keys
+ */
+export type ChatSlotName = keyof typeof CHAT_SLOTS
 
 /**
  * SSE event data structure
@@ -114,6 +155,32 @@ export interface HandleSSEEventResult {
 }
 
 /**
+ * Type-safe SSE event handler registry
+ * Maps event types to handlers with correctly typed data parameters
+ *
+ * @example
+ * ```typescript
+ * sseEventHandlers: {
+ *   titleUpdated: (data) => {
+ *     // data is automatically typed as SSEChatStreamTitleUpdatedData
+ *     console.log(data.title)
+ *     return { handled: true }
+ *   },
+ *   mcpToolStart: (data) => {
+ *     // data is automatically typed as SSEChatStreamMcpToolStartData
+ *     console.log(data.tool_name)
+ *     return { handled: true }
+ *   }
+ * }
+ * ```
+ */
+export type SSEEventHandlers = {
+  [K in keyof SSEEventTypeRegistry]?: (
+    data: SSEEventTypeRegistry[K],
+  ) => HandleSSEEventResult | Promise<HandleSSEEventResult>
+}
+
+/**
  * Extension slice creator function type
  * Creates a slice that integrates with the Chat store
  *
@@ -147,12 +214,13 @@ export interface ChatExtension {
    *
    * @example
    * ```typescript
-   * createStore: () => createExtensionStore<MyState, MyActions>(
-   *   { selectedId: null },
-   *   (set, get) => ({
-   *     selectId: (id) => set(state => { state.selectedId = id })
-   *   })
-   * )
+   * createStore: () => createExtensionStore<MyStore>((set, get) => ({
+   *   // State
+   *   selectedId: null,
+   *
+   *   // Actions
+   *   selectId: (id) => set(state => { state.selectedId = id })
+   * }))
    * ```
    */
   createStore?: () => import('@/core/stores').StoreProxy<any>
@@ -183,13 +251,31 @@ export interface ChatExtension {
   ) => AfterStreamCompleteResult | Promise<AfterStreamCompleteResult>
 
   /**
-   * Handle SSE events
+   * Handle SSE events (DEPRECATED - use sseEventHandlers instead)
    * Return handled: true to prevent other extensions from processing
    * Extensions should access Stores.Chat for conversation data
+   * @deprecated Use sseEventHandlers for type-safe event handling
    */
   handleSSEEvent?: (
     event: SSEEvent,
   ) => HandleSSEEventResult | Promise<HandleSSEEventResult>
+
+  /**
+   * Type-safe SSE event handler registry
+   * Register handlers for specific event types with auto-typed data parameters
+   * More efficient than handleSSEEvent (O(1) lookup instead of O(n) loop)
+   *
+   * @example
+   * ```typescript
+   * sseEventHandlers: {
+   *   titleUpdated: (data) => {
+   *     // data is automatically typed as SSEChatStreamTitleUpdatedData
+   *     return { handled: true, uiUpdates: [...] }
+   *   }
+   * }
+   * ```
+   */
+  sseEventHandlers?: SSEEventHandlers
 
   /**
    * Content type components registry

@@ -1,9 +1,6 @@
 import {
   createExtension,
   type ChatExtension,
-  type SSEEvent,
-  type HandleSSEEventResult,
-  type SSEEventData,
 } from '../../core/extensions'
 
 /**
@@ -17,11 +14,10 @@ const titleExtension: ChatExtension = createExtension({
 
   // No store needed - stateless extension
 
-  handleSSEEvent: async (event: SSEEvent): Promise<HandleSSEEventResult> => {
-    // Handle title updated event
-    if (event.event_type === 'titleUpdated') {
-      const data = event.data as SSEEventData<'titleUpdated'>
-
+  // Type-safe SSE event handlers
+  sseEventHandlers: {
+    titleUpdated: async (data) => {
+      // data is automatically typed as SSEChatStreamTitleUpdatedData
       console.log('[Title Extension] Title updated:', data.title)
 
       // Update conversation title in store
@@ -44,9 +40,7 @@ const titleExtension: ChatExtension = createExtension({
         handled: true,
         uiUpdates: [updateTitle],
       }
-    }
-
-    return { handled: false }
+    },
   },
 })
 
