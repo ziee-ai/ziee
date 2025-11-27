@@ -4,12 +4,17 @@ import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useChatLlmProviderStore } from './core/stores/LlmProvider.store'
 import { useChatStore } from './core/stores/Chat.store'
+import { useChatHistoryStore } from './stores/ChatHistory.store'
+import { RecentConversationsWidget } from './widgets/RecentConversationsWidget'
 import './types'
 import './extensions' // Auto-discover and register chat extensions
 
 const NewChatPage = lazyWithPreload(() => import('./pages/NewChatPage'))
 const ConversationPage = lazyWithPreload(
   () => import('./pages/ConversationPage'),
+)
+const ChatHistoryPage = lazyWithPreload(
+  () => import('./pages/ChatHistoryPage'),
 )
 
 export default createModule({
@@ -28,8 +33,18 @@ export default createModule({
       name: 'Chat',
       store: useChatStore,
     },
+    {
+      name: 'ChatHistory',
+      store: useChatHistoryStore,
+    },
   ],
   routes: [
+    {
+      path: '/',
+      element: NewChatPage,
+      requiresAuth: true,
+      layout: AppLayoutDef,
+    },
     {
       path: '/chat',
       element: NewChatPage,
@@ -39,6 +54,12 @@ export default createModule({
     {
       path: '/chat/:conversationId',
       element: ConversationPage,
+      requiresAuth: true,
+      layout: AppLayoutDef,
+    },
+    {
+      path: '/chats',
+      element: ChatHistoryPage,
       requiresAuth: true,
       layout: AppLayoutDef,
     },
@@ -58,7 +79,14 @@ export default createModule({
         id: 'chats',
         icon: <HistoryOutlined />,
         label: 'Chats',
-        path: '/chat',
+        path: '/chats',
+        order: 10,
+      },
+    ],
+    sidebarContent: [
+      {
+        id: 'recent-conversations',
+        component: RecentConversationsWidget,
         order: 10,
       },
     ],
