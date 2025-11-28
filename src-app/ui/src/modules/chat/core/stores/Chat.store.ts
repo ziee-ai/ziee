@@ -297,7 +297,7 @@ export const useChatStore = create<ChatState>()(
         // Check if any extension cancelled the send
         if (beforeResult.cancel) {
           console.log('[Chat.store] Message send cancelled by extension')
-          return
+          throw new Error(beforeResult.errorMessage || 'Message send was cancelled')
         }
 
         // Use modified message if provided by extension
@@ -356,11 +356,17 @@ export const useChatStore = create<ChatState>()(
             },
             {
               SSE: {
-                __init: _data => {
+                __init: async _data => {
                   console.log('Chat SSE initialized with abortController')
                   set({ sending: false })
+
+                  // Call onMessageSent hook after message is successfully sent
+                  await chatExtensionRegistry.onMessageSent()
                 },
                 started: async data => {
+                  // Call onStreamStart hook when streaming starts
+                  await chatExtensionRegistry.onStreamStart()
+
                   // Route through extensions first
                   const sseEvent: SSEEvent = {
                     event_type: 'started',
@@ -518,6 +524,10 @@ export const useChatStore = create<ChatState>()(
                   }
                 },
                 error: async data => {
+                  // Call onStreamError hook when streaming encounters an error
+                  const streamError = new Error(data.message || 'Stream error')
+                  await chatExtensionRegistry.onStreamError(streamError)
+
                   // Route through extensions first
                   const sseEvent: SSEEvent = {
                     event_type: 'error',
@@ -552,6 +562,11 @@ export const useChatStore = create<ChatState>()(
             },
           )
         } catch (error: any) {
+          // Call onStreamError hook when stream initialization fails
+          await chatExtensionRegistry.onStreamError(
+            error instanceof Error ? error : new Error(error.message || 'Failed to send message')
+          )
+
           set({
             error: error.message || 'Failed to send message',
             sending: false,

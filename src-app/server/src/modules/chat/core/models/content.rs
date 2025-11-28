@@ -37,15 +37,6 @@ pub struct ThinkingMetadata {
     pub token_count: Option<u32>,
 }
 
-/// Image source (URL or base64)
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ImageSource {
-    Url { url: String },
-    Base64 { media_type: String, data: String },
-    File { file_id: String },
-}
-
 /// Macro to define MessageContentData with all content types
 ///
 /// To add a new content type:
@@ -76,8 +67,7 @@ macro_rules! define_message_content_data {
         ]
     ) => {
         #[doc = "Content data types - Extensions can add more by modifying the macro invocation"]
-        #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-        #[serde(tag = "type", rename_all = "snake_case")]
+        #[derive(Debug, Clone, schemars::JsonSchema)]
         pub enum MessageContentData {
             $(
                 #[doc = $doc]
@@ -90,16 +80,6 @@ macro_rules! define_message_content_data {
             )*
         }
 
-        impl MessageContentData {
-            /// Get the content type string
-            pub fn content_type(&self) -> &'static str {
-                match self {
-                    $(
-                        Self::$variant { .. } => $content_type_str,
-                    )*
-                }
-            }
-        }
     };
 }
 
@@ -124,99 +104,67 @@ define_message_content_data! {
             "thinking",
             "Thinking/reasoning content (Claude-style extended thinking)"
         ),
-        (
-            Image,
-            {
-                source: ImageSource,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                alt_text: Option<String>
-            },
-            "image",
-            "Image content"
-        ),
 
-        // Generic extension content type (for extension-specific content)
+        // Generic extension content type
         (
             Extension,
             {
-                extension_name: String,
                 content: serde_json::Value
             },
             "extension",
-            "Extension-specific content (delegated to extension for conversion)"
+            "Extension-specific content (flattened in storage)"
         ),
     ]
+}
+
+impl MessageContentData {
+    /// Get the content type string
+    pub fn content_type(&self) -> String {
+        match self {
+            Self::Text { .. } => "text".to_string(),
+            Self::Thinking { .. } => "thinking".to_string(),
+            Self::Extension { content } => {
+                // Extract type from flattened content
+                content
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("extension")
+                    .to_string()
+            }
+        }
+    }
+
+    /// Serialize to API-facing JSON format (flattened)
+    pub fn to_api_content(&self) -> Value {
+        serde_json::to_value(self).unwrap_or(Value::Null)
+    }
 }
 
 // Conversion implementations
 // When adding a new content type above, add its conversion logic here
 impl MessageContentData {
-    /// Convert to ai-providers ContentBlock
-    ///
-    /// Note: Extension variants return None because they must be converted
-    /// via ExtensionRegistry which delegates to the appropriate extension.
+    /// Convert to ai-providers ContentBlock (only for base types)
     pub fn to_content_block(&self) -> Option<ai_providers::ContentBlock> {
         match self {
-            // Base types
             Self::Text { text } => Some(ai_providers::ContentBlock::Text { text: text.clone() }),
             Self::Thinking { thinking, .. } => Some(ai_providers::ContentBlock::Thinking {
                 thinking: thinking.clone(),
             }),
-            Self::Image {
-                source,
-                alt_text: _,
-            } => Some(ai_providers::ContentBlock::Image {
-                source: match source {
-                    ImageSource::Url { url } => ai_providers::ImageSource::Url {
-                        url: url.clone(),
-                        detail: None, // We don't store detail level
-                    },
-                    ImageSource::Base64 { media_type, data } => ai_providers::ImageSource::Base64 {
-                        media_type: media_type.clone(),
-                        data: data.clone(),
-                    },
-                    ImageSource::File { file_id } => ai_providers::ImageSource::File {
-                        file_id: file_id.clone(),
-                    },
-                },
-            }),
-
-            // Extension content - must be converted via ExtensionRegistry
+            // Extension content handled by ExtensionRegistry
             Self::Extension { .. } => None,
         }
     }
 
-    /// Convert from ai-providers ContentBlock
+    /// Convert from ai-providers ContentBlock (only for base types)
     pub fn from_content_block(block: &ai_providers::ContentBlock) -> Option<Self> {
         match block {
-            // Base types
             ai_providers::ContentBlock::Text { text } => Some(Self::Text { text: text.clone() }),
             ai_providers::ContentBlock::Thinking { thinking } => Some(Self::Thinking {
                 thinking: thinking.clone(),
                 metadata: None,
             }),
-            ai_providers::ContentBlock::Image { source } => Some(Self::Image {
-                source: match source {
-                    ai_providers::ImageSource::Url { url, .. } => {
-                        ImageSource::Url { url: url.clone() }
-                    }
-                    ai_providers::ImageSource::Base64 { media_type, data } => ImageSource::Base64 {
-                        media_type: media_type.clone(),
-                        data: data.clone(),
-                    },
-                    ai_providers::ImageSource::File { file_id } => ImageSource::File {
-                        file_id: file_id.clone(),
-                    },
-                },
-                alt_text: None,
-            }),
-
-            // Extension types - must be converted via ExtensionRegistry
-            ai_providers::ContentBlock::ToolUse { .. } => None,
-            ai_providers::ContentBlock::ToolResult { .. } => None,
-
-            // Document blocks are not supported in chat storage
-            ai_providers::ContentBlock::Document { .. } => None,
+            // Extension types handled by ExtensionRegistry
+            _ => None,
         }
     }
 
@@ -225,6 +173,78 @@ impl MessageContentData {
         match self {
             Self::Text { text } => Some(text.as_str()),
             _ => None,
+        }
+    }
+}
+
+// Custom Serialize implementation to flatten Extension content
+impl Serialize for MessageContentData {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+
+        match self {
+            Self::Text { text } => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("type", "text")?;
+                map.serialize_entry("text", text)?;
+                map.end()
+            }
+            Self::Thinking { thinking, metadata } => {
+                let mut map = serializer.serialize_map(Some(if metadata.is_some() { 3 } else { 2 }))?;
+                map.serialize_entry("type", "thinking")?;
+                map.serialize_entry("thinking", thinking)?;
+                if let Some(meta) = metadata {
+                    map.serialize_entry("metadata", meta)?;
+                }
+                map.end()
+            }
+            Self::Extension { content } => {
+                // Serialize just the flattened content (which already has "type" field)
+                content.serialize(serializer)
+            }
+        }
+    }
+}
+
+// Custom Deserialize implementation to handle flattened Extension content
+impl<'de> Deserialize<'de> for MessageContentData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        let content_type = value
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| serde::de::Error::missing_field("type"))?;
+
+        match content_type {
+            "text" => {
+                let text = value
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| serde::de::Error::missing_field("text"))?
+                    .to_string();
+                Ok(MessageContentData::Text { text })
+            }
+            "thinking" => {
+                let thinking = value
+                    .get("thinking")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| serde::de::Error::missing_field("thinking"))?
+                    .to_string();
+                let metadata = value
+                    .get("metadata")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok());
+                Ok(MessageContentData::Thinking { thinking, metadata })
+            }
+            _ => {
+                // Unknown type - treat as Extension with flattened content
+                Ok(MessageContentData::Extension { content: value })
+            }
         }
     }
 }

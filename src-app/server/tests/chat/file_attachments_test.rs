@@ -232,10 +232,11 @@ async fn test_cannot_attach_other_users_file() {
         .await
         .unwrap();
 
-    // SSE returns 200 OK, errors are in the stream
-    assert_eq!(response.status(), StatusCode::OK);
+    // File ownership validation happens in extension hook before streaming starts
+    // Access denied returns HTTP 403 Forbidden
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let body_text = response.text().await.unwrap();
-    // Error should be in SSE stream and indicate access denied
+    // Error body should indicate access denied
     assert!(body_text.contains("access") || body_text.contains("forbidden") || body_text.contains("FILE_ACCESS_DENIED"),
         "Expected access denied error, got: {}", body_text);
 }
@@ -284,11 +285,12 @@ async fn test_send_message_with_nonexistent_file() {
         .await
         .unwrap();
 
-    // SSE returns 200 OK, errors are in the stream
-    assert_eq!(response.status(), StatusCode::OK);
+    // File validation happens in extension hook before streaming starts
+    // Invalid files return HTTP 404 (file not found)
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body_text = response.text().await.unwrap();
-    // Error should be in SSE stream and indicate file not found
-    assert!(body_text.contains("not found") || body_text.contains("FILE_NOT_FOUND") || body_text.contains("error"),
+    // Error body should indicate file not found
+    assert!(body_text.contains("not found") || body_text.contains("FILE_NOT_FOUND") || body_text.contains("File"),
         "Expected file not found error, got: {}", body_text);
 }
 
@@ -336,4 +338,325 @@ async fn test_send_message_with_empty_file_list() {
 
     // Should succeed - empty array is valid
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+// =====================================================
+// Extension Content Storage Tests
+// =====================================================
+
+#[tokio::test]
+async fn test_file_extension_stores_content_as_extension() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "conversations::create",
+            "messages::create",
+            "messages::read",
+            "files::upload",
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
+
+    // Upload a test file
+    let file_content = b"Test file content for storage verification";
+    let file_id = upload_test_file(
+        &server,
+        &user.token,
+        "test.txt",
+        file_content,
+        "text/plain",
+    )
+    .await;
+
+    // Create conversation
+    let conversation =
+        super::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    // Get test model
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+
+    // Send message with file attachment
+    let payload = json!({
+        "model_id": model_id,
+        "branch_id": branch_id,
+        "content": "Please analyze this file",
+        "file_ids": [file_id]
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Parse SSE stream to get user message ID
+    let events = super::helpers::parse_sse_events(response).await;
+    let user_message_id = events
+        .iter()
+        .find(|e| e.event == "started")
+        .and_then(|e| e.data.get("user_message_id"))
+        .and_then(|v| v.as_str())
+        .expect("Expected user_message_id in started event");
+
+    let user_message_id = super::helpers::parse_uuid(&serde_json::Value::String(user_message_id.to_string()));
+
+    // Retrieve message via API to verify content blocks
+    let message = super::helpers::get_message(&server, &user.token, user_message_id).await;
+    let content_blocks = message["contents"].as_array().expect("Expected 'contents' array in message");
+
+    // Should have 2 content blocks: text (0) and extension (1)
+    assert_eq!(content_blocks.len(), 2, "Expected 2 content blocks (text + file)");
+
+    // Verify text content block at position 0
+    assert_eq!(content_blocks[0]["content_type"], "text");
+    assert_eq!(content_blocks[0]["sequence_order"], 0);
+    assert_eq!(content_blocks[0]["content"]["type"], "text");
+    assert_eq!(content_blocks[0]["content"]["text"], "Please analyze this file");
+
+    // Verify file attachment content block at position 1 (flattened structure)
+    assert_eq!(content_blocks[1]["content_type"], "file_attachment");
+    assert_eq!(content_blocks[1]["sequence_order"], 1);
+    assert_eq!(content_blocks[1]["content"]["type"], "file_attachment");
+    assert_eq!(content_blocks[1]["content"]["file_id"], file_id.to_string());
+    assert_eq!(content_blocks[1]["content"]["filename"], "test.txt");
+    assert_eq!(content_blocks[1]["content"]["mime_type"], "text/plain");
+    assert!(content_blocks[1]["content"]["file_size"].as_i64().unwrap() > 0);
+}
+
+#[tokio::test]
+async fn test_file_content_in_conversation_history() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "conversations::create",
+            "messages::create",
+            "messages::read",
+            "files::upload",
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
+
+    // Upload a test file
+    let file_id = upload_test_file(
+        &server,
+        &user.token,
+        "document.pdf",
+        b"Fake PDF content",
+        "application/pdf",
+    )
+    .await;
+
+    // Create conversation
+    let conversation =
+        super::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    // Get test model
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+
+    // Send message with file attachment
+    let payload = json!({
+        "model_id": model_id,
+        "branch_id": branch_id,
+        "content": "Summarize this document",
+        "file_ids": [file_id]
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Wait for stream to complete
+    let _ = response.text().await.unwrap();
+
+    // Retrieve conversation history (returns array of messages directly)
+    let history = super::helpers::get_conversation_history(&server, &user.token, conversation_id).await;
+    let messages = history.as_array().expect("Expected history to be an array of messages");
+
+    // Find user message
+    let user_message = messages
+        .iter()
+        .find(|m| m["role"] == "user")
+        .expect("Expected user message in history");
+
+    // Verify content blocks (conversation history uses 'contents' plural)
+    let content_blocks = user_message["contents"].as_array().unwrap();
+    assert_eq!(content_blocks.len(), 2, "Expected 2 content blocks (text + file)");
+
+    // Verify text content
+    assert_eq!(content_blocks[0]["content_type"], "text");
+    assert_eq!(content_blocks[0]["content"]["type"], "text");
+    assert_eq!(content_blocks[0]["content"]["text"], "Summarize this document");
+
+    // Verify file attachment content (flattened structure)
+    assert_eq!(content_blocks[1]["content_type"], "file_attachment");
+    assert_eq!(content_blocks[1]["content"]["type"], "file_attachment");
+    assert_eq!(content_blocks[1]["content"]["file_id"], file_id.to_string());
+    assert_eq!(content_blocks[1]["content"]["filename"], "document.pdf");
+    assert_eq!(content_blocks[1]["content"]["mime_type"], "application/pdf");
+}
+
+#[tokio::test]
+async fn test_multiple_files_content_ordering() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &[
+            "conversations::create",
+            "messages::create",
+            "messages::read",
+            "files::upload",
+            "llm_models::read",
+            "llm_models::create",
+            "llm_providers::read",
+            "llm_providers::create",
+            "llm_providers::edit",
+        ],
+    )
+    .await;
+
+    // Upload multiple test files with different types
+    let file1_id = upload_test_file(
+        &server,
+        &user.token,
+        "image.jpg",
+        b"JPEG image data",
+        "image/jpeg",
+    )
+    .await;
+
+    let file2_id = upload_test_file(
+        &server,
+        &user.token,
+        "document.pdf",
+        b"PDF document data",
+        "application/pdf",
+    )
+    .await;
+
+    let file3_id = upload_test_file(
+        &server,
+        &user.token,
+        "data.txt",
+        b"Text file data",
+        "text/plain",
+    )
+    .await;
+
+    // Create conversation
+    let conversation =
+        super::helpers::create_conversation(&server, &user.token, None, None).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    // Get test model
+    let model = super::helpers::get_or_create_test_model(&server, &user.user_id).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+
+    // Send message with all three files in specific order
+    let payload = json!({
+        "model_id": model_id,
+        "branch_id": branch_id,
+        "content": "Analyze these files",
+        "file_ids": [file1_id, file2_id, file3_id]
+    });
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Parse SSE stream to get user message ID
+    let events = super::helpers::parse_sse_events(response).await;
+    let user_message_id = events
+        .iter()
+        .find(|e| e.event == "started")
+        .and_then(|e| e.data.get("user_message_id"))
+        .and_then(|v| v.as_str())
+        .expect("Expected user_message_id in started event");
+
+    let user_message_id = super::helpers::parse_uuid(&serde_json::Value::String(user_message_id.to_string()));
+
+    // Retrieve message via API to verify content blocks ordering
+    let message = super::helpers::get_message(&server, &user.token, user_message_id).await;
+    let content_blocks = message["contents"].as_array().unwrap();
+
+    // Should have 4 content blocks: text (0) + 3 files (1, 2, 3)
+    assert_eq!(content_blocks.len(), 4, "Expected 4 content blocks (text + 3 files)");
+
+    // Verify text at position 0
+    assert_eq!(content_blocks[0]["content_type"], "text");
+    assert_eq!(content_blocks[0]["sequence_order"], 0);
+    assert_eq!(content_blocks[0]["content"]["type"], "text");
+    assert_eq!(content_blocks[0]["content"]["text"], "Analyze these files");
+
+    // Verify file1 (image.jpg) at position 1
+    assert_eq!(content_blocks[1]["content_type"], "file_attachment");
+    assert_eq!(content_blocks[1]["sequence_order"], 1);
+    assert_eq!(content_blocks[1]["content"]["type"], "file_attachment");
+    assert_eq!(content_blocks[1]["content"]["filename"], "image.jpg");
+    assert_eq!(content_blocks[1]["content"]["mime_type"], "image/jpeg");
+
+    // Verify file2 (document.pdf) at position 2
+    assert_eq!(content_blocks[2]["content_type"], "file_attachment");
+    assert_eq!(content_blocks[2]["sequence_order"], 2);
+    assert_eq!(content_blocks[2]["content"]["type"], "file_attachment");
+    assert_eq!(content_blocks[2]["content"]["filename"], "document.pdf");
+    assert_eq!(content_blocks[2]["content"]["mime_type"], "application/pdf");
+
+    // Verify file3 (data.txt) at position 3
+    assert_eq!(content_blocks[3]["content_type"], "file_attachment");
+    assert_eq!(content_blocks[3]["sequence_order"], 3);
+    assert_eq!(content_blocks[3]["content"]["type"], "file_attachment");
+    assert_eq!(content_blocks[3]["content"]["filename"], "data.txt");
+    assert_eq!(content_blocks[3]["content"]["mime_type"], "text/plain");
+
+    // Retrieve via conversation history API and verify order preserved
+    let history = super::helpers::get_conversation_history(&server, &user.token, conversation_id).await;
+    let messages = history.as_array().expect("Expected history to be an array of messages");
+    let user_message = messages
+        .iter()
+        .find(|m| m["role"] == "user")
+        .expect("Expected user message");
+
+    let api_content = user_message["contents"].as_array().unwrap();
+    assert_eq!(api_content.len(), 4);
+    assert_eq!(api_content[1]["content"]["filename"], "image.jpg");
+    assert_eq!(api_content[2]["content"]["filename"], "document.pdf");
+    assert_eq!(api_content[3]["content"]["filename"], "data.txt");
 }

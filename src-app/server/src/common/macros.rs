@@ -222,3 +222,105 @@ macro_rules! impl_json_option_from {
 }
 
 pub(crate) use make_transparent;
+
+/// Macro to define type-safe extension content types
+///
+/// This macro generates a type-safe enum for extension-specific content types
+/// that can be stored in MessageContentData::Extension variant.
+///
+/// Usage:
+/// ```rust
+/// define_extension_content! {
+///     extension: "file",
+///     name: FileContent,
+///
+///     Image {
+///         source: ImageSource,
+///         #[serde(skip_serializing_if = "Option::is_none")]
+///         alt_text: Option<String>,
+///     } => "image",
+///
+///     FileAttachment {
+///         file_id: Uuid,
+///         filename: String,
+///         #[serde(skip_serializing_if = "Option::is_none")]
+///         mime_type: Option<String>,
+///         file_size: i64,
+///     } => "file_attachment",
+/// }
+/// ```
+///
+/// This generates:
+/// - An enum with the specified variants
+/// - to_message_content() method to convert to MessageContentData::Extension
+/// - from_message_content() method to extract from MessageContentData
+/// - content_type() method to get the content type string
+#[macro_export]
+macro_rules! define_extension_content {
+    (
+        extension: $ext_name:expr,
+        name: $enum_name:ident,
+        $(
+            $variant:ident {
+                $(
+                    $(#[$field_attr:meta])*
+                    $field:ident : $field_ty:ty
+                ),* $(,)?
+            } => $type_str:expr
+        ),* $(,)?
+    ) => {
+        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+        #[serde(tag = "type", rename_all = "snake_case")]
+        pub enum $enum_name {
+            $(
+                $variant {
+                    $(
+                        $(#[$field_attr])*
+                        $field: $field_ty,
+                    )*
+                },
+            )*
+        }
+
+        impl $enum_name {
+            /// Convert to MessageContentData::Extension (flattened)
+            pub fn to_message_content(&self) -> crate::modules::chat::core::models::content::MessageContentData {
+                use crate::modules::chat::core::models::content::MessageContentData;
+                MessageContentData::Extension {
+                    content: serde_json::to_value(self).expect("Failed to serialize extension content"),
+                }
+            }
+
+            /// Try to extract from MessageContentData::Extension
+            /// Deserializes and lets serde check type tag
+            pub fn from_message_content(
+                data: &crate::modules::chat::core::models::content::MessageContentData
+            ) -> Option<Self> {
+                use crate::modules::chat::core::models::content::MessageContentData;
+                match data {
+                    MessageContentData::Extension { content } => {
+                        // Try to deserialize - serde will check the "type" tag
+                        serde_json::from_value(content.clone()).ok()
+                    }
+                    _ => None,
+                }
+            }
+
+            /// Get the content type string
+            #[allow(dead_code)]
+            pub fn content_type(&self) -> &'static str {
+                match self {
+                    $(
+                        Self::$variant { .. } => $type_str,
+                    )*
+                }
+            }
+
+            /// Get the extension name
+            #[allow(dead_code)]
+            pub fn extension_name() -> &'static str {
+                $ext_name
+            }
+        }
+    };
+}

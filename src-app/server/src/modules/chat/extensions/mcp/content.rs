@@ -29,10 +29,9 @@ pub enum McpContentData {
 }
 
 impl McpContentData {
-    /// Convert to MessageContentData (Extension variant)
+    /// Convert to MessageContentData (Extension variant with flattened content)
     pub fn to_message_content(&self) -> MessageContentData {
         MessageContentData::Extension {
-            extension_name: "mcp".to_string(),
             content: serde_json::to_value(self).expect("McpContentData should serialize"),
         }
     }
@@ -40,10 +39,20 @@ impl McpContentData {
     /// Try to convert from MessageContentData (Extension variant)
     pub fn from_message_content(content: &MessageContentData) -> Result<Self, AppError> {
         match content {
-            MessageContentData::Extension {
-                extension_name,
-                content,
-            } if extension_name == "mcp" => {
+            MessageContentData::Extension { content } => {
+                // Check type tag to verify this is MCP content
+                let content_type = content
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| AppError::internal_error("Missing type field in extension content"))?;
+
+                if !matches!(content_type, "tool_use" | "tool_result") {
+                    return Err(AppError::internal_error(format!(
+                        "Invalid MCP content type: {}",
+                        content_type
+                    )));
+                }
+
                 serde_json::from_value(content.clone()).map_err(|e| {
                     AppError::internal_error(format!("Failed to deserialize MCP content: {}", e))
                 })

@@ -1,0 +1,54 @@
+import { Divider } from 'antd'
+import { FileCard } from './FileCard'
+import { Stores } from '@/core/stores'
+import type { FileUploadProgress } from '../File.store'
+import type { File as FileEntity } from '@/api-client/types'
+
+/**
+ * FilePreviewList Component
+ * Displays horizontal scrollable list of selected/uploading files
+ * Used in ChatInput to show files before sending
+ * Matches reference implementation styling
+ */
+export function FilePreviewList() {
+  // Access file extension store directly via Stores.Chat (reactive via store proxy)
+  const { selectedFiles, uploadingFiles, removeFile, removeUploadingFile } =
+    Stores.Chat.FileStore
+
+  const hasFiles = selectedFiles.size > 0 || uploadingFiles.size > 0
+
+  if (!hasFiles) {
+    return null
+  }
+
+  return (
+    <>
+      <Divider style={{ margin: 0 }} />
+      <div style={{ padding: '8px' }}>
+        <div className="flex gap-2 w-full overflow-x-auto">
+          {/* Uploading files */}
+          {Array.from(uploadingFiles.values() as IterableIterator<FileUploadProgress>).map((progress) => (
+            <div key={progress.id} className="flex-1 min-w-20 max-w-24">
+              <FileCard
+                uploadProgress={progress}
+                onRemove={() => removeUploadingFile(progress.id)}
+              />
+            </div>
+          ))}
+
+          {/* Selected files (upload completed) */}
+          {Array.from(selectedFiles.values() as IterableIterator<FileEntity>).map((file) => (
+            <div key={file.id} className="flex-1 min-w-20 max-w-24">
+              <FileCard
+                file={file}
+                canDelete={false}
+                canRemove={true}
+                onRemove={() => removeFile(file.id)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}

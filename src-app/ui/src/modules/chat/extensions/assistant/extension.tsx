@@ -4,7 +4,7 @@ import {
   type ExtensionRequestFields,
 } from '../../core/extensions'
 import { Stores } from '@/core/stores'
-import { createAssistantStore } from './AssistantStore.store'
+import { createAssistantStore } from './Assistant.store'
 import { AssistantSelector } from './components/AssistantSelector'
 
 /**

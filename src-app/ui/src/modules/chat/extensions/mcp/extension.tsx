@@ -11,7 +11,7 @@ import {
   type ContentRendererProps,
 } from '../../core/extensions'
 import { Stores } from '@/core/stores'
-import { createMcpStore, type McpToolCall } from './McpStore.store'
+import { createMcpStore, type McpToolCall } from './Mcp.store'
 
 const { Text } = Typography
 

@@ -102,3 +102,12 @@ export const createMcpStore = () =>
       })
     },
   }))
+
+/**
+ * Augment ChatExtensionStores with McpStore
+ */
+declare module '../../types' {
+  interface ChatExtensionStores {
+    McpStore: ReturnType<typeof createMcpStore>
+  }
+}

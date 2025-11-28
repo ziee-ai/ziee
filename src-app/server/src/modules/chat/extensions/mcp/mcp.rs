@@ -744,13 +744,10 @@ impl ChatExtension for McpChatExtension {
         })
     }
 
-    fn convert_extension_content(
-        &self,
-        extension_name: &str,
-        content: &Value,
-    ) -> Option<ContentBlock> {
-        // Only handle "mcp" extension content
-        if extension_name != "mcp" {
+    fn convert_extension_content(&self, content: &Value) -> Option<ContentBlock> {
+        // Check if this is MCP content by type field
+        let content_type = content.get("type")?.as_str()?;
+        if !matches!(content_type, "tool_use" | "tool_result") {
             return None;
         }
 

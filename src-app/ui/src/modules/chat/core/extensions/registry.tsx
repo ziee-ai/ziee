@@ -548,6 +548,99 @@ export class ChatExtensionRegistry {
 
     return fields
   }
+
+  /**
+   * Execute onMessageSent hook across all extensions
+   * Called after message is successfully sent, before streaming starts
+   * Extensions access Stores.Chat directly for conversation data
+   */
+  async onMessageSent(): Promise<void> {
+    const extensions = this.getExtensions().filter(ext =>
+      ext.onMessageSent !== undefined,
+    )
+
+    for (const extension of extensions) {
+      try {
+        if (extension.onMessageSent) {
+          const result = await extension.onMessageSent()
+
+          // Execute any custom actions
+          if (result.actions) {
+            for (const action of result.actions) {
+              await action()
+            }
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.onMessageSent:`,
+          error,
+        )
+      }
+    }
+  }
+
+  /**
+   * Execute onStreamStart hook across all extensions
+   * Called when streaming starts
+   * Extensions access Stores.Chat directly for conversation data
+   */
+  async onStreamStart(): Promise<void> {
+    const extensions = this.getExtensions().filter(ext =>
+      ext.onStreamStart !== undefined,
+    )
+
+    for (const extension of extensions) {
+      try {
+        if (extension.onStreamStart) {
+          const result = await extension.onStreamStart()
+
+          // Execute any custom actions
+          if (result.actions) {
+            for (const action of result.actions) {
+              await action()
+            }
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.onStreamStart:`,
+          error,
+        )
+      }
+    }
+  }
+
+  /**
+   * Execute onStreamError hook across all extensions
+   * Called when streaming encounters an error
+   * Extensions access Stores.Chat directly for conversation data
+   */
+  async onStreamError(error: Error): Promise<void> {
+    const extensions = this.getExtensions().filter(ext =>
+      ext.onStreamError !== undefined,
+    )
+
+    for (const extension of extensions) {
+      try {
+        if (extension.onStreamError) {
+          const result = await extension.onStreamError(error)
+
+          // Execute any custom actions
+          if (result.actions) {
+            for (const action of result.actions) {
+              await action()
+            }
+          }
+        }
+      } catch (hookError) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.onStreamError:`,
+          hookError,
+        )
+      }
+    }
+  }
 }
 
 // Singleton instance

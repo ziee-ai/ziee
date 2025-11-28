@@ -83,3 +83,12 @@ export const createAssistantStore = () =>
       availableAssistants: () => get().loadAssistants(),
     },
   }))
+
+/**
+ * Augment ChatExtensionStores with AssistantStore
+ */
+declare module '../../types' {
+  interface ChatExtensionStores {
+    AssistantStore: ReturnType<typeof createAssistantStore>
+  }
+}

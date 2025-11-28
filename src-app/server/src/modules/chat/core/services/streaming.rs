@@ -70,14 +70,48 @@ impl StreamingService {
             .map(|reg| reg.should_create_user_message(&request))
             .unwrap_or(true)  // Default to true if no registry
         {
+            // Create preliminary StreamContext for extensions to use
+            // (provider metadata will be populated later in the loop)
+            let preliminary_context = StreamContext {
+                conversation_id,
+                branch_id,
+                message_id: None, // Assistant message not created yet
+                user_id,
+                pool: self.pool.clone(),
+                metadata: std::collections::HashMap::new(),
+                iteration: 0,
+            };
+
+            // Ask extensions for additional content blocks
+            let extension_content = if let Some(registry) = &self.extension_registry {
+                registry
+                    .collect_user_message_content(&preliminary_context, &request, &request.content)
+                    .await?
+            } else {
+                Vec::new()
+            };
+
+            // Create user message
             let user_message =
                 Repos.chat.core.create_message(branch_id, MessageRole::User.as_str()).await?;
 
+            // Create text content (always at sequence 0)
             let user_content_data = MessageContentData::Text {
                 text: request.content.clone(),
             };
             let user_content = Repos.chat.core.create_content(user_message.id, "text", user_content_data, 0)
                 .await?;
+
+            // Create extension content blocks (sequence 1, 2, 3, ...)
+            for (index, content_data) in extension_content.into_iter().enumerate() {
+                Repos.chat.core.create_content(
+                    user_message.id,
+                    &content_data.content_type(),
+                    content_data,
+                    1 + index as i32, // Start after text
+                )
+                .await?;
+            }
 
             (Some(user_message.id), Some(user_content.id))
         } else {
@@ -414,7 +448,7 @@ impl StreamingService {
                             let actual_index = content_offset + offset_index as i32;
                             match Repos.chat.core.create_content(
                                 assistant_message_id,
-                                content_type,
+                                &content_type,
                                 content.clone(),
                                 actual_index,
                             ).await {
@@ -509,14 +543,12 @@ impl StreamingService {
                 let content_data = content.parse_content()?;
 
                 // Handle Extension variants via registry
-                let block = if let MessageContentData::Extension {
-                    extension_name,
-                    content: ext_content,
-                } = &content_data
+                let block = if let MessageContentData::Extension { content: ext_content } =
+                    &content_data
                 {
                     // Extension content must be converted via registry
                     if let Some(registry) = extension_registry {
-                        registry.convert_to_content_block(extension_name, ext_content)
+                        registry.convert_extension_to_content_block(ext_content)
                     } else {
                         None // No registry, skip extension content
                     }
@@ -781,9 +813,8 @@ impl DeltaAccumulator {
                 _ => continue, // Skip unknown types (extensions handle their own)
             };
 
-            // Serialize to JSON
-            let content_json =
-                serde_json::to_value(&content_data).map_err(|e| AppError::database_error(e))?;
+            // Serialize to JSON (flattened for Extension variants)
+            let content_json = content_data.to_api_content();
 
             // Insert content block
             sqlx::query!(
@@ -815,8 +846,8 @@ impl DeltaAccumulator {
 
             for (index, content_data) in extension_content {
                 let content_type = content_data.content_type();
-                let content_json = serde_json::to_value(&content_data)
-                    .map_err(|e| AppError::database_error(e))?;
+                // Use to_api_content() to flatten Extension variants
+                let content_json = content_data.to_api_content();
 
                 tracing::info!(
                     "Persisting extension content at index {}: type={}",

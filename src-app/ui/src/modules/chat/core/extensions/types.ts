@@ -140,9 +140,26 @@ export interface BeforeSendResult {
   message?: string
   /** Add custom fields to request */
   requestFields?: ExtensionRequestFields
+  /** Error/warning message to display to user if operation is cancelled */
+  errorMessage?: string
 }
 
 export interface AfterStreamCompleteResult {
+  /** Custom actions to perform */
+  actions?: (() => void | Promise<void>)[]
+}
+
+export interface OnMessageSentResult {
+  /** Custom actions to perform */
+  actions?: (() => void | Promise<void>)[]
+}
+
+export interface OnStreamStartResult {
+  /** Custom actions to perform */
+  actions?: (() => void | Promise<void>)[]
+}
+
+export interface OnStreamErrorResult {
   /** Custom actions to perform */
   actions?: (() => void | Promise<void>)[]
 }
@@ -246,7 +263,26 @@ export interface ChatExtension {
   ) => BeforeSendResult | Promise<BeforeSendResult>
 
   /**
-   * Called after stream completes
+   * Called after message is successfully sent (before streaming starts)
+   * Useful for clearing state, logging, etc.
+   * Extensions should access Stores.Chat for conversation data
+   */
+  onMessageSent?: () => OnMessageSentResult | Promise<OnMessageSentResult>
+
+  /**
+   * Called when streaming starts
+   * Extensions should access Stores.Chat for conversation data
+   */
+  onStreamStart?: () => OnStreamStartResult | Promise<OnStreamStartResult>
+
+  /**
+   * Called when streaming encounters an error
+   * Extensions should access Stores.Chat for conversation data
+   */
+  onStreamError?: (error: Error) => OnStreamErrorResult | Promise<OnStreamErrorResult>
+
+  /**
+   * Called after stream completes successfully
    * Can perform cleanup, analytics, etc.
    * Extensions should access Stores.Chat for conversation data
    */

@@ -6,7 +6,10 @@ use crate::{
     common::AppError,
     core::Repos,
     modules::{
-        chat::core::extension::{ChatExtension, SendMessageRequest, StreamContext},
+        chat::{
+            core::extension::{ChatExtension, SendMessageRequest, StreamContext},
+            extensions::file::types::{FileContent, ImageSource as FileImageSource},
+        },
         file::storage::manager::get_file_storage,
         llm_provider_files,
     },
@@ -177,6 +180,51 @@ impl ChatExtension for FileExtension {
         Ok(())
     }
 
+    async fn provide_user_message_content(
+        &self,
+        context: &StreamContext,
+        send_request: &SendMessageRequest,
+        _text_content: &str,
+    ) -> Result<Vec<crate::modules::chat::core::models::content::MessageContentData>, AppError> {
+        // Check if request has file_ids
+        let file_ids = match &send_request.file_ids {
+            Some(ids) if !ids.is_empty() => ids,
+            _ => return Ok(Vec::new()), // No files
+        };
+
+        let mut content_blocks = Vec::new();
+
+        for file_id in file_ids {
+            // Get file metadata
+            let file = Repos
+                .file
+                .get_by_id(*file_id)
+                .await?
+                .ok_or_else(|| AppError::not_found("File"))?;
+
+            // Validate ownership
+            if file.user_id != context.user_id {
+                return Err(AppError::forbidden(
+                    "FILE_ACCESS_DENIED",
+                    &format!("You don't have access to file {}", file_id),
+                ));
+            }
+
+            // Create FileAttachment using FileContent enum
+            let file_content = FileContent::FileAttachment {
+                file_id: *file_id,
+                filename: file.filename,
+                mime_type: file.mime_type,
+                file_size: file.file_size,
+            };
+
+            // Convert to MessageContentData::Extension
+            content_blocks.push(file_content.to_message_content());
+        }
+
+        Ok(content_blocks)
+    }
+
     async fn before_llm_call(
         &self,
         context: &mut StreamContext,
@@ -229,15 +277,58 @@ impl ChatExtension for FileExtension {
     }
 
     fn handled_content_types(&self) -> Vec<&'static str> {
-        vec![]
+        vec!["file"]
     }
 
     async fn process_content_for_llm(
         &self,
-        _content: &crate::modules::chat::core::models::content::MessageContentData,
-        _context: &StreamContext,
+        content: &crate::modules::chat::core::models::content::MessageContentData,
+        context: &StreamContext,
     ) -> Result<Option<ContentBlock>, AppError> {
-        Ok(None)
+        // Try to extract FileContent from MessageContentData::Extension
+        let file_content = match FileContent::from_message_content(content) {
+            Some(fc) => fc,
+            None => return Ok(None), // Not a file extension content
+        };
+
+        // Process based on FileContent variant
+        match file_content {
+            FileContent::FileAttachment { file_id, .. } => {
+                // Get provider info from context
+                let provider_id = context
+                    .metadata
+                    .get("provider_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                    .ok_or_else(|| AppError::internal_error("Provider ID not in context"))?;
+
+                let provider_type = context
+                    .metadata
+                    .get("provider_type")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| AppError::internal_error("Provider type not in context"))?;
+
+                // Process file and return appropriate ContentBlock
+                let blocks = self
+                    .process_file(file_id, provider_id, provider_type, context.user_id)
+                    .await?;
+
+                // Return first block (process_file returns Vec but we need single)
+                Ok(blocks.into_iter().next())
+            }
+            FileContent::Image { source, .. } => {
+                // Convert FileImageSource to ai_providers::ImageSource
+                let ai_source = match source {
+                    FileImageSource::Url { url } => ImageSource::Url { url, detail: None },
+                    FileImageSource::Base64 { media_type, data } => {
+                        ImageSource::Base64 { media_type, data }
+                    }
+                    FileImageSource::File { file_id } => ImageSource::File { file_id },
+                };
+
+                Ok(Some(ContentBlock::Image { source: ai_source }))
+            }
+        }
     }
 
     async fn process_content_from_db(

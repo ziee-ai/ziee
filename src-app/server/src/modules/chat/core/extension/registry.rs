@@ -153,6 +153,43 @@ pub trait ChatExtension: Send + Sync {
         Ok(None)
     }
 
+    /// Provide additional content blocks for user message creation
+    /// Called BEFORE user message is created, allowing extensions to contribute content
+    ///
+    /// # Arguments
+    /// * `context` - Stream context (conversation_id, branch_id, user_id, pool)
+    /// * `send_request` - Original send message request with extension fields
+    /// * `text_content` - The primary text content from user
+    ///
+    /// # Returns
+    /// Vector of MessageContentData to be included in user message
+    /// - Content will be created with sequence_order starting at 1 (text is at 0)
+    /// - Return empty vec if no additional content
+    ///
+    /// # Example
+    /// ```rust
+    /// // File extension adds file_attachment content blocks
+    /// async fn provide_user_message_content(
+    ///     &self,
+    ///     context: &StreamContext,
+    ///     send_request: &SendMessageRequest,
+    ///     _text_content: &str,
+    /// ) -> Result<Vec<MessageContentData>, AppError> {
+    ///     if let Some(file_ids) = &send_request.file_ids {
+    ///         return self.create_file_content_blocks(file_ids, context.user_id).await;
+    ///     }
+    ///     Ok(Vec::new())
+    /// }
+    /// ```
+    async fn provide_user_message_content(
+        &self,
+        _context: &StreamContext,
+        _send_request: &SendMessageRequest,
+        _text_content: &str,
+    ) -> Result<Vec<MessageContentData>, AppError> {
+        Ok(Vec::new()) // Default: no additional content
+    }
+
     // ========== ROUTE REGISTRATION ==========
 
     /// Register custom routes for this extension
@@ -195,21 +232,15 @@ pub trait ChatExtension: Send + Sync {
         Ok(()) // Default: no processing
     }
 
-    // ========== CONTENT CONVERSION (for Extension variant) ==========
+    // ========== CONTENT CONVERSION ==========
 
-    /// Convert Extension variant to ContentBlock
-    /// Called when Extension content needs to be converted for LLM
-    /// Return None if this extension doesn't handle the extension_name
-    fn convert_extension_content(
-        &self,
-        _extension_name: &str,
-        _content: &serde_json::Value,
-    ) -> Option<ContentBlock> {
+    /// Convert Extension content to ContentBlock for LLM
+    /// Return None if this extension doesn't handle this content type
+    fn convert_extension_content(&self, _content: &serde_json::Value) -> Option<ContentBlock> {
         None // Default: doesn't handle extension content
     }
 
-    /// Convert ContentBlock to Extension variant
-    /// Called when ContentBlock from LLM needs to be stored as extension content
+    /// Convert ContentBlock from LLM to MessageContentData (Extension variant)
     /// Return None if this extension doesn't handle this ContentBlock type
     fn convert_from_content_block(&self, _block: &ContentBlock) -> Option<MessageContentData> {
         None // Default: doesn't handle conversion
@@ -349,6 +380,28 @@ impl ExtensionRegistry {
         Ok(None)
     }
 
+    /// Collect user message content from all extensions
+    /// Calls provide_user_message_content on all extensions and combines results
+    /// Returns combined vector of MessageContentData from all extensions
+    /// Example: File extension adds file_attachment content blocks
+    pub async fn collect_user_message_content(
+        &self,
+        context: &StreamContext,
+        send_request: &SendMessageRequest,
+        text_content: &str,
+    ) -> Result<Vec<MessageContentData>, AppError> {
+        let mut all_content = Vec::new();
+
+        for ext in &self.extensions {
+            let ext_content = ext
+                .provide_user_message_content(context, send_request, text_content)
+                .await?;
+            all_content.extend(ext_content);
+        }
+
+        Ok(all_content)
+    }
+
     // ========== ROUTE REGISTRATION ==========
 
     /// Register routes from all extensions
@@ -381,7 +434,7 @@ impl ExtensionRegistry {
         context: &StreamContext,
     ) -> Result<Option<ContentBlock>, AppError> {
         let content_type = content.content_type();
-        if let Some(handler) = self.get_handler_for_content_type(content_type) {
+        if let Some(handler) = self.get_handler_for_content_type(&content_type) {
             handler.process_content_for_llm(content, context).await
         } else {
             Ok(None)
@@ -397,7 +450,7 @@ impl ExtensionRegistry {
         context: &StreamContext,
     ) -> Result<(), AppError> {
         let content_type = content.content_type();
-        if let Some(handler) = self.get_handler_for_content_type(content_type) {
+        if let Some(handler) = self.get_handler_for_content_type(&content_type) {
             handler.process_content_from_db(content, context).await
         } else {
             Ok(())
@@ -406,22 +459,21 @@ impl ExtensionRegistry {
 
     // ========== EXTENSION CONTENT CONVERSION ==========
 
-    /// Convert Extension variant to ContentBlock
-    /// Delegates to the appropriate extension based on extension_name
-    pub fn convert_to_content_block(
+    /// Convert Extension content to ContentBlock for LLM
+    /// Tries each extension until one successfully converts
+    pub fn convert_extension_to_content_block(
         &self,
-        extension_name: &str,
         content: &serde_json::Value,
     ) -> Option<ContentBlock> {
         for ext in &self.extensions {
-            if let Some(block) = ext.convert_extension_content(extension_name, content) {
+            if let Some(block) = ext.convert_extension_content(content) {
                 return Some(block);
             }
         }
         None
     }
 
-    /// Convert ContentBlock to MessageContentData (potentially Extension variant)
+    /// Convert ContentBlock to MessageContentData (Extension variant)
     /// Tries each extension until one successfully converts the block
     pub fn convert_from_content_block(&self, block: &ContentBlock) -> Option<MessageContentData> {
         for ext in &self.extensions {
@@ -431,6 +483,7 @@ impl ExtensionRegistry {
         }
         None
     }
+
 }
 
 impl Default for ExtensionRegistry {
