@@ -171,14 +171,19 @@ impl ChatExtension for TitleGenerationExtension {
             .find(|msg| msg.message.role == "user")
             .ok_or_else(|| AppError::internal_error("No user message found"))?;
 
-        // Extract text content
+        // Extract text content (Text is now an extension type)
         let user_content = first_user_message
             .contents
             .iter()
             .find_map(|c| {
-                c.parse_content()
-                    .ok()
-                    .and_then(|data| data.to_text().map(|s| s.to_string()))
+                let data = c.parse_content().ok()?;
+                // Check if this is text content by serializing and checking the type field
+                let value = serde_json::to_value(&data).ok()?;
+                if value.get("type")?.as_str()? == "text" {
+                    value.get("text")?.as_str().map(|s| s.to_string())
+                } else {
+                    None
+                }
             })
             .ok_or_else(|| AppError::internal_error("No text content in user message"))?;
 

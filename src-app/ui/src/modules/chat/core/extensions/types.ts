@@ -228,23 +228,33 @@ export interface ChatExtension {
   readonly priority?: number
 
   /**
-   * Create extension store (REQUIRED for stateful extensions)
-   * Creates an independent Zustand store for the extension
-   * Store will be accessible via Stores.Chat.{extensionName}
+   * Store configuration for stateful extensions
+   * Groups store name and factory function together
+   * If defined, both name and createStore must be provided
+   *
+   * The store will be accessible via Stores.Chat.{store.name}
    * Provides full reactivity, lifecycle management, and reference counting
    *
    * @example
    * ```typescript
-   * createStore: () => createExtensionStore<MyStore>((set, get) => ({
-   *   // State
-   *   selectedId: null,
+   * store: {
+   *   name: 'McpStore',  // Store key for registration
+   *   createStore: () => createExtensionStore<MyStore>((set, get) => ({
+   *     // State
+   *     selectedId: null,
    *
-   *   // Actions
-   *   selectId: (id) => set(state => { state.selectedId = id })
-   * }))
+   *     // Actions
+   *     selectId: (id) => set(state => { state.selectedId = id })
+   *   }))
+   * }
    * ```
    */
-  createStore?: () => import('@/core/stores').StoreProxy<any>
+  readonly store?: {
+    /** Store key for registration (e.g., "McpStore", "FileStore") */
+    name: string
+    /** Factory function to create the store instance */
+    createStore: () => import('@/core/stores').StoreProxy<any>
+  }
 
   /**
    * Initialize extension
@@ -360,6 +370,85 @@ export interface ChatExtension {
   composeRequestFields?: () =>
     | ExtensionRequestFields
     | Promise<ExtensionRequestFields>
+
+  /**
+   * Provide user message content
+   * Called when creating a user message to allow extensions to contribute content
+   *
+   * @param text - The primary text content from user input
+   * @param composedRequest - The composed request with all extension fields
+   * @returns Array of MessageContentData to add to user message (or empty array)
+   *
+   * @example
+   * ```typescript
+   * // Text extension provides text content
+   * provideUserContent: async (text, composedRequest) => {
+   *   if (!text) return []
+   *   return [{ type: 'text', text }]
+   * }
+   *
+   * // File extension provides file attachments
+   * provideUserContent: async (text, composedRequest) => {
+   *   const fileIds = composedRequest.file_ids || []
+   *   return fileIds.map(id => ({ type: 'file_attachment', file_id: id, ... }))
+   * }
+   * ```
+   */
+  provideUserContent?: (
+    text: string,
+    composedRequest: any,
+  ) => MessageContent[] | Promise<MessageContent[]>
+
+  /**
+   * Provide streaming content
+   * Called when a new streaming content block starts (delta with new index)
+   *
+   * @param contentType - The content type from streaming delta
+   * @param delta - Optional initial delta text
+   * @returns New MessageContentData for this content block, or null if not handled
+   *
+   * @example
+   * ```typescript
+   * // Text extension creates text content blocks
+   * provideStreamingContent: async (contentType, delta) => {
+   *   if (contentType === 'text') {
+   *     return { type: 'text', text: delta || '' }
+   *   }
+   *   return null
+   * }
+   * ```
+   */
+  provideStreamingContent?: (
+    contentType: string,
+    delta?: string,
+  ) => MessageContent | null | Promise<MessageContent | null>
+
+  /**
+   * Process streaming delta
+   * Called for each delta during streaming to accumulate content
+   *
+   * @param content - The existing MessageContentData
+   * @param delta - The delta text to append
+   * @returns Updated MessageContentData with delta applied
+   *
+   * @example
+   * ```typescript
+   * // Text extension accumulates text deltas
+   * processStreamingDelta: async (content, delta) => {
+   *   if (content.content.type === 'text') {
+   *     return {
+   *       ...content,
+   *       content: { ...content.content, text: content.content.text + delta }
+   *     }
+   *   }
+   *   return content
+   * }
+   * ```
+   */
+  processStreamingDelta?: (
+    content: MessageContent,
+    delta: string,
+  ) => MessageContent | Promise<MessageContent>
 
   /**
    * Cleanup extension

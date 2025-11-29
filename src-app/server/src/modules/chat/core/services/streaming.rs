@@ -95,25 +95,25 @@ impl StreamingService {
             let user_message =
                 Repos.chat.core.create_message(branch_id, MessageRole::User.as_str()).await?;
 
-            // Create text content (always at sequence 0)
-            let user_content_data = MessageContentData::Text {
-                text: request.content.clone(),
-            };
-            let user_content = Repos.chat.core.create_content(user_message.id, "text", user_content_data, 0)
-                .await?;
-
-            // Create extension content blocks (sequence 1, 2, 3, ...)
+            // Create content blocks from extensions (text, files, etc.)
+            // Extensions are called in priority order (text extension runs first at order 5)
+            let mut first_content_id = None;
             for (index, content_data) in extension_content.into_iter().enumerate() {
-                Repos.chat.core.create_content(
+                let content = Repos.chat.core.create_content(
                     user_message.id,
                     &content_data.content_type(),
                     content_data,
-                    1 + index as i32, // Start after text
+                    index as i32,
                 )
                 .await?;
+
+                // Track first content block for return value
+                if first_content_id.is_none() {
+                    first_content_id = Some(content.id);
+                }
             }
 
-            (Some(user_message.id), Some(user_content.id))
+            (Some(user_message.id), first_content_id)
         } else {
             (None, None)  // Extension prevented user message creation
         };
@@ -497,13 +497,13 @@ impl StreamingService {
                 MessageRole::System => continue, // There should be no system message in the database
             };
 
-            // Convert content blocks
+            // Convert content blocks (all content now handled by extensions)
             let mut content_blocks = Vec::new();
             for content in &msg_with_content.contents {
-                let content_data = content.parse_content()?;
-                if let Some(block) = content_data.to_content_block() {
-                    content_blocks.push(block);
-                }
+                let _content_data = content.parse_content()?;
+                // All content types are now extension types - this method shouldn't be used
+                // Use convert_history_to_messages_with_extensions instead
+                tracing::warn!("Using deprecated convert_history_to_messages without extensions - content may not be converted properly");
             }
 
             messages.push(ChatMessage {
@@ -537,39 +537,25 @@ impl StreamingService {
                 MessageRole::System => continue, // Skip system messages for now
             };
 
-            // Convert content blocks
+            // Convert content blocks (all content is now extension content)
             let mut content_blocks = Vec::new();
             for content in &msg_with_content.contents {
                 let content_data = content.parse_content()?;
 
-                // Handle extension variants (non-Text/Thinking) via registry
-                let block = match &content_data {
-                    // Base types can be converted directly
-                    MessageContentData::Text { .. } | MessageContentData::Thinking { .. } => {
-                        // Non-extension content: try extension transformation first
-                        if let Some(registry) = extension_registry {
-                            // Ask extension to transform content for LLM (e.g., file → text description)
-                            match registry
-                                .process_content_for_llm(&content_data, context)
-                                .await?
-                            {
-                                Some(transformed_block) => Some(transformed_block),
-                                None => content_data.to_content_block(), // Use default conversion
-                            }
-                        } else {
-                            content_data.to_content_block() // Use default conversion
-                        }
-                    }
-                    // Extension types (Image, FileAttachment, ToolUse, ToolResult) - convert via registry
-                    _ => {
-                        if let Some(registry) = extension_registry {
+                // All content types are now extension types - use registry for all conversions
+                let block = if let Some(registry) = extension_registry {
+                    // Try extension-specific transformation first
+                    match registry.process_content_for_llm(&content_data, context).await? {
+                        Some(transformed_block) => Some(transformed_block),
+                        None => {
+                            // Fallback: convert extension content to ContentBlock
                             let ext_content = serde_json::to_value(&content_data)
-                                .map_err(|e| AppError::internal_error(format!("Failed to serialize extension content: {}", e)))?;
+                                .map_err(|e| AppError::internal_error(format!("Failed to serialize content: {}", e)))?;
                             registry.convert_extension_to_content_block(&ext_content)
-                        } else {
-                            None // No registry, skip extension content
                         }
                     }
+                } else {
+                    None // No registry, cannot convert content
                 };
 
                 if let Some(b) = block {
@@ -606,13 +592,13 @@ impl StreamingService {
                 MessageRole::System => continue, // Skip system messages for now
             };
 
-            // Convert content blocks
+            // Convert content blocks (all content now handled by extensions)
             let mut content_blocks = Vec::new();
             for content in &msg_with_content.contents {
-                let content_data = content.parse_content()?;
-                if let Some(block) = content_data.to_content_block() {
-                    content_blocks.push(block);
-                }
+                let _content_data = content.parse_content()?;
+                // All content types are now extension types - this static method shouldn't be used
+                // Use convert_history_to_messages_with_extensions with a registry instead
+                tracing::warn!("Using deprecated convert_history_to_messages_static without extensions - content may not be converted properly");
             }
 
             messages.push(ChatMessage {

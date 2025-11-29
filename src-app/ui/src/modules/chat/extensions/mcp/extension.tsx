@@ -161,12 +161,15 @@ function McpActiveCallsIndicator() {
  * Handles MCP tool calls, approval workflows, and renders tool call UI
  */
 const mcpExtension: ChatExtension = createExtension({
-  name: 'McpStore',
+  name: 'mcp',
   description: 'Handles MCP tool calls and approval workflows',
   priority: 50, // Higher priority to handle events early
 
   // Create independent extension store
-  createStore: createMcpStore,
+  store: {
+    name: 'McpStore',
+    createStore: createMcpStore,
+  },
 
   initialize: async () => {
     console.log('[MCP Extension] Initialized')

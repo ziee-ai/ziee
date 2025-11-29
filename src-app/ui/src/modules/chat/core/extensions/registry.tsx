@@ -72,19 +72,19 @@ export class ChatExtensionRegistry {
     this.extensionOptions.set(extension.name, options)
 
     // Create independent extension store if provided
-    if (extension.createStore) {
-      const store = extension.createStore()
+    if (extension.store) {
+      const storeInstance = extension.store.createStore()
 
       // Lazy import useChatStore to avoid circular dependency
       // Import happens at runtime when register() is called, not at module load time
       import('../stores/Chat.store').then(({ useChatStore }) => {
-        // Inject store at root level of Chat store for reactive access via Stores.Chat.{extensionName}
+        // Inject store at root level of Chat store for reactive access via Stores.Chat.{storeName}
         // Direct mutation is safe now that Immer middleware has been removed
         const stateObject = useChatStore.getState()
-        ;(stateObject as any)[extension.name] = store
+        ;(stateObject as any)[extension.store!.name] = storeInstance
 
         console.log(
-          `[ChatExtensions] Injected independent store for extension: ${extension.name}`,
+          `[ChatExtensions] Injected store "${extension.store!.name}" for extension: ${extension.name}`,
         )
       })
     }
@@ -158,6 +158,8 @@ export class ChatExtensionRegistry {
    * Cleans up all registry entries (slots, content types, stores)
    */
   unregister(name: string): void {
+    const extension = this.extensions.get(name)
+
     this.extensions.delete(name)
     this.extensionOptions.delete(name)
 
@@ -192,14 +194,17 @@ export class ChatExtensionRegistry {
     }
 
     // Remove extension store from Chat store (if it was injected)
-    import('../stores/Chat.store').then(({ useChatStore }) => {
-      // Direct mutation is safe now that Immer middleware has been removed
-      const stateObject = useChatStore.getState()
-      if ((stateObject as any)[name]) {
-        delete (stateObject as any)[name]
-        console.log(`[ChatExtensions] Removed store for extension: ${name}`)
-      }
-    })
+    if (extension?.store) {
+      import('../stores/Chat.store').then(({ useChatStore }) => {
+        // Direct mutation is safe now that Immer middleware has been removed
+        const stateObject = useChatStore.getState()
+        const storeName = extension.store!.name
+        if ((stateObject as any)[storeName]) {
+          delete (stateObject as any)[storeName]
+          console.log(`[ChatExtensions] Removed store "${storeName}" for extension: ${name}`)
+        }
+      })
+    }
 
     console.log(`[ChatExtensions] Unregistered extension: ${name}`)
   }
@@ -640,6 +645,112 @@ export class ChatExtensionRegistry {
         )
       }
     }
+  }
+
+  /**
+   * Provide user message content
+   * Orchestrates extensions to contribute content for user message creation
+   * Extensions are called in priority order
+   */
+  async provideUserContent(
+    text: string,
+    composedRequest: any,
+  ): Promise<import('@/api-client/types').MessageContent[]> {
+    const extensions = this.getExtensions().filter(ext =>
+      ext.provideUserContent !== undefined,
+    )
+
+    const allContent: import('@/api-client/types').MessageContent[] = []
+
+    for (const extension of extensions) {
+      try {
+        if (extension.provideUserContent) {
+          const content = await extension.provideUserContent(text, composedRequest)
+          if (content && content.length > 0) {
+            allContent.push(...content)
+            console.log(
+              `[ChatExtensions] ${extension.name} provided ${content.length} content block(s)`,
+            )
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.provideUserContent:`,
+          error,
+        )
+      }
+    }
+
+    return allContent
+  }
+
+  /**
+   * Provide streaming content
+   * Asks extensions to create a new content block for streaming
+   * Returns first non-null response (first extension that handles this type wins)
+   */
+  async provideStreamingContent(
+    contentType: string,
+    delta?: string,
+  ): Promise<import('@/api-client/types').MessageContent | null> {
+    const extensions = this.getExtensions().filter(ext =>
+      ext.provideStreamingContent !== undefined,
+    )
+
+    for (const extension of extensions) {
+      try {
+        if (extension.provideStreamingContent) {
+          const content = await extension.provideStreamingContent(contentType, delta)
+          if (content) {
+            console.log(
+              `[ChatExtensions] ${extension.name} provided streaming content for type: ${contentType}`,
+            )
+            return content
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.provideStreamingContent:`,
+          error,
+        )
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Process streaming delta
+   * Asks extensions to process a delta for existing content
+   * Returns first non-null response (first extension that handles this content wins)
+   */
+  async processStreamingDelta(
+    content: import('@/api-client/types').MessageContent,
+    delta: string,
+  ): Promise<import('@/api-client/types').MessageContent> {
+    const extensions = this.getExtensions().filter(ext =>
+      ext.processStreamingDelta !== undefined,
+    )
+
+    for (const extension of extensions) {
+      try {
+        if (extension.processStreamingDelta) {
+          const updatedContent = await extension.processStreamingDelta(content, delta)
+          if (updatedContent !== content) {
+            // Extension handled the delta
+            return updatedContent
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.processStreamingDelta:`,
+          error,
+        )
+      }
+    }
+
+    // No extension handled it - return original content
+    return content
   }
 }
 

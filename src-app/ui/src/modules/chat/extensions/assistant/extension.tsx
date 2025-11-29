@@ -13,12 +13,15 @@ import { AssistantSelector } from './components/AssistantSelector'
  * Allows users to switch between available assistants per-conversation
  */
 const assistantExtension: ChatExtension = createExtension({
-  name: 'AssistantStore',
+  name: 'assistant',
   description: 'Provides assistant selection and configuration',
   priority: 80,
 
   // Create independent extension store
-  createStore: createAssistantStore,
+  store: {
+    name: 'AssistantStore',
+    createStore: createAssistantStore,
+  },
 
   // Lazy loading via __init__ pattern in slice - assistants load on first access
 

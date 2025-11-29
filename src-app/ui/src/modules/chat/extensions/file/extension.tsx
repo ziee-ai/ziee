@@ -76,12 +76,15 @@ function FileAttachmentRenderer({ content: data }: ContentRendererProps) {
  * Handles file attachment upload and rendering in messages
  */
 const fileExtension: ChatExtension = createExtension({
-  name: 'FileStore',
+  name: 'file',
   description: 'Handles file attachment upload and rendering',
   priority: 80,
 
   // Register store for file upload state
-  createStore: createFileExtensionStore,
+  store: {
+    name: 'FileStore',
+    createStore: createFileExtensionStore,
+  },
 
   // Check if files are still uploading before sending message
   beforeSendMessage: async (_message: string) => {

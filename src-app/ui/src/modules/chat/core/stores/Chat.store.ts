@@ -4,7 +4,6 @@ import { ApiClient } from '@/api-client'
 import type {
   Conversation,
   MessageWithContent,
-  MessageContentData,
 } from '@/api-client/types'
 import { chatExtensionRegistry } from '../../extensions'
 import type { SSEEvent, GenericSSEEvent } from '../extensions/types'
@@ -318,21 +317,17 @@ export const useChatStore = create<ChatState>()(
 
         set({ sending: true, isStreaming: true, error: null })
 
-        // Create optimistic user message (using potentially modified content)
+        // Create optimistic user message using extension hooks
+        // Extensions provide content (text, file attachments, etc.)
+        const userContents = await chatExtensionRegistry.provideUserContent(
+          finalContent,
+          allRequestFields,
+        )
+
         const tempUserMessage: MessageWithContent = {
           id: `temp-${Date.now()}`,
           role: 'user',
-          contents: [
-            {
-              id: `temp-content-${Date.now()}`,
-              message_id: `temp-${Date.now()}`,
-              content_type: 'text',
-              content: { type: 'text', text: finalContent },
-              sequence_order: 0,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            },
-          ],
+          contents: userContents,
           originated_from_id: '',
           edit_count: 0,
           created_at: new Date().toISOString(),
@@ -443,55 +438,54 @@ export const useChatStore = create<ChatState>()(
                     if (data.content && Array.isArray(data.content)) {
                       for (const block of data.content) {
                         if (block.type === 'text_delta') {
-                          // Initialize or update streaming message
+                          // Initialize or update streaming message using extensions
                           if (!state.streamingMessage) {
-                            // Create new assistant message with real ID from backend
+                            // Create new assistant message using extension hooks
                             const messageId =
                               data.message_id || `streaming-${Date.now()}`
-                            const newMessage: MessageWithContent = {
-                              id: messageId,
-                              role: 'assistant',
-                              contents: [
-                                {
-                                  id: `${messageId}-content-0`,
-                                  message_id: messageId,
-                                  content_type: 'text',
-                                  content: { type: 'text', text: block.delta || '' },
-                                  sequence_order: 0,
-                                  created_at: new Date().toISOString(),
-                                  updated_at: new Date().toISOString(),
-                                },
-                              ],
-                              originated_from_id: '',
-                              edit_count: 0,
-                              created_at: new Date().toISOString(),
-                            }
 
-                            set(state => {
-                              const newMessages = new Map(state.messages)
-                              newMessages.set(newMessage.id, newMessage)
-                              return {
-                                streamingMessage: newMessage,
-                                messages: newMessages,
+                            // Ask extensions to provide initial content
+                            const initialContent = await chatExtensionRegistry.provideStreamingContent(
+                              'text',
+                              block.delta,
+                            )
+
+                            if (initialContent) {
+                              const newMessage: MessageWithContent = {
+                                id: messageId,
+                                role: 'assistant',
+                                contents: [
+                                  {
+                                    ...initialContent,
+                                    id: `${messageId}-content-0`,
+                                    message_id: messageId,
+                                  },
+                                ],
+                                originated_from_id: '',
+                                edit_count: 0,
+                                created_at: new Date().toISOString(),
                               }
-                            })
+
+                              set(state => {
+                                const newMessages = new Map(state.messages)
+                                newMessages.set(newMessage.id, newMessage)
+                                return {
+                                  streamingMessage: newMessage,
+                                  messages: newMessages,
+                                }
+                              })
+                            }
                           } else {
-                            // Append to existing message
+                            // Append delta using extension hooks
+                            const currentContent = state.streamingMessage.contents[0]
+                            const updatedContent = await chatExtensionRegistry.processStreamingDelta(
+                              currentContent,
+                              block.delta || '',
+                            )
+
                             const updatedMessage = {
                               ...state.streamingMessage,
-                              contents: state.streamingMessage.contents.map(
-                                c => ({
-                                  ...c,
-                                  content: (c.content.type === 'text'
-                                    ? {
-                                        type: 'text',
-                                        text:
-                                          (c.content.text || '') +
-                                          (block.delta || ''),
-                                      }
-                                    : c.content) as MessageContentData,
-                                }),
-                              ),
+                              contents: [updatedContent],
                             }
 
                             set(state => {

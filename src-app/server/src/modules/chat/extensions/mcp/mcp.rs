@@ -290,10 +290,10 @@ impl ChatExtension for McpChatExtension {
                     tx,
                 ).await?;
 
-                // Convert tool results to content blocks
+                // Convert tool results to content blocks using extension's process_content_for_llm
                 let mut content_blocks = Vec::new();
                 for result in tool_results {
-                    if let Some(block) = result.to_content_block() {
+                    if let Some(block) = self.process_content_for_llm(&result, context).await? {
                         content_blocks.push(block);
                     }
                 }
