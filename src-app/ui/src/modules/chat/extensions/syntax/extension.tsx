@@ -143,8 +143,8 @@ function EnhancedTextContent({
 /**
  * Text content renderer component with syntax highlighting
  */
-function TextContentRenderer({ content, isUser }: ContentRendererProps) {
-  const textData = content.content as { text?: string }
+function TextContentRenderer({ content: data, isUser }: ContentRendererProps) {
+  const textData = data.content as { text?: string }
 
   if (!textData.text) {
     return null

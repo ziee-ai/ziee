@@ -9,7 +9,7 @@ use crate::common::{ApiResult, AppError};
 use crate::core::Repos;
 use crate::modules::file::models::{File, FileCreateData};
 use crate::modules::file::permissions::FilesUpload;
-use crate::modules::file::processing::ProcessingManager;
+use crate::modules::file::processing::{ProcessingManager, ProcessingResult};
 use crate::modules::file::storage::manager::get_file_storage;
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::openapi::with_permission;
@@ -76,10 +76,27 @@ pub async fn upload_file(
 
     // Process file
     let processing_manager = ProcessingManager::new();
-    let processing_result = processing_manager
-        .process_file(&file_data, mime_type.as_deref().unwrap_or("application/octet-stream"))
+    let mime_type_str = mime_type.as_deref().unwrap_or("application/octet-stream");
+    tracing::info!("Processing file with MIME type: {}", mime_type_str);
+
+    let processing_result = match processing_manager
+        .process_file(&file_data, mime_type_str)
         .await
-        .unwrap_or_default();
+    {
+        Ok(result) => {
+            tracing::info!(
+                "File processing successful: {} thumbnails, {} images, {} text pages",
+                result.thumbnails.len(),
+                result.images.len(),
+                result.text_pages.len()
+            );
+            result
+        }
+        Err(e) => {
+            tracing::error!("File processing failed: {}", e);
+            ProcessingResult::default()
+        }
+    };
 
     // Save original file
     storage

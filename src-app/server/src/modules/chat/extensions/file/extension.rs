@@ -23,6 +23,28 @@ pub struct SendMessageRequestFields {
     pub file_ids: Option<Vec<Uuid>>,
 }
 
+/// MessageContentData variants contributed by file extension
+/// These will be auto-merged into MessageContentData by the composition macro
+#[allow(dead_code)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum MessageContentDataVariants {
+    /// Image content with source
+    Image {
+        source: crate::modules::chat::extensions::file::types::ImageSource,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        alt_text: Option<String>,
+    },
+
+    /// File attachment content
+    FileAttachment {
+        file_id: Uuid,
+        filename: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mime_type: Option<String>,
+        file_size: i64,
+    },
+}
+
 /// Extension factory function
 pub fn create(pool: PgPool) -> Arc<dyn ChatExtension> {
     Arc::new(super::file::FileExtension::new(pool))

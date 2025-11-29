@@ -12,6 +12,7 @@ import {
 } from '../../core/extensions'
 import { Stores } from '@/core/stores'
 import { createMcpStore, type McpToolCall } from './Mcp.store'
+import type { MessageContentDataToolResult } from '@/api-client/types'
 
 const { Text } = Typography
 
@@ -108,19 +109,21 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
 }
 
 /**
- * MCP tool call content renderer component
+ * MCP tool result content renderer component
+ * Renders tool execution results from MCP servers
  */
-function McpToolCallRenderer({ content }: ContentRendererProps) {
+function McpToolResultRenderer({ content: data }: ContentRendererProps) {
   // Access store reactively in React component
   const mcpStore = Stores.Chat.McpStore
 
-  const toolCallData = content.content as { tool_use_id?: string }
+  // data is the full MessageContent object, data.content has the tool result data
+  const toolResultData = data.content as MessageContentDataToolResult
 
-  if (!toolCallData.tool_use_id) {
+  if (!toolResultData.tool_use_id) {
     return null
   }
 
-  const toolCall = mcpStore.getToolCall(toolCallData.tool_use_id)
+  const toolCall = mcpStore.getToolCall(toolResultData.tool_use_id)
 
   if (!toolCall) {
     return null
@@ -218,7 +221,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Register content type components
   contentTypes: {
-    mcp_tool_call: McpToolCallRenderer,
+    tool_result: McpToolResultRenderer,
   },
 
   // Register slot components

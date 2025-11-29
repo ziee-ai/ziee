@@ -17,6 +17,7 @@ pub struct MessageContent {
     pub id: Uuid,
     pub message_id: Uuid,
     pub content_type: String,
+    #[schemars(with = "MessageContentData")]
     pub content: Value, // JSONB - contains MessageContentData
     pub sequence_order: i32,
     pub created_at: DateTime<Utc>,
@@ -37,84 +38,27 @@ pub struct ThinkingMetadata {
     pub token_count: Option<u32>,
 }
 
-/// Macro to define MessageContentData with all content types
+/// Content data types - Base types (extensions can add more via composition)
 ///
-/// To add a new content type:
-/// 1. Add one line to the content_types list below:
-///    `(VariantName, { field1: Type1, field2: Type2 }, "content_type_string", "Documentation")`
-/// 2. Add conversion logic in the impl block below (to_content_block/from_content_block)
-///
-/// Example:
-/// ```
-/// (CustomContent, { data: String, metadata: Option<Value> }, "custom", "Custom content type"),
-/// ```
-macro_rules! define_message_content_data {
-    (
-        content_types: [
-            $(
-                (
-                    $variant:ident,
-                    {
-                        $(
-                            $(#[$field_attr:meta])*
-                            $field:ident : $field_ty:ty
-                        ),* $(,)?
-                    },
-                    $content_type_str:expr,
-                    $doc:expr
-                )
-            ),* $(,)?
-        ]
-    ) => {
-        #[doc = "Content data types - Extensions can add more by modifying the macro invocation"]
-        #[derive(Debug, Clone, schemars::JsonSchema)]
-        pub enum MessageContentData {
-            $(
-                #[doc = $doc]
-                $variant {
-                    $(
-                        $(#[$field_attr])*
-                        $field: $field_ty,
-                    )*
-                },
-            )*
-        }
+/// Extensions add variants by defining MessageContentDataVariants enums in their
+/// extension.rs files. The compose_message_content_variants macro merges them at compile time.
+#[macros::compose_message_content_variants]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum MessageContentData {
+    /// Plain text content
+    Text {
+        text: String,
+    },
 
-    };
-}
+    /// Thinking/reasoning content (Claude-style extended thinking)
+    Thinking {
+        thinking: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        metadata: Option<ThinkingMetadata>,
+    },
 
-// Central registry of all content types
-// To add a new content type, add one line here following the pattern
-define_message_content_data! {
-    content_types: [
-        // Base content types (always available)
-        (
-            Text,
-            { text: String },
-            "text",
-            "Plain text content"
-        ),
-        (
-            Thinking,
-            {
-                thinking: String,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                metadata: Option<ThinkingMetadata>
-            },
-            "thinking",
-            "Thinking/reasoning content (Claude-style extended thinking)"
-        ),
-
-        // Generic extension content type
-        (
-            Extension,
-            {
-                content: serde_json::Value
-            },
-            "extension",
-            "Extension-specific content (flattened in storage)"
-        ),
-    ]
+    // Extension variants (Image, FileAttachment, ToolUse, ToolResult) are added by the macro
 }
 
 impl MessageContentData {
@@ -123,18 +67,18 @@ impl MessageContentData {
         match self {
             Self::Text { .. } => "text".to_string(),
             Self::Thinking { .. } => "thinking".to_string(),
-            Self::Extension { content } => {
-                // Extract type from flattened content
-                content
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("extension")
-                    .to_string()
+            // Extension variants return their own type strings automatically via serde
+            _ => {
+                // For extension variants, use serde to get the type field
+                serde_json::to_value(self)
+                    .ok()
+                    .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(String::from))
+                    .unwrap_or_else(|| "unknown".to_string())
             }
         }
     }
 
-    /// Serialize to API-facing JSON format (flattened)
+    /// Serialize to API-facing JSON format
     pub fn to_api_content(&self) -> Value {
         serde_json::to_value(self).unwrap_or(Value::Null)
     }
@@ -150,8 +94,8 @@ impl MessageContentData {
             Self::Thinking { thinking, .. } => Some(ai_providers::ContentBlock::Thinking {
                 thinking: thinking.clone(),
             }),
-            // Extension content handled by ExtensionRegistry
-            Self::Extension { .. } => None,
+            // Extension content (Image, FileAttachment, ToolUse, ToolResult) handled by ExtensionRegistry
+            _ => None,
         }
     }
 
@@ -163,7 +107,7 @@ impl MessageContentData {
                 thinking: thinking.clone(),
                 metadata: None,
             }),
-            // Extension types handled by ExtensionRegistry
+            // Extension types (Image, FileAttachment, ToolUse, ToolResult) handled by ExtensionRegistry
             _ => None,
         }
     }
@@ -173,78 +117,6 @@ impl MessageContentData {
         match self {
             Self::Text { text } => Some(text.as_str()),
             _ => None,
-        }
-    }
-}
-
-// Custom Serialize implementation to flatten Extension content
-impl Serialize for MessageContentData {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap;
-
-        match self {
-            Self::Text { text } => {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("type", "text")?;
-                map.serialize_entry("text", text)?;
-                map.end()
-            }
-            Self::Thinking { thinking, metadata } => {
-                let mut map = serializer.serialize_map(Some(if metadata.is_some() { 3 } else { 2 }))?;
-                map.serialize_entry("type", "thinking")?;
-                map.serialize_entry("thinking", thinking)?;
-                if let Some(meta) = metadata {
-                    map.serialize_entry("metadata", meta)?;
-                }
-                map.end()
-            }
-            Self::Extension { content } => {
-                // Serialize just the flattened content (which already has "type" field)
-                content.serialize(serializer)
-            }
-        }
-    }
-}
-
-// Custom Deserialize implementation to handle flattened Extension content
-impl<'de> Deserialize<'de> for MessageContentData {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = Value::deserialize(deserializer)?;
-        let content_type = value
-            .get("type")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| serde::de::Error::missing_field("type"))?;
-
-        match content_type {
-            "text" => {
-                let text = value
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| serde::de::Error::missing_field("text"))?
-                    .to_string();
-                Ok(MessageContentData::Text { text })
-            }
-            "thinking" => {
-                let thinking = value
-                    .get("thinking")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| serde::de::Error::missing_field("thinking"))?
-                    .to_string();
-                let metadata = value
-                    .get("metadata")
-                    .and_then(|v| serde_json::from_value(v.clone()).ok());
-                Ok(MessageContentData::Thinking { thinking, metadata })
-            }
-            _ => {
-                // Unknown type - treat as Extension with flattened content
-                Ok(MessageContentData::Extension { content: value })
-            }
         }
     }
 }

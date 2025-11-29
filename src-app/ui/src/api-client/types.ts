@@ -571,6 +571,18 @@ export interface HubVersionResponse {
   version: string
 }
 
+export type ImageSource = {
+  type: 'url'
+  url: string
+} | {
+  type: 'base64'
+  data: string
+  media_type: string
+} | {
+  type: 'file'
+  file_id: string
+}
+
 export interface ListModelsQuery {
   page?: number
   perPage?: number
@@ -760,7 +772,7 @@ export interface Message {
 }
 
 export interface MessageContent {
-  content: any
+  content: MessageContentData
   content_type: string
   created_at: string
   id: string
@@ -768,6 +780,43 @@ export interface MessageContent {
   sequence_order: number
   updated_at: string
 }
+
+export interface MessageContentDataText {
+  type: 'text'
+  text: string
+}
+export interface MessageContentDataThinking {
+  type: 'thinking'
+  metadata?: ThinkingMetadata | null
+  thinking: string
+}
+export interface MessageContentDataImage {
+  type: 'image'
+  alt_text?: string | null
+  source: ImageSource
+}
+export interface MessageContentDataFileAttachment {
+  type: 'file_attachment'
+  file_id: string
+  file_size: number
+  filename: string
+  mime_type?: string | null
+}
+export interface MessageContentDataToolUse {
+  type: 'tool_use'
+  id: string
+  input: any
+  name: string
+}
+export interface MessageContentDataToolResult {
+  type: 'tool_result'
+  content: string
+  is_error?: boolean | null
+  name?: string | null
+  tool_use_id: string
+}
+
+export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult
 
 export interface MessageWithContent {
   contents: MessageContent[]
@@ -1097,6 +1146,10 @@ export interface TestRepositoryConnectionResponse {
 
 export interface TextPageQuery {
   page?: number
+}
+
+export interface ThinkingMetadata {
+  token_count?: number
 }
 
 export interface TokenPair {

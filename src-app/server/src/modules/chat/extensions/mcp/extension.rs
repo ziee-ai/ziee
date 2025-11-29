@@ -150,3 +150,27 @@ pub enum ContentBlockDeltaVariants {
         input_delta: Option<String>,
     },
 }
+
+/// MessageContentData variants contributed by MCP extension
+/// These will be auto-merged into MessageContentData by the composition macro
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub enum MessageContentDataVariants {
+    /// Tool use request (AI wants to call a tool)
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+
+    /// Tool result (response from tool execution)
+    ToolResult {
+        tool_use_id: String,
+        /// Function/tool name (required for some providers like Gemini)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_error: Option<bool>,
+    },
+}

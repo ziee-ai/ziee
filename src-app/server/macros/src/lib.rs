@@ -77,6 +77,26 @@ pub fn compose_content_block_delta_variants(_attr: TokenStream, item: TokenStrea
     compose_enum_variants(item, "DELTA_VARIANTS")
 }
 
+/// Attribute macro to compose MessageContentData enum variants from extensions
+///
+/// This macro automatically discovers all extension.rs files in modules/chat/**/
+/// parses their MessageContentDataVariants, and adds the variants to the target enum.
+///
+/// Usage:
+/// ```
+/// #[compose_message_content_variants]
+/// pub enum MessageContentData {
+///     Text { text: String },
+///     Thinking { thinking: String, metadata: Option<ThinkingMetadata> },
+/// }
+/// ```
+///
+/// Extensions are discovered by the build script and variants are added directly.
+#[proc_macro_attribute]
+pub fn compose_message_content_variants(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    compose_enum_variants(item, "CONTENT_VARIANTS")
+}
+
 /// Attribute macro to compose SSEChatStreamEvent enum variants from extensions
 ///
 /// This macro automatically discovers all extension.rs files in modules/chat/**/

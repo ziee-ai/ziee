@@ -542,29 +542,33 @@ impl StreamingService {
             for content in &msg_with_content.contents {
                 let content_data = content.parse_content()?;
 
-                // Handle Extension variants via registry
-                let block = if let MessageContentData::Extension { content: ext_content } =
-                    &content_data
-                {
-                    // Extension content must be converted via registry
-                    if let Some(registry) = extension_registry {
-                        registry.convert_extension_to_content_block(ext_content)
-                    } else {
-                        None // No registry, skip extension content
-                    }
-                } else {
-                    // Non-extension content: try extension transformation first
-                    if let Some(registry) = extension_registry {
-                        // Ask extension to transform content for LLM (e.g., file → text description)
-                        match registry
-                            .process_content_for_llm(&content_data, context)
-                            .await?
-                        {
-                            Some(transformed_block) => Some(transformed_block),
-                            None => content_data.to_content_block(), // Use default conversion
+                // Handle extension variants (non-Text/Thinking) via registry
+                let block = match &content_data {
+                    // Base types can be converted directly
+                    MessageContentData::Text { .. } | MessageContentData::Thinking { .. } => {
+                        // Non-extension content: try extension transformation first
+                        if let Some(registry) = extension_registry {
+                            // Ask extension to transform content for LLM (e.g., file → text description)
+                            match registry
+                                .process_content_for_llm(&content_data, context)
+                                .await?
+                            {
+                                Some(transformed_block) => Some(transformed_block),
+                                None => content_data.to_content_block(), // Use default conversion
+                            }
+                        } else {
+                            content_data.to_content_block() // Use default conversion
                         }
-                    } else {
-                        content_data.to_content_block() // Use default conversion
+                    }
+                    // Extension types (Image, FileAttachment, ToolUse, ToolResult) - convert via registry
+                    _ => {
+                        if let Some(registry) = extension_registry {
+                            let ext_content = serde_json::to_value(&content_data)
+                                .map_err(|e| AppError::internal_error(format!("Failed to serialize extension content: {}", e)))?;
+                            registry.convert_extension_to_content_block(&ext_content)
+                        } else {
+                            None // No registry, skip extension content
+                        }
                     }
                 };
 

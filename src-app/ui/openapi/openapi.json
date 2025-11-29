@@ -9541,6 +9541,63 @@
           "version"
         ]
       },
+      "ImageSource": {
+        "description": "Image source (URL or base64)",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "url"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "url"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "base64"
+              },
+              "data": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "media_type",
+              "data"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "file"
+              },
+              "file_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "file_id"
+            ]
+          }
+        ]
+      },
       "JsonOption_for_DownloadProgressData": {
         "anyOf": [
           {
@@ -10416,7 +10473,9 @@
         "description": "Message content entity - Represents a content block within a message",
         "type": "object",
         "properties": {
-          "content": true,
+          "content": {
+            "$ref": "#/components/schemas/MessageContentData"
+          },
           "content_type": {
             "type": "string"
           },
@@ -10449,6 +10508,168 @@
           "sequence_order",
           "created_at",
           "updated_at"
+        ]
+      },
+      "MessageContentData": {
+        "description": "Content data types - Base types (extensions can add more via composition)\n\n Extensions add variants by defining MessageContentDataVariants enums in their\n extension.rs files. The compose_message_content_variants macro merges them at compile time.",
+        "oneOf": [
+          {
+            "description": "Plain text content",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "text"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ]
+          },
+          {
+            "description": "Thinking/reasoning content (Claude-style extended thinking)",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "thinking"
+              },
+              "metadata": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ThinkingMetadata"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "thinking": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "thinking"
+            ]
+          },
+          {
+            "description": "Image content with source",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "image"
+              },
+              "alt_text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "$ref": "#/components/schemas/ImageSource"
+              }
+            },
+            "required": [
+              "type",
+              "source"
+            ]
+          },
+          {
+            "description": "File attachment content",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "file_attachment"
+              },
+              "file_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "file_size": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "filename": {
+                "type": "string"
+              },
+              "mime_type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "file_id",
+              "filename",
+              "file_size"
+            ]
+          },
+          {
+            "description": "Tool use request (AI wants to call a tool)",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_use"
+              },
+              "id": {
+                "type": "string"
+              },
+              "input": true,
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "name",
+              "input"
+            ]
+          },
+          {
+            "description": "Tool result (response from tool execution)",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "tool_result"
+              },
+              "content": {
+                "type": "string"
+              },
+              "is_error": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "name": {
+                "description": "Function/tool name (required for some providers like Gemini)",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tool_use_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "tool_use_id",
+              "content"
+            ]
+          }
         ]
       },
       "MessageWithContent": {
@@ -12043,6 +12264,20 @@
         "type": "object",
         "properties": {
           "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "ThinkingMetadata": {
+        "description": "Metadata for thinking content",
+        "type": "object",
+        "properties": {
+          "token_count": {
             "type": [
               "integer",
               "null"

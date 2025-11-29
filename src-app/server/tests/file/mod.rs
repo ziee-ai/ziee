@@ -338,6 +338,13 @@ async fn test_upload_image_png() {
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(body["filename"], "test.png");
     assert_eq!(body["mime_type"], "image/png");
+
+    // Image should have thumbnail and preview
+    let has_thumbnail = body["has_thumbnail"].as_bool().unwrap_or(false);
+    assert!(has_thumbnail, "PNG image should have thumbnail");
+
+    let preview_count = body["preview_page_count"].as_i64().unwrap_or(0);
+    assert_eq!(preview_count, 1, "PNG image should have 1 preview");
 }
 
 #[tokio::test]

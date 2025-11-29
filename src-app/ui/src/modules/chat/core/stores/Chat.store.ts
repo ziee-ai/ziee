@@ -1,7 +1,11 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type { Conversation, MessageWithContent } from '@/api-client/types'
+import type {
+  Conversation,
+  MessageWithContent,
+  MessageContentData,
+} from '@/api-client/types'
 import { chatExtensionRegistry } from '../../extensions'
 import type { SSEEvent, GenericSSEEvent } from '../extensions/types'
 
@@ -323,7 +327,7 @@ export const useChatStore = create<ChatState>()(
               id: `temp-content-${Date.now()}`,
               message_id: `temp-${Date.now()}`,
               content_type: 'text',
-              content: { text: finalContent },
+              content: { type: 'text', text: finalContent },
               sequence_order: 0,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
@@ -452,7 +456,7 @@ export const useChatStore = create<ChatState>()(
                                   id: `${messageId}-content-0`,
                                   message_id: messageId,
                                   content_type: 'text',
-                                  content: { text: block.delta || '' },
+                                  content: { type: 'text', text: block.delta || '' },
                                   sequence_order: 0,
                                   created_at: new Date().toISOString(),
                                   updated_at: new Date().toISOString(),
@@ -478,12 +482,14 @@ export const useChatStore = create<ChatState>()(
                               contents: state.streamingMessage.contents.map(
                                 c => ({
                                   ...c,
-                                  content: {
-                                    ...c.content,
-                                    text:
-                                      (c.content.text || '') +
-                                      (block.delta || ''),
-                                  },
+                                  content: (c.content.type === 'text'
+                                    ? {
+                                        type: 'text',
+                                        text:
+                                          (c.content.text || '') +
+                                          (block.delta || ''),
+                                      }
+                                    : c.content) as MessageContentData,
                                 }),
                               ),
                             }

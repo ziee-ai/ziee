@@ -714,17 +714,12 @@ function generateMessageContentDataTypes(oneOfVariants: (SchemaReference | Schem
         // Convert type value to TypeScript interface name
         const typeName = `MessageContentData${typeValue.charAt(0).toUpperCase()}${typeValue.slice(1).replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())}`
 
-        // Generate properties for this variant (excluding the discriminator 'type' field)
+        // Generate properties for this variant (including the discriminator 'type' field)
         const props: string[] = []
         for (const [propName, propSchema] of Object.entries(variant.properties)) {
-          // Skip the 'type' field as it's only a discriminator for TypeScript unions
-          if (propName === 'type') {
-            continue
-          }
-
           let propType = getTypeFromSchema(propSchema, false)
 
-          // Handle const values (literal types)
+          // Handle const values (literal types) - this includes the 'type' discriminator field
           if (propSchema.const !== undefined) {
             propType = typeof propSchema.const === 'string' ? `'${propSchema.const}'` : String(propSchema.const)
           }

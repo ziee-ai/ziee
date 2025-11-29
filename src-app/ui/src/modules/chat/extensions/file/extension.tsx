@@ -1,3 +1,4 @@
+import React from 'react'
 import {
   createExtension,
   type ChatExtension,
@@ -8,63 +9,54 @@ import { FilePreviewList } from './components/FilePreviewList'
 import { FileUploadButton } from './components/FileUploadButton'
 import { FileCard } from './components/FileCard'
 import { ApiClient } from '@/api-client'
-import type { File as FileEntity } from '@/api-client/types'
-
-/**
- * File attachment data structure (from backend MessageContentData::Extension)
- */
-interface FileAttachment {
-  id: string
-  name: string
-  size: number
-  mime_type: string
-}
+import type { File as FileEntity, MessageContentDataFileAttachment } from '@/api-client/types'
 
 /**
  * File attachment content renderer component
  * Renders file attachments in message bubbles using FileCard
  */
-function FileAttachmentRenderer({ content }: ContentRendererProps) {
-  const fileData = content.content as FileAttachment
+function FileAttachmentRenderer({ content: data }: ContentRendererProps) {
+  const [file, setFile] = React.useState<FileEntity | null>(null)
+  const [loading, setLoading] = React.useState(true)
 
-  if (!fileData?.id || !fileData?.name) {
+  // data is the full MessageContent object, data.content has the file attachment data
+  const fileData = data.content as MessageContentDataFileAttachment
+
+  // Fetch full file info using file_id
+  React.useEffect(() => {
+    if (!fileData?.file_id) {
+      setLoading(false)
+      return
+    }
+
+    const fetchFileInfo = async () => {
+      try {
+        const fileInfo = await ApiClient.File.get({ file_id: fileData.file_id })
+        setFile(fileInfo)
+      } catch (error) {
+        console.error('Failed to fetch file info:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchFileInfo()
+  }, [fileData?.file_id])
+
+  if (!fileData?.file_id || !fileData?.filename) {
     return null
   }
 
-  // Map FileAttachment to File entity structure for FileCard
-  const file: FileEntity = {
-    id: fileData.id,
-    filename: fileData.name,
-    file_size: fileData.size,
-    mime_type: fileData.mime_type || 'application/octet-stream',
-    user_id: '', // Not needed for display
-    created_at: '', // Not needed for display
-    updated_at: '', // Not needed for display
-    has_thumbnail: false,
-    preview_page_count: 0,
-    text_page_count: 0,
-    processing_metadata: null,
+  if (loading) {
+    return (
+      <div className="inline-block">
+        <div className="min-h-20 min-w-20">Loading...</div>
+      </div>
+    )
   }
 
-  // Download handler using API client
-  const handleClick = async () => {
-    try {
-      // Use API client to download file (handles authentication)
-      const response = await ApiClient.File.download({ file_id: fileData.id })
-
-      // Create download link
-      const blob = response instanceof Blob ? response : new Blob([response])
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = fileData.name
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-    } catch (error) {
-      console.error('Failed to download file:', error)
-    }
+  if (!file) {
+    return null
   }
 
   return (
@@ -74,7 +66,6 @@ function FileAttachmentRenderer({ content }: ContentRendererProps) {
         showFileName={true}
         canRemove={false}
         canDelete={false}
-        onClick={handleClick}
       />
     </div>
   )

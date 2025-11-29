@@ -283,27 +283,24 @@ macro_rules! define_extension_content {
         }
 
         impl $enum_name {
-            /// Convert to MessageContentData::Extension (flattened)
+            /// Convert to MessageContentData via serialization/deserialization
+            /// The variants in FileContent map directly to MessageContentData variants
             pub fn to_message_content(&self) -> crate::modules::chat::core::models::content::MessageContentData {
-                use crate::modules::chat::core::models::content::MessageContentData;
-                MessageContentData::Extension {
-                    content: serde_json::to_value(self).expect("Failed to serialize extension content"),
-                }
+                // Serialize to JSON and deserialize as MessageContentData
+                // This works because both enums have the same variant structure and use #[serde(tag = "type")]
+                let json = serde_json::to_value(self).expect("Failed to serialize extension content");
+                serde_json::from_value(json).expect("Failed to deserialize as MessageContentData")
             }
 
-            /// Try to extract from MessageContentData::Extension
+            /// Try to extract from MessageContentData
             /// Deserializes and lets serde check type tag
             pub fn from_message_content(
                 data: &crate::modules::chat::core::models::content::MessageContentData
             ) -> Option<Self> {
-                use crate::modules::chat::core::models::content::MessageContentData;
-                match data {
-                    MessageContentData::Extension { content } => {
-                        // Try to deserialize - serde will check the "type" tag
-                        serde_json::from_value(content.clone()).ok()
-                    }
-                    _ => None,
-                }
+                // Serialize MessageContentData to JSON and try to deserialize as FileContent
+                // This works because both enums have matching variant structures
+                let json = serde_json::to_value(data).ok()?;
+                serde_json::from_value(json).ok()
             }
 
             /// Get the content type string

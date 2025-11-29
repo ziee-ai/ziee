@@ -29,38 +29,25 @@ pub enum McpContentData {
 }
 
 impl McpContentData {
-    /// Convert to MessageContentData (Extension variant with flattened content)
+    /// Convert to MessageContentData via serialization/deserialization
+    /// McpContentData variants map directly to MessageContentData variants (ToolUse, ToolResult)
     pub fn to_message_content(&self) -> MessageContentData {
-        MessageContentData::Extension {
-            content: serde_json::to_value(self).expect("McpContentData should serialize"),
-        }
+        // Serialize to JSON and deserialize as MessageContentData
+        // This works because both enums have the same variant structure and use #[serde(tag = "type")]
+        let json = serde_json::to_value(self).expect("McpContentData should serialize");
+        serde_json::from_value(json).expect("Failed to deserialize as MessageContentData")
     }
 
-    /// Try to convert from MessageContentData (Extension variant)
+    /// Try to convert from MessageContentData
     pub fn from_message_content(content: &MessageContentData) -> Result<Self, AppError> {
-        match content {
-            MessageContentData::Extension { content } => {
-                // Check type tag to verify this is MCP content
-                let content_type = content
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| AppError::internal_error("Missing type field in extension content"))?;
+        // Serialize MessageContentData to JSON and try to deserialize as McpContentData
+        // This works because both enums have matching variant structures (ToolUse, ToolResult)
+        let json = serde_json::to_value(content)
+            .map_err(|e| AppError::internal_error(format!("Failed to serialize MessageContentData: {}", e)))?;
 
-                if !matches!(content_type, "tool_use" | "tool_result") {
-                    return Err(AppError::internal_error(format!(
-                        "Invalid MCP content type: {}",
-                        content_type
-                    )));
-                }
-
-                serde_json::from_value(content.clone()).map_err(|e| {
-                    AppError::internal_error(format!("Failed to deserialize MCP content: {}", e))
-                })
-            }
-            _ => Err(AppError::internal_error(
-                "Content is not an MCP extension content",
-            )),
-        }
+        serde_json::from_value(json).map_err(|e| {
+            AppError::internal_error(format!("Failed to deserialize as McpContentData: {}", e))
+        })
     }
 
     /// Convert to ai-providers ContentBlock
