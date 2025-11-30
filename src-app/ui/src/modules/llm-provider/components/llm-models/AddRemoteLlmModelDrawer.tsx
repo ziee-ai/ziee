@@ -83,7 +83,7 @@ export function AddRemoteLlmModelDrawer() {
           Add
         </Button>,
       ]}
-      width={600}
+      size={600}
       maskClosable={false}
     >
       <Form

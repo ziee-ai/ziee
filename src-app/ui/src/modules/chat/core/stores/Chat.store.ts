@@ -45,10 +45,10 @@ interface ChatState {
   clearConversationCache: (conversationId: string) => void
 
   // Actions
-  createConversation: (modelId: string, title?: string) => Promise<Conversation>
+  createConversation: (title?: string) => Promise<Conversation>
   loadConversation: (id: string) => Promise<void>
   loadMessages: (id: string) => Promise<void>
-  sendMessage: (content: string, modelId: string) => Promise<void>
+  sendMessage: () => Promise<void>
   updateConversation: (updates: { title?: string }) => Promise<void>
   clearError: () => void
   reset: () => void
@@ -192,12 +192,12 @@ export const useChatStore = create<ChatState>()(
       },
 
       // Create new conversation
-      createConversation: async (modelId: string, title?: string) => {
+      createConversation: async (title?: string) => {
         set({ loading: true, error: null })
         try {
           const conversation = await ApiClient.Conversation.create({
-            model_id: modelId,
             title: title,
+            // NO model_id - backend auto-updates on first message
           })
           set({ conversation, loading: false })
 
@@ -243,6 +243,12 @@ export const useChatStore = create<ChatState>()(
           // Cache hit - state already restored, just initialize extensions
           console.log(`[Chat.store] Cache hit for conversation: ${id}`)
           await chatExtensionRegistry.initialize()
+
+          // Notify extensions that conversation loaded
+          const { conversation } = get()
+          if (conversation) {
+            await chatExtensionRegistry.onConversationLoad(conversation)
+          }
           return
         }
 
@@ -256,8 +262,8 @@ export const useChatStore = create<ChatState>()(
           // Load messages for this conversation
           await get().loadMessages(id)
 
-          // Initialize extensions for this conversation
-          await chatExtensionRegistry.initialize()
+          // Notify extensions that conversation loaded
+          await chatExtensionRegistry.onConversationLoad(conversation)
         } catch (error: any) {
           set({
             error: error.message || 'Failed to load conversation',
@@ -284,12 +290,20 @@ export const useChatStore = create<ChatState>()(
       },
 
       // Send message with SSE streaming
-      sendMessage: async (content: string, modelId: string) => {
+      sendMessage: async () => {
         const { conversation } = get()
 
         if (!conversation) {
           set({ error: 'No active conversation' })
           return
+        }
+
+        // Get text from TextStore (owned by text extension)
+        const content = (get() as any).TextStore?.getText?.() || ''
+
+        if (!content || !content.trim()) {
+          set({ error: 'Message cannot be empty' })
+          throw new Error('Message cannot be empty')
         }
 
         // Let extensions modify message before sending
@@ -306,7 +320,7 @@ export const useChatStore = create<ChatState>()(
         // Use modified message if provided by extension
         const finalContent = beforeResult.message || content
 
-        // Collect request fields from all extensions
+        // Collect request fields from all extensions (including model_id from model extension)
         const composedFields = await chatExtensionRegistry.composeRequestFields()
 
         // Merge all extension fields (composeRequestFields + beforeSendMessage fields)
@@ -348,11 +362,10 @@ export const useChatStore = create<ChatState>()(
             {
               id: conversation.id,
               content: finalContent,
-              model_id: modelId,
               branch_id: conversation.active_branch_id || '',
-              // Include all custom fields from extensions
+              // Include all custom fields from extensions (including model_id)
               ...allRequestFields,
-            },
+            } as any,
             {
               SSE: {
                 __init: async _data => {
@@ -377,13 +390,9 @@ export const useChatStore = create<ChatState>()(
 
                   // Always handle locally (extensions don't need to handle this)
                   if (!handled) {
-                    // Handle started event - update optimistic user message with real IDs
+                    // Handle started event - update optimistic user message with real message ID
                     const state = get()
-                    if (
-                      data.user_message_id &&
-                      data.user_content_id &&
-                      state.tempUserMessageId
-                    ) {
+                    if (data.user_message_id && state.tempUserMessageId) {
                       const tempMessage = state.messages.get(
                         state.tempUserMessageId,
                       )
@@ -392,13 +401,14 @@ export const useChatStore = create<ChatState>()(
                           const newMessages = new Map(state.messages)
                           newMessages.delete(state.tempUserMessageId!)
 
-                          // Update message with real IDs
+                          // Update message with real message ID
+                          // Content IDs keep their frontend-generated UUIDs
                           const updatedMessage = {
                             ...tempMessage,
                             id: data.user_message_id!,
                             contents: tempMessage.contents.map(content => ({
                               ...content,
-                              id: data.user_content_id!,
+                              // id stays as temp UUID (don't update)
                               message_id: data.user_message_id!,
                             })),
                           }
@@ -414,7 +424,6 @@ export const useChatStore = create<ChatState>()(
                     }
                     console.log('Chat stream started:', {
                       user_message_id: data.user_message_id,
-                      user_content_id: data.user_content_id,
                       conversation_id: data.conversation_id,
                       branch_id: data.branch_id,
                     })

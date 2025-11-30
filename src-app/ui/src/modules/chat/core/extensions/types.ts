@@ -1,6 +1,7 @@
 import type {
   MessageWithContent,
   MessageContent,
+  MessageContentData,
   SSEChatStreamEvent,
 } from '@/api-client/types'
 
@@ -41,6 +42,11 @@ export const CHAT_SLOTS = {
   /** Before input textarea */
   input_area_prefix: {
     description: 'Rendered before input textarea',
+    component: 'ChatInput',
+  },
+  /** Main text input textarea */
+  text_input: {
+    description: 'Main text input textarea',
     component: 'ChatInput',
   },
   /** After input textarea */
@@ -214,6 +220,119 @@ export type ExtensionSliceCreator<T, A = Record<string, any>> = (
 ) => T & A
 
 /**
+ * Extract content type string literal from MessageContentData union
+ * Extracts the 'type' discriminator from each variant
+ */
+type ExtractContentType<T> = T extends { type: infer U } ? U : never
+
+/**
+ * All possible content type strings
+ * Result: 'text' | 'thinking' | 'image' | 'file_attachment' | 'tool_use' | 'tool_result'
+ */
+type ContentTypeString = ExtractContentType<MessageContentData>
+
+/**
+ * Helper type to narrow MessageContent to a specific content data type
+ * Replaces the generic MessageContentData with a specific variant
+ */
+export type MessageContentTyped<TData extends MessageContentData> = Omit<MessageContent, 'content'> & {
+  content: TData
+}
+
+/**
+ * Type-safe streaming delta processor for a specific content type
+ * The content parameter is automatically typed based on the content type string
+ * This ensures compile-time safety when accessing content properties
+ */
+type StreamingDeltaProcessor<T extends ContentTypeString> = (
+  content: MessageContentTyped<Extract<MessageContentData, { type: T }>>,
+  delta: string,
+) => MessageContent | Promise<MessageContent>
+
+/**
+ * Type-safe streaming delta processor registry
+ * Maps content types to handlers with correctly typed content parameters
+ * More efficient than processStreamingDelta (O(1) lookup instead of O(n) loop)
+ *
+ * @example
+ * ```typescript
+ * streamingDeltaProcessors: {
+ *   text: (content, delta) => {
+ *     // content.content is automatically typed as MessageContentDataText
+ *     // No casting needed!
+ *     return {
+ *       ...content,
+ *       content: { ...content.content, text: content.content.text + delta }
+ *     }
+ *   },
+ *   thinking: (content, delta) => {
+ *     // content.content is automatically typed as MessageContentDataThinking
+ *     // No casting needed!
+ *     return {
+ *       ...content,
+ *       content: { ...content.content, thinking: content.content.thinking + delta }
+ *     }
+ *   }
+ * } satisfies StreamingDeltaProcessors
+ * ```
+ */
+export type StreamingDeltaProcessors = {
+  [K in ContentTypeString]?: StreamingDeltaProcessor<K>
+}
+
+/**
+ * Type-safe streaming content provider
+ * Creates initial content blocks for a specific content type during streaming
+ * Automatically types the return value based on content type
+ *
+ * @template T - The content type string (e.g., 'text', 'thinking', 'tool_use')
+ * @param delta - Optional initial delta text from the stream
+ * @returns New MessageContent for this content block, or null if not handled
+ */
+type StreamingContentProvider<T extends ContentTypeString> = (
+  delta?: string,
+) => MessageContentTyped<Extract<MessageContentData, { type: T }>> | null | Promise<MessageContentTyped<Extract<MessageContentData, { type: T }>> | null>
+
+/**
+ * Type-safe streaming content provider registry
+ * Maps content types to factory functions with correctly typed return values
+ * More efficient than provideStreamingContent (O(1) lookup instead of O(n) loop)
+ *
+ * @example
+ * ```typescript
+ * streamingContentProviders: {
+ *   text: (delta) => {
+ *     // Return value is automatically typed as MessageContent with text content
+ *     return {
+ *       id: crypto.randomUUID(),
+ *       message_id: '',
+ *       content_type: 'text',
+ *       content: { type: 'text', text: delta || '' },
+ *       sequence_order: 0,
+ *       created_at: new Date().toISOString(),
+ *       updated_at: new Date().toISOString(),
+ *     }
+ *   },
+ *   thinking: (delta) => {
+ *     // Return value is automatically typed as MessageContent with thinking content
+ *     return {
+ *       id: crypto.randomUUID(),
+ *       message_id: '',
+ *       content_type: 'thinking',
+ *       content: { type: 'thinking', thinking: delta || '', metadata: null },
+ *       sequence_order: 0,
+ *       created_at: new Date().toISOString(),
+ *       updated_at: new Date().toISOString(),
+ *     }
+ *   }
+ * } satisfies StreamingContentProviders
+ * ```
+ */
+export type StreamingContentProviders = {
+  [K in ContentTypeString]?: StreamingContentProvider<K>
+}
+
+/**
  * Main extension interface
  * All chat extensions must implement this interface
  */
@@ -262,6 +381,14 @@ export interface ChatExtension {
    * Extensions should access Stores.Chat for conversation data
    */
   initialize?: () => void | Promise<void>
+
+  /**
+   * Called when a conversation is loaded or switched
+   * Extensions can use this to sync state with conversation data
+   *
+   * @param conversation - The loaded conversation
+   */
+  onConversationLoad?: (conversation: import('@/api-client/types').Conversation) => void | Promise<void>
 
   /**
    * Called before a message is sent
@@ -400,16 +527,51 @@ export interface ChatExtension {
   ) => MessageContent[] | Promise<MessageContent[]>
 
   /**
-   * Provide streaming content
+   * Streaming content provider registry (PREFERRED over provideStreamingContent)
+   * Maps content types to factory functions that create initial content blocks
+   * Provides O(1) lookup and compile-time type safety
+   *
+   * This is the recommended approach for providing streaming content blocks.
+   * Use this instead of provideStreamingContent for better performance and type safety.
+   *
+   * @example
+   * ```typescript
+   * streamingContentProviders: {
+   *   text: (delta) => ({
+   *     id: crypto.randomUUID(),
+   *     message_id: '',
+   *     content_type: 'text',
+   *     content: { type: 'text', text: delta || '' },
+   *     sequence_order: 0,
+   *     created_at: new Date().toISOString(),
+   *     updated_at: new Date().toISOString(),
+   *   }),
+   *   thinking: (delta) => ({
+   *     id: crypto.randomUUID(),
+   *     message_id: '',
+   *     content_type: 'thinking',
+   *     content: { type: 'thinking', thinking: delta || '', metadata: null },
+   *     sequence_order: 0,
+   *     created_at: new Date().toISOString(),
+   *     updated_at: new Date().toISOString(),
+   *   })
+   * } satisfies StreamingContentProviders
+   * ```
+   */
+  streamingContentProviders?: StreamingContentProviders
+
+  /**
+   * Provide streaming content (DEPRECATED - use streamingContentProviders instead)
    * Called when a new streaming content block starts (delta with new index)
    *
+   * @deprecated Use streamingContentProviders for type-safe, performant content creation
    * @param contentType - The content type from streaming delta
    * @param delta - Optional initial delta text
    * @returns New MessageContentData for this content block, or null if not handled
    *
    * @example
    * ```typescript
-   * // Text extension creates text content blocks
+   * // DEPRECATED - prefer streamingContentProviders
    * provideStreamingContent: async (contentType, delta) => {
    *   if (contentType === 'text') {
    *     return { type: 'text', text: delta || '' }
@@ -424,16 +586,41 @@ export interface ChatExtension {
   ) => MessageContent | null | Promise<MessageContent | null>
 
   /**
-   * Process streaming delta
+   * Streaming delta processor registry (PREFERRED over processStreamingDelta)
+   * Maps content types to type-safe delta processors
+   * Provides O(1) lookup and compile-time type safety
+   *
+   * This is the recommended approach for handling streaming deltas.
+   * Use this instead of processStreamingDelta for better performance and type safety.
+   *
+   * @example
+   * ```typescript
+   * streamingDeltaProcessors: {
+   *   text: (content, delta) => ({
+   *     ...content,
+   *     content: { ...content.content, text: content.content.text + delta }
+   *   }),
+   *   thinking: (content, delta) => ({
+   *     ...content,
+   *     content: { ...content.content, thinking: content.content.thinking + delta }
+   *   })
+   * }
+   * ```
+   */
+  streamingDeltaProcessors?: StreamingDeltaProcessors
+
+  /**
+   * Process streaming delta (DEPRECATED - use streamingDeltaProcessors instead)
    * Called for each delta during streaming to accumulate content
    *
+   * @deprecated Use streamingDeltaProcessors for type-safe, performant delta processing
    * @param content - The existing MessageContentData
    * @param delta - The delta text to append
    * @returns Updated MessageContentData with delta applied
    *
    * @example
    * ```typescript
-   * // Text extension accumulates text deltas
+   * // DEPRECATED - prefer streamingDeltaProcessors
    * processStreamingDelta: async (content, delta) => {
    *   if (content.content.type === 'text') {
    *     return {

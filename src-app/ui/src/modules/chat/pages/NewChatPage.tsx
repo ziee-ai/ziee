@@ -17,7 +17,7 @@ export default function NewChatPage() {
 
         {/* Chat input */}
         <div className="w-full">
-          <ChatInput placeholder="Type your message to start a conversation..." />
+          <ChatInput />
         </div>
       </div>
     </main>

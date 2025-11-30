@@ -40,7 +40,7 @@ export default function ConversationPage() {
       <main className="flex flex-col items-center justify-center h-full p-8">
         <Alert
           type="error"
-          message="Conversation not found"
+          title="Conversation not found"
           description="This conversation may have been deleted or you don't have access to it."
           showIcon
         />
@@ -60,7 +60,7 @@ export default function ConversationPage() {
       {/* Error banner */}
       {error && (
         <div className="w-full max-w-4xl mx-auto px-4 pt-4">
-          <Alert type="error" message={error} closable onClose={Stores.Chat.clearError} />
+          <Alert type="error" title={error} closable onClose={Stores.Chat.clearError} />
         </div>
       )}
 
@@ -74,7 +74,7 @@ export default function ConversationPage() {
 
       {/* Input area - centered with max-width */}
       <div className="w-full max-w-4xl mx-auto p-4 border-t border-gray-200 dark:border-gray-700">
-        <ChatInput placeholder="Type your message..." />
+        <ChatInput />
       </div>
     </main>
   )

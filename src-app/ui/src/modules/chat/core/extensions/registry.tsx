@@ -53,6 +53,32 @@ export class ChatExtensionRegistry {
   > = new Map()
 
   /**
+   * Streaming delta processor registry: Maps content types to delta processors
+   * Built at registration time for efficient O(1) delta routing
+   */
+  private streamingDeltaProcessorRegistry: Map<
+    string,
+    Array<{
+      extension: ChatExtension
+      processor: (content: import('@/api-client/types').MessageContent, delta: string) => import('@/api-client/types').MessageContent | Promise<import('@/api-client/types').MessageContent>
+      priority: number
+    }>
+  > = new Map()
+
+  /**
+   * Streaming content provider registry: Maps content types to content factories
+   * Built at registration time for efficient O(1) content creation routing
+   */
+  private streamingContentProviderRegistry: Map<
+    string,
+    Array<{
+      extension: ChatExtension
+      provider: (delta?: string) => import('@/api-client/types').MessageContent | null | Promise<import('@/api-client/types').MessageContent | null>
+      priority: number
+    }>
+  > = new Map()
+
+  /**
    * Register a new extension
    * Extensions are automatically sorted by priority
    * Supports re-registration for HMR (Hot Module Replacement)
@@ -148,6 +174,46 @@ export class ChatExtensionRegistry {
       )
     }
 
+    // Register streaming delta processors in registry
+    if (extension.streamingDeltaProcessors) {
+      for (const [contentType, processor] of Object.entries(extension.streamingDeltaProcessors)) {
+        if (!this.streamingDeltaProcessorRegistry.has(contentType)) {
+          this.streamingDeltaProcessorRegistry.set(contentType, [])
+        }
+
+        this.streamingDeltaProcessorRegistry.get(contentType)!.push({
+          extension,
+          processor: processor as (content: import('@/api-client/types').MessageContent, delta: string) => import('@/api-client/types').MessageContent | Promise<import('@/api-client/types').MessageContent>,
+          priority: extension.priority ?? 100,
+        })
+      }
+
+      console.log(
+        `[ChatExtensions] Registered streaming delta processors for ${extension.name}:`,
+        Object.keys(extension.streamingDeltaProcessors).join(', '),
+      )
+    }
+
+    // Register streaming content providers in registry
+    if (extension.streamingContentProviders) {
+      for (const [contentType, provider] of Object.entries(extension.streamingContentProviders)) {
+        if (!this.streamingContentProviderRegistry.has(contentType)) {
+          this.streamingContentProviderRegistry.set(contentType, [])
+        }
+
+        this.streamingContentProviderRegistry.get(contentType)!.push({
+          extension,
+          provider: provider as (delta?: string) => import('@/api-client/types').MessageContent | null | Promise<import('@/api-client/types').MessageContent | null>,
+          priority: extension.priority ?? 100,
+        })
+      }
+
+      console.log(
+        `[ChatExtensions] Registered streaming content providers for ${extension.name}:`,
+        Object.keys(extension.streamingContentProviders).join(', '),
+      )
+    }
+
     console.log(
       `[ChatExtensions] Registered extension: ${extension.name} (priority: ${extension.priority ?? 100})`,
     )
@@ -190,6 +256,26 @@ export class ChatExtensionRegistry {
         this.sseEventHandlerRegistry.delete(eventType)
       } else {
         this.sseEventHandlerRegistry.set(eventType, filtered)
+      }
+    }
+
+    // Clear streaming delta processor registry entries for this extension
+    for (const [contentType, entries] of this.streamingDeltaProcessorRegistry.entries()) {
+      const filtered = entries.filter(entry => entry.extension.name !== name)
+      if (filtered.length === 0) {
+        this.streamingDeltaProcessorRegistry.delete(contentType)
+      } else {
+        this.streamingDeltaProcessorRegistry.set(contentType, filtered)
+      }
+    }
+
+    // Clear streaming content provider registry entries for this extension
+    for (const [contentType, entries] of this.streamingContentProviderRegistry.entries()) {
+      const filtered = entries.filter(entry => entry.extension.name !== name)
+      if (filtered.length === 0) {
+        this.streamingContentProviderRegistry.delete(contentType)
+      } else {
+        this.streamingContentProviderRegistry.set(contentType, filtered)
       }
     }
 
@@ -259,6 +345,42 @@ export class ChatExtensionRegistry {
     }
 
     this.initialized = true
+  }
+
+  /**
+   * Call onConversationLoad hooks for all enabled extensions
+   * Called when a conversation is loaded or switched
+   *
+   * @param conversation - The loaded conversation
+   */
+  async onConversationLoad(conversation: import('@/api-client/types').Conversation): Promise<void> {
+    const extensions = this.getExtensions().filter(
+      ext => ext.onConversationLoad !== undefined,
+    )
+
+    if (extensions.length === 0) {
+      return
+    }
+
+    console.log(
+      `[ChatExtensions] Calling onConversationLoad for ${extensions.length} extensions...`,
+    )
+
+    for (const extension of extensions) {
+      try {
+        if (extension.onConversationLoad) {
+          await extension.onConversationLoad(conversation)
+          console.log(
+            `[ChatExtensions] ${extension.name}.onConversationLoad completed`,
+          )
+        }
+      } catch (error) {
+        console.error(
+          `[ChatExtensions] Error in ${extension.name}.onConversationLoad:`,
+          error,
+        )
+      }
+    }
   }
 
   /**
@@ -686,24 +808,57 @@ export class ChatExtensionRegistry {
 
   /**
    * Provide streaming content
-   * Asks extensions to create a new content block for streaming
-   * Returns first non-null response (first extension that handles this type wins)
+   * Uses registry for O(1) lookup by content type
+   * Falls back to legacy provideStreamingContent hook for backward compatibility
+   * Returns first non-null content block created for this type
    */
   async provideStreamingContent(
     contentType: string,
     delta?: string,
   ): Promise<import('@/api-client/types').MessageContent | null> {
-    const extensions = this.getExtensions().filter(ext =>
+    const providers = this.streamingContentProviderRegistry.get(contentType)
+
+    // Try new registry-based providers first (O(1) lookup by content type)
+    if (providers && providers.length > 0) {
+      // Filter enabled extensions and sort by priority
+      const enabledProviders = providers
+        .filter(({ extension }) => {
+          const options = this.extensionOptions.get(extension.name)
+          return options?.enabled !== false
+        })
+        .sort((a, b) => a.priority - b.priority)
+
+      // Execute first provider (first extension that registers for this type wins)
+      for (const { extension, provider } of enabledProviders) {
+        try {
+          const content = await provider(delta)
+          if (content) {
+            console.log(
+              `[ChatExtensions] Streaming content for "${contentType}" provided by: ${extension.name}`,
+            )
+            return content
+          }
+        } catch (error) {
+          console.error(
+            `[ChatExtensions] Error in ${extension.name}.streamingContentProviders.${contentType}:`,
+            error,
+          )
+        }
+      }
+    }
+
+    // Fall back to legacy provideStreamingContent hook for backward compatibility
+    const legacyExtensions = this.getExtensions().filter(ext =>
       ext.provideStreamingContent !== undefined,
     )
 
-    for (const extension of extensions) {
+    for (const extension of legacyExtensions) {
       try {
         if (extension.provideStreamingContent) {
           const content = await extension.provideStreamingContent(contentType, delta)
           if (content) {
             console.log(
-              `[ChatExtensions] ${extension.name} provided streaming content for type: ${contentType}`,
+              `[ChatExtensions] ${extension.name} provided streaming content for type: ${contentType} (legacy)`,
             )
             return content
           }
@@ -721,35 +876,71 @@ export class ChatExtensionRegistry {
 
   /**
    * Process streaming delta
-   * Asks extensions to process a delta for existing content
-   * Returns first non-null response (first extension that handles this content wins)
+   * Uses registry for O(1) lookup by content type
+   * Falls back to legacy processStreamingDelta hook for backward compatibility
+   * Returns updated content or original if no processor handles it
    */
   async processStreamingDelta(
     content: import('@/api-client/types').MessageContent,
     delta: string,
   ): Promise<import('@/api-client/types').MessageContent> {
-    const extensions = this.getExtensions().filter(ext =>
+    const contentType = (content.content as any).type
+    const processors = this.streamingDeltaProcessorRegistry.get(contentType)
+
+    // Try new registry-based processors first (O(1) lookup by content type)
+    if (processors && processors.length > 0) {
+      // Filter enabled extensions and sort by priority
+      const enabledProcessors = processors
+        .filter(({ extension }) => {
+          const options = this.extensionOptions.get(extension.name)
+          return options?.enabled !== false
+        })
+        .sort((a, b) => a.priority - b.priority)
+
+      // Execute first processor (first extension that registers for this type wins)
+      for (const { extension, processor } of enabledProcessors) {
+        try {
+          const updatedContent = await processor(content, delta)
+          if (updatedContent !== content) {
+            console.log(
+              `[ChatExtensions] Streaming delta for "${contentType}" processed by: ${extension.name}`,
+            )
+            return updatedContent
+          }
+        } catch (error) {
+          console.error(
+            `[ChatExtensions] Error in ${extension.name}.streamingDeltaProcessors.${contentType}:`,
+            error,
+          )
+        }
+      }
+    }
+
+    // Fall back to legacy processStreamingDelta hook for backward compatibility
+    const legacyExtensions = this.getExtensions().filter(ext =>
       ext.processStreamingDelta !== undefined,
     )
 
-    for (const extension of extensions) {
+    for (const extension of legacyExtensions) {
       try {
         if (extension.processStreamingDelta) {
           const updatedContent = await extension.processStreamingDelta(content, delta)
           if (updatedContent !== content) {
-            // Extension handled the delta
+            console.log(
+              `[ChatExtensions] Streaming delta processed by: ${extension.name} (legacy)`,
+            )
             return updatedContent
           }
         }
       } catch (error) {
         console.error(
-          `[ChatExtensions] Error in ${extension.name}.processStreamingDelta:`,
+          `[ChatExtensions] Error in ${extension.name}.processStreamingDelta (legacy):`,
           error,
         )
       }
     }
 
-    // No extension handled it - return original content
+    // No processor handled it - return original content
     return content
   }
 }

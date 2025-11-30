@@ -326,7 +326,7 @@ export function FileCard({
         closable: true,
         maskClosable: true,
         styles: {
-          content: {
+          body: {
             backgroundColor: token.colorBgLayout,
             border: `1px solid ${token.colorBorderSecondary}`,
           },
@@ -490,7 +490,7 @@ export function FileCard({
         title={file.filename}
         open={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        width={600}
+        size={600}
         classNames={{
           body: '!px-3 !pt-0',
         }}

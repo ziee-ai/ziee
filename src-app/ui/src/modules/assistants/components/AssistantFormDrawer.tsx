@@ -152,7 +152,7 @@ export function AssistantFormDrawer() {
       title={getTitle()}
       open={open}
       onClose={handleClose}
-      width={600}
+      size={600}
       maskClosable={false}
       footer={null}
     >

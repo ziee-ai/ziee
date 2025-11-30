@@ -40,6 +40,9 @@ export type {
   HandleSSEEventResult,
   ExtensionRegistrationOptions,
   ExtensionSliceCreator,
+  StreamingContentProviders,
+  StreamingDeltaProcessors,
+  MessageContentTyped,
 } from './types'
 
 // Slot definitions

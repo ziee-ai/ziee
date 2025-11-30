@@ -72,10 +72,10 @@ export function CreateUserDrawer() {
         createForm.resetFields()
       }}
       footer={null}
-      width={600}
+      size={600}
       maskClosable={false}
     >
-      <Form form={createForm} layout="vertical" onFinish={handleCreateUser}>
+      <Form name="create-user" form={createForm} layout="vertical" onFinish={handleCreateUser}>
         <Form.Item
           name="username"
           label="Username"

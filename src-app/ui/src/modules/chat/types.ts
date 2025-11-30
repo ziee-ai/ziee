@@ -1,5 +1,4 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useChatLlmProviderStore } from './core/stores/LlmProvider.store'
 import type { useChatStore } from './core/stores/Chat.store'
 import type { useChatHistoryStore } from './stores/ChatHistory.store'
 
@@ -14,9 +13,6 @@ export interface ChatExtensionStores {
 
 declare module '@/core/stores' {
   interface RegisteredStores {
-    ChatLlmProvider: StoreProxy<
-      ReturnType<typeof useChatLlmProviderStore.getState>
-    >
     Chat: StoreProxy<
       ReturnType<typeof useChatStore.getState> & ChatExtensionStores
     >

@@ -88,7 +88,7 @@ export function EditUserDrawer() {
         editForm.resetFields()
       }}
       footer={null}
-      width={600}
+      size={600}
       maskClosable={false}
     >
       <Form

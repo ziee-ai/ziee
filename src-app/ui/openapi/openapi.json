@@ -11919,14 +11919,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "user_content_id": {
-            "description": "User message content ID (None if resuming with tool approvals or regenerating)",
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
           "user_message_id": {
             "description": "User message ID (None if resuming with tool approvals or regenerating)",
             "type": [

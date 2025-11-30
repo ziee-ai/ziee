@@ -98,7 +98,7 @@ export function LlmProviderDrawer() {
       open={open}
       onClose={handleClose}
       footer={null}
-      width={600}
+      size={600}
       maskClosable={false}
     >
       <Form

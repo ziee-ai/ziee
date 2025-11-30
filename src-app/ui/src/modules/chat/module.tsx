@@ -2,7 +2,6 @@ import { createModule } from '@/core'
 import { PlusOutlined, HistoryOutlined } from '@ant-design/icons'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useChatLlmProviderStore } from './core/stores/LlmProvider.store'
 import { useChatStore } from './core/stores/Chat.store'
 import { useChatHistoryStore } from './stores/ChatHistory.store'
 import { RecentConversationsWidget } from './widgets/RecentConversationsWidget'
@@ -26,10 +25,6 @@ export default createModule({
   },
   dependencies: ['router'],
   stores: [
-    {
-      name: 'ChatLlmProvider',
-      store: useChatLlmProviderStore,
-    },
     {
       name: 'Chat',
       store: useChatStore,

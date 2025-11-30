@@ -77,7 +77,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
       title={`Assign System MCP Servers - ${selectedGroup?.name || ''}`}
       open={isOpen}
       onClose={handleClose}
-      width={600}
+      size={600}
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={handleClose} disabled={saving}>

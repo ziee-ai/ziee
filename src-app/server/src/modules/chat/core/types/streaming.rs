@@ -135,10 +135,6 @@ pub struct SSEChatStreamStartedData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_message_id: Option<Uuid>,
 
-    /// User message content ID (None if resuming with tool approvals or regenerating)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_content_id: Option<Uuid>,
-
     /// Conversation ID
     pub conversation_id: Uuid,
 

@@ -56,7 +56,7 @@ export function RecentConversationsWidget() {
               No conversations yet
             </Text>
           }
-          imageStyle={{ height: 40 }}
+          styles={{ image: { height: 40 } }}
         />
       </div>
     )

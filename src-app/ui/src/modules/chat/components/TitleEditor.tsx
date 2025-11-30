@@ -45,7 +45,7 @@ export function TitleEditor() {
 
   if (isEditing) {
     return (
-      <Form form={form} className="flex items-center gap-1 flex-1 max-w-full">
+      <Form name="title-editor" form={form} className="flex items-center gap-1 flex-1 max-w-full">
         <Form.Item
           name="title"
           className="!mb-0 flex-1"

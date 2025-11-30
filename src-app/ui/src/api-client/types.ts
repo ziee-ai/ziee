@@ -1070,7 +1070,6 @@ export interface SSEChatStreamMcpToolStartData {
 export interface SSEChatStreamStartedData {
   branch_id: string
   conversation_id: string
-  user_content_id?: string
   user_message_id?: string
 }
 

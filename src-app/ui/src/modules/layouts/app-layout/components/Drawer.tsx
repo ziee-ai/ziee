@@ -24,11 +24,27 @@ export const Drawer: React.FC<DrawerProps> = props => {
 
   const {
     placement = 'right',
-    width = 520,
+    size = 520,
+    width, // deprecated - for backwards compatibility
     maskClosable = true,
     children,
+    styles: propsStyles,
     ...restProps
   } = props
+
+  // Resolve styles if it's a function
+  const resolvedPropsStyles = typeof propsStyles === 'function'
+    ? propsStyles({ props })
+    : propsStyles
+
+  // Use size, fallback to width for backwards compatibility
+  const drawerSize = width !== undefined ? width : size
+
+  // Determine if we should use size or width prop
+  const useSizeProp =
+    typeof drawerSize === 'number' ||
+    drawerSize === 'default' ||
+    drawerSize === 'large'
 
   if (Array.isArray(restProps.footer)) {
     restProps.footer = (
@@ -43,7 +59,10 @@ export const Drawer: React.FC<DrawerProps> = props => {
   return (
     <AntDrawer
       placement={placement}
-      width={windowMinSize.xs ? '100%' : width}
+      {...(useSizeProp
+        ? { size: drawerSize as number | 'default' | 'large' }
+        : { width: windowMinSize.xs ? '100%' : drawerSize }
+      )}
       maskClosable={maskClosable}
       {...restProps}
       closable={false}
@@ -85,19 +104,19 @@ export const Drawer: React.FC<DrawerProps> = props => {
         header: {
           borderBottom: 'none',
           padding: 0,
-          ...(restProps.styles?.header || {}),
+          ...(resolvedPropsStyles?.header || {}),
         },
         footer: {
           borderTop: 'none',
           padding: '6px 12px 12px 12px',
-          ...(restProps.styles?.footer || {}),
+          ...(resolvedPropsStyles?.footer || {}),
         },
         mask: {
           backdropFilter: 'brightness(0.75)',
           backgroundColor: tinycolor(token.colorBgLayout)
             .setAlpha(0.75)
             .toString(),
-          ...(restProps.styles?.mask || {}),
+          ...(resolvedPropsStyles?.mask || {}),
         },
         wrapper: {
           border: windowMinSize.xs
@@ -107,11 +126,11 @@ export const Drawer: React.FC<DrawerProps> = props => {
           maxWidth: `calc(100vw - ${windowMinSize.xs ? 0 : 24}px)`,
           boxShadow: 'none',
           margin: windowMinSize.xs ? 0 : 12,
-          ...(restProps.styles?.wrapper || {}),
+          ...(resolvedPropsStyles?.wrapper || {}),
         },
-        content: {
+        body: {
           backgroundColor: token.colorBgLayout,
-          ...(restProps.styles?.content || {}),
+          ...(resolvedPropsStyles?.body || {}),
         },
       }}
       drawerRender={node => {

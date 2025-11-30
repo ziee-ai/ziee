@@ -100,7 +100,7 @@ export function EditLlmModelDrawer() {
           Save Changes
         </Button>,
       ]}
-      width={600}
+      size={600}
       maskClosable={false}
     >
       <Form name="edit-llm-model-form" form={form} layout="vertical">

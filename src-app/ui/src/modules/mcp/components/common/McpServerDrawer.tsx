@@ -206,7 +206,7 @@ export function McpServerDrawer() {
   const transportType = Form.useWatch('transport_type', form)
 
   return (
-    <Drawer open={open} onClose={handleClose} title={getTitle()} width={600}>
+    <Drawer open={open} onClose={handleClose} title={getTitle()} size={600}>
       <div className="flex flex-col gap-4">
         <Form name="mcp-server-form" form={form} layout="vertical">
           {/* Name (only for create mode) */}

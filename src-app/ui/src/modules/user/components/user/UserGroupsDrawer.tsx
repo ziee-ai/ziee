@@ -91,7 +91,7 @@ export function UserGroupsDrawer() {
         setUserGroupIds(new Set())
       }}
       open={isOpen}
-      width={400}
+      size={400}
       extra={
         <Button
           type="text"
