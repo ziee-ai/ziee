@@ -13,21 +13,27 @@ import {
 import { Stores } from '@/core/stores'
 import { createMcpStore, type McpToolCall } from './Mcp.store'
 import type { MessageContentDataToolResult } from '@/api-client/types'
+import { ToolCallPendingApprovalContent } from './components/ToolCallPendingApprovalContent'
+import { McpServerSelector } from './components/McpServerSelector'
 
 const { Text } = Typography
 
 /**
  * MCP Tool Call UI Component
+ * Shows approval UI when status is 'pending_approval'
  */
 function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
   const [isExpanded, setIsExpanded] = useState(false)
+
+  // Show approval UI for pending approval status
+  if (toolCall.status === 'pending_approval') {
+    return <ToolCallPendingApprovalContent toolCall={toolCall} />
+  }
 
   const getStatusIcon = () => {
     switch (toolCall.status) {
       case 'started':
         return <ToolOutlined spin className="text-blue-500" />
-      case 'pending_approval':
-        return <ToolOutlined className="text-orange-500" />
       case 'completed':
         return <CheckCircleOutlined className="text-green-500" />
       case 'error':
@@ -39,8 +45,6 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
     switch (toolCall.status) {
       case 'started':
         return 'Running...'
-      case 'pending_approval':
-        return 'Awaiting approval'
       case 'completed':
         return 'Completed'
       case 'error':
@@ -202,7 +206,6 @@ const mcpExtension: ChatExtension = createExtension({
       })
 
       console.log('[MCP Extension] Approval required for:', data.tool_name)
-      // TODO: Show approval UI
     },
 
     mcpToolComplete: async (data, _get, _set) => {
@@ -222,6 +225,40 @@ const mcpExtension: ChatExtension = createExtension({
     },
   },
 
+  // Compose request fields to include MCP config and approval decisions
+  composeRequestFields: async () => {
+    const { Stores } = await import('@/core/stores')
+    const mcpStore = Stores.Chat.__state.McpStore
+    const selectedServers = mcpStore.getSelectedServersConfig()
+    const approvalDecisions = mcpStore.getApprovalDecisions()
+
+    const fields: any = {}
+
+    // Add MCP config if servers are selected
+    if (selectedServers.length > 0) {
+      fields.enable_mcp = true
+      fields.mcp_config = { mcp_servers: selectedServers }
+      console.log('[MCP Extension] Including MCP config:', fields.mcp_config)
+    }
+
+    // Add approval decisions if present
+    if (approvalDecisions.length > 0) {
+      fields.tool_approvals = approvalDecisions
+      console.log('[MCP Extension] Including approval decisions:', approvalDecisions)
+    }
+
+    return fields
+  },
+
+  // Clear approval decisions after message is sent
+  onMessageSent: async () => {
+    const { Stores } = await import('@/core/stores')
+    const mcpStore = Stores.Chat.__state.McpStore
+    mcpStore.clearApprovalDecisions()
+    console.log('[MCP Extension] Cleared approval decisions after message sent')
+    return {}
+  },
+
   // Register content type components
   contentTypes: {
     tool_result: McpToolResultRenderer,
@@ -229,6 +266,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Register slot components
   slots: {
+    toolbar_actions: { component: McpServerSelector, order: 20 },
     message_list_header: { component: McpActiveCallsIndicator, order: 50 },
   },
 

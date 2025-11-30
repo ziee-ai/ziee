@@ -123,11 +123,37 @@ const fileExtension: ChatExtension = createExtension({
     return { file_ids: fileIds }
   },
 
-  // Clear files after message is sent (this runs after composeRequestFields)
+  // Backup files before clearing (this runs after composeRequestFields)
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
-    Stores.Chat.__state.FileStore.clearFiles()
-    console.log('[FileExtension] Cleared files after message sent')
+    const fileStore = Stores.Chat.__state.FileStore
+
+    // Backup files before clearing
+    fileStore.setBackupFiles()
+    fileStore.clearFiles()
+    console.log('[FileExtension] Backed up and cleared files after message sent')
+    return {}
+  },
+
+  // Restore files on stream error
+  onStreamError: async (_error: Error) => {
+    const { Stores } = await import('@/core/stores')
+    const fileStore = Stores.Chat.__state.FileStore
+
+    // Restore files from backup
+    fileStore.restoreFromBackup()
+    console.log('[FileExtension] Restored files from backup after stream error')
+    return {}
+  },
+
+  // Clear backup on successful completion
+  afterStreamComplete: async (_message) => {
+    const { Stores } = await import('@/core/stores')
+    const fileStore = Stores.Chat.__state.FileStore
+
+    // Clear backup since message was sent successfully
+    fileStore.clearBackup()
+    console.log('[FileExtension] Cleared file backup after successful stream')
     return {}
   },
 

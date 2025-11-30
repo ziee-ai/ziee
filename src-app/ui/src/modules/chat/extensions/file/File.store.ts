@@ -23,6 +23,10 @@ interface FileExtensionStore {
   uploadingFiles: Map<string, FileUploadProgress>
   selectedFiles: Map<string, FileEntity>
 
+  // Backup state (for error recovery)
+  backupSelectedFiles: Map<string, FileEntity> | null
+  backupUploadingFiles: Map<string, FileUploadProgress> | null
+
   // Actions
   uploadFiles: (files: File[]) => Promise<void>
   removeFile: (fileId: string) => void
@@ -30,6 +34,12 @@ interface FileExtensionStore {
   clearFiles: () => void
   getFileIds: () => string[]
   isUploading: () => boolean
+
+  // Backup/restore methods
+  setBackupFiles: () => void
+  getBackupFiles: () => { selectedFiles: Map<string, FileEntity>; uploadingFiles: Map<string, FileUploadProgress> } | null
+  restoreFromBackup: () => void
+  clearBackup: () => void
 }
 
 /**
@@ -40,6 +50,8 @@ export const createFileExtensionStore = () =>
     // Initial state
     uploadingFiles: new Map(),
     selectedFiles: new Map(),
+    backupSelectedFiles: null,
+    backupUploadingFiles: null,
 
     // Upload files with progress tracking
     uploadFiles: async (files: File[]) => {
@@ -177,6 +189,49 @@ export const createFileExtensionStore = () =>
       return Array.from(uploadingFiles.values()).some(
         file => file.status === 'pending' || file.status === 'uploading'
       )
+    },
+
+    // Backup current files (before clearing)
+    setBackupFiles: () => {
+      const { selectedFiles, uploadingFiles } = get()
+      set((state) => {
+        state.backupSelectedFiles = new Map(selectedFiles)
+        state.backupUploadingFiles = new Map(uploadingFiles)
+      })
+      console.log('[FileStore] Backed up files')
+    },
+
+    // Get backup files
+    getBackupFiles: () => {
+      const { backupSelectedFiles, backupUploadingFiles } = get()
+      if (!backupSelectedFiles || !backupUploadingFiles) {
+        return null
+      }
+      return {
+        selectedFiles: backupSelectedFiles,
+        uploadingFiles: backupUploadingFiles,
+      }
+    },
+
+    // Restore files from backup
+    restoreFromBackup: () => {
+      const backup = get().getBackupFiles()
+      if (backup) {
+        set((state) => {
+          state.selectedFiles = new Map(backup.selectedFiles)
+          state.uploadingFiles = new Map(backup.uploadingFiles)
+        })
+        console.log('[FileStore] Restored files from backup')
+      }
+    },
+
+    // Clear backup
+    clearBackup: () => {
+      set((state) => {
+        state.backupSelectedFiles = null
+        state.backupUploadingFiles = null
+      })
+      console.log('[FileStore] Cleared file backup')
     },
   }))
 
