@@ -25,12 +25,10 @@ const modelExtension: ChatExtension = createExtension({
   composeRequestFields: async () => {
     const { Stores } = await import('@/core/stores')
 
-    const selectedModel = Stores.Chat.__state.ModelStore.getModelId()
-    if (!selectedModel) {
+    const modelId = Stores.Chat.__state.ModelStore.getModelId()
+    if (!modelId) {
       throw new Error('No model selected')
     }
-
-    const [, modelId] = selectedModel.split(':')
 
     return {
       model_id: modelId,

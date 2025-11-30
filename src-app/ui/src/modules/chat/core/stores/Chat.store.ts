@@ -25,6 +25,7 @@ interface ChatState {
 
   // Loading states
   loading: boolean
+  loadingConversationId: string | null
   sending: boolean
   isStreaming: boolean
   error: string | null
@@ -66,6 +67,7 @@ export const useChatStore = create<ChatState>()(
       conversation: null,
       messages: new Map<string, MessageWithContent>(),
       loading: false,
+      loadingConversationId: null,
       sending: false,
       isStreaming: false,
       error: null,
@@ -221,6 +223,19 @@ export const useChatStore = create<ChatState>()(
       // Load conversation by ID
       loadConversation: async (id: string) => {
         const currentConversation = get().conversation
+        const loadingId = get().loadingConversationId
+
+        // If conversation is already loaded, do nothing
+        if (currentConversation && currentConversation.id === id) {
+          console.log(`[Chat.store] Conversation ${id} already loaded, skipping`)
+          return
+        }
+
+        // If already loading this conversation, do nothing
+        if (loadingId === id) {
+          console.log(`[Chat.store] Conversation ${id} is already loading, skipping`)
+          return
+        }
 
         // If switching to a different conversation, save current state first
         if (currentConversation && currentConversation.id !== id) {
@@ -254,10 +269,10 @@ export const useChatStore = create<ChatState>()(
 
         // Cache miss - load from API
         console.log(`[Chat.store] Cache miss for conversation: ${id}`)
-        set({ loading: true, error: null })
+        set({ loading: true, loadingConversationId: id, error: null })
         try {
           const conversation = await ApiClient.Conversation.get({ id })
-          set({ conversation, loading: false })
+          set({ conversation, loading: false, loadingConversationId: null })
 
           // Load messages for this conversation
           await get().loadMessages(id)
@@ -268,6 +283,7 @@ export const useChatStore = create<ChatState>()(
           set({
             error: error.message || 'Failed to load conversation',
             loading: false,
+            loadingConversationId: null,
           })
         }
       },
@@ -291,25 +307,11 @@ export const useChatStore = create<ChatState>()(
 
       // Send message with SSE streaming
       sendMessage: async () => {
-        const { conversation } = get()
+        let { conversation } = get()
 
-        if (!conversation) {
-          set({ error: 'No active conversation' })
-          return
-        }
-
-        // Get text from TextStore (owned by text extension)
-        const content = (get() as any).TextStore?.getText?.() || ''
-
-        if (!content || !content.trim()) {
-          set({ error: 'Message cannot be empty' })
-          throw new Error('Message cannot be empty')
-        }
-
-        // Let extensions modify message before sending
-        const beforeResult = await chatExtensionRegistry.beforeSendMessage(
-          content,
-        )
+        // Validate message BEFORE creating conversation
+        // Text extension validates text is not empty, file extension checks uploads, etc.
+        const beforeResult = await chatExtensionRegistry.beforeSendMessage()
 
         // Check if any extension cancelled the send
         if (beforeResult.cancel) {
@@ -317,8 +319,16 @@ export const useChatStore = create<ChatState>()(
           throw new Error(beforeResult.errorMessage || 'Message send was cancelled')
         }
 
-        // Use modified message if provided by extension
-        const finalContent = beforeResult.message || content
+        // Create conversation if needed (only after validation passes)
+        if (!conversation) {
+          conversation = await get().createConversation()
+
+          // Initialize extensions with new conversation
+          await chatExtensionRegistry.onConversationLoad(conversation)
+        }
+
+        // Get message from extensions (text extension provides the message)
+        const finalContent = beforeResult.message || ''
 
         // Collect request fields from all extensions (including model_id from model extension)
         const composedFields = await chatExtensionRegistry.composeRequestFields()
@@ -523,8 +533,7 @@ export const useChatStore = create<ChatState>()(
 
                   // Always handle locally
                   if (!handled) {
-                    // Streaming complete - reload messages to get final versions
-                    get().loadMessages(conversation.id)
+                    // Streaming complete - messages are already in state from SSE events
                     set({
                       isStreaming: false,
                       sending: false,
@@ -545,12 +554,31 @@ export const useChatStore = create<ChatState>()(
                   await chatExtensionRegistry.handleSSEEvent(sseEvent)
 
                   // Always handle errors locally
-                  set({
-                    error: data.message || 'Stream error',
-                    isStreaming: false,
-                    sending: false,
-                    streamingMessage: null,
-                  })
+                  const state = get()
+
+                  // Remove optimistic user message if it still has temp ID
+                  if (state.tempUserMessageId) {
+                    set(state => {
+                      const newMessages = new Map(state.messages)
+                      newMessages.delete(state.tempUserMessageId!)
+                      return {
+                        messages: newMessages,
+                        tempUserMessageId: null,
+                        error: data.message || 'Stream error',
+                        isStreaming: false,
+                        sending: false,
+                        streamingMessage: null,
+                      }
+                    })
+                  } else {
+                    // Message already has real ID - it was successfully created, keep it
+                    set({
+                      error: data.message || 'Stream error',
+                      isStreaming: false,
+                      sending: false,
+                      streamingMessage: null,
+                    })
+                  }
                 },
                 default: async (event, data) => {
                   // Route unknown events through extensions as GenericSSEEvent
@@ -576,12 +604,31 @@ export const useChatStore = create<ChatState>()(
             error instanceof Error ? error : new Error(error.message || 'Failed to send message')
           )
 
-          set({
-            error: error.message || 'Failed to send message',
-            sending: false,
-            isStreaming: false,
-            streamingMessage: null,
-          })
+          const state = get()
+
+          // Remove optimistic user message if it still has temp ID
+          if (state.tempUserMessageId) {
+            set(state => {
+              const newMessages = new Map(state.messages)
+              newMessages.delete(state.tempUserMessageId!)
+              return {
+                messages: newMessages,
+                tempUserMessageId: null,
+                error: error.message || 'Failed to send message',
+                sending: false,
+                isStreaming: false,
+                streamingMessage: null,
+              }
+            })
+          } else {
+            // Message already has real ID - it was successfully created, keep it
+            set({
+              error: error.message || 'Failed to send message',
+              sending: false,
+              isStreaming: false,
+              streamingMessage: null,
+            })
+          }
         }
       },
 
@@ -643,6 +690,7 @@ export const useChatStore = create<ChatState>()(
           conversation: null,
           messages: new Map<string, MessageWithContent>(),
           loading: false,
+          loadingConversationId: null,
           sending: false,
           isStreaming: false,
           error: null,

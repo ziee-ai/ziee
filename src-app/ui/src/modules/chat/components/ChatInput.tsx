@@ -6,7 +6,6 @@ import {
   message as antMessage,
 } from 'antd'
 import { SendOutlined } from '@ant-design/icons'
-import { useNavigate, useParams } from 'react-router-dom'
 import { ModelSelector } from '../extensions/model/components/ModelSelector'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot } from '../core/extensions'
@@ -27,33 +26,18 @@ export function ChatInput({
   style,
 }: ChatInputProps) {
   const { token } = theme.useToken()
-  const navigate = useNavigate()
-  const { conversationId } = useParams<{ conversationId?: string }>()
 
   // Get stores
-  const { createConversation, sendMessage, sending, isStreaming } = Stores.Chat
+  const { sendMessage, sending, isStreaming } = Stores.Chat
 
   const handleSend = async () => {
     if (sending || isStreaming || disabled) return
 
-    // Validate text from TextStore
-    const messageToSend = Stores.Chat.TextStore.getText()
-    if (!messageToSend?.trim()) {
-      antMessage.error('Message cannot be empty')
-      return
-    }
-
     try {
-      if (conversationId) {
-        // Existing conversation - just send message
-        // Model extension will provide model_id via composeRequestFields
-        await sendMessage()
-      } else {
-        // New conversation - create WITHOUT model_id (backend auto-updates)
-        const conversation = await createConversation()
-        await sendMessage()
-        navigate(`/chat/${conversation.id}`)
-      }
+      // sendMessage auto-creates conversation if missing
+      // Text extension validates content via beforeSendMessage
+      // NewChatPage handles navigation via useEffect
+      await sendMessage()
     } catch (error: any) {
       console.error('Failed to send message:', error)
       antMessage.error(error.message || 'Failed to send message')

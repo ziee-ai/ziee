@@ -1,25 +1,7 @@
 import { createExtensionStore } from '../../core/extensions'
-import type { LlmModel } from '@/api-client/types'
 import type { LlmProviderWithModels } from '@/modules/llm-provider/stores/LlmProvider.store'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
-
-/**
- * Model option for select dropdown
- */
-export interface ModelOption {
-  label: string
-  value: string  // Format: "providerId:modelId"
-  description?: string
-}
-
-/**
- * Model group (provider with models)
- */
-export interface ModelGroup {
-  label: string  // Provider name
-  options: ModelOption[]
-}
 
 /**
  * ModelStore
@@ -44,11 +26,8 @@ interface ModelStore {
   error: string | null
 
   // Model selection
-  /** Currently selected model in format "providerId:modelId" */
+  /** Currently selected model ID (UUID) */
   selectedModelId: string | null
-
-  /** Available models grouped by provider (computed from providers) */
-  get availableModels(): ModelGroup[]
 
   __init__: {
     __store__?: () => void
@@ -79,33 +58,6 @@ export const createModelStore = () =>
 
     // Model selection state
     selectedModelId: null,
-
-    // Computed getter for available models
-    get availableModels(): ModelGroup[] {
-      const providers = get().providers
-      const modelGroups: ModelGroup[] = []
-
-      providers.forEach((provider: LlmProviderWithModels) => {
-        if (provider.llm_models && provider.llm_models.length > 0) {
-          const enabledModels = provider.llm_models.filter(
-            (model: LlmModel) => model.enabled,
-          )
-
-          if (enabledModels.length > 0) {
-            modelGroups.push({
-              label: provider.name,
-              options: enabledModels.map((model: LlmModel) => ({
-                label: model.display_name || model.name,
-                value: `${provider.id}:${model.id}`,
-                description: model.description,
-              })),
-            })
-          }
-        }
-      })
-
-      return modelGroups
-    },
 
     __init__: {
       __store__: () => {
@@ -255,36 +207,50 @@ export const createModelStore = () =>
     },
 
     initializeFromConversation: (conversationModelId?: string) => {
-      const availableModels = get().availableModels
+      const providers = get().providers
 
       if (!conversationModelId) {
-        // No conversation model - auto-select first available
-        if (availableModels.length > 0 && availableModels[0].options.length > 0) {
-          set(state => {
-            state.selectedModelId = availableModels[0].options[0].value
-          })
+        // No conversation model - auto-select first enabled model
+        for (const provider of providers) {
+          if (provider.llm_models && provider.llm_models.length > 0) {
+            const firstEnabledModel = provider.llm_models.find(m => m.enabled)
+            if (firstEnabledModel) {
+              set(state => {
+                state.selectedModelId = firstEnabledModel.id
+              })
+              return
+            }
+          }
         }
         return
       }
 
-      // Find matching model in format "providerId:modelId"
-      for (const providerGroup of availableModels) {
-        const matchingModel = providerGroup.options.find(model =>
-          model.value.endsWith(`:${conversationModelId}`),
-        )
-        if (matchingModel) {
-          set(state => {
-            state.selectedModelId = matchingModel.value
-          })
-          return
+      // Find matching model by ID
+      for (const provider of providers) {
+        if (provider.llm_models) {
+          const matchingModel = provider.llm_models.find(
+            model => model.id === conversationModelId && model.enabled,
+          )
+          if (matchingModel) {
+            set(state => {
+              state.selectedModelId = matchingModel.id
+            })
+            return
+          }
         }
       }
 
-      // Fallback: conversation model not found, use first available
-      if (availableModels.length > 0 && availableModels[0].options.length > 0) {
-        set(state => {
-          state.selectedModelId = availableModels[0].options[0].value
-        })
+      // Fallback: conversation model not found or disabled, use first available
+      for (const provider of providers) {
+        if (provider.llm_models && provider.llm_models.length > 0) {
+          const firstEnabledModel = provider.llm_models.find(m => m.enabled)
+          if (firstEnabledModel) {
+            set(state => {
+              state.selectedModelId = firstEnabledModel.id
+            })
+            return
+          }
+        }
       }
     },
   }))

@@ -87,7 +87,7 @@ const fileExtension: ChatExtension = createExtension({
   },
 
   // Check if files are still uploading before sending message
-  beforeSendMessage: async (_message: string) => {
+  beforeSendMessage: async () => {
     const { Stores } = await import('@/core/stores')
     const fileStore = Stores.Chat.__state.FileStore
 
@@ -101,7 +101,7 @@ const fileExtension: ChatExtension = createExtension({
       }
     }
 
-    return {}
+    return { cancel: false }
   },
 
   // Compose request fields to add file_ids to send message request

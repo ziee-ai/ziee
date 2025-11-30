@@ -17,20 +17,14 @@ const { TextArea } = Input
 export function TextInput() {
   const [form] = Form.useForm()
   const { sending } = Stores.Chat
+  const {setGetMessage, setSetMessage, setClearMessage} = Stores.Chat.TextStore
 
-  // Register getter/clearer functions with TextStore on mount
+  // Register getter/setter/clearer functions with TextStore on mount
   useEffect(() => {
-    // Access store only inside effect to avoid hook timing issues
-    const textStore = Stores.Chat.__state.TextStore
-    if (textStore) {
-      // Register getter function (captures form via closure)
-      textStore.setGetMessage(() => form.getFieldValue('message') || '')
-
-      // Register clearer function (captures form via closure)
-      textStore.setClearMessage(() => form.setFieldValue('message', ''))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    setGetMessage(() => form.getFieldValue('message') || '')
+    setSetMessage((text: string) => form.setFieldValue('message', text))
+    setClearMessage(() => form.setFieldValue('message', ''))
+  }, [setGetMessage, setSetMessage, setClearMessage])
 
   const handleKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Submit on Enter (without Shift)

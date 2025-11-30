@@ -23,7 +23,7 @@ export function createExtension(
  */
 export function createMessageInterceptor(
   name: string,
-  handler: (message: string) => BeforeSendResult | Promise<BeforeSendResult>,
+  handler: () => BeforeSendResult | Promise<BeforeSendResult>,
   priority = 100,
 ): ChatExtension {
   return {

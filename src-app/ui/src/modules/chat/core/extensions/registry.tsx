@@ -414,31 +414,31 @@ export class ChatExtensionRegistry {
   /**
    * Execute beforeSendMessage hook across all extensions
    * Stops if any extension returns cancel: true
-   * Extensions access Stores.Chat directly for conversation data
+   * Extensions access their own stores for data (e.g., TextStore for text)
    */
-  async beforeSendMessage(message: string): Promise<BeforeSendResult> {
+  async beforeSendMessage(): Promise<BeforeSendResult> {
     const extensions = this.getExtensions().filter(ext =>
       ext.beforeSendMessage !== undefined,
     )
 
     let result: BeforeSendResult = {
-      message,
       requestFields: {},
     }
 
     for (const extension of extensions) {
       try {
         if (extension.beforeSendMessage) {
-          const hookResult = await extension.beforeSendMessage(
-            result.message || message,
-          )
+          const hookResult = await extension.beforeSendMessage()
 
           // Merge results
           if (hookResult.cancel) {
             console.log(
               `[ChatExtensions] Message send cancelled by: ${extension.name}`,
             )
-            return { cancel: true }
+            return {
+              cancel: true,
+              errorMessage: hookResult.errorMessage,
+            }
           }
 
           if (hookResult.message !== undefined) {

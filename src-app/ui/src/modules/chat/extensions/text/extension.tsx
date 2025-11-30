@@ -117,13 +117,73 @@ const textExtension: ChatExtension = createExtension({
   },
 
   /**
+   * Validate text before sending
+   * Gets text from TextStore and validates it
+   * Returns text in message field for use by other extensions
+   */
+  beforeSendMessage: async () => {
+    const { Stores } = await import('@/core/stores')
+    const content = Stores.Chat.__state.TextStore.getText()
+
+    if (!content || !content.trim()) {
+      return {
+        cancel: true,
+        errorMessage: 'Message cannot be empty',
+      }
+    }
+
+    return {
+      cancel: false,
+      message: content,
+    }
+  },
+
+  /**
    * Clear text after message is sent
    * Called after message is successfully sent (before streaming starts)
+   * Backup text before clearing for error recovery
    */
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
-    Stores.Chat.__state.TextStore.clearText()
-    console.log('[TextExtension] Cleared text after message sent')
+    const textStore = Stores.Chat.__state.TextStore
+
+    // Backup text before clearing
+    const currentText = textStore.getText()
+    textStore.setBackupMessage(currentText)
+
+    // Clear text
+    textStore.clearText()
+    console.log('[TextExtension] Backed up and cleared text after message sent')
+    return {}
+  },
+
+  /**
+   * Restore text on stream error
+   * Called when streaming fails with an error
+   */
+  onStreamError: async (_error: Error) => {
+    const { Stores } = await import('@/core/stores')
+    const textStore = Stores.Chat.__state.TextStore
+
+    // Restore text from backup
+    textStore.restoreFromBackup()
+    console.log('[TextExtension] Restored text from backup after stream error')
+
+    // Keep backup for potential retry (don't clear it yet)
+    return {}
+  },
+
+  /**
+   * Clear backup on successful completion
+   * Called when streaming completes successfully
+   */
+  afterStreamComplete: async (_message) => {
+    const { Stores } = await import('@/core/stores')
+    const textStore = Stores.Chat.__state.TextStore
+
+    // Clear backup since message was sent successfully
+    textStore.setBackupMessage(null)
+    console.log('[TextExtension] Cleared text backup after successful stream')
     return {}
   },
 

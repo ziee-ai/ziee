@@ -393,11 +393,9 @@ export interface ChatExtension {
   /**
    * Called before a message is sent
    * Can modify message, add request fields, or cancel send
-   * Extensions should access Stores.Chat for conversation data
+   * Extensions should access their own stores for data (e.g., TextStore for text)
    */
-  beforeSendMessage?: (
-    message: string,
-  ) => BeforeSendResult | Promise<BeforeSendResult>
+  beforeSendMessage?: () => BeforeSendResult | Promise<BeforeSendResult>
 
   /**
    * Called after message is successfully sent (before streaming starts)
