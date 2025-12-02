@@ -2,6 +2,7 @@
 
 pub mod approval;
 pub mod content;
+pub mod defaults;
 pub mod extension;
 pub mod helpers;
 pub mod mcp;
@@ -11,5 +12,6 @@ pub mod repository;
 pub use approval::{
     ApprovalMode, ToolApprovalDecision,
 };
+pub use defaults::mcp_defaults_router;
 pub use extension::McpConfig;
 pub use repository::McpChatRepository;

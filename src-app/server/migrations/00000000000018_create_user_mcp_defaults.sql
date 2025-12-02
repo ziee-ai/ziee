@@ -1,8 +1,8 @@
--- Create conversation_mcp_settings table
--- Stores per-conversation MCP configuration including approval settings
-CREATE TABLE conversation_mcp_settings (
+-- User MCP Defaults
+-- Stores user-level default MCP settings that apply to all new conversations
+
+CREATE TABLE user_mcp_defaults (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
     -- Approval mode: "disabled" | "auto_approve" | "manual_approve"
@@ -10,30 +10,26 @@ CREATE TABLE conversation_mcp_settings (
 
     -- Auto-approved tools (JSONB array):
     -- Format: [{"server_id": "uuid", "tools": ["tool1", "tool2"]}, ...]
-    -- Empty array means no tools are auto-approved
     auto_approved_tools JSONB NOT NULL DEFAULT '[]'::jsonb,
 
     -- Disabled servers/tools (JSONB array):
     -- Format: [{"server_id": "uuid", "tools": []}, ...]
     -- Empty tools array = entire server disabled
-    -- Non-empty tools array = only those tools disabled
     -- Empty array = all accessible servers enabled (default)
     disabled_servers JSONB NOT NULL DEFAULT '[]'::jsonb,
 
-    -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    -- Unique constraint: one settings record per conversation
-    CONSTRAINT unique_conversation_settings UNIQUE(conversation_id)
+    -- Each user can only have one defaults record
+    CONSTRAINT unique_user_mcp_defaults UNIQUE(user_id)
 );
 
--- Indexes for efficient lookups
-CREATE INDEX idx_conversation_mcp_settings_conversation_id ON conversation_mcp_settings(conversation_id);
-CREATE INDEX idx_conversation_mcp_settings_user_id ON conversation_mcp_settings(user_id);
+-- Index for faster lookups by user
+CREATE INDEX idx_user_mcp_defaults_user_id ON user_mcp_defaults(user_id);
 
--- Trigger to update updated_at timestamp
-CREATE TRIGGER update_conversation_mcp_settings_updated_at
-    BEFORE UPDATE ON conversation_mcp_settings
+-- Trigger to update updated_at
+CREATE TRIGGER update_user_mcp_defaults_updated_at
+    BEFORE UPDATE ON user_mcp_defaults
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();

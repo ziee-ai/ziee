@@ -28,7 +28,7 @@ use super::models;
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct McpSettingsResponse {
-    pub settings: Option<models::ConversationMcpSettings>,
+    pub settings: Option<models::ConversationMcpSettingsResponse>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -59,7 +59,8 @@ pub async fn get_mcp_settings(
         .chat
         .mcp
         .get_conversation_settings(conversation_id)
-        .await?;
+        .await?
+        .map(models::ConversationMcpSettingsResponse::from);
 
     Ok((StatusCode::OK, Json(McpSettingsResponse { settings })))
 }
@@ -80,7 +81,7 @@ pub async fn update_mcp_settings(
     auth: RequirePermissions<(ConversationsEdit,)>,
     Path(conversation_id): Path<Uuid>,
     Json(request): Json<models::UpsertMcpSettingsRequest>,
-) -> ApiResult<Json<models::ConversationMcpSettings>> {
+) -> ApiResult<Json<models::ConversationMcpSettingsResponse>> {
     // Verify user owns this conversation
     let _conversation = crate::core::Repos
         .chat
@@ -89,34 +90,7 @@ pub async fn update_mcp_settings(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
 
-    // Validate auto_approved_tools format by attempting to normalize
-    // This will validate all 3 formats: string, object with server_id, object with server_name
-    let _normalized = crate::core::Repos
-        .chat
-        .mcp
-        .normalize_auto_approved_tools(&request.auto_approved_tools)
-        .await
-        .map_err(|e| {
-            AppError::bad_request(
-                "INVALID_AUTO_APPROVED_TOOLS",
-                format!("Invalid auto_approved_tools format: {}", e),
-            )
-        })?;
-
-    // Additional validation: ensure string format tools contain "__"
-    if let Ok(tools) = serde_json::from_value::<Vec<models::AutoApprovedTool>>(request.auto_approved_tools.clone()) {
-        for tool in tools {
-            if let models::AutoApprovedTool::String(ref tool_name) = tool {
-                if !tool_name.contains("__") {
-                    return Err(AppError::bad_request(
-                        "INVALID_TOOL_NAME",
-                        format!("Invalid tool name format: {}. Expected 'server_name__tool_name'", tool_name),
-                    )
-                    .into());
-                }
-            }
-        }
-    }
+    // No validation needed - the type system enforces correct structure
 
     // Upsert settings
     let settings = crate::core::Repos
@@ -126,11 +100,12 @@ pub async fn update_mcp_settings(
             conversation_id,
             auth.user.id,
             request.approval_mode,
-            request.auto_approved_tools,
+            &request.auto_approved_tools,
+            &request.disabled_servers,
         )
         .await?;
 
-    Ok((StatusCode::OK, Json(settings)))
+    Ok((StatusCode::OK, Json(models::ConversationMcpSettingsResponse::from(settings))))
 }
 
 pub fn update_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
@@ -139,7 +114,7 @@ pub fn update_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
         .tag("Chat")
         .summary("Update MCP settings for a conversation")
         .description("Create or update the MCP approval settings for a conversation")
-        .response::<200, Json<models::ConversationMcpSettings>>()
+        .response::<200, Json<models::ConversationMcpSettingsResponse>>()
         .response_with::<400, (), _>(|res| res.description("Invalid request"))
         .response_with::<404, (), _>(|res| res.description("Conversation not found"))
 }

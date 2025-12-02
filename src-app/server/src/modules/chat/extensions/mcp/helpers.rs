@@ -77,14 +77,16 @@ pub async fn validate_and_build_config(
 }
 
 /// Convert MCP Tool to AI provider Tool format
+/// Uses server_id (UUID) to ensure uniqueness across users with same server names
 pub fn convert_mcp_tool_to_ai_tool(
-    server_name: &str,
+    server_id: Uuid,
     mcp_tool: &Tool,
 ) -> ai_providers::Tool {
     // Use double underscore separator for compatibility with Anthropic's naming rules
     // Anthropic requires: ^[a-zA-Z0-9_-]{1,128}$ (no colons allowed)
+    // Using server_id (UUID) ensures uniqueness when multiple servers have same name
     ai_providers::Tool::function(
-        format!("{}__{}",  server_name, mcp_tool.name),
+        format!("{}__{}", server_id, mcp_tool.name),
         mcp_tool.description.clone().unwrap_or_default(),
         mcp_tool.input_schema.clone(),
     )
@@ -98,7 +100,7 @@ pub async fn execute_tool(
     _server_name: &str,
     timeout_seconds: Option<i32>,
 ) -> McpContentData {
-    // Parse tool name (format: "server_name__tool_name")
+    // Parse tool name (format: "server_id__tool_name")
     let actual_tool_name = if let Some(idx) = tool_name.rfind("__") {
         &tool_name[idx + 2..]
     } else {

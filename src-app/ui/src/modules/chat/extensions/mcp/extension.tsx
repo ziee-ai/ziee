@@ -250,12 +250,126 @@ const mcpExtension: ChatExtension = createExtension({
     return fields
   },
 
+  // Load conversation MCP settings when conversation is opened
+  onConversationLoad: async (conversation) => {
+    const { Stores } = await import('@/core/stores')
+    const { ApiClient } = await import('@/api-client')
+    const mcpStore = Stores.Chat.__state.McpStore
+
+    // Set current conversation ID
+    mcpStore.setCurrentConversation(conversation.id)
+
+    try {
+      // Load conversation MCP settings from backend
+      const response = await ApiClient.Conversation.getMcpSettings({ id: conversation.id })
+
+      // Get available servers to compute selectedServers from disabledServers
+      // Access __state directly on the McpServer store (outside React context)
+      const mcpServerState = Stores.McpServer.__state
+      const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
+      const availableServerIds = new Set(availableServers.map(s => s.id))
+
+      if (response.settings) {
+        // Get disabled servers from backend
+        const disabledServers = response.settings.disabled_servers || []
+        const disabledServerIds = new Set(disabledServers.map(d => d.server_id))
+
+        // Compute selectedServers: all available servers that are NOT disabled
+        const selectedServers = new Map<string, { server_id: string; tools: string[] }>()
+        for (const serverId of availableServerIds) {
+          if (!disabledServerIds.has(serverId)) {
+            // Server is not disabled, add to selected with all tools
+            selectedServers.set(serverId, { server_id: serverId, tools: [] })
+          }
+        }
+
+        const config = {
+          selectedServers,
+          disabledServers,
+          approvalMode: response.settings.approval_mode as 'disabled' | 'auto_approve' | 'manual_approve',
+          autoApprovedTools: response.settings.auto_approved_tools || [],
+        }
+
+        mcpStore.loadConversationConfig(conversation.id, config)
+        console.log('[MCP Extension] Loaded conversation MCP config:', conversation.id, {
+          availableServers: availableServerIds.size,
+          disabledServers: disabledServers.length,
+          selectedServers: selectedServers.size,
+        })
+      } else {
+        // If settings don't exist yet, select all available servers by default
+        const selectedServers = new Map<string, { server_id: string; tools: string[] }>()
+        for (const serverId of availableServerIds) {
+          selectedServers.set(serverId, { server_id: serverId, tools: [] })
+        }
+
+        const config = {
+          selectedServers,
+          disabledServers: [],
+          approvalMode: 'manual_approve' as const,
+          autoApprovedTools: [],
+        }
+
+        mcpStore.loadConversationConfig(conversation.id, config)
+        console.log('[MCP Extension] No existing config, using defaults with all servers enabled:', conversation.id)
+      }
+    } catch (error) {
+      // If settings don't exist yet, create default config with all servers enabled
+      const mcpServerState = Stores.McpServer.__state
+      const availableServers = (mcpServerState?.servers || []).filter(s => s.enabled)
+      const selectedServers = new Map<string, { server_id: string; tools: string[] }>()
+      for (const server of availableServers) {
+        selectedServers.set(server.id, { server_id: server.id, tools: [] })
+      }
+
+      const config = {
+        selectedServers,
+        disabledServers: [],
+        approvalMode: 'manual_approve' as const,
+        autoApprovedTools: [],
+      }
+
+      mcpStore.loadConversationConfig(conversation.id, config)
+      console.log('[MCP Extension] Error loading config, using defaults:', conversation.id, error)
+    }
+  },
+
   // Clear approval decisions after message is sent
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
     const mcpStore = Stores.Chat.__state.McpStore
+    const chatStore = Stores.Chat.__state
+
+    // Get current conversation from chat store
+    const conversation = chatStore.conversation
+
+    // Handle new conversation creation
+    if (conversation?.id && !mcpStore.currentConversationId) {
+      console.log('[MCP Extension] New conversation created, transferring pending config:', conversation.id)
+
+      // Transfer pending config to the new conversation
+      mcpStore.transferPendingConfig(conversation.id)
+
+      // Set current conversation ID
+      mcpStore.setCurrentConversation(conversation.id)
+
+      // Get available server IDs for proper disabled_servers computation
+      const mcpServerState = Stores.McpServer.__state
+      const availableServerIds = (mcpServerState?.servers || [])
+        .filter(s => s.enabled)
+        .map(s => s.id)
+
+      // Save settings to backend with available server IDs
+      try {
+        await mcpStore.saveConversationConfig(conversation.id, availableServerIds)
+      } catch (error) {
+        console.error('[MCP Extension] Failed to save config for new conversation:', error)
+      }
+    }
+
     mcpStore.clearApprovalDecisions()
     console.log('[MCP Extension] Cleared approval decisions after message sent')
+
     return {}
   },
 

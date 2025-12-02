@@ -53,6 +53,11 @@ export interface AuthResponse {
   user: User
 }
 
+export interface AutoApprovedServer {
+  server_id: string
+  tools: string[]
+}
+
 export interface Branch {
   conversation_id: string
   created_at: string
@@ -121,11 +126,12 @@ export interface Conversation {
   user_id: string
 }
 
-export interface ConversationMcpSettings {
-  approval_mode: string
-  auto_approved_tools: any
+export interface ConversationMcpSettingsResponse {
+  approval_mode: ApprovalMode
+  auto_approved_tools: AutoApprovedServer[]
   conversation_id: string
   created_at: string
+  disabled_servers: DisabledServer[]
   id: string
   updated_at: string
   user_id: string
@@ -245,6 +251,11 @@ export interface CreateUserRequest {
 }
 
 export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl' | 'auto'
+
+export interface DisabledServer {
+  server_id: string
+  tools: string[]
+}
 
 export interface DownloadFromRepositoryRequest {
   description?: string
@@ -742,7 +753,7 @@ export interface McpServerListResponse {
 }
 
 export interface McpSettingsResponse {
-  settings?: ConversationMcpSettings
+  settings?: ConversationMcpSettingsResponse
 }
 
 export interface MeResponse {
@@ -1273,7 +1284,14 @@ export interface UpdateUserRequest {
 
 export interface UpsertMcpSettingsRequest {
   approval_mode: ApprovalMode
-  auto_approved_tools?: any
+  auto_approved_tools?: AutoApprovedServer[]
+  disabled_servers?: DisabledServer[]
+}
+
+export interface UpsertUserMcpDefaultsRequest {
+  approval_mode: ApprovalMode
+  auto_approved_tools?: AutoApprovedServer[]
+  disabled_servers?: DisabledServer[]
 }
 
 export interface Usage {
@@ -1306,6 +1324,20 @@ export interface UserListResponse {
   total: number
   total_pages: number
   users: User[]
+}
+
+export interface UserMcpDefaultsGetResponse {
+  defaults?: UserMcpDefaultsResponse
+}
+
+export interface UserMcpDefaultsResponse {
+  approval_mode: ApprovalMode
+  auto_approved_tools: AutoApprovedServer[]
+  created_at: string
+  disabled_servers: DisabledServer[]
+  id: string
+  updated_at: string
+  user_id: string
 }
 
 // =============================================================================
@@ -1528,6 +1560,8 @@ export const ApiEndpoints = {
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
+  'Mcp.getDefaults': 'GET /api/mcp/defaults',
+  'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
   'McpServer.create': 'POST /api/mcp/servers',
   'McpServer.delete': 'DELETE /api/mcp/servers/{id}',
   'McpServer.get': 'GET /api/mcp/servers/{id}',
@@ -1658,6 +1692,8 @@ export type ApiEndpointParameters = {
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
+  'Mcp.getDefaults': void
+  'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
   'McpServer.create': CreateMcpServerRequest
   'McpServer.delete': { id: string }
   'McpServer.get': { id: string }
@@ -1730,7 +1766,7 @@ export type ApiEndpointResponses = {
   'Conversation.getMcpSettings': McpSettingsResponse
   'Conversation.list': ConversationResponse[]
   'Conversation.update': Conversation
-  'Conversation.updateMcpSettings': ConversationMcpSettings
+  'Conversation.updateMcpSettings': ConversationMcpSettingsResponse
   'File.delete': void
   'File.download': Blob
   'File.downloadWithToken': Blob
@@ -1788,6 +1824,8 @@ export type ApiEndpointResponses = {
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
+  'Mcp.getDefaults': UserMcpDefaultsGetResponse
+  'Mcp.updateDefaults': UserMcpDefaultsResponse
   'McpServer.create': McpServer
   'McpServer.delete': void
   'McpServer.get': McpServer

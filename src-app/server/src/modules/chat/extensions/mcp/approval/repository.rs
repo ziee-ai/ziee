@@ -1,67 +1,13 @@
 //! MCP approval workflow repository
 
 use sqlx::PgPool;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::common::AppError;
 
 use super::models::{
-    ApprovalMode, AutoApprovedTool, ConversationMcpSettings, ToolUseApproval,
+    ApprovalMode, AutoApprovedServer, ConversationMcpSettings, DisabledServer, ToolUseApproval,
 };
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Normalize auto_approved_tools JSONB to canonical string format
-/// Supports 3 formats: string, object with server_id, object with server_name
-pub async fn normalize_auto_approved_tools(
-    pool: &PgPool,
-    auto_approved_tools: &serde_json::Value,
-) -> Result<Vec<String>, AppError> {
-    // Parse JSONB into AutoApprovedTool enum
-    let tools: Vec<AutoApprovedTool> = serde_json::from_value(auto_approved_tools.clone())
-        .map_err(|e| AppError::bad_request("INVALID_AUTO_APPROVED_TOOLS", format!("Failed to parse auto_approved_tools: {}", e)))?;
-
-    // Build server_id -> server_name map for normalization
-    let mut server_id_map: HashMap<Uuid, String> = HashMap::new();
-
-    // Collect all server_ids that need lookup
-    let server_ids: Vec<Uuid> = tools
-        .iter()
-        .filter_map(|tool| match tool {
-            AutoApprovedTool::WithServerId { server_id, .. } => Some(*server_id),
-            _ => None,
-        })
-        .collect();
-
-    // Fetch server names if needed
-    if !server_ids.is_empty() {
-        let servers = sqlx::query!(
-            r#"
-            SELECT id, name
-            FROM mcp_servers
-            WHERE id = ANY($1)
-            "#,
-            &server_ids
-        )
-        .fetch_all(pool)
-        .await?;
-
-        for server in servers {
-            server_id_map.insert(server.id, server.name);
-        }
-    }
-
-    // Normalize all tools to canonical string format
-    let normalized: Vec<String> = tools
-        .iter()
-        .filter_map(|tool| tool.to_canonical_string(Some(&server_id_map)))
-        .collect();
-
-    Ok(normalized)
-}
 
 // ============================================================================
 // Conversation MCP Settings
@@ -77,7 +23,7 @@ pub async fn get_conversation_settings(
         r#"
         SELECT
             id, conversation_id, user_id,
-            approval_mode, auto_approved_tools,
+            approval_mode, auto_approved_tools, disabled_servers,
             created_at as "created_at: _", updated_at as "updated_at: _"
         FROM conversation_mcp_settings
         WHERE conversation_id = $1
@@ -96,31 +42,37 @@ pub async fn upsert_conversation_settings(
     conversation_id: Uuid,
     user_id: Uuid,
     approval_mode: ApprovalMode,
-    auto_approved_tools: serde_json::Value,
+    auto_approved_tools: &[AutoApprovedServer],
+    disabled_servers: &[DisabledServer],
 ) -> Result<ConversationMcpSettings, AppError> {
-    let auto_approved_tools_json = auto_approved_tools;
+    let auto_approved_tools_json = serde_json::to_value(auto_approved_tools)
+        .map_err(|e| AppError::internal_error(format!("Failed to serialize auto_approved_tools: {}", e)))?;
+    let disabled_servers_json = serde_json::to_value(disabled_servers)
+        .map_err(|e| AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e)))?;
 
     let settings = sqlx::query_as!(
         ConversationMcpSettings,
         r#"
         INSERT INTO conversation_mcp_settings (
-            conversation_id, user_id, approval_mode, auto_approved_tools
+            conversation_id, user_id, approval_mode, auto_approved_tools, disabled_servers
         )
-        VALUES ($1, $2, $3, $4)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (conversation_id)
         DO UPDATE SET
             approval_mode = EXCLUDED.approval_mode,
             auto_approved_tools = EXCLUDED.auto_approved_tools,
+            disabled_servers = EXCLUDED.disabled_servers,
             updated_at = NOW()
         RETURNING
             id, conversation_id, user_id,
-            approval_mode, auto_approved_tools,
+            approval_mode, auto_approved_tools, disabled_servers,
             created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         conversation_id,
         user_id,
         approval_mode.to_string(),
-        auto_approved_tools_json
+        auto_approved_tools_json,
+        disabled_servers_json
     )
     .fetch_one(pool)
     .await?;

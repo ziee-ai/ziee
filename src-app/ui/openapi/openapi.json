@@ -3897,7 +3897,7 @@
         "description": "Create or update the MCP approval settings for a conversation",
         "operationId": "Conversation.updateMcpSettings",
         "requestBody": {
-          "description": "Request to create MCP settings",
+          "description": "Request to create/update MCP settings",
           "content": {
             "application/json": {
               "schema": {
@@ -3932,11 +3932,11 @@
             }
           },
           "200": {
-            "description": "Conversation MCP settings",
+            "description": "Conversation MCP settings (API response - properly typed)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConversationMcpSettings"
+                  "$ref": "#/components/schemas/ConversationMcpSettingsResponse"
                 }
               }
             }
@@ -4839,6 +4839,118 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/defaults": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Get user MCP defaults",
+        "description": "Get the current user's default MCP settings for new conversations",
+        "operationId": "Mcp.getDefaults",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View chat conversations",
+                        "name": "ConversationsRead",
+                        "value": "conversations::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpDefaultsGetResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Update user MCP defaults",
+        "description": "Create or update the current user's default MCP settings for new conversations",
+        "operationId": "Mcp.updateDefaults",
+        "requestBody": {
+          "description": "Request to create/update user MCP defaults",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertUserMcpDefaultsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit conversation titles and metadata",
+                        "name": "ConversationsEdit",
+                        "value": "conversations::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: conversations::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "User MCP defaults (API response - properly typed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpDefaultsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
           }
         },
         "security": [
@@ -7050,6 +7162,28 @@
           "expires_in"
         ]
       },
+      "AutoApprovedServer": {
+        "description": "Auto-approved tools grouped by server\n Format: [{\"server_id\": \"uuid\", \"tools\": [\"tool1\", \"tool2\"]}, ...]",
+        "type": "object",
+        "properties": {
+          "server_id": {
+            "description": "MCP server ID (UUID)",
+            "type": "string",
+            "format": "uuid"
+          },
+          "tools": {
+            "description": "List of tool names that are auto-approved for this server",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "server_id",
+          "tools"
+        ]
+      },
       "BlobType": {
         "description": "Helper type for documenting binary responses in OpenAPI",
         "type": "object"
@@ -7393,16 +7527,24 @@
           "updated_at"
         ]
       },
-      "ConversationMcpSettings": {
-        "description": "Conversation MCP settings",
+      "ConversationMcpSettingsResponse": {
+        "description": "Conversation MCP settings (API response - properly typed)",
         "type": "object",
         "properties": {
           "approval_mode": {
-            "description": "Approval mode (stored as VARCHAR in DB, serialized as String for API)",
-            "type": "string"
+            "description": "Approval mode",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              }
+            ]
           },
           "auto_approved_tools": {
-            "description": "Auto-approved tools (JSON array of tool names)"
+            "description": "Auto-approved tools grouped by server",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutoApprovedServer"
+            }
           },
           "conversation_id": {
             "type": "string",
@@ -7411,6 +7553,13 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "disabled_servers": {
+            "description": "Disabled servers/tools (empty = all servers enabled)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisabledServer"
+            }
           },
           "id": {
             "type": "string",
@@ -7431,6 +7580,7 @@
           "user_id",
           "approval_mode",
           "auto_approved_tools",
+          "disabled_servers",
           "created_at",
           "updated_at"
         ]
@@ -8023,6 +8173,28 @@
             "type": "string",
             "const": "auto"
           }
+        ]
+      },
+      "DisabledServer": {
+        "description": "Disabled servers/tools for a conversation\n Format: [{\"server_id\": \"uuid\", \"tools\": []}, ...]\n Empty tools array = entire server disabled\n Non-empty tools array = only those specific tools disabled",
+        "type": "object",
+        "properties": {
+          "server_id": {
+            "description": "MCP server ID (UUID)",
+            "type": "string",
+            "format": "uuid"
+          },
+          "tools": {
+            "description": "List of disabled tool names (empty = entire server disabled)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "server_id",
+          "tools"
         ]
       },
       "DownloadFromRepositoryRequest": {
@@ -10348,7 +10520,7 @@
           "settings": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ConversationMcpSettings"
+                "$ref": "#/components/schemas/ConversationMcpSettingsResponse"
               },
               {
                 "type": "null"
@@ -12860,7 +13032,7 @@
         }
       },
       "UpsertMcpSettingsRequest": {
-        "description": "Request to create MCP settings",
+        "description": "Request to create/update MCP settings",
         "type": "object",
         "properties": {
           "approval_mode": {
@@ -12872,8 +13044,53 @@
             ]
           },
           "auto_approved_tools": {
-            "description": "Auto-approved tools (supports 3 formats):\n   1. String: \"server_name::tool_name\"\n   2. Object with ID: {\"server_id\": \"uuid\", \"tool_name\": \"name\"}\n   3. Object with name: {\"server_name\": \"name\", \"tool_name\": \"name\"}",
-            "default": null
+            "description": "Auto-approved tools grouped by server\n Format: [{\"server_id\": \"uuid\", \"tools\": [\"tool1\", \"tool2\"]}, ...]",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AutoApprovedServer"
+            }
+          },
+          "disabled_servers": {
+            "description": "Disabled servers/tools (empty = all servers enabled)\n Format: [{\"server_id\": \"uuid\", \"tools\": []}, ...] (empty tools = entire server disabled)",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DisabledServer"
+            }
+          }
+        },
+        "required": [
+          "approval_mode"
+        ]
+      },
+      "UpsertUserMcpDefaultsRequest": {
+        "description": "Request to create/update user MCP defaults",
+        "type": "object",
+        "properties": {
+          "approval_mode": {
+            "description": "Approval mode",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              }
+            ]
+          },
+          "auto_approved_tools": {
+            "description": "Auto-approved tools grouped by server",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AutoApprovedServer"
+            }
+          },
+          "disabled_servers": {
+            "description": "Disabled servers/tools (empty = all servers enabled)",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DisabledServer"
+            }
           }
         },
         "required": [
@@ -13014,6 +13231,74 @@
           "page",
           "per_page",
           "total_pages"
+        ]
+      },
+      "UserMcpDefaultsGetResponse": {
+        "type": "object",
+        "properties": {
+          "defaults": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserMcpDefaultsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "UserMcpDefaultsResponse": {
+        "description": "User MCP defaults (API response - properly typed)",
+        "type": "object",
+        "properties": {
+          "approval_mode": {
+            "description": "Approval mode",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalMode"
+              }
+            ]
+          },
+          "auto_approved_tools": {
+            "description": "Auto-approved tools grouped by server",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutoApprovedServer"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "disabled_servers": {
+            "description": "Disabled servers/tools (empty = all servers enabled)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisabledServer"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "approval_mode",
+          "auto_approved_tools",
+          "disabled_servers",
+          "created_at",
+          "updated_at"
         ]
       }
     }

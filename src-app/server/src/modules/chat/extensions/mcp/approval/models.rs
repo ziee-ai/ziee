@@ -46,54 +46,66 @@ impl std::str::FromStr for ApprovalMode {
     }
 }
 
-/// Auto-approved tool format (supports 3 formats)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum AutoApprovedTool {
-    /// Legacy string format: "server_name::tool_name"
-    String(String),
-    /// Object with server_id: {"server_id": "uuid", "tool_name": "name"}
-    WithServerId {
-        server_id: Uuid,
-        tool_name: String,
-    },
-    /// Object with server_name: {"server_name": "name", "tool_name": "name"}
-    WithServerName {
-        server_name: String,
-        tool_name: String,
-    },
+/// Auto-approved tools grouped by server
+/// Format: [{"server_id": "uuid", "tools": ["tool1", "tool2"]}, ...]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AutoApprovedServer {
+    /// MCP server ID (UUID)
+    pub server_id: Uuid,
+    /// List of tool names that are auto-approved for this server
+    pub tools: Vec<String>,
 }
 
-impl AutoApprovedTool {
-    /// Normalize to canonical string format "server_name__tool_name"
-    /// For server_id format, you must provide server_name_map to lookup the name
-    pub fn to_canonical_string(&self, server_name_map: Option<&std::collections::HashMap<Uuid, String>>) -> Option<String> {
-        match self {
-            AutoApprovedTool::String(s) => Some(s.clone()),
-            AutoApprovedTool::WithServerId { server_id, tool_name } => {
-                server_name_map
-                    .and_then(|map| map.get(server_id))
-                    .map(|server_name| format!("{}__{}",server_name, tool_name))
-            }
-            AutoApprovedTool::WithServerName { server_name, tool_name } => {
-                Some(format!("{}__{}",server_name, tool_name))
-            }
-        }
+impl AutoApprovedServer {
+    /// Check if a specific tool is auto-approved for this server
+    pub fn contains_tool(&self, tool_name: &str) -> bool {
+        self.tools.iter().any(|t| t == tool_name)
     }
 }
 
-/// Conversation MCP settings
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow, schemars::JsonSchema)]
+/// Disabled servers/tools for a conversation
+/// Format: [{"server_id": "uuid", "tools": []}, ...]
+/// Empty tools array = entire server disabled
+/// Non-empty tools array = only those specific tools disabled
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct DisabledServer {
+    /// MCP server ID (UUID)
+    pub server_id: Uuid,
+    /// List of disabled tool names (empty = entire server disabled)
+    pub tools: Vec<String>,
+}
+
+impl DisabledServer {
+    /// Check if entire server is disabled (empty tools = all disabled)
+    pub fn is_server_disabled(&self) -> bool {
+        self.tools.is_empty()
+    }
+
+    /// Check if a specific tool is disabled for this server
+    pub fn is_tool_disabled(&self, tool_name: &str) -> bool {
+        // If tools is empty, entire server is disabled
+        if self.tools.is_empty() {
+            return true;
+        }
+        self.tools.iter().any(|t| t == tool_name)
+    }
+}
+
+/// Conversation MCP settings (database model)
+#[derive(Debug, Clone, Deserialize, FromRow)]
 pub struct ConversationMcpSettings {
     pub id: Uuid,
     pub conversation_id: Uuid,
     pub user_id: Uuid,
 
-    /// Approval mode (stored as VARCHAR in DB, serialized as String for API)
-    pub approval_mode: String, // Stored as VARCHAR, converted to/from ApprovalMode
+    /// Approval mode (stored as VARCHAR in DB)
+    pub approval_mode: String,
 
-    /// Auto-approved tools (JSON array of tool names)
+    /// Auto-approved tools (JSON array stored in DB)
     pub auto_approved_tools: serde_json::Value,
+
+    /// Disabled servers/tools (JSON array stored in DB)
+    pub disabled_servers: serde_json::Value,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -105,6 +117,51 @@ impl ConversationMcpSettings {
         self.approval_mode
             .parse()
             .unwrap_or(ApprovalMode::ManualApprove)
+    }
+
+    /// Get auto-approved tools as typed Vec
+    pub fn get_auto_approved_tools(&self) -> Vec<AutoApprovedServer> {
+        serde_json::from_value(self.auto_approved_tools.clone()).unwrap_or_default()
+    }
+
+    /// Get disabled servers as typed Vec
+    pub fn get_disabled_servers(&self) -> Vec<DisabledServer> {
+        serde_json::from_value(self.disabled_servers.clone()).unwrap_or_default()
+    }
+}
+
+/// Conversation MCP settings (API response - properly typed)
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct ConversationMcpSettingsResponse {
+    pub id: Uuid,
+    pub conversation_id: Uuid,
+    pub user_id: Uuid,
+
+    /// Approval mode
+    pub approval_mode: ApprovalMode,
+
+    /// Auto-approved tools grouped by server
+    pub auto_approved_tools: Vec<AutoApprovedServer>,
+
+    /// Disabled servers/tools (empty = all servers enabled)
+    pub disabled_servers: Vec<DisabledServer>,
+
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<ConversationMcpSettings> for ConversationMcpSettingsResponse {
+    fn from(settings: ConversationMcpSettings) -> Self {
+        Self {
+            id: settings.id,
+            conversation_id: settings.conversation_id,
+            user_id: settings.user_id,
+            approval_mode: settings.get_approval_mode(),
+            auto_approved_tools: settings.get_auto_approved_tools(),
+            disabled_servers: settings.get_disabled_servers(),
+            created_at: settings.created_at,
+            updated_at: settings.updated_at,
+        }
     }
 }
 
@@ -139,18 +196,21 @@ pub struct ToolUseApproval {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Request to create MCP settings
+/// Request to create/update MCP settings
 #[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct UpsertMcpSettingsRequest {
     /// Approval mode
     pub approval_mode: ApprovalMode,
 
-    /// Auto-approved tools (supports 3 formats):
-    ///   1. String: "server_name::tool_name"
-    ///   2. Object with ID: {"server_id": "uuid", "tool_name": "name"}
-    ///   3. Object with name: {"server_name": "name", "tool_name": "name"}
+    /// Auto-approved tools grouped by server
+    /// Format: [{"server_id": "uuid", "tools": ["tool1", "tool2"]}, ...]
     #[serde(default)]
-    pub auto_approved_tools: serde_json::Value,
+    pub auto_approved_tools: Vec<AutoApprovedServer>,
+
+    /// Disabled servers/tools (empty = all servers enabled)
+    /// Format: [{"server_id": "uuid", "tools": []}, ...] (empty tools = entire server disabled)
+    #[serde(default)]
+    pub disabled_servers: Vec<DisabledServer>,
 }
 
 /// Single tool approval decision

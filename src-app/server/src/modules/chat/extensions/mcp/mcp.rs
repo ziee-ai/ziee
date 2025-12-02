@@ -74,23 +74,32 @@ impl McpChatExtension {
             let tool_name = approval.tool_name.clone();
             let input = approval.tool_input.clone();
 
-            // Parse server name from tool name (format: "server_name__tool_name" with __)
-            let server_name = if let Some(idx) = tool_name.find("__") {
+            // Parse server_id from tool name (format: "server_id__tool_name" with __)
+            let server_id_str = if let Some(idx) = tool_name.find("__") {
                 &tool_name[..idx]
             } else {
                 tracing::error!("Invalid tool name format: {}", tool_name);
                 continue;
             };
 
-            // Find server by name
-            let server = accessible_servers.iter().find(|s| s.name == server_name);
+            // Parse UUID
+            let server_id = match uuid::Uuid::parse_str(server_id_str) {
+                Ok(id) => id,
+                Err(_) => {
+                    tracing::error!("Invalid server_id in tool name: {}", tool_name);
+                    continue;
+                }
+            };
+
+            // Find server by ID
+            let server = accessible_servers.iter().find(|s| s.id == server_id);
 
             if server.is_none() {
                 tracing::error!("Server not found for approved tool: {}", tool_name);
                 let error_result = McpContentData::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: Some(tool_name.clone()),
-                    content: format!("Server '{}' not found", server_name),
+                    content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
                 };
                 tool_results.push(error_result.to_message_content());
@@ -405,9 +414,9 @@ impl ChatExtension for McpChatExtension {
                     .collect()
             };
 
-            // Convert and add tools
+            // Convert and add tools (using server_id for unique tool naming)
             for mcp_tool in tools_to_add {
-                let ai_tool = helpers::convert_mcp_tool_to_ai_tool(&server.name, &mcp_tool);
+                let ai_tool = helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool);
                 all_tools.push(ai_tool);
             }
         }
@@ -542,25 +551,21 @@ impl ChatExtension for McpChatExtension {
             .get_conversation_settings(context.conversation_id)
             .await?;
 
-        let (approval_mode, auto_approved_tools) = if let Some(ref settings) = settings {
-            // Normalize auto_approved_tools to canonical format
-            let normalized_tools = crate::core::Repos
-                .chat
-                .mcp
-                .normalize_auto_approved_tools(&settings.auto_approved_tools)
-                .await
-                .unwrap_or_default();
-            (settings.get_approval_mode(), normalized_tools)
+        let (approval_mode, auto_approved_servers) = if let Some(ref settings) = settings {
+            // Parse auto_approved_tools as Vec<AutoApprovedServer>
+            let servers: Vec<super::approval::models::AutoApprovedServer> =
+                serde_json::from_value(settings.auto_approved_tools.clone()).unwrap_or_default();
+            (settings.get_approval_mode(), servers)
         } else {
             // No settings = default to manual approve with no auto-approved tools
             (crate::modules::chat::extensions::mcp::ApprovalMode::ManualApprove, Vec::new())
         };
 
         tracing::info!(
-            "MCP extension: {} tools, approval_mode={}, auto_approved_count={}",
+            "MCP extension: {} tools, approval_mode={}, auto_approved_servers={}",
             tool_uses.len(),
             approval_mode,
-            auto_approved_tools.len()
+            auto_approved_servers.len()
         );
 
         // Check approval mode
@@ -568,6 +573,10 @@ impl ChatExtension for McpChatExtension {
             tracing::info!("MCP disabled for conversation {}", context.conversation_id);
             return Ok(ExtensionAction::Complete);
         }
+
+        // Get accessible servers for lookups
+        let accessible_servers =
+            helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
 
         // Determine which tools need approval vs can execute immediately
         let mut tools_to_execute = Vec::new();
@@ -577,13 +586,26 @@ impl ChatExtension for McpChatExtension {
             let needs_approval = match approval_mode {
                 crate::modules::chat::extensions::mcp::ApprovalMode::AutoApprove => false,
                 crate::modules::chat::extensions::mcp::ApprovalMode::ManualApprove => {
-                    // Check if this specific tool is auto-approved
-                    let is_auto_approved = auto_approved_tools.contains(&tool_name);
+                    // tool_name is in server_id__tool_name format
+                    // Parse server_id and actual tool name, then check against auto_approved_servers
+                    let is_auto_approved = if let Some(idx) = tool_name.find("__") {
+                        let server_id_str = &tool_name[..idx];
+                        let actual_tool_name = &tool_name[idx + 2..];
+                        if let Ok(server_id) = uuid::Uuid::parse_str(server_id_str) {
+                            // Check if server_id exists in auto_approved_servers and tool is in list
+                            auto_approved_servers
+                                .iter()
+                                .any(|s| s.server_id == server_id && s.contains_tool(actual_tool_name))
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
                     tracing::info!(
-                        "Tool '{}' auto-approved check: is_in_list={}, auto_approved_tools={:?}",
+                        "Tool '{}' auto-approved check: is_auto_approved={}",
                         tool_name,
-                        is_auto_approved,
-                        auto_approved_tools
+                        is_auto_approved
                     );
                     !is_auto_approved
                 }
@@ -613,25 +635,25 @@ impl ChatExtension for McpChatExtension {
                 tools_needing_approval.len()
             );
 
-            // Build server_name -> server_id map for lookups
-            let accessible_servers =
-                helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
-            let server_name_to_id: std::collections::HashMap<String, uuid::Uuid> =
-                accessible_servers
-                    .iter()
-                    .map(|s| (s.name.clone(), s.id))
-                    .collect();
-
             for (tool_use_id, tool_name, input) in &tools_needing_approval {
-                // Extract server name from tool name (format: "server_name__tool_name" with __)
-                let server_name = if let Some(idx) = tool_name.find("__") {
+                // Extract server_id from tool name (format: "server_id__tool_name" with __)
+                let server_id_str = if let Some(idx) = tool_name.find("__") {
                     &tool_name[..idx]
                 } else {
                     "unknown"
                 };
 
-                // Lookup server_id
-                let server_id = server_name_to_id.get(server_name).copied();
+                // Parse UUID and lookup server name
+                let (server_id, server_name) = if let Ok(id) = uuid::Uuid::parse_str(server_id_str) {
+                    let name = accessible_servers
+                        .iter()
+                        .find(|s| s.id == id)
+                        .map(|s| s.name.clone())
+                        .unwrap_or_else(|| id.to_string());
+                    (Some(id), name)
+                } else {
+                    (None, server_id_str.to_string())
+                };
 
                 // Create pending approval with server_id and server_name
                 crate::core::Repos
@@ -646,12 +668,12 @@ impl ChatExtension for McpChatExtension {
                         tool_name.clone(),
                         input.clone(),
                         server_id,
-                        server_name.to_string(),
+                        server_name.clone(),
                     )
                     .await?;
 
                 // Send SSE event for approval required
-                helpers::send_approval_required_event(tx, tool_use_id, tool_name, server_name, input).await?;
+                helpers::send_approval_required_event(tx, tool_use_id, tool_name, &server_name, input).await?;
             }
 
             // Return Complete to pause conversation - user must approve via API or tool_approvals field
@@ -661,26 +683,33 @@ impl ChatExtension for McpChatExtension {
 
         tracing::info!("MCP extension: executing {} auto-approved tools", tools_to_execute.len());
 
-        // Get accessible servers from context metadata
-        let accessible_servers =
-            helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
+        // accessible_servers already available from above
 
         // Execute each auto-approved tool and collect results
         let mut tool_results = Vec::new();
 
         for (tool_use_id, tool_name, input) in tools_to_execute {
-            // Parse server name from tool name (format: "server_name__tool_name" with __)
-            let server_name = if let Some(idx) = tool_name.find("__") {
+            // Parse server_id from tool name (format: "server_id__tool_name" with __)
+            let server_id_str = if let Some(idx) = tool_name.find("__") {
                 &tool_name[..idx]
             } else {
                 tracing::error!("Invalid tool name format: {}", tool_name);
                 continue;
             };
 
-            // Find server by name
+            // Parse UUID
+            let server_id = match uuid::Uuid::parse_str(server_id_str) {
+                Ok(id) => id,
+                Err(_) => {
+                    tracing::error!("Invalid server_id in tool name: {}", tool_name);
+                    continue;
+                }
+            };
+
+            // Find server by ID
             let server = accessible_servers
                 .iter()
-                .find(|s| s.name == server_name);
+                .find(|s| s.id == server_id);
 
             if server.is_none() {
                 tracing::error!("Server not found for tool: {}", tool_name);
@@ -688,7 +717,7 @@ impl ChatExtension for McpChatExtension {
                 let error_result = McpContentData::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: Some(tool_name.clone()),
-                    content: format!("Server '{}' not found", server_name),
+                    content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
                 };
                 tool_results.push(error_result.to_message_content());

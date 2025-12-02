@@ -103,12 +103,16 @@ async fn test_update_mcp_settings() {
     assert_eq!(create_resp.status(), 200);
 
     // Update to manual_approve with auto-approved tools
+    // New format: [{server_id: "uuid", tools: ["tool1", "tool2"]}, ...]
     let update_resp = server
         .put(&format!("/api/chat/conversations/{}/mcp-settings", conversation_id))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "approval_mode": "manual_approve",
-            "auto_approved_tools": ["fetch::get", "filesystem::read_file"]
+            "auto_approved_tools": [
+                {"server_id": "00000000-0000-0000-0000-000000000001", "tools": ["get", "list"]},
+                {"server_id": "00000000-0000-0000-0000-000000000002", "tools": ["read_file"]}
+            ]
         }))
         .send()
         .await
@@ -118,11 +122,18 @@ async fn test_update_mcp_settings() {
     let updated_settings: serde_json::Value = update_resp.json().await.unwrap();
     assert_eq!(updated_settings["approval_mode"], "manual_approve");
     assert_eq!(updated_settings["auto_approved_tools"].as_array().unwrap().len(), 2);
+
+    // Verify structure of first server entry
+    let first_server = &updated_settings["auto_approved_tools"][0];
+    assert_eq!(first_server["server_id"], "00000000-0000-0000-0000-000000000001");
+    assert!(first_server["tools"].as_array().unwrap().contains(&json!("get")));
+    assert!(first_server["tools"].as_array().unwrap().contains(&json!("list")));
 }
 
-/// Test invalid tool name format validation
+/// Test invalid auto_approved_tools format validation
+/// The new format requires structured objects: [{server_id: "uuid", tools: ["tool1"]}]
 #[tokio::test]
-async fn test_invalid_tool_name_format() {
+async fn test_invalid_auto_approved_tools_format() {
     let server = TestServer::start().await;
     let user = create_test_user(&server, true).await;
 
@@ -141,21 +152,48 @@ async fn test_invalid_tool_name_format() {
     let conversation: serde_json::Value = create_resp.json().await.unwrap();
     let conversation_id = conversation["id"].as_str().unwrap();
 
-    // Try to create settings with invalid tool name (missing "::")
+    // Try to create settings with old string format (should fail)
     let create_resp = server
         .put(&format!("/api/chat/conversations/{}/mcp-settings", conversation_id))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "approval_mode": "manual_approve",
-            "auto_approved_tools": ["invalid_tool_name"]  // Missing "::"
+            "auto_approved_tools": ["server_id__tool_name"]  // Old format is no longer valid
         }))
         .send()
         .await
         .expect("Failed to send request");
 
-    assert_eq!(create_resp.status(), 400);
-    let error: serde_json::Value = create_resp.json().await.unwrap();
-    assert_eq!(error["error_code"], "INVALID_TOOL_NAME");
+    // Should fail because string format is not valid - expects array of objects
+    assert_eq!(create_resp.status(), 422);
+
+    // Try with missing required field
+    let create_resp2 = server
+        .put(&format!("/api/chat/conversations/{}/mcp-settings", conversation_id))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "approval_mode": "manual_approve",
+            "auto_approved_tools": [{"server_id": "00000000-0000-0000-0000-000000000001"}]  // Missing "tools" field
+        }))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(create_resp2.status(), 422);
+
+    // Try with invalid UUID
+    let create_resp3 = server
+        .put(&format!("/api/chat/conversations/{}/mcp-settings", conversation_id))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "approval_mode": "manual_approve",
+            "auto_approved_tools": [{"server_id": "not-a-uuid", "tools": ["get"]}]
+        }))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(create_resp3.status(), 422);
 }
 
 /// Test approval mode disabled

@@ -97,12 +97,13 @@ async fn create_test_mcp_server(
 }
 
 /// Set MCP settings for a conversation
+/// auto_approved_tools format: [{"server_id": "uuid", "tools": ["tool1", "tool2"]}]
 async fn set_mcp_settings(
     server: &TestServer,
     token: &str,
     conversation_id: Uuid,
     approval_mode: &str,
-    auto_approved_tools: Vec<&str>,
+    auto_approved_tools: Vec<serde_json::Value>,
 ) -> serde_json::Value {
     let url = server.api_url(&format!("/conversations/{}/mcp-settings", conversation_id));
     let payload = json!({
@@ -633,7 +634,6 @@ async fn test_auto_approved_tool_executes_immediately() {
     // Create MCP server
     let mcp_server = create_test_mcp_server(&server, &user, true).await;
     let mcp_server_id = Uuid::parse_str(mcp_server["id"].as_str().unwrap()).unwrap();
-    let server_name = mcp_server["name"].as_str().unwrap();
 
     // Create conversation
     let conversation = super::helpers::create_conversation(&server, &user.token, None, None).await;
@@ -644,12 +644,13 @@ async fn test_auto_approved_tool_executes_immediately() {
     let model_id = super::helpers::parse_uuid(&model["id"]);
 
     // Set manual-approve mode with auto-approved tools
+    // New format: [{"server_id": "uuid", "tools": ["tool1", "tool2"]}]
     set_mcp_settings(
         &server,
         &user.token,
         conversation_id,
         "manual_approve",
-        vec![&format!("{}__fetch", server_name)],
+        vec![json!({"server_id": mcp_server_id.to_string(), "tools": ["fetch"]})],
     )
     .await;
 

@@ -255,7 +255,7 @@ async fn set_mcp_settings(
     token: &str,
     conversation_id: Uuid,
     approval_mode: &str,
-    auto_approved_tools: Vec<&str>,
+    auto_approved_tools: Vec<serde_json::Value>,
 ) {
     let url = server.api_url(&format!("/conversations/{}/mcp-settings", conversation_id));
     let payload = json!({

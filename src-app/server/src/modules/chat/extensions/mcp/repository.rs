@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 
-use super::approval::models::{ApprovalMode, ConversationMcpSettings, ToolUseApproval};
+use super::approval::models::{ApprovalMode, AutoApprovedServer, ConversationMcpSettings, DisabledServer, ToolUseApproval};
 use super::approval::repository;
 
 /// Repository for MCP extension operations
@@ -17,16 +17,6 @@ pub struct McpChatRepository {
 impl McpChatRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
-    }
-
-    // ===== Helper Functions =====
-
-    /// Normalize auto_approved_tools JSONB to canonical string format
-    pub async fn normalize_auto_approved_tools(
-        &self,
-        auto_approved_tools: &serde_json::Value,
-    ) -> Result<Vec<String>, AppError> {
-        repository::normalize_auto_approved_tools(&self.pool, auto_approved_tools).await
     }
 
     // ===== Conversation MCP Settings =====
@@ -45,7 +35,8 @@ impl McpChatRepository {
         conversation_id: Uuid,
         user_id: Uuid,
         approval_mode: ApprovalMode,
-        auto_approved_tools: serde_json::Value,
+        auto_approved_tools: &[AutoApprovedServer],
+        disabled_servers: &[DisabledServer],
     ) -> Result<ConversationMcpSettings, AppError> {
         repository::upsert_conversation_settings(
             &self.pool,
@@ -53,6 +44,7 @@ impl McpChatRepository {
             user_id,
             approval_mode,
             auto_approved_tools,
+            disabled_servers,
         )
         .await
     }
