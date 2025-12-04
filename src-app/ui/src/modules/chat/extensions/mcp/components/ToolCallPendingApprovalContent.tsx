@@ -35,7 +35,7 @@ export function ToolCallPendingApprovalContent({
     return null
   }
 
-  const handleApprove = async () => {
+  const handleApproveOnce = async () => {
     setIsSubmitting(true)
     try {
       const mcpStore = Stores.Chat.__state.McpStore
@@ -44,7 +44,7 @@ export function ToolCallPendingApprovalContent({
       mcpStore.addApprovalDecision({
         tool_use_id: toolCall.tool_use_id,
         decision: 'approve',
-        note: 'User approved tool execution',
+        note: 'User approved tool execution (once)',
       })
 
       // Hide the approval UI
@@ -55,13 +55,55 @@ export function ToolCallPendingApprovalContent({
       await Stores.Chat.sendMessage()
 
       console.log(
-        '[MCP Approval] Tool approved and chat resumed:',
+        '[MCP Approval] Tool approved once:',
         toolCall.tool_name,
       )
     } catch (error) {
       console.error('[MCP Approval] Failed to approve tool:', error)
       setIsSubmitting(false)
       setIsHidden(false) // Show UI again on error
+    }
+  }
+
+  const handleApproveForConversation = async () => {
+    setIsSubmitting(true)
+    try {
+      const mcpStore = Stores.Chat.__state.McpStore
+      const chatState = Stores.Chat.__state
+      const conversationId = chatState.conversation?.id || null
+
+      // 1. Add tool to auto_approved_tools for this conversation
+      if (toolCall.server_id) {
+        mcpStore.toggleAutoApprovedTool(conversationId, toolCall.server_id, toolCall.tool_name)
+
+        // 2. Persist to backend if conversation exists
+        if (conversationId) {
+          const mcpServerState = Stores.McpServer.__state
+          const availableServerIds = (mcpServerState?.servers || [])
+            .filter((s: { enabled: boolean }) => s.enabled)
+            .map((s: { id: string }) => s.id)
+          await mcpStore.saveConversationConfig(conversationId, availableServerIds)
+        }
+      }
+
+      // 3. Approve current tool call
+      mcpStore.addApprovalDecision({
+        tool_use_id: toolCall.tool_use_id,
+        decision: 'approve',
+        note: 'User approved tool for this conversation',
+      })
+
+      setIsHidden(true)
+      await Stores.Chat.sendMessage()
+
+      console.log(
+        '[MCP Approval] Tool approved for conversation:',
+        toolCall.tool_name,
+      )
+    } catch (error) {
+      console.error('[MCP Approval] Failed to approve tool:', error)
+      setIsSubmitting(false)
+      setIsHidden(false)
     }
   }
 
@@ -102,7 +144,7 @@ export function ToolCallPendingApprovalContent({
       <Alert
         type="warning"
         icon={<ClockCircleOutlined />}
-        message={
+        title={
           <div>
             <Text strong>Tool Approval Required: {toolCall.tool_name}</Text>
             <Text type="secondary" className="ml-2 text-xs">
@@ -132,11 +174,19 @@ export function ToolCallPendingApprovalContent({
                 <Button
                   type="primary"
                   icon={<CheckOutlined />}
-                  onClick={handleApprove}
+                  onClick={handleApproveOnce}
                   loading={isSubmitting}
                   size="small"
                 >
-                  Approve
+                  Approve once
+                </Button>
+                <Button
+                  icon={<CheckOutlined />}
+                  onClick={handleApproveForConversation}
+                  loading={isSubmitting}
+                  size="small"
+                >
+                  Approve for this conversation
                 </Button>
                 <Button
                   danger

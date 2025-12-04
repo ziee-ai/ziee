@@ -13,7 +13,10 @@ pub enum McpContentData {
     /// Tool use request (AI wants to call a tool)
     ToolUse {
         id: String,
+        /// Tool name (without server_id prefix)
         name: String,
+        /// Server ID (UUID)
+        server_id: String,
         input: serde_json::Value,
     },
     /// Tool result (response from tool execution)
@@ -53,9 +56,10 @@ impl McpContentData {
     /// Convert to ai-providers ContentBlock
     pub fn to_content_block(&self) -> Option<ai_providers::ContentBlock> {
         match self {
-            Self::ToolUse { id, name, input } => Some(ai_providers::ContentBlock::ToolUse {
+            Self::ToolUse { id, name, server_id, input } => Some(ai_providers::ContentBlock::ToolUse {
                 id: id.clone(),
-                name: name.clone(),
+                // Reconstruct server_id__name format for AI providers
+                name: format!("{}__{}", server_id, name),
                 input: input.clone(),
             }),
             Self::ToolResult {
@@ -77,11 +81,21 @@ impl McpContentData {
     /// Convert from ai-providers ContentBlock
     pub fn from_content_block(block: &ai_providers::ContentBlock) -> Option<Self> {
         match block {
-            ai_providers::ContentBlock::ToolUse { id, name, input } => Some(Self::ToolUse {
-                id: id.clone(),
-                name: name.clone(),
-                input: input.clone(),
-            }),
+            ai_providers::ContentBlock::ToolUse { id, name, input } => {
+                // Parse server_id__tool_name format
+                let (server_id, tool_name) = if let Some(idx) = name.find("__") {
+                    (name[..idx].to_string(), name[idx + 2..].to_string())
+                } else {
+                    // Fallback: no server_id prefix
+                    (String::new(), name.clone())
+                };
+                Some(Self::ToolUse {
+                    id: id.clone(),
+                    name: tool_name,
+                    server_id,
+                    input: input.clone(),
+                })
+            }
             ai_providers::ContentBlock::ToolResult {
                 tool_use_id,
                 name,
@@ -127,6 +141,7 @@ mod tests {
         let tool_use = McpContentData::ToolUse {
             id: "toolu_01".to_string(),
             name: "get_weather".to_string(),
+            server_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             input: serde_json::json!({"location": "SF"}),
         };
 
@@ -137,9 +152,10 @@ mod tests {
         // Convert back
         let recovered = McpContentData::from_message_content(&msg_content).unwrap();
         match recovered {
-            McpContentData::ToolUse { id, name, .. } => {
+            McpContentData::ToolUse { id, name, server_id, .. } => {
                 assert_eq!(id, "toolu_01");
                 assert_eq!(name, "get_weather");
+                assert_eq!(server_id, "550e8400-e29b-41d4-a716-446655440000");
             }
             _ => panic!("Expected ToolUse"),
         }
@@ -180,26 +196,35 @@ mod tests {
         let tool_use = McpContentData::ToolUse {
             id: "toolu_01".to_string(),
             name: "get_weather".to_string(),
+            server_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             input: serde_json::json!({"location": "SF"}),
         };
 
         let block = tool_use.to_content_block().unwrap();
-        assert!(matches!(block, ai_providers::ContentBlock::ToolUse { .. }));
+        match block {
+            ai_providers::ContentBlock::ToolUse { name, .. } => {
+                // Should reconstruct server_id__name format
+                assert_eq!(name, "550e8400-e29b-41d4-a716-446655440000__get_weather");
+            }
+            _ => panic!("Expected ToolUse"),
+        }
     }
 
     #[test]
     fn test_from_content_block() {
+        // AI providers return server_id__tool_name format
         let block = ai_providers::ContentBlock::ToolUse {
             id: "toolu_01".to_string(),
-            name: "get_weather".to_string(),
+            name: "550e8400-e29b-41d4-a716-446655440000__get_weather".to_string(),
             input: serde_json::json!({"location": "SF"}),
         };
 
         let mcp_content = McpContentData::from_content_block(&block).unwrap();
         match mcp_content {
-            McpContentData::ToolUse { id, name, .. } => {
+            McpContentData::ToolUse { id, name, server_id, .. } => {
                 assert_eq!(id, "toolu_01");
                 assert_eq!(name, "get_weather");
+                assert_eq!(server_id, "550e8400-e29b-41d4-a716-446655440000");
             }
             _ => panic!("Expected ToolUse"),
         }

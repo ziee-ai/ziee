@@ -10798,6 +10798,11 @@
               },
               "input": true,
               "name": {
+                "description": "Tool name (without server_id prefix)",
+                "type": "string"
+              },
+              "server_id": {
+                "description": "Server ID (UUID)",
                 "type": "string"
               }
             },
@@ -10805,6 +10810,7 @@
               "type",
               "id",
               "name",
+              "server_id",
               "input"
             ]
           },
@@ -12007,7 +12013,11 @@
             "description": "Tool input parameters"
           },
           "server": {
-            "description": "MCP server requesting tool execution",
+            "description": "MCP server requesting tool execution (display name)",
+            "type": "string"
+          },
+          "server_id": {
+            "description": "MCP server ID (UUID)",
             "type": "string"
           },
           "tool_name": {
@@ -12023,6 +12033,7 @@
           "tool_use_id",
           "tool_name",
           "server",
+          "server_id",
           "input"
         ]
       },

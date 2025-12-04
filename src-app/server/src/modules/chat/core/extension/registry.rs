@@ -49,6 +49,17 @@ pub enum ExtensionAction {
     },
 }
 
+/// Action returned by extensions BEFORE LLM call
+/// Allows extensions to skip the LLM call entirely (e.g., when tool is denied)
+#[derive(Debug, Clone, Default)]
+pub enum BeforeLlmAction {
+    /// Continue with LLM call (default behavior)
+    #[default]
+    Continue,
+    /// Skip LLM call, complete the turn gracefully
+    Complete,
+}
+
 /// Context passed to extension hooks during streaming
 #[derive(Clone)]
 pub struct StreamContext {
@@ -71,14 +82,18 @@ pub trait ChatExtension: Send + Sync {
     /// Called before sending request to LLM
     /// Extensions can read SendMessageRequest.extensions and modify ChatRequest
     /// (e.g., add tools, inject context, modify parameters)
+    ///
+    /// Returns BeforeLlmAction to control whether LLM should be called:
+    /// - Continue: Proceed with LLM call (default)
+    /// - Complete: Skip LLM call and complete the turn gracefully
     async fn before_llm_call(
         &self,
         _context: &mut StreamContext,
         _request: &mut ChatRequest,
         _send_request: &SendMessageRequest,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
-    ) -> Result<(), AppError> {
-        Ok(())
+    ) -> Result<BeforeLlmAction, AppError> {
+        Ok(BeforeLlmAction::Continue)
     }
 
     /// Called after LLM response stream completes
@@ -275,17 +290,24 @@ impl ExtensionRegistry {
     }
 
     /// Call before_llm_call on all extensions
+    /// Returns first Complete action encountered, or Continue if all extensions return Continue
     pub async fn call_before_llm_call(
         &self,
         context: &mut StreamContext,
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
-    ) -> Result<(), AppError> {
+    ) -> Result<BeforeLlmAction, AppError> {
         for ext in &self.extensions {
-            ext.before_llm_call(context, request, send_request, tx).await?;
+            let action = ext.before_llm_call(context, request, send_request, tx).await?;
+
+            // If any extension returns Complete, stop iterating and return it
+            if matches!(action, BeforeLlmAction::Complete) {
+                tracing::info!("Extension {} requested to skip LLM call", ext.name());
+                return Ok(BeforeLlmAction::Complete);
+            }
         }
-        Ok(())
+        Ok(BeforeLlmAction::Continue)
     }
 
     /// Call after_llm_call on all extensions

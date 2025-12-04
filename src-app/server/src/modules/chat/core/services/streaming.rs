@@ -16,7 +16,7 @@ use ai_providers::{ChatMessage, ChatRequest, StreamChatChunk as AiStreamChunk};
 use crate::common::AppError;
 use crate::core::Repos;
 use crate::modules::chat::core::{
-    extension::{ExtensionRegistry, SendMessageRequest, StreamContext},
+    extension::{BeforeLlmAction, ExtensionRegistry, SendMessageRequest, StreamContext},
     models::{MessageContentData, MessageRole},
     types::{ChatStreamChunk, ContentBlockDelta},
 };
@@ -300,12 +300,33 @@ impl StreamingService {
 
                 // Call before_llm_call hooks
                 if let Some(registry) = &extension_registry {
-                    if let Err(e) = registry
+                    match registry
                         .call_before_llm_call(&mut stream_context, &mut chat_request, &request, Some(&ext_tx))
                         .await
                     {
-                        let _ = tx.send(Err(e));
-                        break;
+                        Ok(BeforeLlmAction::Continue) => {
+                            // Continue with LLM call as normal
+                        }
+                        Ok(BeforeLlmAction::Complete) => {
+                            // Skip LLM call, complete gracefully
+                            tracing::info!("Skipping LLM call - extension requested completion");
+
+                            // Send complete event
+                            let _ = tx.send(Ok(ChatStreamChunk {
+                                content: Vec::new(),
+                                message_id: None,
+                                conversation_id: Some(conversation_id),
+                                branch_id: Some(branch_id),
+                                finish_reason: Some("extension_complete".to_string()),
+                                usage: None,
+                                error: None,
+                            }));
+                            break;
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Err(e));
+                            break;
+                        }
                     }
                 }
 

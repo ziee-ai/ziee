@@ -1,0 +1,9 @@
+[submodule "src-app/llm-runtime/engines/sources/llama.cpp"]
+	path = src-app/llm-runtime/engines/sources/llama.cpp
+	url = https://github.com/ggerganov/llama.cpp.git
+[submodule "src-app/llm-runtime/engines/llamacpp/llama.cpp"]
+	path = src-app/llm-runtime/engines/llamacpp/llama.cpp
+	url = https://github.com/ggerganov/llama.cpp.git
+[submodule "src-app/llm-runtime/engines/mistralrs/mistral.rs"]
+	path = src-app/llm-runtime/engines/mistralrs/mistral.rs
+	url = https://github.com/EricLBuehler/mistral.rs.git

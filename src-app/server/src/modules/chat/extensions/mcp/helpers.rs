@@ -93,6 +93,13 @@ pub fn convert_mcp_tool_to_ai_tool(
 }
 
 /// Execute a tool via MCP session
+///
+/// # Arguments
+/// * `session` - MCP session
+/// * `tool_name` - Clean tool name (without server_id prefix)
+/// * `input` - Tool input parameters
+/// * `_server_name` - Server name (for logging)
+/// * `timeout_seconds` - Execution timeout
 pub async fn execute_tool(
     session: &mut McpSession,
     tool_name: &str,
@@ -100,19 +107,12 @@ pub async fn execute_tool(
     _server_name: &str,
     timeout_seconds: Option<i32>,
 ) -> McpContentData {
-    // Parse tool name (format: "server_id__tool_name")
-    let actual_tool_name = if let Some(idx) = tool_name.rfind("__") {
-        &tool_name[idx + 2..]
-    } else {
-        tool_name
-    };
-
-    // Execute with timeout
+    // Execute with timeout using the clean tool name
     let timeout = Duration::from_secs(timeout_seconds.unwrap_or(30) as u64);
 
     let result = tokio::time::timeout(
         timeout,
-        session.call_tool(actual_tool_name, input.clone())
+        session.call_tool(tool_name, input.clone())
     ).await;
 
     match result {
@@ -222,6 +222,7 @@ pub async fn send_approval_required_event(
     tool_use_id: &str,
     tool_name: &str,
     server: &str,
+    server_id: &str,
     input: &serde_json::Value,
 ) -> Result<(), AppError> {
     if let Some(tx) = tx {
@@ -229,6 +230,7 @@ pub async fn send_approval_required_event(
             tool_use_id: tool_use_id.to_string(),
             tool_name: tool_name.to_string(),
             server: server.to_string(),
+            server_id: server_id.to_string(),
             input: input.clone(),
         });
 

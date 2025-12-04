@@ -12,7 +12,7 @@ import {
 } from '../../core/extensions'
 import { Stores } from '@/core/stores'
 import { createMcpStore, type McpToolCall } from './Mcp.store'
-import type { MessageContentDataToolResult } from '@/api-client/types'
+import type { MessageContent, MessageContentDataToolResult, MessageContentDataToolUse, MessageWithContent } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from './components/ToolCallPendingApprovalContent'
 import { McpServerSelector } from './components/McpServerSelector'
 
@@ -113,12 +113,63 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
 }
 
 /**
+ * MCP tool use content renderer component
+ * Renders tool calls from MCP servers (the call itself, before result)
+ */
+function McpToolUseRenderer({ content: data }: ContentRendererProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  // Access toolCalls Map directly to create a reactive subscription
+  // Using getToolCall() method doesn't trigger re-renders when store updates
+  const { toolCalls } = Stores.Chat.McpStore
+  const { servers } = Stores.McpServer
+  const toolUseData = data.content as MessageContentDataToolUse
+
+  if (!toolUseData.id) {
+    return null
+  }
+
+  const toolCall = toolCalls.get(toolUseData.id)
+
+  // If we have a tracked tool call, render it
+  if (toolCall) {
+    return <McpToolCallUI toolCall={toolCall} />
+  }
+
+  // Look up server name from server_id
+  const server = servers.find(s => s.id === toolUseData.server_id)
+  const serverName = server?.display_name || toolUseData.server_id || 'Unknown'
+
+  // Otherwise render a basic view for untracked tool calls (e.g., from history)
+  return (
+    <Card size="small" className="mb-2" style={{ backgroundColor: 'rgba(0, 0, 0, 0.02)' }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ToolOutlined className="text-blue-500" />
+          <Text strong>{toolUseData.name || 'Tool Call'}</Text>
+          <Text type="secondary" className="text-xs">({serverName})</Text>
+        </div>
+        {toolUseData.input && (
+          <Button size="small" type="text" onClick={() => setIsExpanded(!isExpanded)}>
+            {isExpanded ? 'Hide' : 'Show'} parameters
+          </Button>
+        )}
+      </div>
+      {isExpanded && toolUseData.input && (
+        <pre className="bg-gray-100 p-2 rounded mt-2 overflow-auto max-h-40 text-xs">
+          {JSON.stringify(toolUseData.input, null, 2)}
+        </pre>
+      )}
+    </Card>
+  )
+}
+
+/**
  * MCP tool result content renderer component
  * Renders tool execution results from MCP servers
  */
 function McpToolResultRenderer({ content: data }: ContentRendererProps) {
-  // Access store reactively in React component
-  const mcpStore = Stores.Chat.McpStore
+  // Access toolCalls Map directly to create a reactive subscription
+  const { toolCalls } = Stores.Chat.McpStore
 
   // data is the full MessageContent object, data.content has the tool result data
   const toolResultData = data.content as MessageContentDataToolResult
@@ -127,37 +178,13 @@ function McpToolResultRenderer({ content: data }: ContentRendererProps) {
     return null
   }
 
-  const toolCall = mcpStore.getToolCall(toolResultData.tool_use_id)
+  const toolCall = toolCalls.get(toolResultData.tool_use_id)
 
   if (!toolCall) {
     return null
   }
 
   return <McpToolCallUI toolCall={toolCall} />
-}
-
-/**
- * MCP active calls indicator component
- */
-function McpActiveCallsIndicator() {
-  // Access store reactively in React component
-  const mcpStore = Stores.Chat.McpStore
-  const activeCalls = mcpStore.getActiveCalls()
-
-  if (activeCalls.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="mb-4">
-      <Alert
-        type="info"
-        message={`${activeCalls.length} tool call(s) in progress`}
-        showIcon
-        icon={<ToolOutlined spin />}
-      />
-    </div>
-  )
 }
 
 /**
@@ -196,14 +223,88 @@ const mcpExtension: ChatExtension = createExtension({
       console.log('[MCP Extension] Tool started:', data.tool_name)
     },
 
-    mcpApprovalRequired: async (data, _get, _set) => {
+    mcpApprovalRequired: async (data, get, set) => {
       // data is automatically typed as SSEChatStreamMcpApprovalRequiredData
       const mcpStore = Stores.Chat.__state.McpStore
 
-      mcpStore.updateToolCall(data.tool_use_id, {
+      // Use addToolCall instead of updateToolCall - the tool call doesn't exist yet
+      // because mcpToolStart is NOT sent when approval is required
+      mcpStore.addToolCall({
+        tool_use_id: data.tool_use_id,
+        server: data.server,
+        server_id: data.server_id,
+        tool_name: data.tool_name,
         status: 'pending_approval',
         input: data.input,
       })
+
+      // Inject tool_use content block into streaming message so McpToolUseRenderer can mount
+      // Without this, the approval UI won't show because there's no content block to render
+      const chatState = get()
+      let streamingMessage = chatState.streamingMessage
+      const now = new Date().toISOString()
+
+      // Create tool_use content block
+      const toolUseContent: MessageContent = {
+        id: '', // Will be set below based on message id
+        message_id: '', // Will be set below
+        content_type: 'tool_use',
+        content: {
+          type: 'tool_use',
+          id: data.tool_use_id,
+          name: data.tool_name,
+          server_id: data.server_id,
+          input: data.input,
+        } as MessageContentDataToolUse,
+        sequence_order: 0,
+        created_at: now,
+        updated_at: now,
+      }
+
+      if (streamingMessage) {
+        // Streaming message exists - add tool_use content to it
+        toolUseContent.id = `${streamingMessage.id}-tool-${data.tool_use_id}`
+        toolUseContent.message_id = streamingMessage.id
+        toolUseContent.sequence_order = streamingMessage.contents.length
+
+        const updatedMessage = {
+          ...streamingMessage,
+          contents: [...streamingMessage.contents, toolUseContent],
+        }
+
+        const newMessages = new Map(chatState.messages)
+        newMessages.set(updatedMessage.id, updatedMessage)
+        set({
+          streamingMessage: updatedMessage,
+          messages: newMessages,
+        })
+
+        console.log('[MCP Extension] Added tool_use content block to existing streaming message:', data.tool_name)
+      } else {
+        // No streaming message exists - CREATE one with the tool_use block
+        // This happens when LLM returns a tool call without any text first
+        const messageId = `streaming-${Date.now()}`
+        toolUseContent.id = `${messageId}-tool-${data.tool_use_id}`
+        toolUseContent.message_id = messageId
+
+        const newMessage: MessageWithContent = {
+          id: messageId,
+          role: 'assistant',
+          contents: [toolUseContent],
+          originated_from_id: '',
+          edit_count: 0,
+          created_at: now,
+        }
+
+        const newMessages = new Map(chatState.messages)
+        newMessages.set(newMessage.id, newMessage)
+        set({
+          streamingMessage: newMessage,
+          messages: newMessages,
+        })
+
+        console.log('[MCP Extension] Created new streaming message with tool_use block:', data.tool_name)
+      }
 
       console.log('[MCP Extension] Approval required for:', data.tool_name)
     },
@@ -223,6 +324,24 @@ const mcpExtension: ChatExtension = createExtension({
         data.is_error ? '(error)' : '(success)',
       )
     },
+  },
+
+  // Allow empty text when there are pending tool approvals
+  beforeSendMessage: async () => {
+    const { Stores } = await import('@/core/stores')
+    const mcpStore = Stores.Chat.__state.McpStore
+
+    // Check if there are approval decisions queued to send
+    const approvalDecisions = mcpStore.getApprovalDecisions()
+    const hasApprovalDecisions = approvalDecisions.length > 0
+
+    if (hasApprovalDecisions) {
+      // Discard text extension's cancel since we're sending tool approvals
+      console.log('[MCP Extension] Has approval decisions, discarding text cancel')
+      return { cancel: false, discardCancel: ['text'] }
+    }
+
+    return { cancel: false }
   },
 
   // Compose request fields to include MCP config and approval decisions
@@ -332,12 +451,41 @@ const mcpExtension: ChatExtension = createExtension({
       mcpStore.loadConversationConfig(conversation.id, config)
       console.log('[MCP Extension] Error loading config, using defaults:', conversation.id, error)
     }
+
+    // Load pending approvals for the current branch (to restore state after page refresh)
+    if (conversation.active_branch_id) {
+      try {
+        const approvalsResponse = await ApiClient.Branch.getPendingApprovals({
+          branch_id: conversation.active_branch_id,
+        })
+
+        if (approvalsResponse.approvals && approvalsResponse.approvals.length > 0) {
+          for (const approval of approvalsResponse.approvals) {
+            mcpStore.addToolCall({
+              tool_use_id: approval.tool_use_id,
+              server: approval.server_name,
+              server_id: approval.server_id,
+              tool_name: approval.tool_name,
+              status: 'pending_approval',
+              input: approval.input,
+            })
+          }
+          console.log(
+            '[MCP Extension] Loaded pending approvals:',
+            approvalsResponse.approvals.length,
+          )
+        }
+      } catch (error) {
+        console.error('[MCP Extension] Failed to load pending approvals:', error)
+      }
+    }
   },
 
   // Clear approval decisions after message is sent
   onMessageSent: async () => {
     const { Stores } = await import('@/core/stores')
-    const mcpStore = Stores.Chat.__state.McpStore
+    // Use __state on McpStore too since it's also a proxy
+    const mcpStore = Stores.Chat.__state.McpStore.__state
     const chatStore = Stores.Chat.__state
 
     // Get current conversation from chat store
@@ -375,13 +523,13 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Register content type components
   contentTypes: {
+    tool_use: McpToolUseRenderer,
     tool_result: McpToolResultRenderer,
   },
 
   // Register slot components
   slots: {
     toolbar_actions: { component: McpServerSelector, order: 20 },
-    message_list_header: { component: McpActiveCallsIndicator, order: 50 },
   },
 
   cleanup: async () => {

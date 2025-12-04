@@ -7,7 +7,7 @@ use crate::{
     core::Repos,
     modules::{
         chat::{
-            core::extension::{ChatExtension, SendMessageRequest, StreamContext},
+            core::extension::{BeforeLlmAction, ChatExtension, SendMessageRequest, StreamContext},
             extensions::file::types::{FileContent, ImageSource as FileImageSource},
         },
         file::storage::manager::get_file_storage,
@@ -231,11 +231,11 @@ impl ChatExtension for FileExtension {
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
-    ) -> Result<(), AppError> {
+    ) -> Result<BeforeLlmAction, AppError> {
         // Access file_ids directly from composed request!
         if let Some(file_ids) = &send_request.file_ids {
             if file_ids.is_empty() {
-                return Ok(());
+                return Ok(BeforeLlmAction::Continue);
             }
 
             // Get provider info from context
@@ -269,7 +269,7 @@ impl ChatExtension for FileExtension {
             }
         }
 
-        Ok(())
+        Ok(BeforeLlmAction::Continue)
     }
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {

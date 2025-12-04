@@ -117,9 +117,18 @@ const textExtension: ChatExtension = createExtension({
   },
 
   /**
+   * Compose request fields
+   * Returns content field with text from TextStore
+   */
+  composeRequestFields: async () => {
+    const { Stores } = await import('@/core/stores')
+    const content = Stores.Chat.__state.TextStore.getText()
+    return { content: content?.trim() || '' }
+  },
+
+  /**
    * Validate text before sending
-   * Gets text from TextStore and validates it
-   * Returns text in message field for use by other extensions
+   * Only validates - does not return message (that's handled by composeRequestFields)
    */
   beforeSendMessage: async () => {
     const { Stores } = await import('@/core/stores')
@@ -132,10 +141,7 @@ const textExtension: ChatExtension = createExtension({
       }
     }
 
-    return {
-      cancel: false,
-      message: content,
-    }
+    return { cancel: false }
   },
 
   /**

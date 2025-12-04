@@ -10,7 +10,10 @@ enableMapSet()
  */
 export interface McpToolCall {
   tool_use_id: string
+  /** Server display name */
   server: string
+  /** Server UUID */
+  server_id?: string
   tool_name: string
   status: 'started' | 'pending_approval' | 'completed' | 'error'
   input?: unknown

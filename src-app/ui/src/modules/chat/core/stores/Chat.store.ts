@@ -319,6 +319,11 @@ export const useChatStore = create<ChatState>()(
           throw new Error(beforeResult.errorMessage || 'Message send was cancelled')
         }
 
+        // Collect all request fields from extensions BEFORE creating conversation
+        // (createConversation can trigger re-renders that reset form state)
+        // Text extension provides 'content', MCP provides 'enable_mcp', 'mcp_config', etc.
+        const allRequestFields = await chatExtensionRegistry.composeRequestFields()
+
         // Create conversation if needed (only after validation passes)
         if (!conversation) {
           conversation = await get().createConversation()
@@ -327,24 +332,12 @@ export const useChatStore = create<ChatState>()(
           await chatExtensionRegistry.onConversationLoad(conversation)
         }
 
-        // Get message from extensions (text extension provides the message)
-        const finalContent = beforeResult.message || ''
-
-        // Collect request fields from all extensions (including model_id from model extension)
-        const composedFields = await chatExtensionRegistry.composeRequestFields()
-
-        // Merge all extension fields (composeRequestFields + beforeSendMessage fields)
-        const allRequestFields = {
-          ...composedFields,
-          ...beforeResult.requestFields, // beforeSendMessage fields take precedence
-        }
-
         set({ sending: true, isStreaming: true, error: null })
 
         // Create optimistic user message using extension hooks
         // Extensions provide content (text, file attachments, etc.)
         const userContents = await chatExtensionRegistry.provideUserContent(
-          finalContent,
+          allRequestFields.content as string || '',
           allRequestFields,
         )
 
@@ -371,9 +364,8 @@ export const useChatStore = create<ChatState>()(
           await ApiClient.Message.sendStream(
             {
               id: conversation.id,
-              content: finalContent,
               branch_id: conversation.active_branch_id || '',
-              // Include all custom fields from extensions (including model_id)
+              // All fields from extensions (content, model_id, enable_mcp, etc.)
               ...allRequestFields,
             } as any,
             {

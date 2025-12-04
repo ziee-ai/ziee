@@ -124,6 +124,7 @@ export function createSlotRenderer(
 
 /**
  * Helper to merge multiple BeforeSendResult objects
+ * Only merges cancel and errorMessage - request fields are handled by composeRequestFields
  */
 export function mergeBeforeSendResults(
   results: BeforeSendResult[],
@@ -131,13 +132,9 @@ export function mergeBeforeSendResults(
   return results.reduce(
     (merged, result) => ({
       cancel: merged.cancel || result.cancel,
-      message: result.message !== undefined ? result.message : merged.message,
-      requestFields: {
-        ...merged.requestFields,
-        ...result.requestFields,
-      },
+      errorMessage: result.errorMessage || merged.errorMessage,
     }),
-    { requestFields: {} } as BeforeSendResult,
+    { cancel: false } as BeforeSendResult,
   )
 }
 

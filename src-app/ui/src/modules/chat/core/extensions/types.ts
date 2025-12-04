@@ -1,9 +1,21 @@
 import type {
+  Conversation,
   MessageWithContent,
   MessageContent,
   MessageContentData,
   SSEChatStreamEvent,
 } from '@/api-client/types'
+
+/**
+ * Base Chat state type for SSE event handlers
+ * This is a subset of the full ChatState to avoid circular imports
+ */
+export interface ChatStateForSSE {
+  conversation: Conversation | null
+  messages: Map<string, MessageWithContent>
+  streamingMessage: MessageWithContent | null
+  isStreaming: boolean
+}
 
 /**
  * SSE Event Type Registry
@@ -142,12 +154,10 @@ export interface ContentRendererProps {
 export interface BeforeSendResult {
   /** Set to true to cancel the send operation */
   cancel?: boolean
-  /** Override message text */
-  message?: string
-  /** Add custom fields to request */
-  requestFields?: ExtensionRequestFields
   /** Error/warning message to display to user if operation is cancelled */
   errorMessage?: string
+  /** Extension names whose cancellations should be discarded */
+  discardCancel?: string[]
 }
 
 export interface AfterStreamCompleteResult {
@@ -202,8 +212,8 @@ export interface HandleSSEEventResult {
 export type SSEEventHandlers = {
   [K in keyof SSEEventTypeRegistry]?: (
     data: SSEEventTypeRegistry[K],
-    get: () => any,
-    set: (partial: any | ((state: any) => any)) => void,
+    get: () => ChatStateForSSE,
+    set: (partial: Partial<ChatStateForSSE> | ((state: ChatStateForSSE) => Partial<ChatStateForSSE>)) => void,
   ) => void | Promise<void>
 }
 

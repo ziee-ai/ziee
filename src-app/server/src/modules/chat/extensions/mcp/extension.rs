@@ -103,8 +103,10 @@ pub struct SSEChatStreamMcpApprovalRequiredData {
     pub tool_use_id: String,
     /// Name of the tool requiring approval
     pub tool_name: String,
-    /// MCP server requesting tool execution
+    /// MCP server requesting tool execution (display name)
     pub server: String,
+    /// MCP server ID (UUID)
+    pub server_id: String,
     /// Tool input parameters
     pub input: serde_json::Value,
 }
@@ -159,7 +161,10 @@ pub enum MessageContentDataVariants {
     /// Tool use request (AI wants to call a tool)
     ToolUse {
         id: String,
+        /// Tool name (without server_id prefix)
         name: String,
+        /// Server ID (UUID)
+        server_id: String,
         input: serde_json::Value,
     },
 

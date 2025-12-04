@@ -9,7 +9,7 @@ use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
 use crate::common::AppError;
 
 use crate::modules::chat::core::extension::{
-    ChatExtension, ExtensionAction, SendMessageRequest, StreamContext,
+    BeforeLlmAction, ChatExtension, ExtensionAction, SendMessageRequest, StreamContext,
 };
 
 /// Assistant extension
@@ -36,7 +36,7 @@ impl ChatExtension for AssistantExtension {
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
-    ) -> Result<(), AppError> {
+    ) -> Result<BeforeLlmAction, AppError> {
         // Check if assistant_id is provided (added directly by the macro)
         if let Some(assistant_id) = send_request.assistant_id {
             // Fetch assistant from database
@@ -66,7 +66,7 @@ impl ChatExtension for AssistantExtension {
             }
         }
 
-        Ok(())
+        Ok(BeforeLlmAction::Continue)
     }
 
     async fn after_llm_call(

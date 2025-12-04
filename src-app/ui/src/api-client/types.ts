@@ -818,6 +818,7 @@ export interface MessageContentDataToolUse {
   id: string
   input: any
   name: string
+  server_id: string
 }
 export interface MessageContentDataToolResult {
   type: 'tool_result'
@@ -1061,6 +1062,7 @@ export type SSEChatStreamEvent = {
 export interface SSEChatStreamMcpApprovalRequiredData {
   input: any
   server: string
+  server_id: string
   tool_name: string
   tool_use_id: string
 }

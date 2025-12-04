@@ -413,7 +413,7 @@ export class ChatExtensionRegistry {
 
   /**
    * Execute beforeSendMessage hook across all extensions
-   * Stops if any extension returns cancel: true
+   * Collects all results and processes discardCancel to allow extensions to override cancellations
    * Extensions access their own stores for data (e.g., TextStore for text)
    */
   async beforeSendMessage(): Promise<BeforeSendResult> {
@@ -421,36 +421,14 @@ export class ChatExtensionRegistry {
       ext.beforeSendMessage !== undefined,
     )
 
-    let result: BeforeSendResult = {
-      requestFields: {},
-    }
+    // Collect all results with extension names
+    const results: Map<string, BeforeSendResult> = new Map()
 
     for (const extension of extensions) {
       try {
         if (extension.beforeSendMessage) {
           const hookResult = await extension.beforeSendMessage()
-
-          // Merge results
-          if (hookResult.cancel) {
-            console.log(
-              `[ChatExtensions] Message send cancelled by: ${extension.name}`,
-            )
-            return {
-              cancel: true,
-              errorMessage: hookResult.errorMessage,
-            }
-          }
-
-          if (hookResult.message !== undefined) {
-            result.message = hookResult.message
-          }
-
-          if (hookResult.requestFields) {
-            result.requestFields = {
-              ...result.requestFields,
-              ...hookResult.requestFields,
-            }
-          }
+          results.set(extension.name, hookResult)
         }
       } catch (error) {
         console.error(
@@ -460,7 +438,28 @@ export class ChatExtensionRegistry {
       }
     }
 
-    return result
+    // Collect all discarded extension names
+    const discarded = new Set<string>()
+    for (const [_, result] of results) {
+      if (result.discardCancel) {
+        result.discardCancel.forEach(name => discarded.add(name))
+      }
+    }
+
+    // Check for remaining (non-discarded) cancellations
+    for (const [name, result] of results) {
+      if (result.cancel && !discarded.has(name)) {
+        console.log(
+          `[ChatExtensions] Message send cancelled by: ${name}`,
+        )
+        return {
+          cancel: true,
+          errorMessage: result.errorMessage,
+        }
+      }
+    }
+
+    return { cancel: false }
   }
 
   /**
