@@ -28,21 +28,21 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   return (
     <div className="relative group mb-2">
       {/* Language label and copy button */}
-      <div className="flex items-center justify-between bg-gray-800 text-gray-200 px-3 py-1 text-xs rounded-t">
+      <div className="flex items-center justify-between px-3 py-1 text-xs rounded-t">
         <span>{language || 'code'}</span>
         <Button
           size="small"
           type="text"
           icon={copied ? <CheckOutlined /> : <CopyOutlined />}
           onClick={handleCopy}
-          className="text-gray-200 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+          className=" opacity-0 group-hover:opacity-100 transition-opacity"
         >
           {copied ? 'Copied' : 'Copy'}
         </Button>
       </div>
 
       {/* Code content */}
-      <pre className="bg-gray-900 text-gray-100 p-3 rounded-b overflow-x-auto">
+      <pre className="p-3 rounded-b overflow-x-auto">
         <code className={language ? `language-${language}` : ''}>{code}</code>
       </pre>
     </div>

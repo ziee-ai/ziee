@@ -163,7 +163,7 @@ export function ToolCallPendingApprovalContent({
                 <Text strong className="text-xs">
                   Arguments:
                 </Text>
-                <pre className="bg-gray-100 dark:bg-gray-800 p-2 rounded mt-1 overflow-auto max-h-40 text-xs">
+                <pre className="p-2 rounded mt-1 overflow-auto max-h-40 text-xs">
                   {JSON.stringify(toolCall.input, null, 2)}
                 </pre>
               </div>
@@ -202,7 +202,6 @@ export function ToolCallPendingApprovalContent({
           </div>
         }
         showIcon
-        className="border-orange-300 dark:border-orange-700"
       />
     </div>
   )

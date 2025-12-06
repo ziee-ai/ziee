@@ -67,7 +67,7 @@ export function RecentConversationsWidget() {
       {recentConversations.map((conversation: ConversationResponse) => (
         <div
           key={conversation.id}
-          className="group relative px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer rounded transition-colors"
+          className="group relative px-3 py-2  cursor-pointer rounded transition-colors"
           onClick={() => handleConversationClick(conversation.id)}
           onMouseEnter={() => setHoveredId(conversation.id)}
           onMouseLeave={() => setHoveredId(null)}

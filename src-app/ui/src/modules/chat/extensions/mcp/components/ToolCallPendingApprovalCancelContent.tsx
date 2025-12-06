@@ -22,7 +22,7 @@ export function ToolCallPendingApprovalCancelContent({
       <Alert
         type="error"
         icon={<StopOutlined />}
-        message={
+        title={
           <div>
             <Text strong>Tool Call Cancelled: {toolCall.tool_name}</Text>
             <Text type="secondary" className="ml-2 text-xs">
@@ -34,7 +34,6 @@ export function ToolCallPendingApprovalCancelContent({
           toolCall.error || 'Tool execution was denied or cancelled by the user'
         }
         showIcon
-        className="border-red-300 dark:border-red-700"
       />
     </div>
   )

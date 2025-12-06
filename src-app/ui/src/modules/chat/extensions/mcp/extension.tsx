@@ -83,7 +83,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           {toolCall.input !== undefined && (
             <div className="mb-2">
               <Text strong>Input:</Text>
-              <pre className="bg-gray-100 p-2 rounded mt-1 overflow-auto max-h-40">
+              <pre className="p-2 rounded mt-1 overflow-auto max-h-40">
                 {JSON.stringify(toolCall.input, null, 2)}
               </pre>
             </div>
@@ -92,7 +92,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           {toolCall.result !== undefined && (
             <div className="mb-2">
               <Text strong>Result:</Text>
-              <pre className="bg-gray-100 p-2 rounded mt-1 overflow-auto max-h-40">
+              <pre className="p-2 rounded mt-1 overflow-auto max-h-40">
                 {JSON.stringify(toolCall.result, null, 2)}
               </pre>
             </div>
@@ -155,7 +155,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
         )}
       </div>
       {isExpanded && toolUseData.input && (
-        <pre className="bg-gray-100 p-2 rounded mt-2 overflow-auto max-h-40 text-xs">
+        <pre className=" p-2 rounded mt-2 overflow-auto max-h-40 text-xs">
           {JSON.stringify(toolUseData.input, null, 2)}
         </pre>
       )}

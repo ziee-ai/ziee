@@ -18,11 +18,11 @@ export const ThinkingContent = memo(function ThinkingContent({
   // Thinking content is always from the assistant
   return (
     <div className="w-full overflow-hidden pt-2 pl-2">
-      <div className="border-l-4 border-blue-500 pl-4 py-2 bg-blue-50 dark:bg-blue-900/20">
-        <div className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-1">
+      <div className="border-l-4">
+        <div className="text-sm font-semibold mb-1">
           Thinking...
         </div>
-        <div className="text-sm text-gray-700 dark:text-gray-300" style={{ whiteSpace: 'pre-wrap' }}>
+        <div className="text-sm" style={{ whiteSpace: 'pre-wrap' }}>
           {thinkingData.thinking.trim()}
         </div>
       </div>

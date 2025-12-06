@@ -211,7 +211,7 @@ export function McpConfigModal({
       ) : (
         <div className="space-y-2">
           {tools.map(tool => (
-            <div key={tool.name} className="flex items-start gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded">
+            <div key={tool.name} className="flex items-start gap-2 p-2 rounded">
               <Checkbox
                 checked={isToolSelected(server.id, tool.name)}
                 onChange={() => handleToolToggle(server.id, tool.name)}
