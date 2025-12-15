@@ -9,9 +9,10 @@ fn download_binary(
     println!("Downloading {} from: {}", name, url);
 
     let response = ureq::get(url).call()?;
-    let bytes = response.into_body().read_to_vec()?;
+    let mut reader = response.into_body().into_reader();
 
-    fs::write(target_path, &bytes)?;
+    let mut file = fs::File::create(target_path)?;
+    std::io::copy(&mut reader, &mut file)?;
 
     Ok(())
 }
@@ -29,9 +30,10 @@ fn extract_pdfium(
     let mut archive = tar::Archive::new(tar);
 
     // PDFium dynamic libraries are typically in lib/ directory
-    let library_names = if target_binary_name.contains("windows") {
+    // Check by file extension since target_binary_name is just the filename
+    let library_names = if target_binary_name.ends_with(".dll") {
         vec!["bin/pdfium.dll", "lib/pdfium.dll"]
-    } else if target_binary_name.contains("darwin") {
+    } else if target_binary_name.ends_with(".dylib") {
         vec!["lib/libpdfium.dylib"]
     } else {
         vec!["lib/libpdfium.so"]
