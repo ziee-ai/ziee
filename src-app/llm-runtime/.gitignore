@@ -1,0 +1,29 @@
+# Build artifacts
+/target/
+/build-tmp/
+
+# Binaries (large, should be built locally)
+/binaries/*
+!binaries/.gitkeep
+!binaries/README.md
+*.exe
+llama-server
+mistralrs-server
+
+# Logs
+/logs/
+*.log
+
+# Test artifacts
+Cargo.lock
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

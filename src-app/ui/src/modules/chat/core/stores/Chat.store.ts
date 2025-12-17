@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
   Conversation,
+  MessageContent,
   MessageWithContent,
 } from '@/api-client/types'
 import { chatExtensionRegistry } from '../../extensions'
@@ -487,21 +488,74 @@ export const useChatStore = create<ChatState>()(
                               })
                             }
                           } else {
-                            // Append delta using extension hooks
-                            const currentContent = state.streamingMessage.contents[0]
-                            const updatedContent = await chatExtensionRegistry.processStreamingDelta(
-                              currentContent,
-                              block.delta || '',
-                            )
+                            // Append delta to streaming message
+                            // IMPORTANT: Do all state mutations inside set() callback to avoid race conditions
+                            // Multiple SSE events can arrive quickly, so we must use fresh state
+                            const delta = block.delta || ''
+                            const incomingMessageId = data.message_id
 
-                            const updatedMessage = {
-                              ...state.streamingMessage,
-                              contents: [updatedContent],
-                            }
+                            set(currentState => {
+                              if (!currentState.streamingMessage) {
+                                // Another handler might have cleared it
+                                return {}
+                              }
 
-                            set(state => {
-                              const newMessages = new Map(state.messages)
+                              const messageId = incomingMessageId || currentState.streamingMessage.id
+                              const idChanged = messageId !== currentState.streamingMessage.id
+
+                              // Find existing text content block to append to
+                              const textContentIndex = currentState.streamingMessage.contents.findIndex(
+                                c => c.content_type === 'text' || (c.content as any)?.type === 'text'
+                              )
+
+                              let updatedContents: MessageContent[]
+
+                              if (textContentIndex >= 0) {
+                                // Append delta to existing text content
+                                const currentContent = currentState.streamingMessage.contents[textContentIndex]
+                                const currentText = (currentContent.content as any)?.text || ''
+                                const updatedContent: MessageContent = {
+                                  ...currentContent,
+                                  content: {
+                                    ...currentContent.content,
+                                    text: currentText + delta,
+                                  } as any,
+                                }
+
+                                updatedContents = [...currentState.streamingMessage.contents]
+                                updatedContents[textContentIndex] = updatedContent
+                              } else {
+                                // No text content exists, create new one
+                                const now = new Date().toISOString()
+                                const newContent: MessageContent = {
+                                  id: `${messageId}-content-${currentState.streamingMessage.contents.length}`,
+                                  message_id: messageId,
+                                  content_type: 'text',
+                                  content: { type: 'text', text: delta } as any,
+                                  sequence_order: currentState.streamingMessage.contents.length,
+                                  created_at: now,
+                                  updated_at: now,
+                                }
+                                updatedContents = [...currentState.streamingMessage.contents, newContent]
+                              }
+
+                              // Update message ID if it changed (preserves link to backend message)
+                              const updatedMessage: MessageWithContent = {
+                                ...currentState.streamingMessage,
+                                id: messageId,
+                                contents: updatedContents.map(c => ({
+                                  ...c,
+                                  message_id: messageId,
+                                })),
+                              }
+
+                              const newMessages = new Map(currentState.messages)
+                              // Remove old ID entry if ID changed
+                              if (idChanged) {
+                                newMessages.delete(currentState.streamingMessage.id)
+                              }
                               newMessages.set(updatedMessage.id, updatedMessage)
+
                               return {
                                 streamingMessage: updatedMessage,
                                 messages: newMessages,

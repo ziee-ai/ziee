@@ -9,7 +9,7 @@ use crate::modules::chat::core::types::{
     EditMessageRequest, EditMessageResponse, MessageWithContent,
 };
 
-use super::contents::get_message_contents;
+use super::contents::{get_message_contents, get_message_contents_batch};
 
 /// Create a new message and add it to a branch
 /// Note: This creates the message AND the branch_messages junction record
@@ -128,17 +128,27 @@ pub async fn list_messages_in_branch(
 
 /// Get conversation history (messages with content) for AI context
 /// This is used for building the context for AI API calls
+/// Optimized: uses batch query to fetch all content blocks in 1 query instead of N
 pub async fn get_conversation_history(
     pool: &PgPool,
     branch_id: Uuid,
 ) -> Result<Vec<MessageWithContent>, AppError> {
     let messages = list_messages_in_branch(pool, branch_id).await?;
 
-    let mut history = Vec::new();
-    for message in messages {
-        let contents = get_message_contents(pool, message.id).await?;
-        history.push(MessageWithContent { message, contents });
-    }
+    // Collect message IDs for batch query
+    let message_ids: Vec<Uuid> = messages.iter().map(|m| m.id).collect();
+
+    // Fetch all contents in one query (instead of N queries)
+    let mut contents_map = get_message_contents_batch(pool, &message_ids).await?;
+
+    // Build history with contents
+    let history = messages
+        .into_iter()
+        .map(|message| {
+            let contents = contents_map.remove(&message.id).unwrap_or_default();
+            MessageWithContent { message, contents }
+        })
+        .collect();
 
     Ok(history)
 }

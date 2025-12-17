@@ -871,6 +871,118 @@ pub async fn verify_branch_structure(
     }
 }
 
+/// Get message contents from database
+/// Returns the raw message_contents rows for verification
+pub async fn get_message_contents_from_db(
+    server: &crate::common::TestServer,
+    message_id: Uuid,
+) -> Vec<Value> {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, message_id, content_type, content, sequence_order, created_at
+        FROM message_contents
+        WHERE message_id = $1
+        ORDER BY sequence_order
+        "#,
+        message_id
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    pool.close().await;
+
+    rows.iter()
+        .map(|row| {
+            json!({
+                "id": row.id.to_string(),
+                "message_id": row.message_id.to_string(),
+                "content_type": row.content_type,
+                "content": row.content,
+                "sequence_order": row.sequence_order,
+                "created_at": row.created_at.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Get tool use approval status from database
+/// Returns None if not found, Some(status) otherwise
+pub async fn get_approval_status_from_db(
+    server: &crate::common::TestServer,
+    tool_use_id: &str,
+    branch_id: Uuid,
+) -> Option<String> {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let result = sqlx::query!(
+        r#"
+        SELECT status FROM tool_use_approvals
+        WHERE tool_use_id = $1 AND branch_id = $2
+        "#,
+        tool_use_id,
+        branch_id
+    )
+    .fetch_optional(&pool)
+    .await
+    .unwrap();
+
+    pool.close().await;
+
+    result.map(|row| row.status)
+}
+
+/// Get all tool use approvals for a branch from database
+pub async fn get_all_approvals_from_db(
+    server: &crate::common::TestServer,
+    branch_id: Uuid,
+) -> Vec<Value> {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, tool_use_id, tool_name, status, approved_by, approval_note, created_at
+        FROM tool_use_approvals
+        WHERE branch_id = $1
+        ORDER BY created_at
+        "#,
+        branch_id
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    pool.close().await;
+
+    rows.iter()
+        .map(|row| {
+            json!({
+                "id": row.id.to_string(),
+                "tool_use_id": row.tool_use_id,
+                "tool_name": row.tool_name,
+                "status": row.status,
+                "approved_by": row.approved_by.map(|u| u.to_string()),
+                "approval_note": row.approval_note,
+                "created_at": row.created_at.to_string(),
+            })
+        })
+        .collect()
+}
+
 /// Extract UUIDs from JSON string fields
 pub fn parse_uuid(value: &Value) -> Uuid {
     value

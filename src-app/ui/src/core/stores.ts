@@ -214,6 +214,15 @@ export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
         return value
       }
 
+      // Check if value is a nested store proxy (has __refTracker)
+      // Return directly without hooks - nested stores manage their own reactivity
+      // This allows accessing nested stores from event handlers without hook errors
+      // Note: Use property access instead of 'in' operator because Proxy's 'in' trap
+      // checks the target object, not the handler
+      if (value && typeof value === 'object' && (value as any).__refTracker) {
+        return value
+      }
+
       // For state values, track reference with useEffect
       // eslint-disable-next-line react-hooks/rules-of-hooks
       useEffect(() => {

@@ -1,0 +1,87 @@
+# LLM Runtime Configuration Example
+
+global:
+  # Directory for engine log files
+  log_dir: ./logs
+
+  # Health check interval in seconds
+  health_check_interval_secs: 30
+
+  # Startup timeout in seconds
+  startup_timeout_secs: 300
+
+  # Shutdown timeout in seconds
+  shutdown_timeout_secs: 10
+
+  # Enable auto-restart on crash
+  auto_restart: false
+
+  # Maximum restart attempts before giving up
+  max_restart_attempts: 3
+
+instances:
+  # LlamaCpp example - GGUF model
+  - id: llama-8b
+    engine: llamacpp
+    model_path: /models/llama-3.1-8b-instruct-q4.gguf
+    device: cuda
+    settings:
+      # port: 8080  # Optional: auto-assigned if not specified
+      llamacpp:
+        ctx_size: 8192
+        n_gpu_layers: 35
+        batch_size: 512
+        threads: 8
+        embeddings: false
+        # rope_freq_base: 10000.0    # Optional
+        # rope_freq_scale: 1.0       # Optional
+
+  # LlamaCpp example - CPU only
+  - id: llama-cpu
+    engine: llamacpp
+    model_path: /models/tinyllama-1.1b.gguf
+    device: cpu
+    settings:
+      llamacpp:
+        ctx_size: 2048
+        n_gpu_layers: 0
+        batch_size: 256
+        threads: 4
+
+  # LlamaCpp example - Apple Metal
+  - id: llama-metal
+    engine: llamacpp
+    model_path: /models/llama-3.1-8b.gguf
+    device: metal
+    settings:
+      port: 8081
+      llamacpp:
+        ctx_size: 8192
+        n_gpu_layers: 999  # -1 or 999 = offload all layers
+        batch_size: 512
+
+  # MistralRS example - GGUF (not yet implemented)
+  - id: mistral-7b
+    engine: mistralrs
+    model_path: /models/mistral-7b-instruct-v0.2
+    device: cuda
+    settings:
+      mistralrs:
+        max_seqs: 64
+        pa_gpu_mem_mb: 8192
+        prefix_cache_n: 32
+        dtype: f16
+        model_format: auto
+
+  # MistralRS example - Safetensors (not yet implemented)
+  - id: mistral-large
+    engine: mistralrs
+    model_path: /models/mistral-large-2407
+    device: cuda
+    settings:
+      mistralrs:
+        max_seqs: 32
+        pa_gpu_mem_mb: 16384
+        prefix_cache_n: 64
+        dtype: bf16
+        model_format: safetensors

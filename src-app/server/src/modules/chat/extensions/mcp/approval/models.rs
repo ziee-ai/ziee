@@ -75,6 +75,7 @@ pub struct DisabledServer {
     pub tools: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl DisabledServer {
     /// Check if entire server is disabled (empty tools = all disabled)
     pub fn is_server_disabled(&self) -> bool {

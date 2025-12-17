@@ -59,3 +59,40 @@ pub async fn get_message_contents(
 
     Ok(contents)
 }
+
+/// Get all content blocks for multiple messages in a single query
+/// Returns a HashMap mapping message_id -> Vec<MessageContent>
+/// This is much more efficient than calling get_message_contents() N times
+pub async fn get_message_contents_batch(
+    pool: &PgPool,
+    message_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, Vec<MessageContent>>, AppError> {
+    use std::collections::HashMap;
+
+    if message_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let contents = sqlx::query_as!(
+        MessageContent,
+        r#"
+        SELECT id, message_id, content_type, content, sequence_order,
+               created_at as "created_at: _", updated_at as "updated_at: _"
+        FROM message_contents
+        WHERE message_id = ANY($1)
+        ORDER BY message_id, sequence_order ASC
+        "#,
+        message_ids
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    // Group contents by message_id
+    let mut map: HashMap<Uuid, Vec<MessageContent>> = HashMap::new();
+    for content in contents {
+        map.entry(content.message_id).or_default().push(content);
+    }
+
+    Ok(map)
+}

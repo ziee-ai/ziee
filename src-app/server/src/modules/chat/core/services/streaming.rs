@@ -116,16 +116,16 @@ impl StreamingService {
         // Extensions can provide existing message for continuation (e.g., MCP tool approval)
         let assistant_message_id = if let Some(reg) = &self.extension_registry {
             if let Some(msg_id) = reg.provide_assistant_message(&request, branch_id).await? {
-                msg_id
+                msg_id  // Existing message (resuming)
             } else {
                 // No extension provided message, create new one
                 let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str()).await?;
-                msg.id
+                msg.id  // New message
             }
         } else {
             // No extension registry, create new message
             let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str()).await?;
-            msg.id
+            msg.id  // New message
         };
 
         // Create channel for streaming output
@@ -160,8 +160,34 @@ impl StreamingService {
         tokio::spawn(async move {
             // ext_tx is now owned by this task and will be kept alive
             // It's cloned for each accumulator iteration below
-            const MAX_ITERATIONS: u32 = 5;
+            // Limit iterations to prevent runaway tool loops.
+            // Each tool call + response is one iteration.
+            // Set to 10 to allow multiple sequential tool calls + final text response.
+            // User must send another message for more tools after max is reached.
+            const MAX_ITERATIONS: u32 = 10;
             let mut iteration = 1u32;
+
+            // OPTIMIZATION: Fetch history ONCE before loop, cache in memory
+            // On Continue action, we append new content to cache instead of re-fetching
+            let mut history = match Repos.chat.core.get_conversation_history(branch_id).await {
+                Ok(h) => h,
+                Err(e) => {
+                    let _ = tx.send(Err(e));
+                    return;
+                }
+            };
+
+            // Filter out the assistant message ONLY if it's empty (no content yet)
+            // On iteration 1: assistant message is empty → filter it out
+            // On iteration 2+: assistant message has tool_use + tool_result → keep it
+            // When resuming: message already has content → keep it
+            history.retain(|msg_with_content| {
+                if msg_with_content.message.id == assistant_message_id {
+                    !msg_with_content.contents.is_empty()
+                } else {
+                    true
+                }
+            });
 
             loop {
                 // Guard against infinite loops
@@ -181,21 +207,6 @@ impl StreamingService {
                     let _ = tx.send(Ok(error_chunk));
                     break;
                 }
-
-                // Get conversation history
-                let mut history = match Repos.chat.core.get_conversation_history( branch_id).await {
-                    Ok(h) => h,
-                    Err(e) => {
-                        let _ = tx.send(Err(e));
-                        break;
-                    }
-                };
-
-                // Filter out the just-created assistant message (it has no content yet)
-                // This prevents sending empty messages to the AI provider
-                history.retain(|msg_with_content| {
-                    msg_with_content.message.id != assistant_message_id
-                });
 
                 // Process content from database through extensions (enrichment phase)
                 // This must happen before creating StreamContext to avoid borrowing issues
@@ -410,32 +421,7 @@ impl StreamingService {
                     }
                 }
 
-                // Always send Complete event after stream ends
-                let (finish_reason, usage) = {
-                    let acc = accumulator.lock().await;
-                    (acc.finish_reason.clone(), acc.usage.clone())
-                };
-
-                // Use finish_reason from provider, or default to "stop" if not provided
-                let final_finish_reason = finish_reason.unwrap_or_else(|| "stop".to_string());
-
-                // Send a special ChatStreamChunk with finish_reason set (handler will convert to Complete event)
-                let complete_chunk = ChatStreamChunk {
-                    content: Vec::new(),
-                    message_id: None,
-                    conversation_id: Some(conversation_id),
-                    branch_id: Some(branch_id),
-                    finish_reason: Some(final_finish_reason),
-                    usage,
-                    error: None,
-                };
-
-                if tx.send(Ok(complete_chunk)).is_err() {
-                    // Channel closed, stop streaming
-                    return;
-                }
-
-                // Check extension action
+                // Check extension action FIRST to decide if we should continue or complete
                 let action = {
                     let acc = accumulator.lock().await;
                     acc.extension_action.clone()
@@ -445,18 +431,44 @@ impl StreamingService {
                     Some(crate::modules::chat::core::extension::ExtensionAction::Continue {
                         assistant_message_content,
                     }) => {
+                        // Loop will continue - DON'T send complete event yet
                         // Append tool results to existing assistant message
-                        // Get current content count to calculate proper indices
-                        let content_offset = match Repos.chat.core.get_message_with_content(assistant_message_id).await {
-                            Ok(Some(msg_with_content)) => msg_with_content.contents.len() as i32,
-                            Ok(None) => 0,  // No content yet (shouldn't happen)
+
+                        // IMPORTANT: finalize() just wrote text + tool_use content to DB
+                        // We need to sync our cache with what was persisted before appending tool_result
+                        // Fetch the assistant message with content from DB (includes finalized content)
+                        let assistant_msg_with_content = match Repos.chat.core.get_message_with_content(assistant_message_id).await {
+                            Ok(Some(msg)) => msg,
+                            Ok(None) => {
+                                let _ = tx.send(Err(AppError::not_found("Assistant message not found")));
+                                break;
+                            }
                             Err(e) => {
                                 let _ = tx.send(Err(e));
                                 break;
                             }
                         };
 
+                        // Update or create the assistant message in cache with finalized content
+                        if let Some(assistant_msg) = history.iter_mut().find(|m| m.message.id == assistant_message_id) {
+                            // Replace cache with DB state (text + tool_use from finalize)
+                            assistant_msg.contents = assistant_msg_with_content.contents;
+                        } else {
+                            // First iteration: assistant message not in cache yet, add it
+                            history.push(assistant_msg_with_content);
+                        }
+
+                        // Now get content_offset from the updated cache
+                        let content_offset = history
+                            .iter()
+                            .find(|m| m.message.id == assistant_message_id)
+                            .map(|m| m.contents.len() as i32)
+                            .unwrap_or(0);
+
                         // Tool results are added as content blocks to the same message
+                        // Collect created contents to append to cache after DB writes
+                        let mut created_contents = Vec::new();
+
                         for (offset_index, content) in assistant_message_content.iter().enumerate() {
                             let content_type = content.content_type();
                             let actual_index = content_offset + offset_index as i32;
@@ -466,8 +478,9 @@ impl StreamingService {
                                 content.clone(),
                                 actual_index,
                             ).await {
-                                Ok(_) => {
+                                Ok(created) => {
                                     tracing::info!("Appended content block {} to assistant message", actual_index);
+                                    created_contents.push(created);
                                 }
                                 Err(e) => {
                                     let _ = tx.send(Err(e));
@@ -476,15 +489,45 @@ impl StreamingService {
                             }
                         }
 
+                        // Append the tool_result contents to the cached history
+                        if let Some(assistant_msg) = history.iter_mut().find(|m| m.message.id == assistant_message_id) {
+                            assistant_msg.contents.extend(created_contents);
+                        }
+
                         iteration += 1;
                         // Continue loop with next LLM call
                     }
                     _ => {
-                        // Complete or None - stop looping
+                        // Complete or None - send complete event and stop looping
+                        let (finish_reason, usage) = {
+                            let acc = accumulator.lock().await;
+                            (acc.finish_reason.clone(), acc.usage.clone())
+                        };
+
+                        // Use finish_reason from provider, or default to "stop" if not provided
+                        let final_finish_reason = finish_reason.unwrap_or_else(|| "stop".to_string());
+
+                        // Send Complete event now that we're actually done
+                        let complete_chunk = ChatStreamChunk {
+                            content: Vec::new(),
+                            message_id: None,
+                            conversation_id: Some(conversation_id),
+                            branch_id: Some(branch_id),
+                            finish_reason: Some(final_finish_reason),
+                            usage,
+                            error: None,
+                        };
+
+                        let _ = tx.send(Ok(complete_chunk));
                         break;
                     }
                 }
             }
+            // Note: The loop already handles all complete event cases:
+            // - Guard at start: sends error chunk when iteration > MAX_ITERATIONS
+            // - Extension BeforeLlmAction::Complete: sends complete with extension_complete
+            // - Normal completion (action is None or Complete): sends complete with provider finish_reason
+            // No need for post-loop handling - this prevents duplicate complete events
         });
 
         // Return channel receiver as stream and extension event receiver
@@ -512,7 +555,7 @@ impl StreamingService {
             };
 
             // Convert content blocks (all content now handled by extensions)
-            let mut content_blocks = Vec::new();
+            let content_blocks = Vec::new();
             for content in &msg_with_content.contents {
                 let _content_data = content.parse_content()?;
                 // All content types are now extension types - this method shouldn't be used
@@ -531,6 +574,16 @@ impl StreamingService {
 
     /// Convert history to messages with extension support for content transformation
     /// This version supports extensions transforming content before sending to LLM
+    ///
+    /// IMPORTANT: For assistant messages containing tool_use and tool_result blocks,
+    /// this function splits them into separate messages to comply with AI provider APIs:
+    /// - tool_use blocks → Assistant message
+    /// - tool_result blocks → Tool message (Role::Tool - unified interface)
+    /// - other content (text) → Assistant message
+    ///
+    /// Each provider handles Role::Tool correctly:
+    /// - Anthropic: converts to "user" with tool_result content
+    /// - OpenAI: converts to "tool" role
     async fn convert_history_to_messages_with_extensions(
         history: &[crate::modules::chat::core::types::MessageWithContent],
         extension_registry: Option<&Arc<ExtensionRegistry>>,
@@ -544,15 +597,16 @@ impl StreamingService {
                 .role_enum()
                 .map_err(|e| AppError::internal_error(format!("Invalid message role: {}", e)))?;
 
-            // Convert role to AI provider role
-            let ai_role = match role {
-                MessageRole::User => ai_providers::Role::User,
-                MessageRole::Assistant => ai_providers::Role::Assistant,
-                MessageRole::System => continue, // Skip system messages for now
-            };
+            // Skip system messages
+            if role == MessageRole::System {
+                continue;
+            }
 
-            // Convert content blocks (all content is now extension content)
-            let mut content_blocks = Vec::new();
+            // Convert content blocks and categorize them
+            let mut tool_use_blocks = Vec::new();
+            let mut tool_result_blocks = Vec::new();
+            let mut other_blocks = Vec::new();
+
             for content in &msg_with_content.contents {
                 let content_data = content.parse_content()?;
 
@@ -572,15 +626,63 @@ impl StreamingService {
                     None // No registry, cannot convert content
                 };
 
+                // Categorize block by type
                 if let Some(b) = block {
-                    content_blocks.push(b);
+                    match &b {
+                        ai_providers::ContentBlock::ToolUse { .. } => tool_use_blocks.push(b),
+                        ai_providers::ContentBlock::ToolResult { .. } => tool_result_blocks.push(b),
+                        _ => other_blocks.push(b),
+                    }
                 }
             }
 
-            messages.push(ChatMessage {
-                role: ai_role,
-                content: content_blocks,
-            });
+            // For assistant messages with tool blocks, split into proper sequence for API
+            if role == MessageRole::Assistant && (!tool_use_blocks.is_empty() || !tool_result_blocks.is_empty()) {
+                // 1. Tool use blocks → Assistant message
+                if !tool_use_blocks.is_empty() {
+                    messages.push(ChatMessage {
+                        role: ai_providers::Role::Assistant,
+                        content: tool_use_blocks,
+                    });
+                }
+
+                // 2. Tool result blocks → Tool message (unified interface!)
+                // Each provider handles Role::Tool correctly:
+                // - Anthropic: converts to "user" with tool_result content
+                // - OpenAI: converts to "tool" role
+                if !tool_result_blocks.is_empty() {
+                    messages.push(ChatMessage {
+                        role: ai_providers::Role::Tool,
+                        content: tool_result_blocks,
+                    });
+                }
+
+                // 3. Other content (text, thinking) → Assistant message
+                if !other_blocks.is_empty() {
+                    messages.push(ChatMessage {
+                        role: ai_providers::Role::Assistant,
+                        content: other_blocks,
+                    });
+                }
+            } else {
+                // Non-tool messages: combine all blocks normally
+                let all_blocks: Vec<_> = [tool_use_blocks, tool_result_blocks, other_blocks]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+
+                if !all_blocks.is_empty() {
+                    let ai_role = match role {
+                        MessageRole::User => ai_providers::Role::User,
+                        MessageRole::Assistant => ai_providers::Role::Assistant,
+                        MessageRole::System => continue,
+                    };
+                    messages.push(ChatMessage {
+                        role: ai_role,
+                        content: all_blocks,
+                    });
+                }
+            }
         }
 
         Ok(messages)
@@ -607,7 +709,7 @@ impl StreamingService {
             };
 
             // Convert content blocks (all content now handled by extensions)
-            let mut content_blocks = Vec::new();
+            let content_blocks = Vec::new();
             for content in &msg_with_content.contents {
                 let _content_data = content.parse_content()?;
                 // All content types are now extension types - this static method shouldn't be used

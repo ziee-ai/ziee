@@ -24,7 +24,7 @@ const MCP_TEST_PERMISSIONS: &[&str] = &[
     "mcp_servers_admin::read",
 ];
 
-const TOOL_USE_PROMPT: &str = "Use the fetch tool to get the content from https://httpbin.org/get and return the result. You MUST use the available fetch tool - do not make assumptions about the content.";
+const TOOL_USE_PROMPT: &str = "Use the fetch tool to get the content from https://example.com and return the result. You MUST use the available fetch tool - do not make assumptions about the content.";
 
 #[tokio::test]
 async fn test_single_assistant_message_with_tool_execution() {

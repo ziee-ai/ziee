@@ -54,39 +54,29 @@ impl McpChatExtension {
         }
     }
 
-    /// Execute approved tools and return MessageContentData results
+    /// Execute approved tools and return (MessageContentData results, executed tool_use_ids)
     /// Used by both before_llm_call (no SSE) and after_llm_call (with SSE)
     async fn execute_approved_tools_sync(
         &self,
         approved_pending: &[super::approval::models::ToolUseApproval],
         context: &StreamContext,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
-    ) -> Result<Vec<MessageContentData>, AppError> {
-        
-        
-
+    ) -> Result<(Vec<MessageContentData>, Vec<String>), AppError> {
         let mut tool_results = Vec::new();
+        let mut executed_tool_use_ids = Vec::new();
         let accessible_servers =
             helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
 
         for approval in approved_pending {
             let tool_use_id = approval.tool_use_id.clone();
-            let tool_name = approval.tool_name.clone();
+            let tool_name = approval.tool_name.clone(); // Clean tool name (e.g., "fetch")
             let input = approval.tool_input.clone();
 
-            // Parse server_id from tool name (format: "server_id__tool_name" with __)
-            let server_id_str = if let Some(idx) = tool_name.find("__") {
-                &tool_name[..idx]
-            } else {
-                tracing::error!("Invalid tool name format: {}", tool_name);
-                continue;
-            };
-
-            // Parse UUID
-            let server_id = match uuid::Uuid::parse_str(server_id_str) {
-                Ok(id) => id,
-                Err(_) => {
-                    tracing::error!("Invalid server_id in tool name: {}", tool_name);
+            // Use server_id from approval record (stored separately)
+            let server_id = match approval.server_id {
+                Some(id) => id,
+                None => {
+                    tracing::error!("No server_id in approval record for tool: {}", tool_name);
                     continue;
                 }
             };
@@ -95,7 +85,7 @@ impl McpChatExtension {
             let server = accessible_servers.iter().find(|s| s.id == server_id);
 
             if server.is_none() {
-                tracing::error!("Server not found for approved tool: {}", tool_name);
+                tracing::error!("Server not found for approved tool: {} (server_id={})", tool_name, server_id);
                 let error_result = McpContentData::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: Some(tool_name.clone()),
@@ -108,12 +98,8 @@ impl McpChatExtension {
 
             let server = server.unwrap();
 
-            // Parse clean tool name from full name (server_id__tool_name format)
-            let clean_tool_name = if let Some(idx) = tool_name.rfind("__") {
-                &tool_name[idx + 2..]
-            } else {
-                &tool_name
-            };
+            // tool_name is already clean (e.g., "fetch"), not prefixed
+            let clean_tool_name = &tool_name;
 
             // Send tool start event (if tx provided)
             if let Some(tx) = tx {
@@ -160,15 +146,25 @@ impl McpChatExtension {
             // Convert to MessageContentData and add to results
             tool_results.push(result.to_message_content());
 
+            // Track executed tool_use_id
+            executed_tool_use_ids.push(tool_use_id.clone());
+
             // Delete approval record after successful execution to prevent double-execution
-            let _ = Repos
+            if let Err(e) = Repos
                 .chat
                 .mcp
                 .delete_tool_approval(tool_use_id.clone(), approval.message_id)
-                .await;
+                .await
+            {
+                tracing::error!(
+                    "Failed to delete approval record for tool_use_id={}: {}. This may cause duplicate execution attempts.",
+                    tool_use_id,
+                    e
+                );
+            }
         }
 
-        Ok(tool_results)
+        Ok((tool_results, executed_tool_use_ids))
     }
 }
 
@@ -209,6 +205,21 @@ impl ChatExtension for McpChatExtension {
         Ok(None)
     }
 
+    /// Convert MCP content (ToolUse, ToolResult) to ContentBlock for LLM
+    async fn process_content_for_llm(
+        &self,
+        content: &MessageContentData,
+        _context: &StreamContext,
+    ) -> Result<Option<ContentBlock>, AppError> {
+        // Try to convert MessageContentData to McpContentData
+        if let Ok(mcp_content) = McpContentData::from_message_content(content) {
+            // Convert to ContentBlock (handles both ToolUse and ToolResult)
+            Ok(mcp_content.to_content_block())
+        } else {
+            Ok(None) // Not MCP content
+        }
+    }
+
     /// Register MCP approval workflow routes
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         router.merge(super::approval::mcp_approval_router())
@@ -247,6 +258,28 @@ impl ChatExtension for McpChatExtension {
                     approval.tool_use_id, approval.decision, context.branch_id);
                 match approval.decision.as_str() {
                     "approve" | "approved" => {
+                        // Check what pending approvals exist for this branch
+                        let pending = super::approval::repository::get_pending_approvals_for_branch(
+                            &self.pool,
+                            context.branch_id,
+                        )
+                        .await?;
+                        tracing::info!(
+                            "Pending approvals for branch {}: {:?}",
+                            context.branch_id,
+                            pending.iter().map(|p| (&p.tool_use_id, &p.status)).collect::<Vec<_>>()
+                        );
+
+                        // Check if this tool_use_id is still pending (idempotency check)
+                        let is_pending = pending.iter().any(|p| p.tool_use_id == approval.tool_use_id);
+                        if !is_pending {
+                            tracing::info!(
+                                "Approval for tool_use_id={} already processed (not in pending list), skipping",
+                                approval.tool_use_id
+                            );
+                            continue;
+                        }
+
                         // Approve the tool use
                         tracing::info!("Calling approve_tool_use for tool_use_id={}, branch_id={}",
                             approval.tool_use_id, context.branch_id);
@@ -263,22 +296,45 @@ impl ChatExtension for McpChatExtension {
                                     approval.tool_use_id, approval_record.status, approval_record.branch_id, approval_record.id);
                             }
                             Err(e) => {
+                                // Handle "not found" gracefully - might be a retry of an already-processed approval
+                                if e.to_string().contains("not found") || e.to_string().contains("already processed") {
+                                    tracing::warn!(
+                                        "Approval for tool_use_id={} was already processed (concurrent request?), continuing",
+                                        approval.tool_use_id
+                                    );
+                                    continue;
+                                }
                                 tracing::error!("Failed to approve tool use {}: {}", approval.tool_use_id, e);
                                 return Err(e);
                             }
                         }
                     }
                     "deny" | "denied" => {
-                        // Deny the tool use
-                        super::approval::repository::deny_tool_use(
+                        // Deny the tool use (with idempotency handling)
+                        match super::approval::repository::deny_tool_use(
                             &self.pool,
                             approval.tool_use_id.clone(),
                             context.branch_id,
                             context.user_id,
                             approval.note.clone(),
                         )
-                        .await?;
-                        tracing::debug!("Denied tool use: {}", approval.tool_use_id);
+                        .await {
+                            Ok(_) => {
+                                tracing::info!("Denied tool use: {}", approval.tool_use_id);
+                            }
+                            Err(e) => {
+                                // Handle "not found" gracefully - might be a retry of an already-processed denial
+                                if e.to_string().contains("not found") || e.to_string().contains("already processed") {
+                                    tracing::warn!(
+                                        "Denial for tool_use_id={} was already processed (concurrent request?), continuing",
+                                        approval.tool_use_id
+                                    );
+                                    continue;
+                                }
+                                tracing::error!("Failed to deny tool use {}: {}", approval.tool_use_id, e);
+                                return Err(e);
+                            }
+                        }
                     }
                     _ => {
                         return Err(AppError::bad_request(
@@ -323,11 +379,55 @@ impl ChatExtension for McpChatExtension {
 
             if !approved_pending.is_empty() {
                 // Execute approved tools and append results to request
-                let tool_results = self.execute_approved_tools_sync(
+                let (tool_results, executed_ids) = self.execute_approved_tools_sync(
                     &approved_pending,
                     context,
                     tx,
                 ).await?;
+
+                // Store executed tool_use_ids in context metadata for later filtering
+                if !executed_ids.is_empty() {
+                    // Merge with any existing executed IDs
+                    let mut all_executed: Vec<String> = context.metadata
+                        .get("executed_tool_use_ids")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    all_executed.extend(executed_ids.clone());
+                    context.metadata.insert(
+                        "executed_tool_use_ids".to_string(),
+                        serde_json::to_value(&all_executed).unwrap_or_default(),
+                    );
+                    tracing::info!(
+                        "Tracked {} executed tool_use_ids in context: {:?}",
+                        executed_ids.len(),
+                        executed_ids
+                    );
+                }
+
+                // Save tool results to the assistant message in database
+                // This is important so after_llm_call can filter out already-executed tools
+                if let Some(message_id) = context.message_id {
+                    // Get current content count for sequence ordering
+                    let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
+                        Ok(Some(msg)) => msg.contents.len() as i32,
+                        _ => 0,
+                    };
+
+                    for (idx, result) in tool_results.iter().enumerate() {
+                        let content_type = result.content_type();
+
+                        if let Err(e) = Repos.chat.core.create_content(
+                            message_id,
+                            &content_type,
+                            result.clone(),
+                            current_count + idx as i32,
+                        ).await {
+                            tracing::error!("Failed to save tool result to message: {}", e);
+                        } else {
+                            tracing::info!("Saved tool_result to message {}, sequence {}", message_id, current_count + idx as i32);
+                        }
+                    }
+                }
 
                 // Convert tool results to content blocks using extension's process_content_for_llm
                 let mut content_blocks = Vec::new();
@@ -509,12 +609,16 @@ impl ChatExtension for McpChatExtension {
 
             // Execute approved tools using shared helper
             tracing::info!("after_llm_call: Executing approved tools with tx={}", tx.is_some());
-            let tool_results = self.execute_approved_tools_sync(
+            let (tool_results, executed_ids) = self.execute_approved_tools_sync(
                 &approved_pending,
                 context,
                 tx,
             ).await?;
-            tracing::info!("after_llm_call: Executed {} tools successfully", tool_results.len());
+            tracing::info!(
+                "after_llm_call: Executed {} tools successfully, tool_use_ids: {:?}",
+                tool_results.len(),
+                executed_ids
+            );
 
             // Return Continue action to append tool results to assistant message
             tracing::info!("Returning {} approved tool results to append to assistant message", tool_results.len());
@@ -537,9 +641,34 @@ impl ChatExtension for McpChatExtension {
             message_with_content.contents.len()
         );
 
-        // Find ToolUse content blocks
+        // Find ToolUse and ToolResult content blocks
         let mut tool_uses = Vec::new();
+        let mut executed_tool_use_ids = std::collections::HashSet::new();
 
+        // First pass: collect tool_result tool_use_ids from context metadata (executed in before_llm_call)
+        if let Some(context_executed) = context.metadata.get("executed_tool_use_ids") {
+            if let Ok(ids) = serde_json::from_value::<Vec<String>>(context_executed.clone()) {
+                tracing::info!("Found {} executed tool_use_ids in context metadata: {:?}", ids.len(), ids);
+                executed_tool_use_ids.extend(ids);
+            }
+        }
+
+        // Also collect from tool_result blocks in the message (for redundancy/safety)
+        for content in &message_with_content.contents {
+            let content_data = content.parse_content()?;
+            if let Ok(mcp_content) = McpContentData::from_message_content(&content_data) {
+                if let McpContentData::ToolResult { tool_use_id, .. } = mcp_content {
+                    executed_tool_use_ids.insert(tool_use_id);
+                }
+            }
+        }
+
+        tracing::info!(
+            "Total executed tool_use_ids (from context + message): {}",
+            executed_tool_use_ids.len()
+        );
+
+        // Second pass: collect tool_uses that haven't been executed yet
         for content in &message_with_content.contents {
             tracing::info!(
                 "  Content block: type='{}', sequence={}",
@@ -557,6 +686,11 @@ impl ChatExtension for McpChatExtension {
                 });
 
                 if let McpContentData::ToolUse { id, name, server_id, input } = mcp_content {
+                    // Skip tool_uses that already have a tool_result (already executed)
+                    if executed_tool_use_ids.contains(&id) {
+                        tracing::info!("    Skipping tool_use {} - already has result", id);
+                        continue;
+                    }
                     // Store server_id and name separately
                     tool_uses.push((id, name, server_id, input));
                 }
@@ -564,9 +698,10 @@ impl ChatExtension for McpChatExtension {
         }
 
         tracing::info!(
-            "Extracted {} tool uses from message {}",
+            "Extracted {} tool uses from message {} ({} already executed)",
             tool_uses.len(),
-            final_message.id
+            final_message.id,
+            executed_tool_use_ids.len()
         );
 
         if tool_uses.is_empty() {
@@ -674,7 +809,12 @@ impl ChatExtension for McpChatExtension {
                 };
 
                 // Create pending approval with server_id and server_name
-                crate::core::Repos
+                tracing::info!(
+                    "Creating approval record: tool_use_id={}, branch_id={}, message_id={}, tool_name={}",
+                    tool_use_id, context.branch_id, final_message.id, tool_name
+                );
+
+                let approval_record = crate::core::Repos
                     .chat
                     .mcp
                     .create_tool_approval(
@@ -689,6 +829,11 @@ impl ChatExtension for McpChatExtension {
                         server_name.clone(),
                     )
                     .await?;
+
+                tracing::info!(
+                    "Created approval record: id={}, tool_use_id={}, branch_id={}, status={}",
+                    approval_record.id, approval_record.tool_use_id, approval_record.branch_id, approval_record.status
+                );
 
                 // Send SSE event for approval required
                 helpers::send_approval_required_event(tx, tool_use_id, tool_name, &server_name, server_id_str, input).await?;

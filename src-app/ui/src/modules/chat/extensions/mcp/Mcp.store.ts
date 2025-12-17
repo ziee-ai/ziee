@@ -328,9 +328,6 @@ export const createMcpStore = () =>
       const unavailableDisabled = existingDisabled.filter(d => !availableSet.has(d.server_id))
       disabledServers = [...disabledServers, ...unavailableDisabled]
 
-      // Update config with computed disabled servers
-      config.disabledServers = disabledServers
-
       // Call backend API to persist settings
       const { ApiClient } = await import('@/api-client')
       await ApiClient.Conversation.updateMcpSettings({
@@ -338,6 +335,17 @@ export const createMcpStore = () =>
         approval_mode: config.approvalMode || 'manual_approve',
         auto_approved_tools: config.autoApprovedTools,
         disabled_servers: disabledServers,
+      })
+
+      // Update local state with the computed disabled servers
+      set(state => {
+        const existingConfig = state.conversationConfigs.get(conversationId)
+        if (existingConfig) {
+          state.conversationConfigs.set(conversationId, {
+            ...existingConfig,
+            disabledServers,
+          })
+        }
       })
 
       console.log('[MCP Store] Saved conversation config:', conversationId, {

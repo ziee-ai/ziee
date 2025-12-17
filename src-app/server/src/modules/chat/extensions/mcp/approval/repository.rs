@@ -207,8 +207,11 @@ pub async fn approve_tool_use(
         approved_by,
         note
     )
-    .fetch_one(pool)
-    .await?;
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::not_found("Approval not found or already processed")
+    })?;
 
     Ok(approval)
 }
@@ -243,8 +246,11 @@ pub async fn deny_tool_use(
         approved_by,
         note
     )
-    .fetch_one(pool)
-    .await?;
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::not_found("Approval not found or already processed")
+    })?;
 
     Ok(approval)
 }

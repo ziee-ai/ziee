@@ -76,6 +76,7 @@ pub async fn upsert_user_defaults(
 }
 
 /// Delete MCP defaults for a user
+#[allow(dead_code)]
 pub async fn delete_user_defaults(
     pool: &PgPool,
     user_id: Uuid,

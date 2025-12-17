@@ -1,0 +1,38 @@
+//! MistralRS engine binary builder
+//!
+//! This crate builds mistralrs-server from mistral.rs source with comprehensive
+//! platform and GPU backend support.
+
+use std::path::PathBuf;
+
+/// Get the path to the built mistralrs-server binary
+///
+/// The binary path is determined at compile time by the build script,
+/// which builds mistral.rs with appropriate platform and GPU backend configuration.
+///
+/// # Panics
+///
+/// Panics if the binary was not built successfully (should only happen at compile time).
+pub fn binary_path() -> PathBuf {
+    PathBuf::from(env!("MISTRALRS_BINARY_PATH"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_binary_path_exists() {
+        let path = binary_path();
+        assert!(
+            path.exists(),
+            "mistralrs-server binary should exist at: {}",
+            path.display()
+        );
+        assert!(
+            path.is_file(),
+            "mistralrs-server path should be a file: {}",
+            path.display()
+        );
+    }
+}

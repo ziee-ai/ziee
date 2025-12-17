@@ -208,7 +208,7 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Type-safe SSE event handlers
   sseEventHandlers: {
-    mcpToolStart: async (data, _get, _set) => {
+    mcpToolStart: async (data, get, set) => {
       // data is automatically typed as SSEChatStreamMcpToolStartData
       // Access store via __state to avoid triggering React hooks outside component context
       const mcpStore = Stores.Chat.__state.McpStore
@@ -219,6 +219,74 @@ const mcpExtension: ChatExtension = createExtension({
         tool_name: data.tool_name,
         status: 'started',
       })
+
+      // Inject tool_use content block into streaming message so McpToolUseRenderer can mount
+      // This ensures tool calls are visible during auto-approve execution
+      const chatState = get()
+      let streamingMessage = chatState.streamingMessage
+      const now = new Date().toISOString()
+
+      // Create tool_use content block
+      const toolUseContent: MessageContent = {
+        id: '',
+        message_id: '',
+        content_type: 'tool_use',
+        content: {
+          type: 'tool_use',
+          id: data.tool_use_id,
+          name: data.tool_name,
+          server_id: data.server_id,
+        } as MessageContentDataToolUse,
+        sequence_order: 0,
+        created_at: now,
+        updated_at: now,
+      }
+
+      if (streamingMessage) {
+        // Check if this tool_use content already exists (avoid duplicates)
+        const exists = streamingMessage.contents.some(
+          c => c.content_type === 'tool_use' &&
+               (c.content as MessageContentDataToolUse).id === data.tool_use_id
+        )
+        if (!exists) {
+          toolUseContent.id = `${streamingMessage.id}-tool-${data.tool_use_id}`
+          toolUseContent.message_id = streamingMessage.id
+          toolUseContent.sequence_order = streamingMessage.contents.length
+
+          const updatedMessage = {
+            ...streamingMessage,
+            contents: [...streamingMessage.contents, toolUseContent],
+          }
+
+          const newMessages = new Map(chatState.messages)
+          newMessages.set(updatedMessage.id, updatedMessage)
+          set({
+            streamingMessage: updatedMessage,
+            messages: newMessages,
+          })
+        }
+      } else {
+        // No streaming message exists - CREATE one with the tool_use block
+        const messageId = `streaming-${Date.now()}`
+        toolUseContent.id = `${messageId}-tool-${data.tool_use_id}`
+        toolUseContent.message_id = messageId
+
+        const newMessage: MessageWithContent = {
+          id: messageId,
+          role: 'assistant',
+          contents: [toolUseContent],
+          originated_from_id: '',
+          edit_count: 0,
+          created_at: now,
+        }
+
+        const newMessages = new Map(chatState.messages)
+        newMessages.set(newMessage.id, newMessage)
+        set({
+          streamingMessage: newMessage,
+          messages: newMessages,
+        })
+      }
 
       console.log('[MCP Extension] Tool started:', data.tool_name)
     },
