@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button, Tooltip } from 'antd'
 import { ToolOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
@@ -15,7 +15,6 @@ import { McpConfigModal } from './McpConfigModal'
  * - Primary (blue) when servers are selected
  */
 export function McpServerSelector() {
-  const [isModalVisible, setIsModalVisible] = useState(false)
   const appliedDefaultsRef = useRef(false)
 
   // Access reactive store state
@@ -62,17 +61,14 @@ export function McpServerSelector() {
         <Button
           type={selectedServers.size > 0 ? 'primary' : 'default'}
           icon={<ToolOutlined />}
-          onClick={() => setIsModalVisible(true)}
+          onClick={() => mcpStore.openConfigModal()}
           loading={loading}
         >
           {selectedServers.size > 0 ? `${selectedServers.size} server${selectedServers.size > 1 ? 's' : ''}` : 'MCP'}
         </Button>
       </Tooltip>
 
-      <McpConfigModal
-        visible={isModalVisible}
-        onClose={() => setIsModalVisible(false)}
-      />
+      <McpConfigModal />
     </>
   )
 }

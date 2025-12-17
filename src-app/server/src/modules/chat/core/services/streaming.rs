@@ -160,11 +160,10 @@ impl StreamingService {
         tokio::spawn(async move {
             // ext_tx is now owned by this task and will be kept alive
             // It's cloned for each accumulator iteration below
-            // Limit iterations to prevent runaway tool loops.
-            // Each tool call + response is one iteration.
-            // Set to 10 to allow multiple sequential tool calls + final text response.
-            // User must send another message for more tools after max is reached.
-            const MAX_ITERATIONS: u32 = 10;
+            // Safety limit to prevent runaway tool loops.
+            // Extensions control actual loop behavior via ExtensionAction::Continue/Complete.
+            // This is just a failsafe - MCP extension enforces user-configured max_iteration.
+            const SAFETY_MAX_ITERATIONS: u32 = 1000;
             let mut iteration = 1u32;
 
             // OPTIMIZATION: Fetch history ONCE before loop, cache in memory
@@ -190,8 +189,8 @@ impl StreamingService {
             });
 
             loop {
-                // Guard against infinite loops
-                if iteration > MAX_ITERATIONS {
+                // Guard against infinite loops (safety limit, actual control via extensions)
+                if iteration > SAFETY_MAX_ITERATIONS {
                     let error_chunk = ChatStreamChunk {
                         content: Vec::new(),
                         message_id: None,

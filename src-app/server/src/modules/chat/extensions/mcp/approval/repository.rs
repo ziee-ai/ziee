@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 
+use crate::modules::chat::extensions::mcp::defaults::models::LoopSettings;
 use super::models::{
     ApprovalMode, AutoApprovedServer, ConversationMcpSettings, DisabledServer, ToolUseApproval,
 };
@@ -23,7 +24,7 @@ pub async fn get_conversation_settings(
         r#"
         SELECT
             id, conversation_id, user_id,
-            approval_mode, auto_approved_tools, disabled_servers,
+            approval_mode, auto_approved_tools, disabled_servers, loop_settings,
             created_at as "created_at: _", updated_at as "updated_at: _"
         FROM conversation_mcp_settings
         WHERE conversation_id = $1
@@ -44,35 +45,40 @@ pub async fn upsert_conversation_settings(
     approval_mode: ApprovalMode,
     auto_approved_tools: &[AutoApprovedServer],
     disabled_servers: &[DisabledServer],
+    loop_settings: &LoopSettings,
 ) -> Result<ConversationMcpSettings, AppError> {
     let auto_approved_tools_json = serde_json::to_value(auto_approved_tools)
         .map_err(|e| AppError::internal_error(format!("Failed to serialize auto_approved_tools: {}", e)))?;
     let disabled_servers_json = serde_json::to_value(disabled_servers)
         .map_err(|e| AppError::internal_error(format!("Failed to serialize disabled_servers: {}", e)))?;
+    let loop_settings_json = serde_json::to_value(loop_settings)
+        .map_err(|e| AppError::internal_error(format!("Failed to serialize loop_settings: {}", e)))?;
 
     let settings = sqlx::query_as!(
         ConversationMcpSettings,
         r#"
         INSERT INTO conversation_mcp_settings (
-            conversation_id, user_id, approval_mode, auto_approved_tools, disabled_servers
+            conversation_id, user_id, approval_mode, auto_approved_tools, disabled_servers, loop_settings
         )
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (conversation_id)
         DO UPDATE SET
             approval_mode = EXCLUDED.approval_mode,
             auto_approved_tools = EXCLUDED.auto_approved_tools,
             disabled_servers = EXCLUDED.disabled_servers,
+            loop_settings = EXCLUDED.loop_settings,
             updated_at = NOW()
         RETURNING
             id, conversation_id, user_id,
-            approval_mode, auto_approved_tools, disabled_servers,
+            approval_mode, auto_approved_tools, disabled_servers, loop_settings,
             created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         conversation_id,
         user_id,
         approval_mode.to_string(),
         auto_approved_tools_json,
-        disabled_servers_json
+        disabled_servers_json,
+        loop_settings_json
     )
     .fetch_one(pool)
     .await?;

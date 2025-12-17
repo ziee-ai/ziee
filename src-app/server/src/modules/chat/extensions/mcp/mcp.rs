@@ -586,10 +586,40 @@ impl ChatExtension for McpChatExtension {
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<ExtensionAction, AppError> {
         tracing::info!(
-            "MCP after_llm_call: message_id={}, conversation_id={}",
+            "MCP after_llm_call: message_id={}, conversation_id={}, iteration={}",
             final_message.id,
-            context.conversation_id
+            context.conversation_id,
+            context.iteration
         );
+
+        // === STEP 0: Check loop settings ===
+        // Get loop settings from conversation MCP settings (or use defaults)
+        let loop_settings = crate::core::Repos
+            .chat
+            .mcp
+            .get_conversation_settings(context.conversation_id)
+            .await?
+            .map(|s| s.get_loop_settings())
+            .unwrap_or_default();
+
+        tracing::info!(
+            "Loop settings: max_iteration={}, stop_when_no_tool_calling={}, stop_when_tools_called={}",
+            loop_settings.max_iteration,
+            loop_settings.stop_when_no_tool_calling,
+            loop_settings.stop_when_tools_called.len()
+        );
+
+        // Check max_iteration (0 = unlimited)
+        if loop_settings.max_iteration > 0 && context.iteration >= loop_settings.max_iteration {
+            tracing::info!(
+                "Max iteration limit reached: iteration={} >= max_iteration={}",
+                context.iteration,
+                loop_settings.max_iteration
+            );
+            // TODO: Implement force_final_answer (would need to disable tools and continue)
+            // For now, just complete
+            return Ok(ExtensionAction::Complete);
+        }
 
         // === STEP 1: Check for approved pending tools (from previous approval) ===
         tracing::info!("after_llm_call: Checking for approved tools on branch {}", context.branch_id);
@@ -705,9 +735,17 @@ impl ChatExtension for McpChatExtension {
         );
 
         if tool_uses.is_empty() {
-            // No tool uses - conversation complete
-            tracing::info!("No tool uses found, conversation complete");
-            return Ok(ExtensionAction::Complete);
+            // No tool uses - check stop_when_no_tool_calling setting
+            if loop_settings.stop_when_no_tool_calling {
+                tracing::info!("No tool uses found and stop_when_no_tool_calling=true, conversation complete");
+                return Ok(ExtensionAction::Complete);
+            } else {
+                tracing::info!("No tool uses found but stop_when_no_tool_calling=false, continuing anyway");
+                // Continue with empty results (LLM will generate next response)
+                return Ok(ExtensionAction::Continue {
+                    assistant_message_content: Vec::new(),
+                });
+            }
         }
 
         // Check MCP approval settings for this conversation
@@ -920,6 +958,21 @@ impl ChatExtension for McpChatExtension {
 
             // Convert to MessageContentData and add to results
             tool_results.push(result.to_message_content());
+
+            // Check stop_when_tools_called
+            if loop_settings.stop_when_tools_called.iter().any(|stop_tool| {
+                stop_tool.server_id == server_id && stop_tool.tool_name == tool_name
+            }) {
+                tracing::info!(
+                    "Tool '{}' on server '{}' matches stop_when_tools_called, will complete after this iteration",
+                    tool_name,
+                    server_id
+                );
+                // Execute remaining tools in this batch, but return Complete after
+                // We'll set a flag to indicate we should stop after this batch
+                // For now, we break early and return Complete with the results we have
+                return Ok(ExtensionAction::Complete);
+            }
         }
 
         // Return Continue action to append tool results to assistant message

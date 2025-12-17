@@ -7,6 +7,7 @@ use crate::common::AppError;
 
 use super::approval::models::{ApprovalMode, AutoApprovedServer, ConversationMcpSettings, DisabledServer, ToolUseApproval};
 use super::approval::repository;
+use super::defaults::models::LoopSettings;
 
 /// Repository for MCP extension operations
 #[derive(Clone, Debug)]
@@ -37,6 +38,7 @@ impl McpChatRepository {
         approval_mode: ApprovalMode,
         auto_approved_tools: &[AutoApprovedServer],
         disabled_servers: &[DisabledServer],
+        loop_settings: &LoopSettings,
     ) -> Result<ConversationMcpSettings, AppError> {
         repository::upsert_conversation_settings(
             &self.pool,
@@ -45,6 +47,7 @@ impl McpChatRepository {
             approval_mode,
             auto_approved_tools,
             disabled_servers,
+            loop_settings,
         )
         .await
     }

@@ -60,6 +60,7 @@ pub async fn update_mcp_defaults(
         request.approval_mode,
         &request.auto_approved_tools,
         &request.disabled_servers,
+        &request.loop_settings,
     )
     .await?;
 

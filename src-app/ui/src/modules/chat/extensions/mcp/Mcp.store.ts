@@ -1,6 +1,6 @@
 import { enableMapSet } from 'immer'
 import { createExtensionStore } from '../../core/extensions'
-import type { ToolApprovalDecision, McpServerConfig, AutoApprovedServer, DisabledServer, UserMcpDefaultsResponse } from '@/api-client/types'
+import type { ToolApprovalDecision, McpServerConfig, AutoApprovedServer, DisabledServer, UserMcpDefaultsResponse, LoopSettings, ToolIdentifier, PerToolLimit } from '@/api-client/types'
 
 // Enable Map support in Immer
 enableMapSet()
@@ -43,6 +43,8 @@ interface ConversationMcpConfig {
   approvalMode?: 'disabled' | 'auto_approve' | 'manual_approve'
   /** Auto-approved tools grouped by server */
   autoApprovedTools?: AutoApprovedServer[]
+  /** Loop settings for controlling iteration behavior */
+  loopSettings?: LoopSettings
 }
 
 /** Special key for pending (new conversation) config */
@@ -68,6 +70,8 @@ interface McpStore {
   userDefaults: UserMcpDefaultsResponse | null
   /** Whether user defaults have been loaded */
   userDefaultsLoaded: boolean
+  /** Whether the config modal is visible */
+  configModalVisible: boolean
 
   // Tool call actions
   /** Add a new tool call */
@@ -107,6 +111,20 @@ interface McpStore {
   /** Check if a tool is auto-approved */
   isToolAutoApproved: (serverId: string, toolName: string) => boolean
 
+  // Loop settings actions
+  /** Set loop settings (partial update) */
+  setLoopSettings: (conversationId: string | null, settings: Partial<LoopSettings>) => void
+  /** Add a tool to stop_when_tools_called */
+  addStopWhenToolCalled: (conversationId: string | null, tool: ToolIdentifier) => void
+  /** Remove a tool from stop_when_tools_called */
+  removeStopWhenToolCalled: (conversationId: string | null, serverId: string, toolName: string) => void
+  /** Add a per-tool iteration limit */
+  addPerToolLimit: (conversationId: string | null, limit: PerToolLimit) => void
+  /** Remove a per-tool iteration limit */
+  removePerToolLimit: (conversationId: string | null, serverId: string, toolName: string) => void
+  /** Update a per-tool iteration limit */
+  updatePerToolLimit: (conversationId: string | null, serverId: string, toolName: string, maxIteration: number) => void
+
   // Server selection actions
   /** Select a server (tools=[] means all tools) */
   selectServer: (serverId: string, tools?: string[]) => void
@@ -131,6 +149,12 @@ interface McpStore {
   saveUserDefaults: (conversationId: string | null, availableServerIds: string[]) => Promise<void>
   /** Apply user defaults to pending config (for new conversations) */
   applyUserDefaultsToPending: (availableServerIds: string[]) => void
+
+  // Config modal actions
+  /** Open the config modal */
+  openConfigModal: () => void
+  /** Close the config modal */
+  closeConfigModal: () => void
 }
 
 /**
@@ -148,6 +172,7 @@ export const createMcpStore = () =>
     selectedServers: new Map<string, ServerSelection>(),
     userDefaults: null,
     userDefaultsLoaded: false,
+    configModalVisible: false,
 
     // Initialization methods
     __init__: {
@@ -262,6 +287,7 @@ export const createMcpStore = () =>
             disabledServers: defaults?.disabled_servers || [],
             approvalMode: (defaults?.approval_mode as 'disabled' | 'auto_approve' | 'manual_approve') || 'manual_approve',
             autoApprovedTools: defaults?.auto_approved_tools || [],
+            loopSettings: defaults?.loop_settings,
           }
           state.conversationConfigs.set(PENDING_CONVERSATION_KEY, pendingConfig)
           state.selectedServers = new Map()
@@ -335,6 +361,7 @@ export const createMcpStore = () =>
         approval_mode: config.approvalMode || 'manual_approve',
         auto_approved_tools: config.autoApprovedTools,
         disabled_servers: disabledServers,
+        loop_settings: config.loopSettings,
       })
 
       // Update local state with the computed disabled servers
@@ -492,6 +519,164 @@ export const createMcpStore = () =>
       return serverEntry ? serverEntry.tools.includes(toolName) : false
     },
 
+    // Loop settings actions
+    /**
+     * Set loop settings (partial update)
+     */
+    setLoopSettings: (conversationId: string | null, settings: Partial<LoopSettings>) => {
+      set(state => {
+        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        let config = state.conversationConfigs.get(configKey)
+
+        // Create config if it doesn't exist (for both new and existing conversations)
+        if (!config) {
+          config = {
+            selectedServers: new Map(),
+            disabledServers: [],
+            approvalMode: 'manual_approve',
+            autoApprovedTools: [],
+            loopSettings: {},
+          }
+          state.conversationConfigs.set(configKey, config)
+        }
+
+        config.loopSettings = { ...config.loopSettings, ...settings }
+      })
+    },
+
+    /**
+     * Add a tool to stop_when_tools_called
+     */
+    addStopWhenToolCalled: (conversationId: string | null, tool: ToolIdentifier) => {
+      set(state => {
+        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        let config = state.conversationConfigs.get(configKey)
+
+        // Create config if it doesn't exist (for both new and existing conversations)
+        if (!config) {
+          config = {
+            selectedServers: new Map(),
+            disabledServers: [],
+            approvalMode: 'manual_approve',
+            autoApprovedTools: [],
+            loopSettings: {},
+          }
+          state.conversationConfigs.set(configKey, config)
+        }
+
+        const current = config.loopSettings?.stop_when_tools_called || []
+        // Avoid duplicates
+        if (!current.some(t => t.server_id === tool.server_id && t.tool_name === tool.tool_name)) {
+          config.loopSettings = {
+            ...config.loopSettings,
+            stop_when_tools_called: [...current, tool],
+          }
+        }
+      })
+    },
+
+    /**
+     * Remove a tool from stop_when_tools_called
+     */
+    removeStopWhenToolCalled: (conversationId: string | null, serverId: string, toolName: string) => {
+      set(state => {
+        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const config = state.conversationConfigs.get(configKey)
+
+        if (config && config.loopSettings?.stop_when_tools_called) {
+          config.loopSettings = {
+            ...config.loopSettings,
+            stop_when_tools_called: config.loopSettings.stop_when_tools_called.filter(
+              t => !(t.server_id === serverId && t.tool_name === toolName)
+            ),
+          }
+        }
+      })
+    },
+
+    /**
+     * Add a per-tool iteration limit
+     */
+    addPerToolLimit: (conversationId: string | null, limit: PerToolLimit) => {
+      set(state => {
+        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        let config = state.conversationConfigs.get(configKey)
+
+        // Create config if it doesn't exist (for both new and existing conversations)
+        if (!config) {
+          config = {
+            selectedServers: new Map(),
+            disabledServers: [],
+            approvalMode: 'manual_approve',
+            autoApprovedTools: [],
+            loopSettings: {},
+          }
+          state.conversationConfigs.set(configKey, config)
+        }
+
+        const current = config.loopSettings?.per_tool_max_iteration || []
+        // Avoid duplicates - update existing if found
+        const existingIndex = current.findIndex(
+          t => t.server_id === limit.server_id && t.tool_name === limit.tool_name
+        )
+        if (existingIndex >= 0) {
+          // Update existing
+          const updated = [...current]
+          updated[existingIndex] = limit
+          config.loopSettings = {
+            ...config.loopSettings,
+            per_tool_max_iteration: updated,
+          }
+        } else {
+          // Add new
+          config.loopSettings = {
+            ...config.loopSettings,
+            per_tool_max_iteration: [...current, limit],
+          }
+        }
+      })
+    },
+
+    /**
+     * Remove a per-tool iteration limit
+     */
+    removePerToolLimit: (conversationId: string | null, serverId: string, toolName: string) => {
+      set(state => {
+        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const config = state.conversationConfigs.get(configKey)
+
+        if (config && config.loopSettings?.per_tool_max_iteration) {
+          config.loopSettings = {
+            ...config.loopSettings,
+            per_tool_max_iteration: config.loopSettings.per_tool_max_iteration.filter(
+              t => !(t.server_id === serverId && t.tool_name === toolName)
+            ),
+          }
+        }
+      })
+    },
+
+    /**
+     * Update a per-tool iteration limit
+     */
+    updatePerToolLimit: (conversationId: string | null, serverId: string, toolName: string, maxIteration: number) => {
+      set(state => {
+        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const config = state.conversationConfigs.get(configKey)
+
+        if (config && config.loopSettings?.per_tool_max_iteration) {
+          config.loopSettings = {
+            ...config.loopSettings,
+            per_tool_max_iteration: config.loopSettings.per_tool_max_iteration.map(t =>
+              t.server_id === serverId && t.tool_name === toolName
+                ? { ...t, max_iteration: maxIteration }
+                : t
+            ),
+          }
+        }
+      })
+    },
+
     // Server selection actions
     /**
      * Select a server (tools=[] means all tools)
@@ -632,6 +817,7 @@ export const createMcpStore = () =>
           approval_mode: config?.approvalMode || 'manual_approve',
           auto_approved_tools: config?.autoApprovedTools || [],
           disabled_servers: disabledServers,
+          loop_settings: config?.loopSettings,
         })
         set(state => {
           state.userDefaults = response
@@ -675,6 +861,7 @@ export const createMcpStore = () =>
           disabledServers: defaults.disabled_servers || [],
           approvalMode: defaults.approval_mode as 'disabled' | 'auto_approve' | 'manual_approve',
           autoApprovedTools: defaults.auto_approved_tools || [],
+          loopSettings: defaults.loop_settings,
         })
         // Also update selectedServers if we're on a new conversation
         if (!s.currentConversationId) {
@@ -684,6 +871,25 @@ export const createMcpStore = () =>
       console.log('[MCP Store] Applied user defaults to pending config:', {
         selectedServers: selectedServers.size,
         approvalMode: defaults.approval_mode,
+      })
+    },
+
+    // Config modal actions
+    /**
+     * Open the config modal
+     */
+    openConfigModal: () => {
+      set(state => {
+        state.configModalVisible = true
+      })
+    },
+
+    /**
+     * Close the config modal
+     */
+    closeConfigModal: () => {
+      set(state => {
+        state.configModalVisible = false
       })
     },
   }))

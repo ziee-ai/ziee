@@ -7565,6 +7565,14 @@
             "type": "string",
             "format": "uuid"
           },
+          "loop_settings": {
+            "description": "Loop settings for controlling iteration behavior",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoopSettings"
+              }
+            ]
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
@@ -7581,6 +7589,7 @@
           "approval_mode",
           "auto_approved_tools",
           "disabled_servers",
+          "loop_settings",
           "created_at",
           "updated_at"
         ]
@@ -10338,6 +10347,45 @@
           "password"
         ]
       },
+      "LoopSettings": {
+        "description": "Loop settings for controlling the streaming iteration behavior",
+        "type": "object",
+        "properties": {
+          "force_final_answer": {
+            "description": "Force a final text answer when limits are reached (disable tools for last iteration)",
+            "type": "boolean",
+            "default": false
+          },
+          "max_iteration": {
+            "description": "Maximum iterations allowed per conversation turn (0 = unlimited, default: 10)",
+            "type": "integer",
+            "format": "uint32",
+            "default": 10,
+            "minimum": 0
+          },
+          "per_tool_max_iteration": {
+            "description": "Per-tool iteration limits",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PerToolLimit"
+            }
+          },
+          "stop_when_no_tool_calling": {
+            "description": "Stop when LLM generates a response without any tool calls (default: true)",
+            "type": "boolean",
+            "default": true
+          },
+          "stop_when_tools_called": {
+            "description": "Stop when any of these specific tools are called",
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ToolIdentifier"
+            }
+          }
+        }
+      },
       "McpConfig": {
         "description": "MCP configuration for chat requests",
         "type": "object",
@@ -11524,6 +11572,32 @@
           "approvals"
         ]
       },
+      "PerToolLimit": {
+        "description": "Per-tool iteration limit",
+        "type": "object",
+        "properties": {
+          "max_iteration": {
+            "description": "Maximum number of times this tool can be called per conversation turn",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "server_id": {
+            "description": "MCP server ID",
+            "type": "string",
+            "format": "uuid"
+          },
+          "tool_name": {
+            "description": "Tool name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "tool_name",
+          "max_iteration"
+        ]
+      },
       "PermissionDetail": {
         "type": "object",
         "properties": {
@@ -12535,6 +12609,25 @@
         "type": "object",
         "additionalProperties": true
       },
+      "ToolIdentifier": {
+        "description": "Identifies a specific tool on a specific server",
+        "type": "object",
+        "properties": {
+          "server_id": {
+            "description": "MCP server ID",
+            "type": "string",
+            "format": "uuid"
+          },
+          "tool_name": {
+            "description": "Tool name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server_id",
+          "tool_name"
+        ]
+      },
       "ToolUseApproval": {
         "description": "Tool use approval record",
         "type": "object",
@@ -13069,6 +13162,21 @@
             "items": {
               "$ref": "#/components/schemas/DisabledServer"
             }
+          },
+          "loop_settings": {
+            "description": "Loop settings for controlling iteration behavior",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoopSettings"
+              }
+            ],
+            "default": {
+              "force_final_answer": false,
+              "max_iteration": 10,
+              "per_tool_max_iteration": [],
+              "stop_when_no_tool_calling": true,
+              "stop_when_tools_called": []
+            }
           }
         },
         "required": [
@@ -13101,6 +13209,21 @@
             "default": [],
             "items": {
               "$ref": "#/components/schemas/DisabledServer"
+            }
+          },
+          "loop_settings": {
+            "description": "Loop settings for controlling iteration behavior",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoopSettings"
+              }
+            ],
+            "default": {
+              "force_final_answer": false,
+              "max_iteration": 10,
+              "per_tool_max_iteration": [],
+              "stop_when_no_tool_calling": true,
+              "stop_when_tools_called": []
             }
           }
         },
@@ -13293,6 +13416,14 @@
             "type": "string",
             "format": "uuid"
           },
+          "loop_settings": {
+            "description": "Loop settings for controlling iteration behavior",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoopSettings"
+              }
+            ]
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
@@ -13308,6 +13439,7 @@
           "approval_mode",
           "auto_approved_tools",
           "disabled_servers",
+          "loop_settings",
           "created_at",
           "updated_at"
         ]

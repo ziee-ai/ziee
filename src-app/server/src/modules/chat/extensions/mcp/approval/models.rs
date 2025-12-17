@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use crate::modules::chat::extensions::mcp::defaults::models::LoopSettings;
+
 /// Approval mode for conversation MCP settings
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -108,6 +110,9 @@ pub struct ConversationMcpSettings {
     /// Disabled servers/tools (JSON array stored in DB)
     pub disabled_servers: serde_json::Value,
 
+    /// Loop settings (JSON object stored in DB)
+    pub loop_settings: Option<serde_json::Value>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -129,6 +134,14 @@ impl ConversationMcpSettings {
     pub fn get_disabled_servers(&self) -> Vec<DisabledServer> {
         serde_json::from_value(self.disabled_servers.clone()).unwrap_or_default()
     }
+
+    /// Get loop settings
+    pub fn get_loop_settings(&self) -> LoopSettings {
+        self.loop_settings
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default()
+    }
 }
 
 /// Conversation MCP settings (API response - properly typed)
@@ -147,6 +160,9 @@ pub struct ConversationMcpSettingsResponse {
     /// Disabled servers/tools (empty = all servers enabled)
     pub disabled_servers: Vec<DisabledServer>,
 
+    /// Loop settings for controlling iteration behavior
+    pub loop_settings: LoopSettings,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -160,6 +176,7 @@ impl From<ConversationMcpSettings> for ConversationMcpSettingsResponse {
             approval_mode: settings.get_approval_mode(),
             auto_approved_tools: settings.get_auto_approved_tools(),
             disabled_servers: settings.get_disabled_servers(),
+            loop_settings: settings.get_loop_settings(),
             created_at: settings.created_at,
             updated_at: settings.updated_at,
         }
@@ -212,6 +229,10 @@ pub struct UpsertMcpSettingsRequest {
     /// Format: [{"server_id": "uuid", "tools": []}, ...] (empty tools = entire server disabled)
     #[serde(default)]
     pub disabled_servers: Vec<DisabledServer>,
+
+    /// Loop settings for controlling iteration behavior
+    #[serde(default)]
+    pub loop_settings: LoopSettings,
 }
 
 /// Single tool approval decision

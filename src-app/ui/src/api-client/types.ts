@@ -133,6 +133,7 @@ export interface ConversationMcpSettingsResponse {
   created_at: string
   disabled_servers: DisabledServer[]
   id: string
+  loop_settings: LoopSettings
   updated_at: string
   user_id: string
 }
@@ -711,6 +712,14 @@ export interface LoginRequest {
   username: string
 }
 
+export interface LoopSettings {
+  force_final_answer?: boolean
+  max_iteration?: number
+  per_tool_max_iteration?: PerToolLimit[]
+  stop_when_no_tool_calling?: boolean
+  stop_when_tools_called?: ToolIdentifier[]
+}
+
 export interface McpConfig {
   mcp_servers: McpServerConfig[]
 }
@@ -956,6 +965,12 @@ export interface PendingApprovalsResponse {
   approvals: ToolUseApproval[]
 }
 
+export interface PerToolLimit {
+  max_iteration: number
+  server_id: string
+  tool_name: string
+}
+
 export interface PermissionDetail {
   description: string
   name: string
@@ -1185,6 +1200,11 @@ export interface ToolApprovalDecision {
 
 export type ToolContent = any
 
+export interface ToolIdentifier {
+  server_id: string
+  tool_name: string
+}
+
 export interface ToolUseApproval {
   approval_note?: string
   approved_at?: string
@@ -1288,12 +1308,14 @@ export interface UpsertMcpSettingsRequest {
   approval_mode: ApprovalMode
   auto_approved_tools?: AutoApprovedServer[]
   disabled_servers?: DisabledServer[]
+  loop_settings?: LoopSettings
 }
 
 export interface UpsertUserMcpDefaultsRequest {
   approval_mode: ApprovalMode
   auto_approved_tools?: AutoApprovedServer[]
   disabled_servers?: DisabledServer[]
+  loop_settings?: LoopSettings
 }
 
 export interface Usage {
@@ -1338,6 +1360,7 @@ export interface UserMcpDefaultsResponse {
   created_at: string
   disabled_servers: DisabledServer[]
   id: string
+  loop_settings: LoopSettings
   updated_at: string
   user_id: string
 }

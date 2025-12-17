@@ -235,7 +235,7 @@ const mcpExtension: ChatExtension = createExtension({
           type: 'tool_use',
           id: data.tool_use_id,
           name: data.tool_name,
-          server_id: data.server_id,
+          server_id: data.server,
         } as MessageContentDataToolUse,
         sequence_order: 0,
         created_at: now,
@@ -475,6 +475,7 @@ const mcpExtension: ChatExtension = createExtension({
           disabledServers,
           approvalMode: response.settings.approval_mode as 'disabled' | 'auto_approve' | 'manual_approve',
           autoApprovedTools: response.settings.auto_approved_tools || [],
+          loopSettings: response.settings.loop_settings,
         }
 
         mcpStore.loadConversationConfig(conversation.id, config)
@@ -482,6 +483,7 @@ const mcpExtension: ChatExtension = createExtension({
           availableServers: availableServerIds.size,
           disabledServers: disabledServers.length,
           selectedServers: selectedServers.size,
+          loopSettings: response.settings.loop_settings,
         })
       } else {
         // If settings don't exist yet, select all available servers by default
@@ -495,6 +497,7 @@ const mcpExtension: ChatExtension = createExtension({
           disabledServers: [],
           approvalMode: 'manual_approve' as const,
           autoApprovedTools: [],
+          loopSettings: undefined,  // Use defaults
         }
 
         mcpStore.loadConversationConfig(conversation.id, config)
@@ -514,6 +517,7 @@ const mcpExtension: ChatExtension = createExtension({
         disabledServers: [],
         approvalMode: 'manual_approve' as const,
         autoApprovedTools: [],
+        loopSettings: undefined,  // Use defaults
       }
 
       mcpStore.loadConversationConfig(conversation.id, config)
