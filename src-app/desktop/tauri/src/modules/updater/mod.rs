@@ -1,10 +1,14 @@
 //! Auto-Updater Module
 //!
-//! Application auto-update functionality (placeholder)
+//! Application auto-update functionality via HTTP routes
+
+mod handlers;
+mod routes;
 
 use crate::module_api::DesktopModule;
 use anyhow::Result;
 use tauri::App;
+use ziee_chat::Router;
 
 pub struct UpdaterModule;
 
@@ -19,12 +23,17 @@ impl DesktopModule for UpdaterModule {
         "updater"
     }
 
+    fn description(&self) -> &'static str {
+        "Application auto-update via HTTP routes"
+    }
+
     fn init(&mut self, _app: &mut App) -> Result<()> {
-        tracing::info!("Updater module initialized (not yet implemented)");
-        // In a full implementation, this would:
-        // 1. Check for updates on startup
-        // 2. Download updates in background
-        // 3. Prompt user to restart and install
+        tracing::info!("Updater module initialized");
         Ok(())
+    }
+
+    fn register_routes(&self, router: Router) -> Router {
+        tracing::info!("Registering updater routes");
+        router.merge(routes::updater_routes())
     }
 }

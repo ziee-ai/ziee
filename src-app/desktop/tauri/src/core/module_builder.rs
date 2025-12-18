@@ -5,21 +5,25 @@
 
 use crate::module_api::DesktopModule;
 use crate::modules::{
-    backend::BackendModule, file_dialog::FileDialogModule, tray::TrayModule,
-    updater::UpdaterModule, window::WindowModule,
+    auth::AuthModule, backend::BackendModule, settings::SettingsModule, tray::TrayModule,
+    updater::UpdaterModule,
 };
 use anyhow::Result;
 use tauri::App;
+use ziee_chat::Router;
 
 /// Create all desktop modules
 ///
 /// This is where modules are registered. Add new modules here.
-pub fn create_desktop_modules() -> Vec<Box<dyn DesktopModule>> {
+///
+/// # Arguments
+/// * `config_file` - Optional path to config file for backend module
+pub fn create_desktop_modules(config_file: Option<String>) -> Vec<Box<dyn DesktopModule>> {
     vec![
-        Box::new(BackendModule::new()),
-        Box::new(WindowModule::new()),
+        Box::new(BackendModule::new(config_file)),
+        Box::new(AuthModule::new()),
+        Box::new(SettingsModule::new()),
         Box::new(TrayModule::new()),
-        Box::new(FileDialogModule::new()),
         Box::new(UpdaterModule::new()),
     ]
 }
@@ -27,14 +31,25 @@ pub fn create_desktop_modules() -> Vec<Box<dyn DesktopModule>> {
 /// Initialize all modules
 ///
 /// Called during app startup to initialize each module
-pub fn initialize_modules(
-    modules: &mut [Box<dyn DesktopModule>],
-    app: &mut App,
-) -> Result<()> {
+pub fn initialize_modules(modules: &mut [Box<dyn DesktopModule>], app: &mut App) -> Result<()> {
     for module in modules.iter_mut() {
         tracing::info!("Initializing desktop module: {}", module.name());
         module.init(app)?;
         tracing::info!("Successfully initialized module: {}", module.name());
     }
     Ok(())
+}
+
+/// Build combined router from all module routes
+///
+/// Called after initialization to collect routes from all modules.
+/// The combined router is merged into the backend server.
+pub fn build_desktop_routes(modules: &[Box<dyn DesktopModule>]) -> Router {
+    let mut router = Router::new();
+    for module in modules.iter() {
+        tracing::info!("Collecting routes from module: {}", module.name());
+        router = module.register_routes(router);
+    }
+    tracing::info!("Desktop routes collected from {} modules", modules.len());
+    router
 }

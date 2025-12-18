@@ -23,8 +23,6 @@ const fileDialogModule: AppModule = createModule({
     },
   ],
 
-  sidebar: undefined,
-
   initialize: () => {
     console.log('File dialog module initialized')
   },

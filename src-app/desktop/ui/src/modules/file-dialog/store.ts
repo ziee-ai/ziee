@@ -1,11 +1,11 @@
 /**
  * File Dialog Store
  *
- * Provides hooks for native file picker dialogs
+ * Provides hooks for native file picker dialogs using @tauri-apps/plugin-dialog
  */
 
 import { create } from 'zustand'
-import { invoke } from '@tauri-apps/api/core'
+import { open, save } from '@tauri-apps/plugin-dialog'
 
 interface FileFilter {
   name: string
@@ -14,17 +14,30 @@ interface FileFilter {
 
 interface FileDialogState {
   // Actions
-  openFile: (filters?: FileFilter[]) => Promise<string | null>
-  openFolder: () => Promise<string | null>
-  saveFile: (defaultPath?: string) => Promise<string | null>
+  openFile: (options?: {
+    title?: string
+    filters?: FileFilter[]
+    multiple?: boolean
+  }) => Promise<string | string[] | null>
+  openFolder: (options?: {
+    title?: string
+    multiple?: boolean
+  }) => Promise<string | string[] | null>
+  saveFile: (options?: {
+    title?: string
+    defaultPath?: string
+    filters?: FileFilter[]
+  }) => Promise<string | null>
 }
 
 export const useFileDialogStore = create<FileDialogState>(() => ({
-  openFile: async (filters?: FileFilter[]) => {
+  openFile: async (options) => {
     try {
-      const result = await invoke<string | null>('open_file_dialog', {
-        title: 'Select File',
-        filters,
+      const result = await open({
+        title: options?.title ?? 'Select File',
+        filters: options?.filters,
+        multiple: options?.multiple ?? false,
+        directory: false,
       })
       return result
     } catch (error) {
@@ -33,10 +46,12 @@ export const useFileDialogStore = create<FileDialogState>(() => ({
     }
   },
 
-  openFolder: async () => {
+  openFolder: async (options) => {
     try {
-      const result = await invoke<string | null>('open_folder_dialog', {
-        title: 'Select Folder',
+      const result = await open({
+        title: options?.title ?? 'Select Folder',
+        multiple: options?.multiple ?? false,
+        directory: true,
       })
       return result
     } catch (error) {
@@ -45,11 +60,12 @@ export const useFileDialogStore = create<FileDialogState>(() => ({
     }
   },
 
-  saveFile: async (defaultPath?: string) => {
+  saveFile: async (options) => {
     try {
-      const result = await invoke<string | null>('save_file_dialog', {
-        title: 'Save File',
-        defaultPath,
+      const result = await save({
+        title: options?.title ?? 'Save File',
+        defaultPath: options?.defaultPath,
+        filters: options?.filters,
       })
       return result
     } catch (error) {

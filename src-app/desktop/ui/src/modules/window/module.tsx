@@ -33,9 +33,6 @@ const windowModule: AppModule = createModule({
     },
   ],
 
-  // Sidebar items (if needed)
-  sidebar: undefined,
-
   // Module initialization
   initialize: () => {
     console.log('Window module initialized')

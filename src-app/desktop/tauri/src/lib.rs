@@ -1,18 +1,20 @@
-/**
- * Ziee Chat Desktop - Library
- *
- * Tauri application with modular desktop features
- */
+//! Ziee Chat Desktop - Library
+//!
+//! Tauri application with modular desktop features.
+//! All functionality (except get_server_port) communicates via HTTP routes.
 
 mod core;
 mod module_api;
-mod modules;
+pub mod modules;
 
 use anyhow::Result;
 
 /// Run the desktop application
+///
+/// # Arguments
+/// * `config_file` - Optional path to a YAML config file (like server's dev.yaml)
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() -> Result<()> {
+pub fn run(config_file: Option<String>) -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -22,38 +24,40 @@ pub fn run() -> Result<()> {
         .init();
 
     tracing::info!("Starting Ziee Chat Desktop...");
+    if let Some(ref path) = config_file {
+        tracing::info!("Using config file: {}", path);
+    }
 
-    // Create desktop modules
-    let mut modules = core::create_desktop_modules();
+    // Create desktop modules with config
+    let mut modules = core::create_desktop_modules(config_file);
     tracing::info!("Created {} desktop modules", modules.len());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             tracing::info!("Tauri setup starting...");
+
+            // Store AppHandle globally for route handlers
+            core::set_app_handle(app.handle().clone());
 
             // Initialize all modules
             core::initialize_modules(&mut modules, app)?;
 
+            // Collect routes from all modules
+            let desktop_routes = core::build_desktop_routes(&modules);
+
+            // Start the backend server with collected routes
+            modules::backend::start_backend_server(desktop_routes);
+
             tracing::info!("Tauri setup complete");
             Ok(())
         })
+        // Only keep get_server_port - all other functionality via HTTP routes
         .invoke_handler(tauri::generate_handler![
-            // Backend commands
             crate::modules::backend::commands::get_server_port,
-            crate::modules::backend::commands::get_backend_status,
-            crate::modules::backend::commands::restart_backend,
-            // Window commands
-            crate::modules::window::commands::minimize_window,
-            crate::modules::window::commands::maximize_window,
-            crate::modules::window::commands::unmaximize_window,
-            crate::modules::window::commands::close_window,
-            crate::modules::window::commands::toggle_fullscreen,
-            crate::modules::window::commands::is_window_maximized,
-            // File dialog commands
-            crate::modules::file_dialog::commands::open_file_dialog,
-            crate::modules::file_dialog::commands::open_folder_dialog,
-            crate::modules::file_dialog::commands::save_file_dialog,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

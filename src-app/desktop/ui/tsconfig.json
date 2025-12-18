@@ -1,10 +1,11 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ESNext",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    "experimentalDecorators": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -20,14 +21,17 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
-    /* Path mapping */
+    /* Path mapping - resolves imports for type checking
+       Vite uses its own resolution at build time */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*", "../../ui/src/*"],
+      "@/*": ["../../ui/src/*"],
       "@ziee/ui-core": ["../../ui/src/index.ts"],
-      "@ziee/ui-core/*": ["../../ui/src/*"]
+      "@ziee/ui-core/*": ["../../ui/src/*"],
+      "csstype": ["./node_modules/csstype"]
     }
   },
-  "include": ["src", "../../ui/src"],
+  "include": ["src", "tests", "../../ui/src"],
+  "exclude": ["node_modules", "dist", "../../ui/node_modules"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
