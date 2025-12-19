@@ -76,9 +76,11 @@ pub use runtime::Runtime;
 
 // Modules
 pub mod config;
+pub mod download;
 pub mod engine;
 pub mod error;
 pub mod runtime;
+pub mod state;
 
 // Internal modules (not public API)
 mod binary;

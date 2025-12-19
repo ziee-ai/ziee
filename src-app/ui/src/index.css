@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../node_modules/streamdown/dist/*.js";
 
 /* Custom base styles in Tailwind's base layer */
 @layer base {

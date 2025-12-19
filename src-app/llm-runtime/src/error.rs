@@ -68,6 +68,10 @@ pub enum RuntimeError {
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
 
+    /// Database error
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
+
     /// Timeout error
     #[error("Operation timed out: {0}")]
     Timeout(String),

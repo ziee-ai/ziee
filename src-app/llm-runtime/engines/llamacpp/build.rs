@@ -66,7 +66,8 @@ fn build_llamacpp(
     } else {
         "llama-server"
     };
-    let cached_binary = bin_dir.join(binary_name);
+    let build_bin_dir = build_dir.join("bin");
+    let cached_binary = build_bin_dir.join(binary_name);
 
     if cached_binary.exists() {
         println!("Using cached llama-server binary: {}", cached_binary.display());
@@ -98,6 +99,18 @@ fn build_llamacpp(
     cmake_cmd.arg("-DLLAMA_BUILD_SERVER=ON");
     cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_CLI=OFF");
     cmake_cmd.arg("-DLLAMA_CURL=OFF"); // Avoid dependency issues
+
+    // Comprehensive binary disabling - only build llama-server
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_RUN=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_BENCH=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_QUANTIZE=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_PERPLEXITY=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_BATCHED_BENCH=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_TTS=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_GGUF_SPLIT=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_IMATRIX=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_TOKENIZE=OFF");
+    cmake_cmd.arg("-DLLAMA_BUILD_LLAMA_MTMD_CLI=OFF");
 
     // Install paths
     cmake_cmd.arg("-DCMAKE_INSTALL_BINDIR=bin");
@@ -133,27 +146,10 @@ fn build_llamacpp(
         .into());
     }
 
-    // Install
-    let mut install_cmd = Command::new("cmake");
-    install_cmd.arg("--install").arg(&build_dir);
-    install_cmd.arg("--config").arg("Release");
-
-    println!("Running CMake install: {:?}", install_cmd);
-    let output = install_cmd.output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "CMake install failed:\n{}\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-
-    // Consolidate all files into bin/ directory
-    consolidate_runtime_files(&install_dir, &bin_dir, target)?;
-
-    // Binary path already defined at top of function
-    let binary_path = bin_dir.join(binary_name);
+    // Use binary directly from build directory (RPATH is already configured correctly)
+    // Skip install/consolidate as it doesn't work reliably - build dir has proper RPATH
+    let build_bin_dir = build_dir.join("bin");
+    let binary_path = build_bin_dir.join(binary_name);
 
     if !binary_path.exists() {
         return Err(format!("Binary not found after build: {}", binary_path.display()).into());
@@ -231,6 +227,13 @@ fn configure_linux(
     // Enable SIMD optimizations
     backend_flags.insert("GGML_AVX2".to_string(), "ON".to_string());
     backend_flags.insert("GGML_AVX".to_string(), "ON".to_string());
+    backend_flags.insert("GGML_SSE3".to_string(), "ON".to_string());
+
+    // CRITICAL: Disable OpenMP to avoid Intel MKL dependency (libmtmd.so)
+    backend_flags.insert("GGML_OPENMP".to_string(), "OFF".to_string());
+
+    // Disable BLAS - use SIMD optimizations instead
+    backend_flags.insert("GGML_BLAS".to_string(), "OFF".to_string());
 
     // Enable GPU backends (some may be optional if dependencies not found)
     // CUDA - try to enable, CMake will skip if not found
