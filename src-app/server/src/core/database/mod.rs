@@ -238,8 +238,13 @@ async fn try_initialize_database_once(
     sqlx::query("SELECT 1").execute(&pool).await?;
 
     // Run migrations
+    // Use set_ignore_missing(true) to allow desktop app to have its own migrations
+    // that are tracked in the same _sqlx_migrations table
     println!("Running database migrations...");
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    sqlx::migrate!("./migrations")
+        .set_ignore_missing(true)
+        .run(&pool)
+        .await?;
 
     Ok(Arc::new(pool))
 }

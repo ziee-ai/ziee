@@ -40,6 +40,11 @@ export default defineConfig(async () => {
           __dirname,
           './src/modules/desktop-base/getBaseURL.ts',
         ),
+        // Use desktop's own generated types (includes desktop endpoints)
+        '@/api-client/types': path.resolve(
+          __dirname,
+          './src/api-client/types.ts',
+        ),
         // Resolve @ to core UI src (core UI uses this extensively)
         '@': path.resolve(__dirname, '../../ui/src'),
         // Resolve @ziee/ui-core to source files

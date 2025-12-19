@@ -2,13 +2,14 @@
 //!
 //! Desktop authentication and user management
 
+pub mod commands;
 mod handlers;
 mod routes;
 
 use crate::module_api::DesktopModule;
 use anyhow::Result;
 use tauri::App;
-use ziee_chat::Router;
+use ziee_chat::ApiRouter;
 
 pub struct AuthModule;
 
@@ -32,8 +33,8 @@ impl DesktopModule for AuthModule {
         Ok(())
     }
 
-    fn register_routes(&self, router: Router) -> Router {
-        tracing::info!("Registering auth routes");
-        router.merge(routes::auth_routes())
+    fn register_api_routes(&self, router: ApiRouter) -> ApiRouter {
+        tracing::info!("Registering auth API routes");
+        router.merge(routes::auth_api_routes())
     }
 }

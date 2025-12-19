@@ -19,6 +19,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-decorum = "1.1.1"
 
 # Backend server (embedded as library)
 ziee-chat = { path = "../../server" }
@@ -54,6 +55,13 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # Static file embedding for production mode
 rust-embed = "8"
 mime_guess = "2"
+
+# CLI parsing
+clap = { version = "4", features = ["derive"] }
+
+# OpenAPI schema generation (must match server version)
+schemars = { version = "0.9.0", features = ["chrono04", "uuid1"] }
+aide = { version = "0.15", features = ["axum"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

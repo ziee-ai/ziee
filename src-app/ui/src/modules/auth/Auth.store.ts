@@ -8,6 +8,13 @@ import type {
 } from '../../api-client/types'
 import type { StoreProxy } from '@/core/stores'
 
+export interface AutoLoginResponse {
+  user: User
+  access_token: string
+  refresh_token: string
+  expires_in?: number // Seconds until token expires (optional for backward compatibility)
+}
+
 interface AuthState {
   user?: User | null
   token?: string | null
@@ -22,6 +29,7 @@ interface AuthState {
   registerNewUser: (userData: CreateUserRequest) => Promise<void>
   clearAuthenticationError: () => void
   initAuth: () => Promise<void>
+  setAuthFromAutoLogin: (response: AutoLoginResponse) => void
 }
 
 // Augment the RegisteredStores interface for IntelliSense
@@ -135,6 +143,16 @@ export const useAuthStore = create<AuthState>()(
 
         clearAuthenticationError: () => {
           set({ error: null })
+        },
+
+        setAuthFromAutoLogin: (response: AutoLoginResponse) => {
+          set({
+            user: response.user,
+            token: response.access_token,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          })
         },
 
         initAuth: async () => {

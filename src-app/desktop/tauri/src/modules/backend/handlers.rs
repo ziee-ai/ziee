@@ -2,15 +2,24 @@
 //!
 //! HTTP route handlers for backend management
 
+use schemars::JsonSchema;
 use serde::Serialize;
-use ziee_chat::Json;
+use ziee_chat::{Json, TransformOperation};
 
 /// Backend status response
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct BackendStatusResponse {
     pub running: bool,
     pub ready: bool,
     pub version: String,
+}
+
+/// OpenAPI documentation for get_backend_status endpoint
+pub fn get_backend_status_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Get backend server status")
+        .id("DesktopBackend.status")
+        .tag("desktop-backend")
+        .response::<200, Json<BackendStatusResponse>>()
 }
 
 /// Get backend status

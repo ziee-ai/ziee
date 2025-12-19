@@ -2,11 +2,15 @@
 //!
 //! Route definitions for backend management
 
+use aide::axum::ApiRouter;
 use super::handlers;
-use ziee_chat::{get, Router};
+use ziee_chat::get_with;
 
-/// Create backend routes
-pub fn backend_routes() -> Router {
-    Router::new()
-        .route("/api/desktop/backend/status", get(handlers::get_backend_status))
+/// Create backend API routes with OpenAPI documentation
+pub fn backend_api_routes() -> ApiRouter {
+    ApiRouter::new()
+        .api_route(
+            "/api/desktop/backend/status",
+            get_with(handlers::get_backend_status, handlers::get_backend_status_docs),
+        )
 }

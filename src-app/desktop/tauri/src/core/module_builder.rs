@@ -10,7 +10,7 @@ use crate::modules::{
 };
 use anyhow::Result;
 use tauri::App;
-use ziee_chat::Router;
+use ziee_chat::{ApiRouter, Router};
 
 /// Create all desktop modules
 ///
@@ -40,14 +40,27 @@ pub fn initialize_modules(modules: &mut [Box<dyn DesktopModule>], app: &mut App)
     Ok(())
 }
 
-/// Build combined router from all module routes
+/// Build combined API router with OpenAPI documentation from all modules
+///
+/// Called to collect API routes that will be included in OpenAPI spec.
+pub fn build_desktop_api_routes(modules: &[Box<dyn DesktopModule>]) -> ApiRouter {
+    let mut router = ApiRouter::new();
+    for module in modules.iter() {
+        tracing::debug!("Collecting API routes from module: {}", module.name());
+        router = module.register_api_routes(router);
+    }
+    tracing::info!("Desktop API routes collected from {} modules", modules.len());
+    router
+}
+
+/// Build combined router from all module routes (without OpenAPI)
 ///
 /// Called after initialization to collect routes from all modules.
 /// The combined router is merged into the backend server.
 pub fn build_desktop_routes(modules: &[Box<dyn DesktopModule>]) -> Router {
     let mut router = Router::new();
     for module in modules.iter() {
-        tracing::info!("Collecting routes from module: {}", module.name());
+        tracing::debug!("Collecting routes from module: {}", module.name());
         router = module.register_routes(router);
     }
     tracing::info!("Desktop routes collected from {} modules", modules.len());

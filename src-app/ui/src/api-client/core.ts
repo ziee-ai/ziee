@@ -1,4 +1,8 @@
-import { ApiEndpointUrl, ParameterByUrl, ResponseByUrl } from './types'
+import {
+  ApiEndpointUrl,
+  ParameterByUrl,
+  ResponseByUrl,
+} from '@/api-client/types'
 import type { SSECallback } from './sse-types'
 import { createSSEHandler } from './sse-types'
 import { getBaseUrl } from './getBaseURL'

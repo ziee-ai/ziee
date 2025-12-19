@@ -25,6 +25,7 @@
        Vite uses its own resolution at build time */
     "baseUrl": ".",
     "paths": {
+      "@/api-client/types": ["./src/api-client/types.ts"],
       "@/*": ["../../ui/src/*"],
       "@ziee/ui-core": ["../../ui/src/index.ts"],
       "@ziee/ui-core/*": ["../../ui/src/*"],

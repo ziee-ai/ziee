@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check": "tsc",
+    "check": "npm run generate-openapi && tsc",
     "build": "tsc && vite build",
     "build:nocheck": "vite build",
     "preview": "vite preview",
@@ -17,7 +17,8 @@
     "test:e2e:report": "playwright show-report",
     "format": "biome format --write ./src",
     "format:check": "biome check ./src",
-    "format:lint": "biome lint --write --unsafe ./src"
+    "format:lint": "biome lint --write --unsafe ./src",
+    "generate-openapi": "npx tsx openapi/generate-endpoints.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

@@ -4,35 +4,68 @@
 
 use crate::core::DesktopRepos;
 use axum::extract::Path;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use ziee_chat::{Json, StatusCode};
+use ziee_chat::{Json, StatusCode, TransformOperation};
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct SettingResponse {
     pub key: String,
     pub value: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct AllSettingsResponse {
     pub settings: Vec<SettingItem>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct SettingItem {
     pub key: String,
     pub value: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct SetSettingRequest {
     pub value: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 pub struct SuccessResponse {
     pub success: bool,
     pub message: String,
+}
+
+/// OpenAPI documentation for get_all_settings endpoint
+pub fn get_all_settings_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Get all desktop settings")
+        .id("DesktopSettings.getAll")
+        .tag("desktop-settings")
+        .response::<200, Json<AllSettingsResponse>>()
+}
+
+/// Get all settings
+pub async fn get_all_settings() -> Result<Json<AllSettingsResponse>, (StatusCode, String)> {
+    let settings = DesktopRepos
+        .settings
+        .get_all()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let items = settings
+        .into_iter()
+        .map(|(key, value)| SettingItem { key, value })
+        .collect();
+
+    Ok(Json(AllSettingsResponse { settings: items }))
+}
+
+/// OpenAPI documentation for get_setting endpoint
+pub fn get_setting_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Get a specific desktop setting by key")
+        .id("DesktopSettings.get")
+        .tag("desktop-settings")
+        .response::<200, Json<SettingResponse>>()
 }
 
 /// Get a setting by key
@@ -46,6 +79,14 @@ pub async fn get_setting(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(SettingResponse { key, value }))
+}
+
+/// OpenAPI documentation for set_setting endpoint
+pub fn set_setting_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Set a desktop setting value")
+        .id("DesktopSettings.set")
+        .tag("desktop-settings")
+        .response::<200, Json<SuccessResponse>>()
 }
 
 /// Set a setting value
@@ -63,6 +104,14 @@ pub async fn set_setting(
         success: true,
         message: format!("Setting '{}' updated", key),
     }))
+}
+
+/// OpenAPI documentation for delete_setting endpoint
+pub fn delete_setting_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Delete a desktop setting")
+        .id("DesktopSettings.delete")
+        .tag("desktop-settings")
+        .response::<200, Json<SuccessResponse>>()
 }
 
 /// Delete a setting
@@ -86,20 +135,4 @@ pub async fn delete_setting(
             format!("Setting '{}' not found", key),
         ))
     }
-}
-
-/// Get all settings
-pub async fn get_all_settings() -> Result<Json<AllSettingsResponse>, (StatusCode, String)> {
-    let settings = DesktopRepos
-        .settings
-        .get_all()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    let items = settings
-        .into_iter()
-        .map(|(key, value)| SettingItem { key, value })
-        .collect();
-
-    Ok(Json(AllSettingsResponse { settings: items }))
 }

@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use tauri::App;
-use ziee_chat::Router;
+use ziee_chat::{ApiRouter, Router};
 
 /// DesktopModule trait for modular desktop features
 ///
@@ -13,7 +13,7 @@ use ziee_chat::Router;
 /// - Backend process management
 /// - System tray
 /// - Auto-update
-/// - Custom HTTP routes
+/// - Custom HTTP routes with OpenAPI documentation
 ///
 /// All functionality (except get_server_port) communicates via HTTP routes.
 pub trait DesktopModule: Send + Sync {
@@ -38,10 +38,18 @@ pub trait DesktopModule: Send + Sync {
     /// - Initialize state
     fn init(&mut self, app: &mut App) -> Result<()>;
 
-    /// Register axum routes for this module
+    /// Register API routes with OpenAPI documentation
     ///
     /// Called after init to collect routes from all modules.
-    /// Routes are merged into the backend server.
+    /// Routes are merged into the backend server and included in OpenAPI spec.
+    fn register_api_routes(&self, router: ApiRouter) -> ApiRouter {
+        router
+    }
+
+    /// Register regular axum routes (without OpenAPI documentation)
+    ///
+    /// Use this for routes that don't need OpenAPI documentation,
+    /// such as static file serving or proxy endpoints.
     fn register_routes(&self, router: Router) -> Router {
         router
     }

@@ -10,14 +10,38 @@ use module_api::ModuleContext;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+// Re-export types for desktop/external use
 pub use core::config::Config;
+pub use core::{Repos, EventBus};
+pub use module_api::ModuleContext as ServerContext;
+pub use modules::auth::{JwtService, AuthResponse, hash_password};
+pub use modules::user::models::User;
 
-/// Initialize and start the backend server
-/// Returns the server address that was bound
-pub async fn start_server(
-    config: Config,
-) -> Result<SocketAddr, Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize tracing for logging based on config
+// Re-export axum types for route building
+pub use axum::{Extension, Json, extract::State, http::StatusCode};
+pub use axum::routing::{get, post};
+pub use axum::Router;
+
+// Re-export aide types for route building with OpenAPI
+pub use aide::axum::ApiRouter;
+pub use aide::axum::routing::{get_with, post_with, put_with, delete_with};
+pub use aide::transform::TransformOperation;
+
+// Re-export app_builder functions for desktop OpenAPI generation
+pub use core::app_builder::{create_modules, build_api_router, initialize_modules};
+pub use core::database::initialize_database;
+pub use core::init_repositories;
+pub use module_api::AppModule;
+
+/// Server setup result containing components needed for customization
+struct ServerSetup {
+    app: Router,
+    jwt_service: Arc<JwtService>,
+    addr: String,
+}
+
+/// Initialize tracing based on config
+fn init_tracing(config: &Config) {
     if let Some(ref logging_config) = config.logging {
         let level = logging_config
             .level
@@ -52,10 +76,10 @@ pub async fn start_server(
             .try_init()
             .ok();
     }
+}
 
-    tracing::info!("Starting Ziee Chat backend server");
-
-    // Initialize application data directory from config
+/// Initialize app data directory
+fn init_data_dir(config: &Config) {
     if let Some(ref app_config) = config.app {
         let data_dir = std::path::PathBuf::from(&app_config.data_dir);
         core::set_app_data_dir(data_dir);
@@ -65,7 +89,12 @@ pub async fn start_server(
             .join(".ziee-chat");
         core::set_app_data_dir(default_data_dir);
     }
+}
 
+/// Common server setup - initializes all components and returns the router
+async fn setup_server(
+    config: Config,
+) -> Result<ServerSetup, Box<dyn std::error::Error + Send + Sync>> {
     // Initialize database
     let pool = core::database::initialize_database(&config).await?;
     tracing::info!("Database initialized with {} connections", pool.num_idle());
@@ -110,14 +139,25 @@ pub async fn start_server(
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::disable())
         .layer(axum::Extension(event_bus))
-        .layer(axum::Extension(jwt_service))
+        .layer(axum::Extension(jwt_service.clone()))
         .layer(cors);
 
-    // Get server address
     let addr = config.server_address();
+
+    Ok(ServerSetup {
+        app,
+        jwt_service,
+        addr,
+    })
+}
+
+/// Start the server with the given router
+async fn run_server(
+    app: Router,
+    addr: String,
+) -> Result<SocketAddr, Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!("Starting HTTP server on {}", addr);
 
-    // Create listener
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     let local_addr = listener.local_addr()?;
 
@@ -126,7 +166,6 @@ pub async fn start_server(
         local_addr
     );
 
-    // Spawn server in background task
     tokio::spawn(async move {
         axum::serve(listener, app.into_make_service())
             .await
@@ -134,6 +173,36 @@ pub async fn start_server(
     });
 
     Ok(local_addr)
+}
+
+/// Initialize and start the backend server
+pub async fn start_server(
+    config: Config,
+) -> Result<SocketAddr, Box<dyn std::error::Error + Send + Sync>> {
+    init_tracing(&config);
+    tracing::info!("Starting Ziee Chat backend server");
+    init_data_dir(&config);
+
+    let setup = setup_server(config).await?;
+    run_server(setup.app, setup.addr).await
+}
+
+/// Initialize and start the backend server with custom routes
+/// Allows desktop/external apps to add custom endpoints
+pub async fn start_server_with_routes<F>(
+    config: Config,
+    route_builder: F,
+) -> Result<SocketAddr, Box<dyn std::error::Error + Send + Sync>>
+where
+    F: FnOnce(Router, Arc<JwtService>) -> Router,
+{
+    init_tracing(&config);
+    tracing::info!("Starting Ziee Chat backend server (with custom routes)");
+    init_data_dir(&config);
+
+    let setup = setup_server(config).await?;
+    let app = route_builder(setup.app, setup.jwt_service);
+    run_server(app, setup.addr).await
 }
 
 /// Find an available port in the given range

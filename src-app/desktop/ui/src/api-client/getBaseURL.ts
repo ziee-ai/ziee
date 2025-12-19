@@ -1,7 +1,7 @@
 /**
  * Desktop Override for getBaseURL
  *
- * This version calls the Tauri backend to get the dynamic server port
+ * Calls Tauri backend to get the dynamic server port
  * instead of using window.location.origin
  */
 
@@ -23,7 +23,6 @@ export const getBaseUrl = (function () {
         return url
       })
       .catch(() => {
-        // console.error('[Desktop] Failed to get server port:', error)
         // Fallback to default port if backend not available
         return window.location.origin
       })

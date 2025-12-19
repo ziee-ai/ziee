@@ -1,12 +1,15 @@
 //! Auth Routes
 //!
 //! Route definitions for desktop authentication
+//!
+//! NOTE: Auto-login has been moved to a Tauri command (see commands.rs)
+//! to prevent web-based clients from accessing it.
 
-use super::handlers;
-use ziee_chat::{post, Router};
+use aide::axum::ApiRouter;
 
-/// Create auth routes
-pub fn auth_routes() -> Router {
-    Router::new()
-        .route("/api/desktop/auth/auto-login", post(handlers::desktop_auto_login))
+/// Create auth API routes with OpenAPI documentation
+///
+/// Returns empty router - auto-login is now a Tauri command
+pub fn auth_api_routes() -> ApiRouter {
+    ApiRouter::new()
 }

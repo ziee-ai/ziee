@@ -12,6 +12,7 @@ pub mod types;
 
 // Re-exports
 pub use jwt::JwtService;
+pub use password::hash_password;
 pub use repository::AuthRepository;
 pub use routes::auth_routes;
 pub use types::AuthResponse;

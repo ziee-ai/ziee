@@ -3,7 +3,7 @@ import {
   ApiEndpointParameters,
   ApiEndpointResponses,
   ApiEndpoints,
-} from './types'
+} from '@/api-client/types'
 import { callAsync, FileUploadProgressCallback, getAuthToken } from './core'
 import type { SSECallback, SSEEventKey, SSEEventData } from './sse-types'
 

@@ -8,7 +8,7 @@ mod routes;
 use crate::module_api::DesktopModule;
 use anyhow::Result;
 use tauri::App;
-use ziee_chat::Router;
+use ziee_chat::ApiRouter;
 
 pub struct SettingsModule;
 
@@ -32,8 +32,8 @@ impl DesktopModule for SettingsModule {
         Ok(())
     }
 
-    fn register_routes(&self, router: Router) -> Router {
-        tracing::info!("Registering settings routes");
-        router.merge(routes::settings_routes())
+    fn register_api_routes(&self, router: ApiRouter) -> ApiRouter {
+        tracing::info!("Registering settings API routes");
+        router.merge(routes::settings_api_routes())
     }
 }

@@ -15,13 +15,19 @@ pub use state::BackendState;
 use crate::module_api::DesktopModule;
 use anyhow::Result;
 use axum::{body::Body, http::Request, response::Response};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use tauri::{App, Manager};
-use ziee_chat::Router;
+use ziee_chat::ApiRouter;
 
 /// Global storage for backend config (set during init, used when starting server)
 static BACKEND_CONFIG: OnceLock<ziee_chat::Config> = OnceLock::new();
 static BACKEND_STATE: OnceLock<BackendState> = OnceLock::new();
+static JWT_SERVICE: OnceLock<Arc<ziee_chat::JwtService>> = OnceLock::new();
+
+/// Get the JWT service (for Tauri commands)
+pub fn get_jwt_service() -> Option<&'static Arc<ziee_chat::JwtService>> {
+    JWT_SERVICE.get()
+}
 
 pub struct BackendModule {
     config_file: Option<String>,
@@ -46,7 +52,7 @@ impl DesktopModule for BackendModule {
         tracing::info!("Initializing backend module...");
 
         // Load config from file or generate default
-        let config = if let Some(ref config_path) = self.config_file {
+        let mut config = if let Some(ref config_path) = self.config_file {
             tracing::info!("Loading config from file: {}", config_path);
             ziee_chat::Config::load_from(Some(config_path.clone()))
                 .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?
@@ -72,6 +78,9 @@ impl DesktopModule for BackendModule {
             create_desktop_config(&data_dir, port)?
         };
 
+        // Desktop always needs permissive CORS (dynamic port, varying frontend origin)
+        config.server.cors = None;
+
         let port = config.server.port;
         tracing::info!("Backend will use port {}", port);
 
@@ -93,9 +102,9 @@ impl DesktopModule for BackendModule {
         Ok(())
     }
 
-    fn register_routes(&self, router: Router) -> Router {
-        tracing::info!("Registering backend routes");
-        router.merge(routes::backend_routes())
+    fn register_api_routes(&self, router: ApiRouter) -> ApiRouter {
+        tracing::info!("Registering backend API routes");
+        router.merge(routes::backend_api_routes())
     }
 
     fn shutdown(&mut self) -> Result<()> {
@@ -114,7 +123,7 @@ impl DesktopModule for BackendModule {
 ///
 /// This should be called from lib.rs after all modules have been initialized
 /// and routes have been collected.
-pub fn start_backend_server(desktop_routes: Router) {
+pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHandle) {
     let config = BACKEND_CONFIG
         .get()
         .expect("Backend config not initialized - call init() first")
@@ -127,7 +136,11 @@ pub fn start_backend_server(desktop_routes: Router) {
     tracing::info!("Starting backend server with desktop routes...");
 
     tauri::async_runtime::spawn(async move {
-        match ziee_chat::start_server_with_routes(config, |router, _jwt| {
+        match ziee_chat::start_server_with_routes(config, |router, jwt| {
+            // Store JWT service for Tauri command access
+            let _ = JWT_SERVICE.set(jwt.clone());
+            tracing::info!("JWT service stored for Tauri commands");
+
             // Initialize desktop repositories with server's pool
             // Repos is available here because start_server_with_routes
             // initializes it before calling this closure
@@ -164,7 +177,15 @@ pub fn start_backend_server(desktop_routes: Router) {
                     tracing::error!("Failed to run desktop migrations: {}", e);
                 }
 
+                // Ensure admin exists (create on first run)
+                if let Err(e) = ensure_desktop_admin().await {
+                    tracing::error!("Failed to ensure desktop admin: {}", e);
+                }
+
                 state.set_ready(true);
+
+                // Create window now that server is ready
+                create_main_window(&app_handle);
             }
             Err(e) => {
                 tracing::error!("Failed to start backend server: {}", e);
@@ -188,6 +209,32 @@ async fn run_desktop_migrations() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Desktop migration failed: {}", e))?;
 
     tracing::info!("Desktop migrations completed successfully");
+    Ok(())
+}
+
+/// Ensure desktop admin user exists (create on first run)
+async fn ensure_desktop_admin() -> Result<()> {
+    let has_admin = ziee_chat::Repos
+        .user
+        .has_admin()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to check admin: {}", e))?;
+
+    if !has_admin {
+        tracing::info!("No admin exists, creating desktop admin user");
+
+        let password_hash = ziee_chat::hash_password("desktop-auto-login")
+            .map_err(|e| anyhow::anyhow!("Failed to hash password: {}", e))?;
+
+        ziee_chat::Repos
+            .app
+            .create_admin_user("admin", "admin@localhost", &password_hash, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create admin: {}", e))?;
+
+        tracing::info!("Desktop admin user created successfully");
+    }
+
     Ok(())
 }
 
@@ -283,4 +330,87 @@ fn create_desktop_config(
     let config: ziee_chat::Config = serde_yaml::from_str(&yaml_str)?;
 
     Ok(config)
+}
+
+/// Create the main window with platform-specific customizations
+fn create_main_window(app_handle: &tauri::AppHandle) {
+    tracing::info!("Creating main window...");
+
+    // macOS/Linux: no decorations initially
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let mut main_window_builder = tauri::webview::WebviewWindowBuilder::new(
+        app_handle,
+        "main",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("")
+    .inner_size(1200.0, 800.0)
+    .min_inner_size(800.0, 600.0)
+    .resizable(true)
+    .fullscreen(false)
+    .decorations(false)
+    .center()
+    .effects(tauri::utils::config::WindowEffectsConfig {
+        effects: vec![
+            tauri::window::Effect::Mica,
+            tauri::window::Effect::Acrylic,
+            tauri::window::Effect::Blur,
+        ],
+        state: Some(tauri::window::EffectState::Active),
+        radius: Some(8.0),
+        color: None,
+    });
+
+    // Windows: has decorations
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    let main_window_builder = tauri::webview::WebviewWindowBuilder::new(
+        app_handle,
+        "main",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("")
+    .inner_size(1200.0, 800.0)
+    .min_inner_size(800.0, 600.0)
+    .resizable(true)
+    .fullscreen(false)
+    .decorations(true)
+    .center()
+    .effects(tauri::utils::config::WindowEffectsConfig {
+        effects: vec![
+            tauri::window::Effect::Mica,
+            tauri::window::Effect::Acrylic,
+            tauri::window::Effect::Blur,
+        ],
+        state: Some(tauri::window::EffectState::Active),
+        radius: Some(8.0),
+        color: None,
+    });
+
+    // macOS: overlay titlebar with native traffic light position (no glitch on resize)
+    #[cfg(target_os = "macos")]
+    {
+        main_window_builder = main_window_builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .decorations(true)
+            .traffic_light_position(tauri::LogicalPosition::new(12.0, 22.0));
+    }
+
+    // Linux: transparent
+    #[cfg(target_os = "linux")]
+    {
+        main_window_builder = main_window_builder.transparent(true);
+    }
+
+    main_window_builder.build().unwrap();
+
+    // Post-build: Windows overlay
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::Manager;
+        use tauri_plugin_decorum::WebviewWindowExt;
+        let main_window = app_handle.get_webview_window("main").unwrap();
+        main_window.create_overlay_titlebar().unwrap();
+    }
+
+    tracing::info!("Main window created successfully");
 }

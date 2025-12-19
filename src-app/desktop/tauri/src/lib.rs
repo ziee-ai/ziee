@@ -6,6 +6,7 @@
 mod core;
 mod module_api;
 pub mod modules;
+pub mod openapi;
 
 use anyhow::Result;
 
@@ -33,6 +34,7 @@ pub fn run(config_file: Option<String>) -> Result<()> {
     tracing::info!("Created {} desktop modules", modules.len());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -46,19 +48,31 @@ pub fn run(config_file: Option<String>) -> Result<()> {
             // Initialize all modules
             core::initialize_modules(&mut modules, app)?;
 
-            // Collect routes from all modules
-            let desktop_routes = core::build_desktop_routes(&modules);
+            // Collect API routes from all modules (with OpenAPI documentation)
+            let desktop_routes = core::build_desktop_api_routes(&modules);
 
-            // Start the backend server with collected routes
-            modules::backend::start_backend_server(desktop_routes);
+            // Start the backend server with collected routes (pass AppHandle for window creation)
+            modules::backend::start_backend_server(desktop_routes, app.handle().clone());
 
             tracing::info!("Tauri setup complete");
             Ok(())
         })
-        // Only keep get_server_port - all other functionality via HTTP routes
+        // Tauri commands (desktop-only functionality)
         .invoke_handler(tauri::generate_handler![
             crate::modules::backend::commands::get_server_port,
+            crate::modules::auth::commands::auto_login,
         ])
+        // Window event handler for cleanup
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label() == "main" {
+                    tracing::info!("Main window close requested, cleaning up...");
+                    tauri::async_runtime::spawn(async move {
+                        ziee_chat::cleanup_server().await;
+                    });
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 
