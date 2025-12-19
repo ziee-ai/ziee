@@ -6,8 +6,8 @@ import type {
   MessageContent,
   MessageWithContent,
 } from '@/api-client/types'
-import { chatExtensionRegistry } from '../../extensions'
-import type { SSEEvent, GenericSSEEvent } from '../extensions/types'
+import { chatExtensionRegistry } from '@/modules/chat/extensions'
+import type { SSEEvent, GenericSSEEvent } from '@/modules/chat/core/extensions/types'
 
 /**
  * Snapshot of conversation state for caching

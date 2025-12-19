@@ -1,9 +1,9 @@
 import { createModule } from '@/core'
 import { CloudDownloadOutlined } from '@ant-design/icons'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import { useLlmRepositoryStore } from './stores/LlmRepository.store'
-import { useLlmRepositoryDrawerStore } from './components/LlmRepositoryDrawer.store'
-import './types' // Import type augmentation
+import { useLlmRepositoryStore } from '@/modules/llm-repository/stores/LlmRepository.store'
+import { useLlmRepositoryDrawerStore } from '@/modules/llm-repository/components/LlmRepositoryDrawer.store'
+import '@/modules/llm-repository/types' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 

@@ -12,7 +12,7 @@ import {
 import { useEffect } from 'react'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { Stores } from '@/core/stores'
-import { formatBytes } from './utils/formatBytes'
+import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
 const { Text } = Typography

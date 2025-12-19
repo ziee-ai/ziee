@@ -1,6 +1,6 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useHubModelsStore } from './stores/hub-models-store'
-import type { useModelDetailsDrawerStore } from './components/ModelDetailsDrawer.store'
+import type { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
+import type { useModelDetailsDrawerStore } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

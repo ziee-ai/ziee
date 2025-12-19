@@ -6,9 +6,9 @@ import {
   Typography,
 } from 'antd'
 import React, { useRef } from 'react'
-import { ResizeHandle } from './ResizeHandle'
+import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import tinycolor from 'tinycolor2'
-import { useWindowMinSize } from '../hooks/useWindowMinSize'
+import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowBack } from 'react-icons/io'
 import { DivScrollY } from '@/components/common/DivScrollY'
 

@@ -1,6 +1,6 @@
 import { Alert, Typography } from 'antd'
 import { StopOutlined } from '@ant-design/icons'
-import type { McpToolCall } from '../Mcp.store'
+import type { McpToolCall } from '@/modules/chat/extensions/mcp/Mcp.store'
 
 const { Text } = Typography
 

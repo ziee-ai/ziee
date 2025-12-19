@@ -1,11 +1,11 @@
 import { useMemo, useEffect } from 'react'
-import { ThemeProvider } from './components/ThemeProvider'
-import { loadModules } from './modules/loader'
-import { setupAccessibilityFixes } from './utils/accessibilityFixes'
-import { usePrefetchModules } from './hooks/usePrefetchModules'
-import { Stores } from './core/stores'
-import { LazyComponentRenderer } from './core/components/LazyComponentRenderer'
-import type { ComponentRegistration } from './core/module-system/types'
+import { ThemeProvider } from '@/components/ThemeProvider'
+import { loadModules } from '@/modules/loader'
+import { setupAccessibilityFixes } from '@/utils/accessibilityFixes'
+import { usePrefetchModules } from '@/hooks/usePrefetchModules'
+import { Stores } from '@/core/stores'
+import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import type { ComponentRegistration } from '@/core/module-system/types'
 
 // Load all modules before rendering
 loadModules()

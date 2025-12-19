@@ -4,7 +4,7 @@ import { useState } from 'react'
 import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
-import { LlmModelParametersSection } from './shared/LlmModelParametersSection'
+import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { BASIC_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
 
 export function AddRemoteLlmModelDrawer() {

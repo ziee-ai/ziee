@@ -127,6 +127,7 @@
 		}
 	},
 	"html": { "formatter": { "selfCloseVoidElements": "always" } },
+	"css": { "parser": { "tailwindDirectives": true } },
 	"overrides": [
 		{
 			"includes": ["**/*.{js,jsx,ts,tsx}"],

@@ -2,10 +2,10 @@ import {
   createExtension,
   type ChatExtension,
   type ExtensionRequestFields,
-} from '../../core/extensions'
+} from '@/modules/chat/core/extensions'
 import { Stores } from '@/core/stores'
-import { createAssistantStore } from './Assistant.store'
-import { AssistantSelector } from './components/AssistantSelector'
+import { createAssistantStore } from '@/modules/chat/extensions/assistant/Assistant.store'
+import { AssistantSelector } from '@/modules/chat/extensions/assistant/components/AssistantSelector'
 
 /**
  * Assistant Extension

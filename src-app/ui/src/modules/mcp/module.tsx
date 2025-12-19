@@ -6,14 +6,14 @@ import {
   useMcpStore,
   useSystemMcpServersStore,
   useMcpServerDrawerStore,
-} from './stores'
-import { useSystemMcpServerGroupCardStore } from './components/system/McpServerGroupsAssignmentCard.store'
-import { useGroupSystemMcpServersWidgetStore } from './widgets/GroupSystemMcpServersWidget.store'
-import { useGroupSystemMcpServersAssignmentStore } from './components/system/GroupSystemMcpServersAssignmentDrawer.store'
-import { useMcpServerGroupsAssignmentStore } from './components/system/McpServerGroupsAssignmentDrawer.store'
+} from '@/modules/mcp/stores'
+import { useSystemMcpServerGroupCardStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard.store'
+import { useGroupSystemMcpServersWidgetStore } from '@/modules/mcp/widgets/GroupSystemMcpServersWidget.store'
+import { useGroupSystemMcpServersAssignmentStore } from '@/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.store'
+import { useMcpServerGroupsAssignmentStore } from '@/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
-import './types' // CRITICAL: Import to enable type declaration merging
+import '@/modules/mcp/types' // CRITICAL: Import to enable type declaration merging
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const McpServersSettings = lazyWithPreload(() =>

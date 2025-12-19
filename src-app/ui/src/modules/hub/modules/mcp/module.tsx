@@ -1,9 +1,9 @@
 import { createModule } from '@/core'
 import { ApiOutlined } from '@ant-design/icons'
-import { useHubMcpServersStore } from './stores/hub-mcp-servers-store'
-import { useMcpServerDetailsDrawerStore } from './components/McpServerDetailsDrawer.store'
+import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
+import { useMcpServerDetailsDrawerStore } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import './types'
+import '@/modules/hub/modules/mcp/types'
 
 const McpServersHubTab = lazyWithPreload(() =>
   import('./components/McpServersHubTab').then(m => ({

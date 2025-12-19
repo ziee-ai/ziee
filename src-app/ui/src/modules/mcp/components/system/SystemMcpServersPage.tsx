@@ -3,9 +3,9 @@ import { Button, Input, Select, Typography, Flex } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
-import { McpServerCard } from '../common/McpServerCard'
-import { McpServerDrawer } from '../common/McpServerDrawer'
-import { McpServerGroupsAssignmentCard } from './McpServerGroupsAssignmentCard'
+import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
+import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
+import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
 
 const { Text } = Typography
 

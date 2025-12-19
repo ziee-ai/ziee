@@ -1,6 +1,6 @@
 import { theme } from 'antd'
-import { AppThemeConfig } from './light.ts'
-import { ComponentOverrides, TokenOverrides } from './override.ts'
+import { AppThemeConfig } from '@/themes/light.ts'
+import { ComponentOverrides, TokenOverrides } from '@/themes/override.ts'
 import tinycolor from 'tinycolor2'
 
 const BaseBackgroundColor = '#1e1e1e'

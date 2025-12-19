@@ -13,7 +13,7 @@ import {
 } from '@ant-design/icons'
 import type { HubModel, HubModelQuantizationOption } from '@/api-client/types'
 import { useState } from 'react'
-import { ModelDetailsDrawer } from './ModelDetailsDrawer'
+import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
 import { Stores } from '@/core/stores'
 
 const { Text, Paragraph } = Typography

@@ -17,7 +17,7 @@ import {
   emitLlmModelDisabled,
   emitLlmModelDeleted,
   emitLlmProviderGroupsChanged,
-} from '../events'
+} from '@/modules/llm-provider/events'
 import { Stores } from '@/core/stores'
 
 // Extended type that includes models array

@@ -11,7 +11,7 @@ import {
   emitMcpServerCreated,
   emitMcpServerUpdated,
   emitMcpServerDeleted,
-} from '../events'
+} from '@/modules/mcp/events'
 import { Stores } from '@/core/stores'
 
 interface SystemMcpServersState {

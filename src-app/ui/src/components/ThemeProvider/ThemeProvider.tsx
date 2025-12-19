@@ -1,10 +1,10 @@
 import { App, ConfigProvider } from 'antd'
 import { useEffect } from 'react'
 import { useUpdate } from 'react-use'
-import { ThemeContext } from '../../hooks/useTheme'
-import { themes } from '../../themes'
+import { ThemeContext } from '@/hooks/useTheme'
+import { themes } from '@/themes'
 import { AppThemeConfig } from '@/themes/light'
-import { resolveSystemTheme } from './resolveTheme'
+import { resolveSystemTheme } from '@/components/ThemeProvider/resolveTheme'
 import { Stores } from '@/core/stores'
 
 interface ThemeProviderProps {

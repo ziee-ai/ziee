@@ -19,10 +19,10 @@ import {
   Typography,
 } from 'antd'
 import { useEffect } from 'react'
-import { Stores } from '../stores'
+import { Stores } from '@/modules/assistants/stores'
 import type { Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
-import { AssistantFormDrawer } from '../components/AssistantFormDrawer'
+import { AssistantFormDrawer } from '@/modules/assistants/components/AssistantFormDrawer'
 
 const { Text } = Typography
 

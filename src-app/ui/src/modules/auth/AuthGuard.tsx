@@ -2,7 +2,7 @@ import { Layout, Spin } from 'antd'
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Stores } from '@/core/stores'
-import { AuthPage } from './AuthPage'
+import { AuthPage } from '@/modules/auth/AuthPage'
 
 const { Content } = Layout
 

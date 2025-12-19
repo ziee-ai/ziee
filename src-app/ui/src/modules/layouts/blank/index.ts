@@ -1,5 +1,5 @@
 import type { LayoutDefinition } from '@/modules/router/types'
-import { BlankLayout as BlankLayoutComponent } from './BlankLayout'
+import { BlankLayout as BlankLayoutComponent } from '@/modules/layouts/blank/BlankLayout'
 
 /**
  * BlankLayout - Simple layout with no chrome

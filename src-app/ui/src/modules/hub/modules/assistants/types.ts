@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useHubAssistantsStore } from './stores/hub-assistants-store'
+import type { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

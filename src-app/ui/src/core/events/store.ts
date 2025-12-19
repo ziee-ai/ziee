@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import type { EventHandler, Unsubscribe, AppEvents, BaseEvent } from './types'
+import type { EventHandler, Unsubscribe, AppEvents, BaseEvent } from '@/core/events/types'
 
 interface EventBusState {
   // Map of event type to set of handlers (use any for storage, type-safe at call site)

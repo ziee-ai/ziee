@@ -37,8 +37,8 @@
  * ```
  */
 
-import { chatExtensionRegistry } from '../core/extensions'
-import type { ChatExtension } from '../core/extensions'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
+import type { ChatExtension } from '@/modules/chat/core/extensions'
 
 /**
  * Auto-discover all extension.tsx files in subdirectories

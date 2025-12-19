@@ -1,5 +1,5 @@
 import { enableMapSet } from 'immer'
-import { createExtensionStore } from '../../core/extensions'
+import { createExtensionStore } from '@/modules/chat/core/extensions'
 import type { ToolApprovalDecision, McpServerConfig, AutoApprovedServer, DisabledServer, UserMcpDefaultsResponse, LoopSettings, ToolIdentifier, PerToolLimit } from '@/api-client/types'
 
 // Enable Map support in Immer

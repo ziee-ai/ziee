@@ -12,7 +12,7 @@ import {
   emitGroupDeleted,
   emitGroupMemberAdded,
   emitGroupMemberRemoved,
-} from '../events'
+} from '@/modules/user/events'
 import { Stores } from '@/core/stores'
 
 interface GroupMember {

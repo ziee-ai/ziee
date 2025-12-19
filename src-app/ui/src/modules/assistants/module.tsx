@@ -2,9 +2,9 @@ import { createModule } from '@/core'
 import { RobotOutlined } from '@ant-design/icons'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import { useUserAssistantsStore, useTemplateAssistantsStore } from './stores'
-import { useAssistantDrawerStore } from './components/AssistantDrawer.store'
-import './types'
+import { useUserAssistantsStore, useTemplateAssistantsStore } from '@/modules/assistants/stores'
+import { useAssistantDrawerStore } from '@/modules/assistants/components/AssistantDrawer.store'
+import '@/modules/assistants/types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 

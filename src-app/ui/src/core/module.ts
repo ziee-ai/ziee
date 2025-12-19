@@ -4,7 +4,7 @@ import type {
   StoreRegistration,
   SlotRegistration,
   ComponentRegistration,
-} from './module-system/types'
+} from '@/core/module-system/types'
 
 // Base interface - infrastructure modules extend this via declaration merging
 export interface CreateModuleOptions {

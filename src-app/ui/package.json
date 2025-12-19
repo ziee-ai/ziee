@@ -24,7 +24,7 @@
     "preview": "vite preview",
     "format": "biome format --write ./src",
     "format:check": "biome check ./src",
-    "format:lint": "biome lint --write --unsafe ./src",
+    "format:lint": "npx ts-path-alias-fixer && biome lint --write --unsafe ./src",
     "generate-openapi": "npx tsx openapi/generate-endpoints.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

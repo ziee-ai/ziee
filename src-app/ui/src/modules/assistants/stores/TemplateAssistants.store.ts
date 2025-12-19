@@ -11,7 +11,7 @@ import {
   emitAssistantTemplateCreated,
   emitAssistantTemplateUpdated,
   emitAssistantTemplateDeleted,
-} from '../events'
+} from '@/modules/assistants/events'
 import { Stores } from '@/core/stores'
 
 interface TemplateAssistantsState {

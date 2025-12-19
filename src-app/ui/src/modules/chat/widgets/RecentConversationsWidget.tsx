@@ -33,7 +33,7 @@ export function RecentConversationsWidget() {
     setDeletingId(id)
     try {
       await Stores.ChatHistory.__state.deleteConversation(id)
-    } catch (error) {
+    } catch (_error) {
       setDeletingId(null)
     }
   }

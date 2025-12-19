@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Stores } from '../stores'
+import { Stores } from '@/modules/assistants/stores'
 
 const { TextArea } = Input
 

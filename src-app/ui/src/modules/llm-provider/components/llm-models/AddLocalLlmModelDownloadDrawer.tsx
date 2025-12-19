@@ -13,7 +13,7 @@ import {
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
-import { LocalLlmModelCommonFields } from './shared/LocalLlmModelCommonFields'
+import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
 import { ApiClient } from '@/api-client'
 import type { LlmRepository, FileFormat } from '@/api-client/types'
 

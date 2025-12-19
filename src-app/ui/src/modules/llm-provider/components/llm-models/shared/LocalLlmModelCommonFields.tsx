@@ -1,7 +1,7 @@
 import { Form, Select } from 'antd'
-import { LOCAL_FILE_TYPE_OPTIONS } from '../../../constants/localLlmModelTypes'
-import { LlmModelParametersSection } from './LlmModelParametersSection'
-import { LOCAL_MODEL_FIELDS } from '../../../constants/llmModelParameters'
+import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants/localLlmModelTypes'
+import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
+import { LOCAL_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
 
 const ENGINE_OPTIONS = [
   {

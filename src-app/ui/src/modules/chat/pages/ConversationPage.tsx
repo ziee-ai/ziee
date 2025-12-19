@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { Spin, Alert } from 'antd'
-import { MessageList } from '../components/MessageList'
-import { ChatInput } from '../components/ChatInput'
-import { TitleEditor } from '../components/TitleEditor'
+import { MessageList } from '@/modules/chat/components/MessageList'
+import { ChatInput } from '@/modules/chat/components/ChatInput'
+import { TitleEditor } from '@/modules/chat/components/TitleEditor'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { Stores } from '@/core'
 

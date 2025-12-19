@@ -1,8 +1,8 @@
 import { createModule } from '@/core'
 import { RobotOutlined } from '@ant-design/icons'
-import { useHubAssistantsStore } from './stores/hub-assistants-store'
+import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import './types'
+import '@/modules/hub/modules/assistants/types'
 
 const AssistantsHubTab = lazyWithPreload(() =>
   import('./components/AssistantsHubTab').then(m => ({

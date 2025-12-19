@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { ApiClient } from '../../api-client'
-import type { SetupAdminRequest } from '../../api-client/types'
+import { ApiClient } from '@/api-client'
+import type { SetupAdminRequest } from '@/api-client/types'
 import type { StoreProxy } from '@/core/stores'
 
 interface AppState {

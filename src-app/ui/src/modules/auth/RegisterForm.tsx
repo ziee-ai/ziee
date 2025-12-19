@@ -2,7 +2,7 @@ import { Alert, Button, Card, Form, Input, Typography } from 'antd'
 import { LockOutlined, MailOutlined, UserOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
-import type { CreateUserRequest } from '../../api-client/types'
+import type { CreateUserRequest } from '@/api-client/types'
 
 const { Title, Text } = Typography
 

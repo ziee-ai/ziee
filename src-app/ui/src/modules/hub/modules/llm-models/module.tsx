@@ -1,9 +1,9 @@
 import { createModule } from '@/core'
 import { CloudServerOutlined } from '@ant-design/icons'
-import { useHubModelsStore } from './stores/hub-models-store'
-import { useModelDetailsDrawerStore } from './components/ModelDetailsDrawer.store'
+import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
+import { useModelDetailsDrawerStore } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import './types'
+import '@/modules/hub/modules/llm-models/types'
 
 const ModelsHubTab = lazyWithPreload(() =>
   import('./components/ModelsHubTab').then(m => ({ default: m.ModelsHubTab })),

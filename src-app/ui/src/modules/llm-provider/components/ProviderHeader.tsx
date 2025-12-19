@@ -17,7 +17,7 @@ import {
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
-import { PROVIDER_ICONS } from '../constants'
+import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import type { LlmProvider } from '@/api-client/types'
 
 export function ProviderHeader() {

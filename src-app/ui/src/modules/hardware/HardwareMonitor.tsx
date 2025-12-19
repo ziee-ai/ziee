@@ -1,7 +1,7 @@
 import { Alert, App, Button, Card, Progress, Spin, Tag, Typography } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
-import { formatBytes } from './utils/formatBytes'
+import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 
 const { Text } = Typography
 

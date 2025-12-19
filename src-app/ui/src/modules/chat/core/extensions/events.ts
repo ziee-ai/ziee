@@ -1,5 +1,5 @@
-import type { SSEEvent } from './types'
-import { chatExtensionRegistry } from './registry'
+import type { SSEEvent } from '@/modules/chat/core/extensions/types'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions/registry'
 
 /**
  * Parse SSE message data into typed event

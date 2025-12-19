@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import type { MessageContent } from '@/api-client/types'
-import { chatExtensionRegistry } from '../core/extensions'
-import { TextContent } from './TextContent'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions'
+import { TextContent } from '@/modules/chat/components/TextContent'
 
 interface ContentRendererProps {
   content: MessageContent

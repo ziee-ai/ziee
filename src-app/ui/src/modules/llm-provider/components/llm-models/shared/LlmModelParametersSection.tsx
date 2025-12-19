@@ -2,7 +2,7 @@ import { Typography } from 'antd'
 import {
   LlmModelParameterField,
   ParameterFieldConfig,
-} from './LlmModelParameterField'
+} from '@/modules/llm-provider/components/llm-models/shared/LlmModelParameterField'
 
 const { Title } = Typography
 

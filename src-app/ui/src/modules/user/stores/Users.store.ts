@@ -6,7 +6,7 @@ import type {
   CreateUserRequest,
   UpdateUserRequest,
 } from '@/api-client/types'
-import { emitUserCreated, emitUserUpdated, emitUserDeleted } from '../events'
+import { emitUserCreated, emitUserUpdated, emitUserDeleted } from '@/modules/user/events'
 import { Stores } from '@/core/stores'
 
 interface UsersState {

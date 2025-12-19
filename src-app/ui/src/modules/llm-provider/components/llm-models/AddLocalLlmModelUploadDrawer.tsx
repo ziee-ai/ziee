@@ -13,10 +13,10 @@ import {
 } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
-import { LOCAL_FILE_TYPE_OPTIONS } from '../../constants'
+import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants'
 import { Stores } from '@/core/stores'
 import { formatBytes } from '@/utils/downloadUtils'
-import { LocalLlmModelCommonFields } from './shared/LocalLlmModelCommonFields'
+import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
 
 const { Text } = Typography
 

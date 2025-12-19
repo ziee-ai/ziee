@@ -1,6 +1,6 @@
 import { createModule } from '@/core'
-import { useAppLayoutStore } from './AppLayout.store'
-import './types'
+import { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
+import '@/modules/layouts/app-layout/types'
 
 export default createModule({
   metadata: {

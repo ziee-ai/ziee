@@ -6,7 +6,7 @@ import {
   
   type ChatExtension,
   type ContentRendererProps,
-} from '../../core/extensions'
+} from '@/modules/chat/core/extensions'
 
 /**
  * Code block component with copy functionality

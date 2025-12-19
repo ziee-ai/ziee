@@ -5,7 +5,7 @@ import { ToolOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import type { Tool } from '@/api-client/types'
-import { PENDING_CONVERSATION_KEY } from '../Mcp.store'
+import { PENDING_CONVERSATION_KEY } from '@/modules/chat/extensions/mcp/Mcp.store'
 
 const { Text, Title } = Typography
 

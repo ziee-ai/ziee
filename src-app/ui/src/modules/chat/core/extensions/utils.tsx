@@ -4,7 +4,7 @@ import type {
   BeforeSendResult,
   AfterStreamCompleteResult,
   HandleSSEEventResult,
-} from './types'
+} from '@/modules/chat/core/extensions/types'
 
 /**
  * Helper to create a basic extension with common defaults

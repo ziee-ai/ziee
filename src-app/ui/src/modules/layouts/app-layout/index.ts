@@ -1,5 +1,5 @@
 import type { LayoutDefinition } from '@/modules/router/types'
-import { AppLayout } from './AppLayout'
+import { AppLayout } from '@/modules/layouts/app-layout/AppLayout'
 
 /**
  * AppLayoutDef - Layout definition for the main application layout

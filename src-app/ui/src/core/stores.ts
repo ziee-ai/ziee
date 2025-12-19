@@ -1,7 +1,7 @@
 import type { StoreApi, UseBoundStore } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import { useEffect } from 'react'
-import { useModuleSystemStore } from './module-system'
+import { useModuleSystemStore } from '@/core/module-system'
 
 // ============================================================================
 // Store Proxy - Creates typed store accessors with IntelliSense

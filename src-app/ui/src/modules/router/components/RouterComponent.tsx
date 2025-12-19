@@ -9,7 +9,7 @@ import { Spin } from 'antd'
 import { Stores } from '@/core/stores'
 import { AuthGuard } from '@/modules/auth'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
-import type { LayoutDefinition, RouteConfig } from '../types'
+import type { LayoutDefinition, RouteConfig } from '@/modules/router/types'
 
 /**
  * RouterComponent - Handles all routing logic for the application.

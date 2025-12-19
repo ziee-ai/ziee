@@ -16,9 +16,9 @@ import { Stores } from '@/core/stores'
 import type { CreateGroupRequest, Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
-import { EditUserGroupDrawer } from './EditUserGroupDrawer.tsx'
-import { GroupMembersDrawer } from './GroupMembersDrawer.tsx'
-import { GroupListItem } from './GroupListItem.tsx'
+import { EditUserGroupDrawer } from '@/modules/user/components/group/EditUserGroupDrawer.tsx'
+import { GroupMembersDrawer } from '@/modules/user/components/group/GroupMembersDrawer.tsx'
+import { GroupListItem } from '@/modules/user/components/group/GroupListItem.tsx'
 
 const { TextArea } = Input
 

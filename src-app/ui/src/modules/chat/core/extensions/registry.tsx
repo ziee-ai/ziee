@@ -7,7 +7,7 @@ import type {
   ChatSlotName,
   ExtensionRequestFields,
   ContentRendererProps,
-} from './types'
+} from '@/modules/chat/core/extensions/types'
 import React from 'react'
 
 /**

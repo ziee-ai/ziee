@@ -1,5 +1,5 @@
 import { createModule, Stores } from '@/core'
-import { useAppStore } from './App.store'
+import { useAppStore } from '@/modules/app/App.store'
 import { BlankLayout } from '@/modules/layouts/blank'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 

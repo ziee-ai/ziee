@@ -1,8 +1,8 @@
 import { createModule } from '@/core'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
-import { useHardwareStore } from './Hardware.store'
-import './types'
+import { useHardwareStore } from '@/modules/hardware/Hardware.store'
+import '@/modules/hardware/types'
 import { BlankLayout } from '@/modules/layouts/blank' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types

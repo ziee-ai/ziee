@@ -1,6 +1,6 @@
 import { AppLayout } from '@/modules/layouts/app-layout'
 import type { LayoutDefinition } from '@/modules/router/types'
-import SettingsPage from './SettingsPage'
+import SettingsPage from '@/modules/settings/SettingsPage'
 
 export function SettingsLayout() {
   return (

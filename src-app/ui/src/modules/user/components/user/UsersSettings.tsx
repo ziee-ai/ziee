@@ -25,12 +25,12 @@ import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import type { User } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
-import { UserRegistrationSettings } from './UserRegistrationSettings.tsx'
-import { CreateUserDrawer } from './CreateUserDrawer.tsx'
-import { EditUserDrawer } from './EditUserDrawer.tsx'
-import { ResetPasswordDrawer } from './ResetPasswordDrawer.tsx'
-import { UserGroupsDrawer } from './UserGroupsDrawer.tsx'
-import { AssignGroupDrawer } from './AssignGroupDrawer.tsx'
+import { UserRegistrationSettings } from '@/modules/user/components/user/UserRegistrationSettings.tsx'
+import { CreateUserDrawer } from '@/modules/user/components/user/CreateUserDrawer.tsx'
+import { EditUserDrawer } from '@/modules/user/components/user/EditUserDrawer.tsx'
+import { ResetPasswordDrawer } from '@/modules/user/components/user/ResetPasswordDrawer.tsx'
+import { UserGroupsDrawer } from '@/modules/user/components/user/UserGroupsDrawer.tsx'
+import { AssignGroupDrawer } from '@/modules/user/components/user/AssignGroupDrawer.tsx'
 
 const { Text } = Typography
 

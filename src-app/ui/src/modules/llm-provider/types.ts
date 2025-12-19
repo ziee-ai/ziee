@@ -8,12 +8,12 @@ import type {
   useAddRemoteLlmModelDrawerStore,
   useViewDownloadDrawerStore,
   useUploadStore,
-} from './stores'
-import type { useProviderGroupCardStore } from './components/ProviderGroupAssignmentCard.store'
-import type { useLlmProviderGroupWidgetStore } from './widgets/LLMProviderGroupWidget.store'
-import type { useLlmProviderDrawerStore } from './components/LlmProviderDrawer.store'
-import type { useGroupLlmProvidersAssignmentStore } from './components/GroupLlmProvidersAssignmentDrawer.store'
-import type { useLlmProviderGroupsAssignmentStore } from './components/LlmProviderGroupsAssignmentDrawer.store'
+} from '@/modules/llm-provider/stores'
+import type { useProviderGroupCardStore } from '@/modules/llm-provider/components/ProviderGroupAssignmentCard.store'
+import type { useLlmProviderGroupWidgetStore } from '@/modules/llm-provider/widgets/LLMProviderGroupWidget.store'
+import type { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
+import type { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
+import type { useLlmProviderGroupsAssignmentStore } from '@/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

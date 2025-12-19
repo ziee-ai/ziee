@@ -1,4 +1,4 @@
-import { createExtensionStore } from '../../core/extensions'
+import { createExtensionStore } from '@/modules/chat/core/extensions'
 
 /**
  * TextStore

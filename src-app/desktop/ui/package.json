@@ -17,7 +17,7 @@
     "test:e2e:report": "playwright show-report",
     "format": "biome format --write ./src",
     "format:check": "biome check ./src",
-    "format:lint": "biome lint --write --unsafe ./src",
+    "format:lint": "npx ts-path-alias-fixer && biome lint --write --unsafe ./src",
     "generate-openapi": "npx tsx openapi/generate-endpoints.ts"
   },
   "dependencies": {

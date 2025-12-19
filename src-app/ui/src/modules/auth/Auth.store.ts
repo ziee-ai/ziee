@@ -1,11 +1,11 @@
 import { create } from 'zustand'
 import { persist, subscribeWithSelector } from 'zustand/middleware'
-import { ApiClient } from '../../api-client'
+import { ApiClient } from '@/api-client'
 import type {
   LoginRequest,
   CreateUserRequest,
   User,
-} from '../../api-client/types'
+} from '@/api-client/types'
 import type { StoreProxy } from '@/core/stores'
 
 export interface AutoLoginResponse {

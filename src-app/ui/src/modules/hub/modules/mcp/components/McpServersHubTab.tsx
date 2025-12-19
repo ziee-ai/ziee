@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { Input, Select, Typography, Spin, Button } from 'antd'
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { McpServerHubCard } from './McpServerHubCard'
+import { McpServerHubCard } from '@/modules/hub/modules/mcp/components/McpServerHubCard'
 
 const { Text } = Typography
 

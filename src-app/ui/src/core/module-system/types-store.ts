@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useModuleSystemStore } from './store'
+import type { useModuleSystemStore } from '@/core/module-system/store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

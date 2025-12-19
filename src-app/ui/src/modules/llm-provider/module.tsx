@@ -11,14 +11,14 @@ import {
   useAddRemoteLlmModelDrawerStore,
   useViewDownloadDrawerStore,
   useUploadStore,
-} from './stores'
-import { useProviderGroupCardStore } from './components/ProviderGroupAssignmentCard.store'
-import { useLlmProviderGroupWidgetStore } from './widgets/LLMProviderGroupWidget.store'
-import { useLlmProviderDrawerStore } from './components/LlmProviderDrawer.store'
-import { useGroupLlmProvidersAssignmentStore } from './components/GroupLlmProvidersAssignmentDrawer.store'
-import { useLlmProviderGroupsAssignmentStore } from './components/LlmProviderGroupsAssignmentDrawer.store'
-import { DownloadIndicatorWidget } from './components/widgets/DownloadIndicatorWidget'
-import './types'
+} from '@/modules/llm-provider/stores'
+import { useProviderGroupCardStore } from '@/modules/llm-provider/components/ProviderGroupAssignmentCard.store'
+import { useLlmProviderGroupWidgetStore } from '@/modules/llm-provider/widgets/LLMProviderGroupWidget.store'
+import { useLlmProviderDrawerStore } from '@/modules/llm-provider/components/LlmProviderDrawer.store'
+import { useGroupLlmProvidersAssignmentStore } from '@/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.store'
+import { useLlmProviderGroupsAssignmentStore } from '@/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.store'
+import { DownloadIndicatorWidget } from '@/modules/llm-provider/components/widgets/DownloadIndicatorWidget'
+import '@/modules/llm-provider/types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { useDelayedFalse } from '@/hooks/useDelayedFalse'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types

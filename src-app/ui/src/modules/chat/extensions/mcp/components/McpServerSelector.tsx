@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Button, Tooltip } from 'antd'
 import { ToolOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { McpConfigModal } from './McpConfigModal'
+import { McpConfigModal } from '@/modules/chat/extensions/mcp/components/McpConfigModal'
 
 /**
  * MCP Server Selector Component

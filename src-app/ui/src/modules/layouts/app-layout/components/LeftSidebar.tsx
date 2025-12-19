@@ -1,13 +1,13 @@
 import { Link, useLocation } from 'react-router-dom'
 import { theme, Typography, Divider } from 'antd'
-import { useWindowMinSize } from '../hooks/useWindowMinSize'
+import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import type {
   SidebarNavItem,
   SidebarToolItem,
   SidebarActionItem,
-} from '../types'
+} from '@/modules/layouts/app-layout/types'
 
 const { Text } = Typography
 

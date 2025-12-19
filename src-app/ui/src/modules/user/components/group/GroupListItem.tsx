@@ -17,7 +17,7 @@ import {
 import type { Group } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
-import type { GroupWidget } from '../../types/GroupWidget'
+import type { GroupWidget } from '@/modules/user/types/GroupWidget'
 
 const { Text } = Typography
 

@@ -5,7 +5,7 @@ import type {
   DownloadFromRepositoryRequest,
   DownloadInstance,
 } from '@/api-client/types'
-import { useLlmProviderStore } from './LlmProvider.store'
+import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
 
 interface LlmModelDownloadState {
   // Download instances array

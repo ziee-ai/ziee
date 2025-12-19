@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { App, Button, Flex, Input, Select, Spin, Typography } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { McpServerCard } from '../common/McpServerCard'
-import { McpServerDrawer } from '../common/McpServerDrawer'
+import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
+import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
 const { Text } = Typography

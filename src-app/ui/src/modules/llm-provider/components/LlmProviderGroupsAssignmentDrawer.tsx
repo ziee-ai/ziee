@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
-import { emitLlmProviderGroupsChanged } from '../events'
+import { emitLlmProviderGroupsChanged } from '@/modules/llm-provider/events'
 
 const { Text, Title } = Typography
 

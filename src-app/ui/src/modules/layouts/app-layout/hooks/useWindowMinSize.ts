@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useWindowSize } from 'react-use'
-import { useAppLayoutStore } from '../AppLayout.store'
+import { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
 
 export type Breakpoint =
   | 'xxs'

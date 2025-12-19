@@ -1,7 +1,7 @@
 import {
   createExtension,
   type ChatExtension,
-} from '../../core/extensions'
+} from '@/modules/chat/core/extensions'
 
 /**
  * Title Extension

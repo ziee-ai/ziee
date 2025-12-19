@@ -1,4 +1,4 @@
-import { createExtensionStore } from '../../core/extensions'
+import { createExtensionStore } from '@/modules/chat/core/extensions'
 import type { LlmProviderWithModels } from '@/modules/llm-provider/stores/LlmProvider.store'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'

@@ -1,4 +1,4 @@
-import { createExtensionStore } from '../../core/extensions'
+import { createExtensionStore } from '@/modules/chat/core/extensions'
 import { ApiClient } from '@/api-client'
 import type { Assistant } from '@/api-client/types'
 

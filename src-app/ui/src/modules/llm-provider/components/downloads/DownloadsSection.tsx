@@ -1,5 +1,5 @@
 import { Card } from 'antd'
-import { DownloadItem } from './DownloadItem'
+import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { Stores } from '@/core/stores'
 import type { DownloadInstance } from '@/api-client/types'
 

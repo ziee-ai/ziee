@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { RouteConfig } from '../types'
+import type { RouteConfig } from '@/modules/router/types'
 
 interface RoutesState {
   routes: RouteConfig<any>[]

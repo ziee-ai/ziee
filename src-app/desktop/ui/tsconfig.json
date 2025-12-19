@@ -26,6 +26,8 @@
     "baseUrl": ".",
     "paths": {
       "@/api-client/types": ["./src/api-client/types.ts"],
+      "@ziee/desktop": ["./src"],
+      "@ziee/desktop/*": ["./src/*"],
       "@/*": ["../../ui/src/*"],
       "@ziee/ui-core": ["../../ui/src/index.ts"],
       "@ziee/ui-core/*": ["../../ui/src/*"],

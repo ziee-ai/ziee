@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Input, Card, Button, Typography, Empty, Flex, Popconfirm, App } from 'antd'
 import { SearchOutlined, DeleteOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { ConversationCard } from './ConversationCard'
+import { ConversationCard } from '@/modules/chat/components/ConversationCard'
 import type { ConversationResponse } from '@/api-client/types'
 import { DivScrollY } from '@/components/common/DivScrollY'
 

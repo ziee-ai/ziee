@@ -3,8 +3,8 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/modules/llm-provider/stores'
 import { ApiClient } from '@/api-client'
-import { LlmModelCapabilitiesSection } from './shared/LlmModelCapabilitiesSection'
-import { LlmModelParametersSection } from './shared/LlmModelParametersSection'
+import { LlmModelCapabilitiesSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection'
+import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import {
   BASIC_MODEL_FIELDS,
   MODEL_PARAMETERS,

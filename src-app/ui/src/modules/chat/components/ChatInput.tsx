@@ -6,9 +6,9 @@ import {
   message as antMessage,
 } from 'antd'
 import { SendOutlined } from '@ant-design/icons'
-import { ModelSelector } from '../extensions/model/components/ModelSelector'
+import { ModelSelector } from '@/modules/chat/extensions/model/components/ModelSelector'
 import { Stores } from '@/core/stores'
-import { ExtensionSlot } from '../core/extensions'
+import { ExtensionSlot } from '@/modules/chat/core/extensions'
 
 interface ChatInputProps {
   disabled?: boolean

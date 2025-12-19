@@ -4,7 +4,7 @@ import type { MenuProps } from 'antd'
 import {
   createExtension,
   type ChatExtension,
-} from '../../core/extensions'
+} from '@/modules/chat/core/extensions'
 import type { MessageWithContent } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 

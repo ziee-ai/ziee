@@ -1,7 +1,7 @@
 import { Badge, Popover, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { DownloadItem } from '../downloads/DownloadItem'
+import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import type { DownloadInstance } from '@/api-client/types'
 
 const { Text } = Typography

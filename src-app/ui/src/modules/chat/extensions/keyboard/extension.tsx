@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import {
   createExtension,
   type ChatExtension,
-} from '../../core/extensions'
+} from '@/modules/chat/core/extensions'
 
 /**
  * Keyboard shortcut configuration

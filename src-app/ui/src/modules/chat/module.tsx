@@ -2,12 +2,12 @@ import { createModule } from '@/core'
 import { PlusOutlined, HistoryOutlined } from '@ant-design/icons'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useChatStore } from './core/stores/Chat.store'
-import { useChatHistoryStore } from './stores/ChatHistory.store'
-import { RecentConversationsWidget } from './widgets/RecentConversationsWidget'
-import './types'
-import './core/events' // Import chat events for type merging
-import './extensions' // Auto-discover and register chat extensions
+import { useChatStore } from '@/modules/chat/core/stores/Chat.store'
+import { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
+import { RecentConversationsWidget } from '@/modules/chat/widgets/RecentConversationsWidget'
+import '@/modules/chat/types'
+import '@/modules/chat/core/events' // Import chat events for type merging
+import '@/modules/chat/extensions' // Auto-discover and register chat extensions
 
 const NewChatPage = lazyWithPreload(() => import('./pages/NewChatPage'))
 const ConversationPage = lazyWithPreload(

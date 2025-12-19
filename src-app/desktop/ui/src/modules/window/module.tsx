@@ -5,7 +5,7 @@
  */
 
 import { createModule, type AppModule } from '@ziee/ui-core'
-import { useWindowStore } from './store'
+import { useWindowStore } from '@ziee/desktop/modules/window/store'
 
 // Desktop modules use the same AppModule interface as core modules
 const windowModule: AppModule = createModule({

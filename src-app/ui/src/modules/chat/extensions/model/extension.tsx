@@ -1,5 +1,5 @@
-import { createExtension, type ChatExtension } from '../../core/extensions'
-import { createModelStore } from './Model.store'
+import { createExtension, type ChatExtension } from '@/modules/chat/core/extensions'
+import { createModelStore } from '@/modules/chat/extensions/model/Model.store'
 import type { Conversation } from '@/api-client/types'
 
 /**

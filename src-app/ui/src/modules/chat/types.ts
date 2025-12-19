@@ -1,6 +1,6 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useChatStore } from './core/stores/Chat.store'
-import type { useChatHistoryStore } from './stores/ChatHistory.store'
+import type { useChatStore } from '@/modules/chat/core/stores/Chat.store'
+import type { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
 
 /**
  * Chat Extension Stores Interface

@@ -4,11 +4,11 @@ import {
   type ContentRendererProps,
   type StreamingContentProviders,
   type StreamingDeltaProcessors,
-} from '../../core/extensions'
-import { TextContent } from './components/TextContent'
-import { ThinkingContent } from './components/ThinkingContent'
-import { TextInput } from './components/TextInput'
-import { createTextStore } from './Text.store'
+} from '@/modules/chat/core/extensions'
+import { TextContent } from '@/modules/chat/extensions/text/components/TextContent'
+import { ThinkingContent } from '@/modules/chat/extensions/text/components/ThinkingContent'
+import { TextInput } from '@/modules/chat/extensions/text/components/TextInput'
+import { createTextStore } from '@/modules/chat/extensions/text/Text.store'
 import type { MessageContent } from '@/api-client/types'
 
 /**

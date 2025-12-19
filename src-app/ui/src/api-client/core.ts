@@ -3,9 +3,9 @@ import {
   ParameterByUrl,
   ResponseByUrl,
 } from '@/api-client/types'
-import type { SSECallback } from './sse-types'
-import { createSSEHandler } from './sse-types'
-import { getBaseUrl } from './getBaseURL'
+import type { SSECallback } from '@/api-client/sse-types'
+import { createSSEHandler } from '@/api-client/sse-types'
+import { getBaseUrl } from '@/api-client/getBaseURL'
 
 export const getAuthToken = () => {
   // eslint-disable-next-line no-undef

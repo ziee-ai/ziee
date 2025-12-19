@@ -5,7 +5,7 @@ import type {
   LazyExoticComponent,
 } from 'react'
 import type { StoreProxy } from '@/core/stores'
-import type { useAppLayoutStore } from './AppLayout.store'
+import type { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
 
 // Store type declarations
 declare module '@/core/stores' {

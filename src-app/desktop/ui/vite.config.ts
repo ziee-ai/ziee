@@ -34,9 +34,9 @@ export default defineConfig(async () => {
 
     resolve: {
       alias: {
-        // Override getBaseURL for desktop - MUST come before @ and @ziee/ui-core aliases
+        // Override getBaseURL for desktop - MUST come before @ alias
         // Calls Tauri backend for dynamic port instead of using window.location.origin
-        './getBaseURL': path.resolve(
+        '@/api-client/getBaseURL': path.resolve(
           __dirname,
           './src/modules/desktop-base/getBaseURL.ts',
         ),
@@ -45,9 +45,9 @@ export default defineConfig(async () => {
           __dirname,
           './src/api-client/types.ts',
         ),
-        // Resolve @ to core UI src (core UI uses this extensively)
+        '@ziee/desktop': path.resolve(__dirname, './src'),
         '@': path.resolve(__dirname, '../../ui/src'),
-        // Resolve @ziee/ui-core to source files
+        // Resolve @ziee/ui-core to core UI source files
         '@ziee/ui-core': path.resolve(__dirname, '../../ui/src'),
         // Force resolve packages from desktop UI's node_modules
         // This is needed because core UI files import these and resolver looks relative to their location

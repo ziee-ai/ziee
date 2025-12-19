@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { UserProfileWidget } from './UserProfileWidget'
+import { UserProfileWidget } from '@/modules/user-profile/UserProfileWidget'
 
 export default createModule({
   metadata: {

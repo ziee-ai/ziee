@@ -4,8 +4,8 @@ import {
   ApiEndpointResponses,
   ApiEndpoints,
 } from '@/api-client/types'
-import { callAsync, FileUploadProgressCallback, getAuthToken } from './core'
-import type { SSECallback, SSEEventKey, SSEEventData } from './sse-types'
+import { callAsync, FileUploadProgressCallback, getAuthToken } from '@/api-client/core'
+import type { SSECallback, SSEEventKey, SSEEventData } from '@/api-client/sse-types'
 
 // Re-export utility functions
 export { getAuthToken }

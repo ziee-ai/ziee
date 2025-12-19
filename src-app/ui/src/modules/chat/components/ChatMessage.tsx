@@ -2,8 +2,8 @@ import { memo } from 'react'
 import { Avatar, theme } from 'antd'
 import { UserOutlined } from '@ant-design/icons'
 import type { MessageWithContent } from '@/api-client/types'
-import { ExtensionSlot } from '../core/extensions'
-import { ContentRenderer } from './ContentRenderer'
+import { ExtensionSlot } from '@/modules/chat/core/extensions'
+import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
 
 export const ChatMessage = memo(function ChatMessage({
   message,

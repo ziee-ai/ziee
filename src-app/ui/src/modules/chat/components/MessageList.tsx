@@ -1,7 +1,7 @@
 import { Flex, Typography } from 'antd'
 import { LoadingOutlined, MessageOutlined } from '@ant-design/icons'
-import { ExtensionSlot } from '../core/extensions'
-import { ChatMessage } from './ChatMessage'
+import { ExtensionSlot } from '@/modules/chat/core/extensions'
+import { ChatMessage } from '@/modules/chat/components/ChatMessage'
 import { Stores } from '@/core/stores'
 
 const { Text } = Typography

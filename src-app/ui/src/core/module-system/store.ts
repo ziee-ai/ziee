@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import type { AppModule, Slots, ComponentRegistration } from './types'
-import { createStoreProxy } from '../stores'
-import { useEventBusStore } from '../events'
-import './types-store' // Register ModuleSystem store type
+import type { AppModule, Slots, ComponentRegistration } from '@/core/module-system/types'
+import { createStoreProxy } from '@/core/stores'
+import { useEventBusStore } from '@/core/events'
+import '@/core/module-system/types-store' // Register ModuleSystem store type
 
 interface ModuleSystemState {
   modules: AppModule[]

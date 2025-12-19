@@ -1,7 +1,7 @@
 import { Divider } from 'antd'
-import { FileCard } from './FileCard'
+import { FileCard } from '@/modules/chat/extensions/file/components/FileCard'
 import { Stores } from '@/core/stores'
-import type { FileUploadProgress } from '../File.store'
+import type { FileUploadProgress } from '@/modules/chat/extensions/file/File.store'
 import type { File as FileEntity } from '@/api-client/types'
 
 /**

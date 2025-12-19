@@ -6,7 +6,7 @@ import {
   CloseOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import type { McpToolCall } from '../Mcp.store'
+import type { McpToolCall } from '@/modules/chat/extensions/mcp/Mcp.store'
 
 const { Text } = Typography
 

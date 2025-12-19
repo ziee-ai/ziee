@@ -3,7 +3,7 @@ import { Button, Spin, Typography, theme, App, Drawer, Card } from 'antd'
 import { CloseOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons'
 import { ApiClient } from '@/api-client'
 import type { File as FileEntity } from '@/api-client/types'
-import type { FileUploadProgress } from '../File.store'
+import type { FileUploadProgress } from '@/modules/chat/extensions/file/File.store'
 
 const { Text } = Typography
 

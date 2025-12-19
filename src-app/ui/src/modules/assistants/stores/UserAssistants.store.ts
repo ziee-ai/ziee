@@ -12,7 +12,7 @@ import {
   emitAssistantCreated,
   emitAssistantUpdated,
   emitAssistantDeleted,
-} from '../events'
+} from '@/modules/assistants/events'
 import { Stores } from '@/core/stores'
 
 // Enable Map and Set support in Immer

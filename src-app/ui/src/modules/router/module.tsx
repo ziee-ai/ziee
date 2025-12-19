@@ -1,9 +1,9 @@
 import { createModule } from '@/core'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
-import { useRoutesStore } from './stores'
+import { useRoutesStore } from '@/modules/router/stores'
 import type { AppModule } from '@/core/module-system/types'
-import './types' // CRITICAL: Enable type merging for CreateModuleOptions
-import './stores/types' // CRITICAL: Enable type merging for Stores
+import '@/modules/router/types' // CRITICAL: Enable type merging for CreateModuleOptions
+import '@/modules/router/stores/types' // CRITICAL: Enable type merging for Stores
 
 // Lazy load RouterComponent
 const RouterComponent = lazyWithPreload(() =>

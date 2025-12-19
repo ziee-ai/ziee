@@ -3,11 +3,11 @@ import {
   createExtension,
   type ChatExtension,
   type ContentRendererProps,
-} from '../../core/extensions'
-import { createFileExtensionStore } from './File.store'
-import { FilePreviewList } from './components/FilePreviewList'
-import { FileUploadButton } from './components/FileUploadButton'
-import { FileCard } from './components/FileCard'
+} from '@/modules/chat/core/extensions'
+import { createFileExtensionStore } from '@/modules/chat/extensions/file/File.store'
+import { FilePreviewList } from '@/modules/chat/extensions/file/components/FilePreviewList'
+import { FileUploadButton } from '@/modules/chat/extensions/file/components/FileUploadButton'
+import { FileCard } from '@/modules/chat/extensions/file/components/FileCard'
 import { ApiClient } from '@/api-client'
 import type { File as FileEntity, MessageContentDataFileAttachment } from '@/api-client/types'
 

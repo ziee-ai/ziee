@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
-import type { ChatSlotName } from './types'
-import { chatExtensionRegistry } from './registry'
+import type { ChatSlotName } from '@/modules/chat/core/extensions/types'
+import { chatExtensionRegistry } from '@/modules/chat/core/extensions/registry'
 
 /**
  * Props for ExtensionSlot component

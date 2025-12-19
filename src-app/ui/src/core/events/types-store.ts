@@ -1,5 +1,5 @@
 import type { StoreProxy } from '@/core/stores'
-import type { useEventBusStore } from './store'
+import type { useEventBusStore } from '@/core/events/store'
 
 declare module '@/core/stores' {
   interface RegisteredStores {

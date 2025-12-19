@@ -8,12 +8,12 @@ import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
 } from '@/api-client/types'
-import { useSystemMcpServersStore } from './SystemMcpServer.store'
+import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
 import {
   emitMcpServerCreated,
   emitMcpServerUpdated,
   emitMcpServerDeleted,
-} from '../events'
+} from '@/modules/mcp/events'
 import { Stores } from '@/core/stores'
 
 // Enable Map and Set support in Immer

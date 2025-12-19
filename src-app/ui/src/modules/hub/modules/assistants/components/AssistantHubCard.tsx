@@ -6,7 +6,7 @@ import {
 } from '@ant-design/icons'
 import type { HubAssistant } from '@/api-client/types'
 import { useState } from 'react'
-import { AssistantDetailsDrawer } from './AssistantDetailsDrawer'
+import { AssistantDetailsDrawer } from '@/modules/hub/modules/assistants/components/AssistantDetailsDrawer'
 import { Stores } from '@/core/stores'
 import { useNavigate } from 'react-router-dom'
 

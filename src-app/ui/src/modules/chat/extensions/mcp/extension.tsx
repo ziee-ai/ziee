@@ -9,12 +9,12 @@ import {
   createExtension,
   type ChatExtension,
   type ContentRendererProps,
-} from '../../core/extensions'
+} from '@/modules/chat/core/extensions'
 import { Stores } from '@/core/stores'
-import { createMcpStore, type McpToolCall } from './Mcp.store'
+import { createMcpStore, type McpToolCall } from '@/modules/chat/extensions/mcp/Mcp.store'
 import type { MessageContent, MessageContentDataToolResult, MessageContentDataToolUse, MessageWithContent } from '@/api-client/types'
-import { ToolCallPendingApprovalContent } from './components/ToolCallPendingApprovalContent'
-import { McpServerSelector } from './components/McpServerSelector'
+import { ToolCallPendingApprovalContent } from '@/modules/chat/extensions/mcp/components/ToolCallPendingApprovalContent'
+import { McpServerSelector } from '@/modules/chat/extensions/mcp/components/McpServerSelector'
 
 const { Text } = Typography
 

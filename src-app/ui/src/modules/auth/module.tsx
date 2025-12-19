@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { useAuthStore } from './Auth.store'
+import { useAuthStore } from '@/modules/auth/Auth.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 
 const AuthPage = lazyWithPreload(() =>

@@ -2,7 +2,7 @@ import { Button, Form, Input, Select, Switch, App } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
-import { useMcpServerDrawerStore } from '../../stores'
+import { useMcpServerDrawerStore } from '@/modules/mcp/stores'
 import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,

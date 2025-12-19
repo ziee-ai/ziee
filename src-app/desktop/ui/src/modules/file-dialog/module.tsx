@@ -5,7 +5,7 @@
  */
 
 import { createModule, type AppModule } from '@ziee/ui-core'
-import { useFileDialogStore } from './store'
+import { useFileDialogStore } from '@ziee/desktop/modules/file-dialog/store'
 
 const fileDialogModule: AppModule = createModule({
   metadata: {

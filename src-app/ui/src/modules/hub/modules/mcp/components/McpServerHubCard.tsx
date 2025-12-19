@@ -8,7 +8,7 @@ import {
 } from '@ant-design/icons'
 import type { HubMCPServer } from '@/api-client/types'
 import { useState } from 'react'
-import { McpServerDetailsDrawer } from './McpServerDetailsDrawer'
+import { McpServerDetailsDrawer } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer'
 import { Stores } from '@/core/stores'
 import { useNavigate } from 'react-router-dom'
 

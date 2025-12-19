@@ -11,7 +11,7 @@ import {
   emitLlmRepositoryCreated,
   emitLlmRepositoryUpdated,
   emitLlmRepositoryDeleted,
-} from '../events'
+} from '@/modules/llm-repository/events'
 import { Stores } from '@/core/stores'
 
 interface LlmRepositoryState {

@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { useConfigClientStore } from './ConfigClient.store'
+import { useConfigClientStore } from '@/modules/config-client/ConfigClient.store'
 
 export default createModule({
   metadata: {
