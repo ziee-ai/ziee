@@ -5,8 +5,8 @@
   "identifier": "com.ziee.chat",
   "build": {
     "beforeDevCommand": "npm run dev --workspace=@ziee/desktop-ui",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build:nocheck --workspace=@ziee/desktop-ui",
+    "devUrl": "http://localhost:8080",
+    "beforeBuildCommand": "cd ../ui && npm run build",
     "frontendDist": "../ui/dist"
   },
   "app": {
@@ -38,5 +38,13 @@
       "icons/icon.ico"
     ],
     "resources": {}
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://releases.ziee.chat/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "pubkey": ""
+    }
   }
 }

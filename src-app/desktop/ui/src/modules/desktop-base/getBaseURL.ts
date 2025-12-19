@@ -25,7 +25,7 @@ export const getBaseUrl = (function () {
       .catch(error => {
         console.error('[Desktop] Failed to get server port:', error)
         // Fallback to default port if backend not available
-        return 'http://127.0.0.1:8080'
+        return window.location.origin
       })
 
     return baseUrl

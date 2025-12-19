@@ -28,6 +28,7 @@ impl BackendState {
     }
 
     /// Check if the backend is ready
+    #[allow(dead_code)]
     pub fn is_ready(&self) -> bool {
         *self.ready.lock().unwrap()
     }
@@ -36,11 +37,4 @@ impl BackendState {
     pub fn set_ready(&self, ready: bool) {
         *self.ready.lock().unwrap() = ready;
     }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct BackendStatus {
-    pub running: bool,
-    pub ready: bool,
-    pub port: u16,
 }
