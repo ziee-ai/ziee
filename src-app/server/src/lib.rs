@@ -12,10 +12,14 @@ use std::sync::Arc;
 
 // Re-export types for desktop/external use
 pub use core::config::Config;
-pub use core::{Repos, EventBus};
+pub use core::{Repos, EventBus, EventHandler, AppEvent};
 pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{JwtService, AuthResponse, hash_password};
 pub use modules::user::models::User;
+pub use modules::llm_provider::events::LlmProviderEvent;
+pub use common::AppError;
+// Re-export async_trait for consistent EventHandler implementations
+pub use async_trait::async_trait;
 
 // Re-export axum types for route building
 pub use axum::{Extension, Json, extract::State, http::StatusCode};
@@ -94,6 +98,7 @@ fn init_data_dir(config: &Config) {
 /// Common server setup - initializes all components and returns the router
 async fn setup_server(
     config: Config,
+    additional_handlers: Vec<Arc<dyn core::EventHandler>>,
 ) -> Result<ServerSetup, Box<dyn std::error::Error + Send + Sync>> {
     // Initialize database
     let pool = core::database::initialize_database(&config).await?;
@@ -111,10 +116,21 @@ async fn setup_server(
     core::app_builder::initialize_modules(&mut modules, &module_context)?;
 
     // Register event handlers from all modules
-    let event_bus = Arc::new(core::app_builder::register_event_handlers(
+    let mut event_bus = core::app_builder::register_event_handlers(
         &modules,
         pool.clone(),
-    ));
+    );
+
+    // Register additional handlers (e.g., from desktop app)
+    for handler in additional_handlers {
+        tracing::info!(
+            "Registering additional event handler: {}",
+            handler.handler_name()
+        );
+        event_bus.register(handler);
+    }
+
+    let event_bus = Arc::new(event_bus);
     tracing::info!(
         "Event bus initialized with {} handlers",
         event_bus.handler_count()
@@ -183,15 +199,16 @@ pub async fn start_server(
     tracing::info!("Starting Ziee Chat backend server");
     init_data_dir(&config);
 
-    let setup = setup_server(config).await?;
+    let setup = setup_server(config, vec![]).await?;
     run_server(setup.app, setup.addr).await
 }
 
-/// Initialize and start the backend server with custom routes
-/// Allows desktop/external apps to add custom endpoints
+/// Initialize and start the backend server with custom routes and event handlers
+/// Allows desktop/external apps to add custom endpoints and event handlers
 pub async fn start_server_with_routes<F>(
     config: Config,
     route_builder: F,
+    additional_handlers: Vec<Arc<dyn core::EventHandler>>,
 ) -> Result<SocketAddr, Box<dyn std::error::Error + Send + Sync>>
 where
     F: FnOnce(Router, Arc<JwtService>) -> Router,
@@ -200,7 +217,7 @@ where
     tracing::info!("Starting Ziee Chat backend server (with custom routes)");
     init_data_dir(&config);
 
-    let setup = setup_server(config).await?;
+    let setup = setup_server(config, additional_handlers).await?;
     let app = route_builder(setup.app, setup.jwt_service);
     run_server(app, setup.addr).await
 }

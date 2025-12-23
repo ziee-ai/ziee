@@ -1,3 +1,12 @@
+/**
+ * Desktop Override: Drawer
+ *
+ * Adds Tauri-specific features:
+ * - TauriDragRegion in title for window movement
+ * - Position monitoring to adjust title padding for macOS traffic lights
+ * - Tauri-aware wrapper styles (maxWidth, border, borderRadius)
+ */
+
 import {
   Button,
   Drawer as AntDrawer,
@@ -5,12 +14,14 @@ import {
   theme,
   Typography,
 } from 'antd'
-import React, { useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import tinycolor from 'tinycolor2'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowBack } from 'react-icons/io'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
+import { TauriDragRegion } from '@ziee/desktop/components/TauriDragRegion'
 
 export interface DrawerProps extends AntDrawerProps {
   children?: React.ReactNode
@@ -21,6 +32,43 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const windowMinSize = useWindowMinSize()
 
   const drawerDivRef = useRef<HTMLDivElement>(null)
+  const titleRef = useRef<HTMLDivElement>(null)
+
+  // Monitor the left position of the drawer div and adjust title padding for macOS traffic lights
+  useEffect(() => {
+    if (!isTauriView) return
+    if (!props.open) return
+
+    const monitorPosition = () => {
+      if (drawerDivRef.current && titleRef.current) {
+        const rect = drawerDivRef.current.getBoundingClientRect()
+        const leftMin = isMacOS ? 72 : 0
+        if (rect.left < leftMin) {
+          titleRef.current.style.paddingLeft = leftMin - rect.left + 'px'
+        } else {
+          titleRef.current.style.paddingLeft = ''
+        }
+      }
+    }
+
+    // Run after drawer animation completes to get correct position
+    const initialTimeout = setTimeout(monitorPosition, 300)
+
+    const resizeObserver = new ResizeObserver(monitorPosition)
+
+    if (drawerDivRef.current) {
+      resizeObserver.observe(drawerDivRef.current)
+    }
+
+    return () => {
+      clearTimeout(initialTimeout)
+      resizeObserver.disconnect()
+    }
+  }, [props.open])
+
+  // Calculate max resize width (leave room for traffic lights on macOS)
+  const resizeMaxWidth =
+    isTauriView && isMacOS ? window.innerWidth - 90 : window.innerWidth - 24
 
   const {
     placement = 'right',
@@ -72,10 +120,19 @@ export const Drawer: React.FC<DrawerProps> = props => {
       title={
         props.title ? (
           <div
+            ref={titleRef}
             className={
               'flex w-full items-center gap-1 py-2 pt-[10px] px-1 relative'
             }
+            style={{
+              // Initial padding for full-width drawers on small screens (macOS traffic lights)
+              paddingLeft:
+                windowMinSize.xs && isTauriView && isMacOS ? 74 : undefined,
+            }}
           >
+            <TauriDragRegion
+              className={'h-full w-full absolute top-0 left-0'}
+            />
             <Button
               type={'text'}
               onClick={props.onClose}
@@ -119,11 +176,12 @@ export const Drawer: React.FC<DrawerProps> = props => {
           ...(resolvedPropsStyles?.mask || {}),
         },
         wrapper: {
-          border: windowMinSize.xs
-            ? 'none'
-            : `1px solid ${token.colorBorderSecondary}`,
-          borderRadius: windowMinSize.xs ? 0 : 8,
-          maxWidth: `calc(100vw - ${windowMinSize.xs ? 0 : 24}px)`,
+          border:
+            windowMinSize.xs && !isTauriView
+              ? 'none'
+              : `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: isTauriView ? 8 : windowMinSize.xs ? 0 : 8,
+          maxWidth: `calc(100vw - ${isTauriView && windowMinSize.xs ? 0 : isTauriView ? 90 : windowMinSize.xs ? 0 : 24}px)`,
           boxShadow: 'none',
           margin: windowMinSize.xs ? 0 : 12,
           ...(resolvedPropsStyles?.wrapper || {}),
@@ -145,7 +203,11 @@ export const Drawer: React.FC<DrawerProps> = props => {
             onWheel={e => e.stopPropagation()}
           >
             <div className={'w-full h-full'}>{node}</div>
-            <ResizeHandle placement={'left'} parentLevel={[1]} />
+            <ResizeHandle
+              placement={'left'}
+              parentLevel={[1]}
+              maxWidth={resizeMaxWidth}
+            />
           </div>
         )
       }}

@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { formNamesPlugin } from './plugins/vite-plugin-form-names.js'
 import { removeDataTestPlugin } from './plugins/vite-plugin-remove-data-test.js'
+import { localOverridePlugin } from './plugins/vite-plugin-local-override.js'
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -14,11 +15,13 @@ export default defineConfig(async () => {
 
   return {
     plugins: [
-      react({
-        babel: {
-          plugins: [['babel-plugin-react-compiler', {}]],
-        },
+      // Must be first to intercept @ imports before alias resolution
+      localOverridePlugin({
+        localSrc: path.resolve(__dirname, './src'),
+        fallbackSrc: path.resolve(__dirname, '../../ui/src'),
+        aliasPrefix: '@/',
       }),
+      react(),
       tailwindcss(),
       // Detect duplicate form names
       formNamesPlugin({
@@ -34,19 +37,9 @@ export default defineConfig(async () => {
 
     resolve: {
       alias: {
-        // Override getBaseURL for desktop - MUST come before @ alias
-        // Calls Tauri backend for dynamic port instead of using window.location.origin
-        '@/api-client/getBaseURL': path.resolve(
-          __dirname,
-          './src/modules/desktop-base/getBaseURL.ts',
-        ),
-        // Use desktop's own generated types (includes desktop endpoints)
-        '@/api-client/types': path.resolve(
-          __dirname,
-          './src/api-client/types.ts',
-        ),
+        // @/ imports are handled by localOverridePlugin (checks desktop/src first, falls back to core UI)
+        // DO NOT add '@' alias here - it would bypass the plugin
         '@ziee/desktop': path.resolve(__dirname, './src'),
-        '@': path.resolve(__dirname, '../../ui/src'),
         // Resolve @ziee/ui-core to core UI source files
         '@ziee/ui-core': path.resolve(__dirname, '../../ui/src'),
         // Force resolve packages from desktop UI's node_modules

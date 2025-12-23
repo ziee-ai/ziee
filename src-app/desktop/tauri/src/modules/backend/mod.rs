@@ -119,6 +119,13 @@ impl DesktopModule for BackendModule {
     }
 }
 
+use crate::modules::auth::ensure_desktop_admin;
+use crate::modules::llm_provider::AutoAssignProviderHandler;
+
+// =====================================================
+// Backend Server Startup
+// =====================================================
+
 /// Start the backend server with collected routes from all modules
 ///
 /// This should be called from lib.rs after all modules have been initialized
@@ -135,8 +142,13 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
 
     tracing::info!("Starting backend server with desktop routes...");
 
+    // Create desktop-specific event handlers
+    let handlers: Vec<Arc<dyn ziee_chat::EventHandler>> = vec![AutoAssignProviderHandler::new()];
+
     tauri::async_runtime::spawn(async move {
-        match ziee_chat::start_server_with_routes(config, |router, jwt| {
+        match ziee_chat::start_server_with_routes(
+            config,
+            |router, jwt| {
             // Store JWT service for Tauri command access
             let _ = JWT_SERVICE.set(jwt.clone());
             tracing::info!("JWT service stored for Tauri commands");
@@ -166,7 +178,9 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
             };
 
             router
-        })
+            },
+            handlers,
+        )
         .await
         {
             Ok(addr) => {
@@ -212,31 +226,6 @@ async fn run_desktop_migrations() -> Result<()> {
     Ok(())
 }
 
-/// Ensure desktop admin user exists (create on first run)
-async fn ensure_desktop_admin() -> Result<()> {
-    let has_admin = ziee_chat::Repos
-        .user
-        .has_admin()
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to check admin: {}", e))?;
-
-    if !has_admin {
-        tracing::info!("No admin exists, creating desktop admin user");
-
-        let password_hash = ziee_chat::hash_password("desktop-auto-login")
-            .map_err(|e| anyhow::anyhow!("Failed to hash password: {}", e))?;
-
-        ziee_chat::Repos
-            .app
-            .create_admin_user("admin", "admin@localhost", &password_hash, None)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to create admin: {}", e))?;
-
-        tracing::info!("Desktop admin user created successfully");
-    }
-
-    Ok(())
-}
 
 /// Proxy handler to forward non-API requests to Vite dev server
 #[cfg(debug_assertions)]
@@ -345,7 +334,7 @@ fn create_main_window(app_handle: &tauri::AppHandle) {
     )
     .title("")
     .inner_size(1200.0, 800.0)
-    .min_inner_size(800.0, 600.0)
+    .min_inner_size(400.0, 600.0)
     .resizable(true)
     .fullscreen(false)
     .decorations(false)

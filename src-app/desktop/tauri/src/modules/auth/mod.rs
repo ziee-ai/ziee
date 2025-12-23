@@ -2,9 +2,12 @@
 //!
 //! Desktop authentication and user management
 
+mod bootstrap;
 pub mod commands;
 mod handlers;
 mod routes;
+
+pub use bootstrap::ensure_desktop_admin;
 
 use crate::module_api::DesktopModule;
 use anyhow::Result;

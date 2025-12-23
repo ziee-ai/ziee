@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "core:window:default",
+    "core:window:allow-start-dragging",
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
@@ -15,6 +17,7 @@
     "notification:default",
     "notification:allow-is-permission-granted",
     "notification:allow-request-permission",
-    "notification:allow-notify"
+    "notification:allow-notify",
+    "decorum:allow-show-snap-overlay"
   ]
 }
