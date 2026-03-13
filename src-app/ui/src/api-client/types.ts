@@ -58,6 +58,11 @@ export interface AutoApprovedServer {
   tools: string[]
 }
 
+export interface AvailableUpdatesResponse {
+  available_versions: string[]
+  engine: string
+}
+
 export interface Branch {
   conversation_id: string
   created_at: string
@@ -251,6 +256,10 @@ export interface CreateUserRequest {
   username: string
 }
 
+export interface DeleteVersionQuery {
+  remove_binary?: boolean
+}
+
 export type DeviceType = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan' | 'opencl' | 'auto'
 
 export interface DisabledServer {
@@ -353,6 +362,20 @@ export interface DownloadTokenQuery {
 export interface DownloadTokenResponse {
   expires_in: number
   token: string
+}
+
+export interface DownloadVersionRequest {
+  arch: string
+  backend: string
+  engine: string
+  platform: string
+  version: string
+}
+
+export interface DownloadVersionResponse {
+  downloaded: boolean
+  message: string
+  version: RuntimeVersionResponse
 }
 
 export interface EditMessageRequest {
@@ -468,6 +491,12 @@ export interface HardwareUsageUpdate {
   gpu_devices: GPUUsage[]
   memory: MemoryUsage
   timestamp: string
+}
+
+export interface HealthCheckResponse {
+  healthy: boolean
+  message?: string
+  response_time_ms?: number
 }
 
 export interface HealthResponse {
@@ -595,6 +624,27 @@ export type ImageSource = {
   file_id: string
 }
 
+export interface InstanceResponse {
+  base_url: string
+  error_message?: string
+  id: string
+  last_health_check?: string
+  local_port: number
+  model_id: string
+  provider_id: string
+  runtime_version_id?: string
+  started_at: string
+  status: string
+  stopped_at?: string
+}
+
+export interface InstanceStatusResponse {
+  base_url?: string
+  model_id: string
+  status: string
+  uptime_seconds?: number
+}
+
 export interface ListModelsQuery {
   page?: number
   perPage?: number
@@ -607,6 +657,10 @@ export interface ListResourcesResponse {
 
 export interface ListToolsResponse {
   tools: Tool[]
+}
+
+export interface ListVersionsQuery {
+  engine?: string
 }
 
 export interface LlamaCppSettings {
@@ -655,6 +709,7 @@ export interface LlmModel {
   pid?: number
   port?: number
   provider_id: string
+  required_runtime_version_id?: string
   updated_at: string
   validation_issues?: string[]
   validation_status?: string
@@ -672,6 +727,7 @@ export interface LlmProvider {
   base_url?: string
   built_in: boolean
   created_at: string
+  default_runtime_version_id?: string
   enabled: boolean
   id: string
   name: string
@@ -710,6 +766,11 @@ export interface LoginRequest {
   password: string
   provider?: string
   username: string
+}
+
+export interface LogsResponse {
+  logs: string[]
+  model_id: string
 }
 
 export interface LoopSettings {
@@ -991,11 +1052,17 @@ export interface PreviewQuery {
   page?: number
 }
 
+export interface ProviderInstancesResponse {
+  instances: InstanceResponse[]
+  provider_id: string
+}
+
 export interface ProviderWithModels {
   api_key?: string
   base_url?: string
   built_in: boolean
   created_at: string
+  default_runtime_version_id?: string
   enabled: boolean
   id: string
   llm_models: LlmModel[]
@@ -1051,6 +1118,22 @@ export interface Resource {
   mime_type?: string
   name: string
   uri: string
+}
+
+export interface RuntimeVersionListResponse {
+  versions: RuntimeVersionResponse[]
+}
+
+export interface RuntimeVersionResponse {
+  arch: string
+  backend: string
+  binary_path: string
+  created_at: string
+  engine: string
+  id: string
+  is_system_default: boolean
+  platform: string
+  version: string
 }
 
 export interface SSEChatStreamCompleteData {
@@ -1154,9 +1237,16 @@ export interface SetupStatusResponse {
   version: string
 }
 
+export type StartInstanceRequest = any
+
 export interface StreamError {
   code?: string
   message: string
+}
+
+export interface SyncCacheResponse {
+  message: string
+  synced_count: number
 }
 
 export interface TestRepositoryConnectionRequest {
@@ -1411,6 +1501,9 @@ export enum Permissions {
   LlmRepositoriesDelete = 'llm_repositories::delete',
   LlmRepositoriesEdit = 'llm_repositories::edit',
   LlmRepositoriesRead = 'llm_repositories::read',
+  LocalRuntimeLogs = 'llm_local_runtime::logs',
+  LocalRuntimeManage = 'llm_local_runtime::manage',
+  LocalRuntimeRead = 'llm_local_runtime::read',
   McpServersAdminCreate = 'mcp_servers_admin::create',
   McpServersAdminDelete = 'mcp_servers_admin::delete',
   McpServersAdminEdit = 'mcp_servers_admin::edit',
@@ -1422,6 +1515,10 @@ export enum Permissions {
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
+  RuntimeVersionCreate = 'llm_local_runtime::create',
+  RuntimeVersionDelete = 'llm_local_runtime::delete',
+  RuntimeVersionRead = 'llm_local_runtime::read',
+  RuntimeVersionUpdate = 'llm_local_runtime::update',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
   UsersEdit = 'users::edit',
@@ -1472,6 +1569,9 @@ export const PermissionDescriptions: Record<string, string> = {
   LlmRepositoriesDelete: 'Delete non-built-in LLM repositories',
   LlmRepositoriesEdit: 'Edit existing LLM repository information and authentication',
   LlmRepositoriesRead: 'View LLM repositories and list repositories',
+  LocalRuntimeLogs: 'View runtime instance logs',
+  LocalRuntimeManage: 'Start, stop, and restart local LLM runtime instances',
+  LocalRuntimeRead: 'View local LLM runtime instances and their status',
   McpServersAdminCreate: 'Create system MCP servers',
   McpServersAdminDelete: 'Delete system MCP servers',
   McpServersAdminEdit: 'Edit system MCP servers and manage group assignments',
@@ -1483,6 +1583,10 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
+  RuntimeVersionCreate: 'Download and register new runtime versions',
+  RuntimeVersionDelete: 'Delete runtime versions',
+  RuntimeVersionRead: 'View runtime versions and check for updates',
+  RuntimeVersionUpdate: 'Update runtime version settings and defaults',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
   UsersEdit: 'Edit existing user information',
@@ -1585,6 +1689,14 @@ export const ApiEndpoints = {
   'LlmRepository.list': 'GET /api/llm-repositories',
   'LlmRepository.test': 'POST /api/llm-repositories/test',
   'LlmRepository.update': 'POST /api/llm-repositories/{repository_id}',
+  'LocalRuntime.getInstance': 'GET /api/local-runtime/models/{model_id}/instance',
+  'LocalRuntime.getLogs': 'GET /api/local-runtime/models/{model_id}/logs',
+  'LocalRuntime.getProviderInstances': 'GET /api/local-runtime/providers/{provider_id}/instances',
+  'LocalRuntime.getStatus': 'GET /api/local-runtime/models/{model_id}/status',
+  'LocalRuntime.healthCheck': 'GET /api/local-runtime/models/{model_id}/health',
+  'LocalRuntime.restartModel': 'POST /api/local-runtime/models/{model_id}/restart',
+  'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
+  'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
   'Mcp.getDefaults': 'GET /api/mcp/defaults',
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
   'McpServer.create': 'POST /api/mcp/servers',
@@ -1610,6 +1722,13 @@ export const ApiEndpoints = {
   'Message.get': 'GET /api/messages/{id}',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
+  'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
+  'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
+  'RuntimeVersion.get': 'GET /api/local-runtime/versions/{version_id}',
+  'RuntimeVersion.list': 'GET /api/local-runtime/versions',
+  'RuntimeVersion.setDefault': 'POST /api/local-runtime/versions/{version_id}/set-default',
+  'RuntimeVersion.syncCache': 'POST /api/local-runtime/versions/sync-cache',
   'User.create': 'POST /api/users',
   'User.delete': 'DELETE /api/users/{user_id}',
   'User.get': 'GET /api/users/{user_id}',
@@ -1717,6 +1836,14 @@ export type ApiEndpointParameters = {
   'LlmRepository.list': PaginationQuery
   'LlmRepository.test': TestRepositoryConnectionRequest
   'LlmRepository.update': { repository_id: string } & UpdateLlmRepositoryRequest
+  'LocalRuntime.getInstance': { model_id: string }
+  'LocalRuntime.getLogs': { model_id: string }
+  'LocalRuntime.getProviderInstances': { provider_id: string }
+  'LocalRuntime.getStatus': { model_id: string }
+  'LocalRuntime.healthCheck': { model_id: string }
+  'LocalRuntime.restartModel': { model_id: string }
+  'LocalRuntime.startModel': { model_id: string } & StartInstanceRequest
+  'LocalRuntime.stopModel': { model_id: string }
   'Mcp.getDefaults': void
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
   'McpServer.create': CreateMcpServerRequest
@@ -1742,6 +1869,13 @@ export type ApiEndpointParameters = {
   'Message.get': { id: string }
   'Message.getHistory': { id: string }
   'Message.sendStream': { id: string } & SendMessageRequest
+  'RuntimeVersion.checkUpdates': { engine: string }
+  'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
+  'RuntimeVersion.download': DownloadVersionRequest
+  'RuntimeVersion.get': { version_id: string }
+  'RuntimeVersion.list': { engine?: string }
+  'RuntimeVersion.setDefault': { version_id: string }
+  'RuntimeVersion.syncCache': void
   'User.create': CreateUserRequest
   'User.delete': { user_id: string }
   'User.get': { user_id: string }
@@ -1849,6 +1983,14 @@ export type ApiEndpointResponses = {
   'LlmRepository.list': LlmRepositoryListResponse
   'LlmRepository.test': TestRepositoryConnectionResponse
   'LlmRepository.update': LlmRepository
+  'LocalRuntime.getInstance': InstanceResponse
+  'LocalRuntime.getLogs': LogsResponse
+  'LocalRuntime.getProviderInstances': ProviderInstancesResponse
+  'LocalRuntime.getStatus': InstanceStatusResponse
+  'LocalRuntime.healthCheck': HealthCheckResponse
+  'LocalRuntime.restartModel': InstanceResponse
+  'LocalRuntime.startModel': InstanceResponse
+  'LocalRuntime.stopModel': InstanceResponse
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
   'McpServer.create': McpServer
@@ -1874,6 +2016,13 @@ export type ApiEndpointResponses = {
   'Message.get': MessageWithContent
   'Message.getHistory': MessageWithContent[]
   'Message.sendStream': SSEChatStreamEvent
+  'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
+  'RuntimeVersion.delete': void
+  'RuntimeVersion.download': DownloadVersionResponse
+  'RuntimeVersion.get': RuntimeVersionResponse
+  'RuntimeVersion.list': RuntimeVersionListResponse
+  'RuntimeVersion.setDefault': RuntimeVersionResponse
+  'RuntimeVersion.syncCache': SyncCacheResponse
   'User.create': User
   'User.delete': void
   'User.get': User

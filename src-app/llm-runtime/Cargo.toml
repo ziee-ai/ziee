@@ -63,9 +63,13 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Progress bars for downloads
 indicatif = "0.17"
 
-# Engine builders (optional)
-llamacpp-builder = { path = "engines/llamacpp", optional = true }
-mistralrs-builder = { path = "engines/mistralrs", optional = true }
+# Binary extraction from archives
+flate2 = "1.0"
+tar = "0.4"
+zip = "0.6"
+
+# Engine binaries are downloaded from GitHub releases
+# No local build dependencies needed
 
 # Unix-specific dependencies
 [target.'cfg(unix)'.dependencies]
@@ -80,9 +84,6 @@ tokio-test = "0.4"
 [features]
 default = ["cli"]
 cli = ["dep:clap"]
-build-llamacpp = ["dep:llamacpp-builder"]
-build-mistralrs = ["dep:mistralrs-builder"]
-build-local = ["build-llamacpp", "build-mistralrs"]  # For local development only
 
 [lib]
 name = "llm_runtime"

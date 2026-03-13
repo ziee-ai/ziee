@@ -1,13 +1,16 @@
-//! Integration tests for llm-runtime with real models
+//! Integration tests for llm-runtime with real binaries
 //!
-//! These tests use TinyLlama to verify the complete workflow:
+//! These tests verify the complete workflow:
 //! - Starting instances
 //! - Health checks
 //! - Inference (completions)
 //! - Stopping instances
 //! - State persistence
+//!
+//! Binaries are downloaded from GitHub releases and cached in ~/.llm-runtime/binaries/
 
 use llm_runtime::{
+    binary_download,
     config::{DeviceType, EngineSettings, EngineType, GlobalSettings, InstanceConfig, RuntimeConfig},
     download::ModelDownloader,
     state::StateManager,
@@ -17,6 +20,30 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::sleep;
+
+/// Get or download engine binary for testing (auto-detects platform, uses CPU)
+async fn get_test_binary(engine: EngineType) -> PathBuf {
+    binary_download::ensure_test_binary(engine, "latest")
+        .await
+        .expect("Failed to download test binary")
+}
+
+/// Setup test environment: download binary and add to PATH
+async fn setup_test_binary(engine: EngineType) {
+    let binary_path = get_test_binary(engine).await;
+    let binary_dir = binary_path.parent().expect("Binary should have parent directory");
+
+    // Add binary directory to PATH so Runtime can find it
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    let new_path = if current_path.is_empty() {
+        binary_dir.to_string_lossy().to_string()
+    } else {
+        format!("{}:{}", binary_dir.display(), current_path)
+    };
+    std::env::set_var("PATH", new_path);
+
+    println!("Binary ready: {}", binary_path.display());
+}
 
 /// Get or download TinyLlama model
 async fn get_test_model() -> PathBuf {
@@ -48,8 +75,10 @@ async fn get_test_model() -> PathBuf {
 }
 
 #[tokio::test]
-#[ignore] // Run with: cargo test --features build-llamacpp -- --ignored --nocapture
+#[ignore] // Run with: cargo test -- --ignored --nocapture
+           // Downloads llama-server binary and TinyLlama model automatically
 async fn test_llamacpp_start_stop() {
+    setup_test_binary(EngineType::Llamacpp).await;
     let model_path = get_test_model().await;
 
     // Create minimal config
@@ -109,8 +138,10 @@ async fn test_llamacpp_start_stop() {
 }
 
 #[tokio::test]
-#[ignore] // Run with: cargo test --features build-llamacpp -- --ignored --nocapture
+#[ignore] // Run with: cargo test -- --ignored --nocapture
+           // Downloads llama-server binary and TinyLlama model automatically
 async fn test_llamacpp_inference() {
+    setup_test_binary(EngineType::Llamacpp).await;
     let model_path = get_test_model().await;
 
     // Create config with specific settings for inference
@@ -197,8 +228,10 @@ async fn test_llamacpp_inference() {
 }
 
 #[tokio::test]
-#[ignore] // Run with: cargo test --features build-llamacpp -- --ignored --nocapture
+#[ignore] // Run with: cargo test -- --ignored --nocapture
+           // Downloads llama-server binary and TinyLlama model automatically
 async fn test_state_persistence() {
+    setup_test_binary(EngineType::Llamacpp).await;
     let model_path = get_test_model().await;
 
     // Create temporary state database
@@ -255,8 +288,10 @@ async fn test_state_persistence() {
 }
 
 #[tokio::test]
-#[ignore] // Run with: cargo test --features build-llamacpp -- --ignored --nocapture
+#[ignore] // Run with: cargo test -- --ignored --nocapture
+           // Downloads llama-server binary and TinyLlama model automatically
 async fn test_multiple_instances() {
+    setup_test_binary(EngineType::Llamacpp).await;
     let model_path = get_test_model().await;
 
     // Create two instances with different IDs
@@ -341,8 +376,10 @@ async fn test_multiple_instances() {
 }
 
 #[tokio::test]
-#[ignore] // Run with: cargo test --features build-llamacpp -- --ignored --nocapture
+#[ignore] // Run with: cargo test -- --ignored --nocapture
+           // Downloads llama-server binary and TinyLlama model automatically
 async fn test_restart_instance() {
+    setup_test_binary(EngineType::Llamacpp).await;
     let model_path = get_test_model().await;
 
     let instance_config = InstanceConfig {

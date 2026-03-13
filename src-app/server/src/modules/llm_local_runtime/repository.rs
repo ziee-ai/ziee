@@ -33,18 +33,20 @@ impl LocalRuntimeRepository {
         provider_id: Uuid,
         local_port: i32,
         base_url: &str,
+        runtime_version_id: Option<Uuid>,
     ) -> AppResult<Uuid> {
         let record = sqlx::query!(
             r#"
             INSERT INTO llm_runtime_instances
-                (model_id, provider_id, local_port, base_url, status)
-            VALUES ($1, $2, $3, $4, 'starting')
+                (model_id, provider_id, local_port, base_url, status, runtime_version_id)
+            VALUES ($1, $2, $3, $4, 'starting', $5)
             RETURNING id
             "#,
             model_id,
             provider_id,
             local_port,
-            base_url
+            base_url,
+            runtime_version_id
         )
         .fetch_one(&self.pool)
         .await
@@ -68,8 +70,8 @@ impl LocalRuntimeRepository {
         let instance = sqlx::query_as!(
             RuntimeInstance,
             r#"
-            SELECT id, model_id, provider_id, deployment_type, local_port, base_url, status,
-                   error_message,
+            SELECT id, model_id, provider_id, local_port, base_url, status,
+                   error_message, runtime_version_id,
                    started_at as "started_at: _",
                    last_health_check as "last_health_check: _",
                    stopped_at as "stopped_at: _"
@@ -180,8 +182,8 @@ impl LocalRuntimeRepository {
         let instances = sqlx::query_as!(
             RuntimeInstance,
             r#"
-            SELECT id, model_id, provider_id, deployment_type, local_port, base_url, status,
-                   error_message,
+            SELECT id, model_id, provider_id, local_port, base_url, status,
+                   error_message, runtime_version_id,
                    started_at as "started_at: _",
                    last_health_check as "last_health_check: _",
                    stopped_at as "stopped_at: _"
@@ -200,6 +202,7 @@ impl LocalRuntimeRepository {
         Ok(instances)
     }
 
+}
 
 // =====================================================
 // Database Models
@@ -210,11 +213,11 @@ pub struct RuntimeInstance {
     pub id: Uuid,
     pub model_id: Uuid,
     pub provider_id: Uuid,
-    pub deployment_type: String,
     pub local_port: i32,
     pub base_url: String,
     pub status: String,
     pub error_message: Option<String>,
+    pub runtime_version_id: Option<Uuid>,
     pub started_at: DateTime<Utc>,
     pub last_health_check: Option<DateTime<Utc>>,
     pub stopped_at: Option<DateTime<Utc>>,

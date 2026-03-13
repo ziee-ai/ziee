@@ -75,6 +75,7 @@ pub use error::{Result, RuntimeError};
 pub use runtime::Runtime;
 
 // Modules
+pub mod binary_download;
 pub mod config;
 pub mod download;
 pub mod engine;

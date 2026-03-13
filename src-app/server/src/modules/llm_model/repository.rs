@@ -206,7 +206,8 @@ pub async fn get_llm_model_by_id(
                 capabilities, parameters,
                 created_at, updated_at,
                 file_size_bytes, validation_status, validation_issues,
-                port, pid, engine_type, engine_settings, file_format
+                port, pid, engine_type, engine_settings, file_format,
+                required_runtime_version_id
          FROM llm_models
          WHERE id = $1"#,
         model_id
@@ -245,6 +246,7 @@ pub async fn get_llm_model_by_id(
             .engine_settings
             .and_then(|v| serde_json::from_value(v).ok()),
         file_format: FileFormat::from_str(&r.file_format).unwrap(),
+        required_runtime_version_id: r.required_runtime_version_id,
     }))
 }
 
@@ -256,7 +258,8 @@ pub async fn list_all_llm_models(pool: &PgPool) -> Result<Vec<LlmModel>, sqlx::E
                 capabilities, parameters,
                 created_at, updated_at,
                 file_size_bytes, validation_status, validation_issues,
-                port, pid, engine_type, engine_settings, file_format
+                port, pid, engine_type, engine_settings, file_format,
+                required_runtime_version_id
          FROM llm_models
          ORDER BY created_at ASC"#
     )
@@ -296,6 +299,7 @@ pub async fn list_all_llm_models(pool: &PgPool) -> Result<Vec<LlmModel>, sqlx::E
                 .engine_settings
                 .and_then(|v| serde_json::from_value(v).ok()),
             file_format: FileFormat::from_str(&r.file_format).unwrap(),
+            required_runtime_version_id: r.required_runtime_version_id,
         })
         .collect())
 }
@@ -311,7 +315,8 @@ pub async fn list_llm_models_by_provider(
                 capabilities, parameters,
                 created_at, updated_at,
                 file_size_bytes, validation_status, validation_issues,
-                port, pid, engine_type, engine_settings, file_format
+                port, pid, engine_type, engine_settings, file_format,
+                required_runtime_version_id
          FROM llm_models
          WHERE provider_id = $1
          ORDER BY created_at ASC"#,
@@ -349,6 +354,7 @@ pub async fn list_llm_models_by_provider(
             port: r.port,
             pid: r.pid,
             engine_type: EngineType::from_str(&r.engine_type).unwrap(),
+            required_runtime_version_id: r.required_runtime_version_id,
             engine_settings: r
                 .engine_settings
                 .and_then(|v| serde_json::from_value(v).ok()),
@@ -419,6 +425,7 @@ pub async fn create_llm_model(
             .and_then(|v| serde_json::from_value(v).ok()),
         port: row.port,
         pid: row.pid,
+        required_runtime_version_id: None,
         engine_type: EngineType::from_str(&row.engine_type).unwrap(),
         engine_settings: row
             .engine_settings

@@ -39,4 +39,7 @@ pub struct LlmProvider {
     pub proxy_settings: ProxySettings,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Default runtime version for local models in this provider
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_runtime_version_id: Option<Uuid>,
 }

@@ -8,6 +8,7 @@ mod common;
 mod file;
 mod hardware;
 mod hub;
+mod llm_local_runtime;
 mod llm_model;
 mod llm_provider;
 mod llm_provider_files;

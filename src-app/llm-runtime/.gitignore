@@ -2,10 +2,7 @@
 /target/
 /build-tmp/
 
-# Binaries (large, should be built locally)
-/binaries/*
-!binaries/.gitkeep
-!binaries/README.md
+# Downloaded binaries (excluded from git)
 *.exe
 llama-server
 mistralrs-server

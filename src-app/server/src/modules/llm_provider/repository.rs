@@ -99,7 +99,8 @@ pub async fn get_llm_provider_by_id(
     provider_id: Uuid,
 ) -> Result<Option<LlmProvider>, sqlx::Error> {
     let row = sqlx::query!(
-        r#"SELECT id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at
+        r#"SELECT id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at,
+                  default_runtime_version_id
          FROM llm_providers
          WHERE id = $1"#,
         provider_id
@@ -121,12 +122,14 @@ pub async fn get_llm_provider_by_id(
             .unwrap_or_default(),
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        default_runtime_version_id: r.default_runtime_version_id,
     }))
 }
 
 pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"SELECT id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at
+        r#"SELECT id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at,
+                  default_runtime_version_id
          FROM llm_providers
          ORDER BY built_in DESC, name ASC"#
     )
@@ -149,6 +152,7 @@ pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx:
                 .unwrap_or_default(),
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            default_runtime_version_id: r.default_runtime_version_id,
         })
         .collect())
 }
@@ -189,6 +193,7 @@ pub async fn create_llm_provider(
             .proxy_settings
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
+        default_runtime_version_id: None,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
     })
@@ -385,7 +390,8 @@ pub async fn get_providers_for_group(
     group_id: Uuid,
 ) -> Result<Vec<LlmProvider>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"SELECT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at
+        r#"SELECT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
+                  p.default_runtime_version_id
          FROM llm_providers p
          INNER JOIN user_group_llm_providers ugp ON p.id = ugp.provider_id
          WHERE ugp.group_id = $1
@@ -411,6 +417,7 @@ pub async fn get_providers_for_group(
                 .unwrap_or_default(),
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            default_runtime_version_id: r.default_runtime_version_id,
         })
         .collect())
 }
@@ -422,7 +429,8 @@ pub async fn get_providers_for_user(
     user_id: Uuid,
 ) -> Result<Vec<LlmProvider>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"SELECT DISTINCT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at
+        r#"SELECT DISTINCT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
+                  p.default_runtime_version_id
          FROM llm_providers p
          INNER JOIN user_group_llm_providers ugp ON p.id = ugp.provider_id
          INNER JOIN user_groups ug ON ugp.group_id = ug.group_id
@@ -452,6 +460,7 @@ pub async fn get_providers_for_user(
                 .unwrap_or_default(),
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            default_runtime_version_id: r.default_runtime_version_id,
         })
         .collect())
 }

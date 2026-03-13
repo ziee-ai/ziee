@@ -1,44 +1,20 @@
 //! Binary discovery for engine executables
 //!
-//! Supports two modes:
-//! 1. Development: Use glob patterns to find locally built binaries
-//! 2. Production: Use explicit paths provided by the server
-//!
-//! When build features are enabled, this module will first check for binaries
-//! built by the engine build crates before falling back to runtime discovery.
+//! Discovers engine binaries downloaded from GitHub releases.
+//! Searches in the following locations:
+//! 1. Same directory as executable
+//! 2. bin/ subdirectory
+//! 3. System PATH
+//! 4. macOS: ../Resources/bin/ (production bundles)
 
 use std::path::{Path, PathBuf};
 
 use crate::config::EngineType;
 use crate::error::{Result, RuntimeError};
 
-// Import builders when features are enabled
-#[cfg(feature = "build-llamacpp")]
-use llamacpp_builder;
-
-#[cfg(feature = "build-mistralrs")]
-use mistralrs_builder;
-
 /// Get the path to an engine binary
 pub fn get_engine_binary_path(engine: EngineType) -> Result<PathBuf> {
-    // First, check if we have a built binary from the build crates
-    #[cfg(feature = "build-llamacpp")]
-    if matches!(engine, EngineType::Llamacpp) {
-        let path = llamacpp_builder::binary_path();
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-
-    #[cfg(feature = "build-mistralrs")]
-    if matches!(engine, EngineType::Mistralrs) {
-        let path = mistralrs_builder::binary_path();
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-
-    // Fall back to discovery logic
+    // Discover binary using standard search paths
     let binary_name = match engine {
         EngineType::Llamacpp => "llama-server",
         EngineType::Mistralrs => "mistralrs-server",
@@ -47,11 +23,12 @@ pub fn get_engine_binary_path(engine: EngineType) -> Result<PathBuf> {
     find_executable_binary(binary_name).ok_or_else(|| {
         RuntimeError::BinaryNotFound(format!(
             "Engine binary '{}' not found. Searched in:\n\
-             1. Built binaries (if build features enabled)\n\
-             2. Same directory as executable\n\
-             3. bin/ subdirectory\n\
-             4. System PATH\n\
-             5. macOS: ../Resources/bin/",
+             1. Same directory as executable\n\
+             2. bin/ subdirectory\n\
+             3. System PATH\n\
+             4. macOS: ../Resources/bin/\n\
+             \n\
+             Tip: Download binaries from GitHub releases and place them in one of the above locations.",
             binary_name
         ))
     })

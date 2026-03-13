@@ -723,6 +723,9 @@ pub struct LlmModel {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub engine_settings: Option<ModelEngineSettings>,
     pub file_format: FileFormat,
+    /// Required runtime version for this model
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_runtime_version_id: Option<Uuid>,
 }
 
 /// Model file database entity

@@ -2599,6 +2599,795 @@
         ]
       }
     },
+    "/api/local-runtime/models/{model_id}/start": {
+      "post": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Start a local runtime instance for a model",
+        "operationId": "LocalRuntime.startModel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartInstanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Start, stop, and restart local LLM runtime instances",
+                        "name": "LocalRuntimeManage",
+                        "value": "llm_local_runtime::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/models/{model_id}/stop": {
+      "post": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Stop a running instance",
+        "operationId": "LocalRuntime.stopModel",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Start, stop, and restart local LLM runtime instances",
+                        "name": "LocalRuntimeManage",
+                        "value": "llm_local_runtime::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/models/{model_id}/restart": {
+      "post": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Restart an instance",
+        "operationId": "LocalRuntime.restartModel",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Start, stop, and restart local LLM runtime instances",
+                        "name": "LocalRuntimeManage",
+                        "value": "llm_local_runtime::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/models/{model_id}/instance": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Get instance details by model ID",
+        "operationId": "LocalRuntime.getInstance",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View local LLM runtime instances and their status",
+                        "name": "LocalRuntimeRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/models/{model_id}/status": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Get instance status",
+        "operationId": "LocalRuntime.getStatus",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View local LLM runtime instances and their status",
+                        "name": "LocalRuntimeRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceStatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/models/{model_id}/health": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Health check for instance",
+        "operationId": "LocalRuntime.healthCheck",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View local LLM runtime instances and their status",
+                        "name": "LocalRuntimeRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/models/{model_id}/logs": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Get instance logs",
+        "operationId": "LocalRuntime.getLogs",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime instance logs",
+                        "name": "LocalRuntimeLogs",
+                        "value": "llm_local_runtime::logs"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::logs",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/providers/{provider_id}/instances": {
+      "get": {
+        "tags": [
+          "LocalRuntime"
+        ],
+        "description": "Get all instances for a provider",
+        "operationId": "LocalRuntime.getProviderInstances",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View local LLM runtime instances and their status",
+                        "name": "LocalRuntimeRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderInstancesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "List all registered runtime versions, optionally filtered by engine",
+        "operationId": "RuntimeVersion.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "engine",
+            "description": "Filter by engine (optional)",
+            "schema": {
+              "description": "Filter by engine (optional)",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response containing a list of runtime versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVersionListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/{version_id}": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Get a specific runtime version by ID",
+        "operationId": "RuntimeVersion.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response containing a single runtime version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVersionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Runtime version not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Delete a runtime version from the database and optionally remove the binary file",
+        "operationId": "RuntimeVersion.delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "remove_binary",
+            "description": "Whether to remove the binary file (defaults to false)",
+            "schema": {
+              "description": "Whether to remove the binary file (defaults to false)",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete runtime versions",
+                        "name": "RuntimeVersionDelete",
+                        "value": "llm_local_runtime::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Runtime version deleted successfully"
+          },
+          "404": {
+            "description": "Runtime version not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/download": {
+      "post": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Download and register a runtime version from GitHub releases",
+        "operationId": "RuntimeVersion.download",
+        "requestBody": {
+          "description": "Request to download and register a runtime version",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Download and register new runtime versions",
+                        "name": "RuntimeVersionCreate",
+                        "value": "llm_local_runtime::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response after downloading and registering a version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadVersionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/{version_id}/set-default": {
+      "post": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Set a runtime version as the system default for its engine",
+        "operationId": "RuntimeVersion.setDefault",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update runtime version settings and defaults",
+                        "name": "RuntimeVersionUpdate",
+                        "value": "llm_local_runtime::update"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::update",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response containing a single runtime version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVersionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Runtime version not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/{engine}/check-updates": {
+      "get": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Check for available runtime version updates from GitHub",
+        "operationId": "RuntimeVersion.checkUpdates",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View runtime versions and check for updates",
+                        "name": "RuntimeVersionRead",
+                        "value": "llm_local_runtime::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response containing available updates from GitHub",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailableUpdatesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/local-runtime/versions/sync-cache": {
+      "post": {
+        "tags": [
+          "Runtime Versions"
+        ],
+        "description": "Sync cached binaries with the database",
+        "operationId": "RuntimeVersion.syncCache",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update runtime version settings and defaults",
+                        "name": "RuntimeVersionUpdate",
+                        "value": "llm_local_runtime::update"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_local_runtime::update",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response after syncing cache with database",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncCacheResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-models": {
       "get": {
         "tags": [
@@ -7184,6 +7973,25 @@
           "tools"
         ]
       },
+      "AvailableUpdatesResponse": {
+        "description": "Response containing available updates from GitHub",
+        "type": "object",
+        "properties": {
+          "available_versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "engine": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine",
+          "available_versions"
+        ]
+      },
       "BlobType": {
         "description": "Helper type for documenting binary responses in OpenAPI",
         "type": "object"
@@ -8144,6 +8952,18 @@
           "password"
         ]
       },
+      "DeleteVersionQuery": {
+        "type": "object",
+        "properties": {
+          "remove_binary": {
+            "description": "Whether to remove the binary file (defaults to false)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
       "DeviceType": {
         "description": "Device types for ML model inference",
         "oneOf": [
@@ -8692,6 +9512,59 @@
           "expires_in"
         ]
       },
+      "DownloadVersionRequest": {
+        "description": "Request to download and register a runtime version",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "description": "Architecture (x86_64, arm64)",
+            "type": "string"
+          },
+          "backend": {
+            "description": "Backend (cpu, cuda, rocm, metal)",
+            "type": "string"
+          },
+          "engine": {
+            "description": "Engine type (llamacpp or mistralrs)",
+            "type": "string"
+          },
+          "platform": {
+            "description": "Platform (linux, macos, windows)",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version tag (e.g., \"v1.0.0\")",
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine",
+          "version",
+          "platform",
+          "arch",
+          "backend"
+        ]
+      },
+      "DownloadVersionResponse": {
+        "description": "Response after downloading and registering a version",
+        "type": "object",
+        "properties": {
+          "downloaded": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "version": {
+            "$ref": "#/components/schemas/RuntimeVersionResponse"
+          }
+        },
+        "required": [
+          "version",
+          "downloaded",
+          "message"
+        ]
+      },
       "EditMessageRequest": {
         "description": "Request to edit an existing message",
         "type": "object",
@@ -9157,6 +10030,31 @@
           "cpu",
           "memory",
           "gpu_devices"
+        ]
+      },
+      "HealthCheckResponse": {
+        "type": "object",
+        "properties": {
+          "healthy": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "response_time_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "healthy"
         ]
       },
       "HealthResponse": {
@@ -9779,6 +10677,102 @@
           }
         ]
       },
+      "InstanceResponse": {
+        "type": "object",
+        "properties": {
+          "base_url": {
+            "type": "string"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_health_check": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "local_port": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runtime_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stopped_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "model_id",
+          "provider_id",
+          "local_port",
+          "base_url",
+          "status",
+          "started_at"
+        ]
+      },
+      "InstanceStatusResponse": {
+        "type": "object",
+        "properties": {
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "uptime_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        },
+        "required": [
+          "model_id",
+          "status"
+        ]
+      },
       "JsonOption_for_DownloadProgressData": {
         "anyOf": [
           {
@@ -9842,6 +10836,18 @@
         "required": [
           "tools"
         ]
+      },
+      "ListVersionsQuery": {
+        "type": "object",
+        "properties": {
+          "engine": {
+            "description": "Filter by engine (optional)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "LlamaCppSettings": {
         "description": "LlamaCpp-specific settings for llama-server configuration",
@@ -10099,6 +11105,14 @@
             "type": "string",
             "format": "uuid"
           },
+          "required_runtime_version_id": {
+            "description": "Required runtime version for this model",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
@@ -10187,6 +11201,14 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "default_runtime_version_id": {
+            "description": "Default runtime version for local models in this provider",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "enabled": {
             "type": "boolean"
@@ -10345,6 +11367,25 @@
         "required": [
           "username",
           "password"
+        ]
+      },
+      "LogsResponse": {
+        "type": "object",
+        "properties": {
+          "logs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "model_id",
+          "logs"
         ]
       },
       "LoopSettings": {
@@ -11663,6 +12704,25 @@
           }
         }
       },
+      "ProviderInstancesResponse": {
+        "type": "object",
+        "properties": {
+          "instances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InstanceResponse"
+            }
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "provider_id",
+          "instances"
+        ]
+      },
       "ProviderWithModels": {
         "description": "Provider with its available models",
         "type": "object",
@@ -11685,6 +12745,14 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "default_runtime_version_id": {
+            "description": "Default runtime version for local models in this provider",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "enabled": {
             "type": "boolean"
@@ -11888,6 +12956,67 @@
         "required": [
           "uri",
           "name"
+        ]
+      },
+      "RuntimeVersionListResponse": {
+        "description": "Response containing a list of runtime versions",
+        "type": "object",
+        "properties": {
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVersionResponse"
+            }
+          }
+        },
+        "required": [
+          "versions"
+        ]
+      },
+      "RuntimeVersionResponse": {
+        "description": "Response containing a single runtime version",
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "binary_path": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_system_default": {
+            "type": "boolean"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "engine",
+          "version",
+          "platform",
+          "arch",
+          "backend",
+          "binary_path",
+          "is_system_default",
+          "created_at"
         ]
       },
       "SSEChatStreamCompleteData": {
@@ -12446,6 +13575,9 @@
           "version"
         ]
       },
+      "StartInstanceRequest": {
+        "type": "object"
+      },
       "StreamError": {
         "description": "Stream error information",
         "type": "object",
@@ -12461,6 +13593,24 @@
           }
         },
         "required": [
+          "message"
+        ]
+      },
+      "SyncCacheResponse": {
+        "description": "Response after syncing cache with database",
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "synced_count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "synced_count",
           "message"
         ]
       },

@@ -72,6 +72,10 @@ pub enum RuntimeError {
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
 
+    /// Archive extraction error (ZIP)
+    #[error("Archive extraction error: {0}")]
+    ZipExtraction(#[from] zip::result::ZipError),
+
     /// Timeout error
     #[error("Operation timed out: {0}")]
     Timeout(String),
