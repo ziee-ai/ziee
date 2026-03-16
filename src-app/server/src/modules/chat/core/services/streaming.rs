@@ -637,11 +637,14 @@ impl StreamingService {
 
             // For assistant messages with tool blocks, split into proper sequence for API
             if role == MessageRole::Assistant && (!tool_use_blocks.is_empty() || !tool_result_blocks.is_empty()) {
-                // 1. Tool use blocks → Assistant message
-                if !tool_use_blocks.is_empty() {
+                // 1. Text + tool_use blocks → single Assistant message (text before tool_use)
+                // Anthropic requires text and tool_use to be in the same message, and the
+                // conversation must NOT end with an assistant message (no prefill).
+                let assistant_content: Vec<_> = other_blocks.into_iter().chain(tool_use_blocks).collect();
+                if !assistant_content.is_empty() {
                     messages.push(ChatMessage {
                         role: ai_providers::Role::Assistant,
-                        content: tool_use_blocks,
+                        content: assistant_content,
                     });
                 }
 
@@ -649,18 +652,11 @@ impl StreamingService {
                 // Each provider handles Role::Tool correctly:
                 // - Anthropic: converts to "user" with tool_result content
                 // - OpenAI: converts to "tool" role
+                // Conversation ends on this user/tool message, satisfying Anthropic's constraint.
                 if !tool_result_blocks.is_empty() {
                     messages.push(ChatMessage {
                         role: ai_providers::Role::Tool,
                         content: tool_result_blocks,
-                    });
-                }
-
-                // 3. Other content (text, thinking) → Assistant message
-                if !other_blocks.is_empty() {
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Assistant,
-                        content: other_blocks,
                     });
                 }
             } else {
