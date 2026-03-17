@@ -579,12 +579,20 @@ export const useChatStore = create<ChatState>()(
 
                   // Always handle locally
                   if (!handled) {
+                    // Capture streaming message before clearing (needed for afterStreamComplete)
+                    const { streamingMessage } = get()
+
                     // Streaming complete - messages are already in state from SSE events
                     set({
                       isStreaming: false,
                       sending: false,
                       streamingMessage: null,
                     })
+
+                    // Notify extensions that stream completed
+                    if (streamingMessage) {
+                      await chatExtensionRegistry.afterStreamComplete(streamingMessage)
+                    }
                   }
                 },
                 error: async data => {

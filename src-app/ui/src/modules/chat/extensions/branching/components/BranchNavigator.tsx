@@ -1,0 +1,66 @@
+import { Button, Space, Typography } from 'antd'
+import { LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { Stores } from '@/core/stores'
+import { useMessageContext } from '@/modules/chat/core/MessageContext'
+
+const { Text } = Typography
+
+/**
+ * Zero-arg slot component rendered in the 'message_item_suffix' slot.
+ * Reads the current message from MessageContext (provided by ChatMessage).
+ *
+ * Shows a compact < X/N > branch navigator directly below a message bubble
+ * when multiple branches diverge at that message, mirroring the Claude.ai UX.
+ *
+ * - On the parent branch: rendered below the message that is the fork origin.
+ * - On a child branch: rendered below the first new message on that branch.
+ *
+ * Clicking prev/next activates the target branch, reloading messages.
+ */
+export function BranchNavigator() {
+  const msg = useMessageContext()
+  const { forkPoints } = Stores.Chat.BranchingStore
+  const { conversation } = Stores.Chat
+
+  if (!msg || !conversation) return null
+
+  const branchIds = forkPoints.get(msg.id)
+  if (!branchIds || branchIds.length <= 1) return null
+
+  const activeBranchId = conversation.active_branch_id ?? ''
+  const currentIndex = branchIds.indexOf(activeBranchId)
+  const displayIndex = currentIndex === -1 ? 0 : currentIndex
+  const total = branchIds.length
+
+  const goTo = async (index: number) => {
+    if (index < 0 || index >= total) return
+    const branchId = branchIds[index]
+    if (!branchId || branchId === activeBranchId) return
+    await Stores.Chat.__state.BranchingStore.activateBranch(
+      conversation.id,
+      branchId,
+    )
+  }
+
+  return (
+    <Space size={2} data-testid="branch-navigator">
+      <Button
+        type="text"
+        size="small"
+        icon={<LeftOutlined />}
+        disabled={displayIndex === 0}
+        onClick={() => goTo(displayIndex - 1)}
+      />
+      <Text type="secondary" className="text-xs select-none">
+        {displayIndex + 1} / {total}
+      </Text>
+      <Button
+        type="text"
+        size="small"
+        icon={<RightOutlined />}
+        disabled={displayIndex === total - 1}
+        onClick={() => goTo(displayIndex + 1)}
+      />
+    </Space>
+  )
+}
