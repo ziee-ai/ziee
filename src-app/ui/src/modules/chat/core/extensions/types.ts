@@ -76,6 +76,11 @@ export const CHAT_SLOTS = {
     description: 'Message-level actions',
     component: 'ChatMessage',
   },
+  /** Model selector rendered in the toolbar, left of the Send button */
+  toolbar_model: {
+    description: 'Model selector rendered in the toolbar, left of the Send button',
+    component: 'ChatInput',
+  },
 } as const
 
 /**

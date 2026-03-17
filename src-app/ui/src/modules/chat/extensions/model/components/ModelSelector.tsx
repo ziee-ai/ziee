@@ -80,7 +80,7 @@ export function ModelSelector() {
   }
 
   return (
-    <div ref={containerRef} style={{ display: 'inline-block' }}>
+    <div ref={containerRef} style={{ display: 'inline-block' }} data-testid="model-selector">
       <Select
         value={selectedModelId}
         onChange={handleChange}

@@ -1,5 +1,6 @@
 import { createExtension, type ChatExtension } from '@/modules/chat/core/extensions'
 import { createModelStore } from '@/modules/chat/extensions/model/Model.store'
+import { ModelSelector } from '@/modules/chat/extensions/model/components/ModelSelector'
 import type { Conversation } from '@/api-client/types'
 
 /**
@@ -33,6 +34,10 @@ const modelExtension: ChatExtension = createExtension({
     return {
       model_id: modelId,
     }
+  },
+
+  slots: {
+    toolbar_model: { component: ModelSelector, order: 0 },
   },
 
   /**
