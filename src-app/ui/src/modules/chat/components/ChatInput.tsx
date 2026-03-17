@@ -6,7 +6,6 @@ import {
   message as antMessage,
 } from 'antd'
 import { SendOutlined } from '@ant-design/icons'
-import { ModelSelector } from '@/modules/chat/extensions/model/components/ModelSelector'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 
@@ -72,7 +71,7 @@ export function ChatInput({
               </div>
 
               <div className={'flex items-center gap-[6px]'}>
-                <ModelSelector />
+                <ExtensionSlot name="toolbar_model" />
 
                 <div className={'items-center justify-end gap-1 flex'}>
                   <Button
