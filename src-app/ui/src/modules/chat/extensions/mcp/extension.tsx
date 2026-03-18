@@ -14,7 +14,9 @@ import { Stores } from '@/core/stores'
 import { createMcpStore, type McpToolCall } from '@/modules/chat/extensions/mcp/Mcp.store'
 import type { MessageContent, MessageContentDataToolResult, MessageContentDataToolUse, MessageWithContent } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/chat/extensions/mcp/components/ToolCallPendingApprovalContent'
-import { McpServerSelector } from '@/modules/chat/extensions/mcp/components/McpServerSelector'
+import { McpMenuItem } from '@/modules/chat/extensions/mcp/components/McpMenuItem'
+import { McpStatusRow } from '@/modules/chat/extensions/mcp/components/McpStatusRow'
+import { McpInitializer } from '@/modules/chat/extensions/mcp/components/McpInitializer'
 
 const { Text } = Typography
 
@@ -601,7 +603,9 @@ const mcpExtension: ChatExtension = createExtension({
 
   // Register slot components
   slots: {
-    toolbar_actions: { component: McpServerSelector, order: 20 },
+    toolbar_actions: { component: McpInitializer, order: 1 },
+    toolbar_plus_items: { component: McpMenuItem, order: 20 },
+    toolbar_status: { component: McpStatusRow, order: 10 },
   },
 
   cleanup: async () => {

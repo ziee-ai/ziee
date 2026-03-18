@@ -187,6 +187,10 @@ export const createModelStore = () =>
           state.providers = response.providers
           state.loading = false
         })
+        // Auto-select first model if none is selected yet
+        if (!get().selectedModelId) {
+          get().initializeFromConversation()
+        }
       } catch (error: any) {
         console.error('[ModelStore] loadProviders error:', error)
         set(state => {
