@@ -6,7 +6,7 @@ import {
 } from '@/modules/chat/core/extensions'
 import { createFileExtensionStore } from '@/modules/chat/extensions/file/File.store'
 import { FilePreviewList } from '@/modules/chat/extensions/file/components/FilePreviewList'
-import { FileUploadButton } from '@/modules/chat/extensions/file/components/FileUploadButton'
+import { FileAttachMenuItem } from '@/modules/chat/extensions/file/components/FileAttachMenuItem'
 import { FileCard } from '@/modules/chat/extensions/file/components/FileCard'
 import { ApiClient } from '@/api-client'
 import type { File as FileEntity, MessageContentDataFileAttachment } from '@/api-client/types'
@@ -164,8 +164,8 @@ const fileExtension: ChatExtension = createExtension({
 
   // Register slot components
   slots: {
-    // File upload button in toolbar
-    toolbar_actions: { component: FileUploadButton, order: 10 },
+    // File attach item in + dropdown
+    toolbar_plus_items: { component: FileAttachMenuItem, order: 10 },
     // File preview list above textarea
     input_area_prefix: { component: FilePreviewList, order: 10 },
   },

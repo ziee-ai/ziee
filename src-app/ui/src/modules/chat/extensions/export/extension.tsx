@@ -154,7 +154,7 @@ function ExportButton() {
 
   return (
     <Dropdown menu={{ items: getExportMenuItems() }} placement="bottomRight">
-      <Button icon={<DownloadOutlined />} size="small">
+      <Button icon={<DownloadOutlined />}>
         Export
       </Button>
     </Dropdown>

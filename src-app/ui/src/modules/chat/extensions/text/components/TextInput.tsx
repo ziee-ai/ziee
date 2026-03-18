@@ -43,10 +43,10 @@ export function TextInput() {
           <TextArea
             onKeyDown={handleKeyDown}
             placeholder="Type your message..."
-            autoSize={{ minRows: 1, maxRows: 6 }}
+            autoSize={{ minRows: 2, maxRows: 8 }}
             disabled={sending}
             className="resize-none !border-none focus:!border-none focus:!outline-none focus:!shadow-none !pt-1"
-            style={{ backgroundColor: 'transparent' }}
+            style={{ backgroundColor: 'transparent', fontSize: 16 }}
           />
         </Form.Item>
       </Form>
