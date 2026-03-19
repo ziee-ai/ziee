@@ -2,11 +2,11 @@ import { memo } from 'react'
 import { Avatar, theme } from 'antd'
 import { UserOutlined } from '@ant-design/icons'
 import type { MessageWithContent } from '@/api-client/types'
-import { Stores } from '@/core/stores'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
 import { MessageContext } from '@/modules/chat/core/MessageContext'
-import { InlineEditor } from '@/modules/chat/extensions/branching/components/InlineEditor'
+import { BranchNavigator } from '@/modules/chat/components/BranchNavigator'
+import { MessageActions } from '@/modules/chat/components/MessageActions'
 
 export const ChatMessage = memo(function ChatMessage({
   message,
@@ -15,11 +15,6 @@ export const ChatMessage = memo(function ChatMessage({
 }) {
   const isUser = message.role === 'user'
   const { token } = theme.useToken()
-
-  // Declaratively check if this message bubble is open for inline editing.
-  // BranchingStore drives the UI — no local state needed here.
-  const editingMessageId = Stores.Chat.BranchingStore?.editingMessageId
-  const isEditing = editingMessageId === message.id
 
   // Check if message has any content to render
   if (!message.contents || message.contents.length === 0) {
@@ -47,39 +42,34 @@ export const ChatMessage = memo(function ChatMessage({
           <div
             className={`${isUser ? '!pt-0.5' : ''} flex flex-1 -mt-[2px] w-full overflow-x-hidden flex-col`}
           >
-            {isEditing ? (
-              /* Inline editor replaces the content area while editing */
-              <InlineEditor />
-            ) : (
-              <div className={'w-full flex flex-col gap-2'}>
-                {message.contents
-                  .sort(
-                    (a, b) =>
-                      new Date(a.created_at).getTime() -
-                      new Date(b.created_at).getTime(),
-                  )
-                  .map((content, index) => (
-                    <ContentRenderer
-                      key={`${content.id || index}`}
-                      content={content}
-                      isUser={isUser}
-                    />
-                  ))}
-              </div>
-            )}
+            <div className={'w-full flex flex-col gap-2'}>
+              {message.contents
+                .sort(
+                  (a, b) =>
+                    new Date(a.created_at).getTime() -
+                    new Date(b.created_at).getTime(),
+                )
+                .map((content, index) => (
+                  <ContentRenderer
+                    key={`${content.id || index}`}
+                    content={content}
+                    isUser={isUser}
+                  />
+                ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Extension slots rendered outside the bubble: navigator (always visible) then actions (hover) */}
-      {!isEditing && (
-        <MessageContext.Provider value={message}>
-          <div className="flex flex-row items-center gap-1 mt-1">
-            <ExtensionSlot name="message_item_suffix" />
-            <ExtensionSlot name="message_actions" />
-          </div>
-        </MessageContext.Provider>
-      )}
+      {/* Core components + extension slots rendered outside the bubble */}
+      <MessageContext.Provider value={message}>
+        <div className="flex flex-row items-center gap-1 mt-1">
+          <BranchNavigator />
+          <MessageActions />
+          {/* Extensions can register additional message actions here */}
+          <ExtensionSlot name="message_actions" />
+        </div>
+      </MessageContext.Provider>
     </div>
   )
 })

@@ -23,6 +23,14 @@ interface FileExtensionStore {
   uploadingFiles: Map<string, FileUploadProgress>
   selectedFiles: Map<string, FileEntity>
 
+  /**
+   * IDs of files restored from an existing message during edit mode.
+   * These files already exist on the server and must NOT be deleted when
+   * removed from the selection or when the edit session ends.
+   * Only files uploaded in the current editing session are subject to server deletion.
+   */
+  restoredFileIds: Set<string>
+
   // Backup state (for error recovery)
   backupSelectedFiles: Map<string, FileEntity> | null
   backupUploadingFiles: Map<string, FileUploadProgress> | null
@@ -34,6 +42,13 @@ interface FileExtensionStore {
   clearFiles: () => void
   getFileIds: () => string[]
   isUploading: () => boolean
+
+  /**
+   * Restore files from an existing message into the selection.
+   * Marks them as restored so they are not deleted from the server
+   * if the user removes them or cancels the edit.
+   */
+  restoreFilesFromEdit: (files: FileEntity[]) => void
 
   // Backup/restore methods
   setBackupFiles: () => void
@@ -50,6 +65,7 @@ export const createFileExtensionStore = () =>
     // Initial state
     uploadingFiles: new Map(),
     selectedFiles: new Map(),
+    restoredFileIds: new Set(),
     backupSelectedFiles: null,
     backupUploadingFiles: null,
 
@@ -152,11 +168,20 @@ export const createFileExtensionStore = () =>
 
     // Remove a selected file
     removeFile: (fileId: string) => {
+      const isRestored = get().restoredFileIds.has(fileId)
       set((state) => {
         const newSelected = new Map(state.selectedFiles)
         newSelected.delete(fileId)
         state.selectedFiles = newSelected
       })
+      // Only delete from server if the file was uploaded in this session,
+      // not if it was restored from an existing message
+      if (!isRestored) {
+        // Server deletion (if applicable) would go here
+        console.log(`[FileStore] Removed non-restored file from selection: ${fileId}`)
+      } else {
+        console.log(`[FileStore] Removed restored file from selection (not deleted from server): ${fileId}`)
+      }
     },
 
     // Remove an uploading file (cancel)
@@ -168,14 +193,39 @@ export const createFileExtensionStore = () =>
       })
     },
 
-    // Clear all files (called after message send)
+    // Clear all files (called after message send or edit cancel)
+    // Only files that are NOT in restoredFileIds would be subject to server deletion
     clearFiles: () => {
       console.log('[FileStore] clearFiles() called')
-      console.trace('[FileStore] clearFiles stack trace')
+      const restoredIds = get().restoredFileIds
+      const sessionFileIds = [...get().selectedFiles.keys()].filter(
+        id => !restoredIds.has(id)
+      )
+      if (sessionFileIds.length > 0) {
+        // Server deletion for session-uploaded files would go here
+        console.log('[FileStore] Session files cleared (server deletion if applicable):', sessionFileIds)
+      }
       set((state) => {
         state.selectedFiles = new Map()
         state.uploadingFiles = new Map()
+        state.restoredFileIds = new Set()
       })
+    },
+
+    // Restore files from an existing message into the current selection.
+    // Marks them as restored so they are exempt from server deletion.
+    restoreFilesFromEdit: (files: FileEntity[]) => {
+      set((state) => {
+        const newSelected = new Map(state.selectedFiles)
+        const newRestoredIds = new Set<string>()
+        for (const file of files) {
+          newSelected.set(file.id, file)
+          newRestoredIds.add(file.id)
+        }
+        state.selectedFiles = newSelected
+        state.restoredFileIds = newRestoredIds
+      })
+      console.log(`[FileStore] Restored ${files.length} file(s) from edit message`)
     },
 
     // Get array of file IDs for request composition

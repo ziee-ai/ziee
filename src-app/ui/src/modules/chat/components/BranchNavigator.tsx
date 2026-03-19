@@ -6,7 +6,7 @@ import { useMessageContext } from '@/modules/chat/core/MessageContext'
 const { Text } = Typography
 
 /**
- * Zero-arg slot component rendered in the 'message_item_suffix' slot.
+ * Core component rendered via MessageContext in ChatMessage.
  * Reads the current message from MessageContext (provided by ChatMessage).
  *
  * Shows a compact < X/N > branch navigator directly below a message bubble
@@ -19,8 +19,7 @@ const { Text } = Typography
  */
 export function BranchNavigator() {
   const msg = useMessageContext()
-  const { forkPoints } = Stores.Chat.BranchingStore
-  const { conversation } = Stores.Chat
+  const { forkPoints, conversation } = Stores.Chat
 
   if (!msg || !conversation) return null
 
@@ -36,10 +35,7 @@ export function BranchNavigator() {
     if (index < 0 || index >= total) return
     const branchId = branchIds[index]
     if (!branchId || branchId === activeBranchId) return
-    await Stores.Chat.__state.BranchingStore.activateBranch(
-      conversation.id,
-      branchId,
-    )
+    await Stores.Chat.__state.activateBranch(conversation.id, branchId)
   }
 
   return (

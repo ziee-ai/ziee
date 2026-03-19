@@ -4,6 +4,7 @@ import { SendOutlined, PlusOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
+import { EditingMessageBanner } from '@/modules/chat/components/EditingMessageBanner'
 
 interface ChatInputProps {
   disabled?: boolean
@@ -54,6 +55,9 @@ export function ChatInput({
           boxShadow: focused ? `0 0 0 2px ${token.colorPrimaryBg}` : undefined,
         }}
       >
+        {/* Edit mode indicator — shown when user is editing an existing message */}
+        <EditingMessageBanner />
+
         {/* Input area */}
         <div style={{ padding: '10px 12px 4px' }}>
           {/* Extension slot: input area prefix (file previews, etc.) */}

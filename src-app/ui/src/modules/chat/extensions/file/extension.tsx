@@ -86,6 +86,39 @@ const fileExtension: ChatExtension = createExtension({
     createStore: createFileExtensionStore,
   },
 
+  /**
+   * Subscribe to editingMessage changes in Chat.store.
+   * When a message is being edited: restore its file attachments into the
+   * file selection so they appear in the input area prefix (FilePreviewList).
+   * When edit ends (null): clear the file selection.
+   */
+  initialize: async () => {
+    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+    const { Stores } = await import('@/core/stores')
+
+    useChatStore.subscribe(
+      state => state.editingMessage,
+      (editingMessage) => {
+        const fileStore = Stores.Chat.__state.FileStore
+        if (!fileStore) return
+
+        if (editingMessage) {
+          // Restore file_attachment content blocks from the edited message
+          const fileContents = editingMessage.contents.filter(
+            c => c.content_type === 'file_attachment'
+          )
+          if (fileContents.length > 0) {
+            const files = fileContents.map(c => (c.content as any).file as FileEntity)
+            fileStore.restoreFilesFromEdit(files)
+          }
+        } else {
+          // Edit ended (cancel or send) — clear the file selection
+          fileStore.clearFiles()
+        }
+      }
+    )
+  },
+
   // Check if files are still uploading before sending message
   beforeSendMessage: async () => {
     const { Stores } = await import('@/core/stores')
