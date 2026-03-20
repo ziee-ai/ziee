@@ -97,12 +97,14 @@ impl ChatCoreRepository {
         conversation_id: Uuid,
         parent_branch_id: Uuid,
         created_from_message_id: Uuid,
+        fork_level: &str,
     ) -> Result<Branch, AppError> {
         branches::create_branch(
             &self.pool,
             conversation_id,
             parent_branch_id,
             created_from_message_id,
+            fork_level,
         )
         .await
     }
@@ -174,12 +176,14 @@ impl ChatCoreRepository {
         conversation_id: Uuid,
         parent_branch_id: Uuid,
         message_id: Uuid,
+        fork_level: &str,
     ) -> Result<Branch, AppError> {
         messages::create_branch_from_message(
             &self.pool,
             conversation_id,
             parent_branch_id,
             message_id,
+            fork_level,
         )
         .await
     }
@@ -189,8 +193,11 @@ impl ChatCoreRepository {
         &self,
         branch_id: Uuid,
         role: &str,
+        model_id: Option<Uuid>,
+        assistant_id: Option<Uuid>,
+        mcp_server_ids: Option<Vec<Uuid>>,
     ) -> Result<crate::modules::chat::core::models::Message, AppError> {
-        messages::create_message(&self.pool, branch_id, role).await
+        messages::create_message(&self.pool, branch_id, role, model_id, assistant_id, mcp_server_ids).await
     }
 
     /// Get a message by ID

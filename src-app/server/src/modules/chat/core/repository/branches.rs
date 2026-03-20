@@ -29,6 +29,7 @@ pub async fn create_branch(
     conversation_id: Uuid,
     parent_branch_id: Uuid,
     created_from_message_id: Uuid,
+    fork_level: &str,
 ) -> Result<Branch, AppError> {
     // Start transaction to ensure atomicity
     let mut tx = pool.begin().await.map_err(AppError::database_error)?;
@@ -37,14 +38,15 @@ pub async fn create_branch(
     let branch = sqlx::query_as!(
         Branch,
         r#"
-        INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id)
-        VALUES ($1, $2, $3)
+        INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id, fork_level)
+        VALUES ($1, $2, $3, $4)
         RETURNING id, conversation_id, parent_branch_id, created_from_message_id,
-                  created_at as "created_at: _"
+                  fork_level, created_at as "created_at: _"
         "#,
         conversation_id,
         Some(parent_branch_id),
-        Some(created_from_message_id)
+        Some(created_from_message_id),
+        fork_level,
     )
     .fetch_one(&mut *tx)
     .await
@@ -99,7 +101,7 @@ pub async fn get_branch(pool: &PgPool, id: Uuid) -> Result<Option<Branch>, AppEr
         Branch,
         r#"
         SELECT id, conversation_id, parent_branch_id, created_from_message_id,
-               created_at as "created_at: _"
+               fork_level, created_at as "created_at: _"
         FROM branches
         WHERE id = $1
         "#,
@@ -118,7 +120,7 @@ pub async fn list_branches(pool: &PgPool, conversation_id: Uuid) -> Result<Vec<B
         Branch,
         r#"
         SELECT id, conversation_id, parent_branch_id, created_from_message_id,
-               created_at as "created_at: _"
+               fork_level, created_at as "created_at: _"
         FROM branches
         WHERE conversation_id = $1
         ORDER BY created_at DESC

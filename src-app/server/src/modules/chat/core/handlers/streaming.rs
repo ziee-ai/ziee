@@ -82,7 +82,7 @@ pub async fn send_message(
     let branch_id = if let Some(message_id) = request.create_branch_from_message_id {
         // Create new branch from the specified message
         let new_branch = Repos.chat.core
-            .create_branch_from_message(conversation_id, request.branch_id, message_id)
+            .create_branch_from_message(conversation_id, request.branch_id, message_id, &request.fork_level)
             .await?;
 
         new_branch.id

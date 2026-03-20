@@ -41,6 +41,7 @@ interface FileExtensionStore {
   removeUploadingFile: (progressId: string) => void
   clearFiles: () => void
   getFileIds: () => string[]
+  getFiles: () => FileEntity[]
   isUploading: () => boolean
 
   /**
@@ -231,6 +232,11 @@ export const createFileExtensionStore = () =>
     // Get array of file IDs for request composition
     getFileIds: () => {
       return Array.from(get().selectedFiles.keys())
+    },
+
+    // Get array of file entities (safe to call outside React components)
+    getFiles: () => {
+      return Array.from(get().selectedFiles.values())
     },
 
     // Check if any files are currently uploading

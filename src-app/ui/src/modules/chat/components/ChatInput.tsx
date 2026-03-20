@@ -28,8 +28,14 @@ export function ChatInput({
   // Get stores
   const { sendMessage, sending, isStreaming } = Stores.Chat
 
+  const uploadingFilesMap = Stores.Chat.FileStore?.uploadingFiles
+  const isUploadingFiles = !!(uploadingFilesMap &&
+    Array.from(uploadingFilesMap.values()).some(
+      f => f.status === 'pending' || f.status === 'uploading'
+    ))
+
   const handleSend = async () => {
-    if (sending || isStreaming || disabled) return
+    if (sending || isStreaming || disabled || isUploadingFiles) return
 
     try {
       // sendMessage auto-creates conversation if missing
@@ -117,8 +123,8 @@ export function ChatInput({
               size="large"
               icon={<SendOutlined rotate={270} />}
               onClick={handleSend}
-              disabled={sending || disabled}
-              loading={sending}
+              disabled={sending || isStreaming || disabled || isUploadingFiles}
+              loading={sending || isStreaming || isUploadingFiles}
               aria-label="Send message"
             />
           </div>

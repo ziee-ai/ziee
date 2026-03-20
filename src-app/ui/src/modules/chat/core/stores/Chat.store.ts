@@ -344,6 +344,7 @@ export const useChatStore = create<ChatState>()(
           await get().loadMessages(id)
           await get().loadBranches(id)
 
+          await chatExtensionRegistry.initialize()
           await chatExtensionRegistry.onConversationLoad(conversation)
         } catch (error: any) {
           set({
@@ -376,7 +377,15 @@ export const useChatStore = create<ChatState>()(
         set({ branchesLoading: true })
         try {
           const branches = await ApiClient.Branch.list({ id: conversationId })
-          set({ branches, branchesLoading: false })
+
+          // Seed branchForkLevels from the persisted fork_level on each branch.
+          // This ensures computeForkPoints anchors the navigator correctly after page reload,
+          // without relying on in-memory state that is lost on refresh.
+          const branchForkLevels = new Map(
+            branches.map(b => [b.id, (b.fork_level ?? 'user') as 'user' | 'assistant'])
+          )
+
+          set({ branches, branchForkLevels, branchesLoading: false })
           await get().computeForkPoints()
         } catch (err) {
           console.error('[Chat.store] Failed to load branches:', err)
@@ -623,14 +632,16 @@ export const useChatStore = create<ChatState>()(
         // Collect all request fields from extensions
         const allRequestFields = await chatExtensionRegistry.composeRequestFields()
 
-        // Inject branching field directly (moved from branching extension)
+        // Inject branching fields directly (moved from branching extension)
         const pendingBranchFromMessageId = get().pendingBranchFromMessageId
         if (pendingBranchFromMessageId) {
           allRequestFields.create_branch_from_message_id = pendingBranchFromMessageId
+          allRequestFields.fork_level = get().pendingBranchForkLevel ?? 'user'
         }
 
         if (!conversation) {
           conversation = await get().createConversation()
+          await chatExtensionRegistry.initialize()
           await chatExtensionRegistry.onConversationLoad(conversation)
         }
 
@@ -878,13 +889,12 @@ export const useChatStore = create<ChatState>()(
                       await chatExtensionRegistry.afterStreamComplete(streamingMessage)
                     }
 
-                    // Reload messages if a new branch was created during this stream
-                    if (get().branchChangedDuringStream) {
-                      set({ branchChangedDuringStream: false })
-                      const conversation = get().conversation
-                      if (conversation) {
-                        await get().loadMessages(conversation.id)
-                      }
+                    // Always reload messages after stream completes so the UI
+                    // reflects authoritative server state (including file_attachment blocks)
+                    set({ branchChangedDuringStream: false })
+                    const conversation = get().conversation
+                    if (conversation) {
+                      await get().loadMessages(conversation.id)
                     }
 
                     // Always recompute fork points so the navigator is up to date

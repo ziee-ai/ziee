@@ -44,7 +44,7 @@ pub async fn create_branch(
 
     // Create new branch with message cloning (handled in repository)
     let branch = Repos.chat.core
-        .create_branch(conversation_id, parent_branch_id, request.from_message_id)
+        .create_branch(conversation_id, parent_branch_id, request.from_message_id, &request.fork_level)
         .await?;
 
     Ok((StatusCode::CREATED, Json(branch)))

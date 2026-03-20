@@ -67,6 +67,7 @@ export interface Branch {
   conversation_id: string
   created_at: string
   created_from_message_id?: string
+  fork_level: string
   id: string
   parent_branch_id?: string
 }
@@ -175,6 +176,7 @@ export interface CreateAssistantRequest {
 }
 
 export interface CreateBranchRequest {
+  fork_level?: string
   from_message_id: string
 }
 
@@ -845,9 +847,12 @@ export interface MemoryUsage {
 }
 
 export interface Message {
+  assistant_id?: string
   created_at: string
   edit_count: number
   id: string
+  mcp_server_ids?: string[]
+  model_id?: string
   originated_from_id: string
   role: string
 }
@@ -901,10 +906,13 @@ export interface MessageContentDataToolResult {
 export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult
 
 export interface MessageWithContent {
+  assistant_id?: string
   contents: MessageContent[]
   created_at: string
   edit_count: number
   id: string
+  mcp_server_ids?: string[]
+  model_id?: string
   originated_from_id: string
   role: string
 }
@@ -1215,6 +1223,7 @@ export interface SendMessageRequest {
   create_branch_from_message_id?: string
   enable_mcp?: boolean
   file_ids?: string[]
+  fork_level?: string
   mcp_config?: McpConfig
   model_id: string
   tool_approvals?: ToolApprovalDecision[]

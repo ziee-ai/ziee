@@ -17,6 +17,9 @@ pub async fn create_message(
     pool: &PgPool,
     branch_id: Uuid,
     role: &str,
+    model_id: Option<Uuid>,
+    assistant_id: Option<Uuid>,
+    mcp_server_ids: Option<Vec<Uuid>>,
 ) -> Result<Message, AppError> {
     let message_id = Uuid::new_v4();
 
@@ -27,15 +30,21 @@ pub async fn create_message(
     let message = sqlx::query_as!(
         Message,
         r#"
-        INSERT INTO messages (id, role, originated_from_id, edit_count)
-        VALUES ($1, $2, $1, 0)
+        INSERT INTO messages (id, role, originated_from_id, edit_count, model_id, assistant_id, mcp_server_ids)
+        VALUES ($1, $2, $1, 0, $3, $4, $5)
         RETURNING id, role,
                   originated_from_id as "originated_from_id!",
                   edit_count,
+                  model_id as "model_id: _",
+                  assistant_id as "assistant_id: _",
+                  mcp_server_ids as "mcp_server_ids: _",
                   created_at as "created_at: _"
         "#,
         message_id,
-        role
+        role,
+        model_id as _,
+        assistant_id as _,
+        mcp_server_ids.as_deref() as _,
     )
     .fetch_one(&mut *tx)
     .await
@@ -67,6 +76,9 @@ pub async fn get_message(pool: &PgPool, id: Uuid) -> Result<Option<Message>, App
         SELECT id, role,
                originated_from_id as "originated_from_id!",
                edit_count,
+               model_id as "model_id: _",
+               assistant_id as "assistant_id: _",
+               mcp_server_ids as "mcp_server_ids: _",
                created_at as "created_at: _"
         FROM messages
         WHERE id = $1
@@ -111,6 +123,9 @@ pub async fn list_messages_in_branch(
         SELECT m.id, m.role,
                m.originated_from_id as "originated_from_id!",
                m.edit_count,
+               m.model_id as "model_id: _",
+               m.assistant_id as "assistant_id: _",
+               m.mcp_server_ids as "mcp_server_ids: _",
                m.created_at as "created_at: _"
         FROM messages m
         INNER JOIN branch_messages bm ON m.id = bm.message_id
@@ -160,6 +175,7 @@ pub async fn create_branch_from_message(
     conversation_id: Uuid,
     parent_branch_id: Uuid,
     message_id: Uuid,
+    fork_level: &str,
 ) -> Result<crate::modules::chat::core::models::Branch, AppError> {
     let mut tx = pool.begin().await.map_err(AppError::database_error)?;
 
@@ -182,14 +198,15 @@ pub async fn create_branch_from_message(
     let new_branch = sqlx::query_as!(
         crate::modules::chat::core::models::Branch,
         r#"
-        INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id)
-        VALUES ($1, $2, $3)
+        INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id, fork_level)
+        VALUES ($1, $2, $3, $4)
         RETURNING id, conversation_id, parent_branch_id, created_from_message_id,
-                  created_at as "created_at: _"
+                  fork_level, created_at as "created_at: _"
         "#,
         conversation_id,
         Some(parent_branch_id),
-        Some(message_id)
+        Some(message_id),
+        fork_level,
     )
     .fetch_one(&mut *tx)
     .await
@@ -247,6 +264,9 @@ pub async fn edit_message(
         SELECT id, role,
                originated_from_id as "originated_from_id!",
                edit_count,
+               model_id as "model_id: _",
+               assistant_id as "assistant_id: _",
+               mcp_server_ids as "mcp_server_ids: _",
                created_at as "created_at: _"
         FROM messages
         WHERE id = $1
@@ -273,14 +293,14 @@ pub async fn edit_message(
     .map_err(AppError::database_error)?
     .ok_or_else(|| AppError::not_found("Message not in branch"))?;
 
-    // 2. Create new branch
+    // 2. Create new branch (edit_message is always a 'user' level fork)
     let new_branch = sqlx::query_as!(
         crate::modules::chat::core::models::Branch,
         r#"
-        INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id)
-        VALUES ($1, $2, $3)
+        INSERT INTO branches (conversation_id, parent_branch_id, created_from_message_id, fork_level)
+        VALUES ($1, $2, $3, 'user')
         RETURNING id, conversation_id, parent_branch_id, created_from_message_id,
-                  created_at as "created_at: _"
+                  fork_level, created_at as "created_at: _"
         "#,
         conversation_id,
         Some(current_branch_id),
@@ -306,7 +326,7 @@ pub async fn edit_message(
     .await
     .map_err(AppError::database_error)?;
 
-    // 4. Create the edited message
+    // 4. Create the edited message (model/assistant/mcp context not set here — set via streaming)
     let new_message_id = Uuid::new_v4();
     let new_message = sqlx::query_as!(
         Message,
@@ -316,6 +336,9 @@ pub async fn edit_message(
         RETURNING id, role,
                   originated_from_id as "originated_from_id!",
                   edit_count,
+                  model_id as "model_id: _",
+                  assistant_id as "assistant_id: _",
+                  mcp_server_ids as "mcp_server_ids: _",
                   created_at as "created_at: _"
         "#,
         new_message_id,
