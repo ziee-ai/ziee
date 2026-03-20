@@ -22,6 +22,7 @@ interface ChatStateSnapshot {
   messages: Map<string, MessageWithContent>
   streamingMessage: MessageWithContent | null
   tempUserMessageId: string | null
+  isStreaming: boolean
 }
 
 interface ChatState {
@@ -185,6 +186,7 @@ export const useChatStore = create<ChatState>()(
           messages: new Map(state.messages),
           streamingMessage: state.streamingMessage,
           tempUserMessageId: state.tempUserMessageId,
+          isStreaming: state.isStreaming,
         }
         set(state => {
           const newCache = new Map(state.conversationStateCache)
@@ -211,6 +213,7 @@ export const useChatStore = create<ChatState>()(
           messages: new Map(snapshot.messages),
           streamingMessage: snapshot.streamingMessage,
           tempUserMessageId: snapshot.tempUserMessageId,
+          isStreaming: snapshot.isStreaming,
         })
         console.log(
           `[Chat.store] Cache hit - restored conversation state for: ${conversationId}`,
@@ -318,6 +321,7 @@ export const useChatStore = create<ChatState>()(
           get().scheduleCacheClear(currentConversation.id)
 
           await chatExtensionRegistry.cleanup()
+          set({ isStreaming: false, sending: false, streamingMessage: null, tempUserMessageId: null })
         }
 
         get().cancelCacheClear(id)
@@ -645,6 +649,8 @@ export const useChatStore = create<ChatState>()(
           await chatExtensionRegistry.onConversationLoad(conversation)
         }
 
+        const streamConversationId = conversation.id
+
         set({ sending: true, isStreaming: true, error: null })
 
         const userContents = await chatExtensionRegistry.provideUserContent(
@@ -759,6 +765,8 @@ export const useChatStore = create<ChatState>()(
                   const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
 
                   if (!handled) {
+                    if (get().conversation?.id !== streamConversationId) return
+
                     const state = get()
 
                     if (data.content && Array.isArray(data.content)) {
@@ -878,6 +886,7 @@ export const useChatStore = create<ChatState>()(
 
                   if (!handled) {
                     const { streamingMessage } = get()
+                    const isOnOriginalConversation = get().conversation?.id === streamConversationId
 
                     set({
                       isStreaming: false,
@@ -885,20 +894,25 @@ export const useChatStore = create<ChatState>()(
                       streamingMessage: null,
                     })
 
-                    if (streamingMessage) {
-                      await chatExtensionRegistry.afterStreamComplete(streamingMessage)
-                    }
+                    if (isOnOriginalConversation) {
+                      if (streamingMessage) {
+                        await chatExtensionRegistry.afterStreamComplete(streamingMessage)
+                      }
 
-                    // Always reload messages after stream completes so the UI
-                    // reflects authoritative server state (including file_attachment blocks)
-                    set({ branchChangedDuringStream: false })
-                    const conversation = get().conversation
-                    if (conversation) {
-                      await get().loadMessages(conversation.id)
-                    }
+                      // Always reload messages after stream completes so the UI
+                      // reflects authoritative server state (including file_attachment blocks)
+                      set({ branchChangedDuringStream: false })
+                      const conversation = get().conversation
+                      if (conversation) {
+                        await get().loadMessages(conversation.id)
+                      }
 
-                    // Always recompute fork points so the navigator is up to date
-                    await get().computeForkPoints()
+                      // Always recompute fork points so the navigator is up to date
+                      await get().computeForkPoints()
+                    } else {
+                      // Invalidate A's stale snapshot so messages reload fresh when user returns
+                      get().clearConversationCache(streamConversationId)
+                    }
                   }
                 },
                 error: async data => {
@@ -910,6 +924,14 @@ export const useChatStore = create<ChatState>()(
                     data,
                   }
                   await chatExtensionRegistry.handleSSEEvent(sseEvent)
+
+                  const isOnOriginalConversation = get().conversation?.id === streamConversationId
+
+                  if (!isOnOriginalConversation) {
+                    set({ isStreaming: false, sending: false, streamingMessage: null })
+                    get().clearConversationCache(streamConversationId)
+                    return
+                  }
 
                   const state = get()
 
