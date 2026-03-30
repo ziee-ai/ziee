@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 
-use super::models::{McpServer, TransportType};
+use super::models::{McpServer, TransportType, UsageMode};
 use super::types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest};
 
 /// MCP Repository
@@ -230,18 +230,24 @@ pub async fn create_user_mcp_server(
     let headers = serde_json::to_value(request.headers.clone().unwrap_or_default())
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
 
+    let supports_sampling = request.supports_sampling.unwrap_or(false);
+    let usage_mode = request.usage_mode.clone().unwrap_or(UsageMode::Auto);
+
     let row = sqlx::query!(
         r#"
         INSERT INTO mcp_servers (
             user_id, name, display_name, description,
             transport_type, command, args, environment_variables,
-            url, headers, timeout_seconds, enabled, is_system
+            url, headers, timeout_seconds, enabled, is_system,
+            supports_sampling, usage_mode, max_concurrent_sessions
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false,
+                $13, $14, $15)
         RETURNING
             id, user_id, name, display_name, description,
-            enabled, is_system, transport_type,
+            enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
             created_at, updated_at
         "#,
         user_id,
@@ -255,7 +261,10 @@ pub async fn create_user_mcp_server(
         request.url,
         headers,
         request.timeout_seconds.unwrap_or(30) as i32,
-        request.enabled.unwrap_or(true),
+        request.enabled.unwrap_or(false),
+        supports_sampling,
+        usage_mode.to_string(),
+        request.max_concurrent_sessions,
     )
     .fetch_one(pool)
     .await
@@ -276,6 +285,7 @@ pub async fn create_user_mcp_server(
         description: row.description,
         enabled: row.enabled,
         is_system: row.is_system,
+        is_built_in: row.is_built_in,
         transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
@@ -285,6 +295,9 @@ pub async fn create_user_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
+        supports_sampling: row.supports_sampling,
+        usage_mode: UsageMode::from_str(&row.usage_mode)?,
+        max_concurrent_sessions: row.max_concurrent_sessions,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -304,8 +317,9 @@ pub async fn get_user_mcp_server(
         r#"
         SELECT
             id, user_id, name, display_name, description,
-            enabled, is_system, transport_type,
+            enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1 AND user_id = $2 AND is_system = false
@@ -324,6 +338,7 @@ pub async fn get_user_mcp_server(
         description: r.description,
         enabled: r.enabled,
         is_system: r.is_system,
+        is_built_in: r.is_built_in,
         transport_type: TransportType::from_str(&r.transport_type).unwrap(),
         command: r.command,
         args: r.args.unwrap_or_else(|| serde_json::json!([])),
@@ -333,6 +348,9 @@ pub async fn get_user_mcp_server(
         url: r.url,
         headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: r.timeout_seconds,
+        supports_sampling: r.supports_sampling,
+        usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
+        max_concurrent_sessions: r.max_concurrent_sessions,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
     }))
@@ -351,8 +369,9 @@ pub async fn list_user_mcp_servers(
         r#"
         SELECT
             id, user_id, name, display_name, description,
-            enabled, is_system, transport_type,
+            enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
             created_at, updated_at
         FROM mcp_servers
         WHERE user_id = $1 AND is_system = false
@@ -376,6 +395,7 @@ pub async fn list_user_mcp_servers(
             description: r.description,
             enabled: r.enabled,
             is_system: r.is_system,
+            is_built_in: r.is_built_in,
             transport_type: TransportType::from_str(&r.transport_type).unwrap(),
             command: r.command,
             args: r.args.unwrap_or_else(|| serde_json::json!([])),
@@ -385,6 +405,9 @@ pub async fn list_user_mcp_servers(
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
+            supports_sampling: r.supports_sampling,
+            usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
+            max_concurrent_sessions: r.max_concurrent_sessions,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
@@ -440,12 +463,16 @@ pub async fn update_user_mcp_server(
             url = COALESCE($10, url),
             headers = COALESCE($11, headers),
             timeout_seconds = COALESCE($12, timeout_seconds),
+            supports_sampling = COALESCE($13, supports_sampling),
+            usage_mode = COALESCE($14, usage_mode),
+            max_concurrent_sessions = COALESCE($15, max_concurrent_sessions),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND is_system = false
         RETURNING
             id, user_id, name, display_name, description,
-            enabled, is_system, transport_type,
+            enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
             created_at, updated_at
         "#,
         id,
@@ -459,7 +486,10 @@ pub async fn update_user_mcp_server(
         env_vars,
         request.url,
         headers,
-        request.timeout_seconds.map(|t| t as i32)
+        request.timeout_seconds.map(|t| t as i32),
+        request.supports_sampling,
+        request.usage_mode.as_ref().map(|m| m.to_string()),
+        request.max_concurrent_sessions,
     )
     .fetch_one(pool)
     .await
@@ -483,6 +513,7 @@ pub async fn update_user_mcp_server(
         description: row.description,
         enabled: row.enabled,
         is_system: row.is_system,
+        is_built_in: row.is_built_in,
         transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
@@ -492,6 +523,9 @@ pub async fn update_user_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
+        supports_sampling: row.supports_sampling,
+        usage_mode: UsageMode::from_str(&row.usage_mode)?,
+        max_concurrent_sessions: row.max_concurrent_sessions,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -545,18 +579,24 @@ pub async fn create_system_mcp_server(
     let headers = serde_json::to_value(request.headers.clone().unwrap_or_default())
         .map_err(|e| AppError::internal_error(format!("Failed to serialize headers: {}", e)))?;
 
+    let supports_sampling = request.supports_sampling.unwrap_or(false);
+    let usage_mode = request.usage_mode.clone().unwrap_or(UsageMode::Auto);
+
     let row = sqlx::query!(
         r#"
         INSERT INTO mcp_servers (
             name, display_name, description,
             transport_type, command, args, environment_variables,
-            url, headers, timeout_seconds, enabled, is_system
+            url, headers, timeout_seconds, enabled, is_system,
+            supports_sampling, usage_mode, max_concurrent_sessions
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true,
+                $12, $13, $14)
         RETURNING
             id, user_id, name, display_name, description,
-            enabled, is_system, transport_type,
+            enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
             created_at, updated_at
         "#,
         request.name,
@@ -569,7 +609,10 @@ pub async fn create_system_mcp_server(
         request.url,
         headers,
         request.timeout_seconds.unwrap_or(30) as i32,
-        request.enabled.unwrap_or(true),
+        request.enabled.unwrap_or(false),
+        supports_sampling,
+        usage_mode.to_string(),
+        request.max_concurrent_sessions,
     )
     .fetch_one(pool)
     .await
@@ -590,6 +633,7 @@ pub async fn create_system_mcp_server(
         description: row.description,
         enabled: row.enabled,
         is_system: row.is_system,
+        is_built_in: row.is_built_in,
         transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
@@ -599,6 +643,9 @@ pub async fn create_system_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
+        supports_sampling: row.supports_sampling,
+        usage_mode: UsageMode::from_str(&row.usage_mode)?,
+        max_concurrent_sessions: row.max_concurrent_sessions,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -614,8 +661,9 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
         r#"
         SELECT
             id, user_id, name, display_name, description,
-            enabled, is_system, transport_type,
+            enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1 AND is_system = true
@@ -633,6 +681,7 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
         description: r.description,
         enabled: r.enabled,
         is_system: r.is_system,
+        is_built_in: r.is_built_in,
         transport_type: TransportType::from_str(&r.transport_type).unwrap(),
         command: r.command,
         args: r.args.unwrap_or_else(|| serde_json::json!([])),
@@ -642,6 +691,9 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
         url: r.url,
         headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: r.timeout_seconds,
+        supports_sampling: r.supports_sampling,
+        usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
+        max_concurrent_sessions: r.max_concurrent_sessions,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
     }))
@@ -659,8 +711,9 @@ pub async fn list_system_mcp_servers(
         r#"
         SELECT
             id, user_id, name, display_name, description,
-            enabled, is_system, transport_type,
+            enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
             created_at, updated_at
         FROM mcp_servers
         WHERE is_system = true
@@ -683,6 +736,7 @@ pub async fn list_system_mcp_servers(
             description: r.description,
             enabled: r.enabled,
             is_system: r.is_system,
+            is_built_in: r.is_built_in,
             transport_type: TransportType::from_str(&r.transport_type).unwrap(),
             command: r.command,
             args: r.args.unwrap_or_else(|| serde_json::json!([])),
@@ -692,6 +746,9 @@ pub async fn list_system_mcp_servers(
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
+            supports_sampling: r.supports_sampling,
+            usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
+            max_concurrent_sessions: r.max_concurrent_sessions,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
@@ -743,12 +800,16 @@ pub async fn update_system_mcp_server(
             url = COALESCE($9, url),
             headers = COALESCE($10, headers),
             timeout_seconds = COALESCE($11, timeout_seconds),
+            supports_sampling = COALESCE($12, supports_sampling),
+            usage_mode = COALESCE($13, usage_mode),
+            max_concurrent_sessions = COALESCE($14, max_concurrent_sessions),
             updated_at = NOW()
         WHERE id = $1 AND is_system = true
         RETURNING
             id, user_id, name, display_name, description,
-            enabled, is_system, transport_type,
+            enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
             created_at, updated_at
         "#,
         id,
@@ -761,7 +822,10 @@ pub async fn update_system_mcp_server(
         env_vars,
         request.url,
         headers,
-        request.timeout_seconds.map(|t| t as i32)
+        request.timeout_seconds.map(|t| t as i32),
+        request.supports_sampling,
+        request.usage_mode.as_ref().map(|m| m.to_string()),
+        request.max_concurrent_sessions,
     )
     .fetch_one(pool)
     .await
@@ -785,6 +849,7 @@ pub async fn update_system_mcp_server(
         description: row.description,
         enabled: row.enabled,
         is_system: row.is_system,
+        is_built_in: row.is_built_in,
         transport_type: TransportType::from_str(&row.transport_type)?,
         command: row.command,
         args: row.args.unwrap_or_else(|| serde_json::json!([])),
@@ -794,6 +859,9 @@ pub async fn update_system_mcp_server(
         url: row.url,
         headers: row.headers.unwrap_or_else(|| serde_json::json!({})),
         timeout_seconds: row.timeout_seconds,
+        supports_sampling: row.supports_sampling,
+        usage_mode: UsageMode::from_str(&row.usage_mode)?,
+        max_concurrent_sessions: row.max_concurrent_sessions,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -805,16 +873,24 @@ pub async fn update_system_mcp_server(
 
 /// Delete system MCP server
 pub async fn delete_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
-    let result = sqlx::query!(
+    let server = sqlx::query!(
+        "SELECT is_built_in FROM mcp_servers WHERE id = $1 AND is_system = true",
+        id
+    )
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::not_found("Server"))?;
+
+    if server.is_built_in {
+        return Err(AppError::bad_request("BUILT_IN_SERVER", "Cannot delete a built-in system server"));
+    }
+
+    sqlx::query!(
         "DELETE FROM mcp_servers WHERE id = $1 AND is_system = true",
         id
     )
     .execute(pool)
     .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::not_found("Server"));
-    }
 
     Ok(())
 }
@@ -846,8 +922,9 @@ pub async fn get_system_servers_for_group(
     let rows = sqlx::query!(
         r#"
         SELECT s.id, s.user_id, s.name, s.display_name, s.description,
-               s.enabled, s.is_system, s.transport_type,
+               s.enabled, s.is_system, s.is_built_in, s.transport_type,
                s.command, s.args, s.environment_variables, s.url, s.headers, s.timeout_seconds,
+               s.supports_sampling, s.usage_mode, s.max_concurrent_sessions,
                s.created_at, s.updated_at
         FROM mcp_servers s
         INNER JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
@@ -869,6 +946,7 @@ pub async fn get_system_servers_for_group(
             description: r.description,
             enabled: r.enabled,
             is_system: r.is_system,
+            is_built_in: r.is_built_in,
             transport_type: TransportType::from_str(&r.transport_type).unwrap(),
             command: r.command,
             args: r.args.unwrap_or_else(|| serde_json::json!([])),
@@ -878,6 +956,9 @@ pub async fn get_system_servers_for_group(
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
+            supports_sampling: r.supports_sampling,
+            usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
+            max_concurrent_sessions: r.max_concurrent_sessions,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
@@ -1067,8 +1148,9 @@ pub async fn list_accessible_mcp_servers(
         r#"
         SELECT DISTINCT
             s.id, s.user_id, s.name, s.display_name, s.description,
-            s.enabled, s.is_system, s.transport_type,
+            s.enabled, s.is_system, s.is_built_in, s.transport_type,
             s.command, s.args, s.environment_variables, s.url, s.headers, s.timeout_seconds,
+            s.supports_sampling, s.usage_mode, s.max_concurrent_sessions,
             s.created_at, s.updated_at
         FROM mcp_servers s
         LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
@@ -1099,6 +1181,7 @@ pub async fn list_accessible_mcp_servers(
             description: r.description,
             enabled: r.enabled,
             is_system: r.is_system,
+            is_built_in: r.is_built_in,
             transport_type: TransportType::from_str(&r.transport_type).unwrap(),
             command: r.command,
             args: r.args.unwrap_or_else(|| serde_json::json!([])),
@@ -1108,6 +1191,9 @@ pub async fn list_accessible_mcp_servers(
             url: r.url,
             headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
             timeout_seconds: r.timeout_seconds,
+            supports_sampling: r.supports_sampling,
+            usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
+            max_concurrent_sessions: r.max_concurrent_sessions,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })

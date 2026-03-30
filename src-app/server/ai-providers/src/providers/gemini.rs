@@ -846,6 +846,59 @@ impl AIProvider for GeminiProvider {
         Ok(Box::pin(output_stream))
     }
 
+    async fn complete(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        client: &Client,
+        request: ChatRequest,
+    ) -> Result<crate::models::ChatMessage, ProviderError> {
+        let base_url = Self::get_base_url(base_url);
+        let model = Self::normalize_model(&request.model);
+
+        let gemini_request = GeminiRequest {
+            contents: Self::convert_messages(&request.messages),
+            system_instruction: Self::extract_system_instruction(&request.messages),
+            generation_config: Some(GeminiGenerationConfig {
+                temperature: request.temperature,
+                top_p: request.top_p,
+                top_k: None,
+                max_output_tokens: request.max_tokens.map(|t| t as i32),
+                thinking_config: None,
+            }),
+            tools: None,
+            tool_config: None,
+        };
+
+        let url = format!("{}/{}:generateContent?key={}", base_url, model, api_key);
+        let response = client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&gemini_request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        let gemini_resp: GeminiResponse = response.json().await?;
+        let text = gemini_resp.candidates.into_iter().next()
+            .and_then(|c| c.content.parts.into_iter().next())
+            .and_then(|p| match p {
+                GeminiPart::Text { text, .. } => Some(text),
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        Ok(crate::models::ChatMessage {
+            role: crate::models::Role::Assistant,
+            content: vec![crate::models::ContentBlock::Text { text }],
+        })
+    }
+
     async fn embeddings(
         &self,
         api_key: &str,

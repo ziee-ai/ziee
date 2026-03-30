@@ -45,7 +45,7 @@ impl SseMcpClient {
         // SSE typically uses HTTP POST for requests
         let client = reqwest::Client::new();
 
-        let mut request = client.post(format!("{}/rpc", self.base_url))
+        let mut request = client.post(&self.base_url)
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 1,

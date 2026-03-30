@@ -670,6 +670,67 @@ impl AIProvider for AnthropicProvider {
         Ok(Box::pin(output_stream))
     }
 
+    async fn complete(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        client: &Client,
+        request: ChatRequest,
+    ) -> Result<crate::models::ChatMessage, ProviderError> {
+        let (system, messages) = Self::convert_messages(&request.messages);
+
+        let mut body = json!({
+            "model": request.model,
+            "max_tokens": request.max_tokens.unwrap_or(1024),
+            "messages": messages,
+        });
+
+        if let Some(system_msg) = system {
+            body["system"] = json!(system_msg);
+        }
+        if let Some(temp) = request.temperature {
+            body["temperature"] = json!(temp);
+        }
+
+        let response = client
+            .post(format!("{}/messages", base_url))
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        #[derive(serde::Deserialize)]
+        struct AnthropicResponse {
+            content: Vec<AnthropicResponseBlock>,
+        }
+        #[derive(serde::Deserialize)]
+        struct AnthropicResponseBlock {
+            #[serde(rename = "type")]
+            block_type: String,
+            #[serde(default)]
+            text: Option<String>,
+        }
+
+        let resp: AnthropicResponse = response.json().await?;
+        let text = resp.content.into_iter()
+            .find(|b| b.block_type == "text")
+            .and_then(|b| b.text)
+            .unwrap_or_default();
+
+        Ok(crate::models::ChatMessage {
+            role: crate::models::Role::Assistant,
+            content: vec![crate::models::ContentBlock::Text { text }],
+        })
+    }
+
     async fn embeddings(
         &self,
         _api_key: &str,

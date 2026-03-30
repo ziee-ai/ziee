@@ -6,6 +6,7 @@ mod permissions;
 mod repository;
 mod routes;
 pub mod runtime_types;
+pub mod sampling;
 mod types;
 mod utils;
 

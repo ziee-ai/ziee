@@ -4,6 +4,7 @@ import { MessageOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
+import { DivScrollY } from '@/components/common/DivScrollY'
 
 const { Text } = Typography
 
@@ -63,7 +64,7 @@ export function RecentConversationsWidget() {
   }
 
   return (
-    <div className="flex flex-col">
+    <DivScrollY className="flex-col h-full">
       {recentConversations.map((conversation: ConversationResponse) => (
         <div
           key={conversation.id}
@@ -115,6 +116,6 @@ export function RecentConversationsWidget() {
           </div>
         </div>
       ))}
-    </div>
+    </DivScrollY>
   )
 }

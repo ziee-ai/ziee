@@ -19,6 +19,9 @@ use crate::modules::chat::core::extension::{
 use crate::modules::chat::core::models::{Message, MessageContentData};
 use crate::modules::chat::core::types::streaming::ContentBlockDelta;
 use crate::modules::mcp::client::manager::McpSessionManager;
+use crate::modules::mcp::client::session::McpSession;
+use crate::modules::mcp::UsageMode;
+use crate::modules::mcp::sampling::{ChatSamplingHandler, acquire_session};
 use crate::core::repository::Repos;
 
 use super::content::McpContentData;
@@ -91,6 +94,8 @@ impl McpChatExtension {
                     name: Some(tool_name.clone()),
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
+                    references: None,
+                    attachment: None,
                 };
                 tool_results.push(error_result.to_message_content());
                 continue;
@@ -98,23 +103,84 @@ impl McpChatExtension {
 
             let server = server.unwrap();
 
-            // tool_name is already clean (e.g., "fetch"), not prefixed
-            let clean_tool_name = &tool_name;
-
             // Send tool start event (if tx provided)
             if let Some(tx) = tx {
-                helpers::send_tool_start_event(Some(tx), &tool_use_id, clean_tool_name, &server.name).await?;
+                helpers::send_tool_start_event(Some(tx), &tool_use_id, &tool_name, &server.name).await;
             }
 
-            // Get or create session
-            let session_arc = self.session_manager.get_or_create(server.id).await?;
-            let mut session = session_arc.write().await;
+            // For sampling servers, create a fresh ephemeral session with the LLM handler.
+            // Otherwise, use the shared pooled session (existing behaviour).
+            let maybe_model_id = context.metadata.get("model_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+            let mut _owned: Option<McpSession> = None;
+            let mut _guard: Option<tokio::sync::OwnedRwLockWriteGuard<McpSession>> = None;
+
+            if server.supports_sampling {
+                if let Some(model_id) = maybe_model_id {
+                    match ChatSamplingHandler::new(&self.pool, model_id).await {
+                        Ok(h) => {
+                            let handler = Arc::new(h);
+                            match McpSession::new_with_sampling(server.clone(), handler).await {
+                                Ok(s) => _owned = Some(s),
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "[sampling] Failed to create sampling session for '{}': {}",
+                                        server.name, e
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "[sampling] Failed to init provider for '{}': {}",
+                                server.name, e
+                            );
+                        }
+                    }
+                } else {
+                    tracing::warn!(
+                        "[sampling] server '{}' supports_sampling=true but no model_id in context metadata",
+                        server.name
+                    );
+                }
+            }
+
+            if _owned.is_none() {
+                if server.supports_sampling {
+                    // Sampling server but no session could be created (no model_id or provider error).
+                    // Fall back to the pooled session would deadlock with SSE-capable servers.
+                    tracing::warn!(
+                        "[sampling] server '{}' requires sampling but no session could be created; returning error",
+                        server.name
+                    );
+                    let error_result = McpContentData::ToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        name: Some(tool_name.to_string()),
+                        content: "Cannot execute sampling tool: no model available. Ensure a model is selected.".to_string(),
+                        is_error: Some(true),
+                        references: None,
+                        attachment: None,
+                    };
+                    tool_results.push(error_result.to_message_content());
+                    continue;
+                }
+                let arc = self.session_manager.get_or_create(server.id).await?;
+                _guard = Some(arc.write_owned().await);
+            }
+
+            let session: &mut McpSession = if let Some(ref mut s) = _owned {
+                s
+            } else {
+                _guard.as_deref_mut().unwrap()
+            };
 
 
             // Execute tool with clean tool name
             let mut result = helpers::execute_tool(
-                &mut session,
-                clean_tool_name,
+                session,
+                &tool_name,
                 input,
                 &server.name,
                 Some(server.timeout_seconds),
@@ -135,11 +201,11 @@ impl McpChatExtension {
                     helpers::send_tool_complete_event(
                         Some(tx),
                         &tool_use_id,
-                        clean_tool_name,
+                        &tool_name,
                         &server.name,
                         is_error.unwrap_or(false),
                     )
-                    .await?;
+                    .await;
                 }
             }
 
@@ -505,8 +571,20 @@ impl ChatExtension for McpChatExtension {
         let accessible_servers =
             helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
 
+        // Extract user's raw message text (used for "always"-mode preprocessing)
+        let user_message_text: Option<String> = request.messages.iter().rev()
+            .find(|m| m.role == ai_providers::Role::User)
+            .and_then(|m| m.content.iter().find_map(|block| {
+                if let ai_providers::ContentBlock::Text { text } = block {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            }));
+
         // Collect tools from all configured servers
         let mut all_tools = Vec::new();
+        let mut always_mode_context: Vec<String> = Vec::new();
 
         for (server_id, requested_tools) in &server_configs {
             // Find server details
@@ -515,7 +593,90 @@ impl ChatExtension for McpChatExtension {
                 .find(|s| s.id == *server_id)
                 .ok_or_else(|| AppError::internal_error("Server not found in accessible list"))?;
 
-            // Get or create MCP session
+            if server.usage_mode == UsageMode::Always {
+                // Always mode: pre-run tools with user's message and inject enriched context
+                if let Some(ref query_text) = user_message_text {
+                    let maybe_model_id = context.metadata.get("model_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+                    // Create session (with sampling if supported)
+                    let session_result = if server.supports_sampling {
+                        if let Some(model_id) = maybe_model_id {
+                            match ChatSamplingHandler::new(&self.pool, model_id).await {
+                                Ok(h) => McpSession::new_with_sampling(server.clone(), Arc::new(h)).await,
+                                Err(e) => {
+                                    tracing::warn!("Always-mode: failed to init sampling provider for {}: {}", server.name, e);
+                                    McpSession::new(server.clone()).await
+                                }
+                            }
+                        } else {
+                            McpSession::new(server.clone()).await
+                        }
+                    } else {
+                        McpSession::new(server.clone()).await
+                    };
+
+                    match session_result {
+                        Err(e) => {
+                            tracing::warn!("Always-mode: failed to connect to server {}: {}", server.name, e);
+                        }
+                        Ok(mut session) => {
+                            let mcp_tools = match session.list_tools().await {
+                                Ok(t) => t,
+                                Err(e) => {
+                                    tracing::warn!("Always-mode: failed to list tools from {}: {}", server.name, e);
+                                    Vec::new()
+                                }
+                            };
+
+                            let tools_to_run: Vec<_> = if requested_tools.is_empty() {
+                                mcp_tools
+                            } else {
+                                mcp_tools.into_iter().filter(|t| requested_tools.contains(&t.name)).collect()
+                            };
+
+                            for tool in &tools_to_run {
+                                // build_query_input returns None when the schema has required
+                                // non-string params — skip auto-execution rather than submitting
+                                // wrong inputs silently.
+                                let input = match helpers::build_query_input(&tool.input_schema, query_text) {
+                                    Some(v) => v,
+                                    None => {
+                                        tracing::debug!(
+                                            "[mcp] Skipping always-mode tool '{}': schema has required non-string params",
+                                            tool.name
+                                        );
+                                        continue;
+                                    }
+                                };
+                                match session.call_tool(&tool.name, input).await {
+                                    Ok(result) => {
+                                        // Collect text content from tool result
+                                        let text_parts: Vec<String> = result.content.iter()
+                                            .filter_map(|c| c.content.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                                            .collect();
+                                        if !text_parts.is_empty() {
+                                            always_mode_context.push(format!(
+                                                "[{}] {}:\n{}",
+                                                server.name,
+                                                tool.name,
+                                                text_parts.join("\n")
+                                            ));
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("Always-mode: tool {} on {} failed: {}", tool.name, server.name, e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                continue; // Don't add "always" server tools to the LLM tool list
+            }
+
+            // Auto mode: Get or create MCP session and collect tools for LLM
             let session_arc = self.session_manager.get_or_create(*server_id).await?;
             let mut session = session_arc.write().await;
 
@@ -549,6 +710,26 @@ impl ChatExtension for McpChatExtension {
                 let ai_tool = helpers::convert_mcp_tool_to_ai_tool(server.id, &mcp_tool);
                 all_tools.push(ai_tool);
             }
+        }
+
+        // Inject always-mode context into the system message
+        if !always_mode_context.is_empty() {
+            let context_block = format!(
+                "\n\n--- Pre-fetched context ---\n{}\n--- End context ---",
+                always_mode_context.join("\n\n")
+            );
+            // Append to existing system message or prepend a new one
+            if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
+                if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
+                    text.push_str(&context_block);
+                }
+            } else {
+                request.messages.insert(0, ai_providers::ChatMessage {
+                    role: ai_providers::Role::System,
+                    content: vec![ai_providers::ContentBlock::Text { text: context_block }],
+                });
+            }
+            tracing::info!("Injected {} always-mode context blocks into system message", always_mode_context.len());
         }
 
         tracing::info!(
@@ -912,6 +1093,8 @@ impl ChatExtension for McpChatExtension {
                     name: Some(tool_name.clone()),
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
+                    references: None,
+                    attachment: None,
                 };
                 tool_results.push(error_result.to_message_content());
                 continue;
@@ -920,21 +1103,90 @@ impl ChatExtension for McpChatExtension {
             let server = server.unwrap();
 
             // Send tool start event
-            helpers::send_tool_start_event(tx, &tool_use_id, &tool_name, &server.name).await?;
+            helpers::send_tool_start_event(tx, &tool_use_id, &tool_name, &server.name).await;
 
-            // Get or create session
-            let session_arc = self.session_manager.get_or_create(server.id).await?;
-            let mut session = session_arc.write().await;
+            let mut result = if server.supports_sampling {
+                // Sampling path: create a fresh session with the sampling handler (bypass pool)
+                let model_id_opt = context.metadata.get("model_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
-            // Execute tool with clean tool name
-            let mut result = helpers::execute_tool(
-                &mut session,
-                &tool_name,
-                input,
-                &server.name,
-                Some(server.timeout_seconds),
-            )
-            .await;
+                if let Some(model_id) = model_id_opt {
+                    // Acquire session guard (enforces max_concurrent_sessions if set)
+                    match acquire_session(server.id, server.max_concurrent_sessions) {
+                        Err(e) => {
+                            tracing::warn!("Sampling session limit reached for server {}: {}", server.name, e);
+                            McpContentData::ToolResult {
+                                tool_use_id: tool_use_id.clone(),
+                                name: Some(tool_name.clone()),
+                                content: e.to_string(),
+                                is_error: Some(true),
+                                references: None,
+                                attachment: None,
+                            }
+                        }
+                        Ok(_guard) => {
+                            // _guard keeps the session counter incremented until end of block
+                            match ChatSamplingHandler::new(&self.pool, model_id).await {
+                                Err(e) => {
+                                    tracing::warn!("[sampling] Failed to init provider for '{}': {}", server.name, e);
+                                    McpContentData::ToolResult {
+                                        tool_use_id: tool_use_id.clone(),
+                                        name: Some(tool_name.clone()),
+                                        content: format!("Failed to initialize sampling provider: {}", e),
+                                        is_error: Some(true),
+                                        references: None,
+                                        attachment: None,
+                                    }
+                                }
+                                Ok(h) => {
+                                    match McpSession::new_with_sampling(server.clone(), Arc::new(h)).await {
+                                        Ok(mut sampling_session) => {
+                                            helpers::execute_tool(
+                                                &mut sampling_session,
+                                                &tool_name,
+                                                input,
+                                                &server.name,
+                                                Some(server.timeout_seconds),
+                                            )
+                                            .await
+                                        }
+                                        Err(e) => {
+                                            tracing::error!("Failed to create sampling session for {}: {}", server.name, e);
+                                            McpContentData::ToolResult {
+                                                tool_use_id: tool_use_id.clone(),
+                                                name: Some(tool_name.clone()),
+                                                content: format!("Failed to connect to server: {}", e),
+                                                is_error: Some(true),
+                                                references: None,
+                                                attachment: None,
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    tracing::warn!(
+                        "[sampling] Server '{}' has supports_sampling=true but no model_id in context; cannot execute sampling tool",
+                        server.name
+                    );
+                    McpContentData::ToolResult {
+                        tool_use_id: tool_use_id.clone(),
+                        name: Some(tool_name.clone()),
+                        content: "Cannot execute sampling tool: no model available in context. Ensure a model is selected.".to_string(),
+                        is_error: Some(true),
+                        references: None,
+                        attachment: None,
+                    }
+                }
+            } else {
+                // Non-sampling path: use session pool
+                let session_arc = self.session_manager.get_or_create(server.id).await?;
+                let mut session = session_arc.write().await;
+                helpers::execute_tool(&mut session, &tool_name, input, &server.name, Some(server.timeout_seconds)).await
+            };
 
             // Set tool_use_id
             if let McpContentData::ToolResult {
@@ -953,7 +1205,7 @@ impl ChatExtension for McpChatExtension {
                     &server.name,
                     is_error.unwrap_or(false),
                 )
-                .await?;
+                .await;
             }
 
             // Convert to MessageContentData and add to results
@@ -1137,11 +1389,13 @@ impl ChatExtension for McpChatExtension {
 
                 // Parse server_id and tool name from accumulated name (format: server_id__tool_name)
                 let full_name = accumulated.name.unwrap_or_default();
-                let (server_id, tool_name) = if let Some(idx) = full_name.find("__") {
-                    (full_name[..idx].to_string(), full_name[idx + 2..].to_string())
-                } else {
-                    // Fallback: no server_id prefix
-                    (String::new(), full_name)
+                let mut parts = full_name.splitn(2, "__");
+                let (server_id, tool_name) = match (parts.next(), parts.next()) {
+                    (Some(id), Some(name)) => (id.to_string(), name.to_string()),
+                    _ => {
+                        tracing::warn!("[mcp] Tool name missing server_id prefix: {}", full_name);
+                        (String::new(), full_name)
+                    }
                 };
 
                 // Create McpContentData::ToolUse with separate server_id and name

@@ -708,6 +708,53 @@ impl AIProvider for OpenAIProvider {
         Ok(Box::pin(output_stream))
     }
 
+    async fn complete(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        client: &Client,
+        request: ChatRequest,
+    ) -> Result<crate::models::ChatMessage, ProviderError> {
+        let messages = Self::convert_messages(&request.messages);
+
+        let mut body = json!({
+            "model": request.model,
+            "messages": messages,
+        });
+
+        if let Some(temp) = request.temperature {
+            body["temperature"] = json!(temp);
+        }
+        if let Some(max_tokens) = request.max_tokens {
+            body["max_tokens"] = json!(max_tokens);
+        }
+
+        let response = client
+            .post(format!("{}/chat/completions", base_url))
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::from_status_code(status.as_u16(), error_text));
+        }
+
+        let resp: OpenAINonStreamResponse = response.json().await?;
+        let message = resp.choices.into_iter().next()
+            .ok_or_else(|| ProviderError::InvalidRequest("Empty response from OpenAI".to_string()))?
+            .message;
+
+        let text = message.content.unwrap_or_default();
+        Ok(crate::models::ChatMessage {
+            role: crate::models::Role::Assistant,
+            content: vec![crate::models::ContentBlock::Text { text }],
+        })
+    }
+
     async fn embeddings(
         &self,
         api_key: &str,

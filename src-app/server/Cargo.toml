@@ -105,6 +105,10 @@ path = "src/lib.rs"
 name = "ziee-chat"
 path = "src/main.rs"
 
+[[example]]
+name = "mock-sampling-server"
+path = "tests/mcp/examples/mock_sampling_server.rs"
+
 [features]
 default = ["gpu-detect"]
 gpu-detect = ["nvml-wrapper", "opencl3", "ash", "wgpu-hal"]

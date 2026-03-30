@@ -16,6 +16,10 @@ export interface McpServerFormData {
   // http/sse specific
   url?: string
   enabled?: boolean
+  // sampling fields
+  supportsSampling?: boolean
+  usageMode?: 'auto' | 'always'
+  maxConcurrentSessions?: number
 }
 
 export async function openAddServerDrawer(page: Page, _isSystemServer = false) {
@@ -74,15 +78,36 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
     }
   }
 
-  // Enabled switch
+  // Enabled switch (first switch in the form)
   if (data.enabled !== undefined) {
-    const switchButton = page.locator('.ant-switch').last()
-    const isChecked = await switchButton.evaluate((el) =>
+    const enabledSwitch = page.getByLabel('Enabled')
+    const isChecked = await enabledSwitch.evaluate((el) =>
       el.classList.contains('ant-switch-checked')
     )
     if (isChecked !== data.enabled) {
-      await switchButton.click()
+      await enabledSwitch.click()
     }
+  }
+
+  // Sampling fields
+  if (data.supportsSampling !== undefined) {
+    const samplingSwitch = page.getByLabel('Enable MCP Sampling')
+    const isChecked = await samplingSwitch.evaluate((el) =>
+      el.classList.contains('ant-switch-checked')
+    )
+    if (isChecked !== data.supportsSampling) {
+      await samplingSwitch.click()
+    }
+  }
+
+  if (data.usageMode !== undefined) {
+    await page.getByLabel('Usage Mode').click({ force: true })
+    const optionText = data.usageMode === 'always' ? 'Always (pre-process every prompt)' : 'Auto (LLM decides)'
+    await page.click(`.ant-select-item-option:has-text("${optionText}")`)
+  }
+
+  if (data.maxConcurrentSessions !== undefined) {
+    await page.getByLabel('Max Concurrent Sessions').fill(String(data.maxConcurrentSessions))
   }
 }
 

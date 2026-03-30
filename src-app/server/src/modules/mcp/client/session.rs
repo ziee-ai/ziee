@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -7,6 +8,7 @@ use super::http::HttpMcpClient;
 use super::sse::SseMcpClient;
 use crate::common::AppError;
 use crate::modules::mcp::models::{McpServer, TransportType};
+use crate::modules::mcp::sampling::SamplingHandler;
 
 pub struct McpSession {
     #[allow(dead_code)] // Kept for debugging/logging (future use)
@@ -24,6 +26,39 @@ impl McpSession {
             TransportType::Stdio => Box::new(StdioMcpClient::new(server.clone())?),
             TransportType::Http => Box::new(HttpMcpClient::new(server.clone())?),
             TransportType::Sse => Box::new(SseMcpClient::new(server.clone())?),
+        };
+
+        client.connect().await?;
+
+        Ok(Self {
+            server_id: server.id,
+            client,
+            created_at: Instant::now(),
+            last_used: Instant::now(),
+        })
+    }
+
+    /// Create a session with a sampling handler attached.
+    /// The handler enables the MCP server to request LLM completions inline.
+    /// Only HTTP transport supports sampling currently.
+    pub async fn new_with_sampling(
+        server: McpServer,
+        handler: Arc<dyn SamplingHandler>,
+    ) -> Result<Self, AppError> {
+        let mut client: Box<dyn McpClient> = match server.transport_type {
+            TransportType::Http => Box::new(HttpMcpClient::new_with_sampling(server.clone(), handler)?),
+            TransportType::Stdio | TransportType::Sse => {
+                // Fallback to regular session for non-HTTP transports
+                tracing::warn!(
+                    "Sampling is only supported for HTTP transport; server '{}' uses {:?}. Falling back to non-sampling session.",
+                    server.name, server.transport_type
+                );
+                match server.transport_type {
+                    TransportType::Stdio => Box::new(StdioMcpClient::new(server.clone())?),
+                    TransportType::Sse => Box::new(SseMcpClient::new(server.clone())?),
+                    _ => unreachable!(),
+                }
+            }
         };
 
         client.connect().await?;

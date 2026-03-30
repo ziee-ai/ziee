@@ -905,6 +905,16 @@ export const useChatStore = create<ChatState>()(
                       const conversation = get().conversation
                       if (conversation) {
                         await get().loadMessages(conversation.id)
+
+                        // Notify ChatHistory of the updated message count
+                        const { Stores } = await import('@/core/stores')
+                        await Stores.EventBus.emit({
+                          type: 'conversation.messageCountChanged',
+                          data: {
+                            conversationId: conversation.id,
+                            messageCount: get().messages.size,
+                          },
+                        })
                       }
 
                       // Always recompute fork points so the navigator is up to date

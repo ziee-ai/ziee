@@ -8864,8 +8864,21 @@
               "type": "string"
             }
           },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "name": {
             "type": "string"
+          },
+          "supports_sampling": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "timeout_seconds": {
             "type": [
@@ -8878,6 +8891,12 @@
             "$ref": "#/components/schemas/TransportType"
           },
           "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage_mode": {
             "type": [
               "string",
               "null"
@@ -11488,8 +11507,18 @@
           "is_system": {
             "type": "boolean"
           },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "name": {
             "type": "string"
+          },
+          "supports_sampling": {
+            "type": "boolean"
           },
           "timeout_seconds": {
             "type": "integer",
@@ -11507,6 +11536,9 @@
               "string",
               "null"
             ]
+          },
+          "usage_mode": {
+            "type": "string"
           },
           "user_id": {
             "type": [
@@ -11527,6 +11559,8 @@
           "environment_variables",
           "headers",
           "timeout_seconds",
+          "supports_sampling",
+          "usage_mode",
           "created_at",
           "updated_at"
         ]
@@ -14289,9 +14323,22 @@
               "type": "string"
             }
           },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "name": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "supports_sampling": {
+            "type": [
+              "boolean",
               "null"
             ]
           },
@@ -14303,6 +14350,12 @@
             "format": "int32"
           },
           "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage_mode": {
             "type": [
               "string",
               "null"

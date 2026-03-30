@@ -236,10 +236,13 @@ export interface CreateMcpServerRequest {
   enabled?: boolean
   environment_variables?: any
   headers?: any
+  max_concurrent_sessions?: number
   name: string
+  supports_sampling?: boolean
   timeout_seconds?: number
   transport_type: TransportType
   url?: string
+  usage_mode?: string
 }
 
 export interface CreateModelFromHubRequest {
@@ -797,12 +800,16 @@ export interface McpServer {
   environment_variables: any
   headers: any
   id: string
+  is_built_in: boolean
   is_system: boolean
+  max_concurrent_sessions?: number
   name: string
+  supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
   updated_at: string
   url?: string
+  usage_mode: string
   user_id?: string
 }
 
@@ -1390,9 +1397,12 @@ export interface UpdateMcpServerRequest {
   enabled?: boolean
   environment_variables?: any
   headers?: any
+  max_concurrent_sessions?: number
   name?: string
+  supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
+  usage_mode?: string
 }
 
 export interface UpdateUserRequest {

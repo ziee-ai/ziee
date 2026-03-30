@@ -41,8 +41,8 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
 
       message.success(`${server.display_name} installed successfully!`)
 
-      // Navigate to /settings/mcp-admin after creation
-      navigate('/settings/mcp-admin')
+      // Navigate to user MCP servers after creation
+      navigate('/settings/mcp-servers')
     } catch (error: any) {
       console.error('Failed to install MCP server:', error)
       message.error(
@@ -119,7 +119,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                   onClick={e => {
                     e.stopPropagation()
                     if (isAlreadyInstalled) {
-                      navigate('/settings/mcp-admin')
+                      navigate('/settings/mcp-servers')
                     } else {
                       handleInstall()
                     }
