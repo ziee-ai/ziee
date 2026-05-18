@@ -41,7 +41,7 @@ portpicker = "0.1"
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
 time = "0.3"
-uuid = { version = "1.18", features = ["serde", "v4"] }
+uuid = { version = "1.18", features = ["serde", "v4", "v5"] }
 dirs = "6.0.0"
 bcrypt = "0.17.1"
 rand = "0.9.2"
