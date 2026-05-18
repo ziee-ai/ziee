@@ -5,6 +5,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::modules::llm_model::models::LlmModel;
+
 use super::models::{LlmProvider, ProxySettings};
 
 // =====================================================
@@ -69,4 +71,44 @@ pub struct GroupProvidersResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateGroupProvidersRequest {
     pub provider_ids: Vec<Uuid>,
+}
+
+// =====================================================
+// User-facing LLM Provider Types
+// =====================================================
+
+/// Provider with its available models and user-facing key status
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ProviderWithModels {
+    #[serde(flatten)]
+    pub provider: LlmProvider,
+    pub llm_models: Vec<LlmModel>,
+    /// Whether an API key is configured (either system-level or user-level)
+    pub api_key_configured: bool,
+}
+
+/// Response for user-accessible LLM providers
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetUserProvidersResponse {
+    pub providers: Vec<ProviderWithModels>,
+}
+
+/// Masked user API key entry
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UserApiKeyEntry {
+    pub provider_id: Uuid,
+    pub masked_key: String,
+}
+
+/// Response listing user API keys
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct UserApiKeyListResponse {
+    pub keys: Vec<UserApiKeyEntry>,
+}
+
+/// Request to save a user API key
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SaveUserApiKeyRequest {
+    pub provider_id: Uuid,
+    pub api_key: String,
 }

@@ -17,7 +17,7 @@ use crate::{
     },
 };
 
-use super::{
+use super::super::{
     events::LlmProviderEvent,
     models::LlmProvider,
     permissions::*,

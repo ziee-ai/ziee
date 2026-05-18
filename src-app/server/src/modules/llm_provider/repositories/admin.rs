@@ -8,8 +8,8 @@ use chrono::DateTime;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::models::LlmProvider;
-use super::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
+use super::super::models::LlmProvider;
+use super::super::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
 use crate::modules::user::models::Group;
 
 // =====================================================
@@ -88,6 +88,10 @@ impl LlmProviderRepository {
     ) -> Result<bool, sqlx::Error> {
         user_has_access_to_provider(&self.pool, user_id, provider_id).await
     }
+
+    pub async fn list_local_providers(&self) -> Result<Vec<LlmProvider>, sqlx::Error> {
+        list_local_providers(&self.pool).await
+    }
 }
 
 // =====================================================
@@ -157,6 +161,38 @@ pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx:
         .collect())
 }
 
+pub async fn list_local_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"SELECT id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at,
+                  default_runtime_version_id
+         FROM llm_providers
+         WHERE provider_type = 'local' AND enabled = true
+         ORDER BY name ASC"#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| LlmProvider {
+            id: r.id,
+            name: r.name,
+            provider_type: r.provider_type,
+            enabled: r.enabled,
+            api_key: r.api_key,
+            base_url: r.base_url,
+            built_in: r.built_in,
+            proxy_settings: r
+                .proxy_settings
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
+            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            default_runtime_version_id: r.default_runtime_version_id,
+        })
+        .collect())
+}
+
 pub async fn create_llm_provider(
     pool: &PgPool,
     request: CreateLlmProviderRequest,
@@ -173,7 +209,7 @@ pub async fn create_llm_provider(
         &request.name,
         &request.provider_type,
         request.enabled.unwrap_or(false),
-        request.api_key.as_deref(),
+        request.api_key.as_deref().and_then(|k| if k.trim().is_empty() { None } else { Some(k) }),
         request.base_url.as_deref(),
         false, // Custom providers are never built-in
         proxy_settings_json
@@ -236,9 +272,10 @@ pub async fn update_llm_provider(
     }
 
     if let Some(api_key) = &request.api_key {
+        let stored_key: Option<&str> = if api_key.trim().is_empty() { None } else { Some(api_key.as_str()) };
         sqlx::query!(
             "UPDATE llm_providers SET api_key = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
-            Some(api_key),
+            stored_key,
             provider_id
         )
         .execute(pool)
