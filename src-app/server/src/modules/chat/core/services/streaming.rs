@@ -91,9 +91,20 @@ impl StreamingService {
                 Vec::new()
             };
 
-            // Create user message
-            let user_message =
-                Repos.chat.core.create_message(branch_id, MessageRole::User.as_str()).await?;
+            // Extract context values to persist on the user message
+            let msg_assistant_id = request.assistant_id;
+            let msg_mcp_server_ids: Option<Vec<uuid::Uuid>> = request.mcp_config.as_ref().map(|c| {
+                c.mcp_servers.iter().map(|s| s.server_id).collect()
+            });
+
+            // Create user message with context (model, assistant, mcp servers used)
+            let user_message = Repos.chat.core.create_message(
+                branch_id,
+                MessageRole::User.as_str(),
+                Some(request.model_id),
+                msg_assistant_id,
+                msg_mcp_server_ids,
+            ).await?;
 
             // Create content blocks from extensions (text, files, etc.)
             // Extensions are called in priority order (text extension runs first at order 5)
@@ -119,12 +130,12 @@ impl StreamingService {
                 msg_id  // Existing message (resuming)
             } else {
                 // No extension provided message, create new one
-                let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str()).await?;
+                let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None, None, None).await?;
                 msg.id  // New message
             }
         } else {
             // No extension registry, create new message
-            let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str()).await?;
+            let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None, None, None).await?;
             msg.id  // New message
         };
 
