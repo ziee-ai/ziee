@@ -206,6 +206,30 @@ const mcpExtension: ChatExtension = createExtension({
 
   initialize: async () => {
     console.log('[MCP Extension] Initialized')
+
+    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+    const { Stores } = await import('@/core/stores')
+
+    useChatStore.subscribe(
+      state => state.editingMessage,
+      async (editingMessage) => {
+        const mcpStore = Stores.Chat.__state.McpStore
+        if (!mcpStore) return
+
+        if (editingMessage) {
+          const serverIds = editingMessage.mcp_server_ids
+          if (serverIds && serverIds.length > 0) {
+            mcpStore.setEnabledServers(serverIds)
+          }
+        } else {
+          // Edit cancelled or sent — restore from stored conversation config
+          const conversation = useChatStore.getState().conversation
+          if (conversation) {
+            mcpStore.setCurrentConversation(conversation.id)
+          }
+        }
+      }
+    )
   },
 
   // Type-safe SSE event handlers

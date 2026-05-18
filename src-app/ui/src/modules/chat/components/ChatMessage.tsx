@@ -4,6 +4,9 @@ import { UserOutlined } from '@ant-design/icons'
 import type { MessageWithContent } from '@/api-client/types'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
+import { MessageContext } from '@/modules/chat/core/MessageContext'
+import { BranchNavigator } from '@/modules/chat/components/BranchNavigator'
+import { MessageActions } from '@/modules/chat/components/MessageActions'
 
 export const ChatMessage = memo(function ChatMessage({
   message,
@@ -15,11 +18,11 @@ export const ChatMessage = memo(function ChatMessage({
 
   // Check if message has any content to render
   if (!message.contents || message.contents.length === 0) {
-    return null // Skip rendering empty messages
+    return null
   }
 
   return (
-    <div className={'w-full flex flex-col overflow-visible'}>
+    <div className={'w-full flex flex-col overflow-visible group'} data-testid="chat-message" data-role={message.role}>
       <div
         key={message.id}
         className={`flex gap-2 rounded-lg relative min-w-36 flex-col`}
@@ -54,13 +57,19 @@ export const ChatMessage = memo(function ChatMessage({
                   />
                 ))}
             </div>
-
-            {/* Extension slot: message actions (copy, edit, etc.) */}
-            {/* TODO: Pass messageId when extension needs message-specific actions */}
-            <ExtensionSlot name="message_actions" />
           </div>
         </div>
       </div>
+
+      {/* Core components + extension slots rendered outside the bubble */}
+      <MessageContext.Provider value={message}>
+        <div className="flex flex-row items-center gap-1 mt-1">
+          <BranchNavigator />
+          <MessageActions />
+          {/* Extensions can register additional message actions here */}
+          <ExtensionSlot name="message_actions" />
+        </div>
+      </MessageContext.Provider>
     </div>
   )
 })

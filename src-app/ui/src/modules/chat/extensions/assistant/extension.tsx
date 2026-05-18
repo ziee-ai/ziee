@@ -26,6 +26,33 @@ const assistantExtension: ChatExtension = createExtension({
 
   // Lazy loading via __init__ pattern in slice - assistants load on first access
 
+  /**
+   * Subscribe to editingMessage to restore assistant selection when editing a message
+   */
+  initialize: async () => {
+    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+    const { Stores } = await import('@/core/stores')
+
+    useChatStore.subscribe(
+      state => state.editingMessage,
+      (editingMessage) => {
+        const assistantStore = Stores.Chat.__state.AssistantStore
+        if (!assistantStore) return
+
+        if (editingMessage) {
+          if (editingMessage.assistant_id) {
+            assistantStore.selectAssistant(editingMessage.assistant_id)
+          } else {
+            assistantStore.clearAssistant()
+          }
+        } else {
+          // Edit cancelled or sent — clear assistant selection
+          assistantStore.clearAssistant()
+        }
+      }
+    )
+  },
+
   // Register slot components
   slots: {
     toolbar_plus_items: { component: AssistantMenuItem, order: 30 },
