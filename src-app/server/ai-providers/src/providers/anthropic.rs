@@ -526,7 +526,8 @@ impl AIProvider for AnthropicProvider {
                                     }
 
                                     // DEBUG: Log raw SSE event
-                                    tracing::info!("Anthropic SSE event: {}", if data.len() > 200 { &data[..200] } else { data });
+                                    let truncated = data.char_indices().nth(200).map(|(i, _)| &data[..i]).unwrap_or(data);
+                                    tracing::info!("Anthropic SSE event: {}", truncated);
 
                                     // Try to parse as JSON
                                     if let Ok(chunk_data) = serde_json::from_str::<AnthropicStreamChunk>(data) {

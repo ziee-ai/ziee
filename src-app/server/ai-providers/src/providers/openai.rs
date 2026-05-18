@@ -555,14 +555,22 @@ impl AIProvider for OpenAIProvider {
 
         // Add optional parameters (only for non-reasoning models)
         if !is_reasoning_model {
-            if let Some(temp) = request.temperature {
-                body["temperature"] = json!(temp);
+            // gpt-5 and gpt-5-mini only support default temperature/top_p
+            if !requires_non_streaming {
+                if let Some(temp) = request.temperature {
+                    body["temperature"] = json!(temp);
+                }
+                if let Some(top_p) = request.top_p {
+                    body["top_p"] = json!(top_p);
+                }
             }
             if let Some(max_tokens) = request.max_tokens {
-                body["max_tokens"] = json!(max_tokens);
-            }
-            if let Some(top_p) = request.top_p {
-                body["top_p"] = json!(top_p);
+                // gpt-5 and gpt-5-mini require max_completion_tokens instead of max_tokens
+                if requires_non_streaming {
+                    body["max_completion_tokens"] = json!(max_tokens);
+                } else {
+                    body["max_tokens"] = json!(max_tokens);
+                }
             }
         }
 
@@ -681,8 +689,9 @@ impl AIProvider for OpenAIProvider {
                                             }
                                         }
 
-                                        // Yield if there's any content or refusal
-                                        if !content_deltas.is_empty() || delta.refusal.is_some() {
+                                        // Yield if there's any content, refusal, or finish_reason
+                                        // (finish_reason can arrive on an empty delta, e.g. "tool_calls")
+                                        if !content_deltas.is_empty() || delta.refusal.is_some() || choice.finish_reason.is_some() {
                                             yield Ok(StreamChatChunk {
                                                 content: content_deltas,
                                                 finish_reason: choice.finish_reason.clone(),
