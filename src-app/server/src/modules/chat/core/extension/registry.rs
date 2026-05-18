@@ -27,7 +27,7 @@ use crate::modules::chat::core::types::streaming::ContentBlockDelta;
 pub struct ExtensionEntry {
     pub name: &'static str,
     pub order: i32,
-    pub factory: fn(PgPool) -> Arc<dyn ChatExtension>,
+    pub factory: fn(PgPool, Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension>,
 }
 
 /// Distributed slice for collecting all chat extensions

@@ -56,7 +56,7 @@ pub struct SendMessageRequestFields {
 
 /// Factory function to create the extension instance
 /// Called by the auto-registration system
-pub fn create(pool: PgPool) -> Arc<dyn ChatExtension> {
+pub fn create(pool: PgPool, _config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
     Arc::new(super::mcp::McpChatExtension::new(pool))
 }
 
