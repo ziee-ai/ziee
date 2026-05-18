@@ -17,6 +17,9 @@ pub async fn create_message(
     pool: &PgPool,
     branch_id: Uuid,
     role: &str,
+    model_id: Option<Uuid>,
+    assistant_id: Option<Uuid>,
+    mcp_server_ids: Option<Vec<Uuid>>,
 ) -> Result<Message, AppError> {
     let message_id = Uuid::new_v4();
 
@@ -27,15 +30,21 @@ pub async fn create_message(
     let message = sqlx::query_as!(
         Message,
         r#"
-        INSERT INTO messages (id, role, originated_from_id, edit_count)
-        VALUES ($1, $2, $1, 0)
+        INSERT INTO messages (id, role, originated_from_id, edit_count, model_id, assistant_id, mcp_server_ids)
+        VALUES ($1, $2, $1, 0, $3, $4, $5)
         RETURNING id, role,
                   originated_from_id as "originated_from_id!",
                   edit_count,
+                  model_id as "model_id: _",
+                  assistant_id as "assistant_id: _",
+                  mcp_server_ids as "mcp_server_ids: _",
                   created_at as "created_at: _"
         "#,
         message_id,
-        role
+        role,
+        model_id as _,
+        assistant_id as _,
+        mcp_server_ids.as_deref() as _,
     )
     .fetch_one(&mut *tx)
     .await
@@ -67,6 +76,9 @@ pub async fn get_message(pool: &PgPool, id: Uuid) -> Result<Option<Message>, App
         SELECT id, role,
                originated_from_id as "originated_from_id!",
                edit_count,
+               model_id as "model_id: _",
+               assistant_id as "assistant_id: _",
+               mcp_server_ids as "mcp_server_ids: _",
                created_at as "created_at: _"
         FROM messages
         WHERE id = $1
@@ -111,6 +123,9 @@ pub async fn list_messages_in_branch(
         SELECT m.id, m.role,
                m.originated_from_id as "originated_from_id!",
                m.edit_count,
+               m.model_id as "model_id: _",
+               m.assistant_id as "assistant_id: _",
+               m.mcp_server_ids as "mcp_server_ids: _",
                m.created_at as "created_at: _"
         FROM messages m
         INNER JOIN branch_messages bm ON m.id = bm.message_id
@@ -247,6 +262,9 @@ pub async fn edit_message(
         SELECT id, role,
                originated_from_id as "originated_from_id!",
                edit_count,
+               model_id as "model_id: _",
+               assistant_id as "assistant_id: _",
+               mcp_server_ids as "mcp_server_ids: _",
                created_at as "created_at: _"
         FROM messages
         WHERE id = $1
@@ -306,7 +324,7 @@ pub async fn edit_message(
     .await
     .map_err(AppError::database_error)?;
 
-    // 4. Create the edited message
+    // 4. Create the edited message (model/assistant/mcp context not set here — set via streaming)
     let new_message_id = Uuid::new_v4();
     let new_message = sqlx::query_as!(
         Message,
@@ -316,6 +334,9 @@ pub async fn edit_message(
         RETURNING id, role,
                   originated_from_id as "originated_from_id!",
                   edit_count,
+                  model_id as "model_id: _",
+                  assistant_id as "assistant_id: _",
+                  mcp_server_ids as "mcp_server_ids: _",
                   created_at as "created_at: _"
         "#,
         new_message_id,
