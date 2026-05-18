@@ -72,6 +72,8 @@ mod tests {
             is_active: true,
             is_admin: false,
             permissions: permissions.into_iter().map(String::from).collect(),
+            completed_onboarding_ids: vec![],
+            completed_onboarding_step_ids: vec![],
             created_at: Utc::now(),
             updated_at: Utc::now(),
             last_login_at: None,

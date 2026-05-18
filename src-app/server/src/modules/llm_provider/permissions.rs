@@ -51,5 +51,18 @@ impl PermissionCheck for LlmProvidersAssignGroups {
 }
 
 // =====================================================
+// User-Facing LLM Provider Permissions
+// =====================================================
+
+/// Permission for users to view available LLM providers and models
+pub struct UserLlmProvidersRead;
+impl PermissionCheck for UserLlmProvidersRead {
+    const NAME: &'static str = "UserLlmProvidersRead";
+    const PERMISSION: &'static str = "user_llm_providers::read";
+    const DESCRIPTION: &'static str = "View available LLM providers and models";
+    const MODULE: &'static str = "llm_provider";
+}
+
+// =====================================================
 // Helper Function to Collect All Permissions
 // =====================================================

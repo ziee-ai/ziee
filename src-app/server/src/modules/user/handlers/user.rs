@@ -20,10 +20,7 @@ use crate::modules::user::{
     events::UserEvent,
     models::User,
     permissions::*,
-    types::{
-        CreateUserRequest, ResetPasswordRequest, UpdateUserRequest, UserActiveStatusResponse,
-        UserListResponse,
-    },
+    types::{CreateUserRequest, ResetPasswordRequest, UpdateUserRequest, UserActiveStatusResponse, UserListResponse},
 };
 
 // =====================================================
@@ -370,3 +367,4 @@ pub fn delete_user_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("User not found"))
 }
+

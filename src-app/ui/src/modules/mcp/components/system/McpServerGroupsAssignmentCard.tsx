@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Button, Empty, Space, Spin, Tag, Typography } from 'antd'
+import { Button, Collapse, Empty, Space, Spin, Tag, Typography } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 
@@ -33,47 +33,56 @@ export function McpServerGroupsAssignmentCard({
   }
 
   return (
-    <div
-      className="border-t px-4 py-3"
-      data-server-id={serverId}
-      data-card-type="user-groups-assignment"
-    >
-      <div className="flex items-center justify-between mb-2">
-        <Text className="font-medium text-sm">User Groups</Text>
-        <Button
-          type="text"
-          size="small"
-          icon={<EditOutlined aria-hidden="true" />}
-          onClick={handleManageGroups}
-          aria-label="Manage user groups"
-        />
-      </div>
-      {loading ? (
-        <Spin size="small" />
-      ) : assignedGroups.length === 0 ? (
-        <Empty
-          description="No groups assigned"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          className="!my-2"
-        />
-      ) : (
-        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-          <Text type="secondary" className="text-xs">
-            User groups that have access to this MCP server
-          </Text>
-          <Space wrap size="small">
-            {assignedGroups.map(group => (
-              <Tag
-                key={group.id}
-                color="blue"
-                style={{ fontSize: '13px', padding: '4px 8px' }}
-              >
-                {group.name}
-              </Tag>
-            ))}
-          </Space>
-        </Space>
-      )}
+    <div data-server-id={serverId} data-card-type="user-groups-assignment">
+      <Collapse
+        ghost
+        size="small"
+        defaultActiveKey={[]}
+        items={[
+          {
+            key: 'groups',
+            label: <Text className="font-medium text-sm">User Groups</Text>,
+            extra: (
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined aria-hidden="true" />}
+                onClick={e => {
+                  e.stopPropagation()
+                  handleManageGroups()
+                }}
+                aria-label="Manage user groups"
+              />
+            ),
+            children: loading ? (
+              <Spin size="small" />
+            ) : assignedGroups.length === 0 ? (
+              <Empty
+                description="No groups assigned"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                className="!my-2"
+              />
+            ) : (
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <Text type="secondary" className="text-xs">
+                  User groups that have access to this MCP server
+                </Text>
+                <Space wrap size="small">
+                  {assignedGroups.map(group => (
+                    <Tag
+                      key={group.id}
+                      color="blue"
+                      style={{ fontSize: '13px', padding: '4px 8px' }}
+                    >
+                      {group.name}
+                    </Tag>
+                  ))}
+                </Space>
+              </Space>
+            ),
+          },
+        ]}
+      />
     </div>
   )
 }

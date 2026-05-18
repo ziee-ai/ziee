@@ -52,6 +52,11 @@ export function McpServerDrawer() {
         env: editingServer.environment_variables
           ? JSON.stringify(editingServer.environment_variables, null, 2)
           : '',
+        headers:
+          editingServer.headers &&
+          Object.keys(editingServer.headers).length > 0
+            ? JSON.stringify(editingServer.headers, null, 2)
+            : '',
         enabled: editingServer.enabled,
         supports_sampling: editingServer.supports_sampling ?? false,
         usage_mode: editingServer.usage_mode ?? 'auto',
@@ -113,6 +118,23 @@ export function McpServerDrawer() {
         }
       }
 
+      // Parse HTTP headers from JSON string
+      let headers = {}
+      if (values.headers && values.headers.trim()) {
+        try {
+          headers = JSON.parse(values.headers)
+          if (typeof headers !== 'object' || Array.isArray(headers)) {
+            message.error('HTTP Headers must be a JSON object')
+            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
+            return
+          }
+        } catch (_error) {
+          message.error('Invalid JSON in HTTP Headers')
+          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
+          return
+        }
+      }
+
       const serverData = {
         name: values.name,
         display_name: values.display_name,
@@ -122,6 +144,7 @@ export function McpServerDrawer() {
         command: values.command,
         args: args,
         environment_variables: environmentVariables,
+        headers: headers,
         enabled: values.enabled ?? true,
         supports_sampling: values.supports_sampling ?? false,
         usage_mode: values.usage_mode ?? 'auto',
@@ -142,6 +165,7 @@ export function McpServerDrawer() {
           command: values.command,
           args: args,
           environment_variables: environmentVariables,
+          headers: headers,
           enabled: values.enabled ?? true,
           supports_sampling: values.supports_sampling ?? false,
           usage_mode: values.usage_mode ?? 'auto',
@@ -163,6 +187,7 @@ export function McpServerDrawer() {
           command: values.command,
           args: args,
           environment_variables: environmentVariables,
+          headers: headers,
           enabled: values.enabled ?? true,
           supports_sampling: values.supports_sampling ?? false,
           usage_mode: values.usage_mode ?? 'auto',
@@ -320,16 +345,30 @@ export function McpServerDrawer() {
           )}
 
           {(transportType === 'http' || transportType === 'sse') && (
-            <Form.Item
-              label="URL"
-              name="url"
-              rules={[
-                { required: true, message: 'Please enter a URL' },
-                { type: 'url', message: 'Please enter a valid URL' },
-              ]}
-            >
-              <Input placeholder="https://example.com/mcp" />
-            </Form.Item>
+            <>
+              <Form.Item
+                label="URL"
+                name="url"
+                rules={[
+                  { required: true, message: 'Please enter a URL' },
+                  { type: 'url', message: 'Please enter a valid URL' },
+                ]}
+              >
+                <Input placeholder="https://example.com/mcp" />
+              </Form.Item>
+
+              <Form.Item
+                label="HTTP Headers"
+                name="headers"
+                help='JSON object format, e.g., {"Authorization": "Bearer token"}'
+              >
+                <TextArea
+                  placeholder='{"Authorization": "Bearer token"}'
+                  rows={4}
+                  className="font-mono text-xs"
+                />
+              </Form.Item>
+            </>
           )}
 
           {/* Enabled */}

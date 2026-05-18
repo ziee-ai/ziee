@@ -10,6 +10,13 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+export interface Annotation {
+  annotation_type: string
+  content: string
+  id: string
+  label?: string
+}
+
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
 export interface AssignProviderToGroupRequest {
@@ -242,7 +249,7 @@ export interface CreateMcpServerRequest {
   timeout_seconds?: number
   transport_type: TransportType
   url?: string
-  usage_mode?: string
+  usage_mode?: UsageMode
 }
 
 export interface CreateModelFromHubRequest {
@@ -397,6 +404,7 @@ export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 export interface File {
   checksum?: string
   created_at: string
+  created_by: string
   file_size: number
   filename: string
   has_thumbnail: boolean
@@ -536,6 +544,15 @@ export interface HubEntity {
   id: string
 }
 
+export interface HubLocalProvider {
+  id: string
+  name: string
+}
+
+export interface HubLocalProvidersResponse {
+  providers: HubLocalProvider[]
+}
+
 export interface HubMCPServer {
   description?: string
   args?: string[]
@@ -561,6 +578,7 @@ export interface HubMCPServer {
   rating?: number
   repository_url?: string
   requires_desktop?: boolean
+  supports_sampling?: boolean
   tags?: string[]
   tool_categories?: string[]
   tool_count?: number
@@ -648,6 +666,25 @@ export interface InstanceStatusResponse {
   model_id: string
   status: string
   uptime_seconds?: number
+}
+
+export interface JsonRpcError {
+  code: number
+  message: string
+}
+
+export interface JsonRpcRequest {
+  id?: any
+  jsonrpc: string
+  method: string
+  params?: any
+}
+
+export interface JsonRpcResponse {
+  error?: JsonRpcError
+  id?: any
+  jsonrpc: string
+  result?: any
 }
 
 export interface ListModelsQuery {
@@ -809,7 +846,7 @@ export interface McpServer {
   transport_type: TransportType
   updated_at: string
   url?: string
-  usage_mode: string
+  usage_mode: UsageMode
   user_id?: string
 }
 
@@ -909,8 +946,13 @@ export interface MessageContentDataToolResult {
   name?: string | null
   tool_use_id: string
 }
+export interface MessageContentDataAnnotatedText {
+  type: 'annotated_text'
+  annotations: Annotation[]
+  text: string
+}
 
-export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult
+export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataAnnotatedText
 
 export interface MessageWithContent {
   assistant_id?: string
@@ -1074,6 +1116,7 @@ export interface ProviderInstancesResponse {
 
 export interface ProviderWithModels {
   api_key?: string
+  api_key_configured: boolean
   base_url?: string
   built_in: boolean
   created_at: string
@@ -1135,6 +1178,15 @@ export interface Resource {
   uri: string
 }
 
+export interface RespondToElicitationRequest {
+  action: string
+  content?: any
+}
+
+export interface RespondToElicitationResponse {
+  success: boolean
+}
+
 export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
 }
@@ -1149,6 +1201,13 @@ export interface RuntimeVersionResponse {
   is_system_default: boolean
   platform: string
   version: string
+}
+
+export interface SSEChatStreamArtifactCreatedData {
+  file_id: string
+  file_size: number
+  filename: string
+  mime_type?: string
 }
 
 export interface SSEChatStreamCompleteData {
@@ -1169,6 +1228,8 @@ export type SSEChatStreamEvent = {
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
+  mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
+  artifactCreated: SSEChatStreamArtifactCreatedData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
@@ -1180,14 +1241,24 @@ export interface SSEChatStreamMcpApprovalRequiredData {
   tool_use_id: string
 }
 
+export interface SSEChatStreamMcpElicitationRequiredData {
+  elicitation_id: string
+  message: string
+  message_id?: string
+  requested_schema: any
+  server: string
+}
+
 export interface SSEChatStreamMcpToolCompleteData {
   is_error: boolean
+  result?: string
   server: string
   tool_name: string
   tool_use_id: string
 }
 
 export interface SSEChatStreamMcpToolStartData {
+  input: any
   server: string
   tool_name: string
   tool_use_id: string
@@ -1221,6 +1292,11 @@ export interface SSEHardwareUsageConnectedData {
 export type SSEHardwareUsageEvent = {
   connected: SSEHardwareUsageConnectedData
   update: HardwareUsageUpdate
+}
+
+export interface SaveUserApiKeyRequest {
+  api_key: string
+  provider_id: string
 }
 
 export interface SendMessageRequest {
@@ -1402,7 +1478,7 @@ export interface UpdateMcpServerRequest {
   supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
-  usage_mode?: string
+  usage_mode?: UsageMode
 }
 
 export interface UpdateUserRequest {
@@ -1432,14 +1508,19 @@ export interface Usage {
   output_tokens?: number
 }
 
+export type UsageMode = 'auto' | 'always'
+
 export interface User {
   avatar_url?: string
+  completed_onboarding_ids: string[]
+  completed_onboarding_step_ids: string[]
   created_at: string
   display_name?: string
   email: string
   email_verified: boolean
   id: string
   is_active: boolean
+  is_admin: boolean
   last_login_at?: string
   permissions: string[]
   updated_at: string
@@ -1449,6 +1530,15 @@ export interface User {
 export interface UserActiveStatusResponse {
   is_active: boolean
   user_id: string
+}
+
+export interface UserApiKeyEntry {
+  masked_key: string
+  provider_id: string
+}
+
+export interface UserApiKeyListResponse {
+  keys: UserApiKeyEntry[]
 }
 
 export interface UserListResponse {
@@ -1472,6 +1562,10 @@ export interface UserMcpDefaultsResponse {
   loop_settings: LoopSettings
   updated_at: string
   user_id: string
+}
+
+export interface WorkspaceDownloadQuery {
+  filename: string
 }
 
 // =============================================================================
@@ -1534,10 +1628,13 @@ export enum Permissions {
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
+  ProfileEdit = 'profile::edit',
+  ProfileRead = 'profile::read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
+  UserLlmProvidersRead = 'user_llm_providers::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
   UsersEdit = 'users::edit',
@@ -1602,10 +1699,13 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
+  ProfileEdit: 'Edit own profile information',
+  ProfileRead: 'View own profile information',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  UserLlmProvidersRead: 'View available LLM providers and models',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
   UsersEdit: 'Edit existing user information',
@@ -1643,7 +1743,8 @@ export const ApiEndpoints = {
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
-  'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'CodeSandbox.downloadFile': 'GET /api/code-sandbox/file/download',
+  'CodeSandbox.rpc': 'POST /api/code-sandbox',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
@@ -1673,6 +1774,7 @@ export const ApiEndpoints = {
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
+  'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
   'Hub.getModels': 'GET /api/hub/models',
@@ -1697,10 +1799,14 @@ export const ApiEndpoints = {
   'LlmProvider.assignGroup': 'POST /api/llm-providers/{provider_id}/groups',
   'LlmProvider.create': 'POST /api/llm-providers',
   'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
+  'LlmProvider.deleteUserApiKey': 'DELETE /api/user-llm-providers/api-keys/{provider_id}',
   'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
   'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
+  'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
+  'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
+  'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
   'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
   'LlmRepository.create': 'POST /api/llm-repositories',
   'LlmRepository.delete': 'DELETE /api/llm-repositories/{repository_id}',
@@ -1717,6 +1823,7 @@ export const ApiEndpoints = {
   'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
   'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
   'Mcp.getDefaults': 'GET /api/mcp/defaults',
+  'Mcp.respondToElicitation': 'POST /api/mcp/elicitation/{elicitation_id}/respond',
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
   'McpServer.create': 'POST /api/mcp/servers',
   'McpServer.delete': 'DELETE /api/mcp/servers/{id}',
@@ -1741,6 +1848,8 @@ export const ApiEndpoints = {
   'Message.get': 'GET /api/messages/{id}',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
+  'OnboardingScreen.complete': 'POST /api/onboarding-screen/{guide_id}/complete',
+  'OnboardingScreen.completeStep': 'POST /api/onboarding-screen/{guide_id}/steps/{step_id}/complete',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -1790,7 +1899,8 @@ export type ApiEndpointParameters = {
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
-  'Chat.getUserLlmProviders': void
+  'CodeSandbox.downloadFile': { filename: string }
+  'CodeSandbox.rpc': JsonRpcRequest
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
@@ -1820,6 +1930,7 @@ export type ApiEndpointParameters = {
   'Hub.createModelFromHub': CreateModelFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
+  'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
   'Hub.getModels': { lang?: string }
@@ -1844,10 +1955,14 @@ export type ApiEndpointParameters = {
   'LlmProvider.assignGroup': { provider_id: string } & AssignProviderToGroupRequest
   'LlmProvider.create': CreateLlmProviderRequest
   'LlmProvider.delete': { provider_id: string }
+  'LlmProvider.deleteUserApiKey': { provider_id: string }
   'LlmProvider.get': { provider_id: string }
   'LlmProvider.getGroups': { provider_id: string }
+  'LlmProvider.getUserLlmProviders': void
   'LlmProvider.list': PaginationQuery
+  'LlmProvider.listUserApiKeys': void
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
+  'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
   'LlmProvider.update': { provider_id: string } & UpdateLlmProviderRequest
   'LlmRepository.create': CreateLlmRepositoryRequest
   'LlmRepository.delete': { repository_id: string }
@@ -1864,6 +1979,7 @@ export type ApiEndpointParameters = {
   'LocalRuntime.startModel': { model_id: string } & StartInstanceRequest
   'LocalRuntime.stopModel': { model_id: string }
   'Mcp.getDefaults': void
+  'Mcp.respondToElicitation': { elicitation_id: string } & RespondToElicitationRequest
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
   'McpServer.create': CreateMcpServerRequest
   'McpServer.delete': { id: string }
@@ -1888,6 +2004,8 @@ export type ApiEndpointParameters = {
   'Message.get': { id: string }
   'Message.getHistory': { id: string }
   'Message.sendStream': { id: string } & SendMessageRequest
+  'OnboardingScreen.complete': { guide_id: string }
+  'OnboardingScreen.completeStep': { guide_id: string; step_id: string }
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -1937,7 +2055,8 @@ export type ApiEndpointResponses = {
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
-  'Chat.getUserLlmProviders': GetUserProvidersResponse
+  'CodeSandbox.downloadFile': void
+  'CodeSandbox.rpc': JsonRpcResponse
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation
@@ -1967,6 +2086,7 @@ export type ApiEndpointResponses = {
   'Hub.createModelFromHub': ModelFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
+  'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
   'Hub.getModels': HubModel[]
@@ -1991,10 +2111,14 @@ export type ApiEndpointResponses = {
   'LlmProvider.assignGroup': void
   'LlmProvider.create': LlmProvider
   'LlmProvider.delete': void
+  'LlmProvider.deleteUserApiKey': void
   'LlmProvider.get': LlmProvider
   'LlmProvider.getGroups': Group[]
+  'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
+  'LlmProvider.listUserApiKeys': UserApiKeyListResponse
   'LlmProvider.removeGroup': void
+  'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
   'LlmRepository.create': LlmRepository
   'LlmRepository.delete': void
@@ -2011,6 +2135,7 @@ export type ApiEndpointResponses = {
   'LocalRuntime.startModel': InstanceResponse
   'LocalRuntime.stopModel': InstanceResponse
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
+  'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
   'McpServer.create': McpServer
   'McpServer.delete': void
@@ -2035,6 +2160,8 @@ export type ApiEndpointResponses = {
   'Message.get': MessageWithContent
   'Message.getHistory': MessageWithContent[]
   'Message.sendStream': SSEChatStreamEvent
+  'OnboardingScreen.complete': User
+  'OnboardingScreen.completeStep': User
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionResponse

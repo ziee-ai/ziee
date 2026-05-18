@@ -88,10 +88,6 @@ export function LlmProviderDrawer() {
     }
   }
 
-  const requiresApiKey = (type: string) => {
-    return type !== 'local' && type !== 'custom'
-  }
-
   return (
     <Drawer
       title={provider ? `Edit Provider: ${provider.name}` : 'Add Provider'}
@@ -147,11 +143,7 @@ export function LlmProviderDrawer() {
                 <Form.Item
                   name="api_key"
                   label="API Key"
-                  rules={
-                    requiresApiKey(type)
-                      ? [{ required: true, message: 'API key is required' }]
-                      : []
-                  }
+                  extra="Optional — if not set, users can provide their own keys"
                 >
                   <Input.Password
                     placeholder="Enter your API key"

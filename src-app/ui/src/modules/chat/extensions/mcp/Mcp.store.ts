@@ -1,9 +1,19 @@
 import { enableMapSet } from 'immer'
 import { createExtensionStore } from '@/modules/chat/core/extensions'
-import type { ToolApprovalDecision, McpServerConfig, AutoApprovedServer, DisabledServer, UserMcpDefaultsResponse, LoopSettings, ToolIdentifier, PerToolLimit } from '@/api-client/types'
+import type { ToolApprovalDecision, McpServerConfig, AutoApprovedServer, DisabledServer, UserMcpDefaultsResponse, LoopSettings, ToolIdentifier, PerToolLimit, Annotation, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
+import { ApiClient } from '@/api-client'
 
 // Enable Map support in Immer
 enableMapSet()
+
+/**
+ * Elicitation request state — a pending form the user needs to fill in
+ */
+export interface ElicitationRequestState extends SSEChatStreamMcpElicitationRequiredData {
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled'
+  /** Submitted field values — only set when status = 'accepted' */
+  response_content?: Record<string, unknown>
+}
 
 /**
  * MCP tool call state
@@ -72,6 +82,10 @@ interface McpStore {
   userDefaultsLoaded: boolean
   /** Whether the config modal is visible */
   configModalVisible: boolean
+  /** Currently open annotation in the reference drawer (null = closed) */
+  openAnnotation: Annotation | null
+  /** Pending elicitation requests keyed by message_id */
+  elicitationRequests: Map<string, ElicitationRequestState>
 
   // Tool call actions
   /** Add a new tool call */
@@ -98,8 +112,8 @@ interface McpStore {
   setCurrentConversation: (conversationId: string | null) => void
   /** Load conversation config (from backend or create default) */
   loadConversationConfig: (conversationId: string, config?: ConversationMcpConfig) => void
-  /** Save conversation config changes (availableServerIds used to compute disabled_servers) */
-  saveConversationConfig: (conversationId: string, availableServerIds?: string[]) => Promise<void>
+  /** Save conversation config changes (availableServerIds used to compute disabled_servers, serverToolsMap used to persist partial tool selections) */
+  saveConversationConfig: (conversationId: string, availableServerIds?: string[], serverToolsMap?: Map<string, string[]>, updateAutoApproved?: boolean) => Promise<void>
   /** Get or create pending config for new conversations */
   getOrCreatePendingConfig: () => ConversationMcpConfig
   /** Transfer pending config to a real conversation ID */
@@ -148,7 +162,7 @@ interface McpStore {
   /** Load user defaults from backend */
   loadUserDefaults: () => Promise<void>
   /** Save current config as user defaults (availableServerIds used to compute disabled_servers) */
-  saveUserDefaults: (conversationId: string | null, availableServerIds: string[]) => Promise<void>
+  saveUserDefaults: (conversationId: string | null, availableServerIds: string[], updateAutoApproved?: boolean) => Promise<void>
   /** Apply user defaults to pending config (for new conversations) */
   applyUserDefaultsToPending: (availableServerIds: string[]) => void
 
@@ -157,6 +171,16 @@ interface McpStore {
   openConfigModal: () => void
   /** Close the config modal */
   closeConfigModal: () => void
+
+  // Annotation drawer actions
+  /** Open the annotation drawer with the given annotation */
+  setOpenAnnotation: (annotation: Annotation | null) => void
+
+  // Elicitation actions
+  /** Add a new elicitation request (called when mcpElicitationRequired SSE event arrives) */
+  addElicitationRequest: (request: SSEChatStreamMcpElicitationRequiredData) => void
+  /** Respond to an elicitation (POST to backend, then remove from map) */
+  resolveElicitation: (elicitation_id: string, action: 'accept' | 'decline' | 'cancel', content?: Record<string, unknown>) => Promise<void>
 }
 
 /**
@@ -175,6 +199,8 @@ export const createMcpStore = () =>
     userDefaults: null,
     userDefaultsLoaded: false,
     configModalVisible: false,
+    openAnnotation: null,
+    elicitationRequests: new Map<string, ElicitationRequestState>(),
 
     // Initialization methods
     __init__: {
@@ -330,7 +356,7 @@ export const createMcpStore = () =>
      * Save conversation config changes
      * Saves approval settings and disabled servers to backend
      */
-    saveConversationConfig: async (conversationId: string, availableServerIds?: string[]) => {
+    saveConversationConfig: async (conversationId: string, availableServerIds?: string[], serverToolsMap?: Map<string, string[]>, updateAutoApproved?: boolean) => {
       const state = get()
       const config = state.conversationConfigs.get(conversationId)
 
@@ -349,6 +375,20 @@ export const createMcpStore = () =>
           .map(id => ({ server_id: id, tools: [] })) // Empty tools = entire server disabled
       }
 
+      // For partially selected servers (specific tools chosen), compute disabled tools
+      // and add them to disabled_servers with the specific tool names
+      if (serverToolsMap) {
+        for (const [serverId, selection] of config.selectedServers.entries()) {
+          if (selection.tools.length > 0) {
+            const allTools = serverToolsMap.get(serverId) || []
+            const disabledTools = allTools.filter(t => !selection.tools.includes(t))
+            if (disabledTools.length > 0) {
+              disabledServers.push({ server_id: serverId, tools: disabledTools })
+            }
+          }
+        }
+      }
+
       // Also include any previously saved disabled servers that aren't in available list
       // (to preserve settings for servers that might be temporarily unavailable)
       const existingDisabled = config.disabledServers || []
@@ -361,7 +401,8 @@ export const createMcpStore = () =>
       await ApiClient.Conversation.updateMcpSettings({
         id: conversationId,
         approval_mode: config.approvalMode || 'manual_approve',
-        auto_approved_tools: config.autoApprovedTools,
+        // Only send auto_approved_tools when explicitly changing approvals — backend COALESCE preserves DB value otherwise
+        ...(updateAutoApproved ? { auto_approved_tools: config.autoApprovedTools } : {}),
         disabled_servers: disabledServers,
         loop_settings: config.loopSettings,
       })
@@ -812,7 +853,7 @@ export const createMcpStore = () =>
      * Save current config as user defaults
      * availableServerIds is used to compute disabled_servers from selectedServers
      */
-    saveUserDefaults: async (conversationId: string | null, availableServerIds: string[]) => {
+    saveUserDefaults: async (conversationId: string | null, availableServerIds: string[], updateAutoApproved?: boolean) => {
       const state = get()
       const configKey = conversationId || PENDING_CONVERSATION_KEY
       const config = state.conversationConfigs.get(configKey)
@@ -831,7 +872,8 @@ export const createMcpStore = () =>
         const { ApiClient } = await import('@/api-client')
         const response = await ApiClient.Mcp.updateDefaults({
           approval_mode: config?.approvalMode || 'manual_approve',
-          auto_approved_tools: config?.autoApprovedTools || [],
+          // Only send auto_approved_tools when explicitly changing approvals — backend COALESCE preserves DB value otherwise
+          ...(updateAutoApproved ? { auto_approved_tools: config?.autoApprovedTools || [] } : {}),
           disabled_servers: disabledServers,
           loop_settings: config?.loopSettings,
         })
@@ -907,6 +949,64 @@ export const createMcpStore = () =>
       set(state => {
         state.configModalVisible = false
       })
+    },
+
+    // Annotation drawer actions
+    setOpenAnnotation: (annotation: Annotation | null) => {
+      set(state => {
+        state.openAnnotation = annotation
+      })
+    },
+
+    // Elicitation actions
+    addElicitationRequest: (request: SSEChatStreamMcpElicitationRequiredData) => {
+      set(state => {
+        state.elicitationRequests.set(request.elicitation_id, {
+          ...request,
+          status: 'pending',
+        })
+      })
+    },
+
+    resolveElicitation: async (elicitation_id: string, action: 'accept' | 'decline' | 'cancel', content?: Record<string, unknown>) => {
+      const finalStatus = action === 'accept' ? 'accepted' : action === 'decline' ? 'declined' : 'cancelled'
+
+      // Optimistic update: set resolved status and response content so the component
+      // renders the final state immediately without waiting for the API round-trip
+      set(state => {
+        const req = state.elicitationRequests.get(elicitation_id)
+        if (req) {
+          req.status = finalStatus
+          if (action === 'accept' && content) {
+            req.response_content = content
+          }
+        }
+      })
+
+      try {
+        await ApiClient.Mcp.respondToElicitation({
+          elicitation_id,
+          action,
+          ...(action === 'accept' && content ? { content } : {}),
+        })
+      } catch (e: unknown) {
+        // 404 = session expired (MCP task already finished or page was reloaded)
+        const is404 = e != null &&
+          typeof e === 'object' &&
+          'status' in e &&
+          (e as { status: number }).status === 404
+        if (is404) {
+          set(state => {
+            const req = state.elicitationRequests.get(elicitation_id)
+            if (req) req.status = 'cancelled'
+          })
+        } else {
+          console.error('[MCP Store] Failed to POST elicitation response:', e)
+        }
+      }
+      // Note: we intentionally do NOT delete the entry — the component reads from McpStore
+      // as the live source of truth during streaming. On page reload, the DB content
+      // (with the persisted status) is used as the fallback.
     },
   }))
 

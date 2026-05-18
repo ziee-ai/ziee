@@ -12,8 +12,10 @@ pub mod llm_model;
 pub mod llm_provider;
 pub mod llm_provider_files;
 pub mod llm_repository;
+pub mod code_sandbox;
 pub mod mcp;
 pub mod permissions;
+pub mod onboarding_screen;
 pub mod user;
 
 // Re-export modules

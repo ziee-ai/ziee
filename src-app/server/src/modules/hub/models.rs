@@ -146,6 +146,9 @@ pub struct HubMCPServer {
     pub use_cases: Option<Vec<String>>,
     pub example_prompts: Option<Vec<String>>,
 
+    /// Whether this MCP server uses MCP sampling (sends sampling/createMessage requests back to the platform)
+    pub supports_sampling: Option<bool>,
+
     /// Array of entity IDs created by current user from this hub server
     #[serde(default)]
     pub created_ids: Vec<Uuid>,

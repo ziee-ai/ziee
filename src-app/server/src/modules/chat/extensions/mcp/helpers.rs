@@ -15,7 +15,7 @@ use crate::modules::mcp::{McpRepository, McpServer};
 use super::content::McpContentData;
 use super::extension::{
     McpServerConfig, SSEChatStreamMcpApprovalRequiredData, SSEChatStreamMcpToolCompleteData,
-    SSEChatStreamMcpToolStartData,
+    SSEChatStreamMcpToolStartData, SSEChatStreamArtifactCreatedData,
 };
 
 /// Get all MCP servers accessible to the user
@@ -106,21 +106,31 @@ pub async fn execute_tool(
     input: Value,
     _server_name: &str,
     timeout_seconds: Option<i32>,
-) -> McpContentData {
-    // Execute with timeout using the clean tool name
-    let timeout = Duration::from_secs(timeout_seconds.unwrap_or(30) as u64);
+    message_id: Option<uuid::Uuid>,
+    sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+    elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
+) -> (McpContentData, bool) {
+    // Returns (result, is_final_response)
+    // is_final_response: true means the tool result is a complete user-facing answer —
+    // the caller should stream it directly to the user without another LLM call.
+
+    // Elicitation may block for up to 300s; use a generous outer timeout so that
+    // elicitation requests have time to complete before we give up.
+    // The tool-level timeout is enforced separately inside call_tool_with_sampling.
+    let timeout = Duration::from_secs(timeout_seconds.unwrap_or(30) as u64 + 300);
 
     let result = tokio::time::timeout(
         timeout,
-        session.call_tool(tool_name, input.clone())
+        session.call_tool(tool_name, input.clone(), message_id, sse_tx, elicit_notify_tx)
     ).await;
 
     match result {
         Ok(Ok(tool_result)) => {
             // Success - convert MCP ToolResult to our format, parsing rich content types
             let mut text_parts: Vec<String> = Vec::new();
-            let mut references: Vec<super::content::ReferenceItem> = Vec::new();
+            let mut annotations: Vec<super::content::Annotation> = Vec::new();
             let mut attachment: Option<super::content::RichFile> = None;
+            let mut resource_links: Vec<super::content::ResourceLink> = Vec::new();
 
             for item in &tool_result.content {
                 let content_type = item.content.get("type").and_then(|t| t.as_str()).unwrap_or("text");
@@ -130,17 +140,19 @@ pub async fn execute_tool(
                             text_parts.push(text.to_string());
                         }
                     }
-                    "references" => {
-                        if let Some(refs_array) = item.content.get("references").and_then(|r| r.as_array()) {
-                            for ref_val in refs_array {
-                                if let (Some(id), Some(display_text)) = (
-                                    ref_val.get("id").and_then(|v| v.as_str()),
-                                    ref_val.get("display_text").and_then(|v| v.as_str()),
+                    "annotations" => {
+                        if let Some(arr) = item.content.get("annotations").and_then(|a| a.as_array()) {
+                            for ann_val in arr {
+                                if let (Some(id), Some(atype), Some(content)) = (
+                                    ann_val.get("id").and_then(|v| v.as_str()),
+                                    ann_val.get("annotation_type").and_then(|v| v.as_str()),
+                                    ann_val.get("content").and_then(|v| v.as_str()),
                                 ) {
-                                    references.push(super::content::ReferenceItem {
+                                    annotations.push(super::content::Annotation {
                                         id: id.to_string(),
-                                        display_text: display_text.to_string(),
-                                        source_url: ref_val.get("source_url").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                        annotation_type: atype.to_string(),
+                                        label: ann_val.get("label").and_then(|v| v.as_str()).map(String::from),
+                                        content: content.to_string(),
                                     });
                                 }
                             }
@@ -157,6 +169,21 @@ pub async fn execute_tool(
                                 mime_type: mime_type.to_string(),
                                 data: data.to_string(),
                             });
+                        }
+                    }
+                    "resource_link" => {
+                        // MCP resource_link: a reference to a persisted resource (not inline content)
+                        if let Some(uri) = item.content.get("uri").and_then(|v| v.as_str()) {
+                            let name = item.content.get("name").and_then(|v| v.as_str()).unwrap_or("file");
+                            resource_links.push(super::content::ResourceLink {
+                                uri: uri.to_string(),
+                                name: item.content.get("name").and_then(|v| v.as_str()).map(String::from),
+                                mime_type: item.content.get("mimeType").and_then(|v| v.as_str()).map(String::from),
+                                size: item.content.get("size").and_then(|v| v.as_i64()),
+                                is_saved: item.content.get("is_saved").and_then(|v| v.as_bool()),
+                            });
+                            // Provide the LLM with a readable confirmation so it doesn't retry
+                            text_parts.push(format!("resource_link available — name: {}, uri: {}", name, uri));
                         }
                     }
                     _ => {
@@ -182,39 +209,60 @@ pub async fn execute_tool(
                 content_text
             };
 
-            McpContentData::ToolResult {
+            let mcp_result = McpContentData::ToolResult {
                 tool_use_id: String::new(), // Will be set by caller
                 name: Some(tool_name.to_string()),
+                server_id: None, // Will be set by caller
                 content: final_content,
                 is_error: Some(tool_result.is_error),
-                references: if references.is_empty() { None } else { Some(references) },
+                annotations: if annotations.is_empty() { None } else { Some(annotations) },
                 attachment,
-            }
+                resource_links: if resource_links.is_empty() { None } else { Some(resource_links) },
+                hidden_content: None, // Set later if resource_links artifacts are saved
+            };
+            // Check for MCP-standard audience: ["user"] on any content block (spec:
+            // https://modelcontextprotocol.io/specification/2025-06-18/server/tools).
+            // Fall back to the legacy is_final_response field for backward compat.
+            let has_user_audience = tool_result.content.iter().any(|c| {
+                c.content
+                    .get("annotations")
+                    .and_then(|a| a.get("audience"))
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().any(|s| s.as_str() == Some("user")))
+                    .unwrap_or(false)
+            });
+            (mcp_result, has_user_audience || tool_result.is_final_response)
         }
         Ok(Err(e)) => {
             // MCP error
-            McpContentData::ToolResult {
+            (McpContentData::ToolResult {
                 tool_use_id: String::new(),
                 name: Some(tool_name.to_string()),
+                server_id: None, // Will be set by caller
                 content: format!("Tool execution failed: {}", e),
                 is_error: Some(true),
-                references: None,
+                annotations: None,
                 attachment: None,
-            }
+                resource_links: None,
+                hidden_content: None,
+            }, false)
         }
         Err(_) => {
             // Timeout
-            McpContentData::ToolResult {
+            (McpContentData::ToolResult {
                 tool_use_id: String::new(),
                 name: Some(tool_name.to_string()),
+                server_id: None, // Will be set by caller
                 content: format!(
                     "Tool execution timed out after {}s",
                     timeout_seconds.unwrap_or(30)
                 ),
                 is_error: Some(true),
-                references: None,
+                annotations: None,
                 attachment: None,
-            }
+                resource_links: None,
+                hidden_content: None,
+            }, false)
         }
     }
 }
@@ -226,12 +274,14 @@ pub async fn send_tool_start_event(
     tool_use_id: &str,
     tool_name: &str,
     server: &str,
+    input: &serde_json::Value,
 ) {
     if let Some(tx) = tx {
         let event = SSEChatStreamEvent::McpToolStart(SSEChatStreamMcpToolStartData {
             tool_use_id: tool_use_id.to_string(),
             tool_name: tool_name.to_string(),
             server: server.to_string(),
+            input: input.clone(),
         });
 
         if let Err(e) = tx.send(Ok(event.into())) {
@@ -248,13 +298,23 @@ pub async fn send_tool_complete_event(
     tool_name: &str,
     server: &str,
     is_error: bool,
+    result: Option<&str>,
 ) {
     if let Some(tx) = tx {
+        let result_truncated = result.map(|r| {
+            if r.len() > 2000 {
+                format!("{}...[truncated]", &r[..2000])
+            } else {
+                r.to_string()
+            }
+        });
+
         let event = SSEChatStreamEvent::McpToolComplete(SSEChatStreamMcpToolCompleteData {
             tool_use_id: tool_use_id.to_string(),
             tool_name: tool_name.to_string(),
             server: server.to_string(),
             is_error,
+            result: result_truncated,
         });
 
         if let Err(e) = tx.send(Ok(event.into())) {
@@ -291,6 +351,29 @@ pub async fn send_approval_required_event(
     }
 
     Ok(())
+}
+
+/// Send SSE event when a tool creates an artifact file (via MCP resource_link).
+/// Fire-and-forget: logs a warning if the channel is closed but never fails the caller.
+pub async fn send_artifact_created_event(
+    tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
+    file_id: &str,
+    filename: &str,
+    mime_type: Option<&str>,
+    file_size: i64,
+) {
+    if let Some(tx) = tx {
+        let event = SSEChatStreamEvent::ArtifactCreated(SSEChatStreamArtifactCreatedData {
+            file_id: file_id.to_string(),
+            filename: filename.to_string(),
+            mime_type: mime_type.map(String::from),
+            file_size,
+        });
+
+        if let Err(e) = tx.send(Ok(event.into())) {
+            tracing::warn!("Failed to send SSE artifact created event: {:?}", e);
+        }
+    }
 }
 
 /// Build tool input by mapping user message text to the first required string parameter.

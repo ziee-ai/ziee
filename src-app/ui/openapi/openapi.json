@@ -1064,6 +1064,118 @@
         ]
       }
     },
+    "/api/onboarding-screen/{guide_id}/complete": {
+      "post": {
+        "tags": [
+          "OnboardingScreen"
+        ],
+        "summary": "Mark a guide as completed",
+        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
+        "operationId": "OnboardingScreen.complete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/onboarding-screen/{guide_id}/steps/{step_id}/complete": {
+      "post": {
+        "tags": [
+          "OnboardingScreen"
+        ],
+        "summary": "Mark a guide step as completed",
+        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
+        "operationId": "OnboardingScreen.completeStep",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/llm-repositories": {
       "get": {
         "tags": [
@@ -2012,6 +2124,216 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers": {
+      "get": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Get user's accessible LLM providers",
+        "description": "Returns all enabled LLM providers assigned to the user's groups, with enabled models and API key configuration status.",
+        "operationId": "LlmProvider.getUserLlmProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View available LLM providers and models",
+                        "name": "UserLlmProvidersRead",
+                        "value": "user_llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: user_llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for user-accessible LLM providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUserProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers/api-keys": {
+      "get": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "List user's provider API keys (masked)",
+        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
+        "operationId": "LlmProvider.listUserApiKeys",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response listing user API keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserApiKeyListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Save or update user API key for a provider",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
+        "operationId": "LlmProvider.saveUserApiKey",
+        "requestBody": {
+          "description": "Request to save a user API key",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveUserApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers/api-keys/{provider_id}": {
+      "delete": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Delete user API key for a provider",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
+        "operationId": "LlmProvider.deleteUserApiKey",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
           },
           "401": {
             "description": "Unauthorized"
@@ -5584,59 +5906,6 @@
         ]
       }
     },
-    "/api/chat/llm-providers": {
-      "get": {
-        "tags": [
-          "Chat"
-        ],
-        "summary": "Get user's accessible LLM providers",
-        "description": "Returns all enabled LLM providers assigned to the user's active groups, with their enabled and active models included inline.",
-        "operationId": "Chat.getUserLlmProviders",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "View chat conversations",
-                        "name": "ConversationsRead",
-                        "value": "conversations::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: conversations::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Response containing all providers accessible to the user",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GetUserProvidersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/mcp/defaults": {
       "get": {
         "tags": [
@@ -6848,6 +7117,73 @@
         ]
       }
     },
+    "/api/mcp/elicitation/{elicitation_id}/respond": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Respond to an elicitation request",
+        "description": "Submit a user's response to an MCP server elicitation form. The elicitation_id is the per-elicitation UUID received via the mcpElicitationRequired SSE event.",
+        "operationId": "Mcp.respondToElicitation",
+        "requestBody": {
+          "description": "Request body for POST /api/mcp/elicitation/{id}/respond",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RespondToElicitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response body for POST /api/mcp/elicitation/{id}/respond",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespondToElicitationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid action value"
+          },
+          "404": {
+            "description": "Elicitation request not found or expired"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -7586,6 +7922,125 @@
         ]
       }
     },
+    "/api/hub/models/local-providers": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "List local providers available for hub model downloads",
+        "description": "\n\n**Required Permission:** `hub::models::download`\n\nDownload models from hub",
+        "operationId": "Hub.getLocalProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Download models from hub",
+                        "name": "HubModelsCreate",
+                        "value": "hub::models::download"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::download",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response listing local providers available for hub model downloads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubLocalProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox": {
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "MCP JSON-RPC endpoint for code sandbox tools",
+        "operationId": "CodeSandbox.rpc",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonRpcRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonRpcResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/code-sandbox/file/download": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Download sandbox workspace file",
+        "description": "Download a file from the conversation sandbox workspace by filename. Requires Authorization header (JWT) and X-Conversation-Id header.",
+        "operationId": "CodeSandbox.downloadFile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "Missing conversation ID or filename"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "File not found"
+          }
+        }
+      }
+    },
     "/api/hardware": {
       "get": {
         "tags": [
@@ -7761,6 +8216,36 @@
   },
   "components": {
     "schemas": {
+      "Annotation": {
+        "description": "A generic annotation returned by any MCP server alongside a final answer.\n\n The server uses whatever `id` scheme it wants (e.g. `chunk-{hash}-{index}`, UUID, slug).\n The `id` must match the inline marker `[id]` in the answer text exactly.\n The client maps IDs to sequential display numbers ([1], [2], …) at render time.\n\n `content` is a Markdown string rendered by Streamdown on the frontend.\n The server controls exactly what appears in the reference drawer — no client-side parsing.",
+        "type": "object",
+        "properties": {
+          "annotation_type": {
+            "description": "Semantic type: \"citation\", \"image\", \"audio\", or any custom string",
+            "type": "string"
+          },
+          "content": {
+            "description": "Markdown string rendered by Streamdown in the reference drawer",
+            "type": "string"
+          },
+          "id": {
+            "description": "Arbitrary ID chosen by the server — must match the inline `[id]` marker in the text",
+            "type": "string"
+          },
+          "label": {
+            "description": "Optional short label shown in the drawer header / badge tooltip",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "annotation_type",
+          "content"
+        ]
+      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -8897,9 +9382,13 @@
             ]
           },
           "usage_mode": {
-            "type": [
-              "string",
-              "null"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageMode"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         },
@@ -9644,6 +10133,9 @@
             "type": "string",
             "format": "date-time"
           },
+          "created_by": {
+            "type": "string"
+          },
           "file_size": {
             "type": "integer",
             "format": "int64"
@@ -9691,6 +10183,7 @@
           "preview_page_count",
           "text_page_count",
           "processing_metadata",
+          "created_by",
           "created_at",
           "updated_at"
         ]
@@ -9870,7 +10363,7 @@
         ]
       },
       "GetUserProvidersResponse": {
-        "description": "Response containing all providers accessible to the user",
+        "description": "Response for user-accessible LLM providers",
         "type": "object",
         "properties": {
           "providers": {
@@ -10242,6 +10735,38 @@
           "created_at"
         ]
       },
+      "HubLocalProvider": {
+        "description": "A local LLM provider available as download target",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "HubLocalProvidersResponse": {
+        "description": "Response listing local providers available for hub model downloads",
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubLocalProvider"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ]
+      },
       "HubMCPServer": {
         "description": "Hub MCP server entry",
         "type": "object",
@@ -10382,6 +10907,13 @@
             ]
           },
           "requires_desktop": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "supports_sampling": {
+            "description": "Whether this MCP server uses MCP sampling (sends sampling/createMessage requests back to the platform)",
             "type": [
               "boolean",
               "null"
@@ -10810,6 +11342,64 @@
           {
             "type": "null"
           }
+        ]
+      },
+      "JsonRpcError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "JsonRpcRequest": {
+        "type": "object",
+        "properties": {
+          "id": true,
+          "jsonrpc": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "params": {
+            "default": null
+          }
+        },
+        "required": [
+          "jsonrpc",
+          "method"
+        ]
+      },
+      "JsonRpcResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JsonRpcError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": true,
+          "jsonrpc": {
+            "type": "string"
+          },
+          "result": true
+        },
+        "required": [
+          "jsonrpc"
         ]
       },
       "ListModelsQuery": {
@@ -11504,6 +12094,9 @@
             "type": "string",
             "format": "uuid"
           },
+          "is_built_in": {
+            "type": "boolean"
+          },
           "is_system": {
             "type": "boolean"
           },
@@ -11538,7 +12131,7 @@
             ]
           },
           "usage_mode": {
-            "type": "string"
+            "$ref": "#/components/schemas/UsageMode"
           },
           "user_id": {
             "type": [
@@ -11554,6 +12147,7 @@
           "display_name",
           "enabled",
           "is_system",
+          "is_built_in",
           "transport_type",
           "args",
           "environment_variables",
@@ -12003,6 +12597,32 @@
               "type",
               "tool_use_id",
               "content"
+            ]
+          },
+          {
+            "description": "Final answer with inline annotation markers and server-resolved annotation content.\n Produced when an MCP server returns is_final_response: true with an annotations block.\n The text contains inline [id] markers; annotations hold the server-formatted markdown content.",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "annotated_text"
+              },
+              "annotations": {
+                "description": "Annotations keyed by ID — each has a markdown `content` field rendered in the drawer",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Annotation"
+                }
+              },
+              "text": {
+                "description": "Answer text with inline annotation markers (e.g. [chunk-abc-001], [fig1])",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "text",
+              "annotations"
             ]
           }
         ]
@@ -12816,7 +13436,7 @@
         ]
       },
       "ProviderWithModels": {
-        "description": "Provider with its available models",
+        "description": "Provider with its available models and user-facing key status",
         "type": "object",
         "properties": {
           "api_key": {
@@ -12824,6 +13444,10 @@
               "string",
               "null"
             ]
+          },
+          "api_key_configured": {
+            "description": "Whether an API key is configured (either system-level or user-level)",
+            "type": "boolean"
           },
           "base_url": {
             "type": [
@@ -12882,7 +13506,8 @@
           "proxy_settings",
           "created_at",
           "updated_at",
-          "llm_models"
+          "llm_models",
+          "api_key_configured"
         ]
       },
       "ProxySettings": {
@@ -13050,6 +13675,34 @@
           "name"
         ]
       },
+      "RespondToElicitationRequest": {
+        "description": "Request body for POST /api/mcp/elicitation/{id}/respond",
+        "type": "object",
+        "properties": {
+          "action": {
+            "description": "\"accept\" | \"decline\" | \"cancel\"",
+            "type": "string"
+          },
+          "content": {
+            "description": "Field values — only present when action == \"accept\""
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "RespondToElicitationResponse": {
+        "description": "Response body for POST /api/mcp/elicitation/{id}/respond",
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
       "RuntimeVersionListResponse": {
         "description": "Response containing a list of runtime versions",
         "type": "object",
@@ -13109,6 +13762,37 @@
           "binary_path",
           "is_system_default",
           "created_at"
+        ]
+      },
+      "SSEChatStreamArtifactCreatedData": {
+        "description": "Event data for an artifact file created by a tool (via MCP resource_link)",
+        "type": "object",
+        "properties": {
+          "file_id": {
+            "description": "UUID of the file in the files table",
+            "type": "string"
+          },
+          "file_size": {
+            "description": "File size in bytes",
+            "type": "integer",
+            "format": "int64"
+          },
+          "filename": {
+            "description": "Display filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "description": "MIME type of the file",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_id",
+          "filename",
+          "file_size"
         ]
       },
       "SSEChatStreamCompleteData": {
@@ -13286,6 +13970,40 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "mcpElicitationRequired"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamMcpElicitationRequiredData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "artifactCreated"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamArtifactCreatedData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "titleUpdated"
               }
             },
@@ -13332,6 +14050,40 @@
           "input"
         ]
       },
+      "SSEChatStreamMcpElicitationRequiredData": {
+        "description": "Event data for MCP elicitation required (server is requesting human input)",
+        "type": "object",
+        "properties": {
+          "elicitation_id": {
+            "description": "Per-elicitation random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable prompt from the MCP server",
+            "type": "string"
+          },
+          "message_id": {
+            "description": "ID of the assistant message that triggered this elicitation (informational)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requested_schema": {
+            "description": "JSON Schema describing the requested fields (per SEP-1330)"
+          },
+          "server": {
+            "description": "Display name of the MCP server that sent the request",
+            "type": "string"
+          }
+        },
+        "required": [
+          "elicitation_id",
+          "message",
+          "requested_schema",
+          "server"
+        ]
+      },
       "SSEChatStreamMcpToolCompleteData": {
         "description": "Event data for MCP tool execution completion",
         "type": "object",
@@ -13339,6 +14091,13 @@
           "is_error": {
             "description": "Whether the tool execution resulted in an error",
             "type": "boolean"
+          },
+          "result": {
+            "description": "Tool result text, truncated to 2000 chars (for display in \"Show details\" panel)",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "server": {
             "description": "MCP server that executed the tool",
@@ -13364,6 +14123,9 @@
         "description": "Event data for MCP tool execution start",
         "type": "object",
         "properties": {
+          "input": {
+            "description": "Tool input parameters (for display in \"Show details\" panel)"
+          },
           "server": {
             "description": "MCP server executing the tool",
             "type": "string"
@@ -13380,7 +14142,8 @@
         "required": [
           "tool_use_id",
           "tool_name",
-          "server"
+          "server",
+          "input"
         ]
       },
       "SSEChatStreamStartedData": {
@@ -13528,6 +14291,23 @@
               "update"
             ]
           }
+        ]
+      },
+      "SaveUserApiKeyRequest": {
+        "description": "Request to save a user API key",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "provider_id",
+          "api_key"
         ]
       },
       "SendMessageRequest": {
@@ -14356,9 +15136,13 @@
             ]
           },
           "usage_mode": {
-            "type": [
-              "string",
-              "null"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageMode"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
@@ -14414,9 +15198,12 @@
             ]
           },
           "auto_approved_tools": {
-            "description": "Auto-approved tools grouped by server\n Format: [{\"server_id\": \"uuid\", \"tools\": [\"tool1\", \"tool2\"]}, ...]",
-            "type": "array",
-            "default": [],
+            "description": "Auto-approved tools grouped by server\n Format: [{\"server_id\": \"uuid\", \"tools\": [\"tool1\", \"tool2\"]}, ...]\n None = preserve existing value in DB; Some(vec) = overwrite with this value",
+            "type": [
+              "array",
+              "null"
+            ],
+            "default": null,
             "items": {
               "$ref": "#/components/schemas/AutoApprovedServer"
             }
@@ -14462,9 +15249,12 @@
             ]
           },
           "auto_approved_tools": {
-            "description": "Auto-approved tools grouped by server",
-            "type": "array",
-            "default": [],
+            "description": "Auto-approved tools grouped by server\n None = preserve existing value in DB; Some(vec) = overwrite with this value",
+            "type": [
+              "array",
+              "null"
+            ],
+            "default": null,
             "items": {
               "$ref": "#/components/schemas/AutoApprovedServer"
             }
@@ -14519,6 +15309,13 @@
           }
         }
       },
+      "UsageMode": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "always"
+        ]
+      },
       "User": {
         "type": "object",
         "properties": {
@@ -14527,6 +15324,18 @@
               "string",
               "null"
             ]
+          },
+          "completed_onboarding_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "completed_onboarding_step_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "created_at": {
             "type": "string",
@@ -14549,6 +15358,9 @@
             "format": "uuid"
           },
           "is_active": {
+            "type": "boolean"
+          },
+          "is_admin": {
             "type": "boolean"
           },
           "last_login_at": {
@@ -14578,7 +15390,10 @@
           "email",
           "email_verified",
           "is_active",
+          "is_admin",
           "permissions",
+          "completed_onboarding_ids",
+          "completed_onboarding_step_ids",
           "created_at",
           "updated_at"
         ]
@@ -14597,6 +15412,38 @@
         "required": [
           "user_id",
           "is_active"
+        ]
+      },
+      "UserApiKeyEntry": {
+        "description": "Masked user API key entry",
+        "type": "object",
+        "properties": {
+          "masked_key": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "provider_id",
+          "masked_key"
+        ]
+      },
+      "UserApiKeyListResponse": {
+        "description": "Response listing user API keys",
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserApiKeyEntry"
+            }
+          }
+        },
+        "required": [
+          "keys"
         ]
       },
       "UserListResponse": {
@@ -14708,6 +15555,17 @@
           "loop_settings",
           "created_at",
           "updated_at"
+        ]
+      },
+      "WorkspaceDownloadQuery": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename"
         ]
       }
     }

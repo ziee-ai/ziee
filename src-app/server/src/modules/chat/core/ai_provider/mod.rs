@@ -18,9 +18,11 @@ use crate::core::Repos;
 /// 2. Fetches the associated provider
 /// 3. Validates the provider is enabled
 /// 4. Creates and configures the provider instance
+/// 5. Uses user's personal API key if available, falls back to system key
 pub async fn create_provider_from_model_id(
     _pool: &PgPool,
     model_id: Uuid,
+    user_id: Uuid,
 ) -> Result<(Arc<Provider>, String, Uuid, Uuid), AppError> {
     // Get model information
     let model = Repos.llm_model
@@ -51,8 +53,15 @@ pub async fn create_provider_from_model_id(
         _ => "openai", // openai, groq, mistral, deepseek, custom, huggingface all use OpenAI-compatible API
     };
 
-    // Get API key and base URL
-    let api_key = provider_info.api_key.as_deref().unwrap_or("");
+    // Resolve API key: user key → system key → empty string
+    let user_api_key = Repos.user_key
+        .get(user_id, provider_info.id)
+        .await?;
+
+    let api_key = user_api_key
+        .or(provider_info.api_key)
+        .unwrap_or_default();
+
     let base_url = provider_info
         .base_url
         .as_deref()
@@ -62,7 +71,7 @@ pub async fn create_provider_from_model_id(
 
     // Create provider instance
     let provider = Arc::new(
-        Provider::new(provider_type, api_key, base_url)
+        Provider::new(provider_type, &api_key, base_url)
             .map_err(|e| AppError::internal_error(format!("Failed to create provider: {}", e)))?,
     );
 

@@ -9,6 +9,8 @@ pub struct Config {
     pub jwt: JwtConfig,
     #[serde(default)]
     pub app: Option<AppConfig>,
+    #[serde(default)]
+    pub code_sandbox: Option<CodeSandboxConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -104,6 +106,12 @@ pub struct JwtConfig {
 
 fn default_refresh_token_expiry() -> i64 {
     30
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CodeSandboxConfig {
+    pub enabled: bool,
+    pub rootfs_path: String,
 }
 
 impl Config {

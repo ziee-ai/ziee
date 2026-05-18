@@ -41,7 +41,9 @@ struct GeminiRequest {
 /// Gemini content structure
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct GeminiContent {
+    #[serde(default)]
     role: String,
+    #[serde(default)]
     parts: Vec<GeminiPart>,
 }
 
@@ -172,7 +174,8 @@ struct GeminiResponse {
 /// Gemini candidate
 #[derive(Deserialize, Debug)]
 struct GeminiCandidate {
-    content: GeminiContent,
+    #[serde(default)]
+    content: Option<GeminiContent>,
     #[serde(rename = "finishReason")]
     finish_reason: Option<String>,
     #[serde(rename = "safetyRatings", default)]
@@ -530,7 +533,8 @@ impl GeminiProvider {
     fn convert_stream_chunk(candidate: &GeminiCandidate) -> Option<StreamChatChunk> {
         let mut content_deltas = Vec::new();
 
-        for (idx, part) in candidate.content.parts.iter().enumerate() {
+        let parts = candidate.content.as_ref().map(|c| c.parts.as_slice()).unwrap_or_default();
+        for (idx, part) in parts.iter().enumerate() {
             match part {
                 GeminiPart::Text { text, thought } => {
                     // If this is a thought part, use ThinkingDelta; otherwise use TextDelta
@@ -569,7 +573,7 @@ impl GeminiProvider {
             }
         }
 
-        if content_deltas.is_empty() {
+        if content_deltas.is_empty() && candidate.finish_reason.is_none() {
             return None;
         }
 
@@ -801,8 +805,9 @@ impl AIProvider for GeminiProvider {
                                     // Extract content from candidate
                                     if let Some(candidate) = response.candidates.first() {
                                         // Log candidate parts for debugging
-                                        tracing::info!("Gemini candidate has {} parts", candidate.content.parts.len());
-                                        for (i, part) in candidate.content.parts.iter().enumerate() {
+                                        let parts = candidate.content.as_ref().map(|c| c.parts.as_slice()).unwrap_or_default();
+                                        tracing::info!("Gemini candidate has {} parts, finish_reason={:?}", parts.len(), candidate.finish_reason);
+                                        for (i, part) in parts.iter().enumerate() {
                                             match part {
                                                 GeminiPart::Text { text, .. } => {
                                                     tracing::info!("  Part {}: Text ({}chars)", i, text.len());
@@ -886,7 +891,8 @@ impl AIProvider for GeminiProvider {
 
         let gemini_resp: GeminiResponse = response.json().await?;
         let text = gemini_resp.candidates.into_iter().next()
-            .and_then(|c| c.content.parts.into_iter().next())
+            .and_then(|c| c.content)
+            .and_then(|content| content.parts.into_iter().next())
             .and_then(|p| match p {
                 GeminiPart::Text { text, .. } => Some(text),
                 _ => None,

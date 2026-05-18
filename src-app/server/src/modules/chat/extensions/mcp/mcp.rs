@@ -22,6 +22,7 @@ use crate::modules::mcp::client::manager::McpSessionManager;
 use crate::modules::mcp::client::session::McpSession;
 use crate::modules::mcp::UsageMode;
 use crate::modules::mcp::sampling::{ChatSamplingHandler, acquire_session};
+use crate::modules::mcp::elicitation::models::ElicitationStartedNotification;
 use crate::core::repository::Repos;
 
 use super::content::McpContentData;
@@ -40,6 +41,7 @@ struct AccumulatedToolUse {
 /// Provides Model Context Protocol (MCP) tool calling functionality for chat.
 pub struct McpChatExtension {
     pool: PgPool,
+    config: Arc<crate::core::config::Config>,
     session_manager: Arc<McpSessionManager>,
     /// Storage for accumulating tool use deltas during streaming
     /// Key: (message_id, content_index)
@@ -48,10 +50,11 @@ pub struct McpChatExtension {
 
 impl McpChatExtension {
     /// Create new MCP chat extension
-    pub fn new(pool: PgPool) -> Self {
-        let session_manager = Arc::new(McpSessionManager::new(pool.clone()));
+    pub fn new(pool: PgPool, config: Arc<crate::core::config::Config>) -> Self {
+        let session_manager = Arc::new(McpSessionManager::new(config.clone()));
         Self {
             pool,
+            config,
             session_manager,
             tool_use_accumulator: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -64,11 +67,36 @@ impl McpChatExtension {
         approved_pending: &[super::approval::models::ToolUseApproval],
         context: &StreamContext,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
-    ) -> Result<(Vec<MessageContentData>, Vec<String>), AppError> {
+    ) -> Result<(Vec<MessageContentData>, Vec<String>, Option<(String, Vec<super::content::Annotation>)>), AppError> {
         let mut tool_results = Vec::new();
         let mut executed_tool_use_ids = Vec::new();
         let accessible_servers =
             helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
+
+        // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
+        let (elicit_notify_tx, mut elicit_notify_rx) =
+            tokio::sync::mpsc::unbounded_channel::<ElicitationStartedNotification>();
+        tokio::spawn(async move {
+            while let Some(notif) = elicit_notify_rx.recv().await {
+                if let Some(msg_id) = notif.message_id {
+                    let order = crate::core::Repos.chat.core
+                        .get_message_with_content(msg_id).await
+                        .map(|m| m.map(|msg| msg.contents.len() as i32).unwrap_or(0))
+                        .unwrap_or(0);
+                    let content_data = MessageContentData::ElicitationRequest {
+                        elicitation_id: notif.elicitation_id.to_string(),
+                        message: notif.message,
+                        requested_schema: notif.requested_schema,
+                        server: notif.server,
+                        status: "pending".to_string(),
+                        response_content: None,
+                    };
+                    let _ = crate::core::Repos.chat.core
+                        .create_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data, order)
+                        .await;
+                }
+            }
+        });
 
         for approval in approved_pending {
             let tool_use_id = approval.tool_use_id.clone();
@@ -92,10 +120,13 @@ impl McpChatExtension {
                 let error_result = McpContentData::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: Some(tool_name.clone()),
+                    server_id: Some(server_id.to_string()),
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
-                    references: None,
+                    annotations: None,
                     attachment: None,
+                    resource_links: None,
+                    hidden_content: None,
                 };
                 tool_results.push(error_result.to_message_content());
                 continue;
@@ -105,7 +136,7 @@ impl McpChatExtension {
 
             // Send tool start event (if tx provided)
             if let Some(tx) = tx {
-                helpers::send_tool_start_event(Some(tx), &tool_use_id, &tool_name, &server.name).await;
+                helpers::send_tool_start_event(Some(tx), &tool_use_id, &tool_name, &server.name, &input).await;
             }
 
             // For sampling servers, create a fresh ephemeral session with the LLM handler.
@@ -119,7 +150,7 @@ impl McpChatExtension {
 
             if server.supports_sampling {
                 if let Some(model_id) = maybe_model_id {
-                    match ChatSamplingHandler::new(&self.pool, model_id).await {
+                    match ChatSamplingHandler::new(model_id, context.user_id).await {
                         Ok(h) => {
                             let handler = Arc::new(h);
                             match McpSession::new_with_sampling(server.clone(), handler).await {
@@ -158,15 +189,47 @@ impl McpChatExtension {
                     let error_result = McpContentData::ToolResult {
                         tool_use_id: tool_use_id.clone(),
                         name: Some(tool_name.to_string()),
+                        server_id: Some(server.id.to_string()),
                         content: "Cannot execute sampling tool: no model available. Ensure a model is selected.".to_string(),
                         is_error: Some(true),
-                        references: None,
+                        annotations: None,
                         attachment: None,
+                        resource_links: None,
+                        hidden_content: None,
                     };
                     tool_results.push(error_result.to_message_content());
                     continue;
                 }
-                let arc = self.session_manager.get_or_create(server.id).await?;
+                let arc = match self.session_manager
+                    .get_or_create_with_context(
+                        server.id,
+                        context.user_id,
+                        Some(context.conversation_id),
+                        context.message_id,
+                    )
+                    .await
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to get session for MCP server '{}': {}",
+                            server.name, e
+                        );
+                        let err_result = McpContentData::ToolResult {
+                            tool_use_id: tool_use_id.clone(),
+                            name: Some(tool_name.clone()),
+                            server_id: Some(server.id.to_string()),
+                            content: format!("Failed to connect to server: {}", e),
+                            is_error: Some(true),
+                            annotations: None,
+                            attachment: None,
+                            resource_links: None,
+                            hidden_content: None,
+                        };
+                        tool_results.push(err_result.to_message_content());
+                        continue;
+                    }
+                };
                 _guard = Some(arc.write_owned().await);
             }
 
@@ -178,23 +241,29 @@ impl McpChatExtension {
 
 
             // Execute tool with clean tool name
-            let mut result = helpers::execute_tool(
+            let (mut result, is_final) = helpers::execute_tool(
                 session,
                 &tool_name,
                 input,
                 &server.name,
                 Some(server.timeout_seconds),
+                context.message_id,
+                tx.cloned(),
+                Some(elicit_notify_tx.clone()),
             )
             .await;
 
-            // Set tool_use_id
+            // Set tool_use_id and server_id
             if let McpContentData::ToolResult {
                 tool_use_id: ref mut id,
+                server_id: ref mut sid,
                 is_error,
+                ref content,
                 ..
             } = result
             {
                 *id = tool_use_id.clone();
+                *sid = Some(server.id.to_string());
 
                 // Send tool complete event (if tx provided)
                 if let Some(tx) = tx {
@@ -204,13 +273,341 @@ impl McpChatExtension {
                         &tool_name,
                         &server.name,
                         is_error.unwrap_or(false),
+                        Some(content.as_str()),
                     )
                     .await;
                 }
             }
 
-            // Convert to MessageContentData and add to results
-            tool_results.push(result.to_message_content());
+            // Generic resource_link handling: fetch-and-save any resource_links returned by a tool.
+            // Works uniformly for built-in servers (short-lived JWT auth) and external MCP servers
+            // (server-configured headers). Runs the full processing pipeline (text extraction,
+            // thumbnails) and creates a permanent DB artifact visible to the user.
+            // Exception: is_saved=true links already exist in originals storage — skip all processing.
+            let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
+            let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
+            if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result {
+                if !is_error.unwrap_or(false) {
+                    if let Some(links) = resource_links {
+                        for link in links {
+
+                        // is_saved=true: file already exists in originals storage.
+                        // URI is a download-with-token URL — skip fetch/process/save pipeline.
+                        if link.is_saved == Some(true) {
+                            let name = link.name.as_deref().unwrap_or("file").to_string();
+                            saved_file_urls.push((name, link.uri.clone()));
+                            continue;
+                        }
+
+                        use crate::modules::file::models::FileCreateData;
+                        use crate::modules::file::processing::ProcessingManager;
+                        use crate::modules::file::storage::manager::get_file_storage;
+
+                        // Build auth headers appropriate for the server type
+                        let mut fetch_headers = reqwest::header::HeaderMap::new();
+                        if server.is_built_in {
+                            match McpSessionManager::generate_short_lived_jwt(
+                                context.user_id, &self.config.jwt.secret, 10
+                            ) {
+                                Ok(token) => {
+                                    if let Ok(hval) = reqwest::header::HeaderValue::from_str(
+                                        &format!("Bearer {}", token)
+                                    ) {
+                                        fetch_headers.insert(reqwest::header::AUTHORIZATION, hval);
+                                    }
+                                    if let Ok(hval) = reqwest::header::HeaderValue::from_str(
+                                        &context.conversation_id.to_string()
+                                    ) {
+                                        fetch_headers.insert(
+                                            reqwest::header::HeaderName::from_static("x-conversation-id"),
+                                            hval,
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to generate JWT for resource_link fetch: {}", e);
+                                }
+                            }
+                        } else if let Some(headers_map) = server.headers.as_object() {
+                            for (key, value) in headers_map.iter() {
+                                if let Some(val_str) = value.as_str() {
+                                    if let (Ok(hname), Ok(hval)) = (
+                                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                                        reqwest::header::HeaderValue::from_str(val_str),
+                                    ) {
+                                        fetch_headers.insert(hname, hval);
+                                    }
+                                }
+                            }
+                        }
+
+                        match reqwest::Client::builder()
+                            .default_headers(fetch_headers)
+                            .build()
+                        {
+                            Ok(client) => {
+                                match client.get(&link.uri).send().await {
+                                    Ok(response) if response.status().is_success() => {
+                                        let content_type_mime = response
+                                            .headers()
+                                            .get(reqwest::header::CONTENT_TYPE)
+                                            .and_then(|v| v.to_str().ok())
+                                            .and_then(|s| s.split(';').next())
+                                            .map(|s| s.trim().to_string());
+
+                                        match response.bytes().await {
+                                            Ok(bytes) => {
+                                                let bytes = bytes.to_vec();
+                                                let display_name =
+                                                    link.name.as_deref().unwrap_or("file");
+                                                let ext = std::path::Path::new(display_name)
+                                                    .extension()
+                                                    .and_then(|e| e.to_str())
+                                                    .map(str::to_lowercase)
+                                                    .unwrap_or_else(|| "bin".to_string());
+                                                let mime_type = content_type_mime.or_else(|| {
+                                                    mime_guess::from_ext(&ext)
+                                                        .first()
+                                                        .map(|m| m.to_string())
+                                                });
+                                                let mime_type_str = mime_type
+                                                    .as_deref()
+                                                    .unwrap_or("application/octet-stream");
+
+                                                let processing_result = ProcessingManager::new()
+                                                    .process_file(&bytes, mime_type_str)
+                                                    .await
+                                                    .unwrap_or_default();
+
+                                                let artifact_id = Uuid::new_v4();
+                                                let storage = get_file_storage();
+
+                                                match storage
+                                                    .save_original(
+                                                        context.user_id,
+                                                        artifact_id,
+                                                        &ext,
+                                                        &bytes,
+                                                    )
+                                                    .await
+                                                {
+                                                    Ok(_) => {
+                                                        for (n, text) in processing_result
+                                                            .text_pages
+                                                            .iter()
+                                                            .enumerate()
+                                                        {
+                                                            let _ = storage
+                                                                .save_text_page(
+                                                                    context.user_id,
+                                                                    artifact_id,
+                                                                    (n + 1) as u32,
+                                                                    text,
+                                                                )
+                                                                .await;
+                                                        }
+                                                        if let Some(thumb) = processing_result
+                                                            .thumbnails
+                                                            .first()
+                                                        {
+                                                            let _ = storage
+                                                                .save_image(
+                                                                    context.user_id,
+                                                                    artifact_id,
+                                                                    1,
+                                                                    true,
+                                                                    thumb,
+                                                                )
+                                                                .await;
+                                                        }
+                                                        for (n, img) in processing_result
+                                                            .images
+                                                            .iter()
+                                                            .enumerate()
+                                                        {
+                                                            let _ = storage
+                                                                .save_image(
+                                                                    context.user_id,
+                                                                    artifact_id,
+                                                                    (n + 1) as u32,
+                                                                    false,
+                                                                    img,
+                                                                )
+                                                                .await;
+                                                        }
+
+                                                        let file_size = bytes.len() as i64;
+                                                        match Repos
+                                                            .file
+                                                            .create(FileCreateData {
+                                                                id: artifact_id,
+                                                                user_id: context.user_id,
+                                                                filename: display_name
+                                                                    .to_string(),
+                                                                file_size,
+                                                                mime_type: mime_type.clone(),
+                                                                checksum: None,
+                                                                has_thumbnail:
+                                                                    !processing_result
+                                                                        .thumbnails
+                                                                        .is_empty(),
+                                                                preview_page_count:
+                                                                    processing_result
+                                                                        .images
+                                                                        .len()
+                                                                        as i32,
+                                                                text_page_count:
+                                                                    processing_result
+                                                                        .text_pages
+                                                                        .len()
+                                                                        as i32,
+                                                                processing_metadata:
+                                                                    serde_json::to_value(
+                                                                        &processing_result
+                                                                            .metadata,
+                                                                    )
+                                                                    .unwrap_or_default(),
+                                                                created_by: "mcp".to_string(),
+                                                            })
+                                                            .await
+                                                        {
+                                                            Ok(_) => {
+                                                                helpers::send_artifact_created_event(
+                                                                    tx,
+                                                                    &artifact_id.to_string(),
+                                                                    display_name,
+                                                                    mime_type.as_deref(),
+                                                                    file_size,
+                                                                )
+                                                                .await;
+
+                                                                use crate::modules::chat::core::models::MessageContentData;
+                                                                tool_results.push(
+                                                                    MessageContentData::FileAttachment {
+                                                                        file_id: artifact_id,
+                                                                        filename: display_name
+                                                                            .to_string(),
+                                                                        mime_type,
+                                                                        file_size,
+                                                                    },
+                                                                );
+
+                                                                tracing::info!(
+                                                                    "Artifact saved from resource_link: file_id={}, filename={}",
+                                                                    artifact_id, display_name
+                                                                );
+                                                                let download_url = {
+                                                                    use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
+                                                                    use crate::modules::file::types::DownloadTokenClaims;
+                                                                    let now = chrono::Utc::now().timestamp() as usize;
+                                                                    let claims = DownloadTokenClaims {
+                                                                        file_id: artifact_id.to_string(),
+                                                                        user_id: context.user_id.to_string(),
+                                                                        exp: now + 3600,
+                                                                        iat: now,
+                                                                    };
+                                                                    encode(
+                                                                        &JwtHeader::default(),
+                                                                        &claims,
+                                                                        &EncodingKey::from_secret(self.config.jwt.secret.as_bytes()),
+                                                                    )
+                                                                    .ok()
+                                                                    .map(|token| format!(
+                                                                        "http://{}:{}{}/files/{}/download-with-token?token={}",
+                                                                        self.config.server.host,
+                                                                        self.config.server.port,
+                                                                        self.config.server.api_prefix,
+                                                                        artifact_id,
+                                                                        token
+                                                                    ))
+                                                                };
+                                                                saved_artifacts.push((artifact_id, display_name.to_string(), download_url));
+                                                            }
+                                                            Err(e) => {
+                                                                tracing::error!(
+                                                                    "Failed to create file DB record for resource_link: {}",
+                                                                    e
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::error!(
+                                                            "Failed to save artifact original: {}",
+                                                            e
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    "Failed to read resource_link response body: {}",
+                                                    e
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Ok(response) => {
+                                        tracing::error!(
+                                            "resource_link fetch returned HTTP {} for '{}': artifact NOT saved",
+                                            response.status(),
+                                            link.uri
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(
+                                            "Failed to fetch resource_link '{}': {} — artifact NOT saved",
+                                            link.uri, e
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to build HTTP client for resource_link fetch: {}",
+                                    e
+                                );
+                            }
+                        }
+                        } // end for link in links
+                    }
+                }
+            }
+
+            // Update tool result content with the saved artifact info so the LLM knows the file_ids.
+            // Also set hidden_content with token-based download URLs — included in LLM messages
+            // but stripped from browser API responses.
+            // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
+            if !saved_artifacts.is_empty() || !saved_file_urls.is_empty() {
+                if let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
+                    if !saved_artifacts.is_empty() {
+                        let file_descriptions: Vec<String> = saved_artifacts
+                            .iter()
+                            .map(|(id, name, _)| format!("'{}' (file_id: {})", name, id))
+                            .collect();
+                        *content = format!(
+                            "Files from MCP tool have been saved as artifact attachments: {}. \
+                             They will be shown as file cards in the UI — do not embed them inline in your response.",
+                            file_descriptions.join(", ")
+                        );
+                    }
+                    let mut url_lines: Vec<String> = saved_artifacts
+                        .iter()
+                        .filter_map(|(_, name, url)| url.as_ref().map(|u| format!("{} - {}", name, u)))
+                        .collect();
+                    for (name, url) in &saved_file_urls {
+                        url_lines.push(format!("{} - {}", name, url));
+                    }
+                    if !url_lines.is_empty() {
+                        *hidden_content = Some(format!(
+                            "[system: Files saved as artifact attachments (shown as file cards in UI). \
+                             Do NOT embed file URLs or images inline in your text response. \
+                             Internal download URLs for tool-to-tool access only:\n{}]",
+                            url_lines.join("\n")
+                        ));
+                    }
+                }
+            }
 
             // Track executed tool_use_id
             executed_tool_use_ids.push(tool_use_id.clone());
@@ -228,9 +625,29 @@ impl McpChatExtension {
                     e
                 );
             }
+
+            // If this tool returns a final response, capture it and return early.
+            // The caller will stream it directly without calling the LLM.
+            if is_final {
+                if let McpContentData::ToolResult { ref content, ref annotations, .. } = result {
+                    tracing::info!(
+                        "is_final_response: approved tool '{}' marked as final, will bypass LLM",
+                        tool_name
+                    );
+                    let final_response = Some((content.clone(), annotations.clone().unwrap_or_default()));
+                    // Push the tool_result BEFORE returning so the caller can persist it to DB.
+                    // Without this, the tool_use in the assistant message would have no matching
+                    // tool_result, causing "tool_use ids found without tool_result" on the next message.
+                    tool_results.push(result.to_message_content());
+                    return Ok((tool_results, executed_tool_use_ids, final_response));
+                }
+            }
+
+            // Convert to MessageContentData and add to results
+            tool_results.push(result.to_message_content());
         }
 
-        Ok((tool_results, executed_tool_use_ids))
+        Ok((tool_results, executed_tool_use_ids, None))
     }
 }
 
@@ -434,6 +851,28 @@ impl ChatExtension for McpChatExtension {
                 return Ok(BeforeLlmAction::Complete);
             }
 
+            // === STEP 1b.5: Guard — don't proceed if other tool_uses are still awaiting a decision ===
+            // When the LLM requested multiple parallel tool calls that all need approval and the
+            // user approves them one at a time, we must wait until every tool_use has been either
+            // approved or denied before executing anything or calling the LLM.  Otherwise the LLM
+            // request would contain tool_use blocks without matching tool_result blocks, causing
+            // "tool_use ids found without tool_result" errors.
+            let still_pending = super::approval::repository::get_pending_approvals_for_branch(
+                &self.pool,
+                context.branch_id,
+            )
+            .await?;
+
+            if !still_pending.is_empty() {
+                tracing::info!(
+                    "{} pending approval(s) still remain after processing {} decision(s); \
+                     waiting for remaining approvals before executing tools or calling LLM",
+                    still_pending.len(),
+                    approvals.len()
+                );
+                return Ok(BeforeLlmAction::Complete);
+            }
+
             // === STEP 1c: Execute approved tools immediately after approval ===
             let approved_pending = super::approval::repository::get_approved_tools_for_branch(
                 &self.pool,
@@ -443,35 +882,24 @@ impl ChatExtension for McpChatExtension {
 
             tracing::info!("before_llm_call: Found {} approved tools after processing approvals", approved_pending.len());
 
+            // Collect all content blocks from both approved and denied tools so they can be
+            // sent as a single User message.  Anthropic requires that every tool_use block in
+            // the preceding assistant turn has a matching tool_result block in the next user
+            // turn; mixing approved and denied results in one message satisfies that constraint.
+            let mut content_blocks: Vec<ai_providers::ContentBlock> = Vec::new();
+
             if !approved_pending.is_empty() {
                 // Execute approved tools and append results to request
-                let (tool_results, executed_ids) = self.execute_approved_tools_sync(
+                let (tool_results, executed_ids, final_response) = self.execute_approved_tools_sync(
                     &approved_pending,
                     context,
                     tx,
                 ).await?;
 
-                // Store executed tool_use_ids in context metadata for later filtering
-                if !executed_ids.is_empty() {
-                    // Merge with any existing executed IDs
-                    let mut all_executed: Vec<String> = context.metadata
-                        .get("executed_tool_use_ids")
-                        .and_then(|v| serde_json::from_value(v.clone()).ok())
-                        .unwrap_or_default();
-                    all_executed.extend(executed_ids.clone());
-                    context.metadata.insert(
-                        "executed_tool_use_ids".to_string(),
-                        serde_json::to_value(&all_executed).unwrap_or_default(),
-                    );
-                    tracing::info!(
-                        "Tracked {} executed tool_use_ids in context: {:?}",
-                        executed_ids.len(),
-                        executed_ids
-                    );
-                }
-
-                // Save tool results to the assistant message in database
-                // This is important so after_llm_call can filter out already-executed tools
+                // Save tool results to the assistant message in database BEFORE any early returns.
+                // This ensures tool_result blocks are persisted even when is_final_response: true
+                // bypasses the normal Continue action. Without this, the tool_use block already in
+                // the DB would have no matching tool_result, causing API errors on subsequent messages.
                 if let Some(message_id) = context.message_id {
                     // Get current content count for sequence ordering
                     let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
@@ -493,26 +921,131 @@ impl ChatExtension for McpChatExtension {
                             tracing::info!("Saved tool_result to message {}, sequence {}", message_id, current_count + idx as i32);
                         }
                     }
+
+                    // Cancel any elicitations that are still pending after tool execution ends
+                    // (e.g., tool timed out while waiting for user input).
+                    let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
                 }
 
-                // Convert tool results to content blocks using extension's process_content_for_llm
-                let mut content_blocks = Vec::new();
+                // If any approved tool returned is_final_response: true, bypass LLM entirely.
+                // tool_results are already saved to DB above.
+                if let Some((text, annotations)) = final_response {
+                    return Ok(BeforeLlmAction::CompleteWithContent {
+                        text,
+                        annotations,
+                    });
+                }
+
+                // Store executed tool_use_ids in context metadata for later filtering
+                if !executed_ids.is_empty() {
+                    // Merge with any existing executed IDs
+                    let mut all_executed: Vec<String> = context.metadata
+                        .get("executed_tool_use_ids")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    all_executed.extend(executed_ids.clone());
+                    context.metadata.insert(
+                        "executed_tool_use_ids".to_string(),
+                        serde_json::to_value(&all_executed).unwrap_or_default(),
+                    );
+                    tracing::info!(
+                        "Tracked {} executed tool_use_ids in context: {:?}",
+                        executed_ids.len(),
+                        executed_ids
+                    );
+                }
+
+                // Convert approved tool results to content blocks
                 for result in tool_results {
                     if let Some(block) = self.process_content_for_llm(&result, context).await? {
                         content_blocks.push(block);
                     }
                 }
+            }
 
-                // Append tool results as user message
-                if !content_blocks.is_empty() {
-                    use ai_providers::{ChatMessage, Role};
-                    let count = content_blocks.len();
-                    request.messages.push(ChatMessage {
-                        role: Role::User,
-                        content: content_blocks,
-                    });
-                    tracing::info!("Appended {} tool results to request", count);
+            // === STEP 1d: Generate error tool_results for denied tools ===
+            // Denied tools have no real result, but the LLM requires a tool_result for every
+            // tool_use it emitted.  We create a synthetic error result so the message history
+            // remains valid, then delete the denial record to prevent re-processing.
+            let denied_tools = super::approval::repository::get_denied_tools_for_branch(
+                &self.pool,
+                context.branch_id,
+            )
+            .await?;
+
+            if !denied_tools.is_empty() {
+                tracing::info!(
+                    "before_llm_call: Creating error tool_results for {} denied tool(s)",
+                    denied_tools.len()
+                );
+
+                if let Some(message_id) = context.message_id {
+                    let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
+                        Ok(Some(msg)) => msg.contents.len() as i32,
+                        _ => 0,
+                    };
+
+                    for (idx, denied) in denied_tools.iter().enumerate() {
+                        let denied_result = McpContentData::ToolResult {
+                            tool_use_id: denied.tool_use_id.clone(),
+                            name: Some(denied.tool_name.clone()),
+                            server_id: denied.server_id.map(|id| id.to_string()),
+                            content: "Tool execution was denied by the user.".to_string(),
+                            is_error: Some(true),
+                            annotations: None,
+                            attachment: None,
+                            resource_links: None,
+                            hidden_content: None,
+                        };
+                        let msg_content = denied_result.to_message_content();
+
+                        // Persist denied result so the conversation history stays coherent
+                        let content_type = msg_content.content_type();
+                        if let Err(e) = Repos.chat.core.create_content(
+                            message_id,
+                            &content_type,
+                            msg_content.clone(),
+                            current_count + idx as i32,
+                        ).await {
+                            tracing::error!(
+                                "Failed to save denied tool_result for tool_use_id={}: {}",
+                                denied.tool_use_id, e
+                            );
+                        } else {
+                            tracing::info!(
+                                "Saved denied tool_result for tool_use_id={} to message {}",
+                                denied.tool_use_id, message_id
+                            );
+                        }
+
+                        // Convert for LLM request
+                        if let Some(block) = self.process_content_for_llm(&msg_content, context).await? {
+                            content_blocks.push(block);
+                        }
+
+                        // Delete the denial record so it isn't processed again on future resumptions
+                        if let Err(e) = Repos.chat.mcp
+                            .delete_tool_approval(denied.tool_use_id.clone(), denied.message_id)
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to delete denial record for tool_use_id={}: {}",
+                                denied.tool_use_id, e
+                            );
+                        }
+                    }
                 }
+            }
+
+            // Append all tool results (approved + denied) as a single user message
+            if !content_blocks.is_empty() {
+                use ai_providers::{ChatMessage, Role};
+                let count = content_blocks.len();
+                request.messages.push(ChatMessage {
+                    role: Role::User,
+                    content: content_blocks,
+                });
+                tracing::info!("Appended {} tool result(s) to request (approved + denied)", count);
             }
         } else {
             // No tool_approvals provided - check if there are pending approvals to cancel
@@ -603,7 +1136,7 @@ impl ChatExtension for McpChatExtension {
                     // Create session (with sampling if supported)
                     let session_result = if server.supports_sampling {
                         if let Some(model_id) = maybe_model_id {
-                            match ChatSamplingHandler::new(&self.pool, model_id).await {
+                            match ChatSamplingHandler::new(model_id, context.user_id).await {
                                 Ok(h) => McpSession::new_with_sampling(server.clone(), Arc::new(h)).await,
                                 Err(e) => {
                                     tracing::warn!("Always-mode: failed to init sampling provider for {}: {}", server.name, e);
@@ -650,7 +1183,7 @@ impl ChatExtension for McpChatExtension {
                                         continue;
                                     }
                                 };
-                                match session.call_tool(&tool.name, input).await {
+                                match session.call_tool(&tool.name, input, context.message_id, None, None).await {
                                     Ok(result) => {
                                         // Collect text content from tool result
                                         let text_parts: Vec<String> = result.content.iter()
@@ -677,7 +1210,24 @@ impl ChatExtension for McpChatExtension {
             }
 
             // Auto mode: Get or create MCP session and collect tools for LLM
-            let session_arc = self.session_manager.get_or_create(*server_id).await?;
+            let session_arc = match self.session_manager
+                .get_or_create_with_context(
+                    *server_id,
+                    context.user_id,
+                    Some(context.conversation_id),
+                    context.message_id,
+                )
+                .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to connect to MCP server '{}': {} — skipping",
+                        server.name, e
+                    );
+                    continue;
+                }
+            };
             let mut session = session_arc.write().await;
 
             // List tools from server
@@ -753,6 +1303,54 @@ impl ChatExtension for McpChatExtension {
         if !all_tools.is_empty() {
             tracing::info!("Adding {} tools to ChatRequest", all_tools.len());
             request.tools = all_tools;
+
+            // On the first iteration, nudge the model to prefer tools over training knowledge.
+            // This is a soft hint — the model can still answer directly if no tool is relevant.
+            // Only injected on iteration 1 to avoid redundancy in follow-up tool-calling loops.
+            if context.iteration == 1 {
+                let mut system_addition = String::from("\n\nYou have access to tools that can retrieve up-to-date or domain-specific information. When answering questions, prefer using these tools over relying solely on your training knowledge, especially when the tools are clearly relevant to the request.");
+
+                // When the code sandbox server is active, clarify the multi-environment boundary.
+                // Per Anthropic's guidance: the LLM may confuse its built-in code execution
+                // with client-provided tools. This prompt prevents that.
+                let code_sandbox_id = crate::modules::code_sandbox::code_sandbox_server_id();
+                if server_configs.iter().any(|(id, _)| *id == code_sandbox_id) {
+                    system_addition.push_str(
+                        "\n\nIMPORTANT — Code execution environments: \
+                        Multiple code execution environments may be available. Be aware that:\n\
+                        - Variables, files, and state do NOT persist between different execution environments.\n\
+                        - Use the execute_command tool for ALL code writing, execution, computation, data analysis, \
+                        and file manipulation in this conversation. This gives you a persistent workspace where \
+                        files and installed packages survive across tool calls within the conversation.\n\
+                        - Do NOT use any built-in code execution capability — it runs in a completely separate \
+                        sandboxed environment that has no access to conversation files or this workspace.\n\
+                        - Use pip install --user <package> inside execute_command to install Python packages \
+                        (they persist for this conversation).\n\
+                        - If you need to pass data between tool calls, write it to a file with write_file \
+                        or execute_command, then read it back — do not assume shared state.\n\
+                        - If an external MCP tool requires a file_url, download URL, or similar parameter \
+                        to access a file, call get_resource_link with the filename to obtain a temporary download URL, \
+                        then pass that URL to the external tool. This works for both files you produced in this session \
+                        and user-attached conversation files. Do NOT attempt to guess filesystem paths on \
+                        external servers — they cannot access sandbox files by path.\n\
+                        - User-attached files are embedded in the conversation message — read them from the message \
+                        context for analysis, or reference them by filename in execute_command or read_file for \
+                        code execution. If an external tool needs to access a user-attached file by URL, \
+                        call get_resource_link with the filename to get a temporary download URL."
+                    );
+                }
+
+                if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
+                    if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
+                        text.push_str(&system_addition);
+                    }
+                } else {
+                    request.messages.insert(0, ai_providers::ChatMessage {
+                        role: ai_providers::Role::System,
+                        content: vec![ai_providers::ContentBlock::Text { text: system_addition }],
+                    });
+                }
+            }
         } else {
             tracing::warn!("No tools to add to ChatRequest!");
         }
@@ -797,8 +1395,58 @@ impl ChatExtension for McpChatExtension {
                 context.iteration,
                 loop_settings.max_iteration
             );
-            // TODO: Implement force_final_answer (would need to disable tools and continue)
-            // For now, just complete
+            // finalize() already wrote tool_use blocks for the current LLM response.
+            // Create synthetic error tool_results for every unexecuted tool_use so the
+            // DB invariant (each TU has a matching TR) is maintained. Without this,
+            // the next user message would trigger an Anthropic "tool_use without tool_result" error.
+            if let Some(message_id) = context.message_id {
+                if let Ok(Some(msg)) = Repos.chat.core.get_message_with_content(message_id).await {
+                    let executed_ids: std::collections::HashSet<String> = msg.contents.iter()
+                        .filter_map(|c| c.parse_content().ok())
+                        .filter_map(|cd| McpContentData::from_message_content(&cd).ok())
+                        .filter_map(|mcd| match mcd {
+                            McpContentData::ToolResult { tool_use_id, .. } => Some(tool_use_id),
+                            _ => None,
+                        })
+                        .collect();
+                    let pending_tool_uses: Vec<(String, String)> = msg.contents.iter()
+                        .filter_map(|c| c.parse_content().ok())
+                        .filter_map(|cd| McpContentData::from_message_content(&cd).ok())
+                        .filter_map(|mcd| match mcd {
+                            McpContentData::ToolUse { id, name, .. }
+                                if !executed_ids.contains(&id) => Some((id, name)),
+                            _ => None,
+                        })
+                        .collect();
+                    let current_count = msg.contents.len() as i32;
+                    for (idx, (tool_use_id, tool_name)) in pending_tool_uses.iter().enumerate() {
+                        let error_result = McpContentData::ToolResult {
+                            tool_use_id: tool_use_id.clone(),
+                            name: Some(tool_name.clone()),
+                            server_id: None,
+                            content: "Tool execution stopped: maximum iteration limit reached."
+                                .to_string(),
+                            is_error: Some(true),
+                            annotations: None,
+                            attachment: None,
+                            resource_links: None,
+                            hidden_content: None,
+                        };
+                        let msg_content = error_result.to_message_content();
+                        if let Err(e) = Repos.chat.core.create_content(
+                            message_id,
+                            &msg_content.content_type(),
+                            msg_content,
+                            current_count + idx as i32,
+                        ).await {
+                            tracing::error!(
+                                "Failed to save synthetic tool_result for tool_use_id={}: {}",
+                                tool_use_id, e
+                            );
+                        }
+                    }
+                }
+            }
             return Ok(ExtensionAction::Complete);
         }
 
@@ -820,7 +1468,7 @@ impl ChatExtension for McpChatExtension {
 
             // Execute approved tools using shared helper
             tracing::info!("after_llm_call: Executing approved tools with tx={}", tx.is_some());
-            let (tool_results, executed_ids) = self.execute_approved_tools_sync(
+            let (tool_results, executed_ids, final_response) = self.execute_approved_tools_sync(
                 &approved_pending,
                 context,
                 tx,
@@ -830,6 +1478,19 @@ impl ChatExtension for McpChatExtension {
                 tool_results.len(),
                 executed_ids
             );
+
+            // Cancel any elicitations that are still pending after tool execution ends.
+            if let Some(message_id) = context.message_id {
+                let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
+            }
+
+            // If any approved tool returned is_final_response: true, bypass the next LLM call.
+            if let Some((text, annotations)) = final_response {
+                return Ok(ExtensionAction::CompleteWithContent {
+                    text,
+                    annotations,
+                });
+            }
 
             // Return Continue action to append tool results to assistant message
             tracing::info!("Returning {} approved tool results to append to assistant message", tool_results.len());
@@ -963,6 +1624,17 @@ impl ChatExtension for McpChatExtension {
         let accessible_servers =
             helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
 
+        // Load user defaults once for fallback auto-approval check (e.g. built-in servers)
+        let user_auto_approved: Vec<super::approval::models::AutoApprovedServer> = {
+            use crate::modules::chat::extensions::mcp::defaults::repository as defaults_repo;
+            defaults_repo::get_user_defaults(&self.pool, context.user_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|d| d.get_auto_approved_tools())
+                .unwrap_or_default()
+        };
+
         // Determine which tools need approval vs can execute immediately
         let mut tools_to_execute = Vec::new();
         let mut tools_needing_approval = Vec::new();
@@ -974,6 +1646,9 @@ impl ChatExtension for McpChatExtension {
                     // Check if this tool is auto-approved using server_id directly
                     let is_auto_approved = if let Ok(sid) = uuid::Uuid::parse_str(&server_id) {
                         auto_approved_servers
+                            .iter()
+                            .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
+                        || user_auto_approved
                             .iter()
                             .any(|s| s.server_id == sid && s.contains_tool(&tool_name))
                     } else {
@@ -1069,6 +1744,33 @@ impl ChatExtension for McpChatExtension {
 
         // Execute each auto-approved tool and collect results
         let mut tool_results = Vec::new();
+        let mut final_response_text: Option<String> = None;
+        let mut final_annotations: Vec<super::content::Annotation> = Vec::new();
+
+        // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
+        let (elicit_notify_tx, mut elicit_notify_rx) =
+            tokio::sync::mpsc::unbounded_channel::<ElicitationStartedNotification>();
+        tokio::spawn(async move {
+            while let Some(notif) = elicit_notify_rx.recv().await {
+                if let Some(msg_id) = notif.message_id {
+                    let order = crate::core::Repos.chat.core
+                        .get_message_with_content(msg_id).await
+                        .map(|m| m.map(|msg| msg.contents.len() as i32).unwrap_or(0))
+                        .unwrap_or(0);
+                    let content_data = MessageContentData::ElicitationRequest {
+                        elicitation_id: notif.elicitation_id.to_string(),
+                        message: notif.message,
+                        requested_schema: notif.requested_schema,
+                        server: notif.server,
+                        status: "pending".to_string(),
+                        response_content: None,
+                    };
+                    let _ = crate::core::Repos.chat.core
+                        .create_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data, order)
+                        .await;
+                }
+            }
+        });
 
         for (tool_use_id, tool_name, server_id_str, input) in tools_to_execute {
             // Parse UUID
@@ -1091,10 +1793,13 @@ impl ChatExtension for McpChatExtension {
                 let error_result = McpContentData::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: Some(tool_name.clone()),
+                    server_id: Some(server_id_str.clone()),
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
-                    references: None,
+                    annotations: None,
                     attachment: None,
+                    resource_links: None,
+                    hidden_content: None,
                 };
                 tool_results.push(error_result.to_message_content());
                 continue;
@@ -1103,9 +1808,9 @@ impl ChatExtension for McpChatExtension {
             let server = server.unwrap();
 
             // Send tool start event
-            helpers::send_tool_start_event(tx, &tool_use_id, &tool_name, &server.name).await;
+            helpers::send_tool_start_event(tx, &tool_use_id, &tool_name, &server.name, &input).await;
 
-            let mut result = if server.supports_sampling {
+            let (mut result, is_final) = if server.supports_sampling {
                 // Sampling path: create a fresh session with the sampling handler (bypass pool)
                 let model_id_opt = context.metadata.get("model_id")
                     .and_then(|v| v.as_str())
@@ -1116,28 +1821,34 @@ impl ChatExtension for McpChatExtension {
                     match acquire_session(server.id, server.max_concurrent_sessions) {
                         Err(e) => {
                             tracing::warn!("Sampling session limit reached for server {}: {}", server.name, e);
-                            McpContentData::ToolResult {
+                            (McpContentData::ToolResult {
                                 tool_use_id: tool_use_id.clone(),
                                 name: Some(tool_name.clone()),
+                                server_id: Some(server.id.to_string()),
                                 content: e.to_string(),
                                 is_error: Some(true),
-                                references: None,
+                                annotations: None,
                                 attachment: None,
-                            }
+                                resource_links: None,
+                                hidden_content: None,
+                            }, false)
                         }
                         Ok(_guard) => {
                             // _guard keeps the session counter incremented until end of block
-                            match ChatSamplingHandler::new(&self.pool, model_id).await {
+                            match ChatSamplingHandler::new(model_id, context.user_id).await {
                                 Err(e) => {
                                     tracing::warn!("[sampling] Failed to init provider for '{}': {}", server.name, e);
-                                    McpContentData::ToolResult {
+                                    (McpContentData::ToolResult {
                                         tool_use_id: tool_use_id.clone(),
                                         name: Some(tool_name.clone()),
+                                        server_id: Some(server.id.to_string()),
                                         content: format!("Failed to initialize sampling provider: {}", e),
                                         is_error: Some(true),
-                                        references: None,
+                                        annotations: None,
                                         attachment: None,
-                                    }
+                                        resource_links: None,
+                                        hidden_content: None,
+                                    }, false)
                                 }
                                 Ok(h) => {
                                     match McpSession::new_with_sampling(server.clone(), Arc::new(h)).await {
@@ -1148,19 +1859,25 @@ impl ChatExtension for McpChatExtension {
                                                 input,
                                                 &server.name,
                                                 Some(server.timeout_seconds),
+                                                context.message_id,
+                                                tx.cloned(),
+                                                Some(elicit_notify_tx.clone()),
                                             )
                                             .await
                                         }
                                         Err(e) => {
                                             tracing::error!("Failed to create sampling session for {}: {}", server.name, e);
-                                            McpContentData::ToolResult {
+                                            (McpContentData::ToolResult {
                                                 tool_use_id: tool_use_id.clone(),
                                                 name: Some(tool_name.clone()),
+                                                server_id: Some(server.id.to_string()),
                                                 content: format!("Failed to connect to server: {}", e),
                                                 is_error: Some(true),
-                                                references: None,
+                                                annotations: None,
                                                 attachment: None,
-                                            }
+                                                resource_links: None,
+                                                hidden_content: None,
+                                            }, false)
                                         }
                                     }
                                 }
@@ -1172,30 +1889,65 @@ impl ChatExtension for McpChatExtension {
                         "[sampling] Server '{}' has supports_sampling=true but no model_id in context; cannot execute sampling tool",
                         server.name
                     );
-                    McpContentData::ToolResult {
+                    (McpContentData::ToolResult {
                         tool_use_id: tool_use_id.clone(),
                         name: Some(tool_name.clone()),
+                        server_id: Some(server.id.to_string()),
                         content: "Cannot execute sampling tool: no model available in context. Ensure a model is selected.".to_string(),
                         is_error: Some(true),
-                        references: None,
+                        annotations: None,
                         attachment: None,
-                    }
+                        resource_links: None,
+                        hidden_content: None,
+                    }, false)
                 }
             } else {
-                // Non-sampling path: use session pool
-                let session_arc = self.session_manager.get_or_create(server.id).await?;
-                let mut session = session_arc.write().await;
-                helpers::execute_tool(&mut session, &tool_name, input, &server.name, Some(server.timeout_seconds)).await
+                // Non-sampling path: use session manager (creates ephemeral session with context
+                // headers for built-in servers; ephemeral non-pooled session for external servers)
+                match self.session_manager
+                    .get_or_create_with_context(
+                        server.id,
+                        context.user_id,
+                        Some(context.conversation_id),
+                        context.message_id,
+                    )
+                    .await
+                {
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to get session for MCP server '{}': {}",
+                            server.name, e
+                        );
+                        (McpContentData::ToolResult {
+                            tool_use_id: tool_use_id.clone(),
+                            name: Some(tool_name.clone()),
+                            server_id: Some(server.id.to_string()),
+                            content: format!("Failed to connect to server: {}", e),
+                            is_error: Some(true),
+                            annotations: None,
+                            attachment: None,
+                            resource_links: None,
+                            hidden_content: None,
+                        }, false)
+                    }
+                    Ok(session_arc) => {
+                        let mut session = session_arc.write().await;
+                        helpers::execute_tool(&mut session, &tool_name, input, &server.name, Some(server.timeout_seconds), context.message_id, tx.cloned(), Some(elicit_notify_tx.clone())).await
+                    }
+                }
             };
 
-            // Set tool_use_id
+            // Set tool_use_id and server_id
             if let McpContentData::ToolResult {
                 tool_use_id: ref mut id,
+                server_id: ref mut sid,
                 is_error,
+                ref content,
                 ..
             } = result
             {
                 *id = tool_use_id.clone();
+                *sid = Some(server.id.to_string());
 
                 // Send tool complete event
                 helpers::send_tool_complete_event(
@@ -1204,8 +1956,351 @@ impl ChatExtension for McpChatExtension {
                     &tool_name,
                     &server.name,
                     is_error.unwrap_or(false),
+                    Some(content.as_str()),
                 )
                 .await;
+            }
+
+            // Generic resource_link handling: fetch-and-save any resource_links returned by a tool.
+            // Works uniformly for built-in servers (short-lived JWT auth) and external MCP servers
+            // (server-configured headers). Runs the full processing pipeline (text extraction,
+            // thumbnails) and creates a permanent DB artifact visible to the user.
+            // Exception: is_saved=true links already exist in originals storage — skip all processing.
+            let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
+            let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
+            if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result {
+                if !is_error.unwrap_or(false) {
+                    if let Some(links) = resource_links {
+                        for link in links {
+
+                        // is_saved=true: file already exists in originals storage.
+                        // URI is a download-with-token URL — skip fetch/process/save pipeline.
+                        if link.is_saved == Some(true) {
+                            let name = link.name.as_deref().unwrap_or("file").to_string();
+                            saved_file_urls.push((name, link.uri.clone()));
+                            continue;
+                        }
+
+                        use crate::modules::file::models::FileCreateData;
+                        use crate::modules::file::processing::ProcessingManager;
+                        use crate::modules::file::storage::manager::get_file_storage;
+
+                        // Build auth headers appropriate for the server type
+                        let mut fetch_headers = reqwest::header::HeaderMap::new();
+                        if server.is_built_in {
+                            match McpSessionManager::generate_short_lived_jwt(
+                                context.user_id, &self.config.jwt.secret, 10
+                            ) {
+                                Ok(token) => {
+                                    if let Ok(hval) = reqwest::header::HeaderValue::from_str(
+                                        &format!("Bearer {}", token)
+                                    ) {
+                                        fetch_headers.insert(reqwest::header::AUTHORIZATION, hval);
+                                    }
+                                    if let Ok(hval) = reqwest::header::HeaderValue::from_str(
+                                        &context.conversation_id.to_string()
+                                    ) {
+                                        fetch_headers.insert(
+                                            reqwest::header::HeaderName::from_static("x-conversation-id"),
+                                            hval,
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to generate JWT for resource_link fetch: {}", e);
+                                }
+                            }
+                        } else if let Some(headers_map) = server.headers.as_object() {
+                            for (key, value) in headers_map.iter() {
+                                if let Some(val_str) = value.as_str() {
+                                    if let (Ok(hname), Ok(hval)) = (
+                                        reqwest::header::HeaderName::from_bytes(key.as_bytes()),
+                                        reqwest::header::HeaderValue::from_str(val_str),
+                                    ) {
+                                        fetch_headers.insert(hname, hval);
+                                    }
+                                }
+                            }
+                        }
+
+                        match reqwest::Client::builder()
+                            .default_headers(fetch_headers)
+                            .build()
+                        {
+                            Ok(client) => {
+                                match client.get(&link.uri).send().await {
+                                    Ok(response) if response.status().is_success() => {
+                                        let content_type_mime = response
+                                            .headers()
+                                            .get(reqwest::header::CONTENT_TYPE)
+                                            .and_then(|v| v.to_str().ok())
+                                            .and_then(|s| s.split(';').next())
+                                            .map(|s| s.trim().to_string());
+
+                                        match response.bytes().await {
+                                            Ok(bytes) => {
+                                                let bytes = bytes.to_vec();
+                                                let display_name =
+                                                    link.name.as_deref().unwrap_or("file");
+                                                let ext = std::path::Path::new(display_name)
+                                                    .extension()
+                                                    .and_then(|e| e.to_str())
+                                                    .map(str::to_lowercase)
+                                                    .unwrap_or_else(|| "bin".to_string());
+                                                let mime_type = content_type_mime.or_else(|| {
+                                                    mime_guess::from_ext(&ext)
+                                                        .first()
+                                                        .map(|m| m.to_string())
+                                                });
+                                                let mime_type_str = mime_type
+                                                    .as_deref()
+                                                    .unwrap_or("application/octet-stream");
+
+                                                let processing_result = ProcessingManager::new()
+                                                    .process_file(&bytes, mime_type_str)
+                                                    .await
+                                                    .unwrap_or_default();
+
+                                                let artifact_id = Uuid::new_v4();
+                                                let storage = get_file_storage();
+
+                                                match storage
+                                                    .save_original(
+                                                        context.user_id,
+                                                        artifact_id,
+                                                        &ext,
+                                                        &bytes,
+                                                    )
+                                                    .await
+                                                {
+                                                    Ok(_) => {
+                                                        for (n, text) in processing_result
+                                                            .text_pages
+                                                            .iter()
+                                                            .enumerate()
+                                                        {
+                                                            let _ = storage
+                                                                .save_text_page(
+                                                                    context.user_id,
+                                                                    artifact_id,
+                                                                    (n + 1) as u32,
+                                                                    text,
+                                                                )
+                                                                .await;
+                                                        }
+                                                        if let Some(thumb) = processing_result
+                                                            .thumbnails
+                                                            .first()
+                                                        {
+                                                            let _ = storage
+                                                                .save_image(
+                                                                    context.user_id,
+                                                                    artifact_id,
+                                                                    1,
+                                                                    true,
+                                                                    thumb,
+                                                                )
+                                                                .await;
+                                                        }
+                                                        for (n, img) in processing_result
+                                                            .images
+                                                            .iter()
+                                                            .enumerate()
+                                                        {
+                                                            let _ = storage
+                                                                .save_image(
+                                                                    context.user_id,
+                                                                    artifact_id,
+                                                                    (n + 1) as u32,
+                                                                    false,
+                                                                    img,
+                                                                )
+                                                                .await;
+                                                        }
+
+                                                        let file_size = bytes.len() as i64;
+                                                        match Repos
+                                                            .file
+                                                            .create(FileCreateData {
+                                                                id: artifact_id,
+                                                                user_id: context.user_id,
+                                                                filename: display_name
+                                                                    .to_string(),
+                                                                file_size,
+                                                                mime_type: mime_type.clone(),
+                                                                checksum: None,
+                                                                has_thumbnail:
+                                                                    !processing_result
+                                                                        .thumbnails
+                                                                        .is_empty(),
+                                                                preview_page_count:
+                                                                    processing_result
+                                                                        .images
+                                                                        .len()
+                                                                        as i32,
+                                                                text_page_count:
+                                                                    processing_result
+                                                                        .text_pages
+                                                                        .len()
+                                                                        as i32,
+                                                                processing_metadata:
+                                                                    serde_json::to_value(
+                                                                        &processing_result
+                                                                            .metadata,
+                                                                    )
+                                                                    .unwrap_or_default(),
+                                                                created_by: "mcp".to_string(),
+                                                            })
+                                                            .await
+                                                        {
+                                                            Ok(_) => {
+                                                                helpers::send_artifact_created_event(
+                                                                    tx,
+                                                                    &artifact_id.to_string(),
+                                                                    display_name,
+                                                                    mime_type.as_deref(),
+                                                                    file_size,
+                                                                )
+                                                                .await;
+
+                                                                use crate::modules::chat::core::models::MessageContentData;
+                                                                tool_results.push(
+                                                                    MessageContentData::FileAttachment {
+                                                                        file_id: artifact_id,
+                                                                        filename: display_name
+                                                                            .to_string(),
+                                                                        mime_type,
+                                                                        file_size,
+                                                                    },
+                                                                );
+
+                                                                tracing::info!(
+                                                                    "Artifact saved from resource_link: file_id={}, filename={}",
+                                                                    artifact_id, display_name
+                                                                );
+                                                                let download_url = {
+                                                                    use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
+                                                                    use crate::modules::file::types::DownloadTokenClaims;
+                                                                    let now = chrono::Utc::now().timestamp() as usize;
+                                                                    let claims = DownloadTokenClaims {
+                                                                        file_id: artifact_id.to_string(),
+                                                                        user_id: context.user_id.to_string(),
+                                                                        exp: now + 3600,
+                                                                        iat: now,
+                                                                    };
+                                                                    encode(
+                                                                        &JwtHeader::default(),
+                                                                        &claims,
+                                                                        &EncodingKey::from_secret(self.config.jwt.secret.as_bytes()),
+                                                                    )
+                                                                    .ok()
+                                                                    .map(|token| format!(
+                                                                        "http://{}:{}{}/files/{}/download-with-token?token={}",
+                                                                        self.config.server.host,
+                                                                        self.config.server.port,
+                                                                        self.config.server.api_prefix,
+                                                                        artifact_id,
+                                                                        token
+                                                                    ))
+                                                                };
+                                                                saved_artifacts.push((artifact_id, display_name.to_string(), download_url));
+                                                            }
+                                                            Err(e) => {
+                                                                tracing::error!(
+                                                                    "Failed to create file DB record for resource_link: {}",
+                                                                    e
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::error!(
+                                                            "Failed to save artifact original: {}",
+                                                            e
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    "Failed to read resource_link response body: {}",
+                                                    e
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Ok(response) => {
+                                        tracing::error!(
+                                            "resource_link fetch returned HTTP {} for '{}': artifact NOT saved",
+                                            response.status(),
+                                            link.uri
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(
+                                            "Failed to fetch resource_link '{}': {} — artifact NOT saved",
+                                            link.uri, e
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to build HTTP client for resource_link fetch: {}",
+                                    e
+                                );
+                            }
+                        }
+                        } // end for link in links
+                    }
+                }
+            }
+
+            // Update tool result content with the saved artifact info so the LLM knows the file_ids.
+            // Also set hidden_content with token-based download URLs — included in LLM messages
+            // but stripped from browser API responses.
+            // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
+            if !saved_artifacts.is_empty() || !saved_file_urls.is_empty() {
+                if let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
+                    if !saved_artifacts.is_empty() {
+                        let file_descriptions: Vec<String> = saved_artifacts
+                            .iter()
+                            .map(|(id, name, _)| format!("'{}' (file_id: {})", name, id))
+                            .collect();
+                        *content = format!(
+                            "Files from MCP tool have been saved as artifact attachments: {}. \
+                             They will be shown as file cards in the UI — do not embed them inline in your response.",
+                            file_descriptions.join(", ")
+                        );
+                    }
+                    let mut url_lines: Vec<String> = saved_artifacts
+                        .iter()
+                        .filter_map(|(_, name, url)| url.as_ref().map(|u| format!("{} - {}", name, u)))
+                        .collect();
+                    for (name, url) in &saved_file_urls {
+                        url_lines.push(format!("{} - {}", name, url));
+                    }
+                    if !url_lines.is_empty() {
+                        *hidden_content = Some(format!(
+                            "[system: Files saved as artifact attachments (shown as file cards in UI). \
+                             Do NOT embed file URLs or images inline in your text response. \
+                             Internal download URLs for tool-to-tool access only:\n{}]",
+                            url_lines.join("\n")
+                        ));
+                    }
+                }
+            }
+
+            // Capture is_final_response text + annotations before converting to MessageContentData
+            if is_final {
+                if let McpContentData::ToolResult { ref content, ref annotations, .. } = result {
+                    tracing::info!(
+                        "is_final_response: tool '{}' on server '{}' marked as final, will bypass LLM",
+                        tool_name, server.name
+                    );
+                    final_response_text = Some(content.clone());
+                    final_annotations = annotations.clone().unwrap_or_default();
+                }
             }
 
             // Convert to MessageContentData and add to results
@@ -1220,11 +2315,58 @@ impl ChatExtension for McpChatExtension {
                     tool_name,
                     server_id
                 );
-                // Execute remaining tools in this batch, but return Complete after
-                // We'll set a flag to indicate we should stop after this batch
-                // For now, we break early and return Complete with the results we have
+                // Save accumulated tool_results to DB so tool_use blocks are not orphaned.
+                // finalize() already wrote tool_use blocks; without matching tool_result blocks
+                // the next LLM request will be rejected by Anthropic with "tool_use without tool_result".
+                if let Some(message_id) = context.message_id {
+                    let current_count = Repos.chat.core.get_message_with_content(message_id).await
+                        .ok().flatten().map(|m| m.contents.len() as i32).unwrap_or(0);
+                    for (idx, tr) in tool_results.iter().enumerate() {
+                        let _ = Repos.chat.core.create_content(
+                            message_id,
+                            &tr.content_type(),
+                            tr.clone(),
+                            current_count + idx as i32,
+                        ).await;
+                    }
+                }
                 return Ok(ExtensionAction::Complete);
             }
+        }
+
+        // If any tool marked is_final_response: true, process references and bypass the LLM.
+        // We must persist tool_results to DB BEFORE returning CompleteWithContent so that the
+        // tool_use already stored by finalize() has a matching tool_result. Without this, the
+        // next message's history reconstruction would see an unmatched tool_use and the API would
+        // reject the request with "tool_use ids found without tool_result blocks".
+        if let Some(text) = final_response_text {
+            if let Some(message_id) = context.message_id {
+                let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
+                    Ok(Some(msg)) => msg.contents.len() as i32,
+                    _ => 0,
+                };
+                for (idx, result) in tool_results.iter().enumerate() {
+                    let content_type = result.content_type();
+                    if let Err(e) = Repos.chat.core.create_content(
+                        message_id,
+                        &content_type,
+                        result.clone(),
+                        current_count + idx as i32,
+                    ).await {
+                        tracing::error!("Failed to save tool result before CompleteWithContent: {}", e);
+                    }
+                }
+                let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
+            }
+            return Ok(ExtensionAction::CompleteWithContent {
+                text,
+                annotations: final_annotations,
+            });
+        }
+
+        // Cancel any elicitations that are still pending after all tools have been executed.
+        if let Some(message_id) = context.message_id {
+            let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
         }
 
         // Return Continue action to append tool results to assistant message

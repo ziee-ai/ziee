@@ -75,6 +75,10 @@ impl McpRepository {
         create_system_mcp_server(&self.pool, request).await
     }
 
+    pub async fn get_any_server(&self, id: Uuid) -> Result<Option<McpServer>, AppError> {
+        get_any_mcp_server(&self.pool, id).await
+    }
+
     pub async fn get_system_server(&self, id: Uuid) -> Result<Option<McpServer>, AppError> {
         get_system_mcp_server(&self.pool, id).await
     }
@@ -656,6 +660,47 @@ pub async fn create_system_mcp_server(
 }
 
 /// Get system MCP server by ID
+pub async fn get_any_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpServer>, AppError> {
+    let row = sqlx::query!(
+        r#"
+        SELECT
+            id, user_id, name, display_name, description,
+            enabled, is_system, is_built_in, transport_type,
+            command, args, environment_variables, url, headers, timeout_seconds,
+            supports_sampling, usage_mode, max_concurrent_sessions,
+            created_at, updated_at
+        FROM mcp_servers
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| McpServer {
+        id: r.id,
+        user_id: r.user_id,
+        name: r.name,
+        display_name: r.display_name,
+        description: r.description,
+        enabled: r.enabled,
+        is_system: r.is_system,
+        is_built_in: r.is_built_in,
+        transport_type: TransportType::from_str(&r.transport_type).unwrap(),
+        command: r.command,
+        args: r.args.unwrap_or_else(|| serde_json::json!([])),
+        environment_variables: r.environment_variables.unwrap_or_else(|| serde_json::json!({})),
+        url: r.url,
+        headers: r.headers.unwrap_or_else(|| serde_json::json!({})),
+        timeout_seconds: r.timeout_seconds,
+        supports_sampling: r.supports_sampling,
+        usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
+        max_concurrent_sessions: r.max_concurrent_sessions,
+        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
+        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+    }))
+}
+
 pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpServer>, AppError> {
     let row = sqlx::query!(
         r#"
@@ -1156,11 +1201,8 @@ pub async fn list_accessible_mcp_servers(
         LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
         LEFT JOIN user_groups ug ON ugms.group_id = ug.group_id
         WHERE
-            s.enabled = true
-            AND (
-                s.user_id = $1
-                OR (s.is_system = true AND ug.user_id = $1)
-            )
+            s.user_id = $1
+            OR (s.is_system = true AND ug.user_id = $1)
         ORDER BY s.is_system ASC, s.display_name ASC
         LIMIT $2 OFFSET $3
         "#,
@@ -1207,11 +1249,8 @@ pub async fn list_accessible_mcp_servers(
         LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
         LEFT JOIN user_groups ug ON ugms.group_id = ug.group_id
         WHERE
-            s.enabled = true
-            AND (
-                s.user_id = $1
-                OR (s.is_system = true AND ug.user_id = $1)
-            )
+            s.user_id = $1
+            OR (s.is_system = true AND ug.user_id = $1)
         "#,
         user_id
     )

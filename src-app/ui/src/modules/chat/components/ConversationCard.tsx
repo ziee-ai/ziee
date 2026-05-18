@@ -113,33 +113,38 @@ export function ConversationCard({
 
       {/* Delete button - positioned in top right */}
       {!isInSelectionMode && (
-        <Popconfirm
-          title="Delete conversation?"
-          description="This will permanently delete the conversation and all its messages."
-          open={popconfirmOpen}
-          onConfirm={async () => {
-            await handleDeleteConversation()
-            setPopconfirmOpen(false)
-          }}
-          onCancel={() => setPopconfirmOpen(false)}
-          okText="Yes"
-          cancelText="No"
-          okButtonProps={{ loading: false }}
+        <div
+          className="absolute top-2 right-2"
+          onClick={e => e.stopPropagation()}
         >
-          <Button
-            className={`!absolute top-2 right-2 transition-opacity ${
-              popconfirmOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            }`}
-            type="text"
-            size="small"
-            icon={<DeleteOutlined />}
-            style={{ backgroundColor: token.colorBgContainer }}
-            onClick={(e: React.MouseEvent) => {
-              e.stopPropagation()
-              setPopconfirmOpen(true)
+          <Popconfirm
+            title="Delete conversation?"
+            description="This will permanently delete the conversation and all its messages."
+            open={popconfirmOpen}
+            onConfirm={async () => {
+              await handleDeleteConversation()
+              setPopconfirmOpen(false)
             }}
-          />
-        </Popconfirm>
+            onCancel={() => setPopconfirmOpen(false)}
+            okText="Yes"
+            cancelText="No"
+            okButtonProps={{ loading: false }}
+          >
+            <Button
+              className={`transition-opacity ${
+                popconfirmOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
+              type="text"
+              size="small"
+              icon={<DeleteOutlined />}
+              style={{ backgroundColor: token.colorBgContainer }}
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                setPopconfirmOpen(true)
+              }}
+            />
+          </Popconfirm>
+        </div>
       )}
     </Card>
   )

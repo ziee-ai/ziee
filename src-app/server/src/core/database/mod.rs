@@ -375,10 +375,16 @@ fn register_cleanup_handlers() {
     // Register cleanup on panic
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        println!("Panic detected, cleaning up database...");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(cleanup_database());
+        // Print the original panic message first, before any cleanup
         orig_hook(panic_info);
+        println!("Panic detected, cleaning up database...");
+        // Must use a new OS thread: block_on cannot be called from within a Tokio worker thread
+        let handle = std::thread::spawn(|| {
+            if let Ok(rt) = tokio::runtime::Runtime::new() {
+                rt.block_on(cleanup_database());
+            }
+        });
+        let _ = handle.join();
     }));
 }
 

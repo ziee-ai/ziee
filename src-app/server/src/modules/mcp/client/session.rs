@@ -95,9 +95,12 @@ impl McpSession {
         &mut self,
         name: &str,
         arguments: serde_json::Value,
+        message_id: Option<uuid::Uuid>,
+        sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
     ) -> Result<ToolResult, AppError> {
         self.last_used = Instant::now();
-        self.client.call_tool(name, arguments).await
+        self.client.call_tool(name, arguments, message_id, sse_tx, elicit_notify_tx).await
     }
 
     pub async fn list_resources(&mut self) -> Result<Vec<Resource>, AppError> {

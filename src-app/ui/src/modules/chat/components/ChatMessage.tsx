@@ -4,6 +4,7 @@ import { UserOutlined } from '@ant-design/icons'
 import type { MessageWithContent } from '@/api-client/types'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { ContentRenderer } from '@/modules/chat/components/ContentRenderer'
+import { ToolCallsCollapse } from '@/modules/chat/components/ToolCallsCollapse'
 import { MessageContext } from '@/modules/chat/core/MessageContext'
 import { BranchNavigator } from '@/modules/chat/components/BranchNavigator'
 import { MessageActions } from '@/modules/chat/components/MessageActions'
@@ -21,8 +22,33 @@ export const ChatMessage = memo(function ChatMessage({
     return null
   }
 
+  const sortedContents = [...message.contents].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  )
+  const fileAttachments = sortedContents.filter(c => c.content_type === 'file_attachment')
+  const otherContents = sortedContents.filter(c => c.content_type !== 'file_attachment')
+  const toolGroupContents = otherContents.filter(
+    c => c.content_type === 'tool_use' || c.content_type === 'elicitation_request',
+  )
+  const nonToolGroupContents = otherContents.filter(
+    c => c.content_type !== 'tool_use' && c.content_type !== 'elicitation_request',
+  )
+
   return (
     <div className={'w-full flex flex-col overflow-visible group'} data-testid="chat-message" data-role={message.role}>
+      {/* User message: file attachments rendered ABOVE the bubble, outside it */}
+      {isUser && fileAttachments.length > 0 && (
+        <div className="flex flex-row flex-wrap gap-2 mb-2">
+          {fileAttachments.map((content, index) => (
+            <ContentRenderer
+              key={`${content.id || index}`}
+              content={content}
+              isUser={isUser}
+            />
+          ))}
+        </div>
+      )}
+
       <div
         key={message.id}
         className={`flex gap-2 rounded-lg relative min-w-36 flex-col`}
@@ -43,19 +69,33 @@ export const ChatMessage = memo(function ChatMessage({
             className={`${isUser ? '!pt-0.5' : ''} flex flex-1 -mt-[2px] w-full overflow-x-hidden flex-col`}
           >
             <div className={'w-full flex flex-col gap-2'}>
-              {message.contents
-                .sort(
-                  (a, b) =>
-                    new Date(a.created_at).getTime() -
-                    new Date(b.created_at).getTime(),
-                )
-                .map((content, index) => (
-                  <ContentRenderer
-                    key={`${content.id || index}`}
-                    content={content}
-                    isUser={isUser}
-                  />
-                ))}
+              {isUser
+                ? otherContents.map((content, index) => (
+                    <ContentRenderer
+                      key={`${content.id || index}`}
+                      content={content}
+                      isUser={isUser}
+                    />
+                  ))
+                : <>
+                    {toolGroupContents.length > 0 && (
+                      <ToolCallsCollapse toolGroupContents={toolGroupContents} messageId={message.id} />
+                    )}
+                    {nonToolGroupContents.map((content, index) => (
+                      <ContentRenderer
+                        key={`${content.id || index}`}
+                        content={content}
+                        isUser={false}
+                      />
+                    ))}
+                    {fileAttachments.map((content, index) => (
+                      <ContentRenderer
+                        key={`${content.id || index}`}
+                        content={content}
+                        isUser={false}
+                      />
+                    ))}
+                  </>}
             </div>
           </div>
         </div>

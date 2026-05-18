@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
-import type { HubModel } from '@/api-client/types'
+import type { HubLocalProvider, HubModel } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 
 interface HubModelsState {
   models: HubModel[]
@@ -10,13 +11,24 @@ interface HubModelsState {
   loading: boolean
   error: string | null
 
+  localProviders: HubLocalProvider[]
+  localProvidersLoaded: boolean
+
   // Actions
   loadModels: () => Promise<void>
   refreshFromGitHub: () => Promise<void>
+  loadLocalProviders: () => Promise<void>
+  downloadModelFromHub: (
+    hubId: string,
+    providerId: string,
+    displayName: string,
+    quantizationName?: string,
+  ) => Promise<void>
 
   // Lazy initialization
   __init__: {
     models: () => Promise<void>
+    localProviders: () => Promise<void>
   }
 }
 
@@ -28,6 +40,8 @@ export const useHubModelsStore = create<HubModelsState>()(
         version: null,
         loading: false,
         error: null,
+        localProviders: [],
+        localProvidersLoaded: false,
 
         loadModels: async () => {
           const state = get()
@@ -74,8 +88,53 @@ export const useHubModelsStore = create<HubModelsState>()(
           }
         },
 
+        loadLocalProviders: async () => {
+          const state = get()
+          if (state.localProvidersLoaded) return
+          try {
+            const response = await ApiClient.Hub.getLocalProviders()
+            set({ localProviders: response.providers, localProvidersLoaded: true })
+          } catch {
+            set({ localProvidersLoaded: true })
+          }
+        },
+
+        downloadModelFromHub: async (
+          hubId: string,
+          providerId: string,
+          displayName: string,
+          quantizationName?: string,
+        ) => {
+          const result = await ApiClient.Hub.createModelFromHub({
+            hub_id: hubId,
+            provider_id: providerId,
+            display_name: displayName,
+            quantization_name: quantizationName,
+          })
+          Stores.LlmModelDownload.addExternalDownload(result.download)
+        },
+
         __init__: {
+          __store__: () => {
+            Stores.EventBus.on(
+              'llm_model.deleted',
+              event => {
+                const { modelId } = event.data
+                set(state => {
+                  for (const model of state.models) {
+                    if (model.created_ids) {
+                      model.created_ids = model.created_ids.filter(
+                        id => id !== modelId,
+                      )
+                    }
+                  }
+                })
+              },
+              'HubModelsStore',
+            )
+          },
           models: () => get().loadModels(),
+          localProviders: () => get().loadLocalProviders(),
         },
       }),
     ),

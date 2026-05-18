@@ -146,8 +146,8 @@ pub async fn delete_user_server(
 ) -> ApiResult<StatusCode> {
     Repos.mcp.delete_user_server(id, auth.user.id).await?;
 
-    // Emit deletion event for other modules to react
-    event_bus.emit_async(McpServerEvent::user_server_deleted(id, auth.user.id));
+    // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
+    event_bus.emit(McpServerEvent::user_server_deleted(id, auth.user.id)).await;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

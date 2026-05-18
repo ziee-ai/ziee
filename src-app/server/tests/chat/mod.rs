@@ -28,5 +28,6 @@ mod mcp_defaults_test;
 mod mcp_streaming_workflow_test;
 mod mcp_loop_settings_test;
 mod mcp_sampling_test;
+mod mcp_content_test;
 mod test_single_assistant_message_architecture;
 mod user_providers_test;

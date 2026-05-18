@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Dropdown, theme, message as antMessage } from 'antd'
-import { SendOutlined, PlusOutlined } from '@ant-design/icons'
+import { SendOutlined, PlusOutlined, PauseOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
@@ -26,7 +26,7 @@ export function ChatInput({
   const [plusOpen, setPlusOpen] = useState(false)
 
   // Get stores
-  const { sendMessage, sending, isStreaming } = Stores.Chat
+  const { sendMessage, sending, isStreaming, stopStreaming } = Stores.Chat
 
   const uploadingFilesMap = Stores.Chat.FileStore?.uploadingFiles
   const isUploadingFiles = !!(uploadingFilesMap &&
@@ -115,18 +115,29 @@ export function ChatInput({
             <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1" />
           </div>
 
-          {/* Right: model selector + send button */}
+          {/* Right: model selector + send/stop button */}
           <div className="flex items-center gap-2">
             <ExtensionSlot name="toolbar_model" />
-            <Button
-              type="primary"
-              size="large"
-              icon={<SendOutlined rotate={270} />}
-              onClick={handleSend}
-              disabled={sending || isStreaming || disabled || isUploadingFiles}
-              loading={sending || isStreaming || isUploadingFiles}
-              aria-label="Send message"
-            />
+            {isStreaming ? (
+              <Button
+                type="primary"
+                danger
+                size="large"
+                icon={<PauseOutlined />}
+                onClick={stopStreaming}
+                aria-label="Stop generation"
+              />
+            ) : (
+              <Button
+                type="primary"
+                size="large"
+                icon={<SendOutlined rotate={270} />}
+                onClick={handleSend}
+                disabled={sending || disabled || isUploadingFiles}
+                loading={sending || isUploadingFiles}
+                aria-label="Send message"
+              />
+            )}
           </div>
         </div>
         {/* Status row: active MCP servers + selected assistant */}

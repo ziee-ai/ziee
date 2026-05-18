@@ -13,16 +13,19 @@ export default function SettingsPage() {
   const { token } = theme.useToken()
 
   const { slots } = Stores.ModuleSystem
+  const isAdmin = Stores.Auth.user?.is_admin ?? false
 
   // Get and sort user settings from slots
   const userSettingsItems = (slots.get('settingsUserPages') || []).sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
 
-  // Get and sort admin settings from slots
-  const adminSettingsItems = (slots.get('settingsAdminPages') || []).sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
-  )
+  // Get and sort admin settings from slots (only visible to admins)
+  const adminSettingsItems = isAdmin
+    ? (slots.get('settingsAdminPages') || []).sort(
+        (a, b) => (a.order ?? 0) - (b.order ?? 0),
+      )
+    : []
 
   // Build final menu
   const menuItems = [

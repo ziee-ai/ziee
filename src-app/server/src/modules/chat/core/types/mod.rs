@@ -3,7 +3,6 @@
 pub mod branch;
 pub mod conversation;
 pub mod message;
-pub mod providers;
 pub mod streaming;
 
 // Re-export API types
@@ -12,5 +11,4 @@ pub use conversation::{
     ConversationResponse, CreateConversationRequest, UpdateConversationRequest,
 };
 pub use message::{EditMessageRequest, EditMessageResponse, MessageWithContent};
-pub use providers::{GetUserProvidersResponse, ProviderWithModels};
 pub use streaming::{ChatStreamChunk, ContentBlockDelta, StreamError, Usage};

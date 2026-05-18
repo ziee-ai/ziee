@@ -32,6 +32,7 @@ export function FilePreviewList() {
               <FileCard
                 uploadProgress={progress}
                 onRemove={() => removeUploadingFile(progress.id)}
+                variant="square"
               />
             </div>
           ))}
@@ -44,6 +45,7 @@ export function FilePreviewList() {
                 canDelete={false}
                 canRemove={true}
                 onRemove={() => removeFile(file.id)}
+                variant="square"
               />
             </div>
           ))}

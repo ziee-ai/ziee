@@ -1,4 +1,5 @@
 pub mod client;
+pub mod elicitation;
 pub mod events;
 mod handlers;
 mod models;
@@ -70,7 +71,8 @@ impl AppModule for McpModule {
         if let Some(_pool) = &self.pool {
             let mcp_router_with_state = ApiRouter::new()
                 .merge(routes::user_routes())
-                .merge(routes::admin_routes());
+                .merge(routes::admin_routes())
+                .merge(elicitation::routes::elicitation_routes());
             router.merge(mcp_router_with_state)
         } else {
             tracing::error!("McpModule: Pool not initialized during route registration");

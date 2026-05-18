@@ -114,6 +114,7 @@ pub async fn get_created_assistant_ids(
         r#"
         SELECT he.hub_id, ARRAY_AGG(he.entity_id) as entity_ids
         FROM hub_entities he
+        INNER JOIN assistants a ON a.id = he.entity_id
         WHERE he.entity_type = 'assistant'
           AND he.created_by = $1
         GROUP BY he.hub_id
@@ -169,7 +170,9 @@ pub async fn get_created_model_ids(pool: &PgPool) -> Result<HashMap<String, Vec<
         r#"
         SELECT he.hub_id, ARRAY_AGG(he.entity_id) as entity_ids
         FROM hub_entities he
+        INNER JOIN download_instances di ON di.id = he.entity_id
         WHERE he.entity_type = 'llm_model'
+          AND di.model_id IS NOT NULL
         GROUP BY he.hub_id
         "#
     )

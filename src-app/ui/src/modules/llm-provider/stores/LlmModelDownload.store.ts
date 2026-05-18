@@ -27,6 +27,7 @@ interface LlmModelDownloadState {
     request: DownloadFromRepositoryRequest,
     onStart?: (downloadId: string) => void,
   ) => Promise<{ downloadId: string }>
+  addExternalDownload: (instance: DownloadInstance) => void
   cancelLlmModelDownload: (downloadId: string) => Promise<void>
   deleteLlmModelDownload: (downloadId: string) => Promise<void>
   clearLlmModelDownload: (downloadId: string) => void
@@ -109,6 +110,13 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
           console.error('Failed to initiate download:', error)
           throw error
         }
+      },
+
+      addExternalDownload: (instance: DownloadInstance): void => {
+        set(state => ({
+          downloads: [...state.downloads, instance],
+        }))
+        get().setupDownloadTracking()
       },
 
       cancelLlmModelDownload: async (downloadId: string): Promise<void> => {

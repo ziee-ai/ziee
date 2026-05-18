@@ -138,6 +138,7 @@ pub async fn upload_file(
             text_page_count: processing_result.text_pages.len() as i32,
             processing_metadata: serde_json::to_value(&processing_result.metadata)
                 .unwrap_or(serde_json::json!({})),
+            created_by: "user".to_string(),
         })
         .await?;
 

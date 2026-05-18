@@ -154,6 +154,7 @@ declare_repositories! {
     user: UserRepository => crate::modules::user,
     group: GroupRepository => crate::modules::user,
     llm_provider: LlmProviderRepository => crate::modules::llm_provider,
+    user_key: UserKeyRepository => crate::modules::llm_provider,
     llm_model: LlmModelRepository => crate::modules::llm_model,
     download_instance: DownloadInstanceRepository => crate::modules::llm_model,
     llm_repository: LlmRepositoryRepository => crate::modules::llm_repository,
@@ -163,6 +164,7 @@ declare_repositories! {
     app: AppRepository => crate::modules::app,
     auth: AuthRepository => crate::modules::auth,
     file: FileRepository => crate::modules::file,
+    code_sandbox: CodeSandboxRepository => crate::modules::code_sandbox,
     chat: ChatRepository => crate::modules::chat::core,
     local_runtime: LocalRuntimeRepository => crate::modules::llm_local_runtime,
 }

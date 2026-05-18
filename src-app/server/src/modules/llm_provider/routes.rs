@@ -5,7 +5,8 @@ use aide::axum::{
     routing::{delete_with, get_with, post_with, put_with},
 };
 
-use super::handlers::*;
+use super::handlers::admin::*;
+use super::handlers::user::*;
 
 /// LLM Provider management routes
 pub fn llm_provider_router() -> ApiRouter {
@@ -52,5 +53,22 @@ pub fn llm_provider_router() -> ApiRouter {
         .api_route(
             "/groups/{group_id}/providers",
             put_with(update_group_providers, update_group_providers_docs),
+        )
+        // User-facing provider routes
+        .api_route(
+            "/user-llm-providers",
+            get_with(get_user_llm_providers, get_user_llm_providers_docs),
+        )
+        .api_route(
+            "/user-llm-providers/api-keys",
+            get_with(list_user_api_keys, list_user_api_keys_docs),
+        )
+        .api_route(
+            "/user-llm-providers/api-keys",
+            post_with(save_user_api_key, save_user_api_key_docs),
+        )
+        .api_route(
+            "/user-llm-providers/api-keys/{provider_id}",
+            delete_with(delete_user_api_key, delete_user_api_key_docs),
         )
 }

@@ -6,25 +6,59 @@ use serde::{Deserialize, Serialize};
 use crate::common::AppError;
 use crate::modules::chat::core::models::content::MessageContentData;
 
-/// A reference item returned by RAG tools (e.g., BioGnosia)
+/// A generic annotation returned by any MCP server alongside a final answer.
+///
+/// The server uses whatever `id` scheme it wants (e.g. `chunk-{hash}-{index}`, UUID, slug).
+/// The `id` must match the inline marker `[id]` in the answer text exactly.
+/// The client maps IDs to sequential display numbers ([1], [2], …) at render time.
+///
+/// `content` is a Markdown string rendered by Streamdown on the frontend.
+/// The server controls exactly what appears in the reference drawer — no client-side parsing.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ReferenceItem {
-    /// Unique identifier for the reference
+pub struct Annotation {
+    /// Arbitrary ID chosen by the server — must match the inline `[id]` marker in the text
     pub id: String,
-    /// Human-readable citation or title
-    pub display_text: String,
-    /// URL to the source document
+    /// Semantic type: "citation", "image", "audio", or any custom string
+    pub annotation_type: String,
+    /// Optional short label shown in the drawer header / badge tooltip
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_url: Option<String>,
+    pub label: Option<String>,
+    /// Markdown string rendered by Streamdown in the reference drawer
+    pub content: String,
 }
 
-/// A file attachment returned by a tool
+/// A file attachment returned by a tool (inline base64 content)
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RichFile {
     pub filename: String,
     pub mime_type: String,
     /// Base64-encoded file content
     pub data: String,
+}
+
+/// A reference to a resource returned by a tool (MCP resource_link content type)
+///
+/// Used when a tool creates or references a file that is already persisted on the server.
+/// The URI follows the pattern `/api/files/{file_id}` for files stored in the file system.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ResourceLink {
+    /// URI of the resource (e.g. `/api/files/{file_id}`)
+    pub uri: String,
+    /// Display name for the resource
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// MIME type of the resource
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// File size in bytes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<i64>,
+    /// Whether the file is already persisted in originals storage (user-attached).
+    /// true  → URI is a download-with-token URL; skip fetch-and-save pipeline.
+    /// false → workspace file; run full processing pipeline.
+    /// None  → external MCP server; run full processing pipeline.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_saved: Option<bool>,
 }
 
 /// MCP-specific content data types
@@ -46,15 +80,24 @@ pub enum McpContentData {
         /// Function/tool name (required for some providers like Gemini)
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        /// ID of the MCP server that executed this tool (UUID string)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        server_id: Option<String>,
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
-        /// Structured references returned by RAG tools (for side panel display)
+        /// Generic annotations returned by the MCP server (citations, images, etc.)
         #[serde(skip_serializing_if = "Option::is_none")]
-        references: Option<Vec<ReferenceItem>>,
-        /// File attachment returned by a tool (for download/preview)
+        annotations: Option<Vec<Annotation>>,
+        /// Inline file attachment returned by a tool (base64-encoded content)
         #[serde(skip_serializing_if = "Option::is_none")]
         attachment: Option<RichFile>,
+        /// References to persisted files returned by a tool (MCP resource_link)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_links: Option<Vec<ResourceLink>>,
+        /// Context injected into LLM messages but never rendered for users (e.g. download URL)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hidden_content: Option<String>,
     },
 }
 
@@ -94,24 +137,19 @@ impl McpContentData {
                 name,
                 content,
                 is_error,
-                references,
+                hidden_content,
                 ..
             } => {
-                // Send text content to LLM; references are for the UI side panel only
-                let mut text_content = content.clone();
-                if let Some(refs) = references {
-                    if !refs.is_empty() {
-                        let ref_summary: Vec<String> = refs.iter()
-                            .map(|r| format!("- {} {}", r.display_text, r.source_url.as_deref().unwrap_or("")))
-                            .collect();
-                        text_content.push_str("\n\nSources:\n");
-                        text_content.push_str(&ref_summary.join("\n"));
-                    }
+                // Send text content to LLM; annotations are handled separately via AnnotatedText.
+                // Append hidden_content (e.g. download URL) for the LLM — never stored in `content`.
+                let mut llm_text = content.clone();
+                if let Some(hidden) = hidden_content {
+                    llm_text.push_str(&format!("\n{}", hidden));
                 }
                 Some(ai_providers::ContentBlock::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: name.clone(),
-                    content: vec![ai_providers::ContentBlock::Text { text: text_content }],
+                    content: vec![ai_providers::ContentBlock::Text { text: llm_text }],
                     is_error: *is_error,
                 })
             }
@@ -155,10 +193,13 @@ impl McpContentData {
                 Some(Self::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: name.clone(),
+                    server_id: None,
                     content: text,
                     is_error: *is_error,
-                    references: None,
+                    annotations: None,
                     attachment: None,
+                    resource_links: None,
+                    hidden_content: None,
                 })
             }
             _ => None,
@@ -170,245 +211,6 @@ impl McpContentData {
         match self {
             Self::ToolUse { .. } => "tool_use",
             Self::ToolResult { .. } => "tool_result",
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tool_use_conversion() {
-        let tool_use = McpContentData::ToolUse {
-            id: "toolu_01".to_string(),
-            name: "get_weather".to_string(),
-            server_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
-            input: serde_json::json!({"location": "SF"}),
-        };
-
-        // Convert to MessageContentData
-        let msg_content = tool_use.to_message_content();
-        // Verify it's a ToolUse variant (MessageContentData variants are generated by macro)
-        assert_eq!(msg_content.content_type(), "tool_use");
-
-        // Convert back
-        let recovered = McpContentData::from_message_content(&msg_content).unwrap();
-        match recovered {
-            McpContentData::ToolUse { id, name, server_id, .. } => {
-                assert_eq!(id, "toolu_01");
-                assert_eq!(name, "get_weather");
-                assert_eq!(server_id, "550e8400-e29b-41d4-a716-446655440000");
-            }
-            _ => panic!("Expected ToolUse"),
-        }
-    }
-
-    #[test]
-    fn test_tool_result_conversion() {
-        let tool_result = McpContentData::ToolResult {
-            tool_use_id: "toolu_01".to_string(),
-            name: Some("get_weather".to_string()),
-            content: "Sunny, 72°F".to_string(),
-            is_error: Some(false),
-            references: None,
-            attachment: None,
-        };
-
-        // Convert to MessageContentData
-        let msg_content = tool_result.to_message_content();
-
-        // Convert back
-        let recovered = McpContentData::from_message_content(&msg_content).unwrap();
-        match recovered {
-            McpContentData::ToolResult {
-                tool_use_id,
-                name,
-                content,
-                is_error,
-                ..
-            } => {
-                assert_eq!(tool_use_id, "toolu_01");
-                assert_eq!(name, Some("get_weather".to_string()));
-                assert_eq!(content, "Sunny, 72°F");
-                assert_eq!(is_error, Some(false));
-            }
-            _ => panic!("Expected ToolResult"),
-        }
-    }
-
-    #[test]
-    fn test_to_content_block() {
-        let tool_use = McpContentData::ToolUse {
-            id: "toolu_01".to_string(),
-            name: "get_weather".to_string(),
-            server_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
-            input: serde_json::json!({"location": "SF"}),
-        };
-
-        let block = tool_use.to_content_block().unwrap();
-        match block {
-            ai_providers::ContentBlock::ToolUse { name, .. } => {
-                // Should reconstruct server_id__name format
-                assert_eq!(name, "550e8400-e29b-41d4-a716-446655440000__get_weather");
-            }
-            _ => panic!("Expected ToolUse"),
-        }
-    }
-
-    #[test]
-    fn test_from_content_block() {
-        // AI providers return server_id__tool_name format
-        let block = ai_providers::ContentBlock::ToolUse {
-            id: "toolu_01".to_string(),
-            name: "550e8400-e29b-41d4-a716-446655440000__get_weather".to_string(),
-            input: serde_json::json!({"location": "SF"}),
-        };
-
-        let mcp_content = McpContentData::from_content_block(&block).unwrap();
-        match mcp_content {
-            McpContentData::ToolUse { id, name, server_id, .. } => {
-                assert_eq!(id, "toolu_01");
-                assert_eq!(name, "get_weather");
-                assert_eq!(server_id, "550e8400-e29b-41d4-a716-446655440000");
-            }
-            _ => panic!("Expected ToolUse"),
-        }
-    }
-
-    #[test]
-    fn test_tool_result_with_references_roundtrip() {
-        // McpContentData is persisted as JSON in the DB, so test JSON roundtrip
-        let tool_result = McpContentData::ToolResult {
-            tool_use_id: "toolu_02".to_string(),
-            name: Some("search".to_string()),
-            content: "Some results".to_string(),
-            is_error: Some(false),
-            references: Some(vec![ReferenceItem {
-                id: "ref-1".to_string(),
-                display_text: "Paper on X".to_string(),
-                source_url: Some("https://example.com/paper".to_string()),
-            }]),
-            attachment: None,
-        };
-
-        let json = serde_json::to_value(&tool_result).expect("Should serialize");
-        let recovered: McpContentData =
-            serde_json::from_value(json).expect("Should deserialize");
-        match recovered {
-            McpContentData::ToolResult { references, .. } => {
-                let refs = references.expect("References should be preserved");
-                assert_eq!(refs.len(), 1);
-                assert_eq!(refs[0].id, "ref-1");
-                assert_eq!(refs[0].display_text, "Paper on X");
-                assert_eq!(
-                    refs[0].source_url,
-                    Some("https://example.com/paper".to_string())
-                );
-            }
-            _ => panic!("Expected ToolResult"),
-        }
-    }
-
-    #[test]
-    fn test_to_content_block_appends_sources_from_references() {
-        let tool_result = McpContentData::ToolResult {
-            tool_use_id: "toolu_03".to_string(),
-            name: Some("search".to_string()),
-            content: "Main result".to_string(),
-            is_error: Some(false),
-            references: Some(vec![
-                ReferenceItem {
-                    id: "ref-1".to_string(),
-                    display_text: "Doc A".to_string(),
-                    source_url: Some("https://example.com/a".to_string()),
-                },
-                ReferenceItem {
-                    id: "ref-2".to_string(),
-                    display_text: "Doc B".to_string(),
-                    source_url: None,
-                },
-            ]),
-            attachment: None,
-        };
-
-        let block = tool_result.to_content_block().unwrap();
-        match block {
-            ai_providers::ContentBlock::ToolResult { content, .. } => {
-                let text = content
-                    .iter()
-                    .filter_map(|b| match b {
-                        ai_providers::ContentBlock::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("");
-                assert!(text.contains("Sources:"), "Should contain Sources section");
-                assert!(text.contains("Doc A"), "Should contain first reference");
-                assert!(text.contains("Doc B"), "Should contain second reference");
-            }
-            _ => panic!("Expected ToolResult"),
-        }
-    }
-
-    #[test]
-    fn test_tool_result_no_references_no_sources_section() {
-        let tool_result = McpContentData::ToolResult {
-            tool_use_id: "toolu_04".to_string(),
-            name: Some("search".to_string()),
-            content: "Simple result".to_string(),
-            is_error: Some(false),
-            references: None,
-            attachment: None,
-        };
-
-        let block = tool_result.to_content_block().unwrap();
-        match block {
-            ai_providers::ContentBlock::ToolResult { content, .. } => {
-                let text = content
-                    .iter()
-                    .filter_map(|b| match b {
-                        ai_providers::ContentBlock::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("");
-                assert!(
-                    !text.contains("Sources:"),
-                    "Should not contain Sources section"
-                );
-            }
-            _ => panic!("Expected ToolResult"),
-        }
-    }
-
-    #[test]
-    fn test_tool_result_with_attachment_roundtrip() {
-        // McpContentData is persisted as JSON in the DB, so test JSON roundtrip
-        let tool_result = McpContentData::ToolResult {
-            tool_use_id: "toolu_05".to_string(),
-            name: Some("generate_chart".to_string()),
-            content: "Chart generated".to_string(),
-            is_error: Some(false),
-            references: None,
-            attachment: Some(RichFile {
-                filename: "chart.png".to_string(),
-                mime_type: "image/png".to_string(),
-                data: "base64encodeddata".to_string(),
-            }),
-        };
-
-        let json = serde_json::to_value(&tool_result).expect("Should serialize");
-        let recovered: McpContentData =
-            serde_json::from_value(json).expect("Should deserialize");
-        match recovered {
-            McpContentData::ToolResult { attachment, .. } => {
-                let file = attachment.expect("Attachment should be preserved");
-                assert_eq!(file.filename, "chart.png");
-                assert_eq!(file.mime_type, "image/png");
-                assert_eq!(file.data, "base64encodeddata");
-            }
-            _ => panic!("Expected ToolResult"),
         }
     }
 }

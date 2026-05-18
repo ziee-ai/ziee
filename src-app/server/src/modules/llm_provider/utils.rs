@@ -56,19 +56,6 @@ pub fn validate_create_request(request: &CreateLlmProviderRequest) -> Result<(),
     // Validate base URL if provided
     validate_base_url(&request.base_url)?;
 
-    // If enabling the provider, ensure required fields are present
-    if request.enabled.unwrap_or(false) {
-        // For remote providers (not local), API key is usually required
-        if request.provider_type != "local" && request.provider_type != "custom" {
-            if request.api_key.is_none() || request.api_key.as_ref().unwrap().trim().is_empty() {
-                return Err(AppError::bad_request(
-                    "VALIDATION_ERROR",
-                    "API key is required for enabled remote providers",
-                ));
-            }
-        }
-    }
-
     Ok(())
 }
 

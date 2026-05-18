@@ -4,6 +4,28 @@
 use crate::modules::permissions::{PermissionCheck, PermissionInfo};
 
 // =====================================================
+// Profile Permissions (user's own profile)
+// =====================================================
+
+/// Permission for users to view their own profile
+pub struct ProfileRead;
+impl PermissionCheck for ProfileRead {
+    const NAME: &'static str = "ProfileRead";
+    const PERMISSION: &'static str = "profile::read";
+    const DESCRIPTION: &'static str = "View own profile information";
+    const MODULE: &'static str = "user";
+}
+
+/// Permission for users to edit their own profile
+pub struct ProfileEdit;
+impl PermissionCheck for ProfileEdit {
+    const NAME: &'static str = "ProfileEdit";
+    const PERMISSION: &'static str = "profile::edit";
+    const DESCRIPTION: &'static str = "Edit own profile information";
+    const MODULE: &'static str = "user";
+}
+
+// =====================================================
 // User Management Permissions
 // =====================================================
 

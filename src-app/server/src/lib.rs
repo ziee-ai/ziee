@@ -31,6 +31,10 @@ pub use modules::mcp::sampling::models::{
 };
 pub use ai_providers::Provider as AiProvider;
 
+// Re-export MCP content types for integration tests
+#[doc(hidden)]
+pub use modules::chat::extensions::mcp::content::{Annotation, McpContentData, RichFile};
+
 // Re-export axum types for route building
 pub use axum::{Extension, Json, extract::State, http::StatusCode};
 pub use axum::routing::{get, post};

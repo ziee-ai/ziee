@@ -7,6 +7,7 @@ import type {
   McpServer,
   CreateMcpServerFromHubRequest,
 } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 
 interface HubMcpServersState {
   servers: HubMCPServer[]
@@ -111,6 +112,24 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
         },
 
         __init__: {
+          __store__: () => {
+            Stores.EventBus.on(
+              'mcp_server.deleted',
+              event => {
+                const { serverId } = event.data
+                set(state => {
+                  for (const server of state.servers) {
+                    if (server.created_ids) {
+                      server.created_ids = server.created_ids.filter(
+                        id => id !== serverId,
+                      )
+                    }
+                  }
+                })
+              },
+              'HubMcpServersStore',
+            )
+          },
           servers: () => get().loadServers(),
         },
       }),

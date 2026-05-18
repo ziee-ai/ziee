@@ -5,7 +5,6 @@
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -13,6 +12,7 @@ use uuid::Uuid;
 use ai_providers::{ChatMessage, ChatRequest, ContentBlockDelta, Role};
 
 use crate::common::AppError;
+use crate::core::Repos;
 use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 
 use super::models::{SamplingContent, SamplingCreateMessageRequest, SamplingCreateMessageResult};
@@ -42,8 +42,9 @@ pub struct ChatSamplingHandler {
 impl ChatSamplingHandler {
     /// Initialize once: look up the model + provider from the DB, build the HTTP client.
     /// All subsequent `create_message()` calls reuse this cached state.
-    pub async fn new(pool: &PgPool, model_id: Uuid) -> Result<Self, AppError> {
-        let (provider, model_name, _, _) = create_provider_from_model_id(pool, model_id).await?;
+    pub async fn new(model_id: Uuid, user_id: Uuid) -> Result<Self, AppError> {
+        let (provider, model_name, _, _) =
+            create_provider_from_model_id(Repos.pool(), model_id, user_id).await?;
         Ok(Self { provider, model_name })
     }
 }
@@ -151,9 +152,10 @@ impl SamplingHandler for ChatSamplingHandler {
 
         // Map provider finish_reason → MCP stopReason (camelCase per MCP spec)
         let stop_reason = finish_reason.map(|r| match r.as_str() {
-            "end_turn" | "stop" | "eos_token" => "endTurn".to_string(),
-            "max_tokens" | "length" => "maxTokens".to_string(),
-            "stop_sequence" => "stopSequence".to_string(),
+            // Anthropic: "end_turn", OpenAI: "stop", Gemini: "STOP"
+            "end_turn" | "stop" | "STOP" | "eos_token" => "endTurn".to_string(),
+            "max_tokens" | "length" | "MAX_TOKENS" => "maxTokens".to_string(),
+            "stop_sequence" | "STOP_SEQUENCE" => "stopSequence".to_string(),
             other => other.to_string(),
         });
 
