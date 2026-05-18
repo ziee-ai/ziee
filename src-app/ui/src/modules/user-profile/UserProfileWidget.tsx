@@ -1,6 +1,7 @@
 import { Dropdown, Tooltip, theme } from 'antd'
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { useNavigate } from 'react-router-dom'
 
 function SidebarItem({
   icon,
@@ -54,6 +55,7 @@ function SidebarItem({
 export function UserProfileWidget() {
   const { user } = Stores.Auth
   const { isSidebarCollapsed } = Stores.AppLayout
+  const navigate = useNavigate()
 
   if (!user) return null
 
@@ -65,7 +67,7 @@ export function UserProfileWidget() {
             key: 'profile',
             icon: <UserOutlined />,
             label: 'Profile',
-            onClick: () => console.log('Profile clicked'),
+            onClick: () => navigate('/settings/general'),
           },
           {
             key: 'logout',

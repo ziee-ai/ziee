@@ -120,11 +120,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (windowMinSize.xs) {
-      if (!isSidebarCollapsed) {
-        Stores.AppLayout.setSidebarCollapsed(true)
-      }
+      Stores.AppLayout.setSidebarCollapsed(true)
     }
-  }, [windowMinSize.xs, isSidebarCollapsed])
+  }, [windowMinSize.xs])
 
   // ResizeObserver to listen to main content width changes
   useEffect(() => {
@@ -266,7 +264,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content Area */}
       <div
-        className="flex-1 flex flex-col z-2 relative overflow-hidden"
+        className="flex-1 flex flex-col relative overflow-hidden"
         style={{
           backgroundColor: token.colorBgLayout,
         }}
