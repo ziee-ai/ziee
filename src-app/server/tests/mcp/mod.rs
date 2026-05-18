@@ -2,6 +2,8 @@
 // Comprehensive approval workflow tests are now in tests/chat/mcp_approval_workflow_test.rs
 // mod approval_test;
 
+pub mod mock_sampling_server;
+
 use crate::common::test_helpers::{self};
 use serde_json::json;
 use uuid::Uuid;
@@ -1202,3 +1204,373 @@ async fn test_duplicate_server_name_allowed() {
 mod runtime;              // Stdio transport tests (18 tests)
 mod http_transport_test;  // HTTP transport tests (12 tests)
 mod sse_transport_test;   // SSE transport tests (12 tests)
+
+// ============================================================================
+// Sampling Field CRUD Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_mcp_server_with_sampling_fields() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create"],
+    )
+    .await;
+
+    let payload = json!({
+        "name": "sampling-http-server",
+        "display_name": "Sampling HTTP Server",
+        "description": "Server with sampling enabled",
+        "enabled": true,
+        "transport_type": "http",
+        "url": "https://example.com/mcp",
+        "supports_sampling": true,
+        "usage_mode": "always",
+        "max_concurrent_sessions": 3
+    });
+
+    let url = server.api_url("/mcp/system-servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    assert_eq!(status, 201, "Should create system server with sampling fields");
+    assert_eq!(body["supports_sampling"], true, "supports_sampling should be true");
+    assert_eq!(body["usage_mode"], "always", "usage_mode should be always");
+    assert_eq!(body["max_concurrent_sessions"], 3, "max_concurrent_sessions should be 3");
+}
+
+#[tokio::test]
+async fn test_sampling_field_defaults() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create"],
+    )
+    .await;
+
+    // Create without any sampling fields
+    let payload = json!({
+        "name": "default-fields-server",
+        "display_name": "Default Fields Server",
+        "transport_type": "stdio",
+        "command": "node",
+        "args": ["server.js"]
+    });
+
+    let url = server.api_url("/mcp/system-servers");
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 201, "Should create server");
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+
+    assert_eq!(body["supports_sampling"], false, "Default supports_sampling should be false");
+    assert_eq!(body["usage_mode"], "auto", "Default usage_mode should be auto");
+    assert!(
+        body["max_concurrent_sessions"].is_null(),
+        "Default max_concurrent_sessions should be null"
+    );
+}
+
+#[tokio::test]
+async fn test_update_mcp_server_sampling_fields() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &[
+            "mcp_servers_admin::create",
+            "mcp_servers_admin::read",
+            "mcp_servers_admin::edit",
+        ],
+    )
+    .await;
+
+    // Create server without sampling
+    let create_payload = json!({
+        "name": "update-sampling-test",
+        "display_name": "Update Sampling Test",
+        "transport_type": "http",
+        "url": "https://example.com/mcp"
+    });
+
+    let create_url = server.api_url("/mcp/system-servers");
+    let create_response = reqwest::Client::new()
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&create_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse JSON");
+    let server_id = created["id"].as_str().expect("Should have server ID");
+
+    // Update sampling fields
+    let update_payload = json!({
+        "display_name": "Update Sampling Test",
+        "transport_type": "http",
+        "url": "https://example.com/mcp",
+        "supports_sampling": true,
+        "usage_mode": "always",
+        "max_concurrent_sessions": 5
+    });
+
+    let update_url = server.api_url(&format!("/mcp/system-servers/{}", server_id));
+    let response = reqwest::Client::new()
+        .put(&update_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&update_payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 200, "Should update server");
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["supports_sampling"], true);
+    assert_eq!(body["usage_mode"], "always");
+    assert_eq!(body["max_concurrent_sessions"], 5);
+
+    // Confirm via GET
+    let get_url = server.api_url(&format!("/mcp/system-servers/{}", server_id));
+    let get_body: serde_json::Value = reqwest::Client::new()
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed")
+        .json()
+        .await
+        .expect("Failed to parse JSON");
+
+    assert_eq!(get_body["supports_sampling"], true);
+    assert_eq!(get_body["usage_mode"], "always");
+    assert_eq!(get_body["max_concurrent_sessions"], 5);
+}
+
+// ============================================================================
+// SSE Sampling Roundtrip Tests (no DB, use HttpMcpClient directly)
+// ============================================================================
+
+fn make_sampling_server_config(url: String, timeout_seconds: i32) -> ziee_chat::McpServer {
+    ziee_chat::McpServer {
+        id: uuid::Uuid::new_v4(),
+        user_id: None,
+        name: "test-mock".to_string(),
+        display_name: "Test Mock".to_string(),
+        description: None,
+        enabled: true,
+        is_system: false,
+        transport_type: ziee_chat::TransportType::Http,
+        command: None,
+        args: serde_json::json!([]),
+        environment_variables: serde_json::json!({}),
+        url: Some(url),
+        headers: serde_json::json!({}),
+        timeout_seconds,
+        supports_sampling: true,
+        usage_mode: ziee_chat::UsageMode::Auto,
+        max_concurrent_sessions: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    }
+}
+
+/// Verifies SSE streaming mechanics end-to-end with `HttpMcpClient`:
+///   1. Opens SSE stream to the mock MCP server
+///   2. Reads `sampling/createMessage` events (2 rounds)
+///   3. Calls handler and POSTs results back
+///   4. Reads the final tool result
+///
+/// No DB, no real LLM — `InstantHandler` returns "Mock answer" immediately.
+/// If this test hangs, the bug is in `call_tool_with_sampling`'s SSE loop.
+#[tokio::test]
+async fn test_call_tool_with_sampling_sse_roundtrip() {
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use ziee_chat::{
+        AppError, HttpMcpClient, McpClient, SamplingContent, SamplingCreateMessageRequest,
+        SamplingCreateMessageResult, SamplingHandler,
+    };
+
+    struct InstantHandler;
+
+    #[async_trait]
+    impl SamplingHandler for InstantHandler {
+        async fn create_message(
+            &self,
+            _req: SamplingCreateMessageRequest,
+        ) -> Result<SamplingCreateMessageResult, AppError> {
+            Ok(SamplingCreateMessageResult {
+                role: "assistant".to_string(),
+                content: SamplingContent::Text {
+                    text: "Mock answer".to_string(),
+                },
+                model: "mock-model".to_string(),
+                stop_reason: Some("end_turn".to_string()),
+            })
+        }
+    }
+
+    let mock = mock_sampling_server::MockSamplingServer::start().await;
+    let handler = Arc::new(InstantHandler);
+    let server_config = make_sampling_server_config(mock.url(), 30);
+    let mut client =
+        HttpMcpClient::new_with_sampling(server_config, handler).expect("create client");
+    client.connect().await.expect("connect");
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(15),
+        client.call_tool(
+            "research",
+            serde_json::json!({"query": "What is the capital of Germany?"}),
+        ),
+    )
+    .await
+    .expect("TIMEOUT: SSE byte_stream.next() never returned — bug in call_tool_with_sampling")
+    .expect("Tool call failed");
+
+    assert!(!result.content.is_empty(), "Should have tool result content");
+    eprintln!("SSE roundtrip test passed: {:?}", result.content);
+}
+
+/// Like `test_call_tool_with_sampling_sse_roundtrip` but uses a real Anthropic LLM.
+/// The mock MCP server forwards the query to the LLM via `sampling/createMessage`.
+/// Skipped automatically when `ANTHROPIC_API_KEY` is not set.
+#[tokio::test]
+async fn test_call_tool_with_real_llm_sampling() {
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use ziee_chat::{
+        AiProvider, AppError, HttpMcpClient, McpClient, SamplingContent,
+        SamplingCreateMessageRequest, SamplingCreateMessageResult, SamplingHandler,
+    };
+
+    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
+        Ok(k) if !k.is_empty() => k,
+        _ => {
+            eprintln!("ANTHROPIC_API_KEY not set — skipping real LLM sampling test");
+            return;
+        }
+    };
+
+    struct RealLlmHandler {
+        provider: Arc<AiProvider>,
+        model: String,
+    }
+
+    #[async_trait]
+    impl SamplingHandler for RealLlmHandler {
+        async fn create_message(
+            &self,
+            req: SamplingCreateMessageRequest,
+        ) -> Result<SamplingCreateMessageResult, AppError> {
+            use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
+            let messages = req
+                .messages
+                .iter()
+                .map(|m| ChatMessage {
+                    role: if m.role == "assistant" {
+                        Role::Assistant
+                    } else {
+                        Role::User
+                    },
+                    content: vec![ContentBlock::Text {
+                        text: m.content.as_text().unwrap_or("").to_string(),
+                    }],
+                })
+                .collect();
+            let resp = self
+                .provider
+                .complete(ChatRequest {
+                    model: self.model.clone(),
+                    messages,
+                    max_tokens: Some(req.max_tokens),
+                    ..Default::default()
+                })
+                .await
+                .map_err(|e| AppError::internal_error(e.to_string()))?;
+            let text = resp
+                .content
+                .into_iter()
+                .filter_map(|b| {
+                    if let ContentBlock::Text { text } = b {
+                        Some(text)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("");
+            Ok(SamplingCreateMessageResult {
+                role: "assistant".to_string(),
+                content: SamplingContent::Text { text },
+                model: self.model.clone(),
+                stop_reason: Some("end_turn".to_string()),
+            })
+        }
+    }
+
+    // NOTE: base URL must include /v1 — AnthropicProvider appends /messages to it,
+    // so "https://api.anthropic.com" (without /v1) would call the wrong endpoint
+    // and hang for 120s until the Provider's HTTP client timeout fires.
+    let provider = Arc::new(
+        AiProvider::new("anthropic", &api_key, "https://api.anthropic.com/v1")
+            .expect("create Anthropic provider"),
+    );
+    let handler = Arc::new(RealLlmHandler {
+        provider,
+        model: "claude-haiku-4-5-20251001".to_string(),
+    });
+
+    let mock = mock_sampling_server::MockSamplingServer::start().await;
+    let server_config = make_sampling_server_config(mock.url(), 60);
+    let mut client =
+        HttpMcpClient::new_with_sampling(server_config, handler).expect("create client");
+    client.connect().await.expect("connect");
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        client.call_tool(
+            "research",
+            serde_json::json!({"query": "What is the capital of Germany?"}),
+        ),
+    )
+    .await
+    .expect("TIMEOUT: real LLM sampling hung")
+    .expect("Tool call failed");
+
+    assert!(!result.content.is_empty(), "Tool result should not be empty");
+
+    let text = result.content[0]
+        .content
+        .get("text")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    assert!(
+        text.contains("berlin") || text.contains("germany"),
+        "Expected LLM to mention Berlin/Germany, got: {:?}",
+        result.content
+    );
+    eprintln!("Real LLM sampling test passed: {:?}", result.content);
+}

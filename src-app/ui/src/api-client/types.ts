@@ -10,6 +10,13 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
+export interface Annotation {
+  annotation_type: string
+  content: string
+  id: string
+  label?: string
+}
+
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
 export interface AssignProviderToGroupRequest {
@@ -236,10 +243,13 @@ export interface CreateMcpServerRequest {
   enabled?: boolean
   environment_variables?: any
   headers?: any
+  max_concurrent_sessions?: number
   name: string
+  supports_sampling?: boolean
   timeout_seconds?: number
   transport_type: TransportType
   url?: string
+  usage_mode?: UsageMode
 }
 
 export interface CreateModelFromHubRequest {
@@ -394,6 +404,7 @@ export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 export interface File {
   checksum?: string
   created_at: string
+  created_by: string
   file_size: number
   filename: string
   has_thumbnail: boolean
@@ -797,12 +808,16 @@ export interface McpServer {
   environment_variables: any
   headers: any
   id: string
+  is_built_in: boolean
   is_system: boolean
+  max_concurrent_sessions?: number
   name: string
+  supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
   updated_at: string
   url?: string
+  usage_mode: UsageMode
   user_id?: string
 }
 
@@ -898,12 +913,27 @@ export interface MessageContentDataToolUse {
 export interface MessageContentDataToolResult {
   type: 'tool_result'
   content: string
+  hidden_content?: string | null
   is_error?: boolean | null
   name?: string | null
   tool_use_id: string
 }
+export interface MessageContentDataAnnotatedText {
+  type: 'annotated_text'
+  annotations: Annotation[]
+  text: string
+}
+export interface MessageContentDataElicitationRequest {
+  type: 'elicitation_request'
+  elicitation_id: string
+  message: string
+  requested_schema: any
+  response_content?: any
+  server: string
+  status: string
+}
 
-export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult
+export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataAnnotatedText | MessageContentDataElicitationRequest
 
 export interface MessageWithContent {
   assistant_id?: string
@@ -1128,6 +1158,15 @@ export interface Resource {
   uri: string
 }
 
+export interface RespondToElicitationRequest {
+  action: string
+  content?: any
+}
+
+export interface RespondToElicitationResponse {
+  success: boolean
+}
+
 export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
 }
@@ -1142,6 +1181,13 @@ export interface RuntimeVersionResponse {
   is_system_default: boolean
   platform: string
   version: string
+}
+
+export interface SSEChatStreamArtifactCreatedData {
+  file_id: string
+  file_size: number
+  filename: string
+  mime_type?: string
 }
 
 export interface SSEChatStreamCompleteData {
@@ -1162,6 +1208,8 @@ export type SSEChatStreamEvent = {
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
+  mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
+  artifactCreated: SSEChatStreamArtifactCreatedData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
@@ -1173,14 +1221,24 @@ export interface SSEChatStreamMcpApprovalRequiredData {
   tool_use_id: string
 }
 
+export interface SSEChatStreamMcpElicitationRequiredData {
+  elicitation_id: string
+  message: string
+  message_id?: string
+  requested_schema: any
+  server: string
+}
+
 export interface SSEChatStreamMcpToolCompleteData {
   is_error: boolean
+  result?: string
   server: string
   tool_name: string
   tool_use_id: string
 }
 
 export interface SSEChatStreamMcpToolStartData {
+  input: any
   server: string
   tool_name: string
   tool_use_id: string
@@ -1390,9 +1448,12 @@ export interface UpdateMcpServerRequest {
   enabled?: boolean
   environment_variables?: any
   headers?: any
+  max_concurrent_sessions?: number
   name?: string
+  supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
+  usage_mode?: UsageMode
 }
 
 export interface UpdateUserRequest {
@@ -1421,6 +1482,8 @@ export interface Usage {
   input_tokens?: number
   output_tokens?: number
 }
+
+export type UsageMode = 'auto' | 'always'
 
 export interface User {
   avatar_url?: string
@@ -1707,6 +1770,7 @@ export const ApiEndpoints = {
   'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
   'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
   'Mcp.getDefaults': 'GET /api/mcp/defaults',
+  'Mcp.respondToElicitation': 'POST /api/mcp/elicitation/{elicitation_id}/respond',
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
   'McpServer.create': 'POST /api/mcp/servers',
   'McpServer.delete': 'DELETE /api/mcp/servers/{id}',
@@ -1854,6 +1918,7 @@ export type ApiEndpointParameters = {
   'LocalRuntime.startModel': { model_id: string } & StartInstanceRequest
   'LocalRuntime.stopModel': { model_id: string }
   'Mcp.getDefaults': void
+  'Mcp.respondToElicitation': { elicitation_id: string } & RespondToElicitationRequest
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
   'McpServer.create': CreateMcpServerRequest
   'McpServer.delete': { id: string }
@@ -2001,6 +2066,7 @@ export type ApiEndpointResponses = {
   'LocalRuntime.startModel': InstanceResponse
   'LocalRuntime.stopModel': InstanceResponse
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
+  'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
   'McpServer.create': McpServer
   'McpServer.delete': void

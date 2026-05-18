@@ -46,7 +46,7 @@ pub enum MessageContentDataVariants {
 }
 
 /// Extension factory function
-pub fn create(pool: PgPool) -> Arc<dyn ChatExtension> {
+pub fn create(pool: PgPool, _config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
     Arc::new(super::file::FileExtension::new(pool))
 }
 

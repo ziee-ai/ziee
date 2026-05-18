@@ -349,5 +349,55 @@
       "Remembering user preferences and history"
     ],
     "example_prompts": null
+  },
+  {
+    "id": "biognosia",
+    "name": "biognosia",
+    "display_name": "Biognosia",
+    "description": "Knowledge-augmented MCP server specializing in systems biology and pathway analysis. Uses multi-step LLM sampling to retrieve and reason over biological pathway data, gene regulatory networks, and protein interactions.",
+    "category": "research",
+    "tags": [
+      "biology",
+      "pathways",
+      "rag",
+      "genomics",
+      "research",
+      "knowledge-graph"
+    ],
+    "transport_type": "http",
+    "command": null,
+    "args": null,
+    "environment_variables": {},
+    "url": "https://8081--main--cata-dind--khoi.coder.tinnguyen-lab.com/mcp",
+    "headers": null,
+    "supports_sampling": true,
+    "author": "Biognosia Team",
+    "homepage": null,
+    "repository_url": null,
+    "documentation_url": null,
+    "icon_url": null,
+    "version": "1.0.0",
+    "license": null,
+    "popularity_score": 80.0,
+    "download_count": null,
+    "rating": null,
+    "requires_desktop": false,
+    "platform_support": ["windows", "macos", "linux"],
+    "minimum_version": null,
+    "tool_count": 1,
+    "tool_categories": ["research", "biology"],
+    "example_tools": ["query_rag"],
+    "use_cases": [
+      "Query biological pathway databases",
+      "Analyze gene regulatory networks",
+      "Retrieve systems biology knowledge",
+      "Research protein interactions and signaling cascades"
+    ],
+    "example_prompts": [
+      "What pathways are involved in apoptosis?",
+      "Describe the MAPK signaling cascade",
+      "What is the role of BRCA1 in DNA repair?",
+      "How does p53 regulate the cell cycle?"
+    ]
   }
 ]

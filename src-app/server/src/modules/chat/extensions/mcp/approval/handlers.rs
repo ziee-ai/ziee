@@ -100,7 +100,7 @@ pub async fn update_mcp_settings(
             conversation_id,
             auth.user.id,
             request.approval_mode,
-            &request.auto_approved_tools,
+            request.auto_approved_tools.as_deref(),
             &request.disabled_servers,
             &request.loop_settings,
         )

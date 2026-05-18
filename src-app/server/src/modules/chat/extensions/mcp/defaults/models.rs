@@ -168,8 +168,9 @@ pub struct UpsertUserMcpDefaultsRequest {
     pub approval_mode: ApprovalMode,
 
     /// Auto-approved tools grouped by server
+    /// None = preserve existing value in DB; Some(vec) = overwrite with this value
     #[serde(default)]
-    pub auto_approved_tools: Vec<AutoApprovedServer>,
+    pub auto_approved_tools: Option<Vec<AutoApprovedServer>>,
 
     /// Disabled servers/tools (empty = all servers enabled)
     #[serde(default)]

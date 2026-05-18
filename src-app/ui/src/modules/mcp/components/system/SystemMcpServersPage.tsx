@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Input, Select, Typography, Flex } from 'antd'
+import { Button, Card, Input, Select, Typography, Flex } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
@@ -12,7 +12,7 @@ const { Text } = Typography
 export function SystemMcpServersPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [sortBy, setSortBy] = useState('name')
+  const [sortBy, setSortBy] = useState('created_at')
 
   const { systemServers, systemServersLoading } = Stores.SystemMcpServer
 
@@ -47,6 +47,8 @@ export function SystemMcpServersPage() {
           return a.display_name.localeCompare(b.display_name)
         case 'status':
           return Number(b.enabled) - Number(a.enabled)
+        case 'created_at':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         default:
           return 0
       }
@@ -92,6 +94,7 @@ export function SystemMcpServersPage() {
             style={{ minWidth: 120 }}
             aria-label="Sort servers"
             options={[
+              { label: 'Date Added', value: 'created_at' },
               { label: 'Name', value: 'name' },
               { label: 'Status', value: 'status' },
             ]}
@@ -130,15 +133,16 @@ export function SystemMcpServersPage() {
         {/* Servers List */}
         <div className="flex flex-col gap-3">
           {filteredServers.map(server => (
-            <div
+            <Card
               key={server.id}
-              className="flex flex-col gap-3"
+              classNames={{ body: '!p-0' }}
+              className="overflow-hidden"
               data-server-id={server.id}
               data-server-name={server.display_name}
             >
-              <McpServerCard server={server} isEditable={true} />
+              <McpServerCard server={server} isEditable={true} bordered={false} />
               <McpServerGroupsAssignmentCard serverId={server.id} />
-            </div>
+            </Card>
           ))}
         </div>
 

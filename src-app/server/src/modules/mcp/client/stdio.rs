@@ -227,6 +227,9 @@ impl McpClient for StdioMcpClient {
         &mut self,
         name: &str,
         arguments: serde_json::Value,
+        _message_id: Option<uuid::Uuid>,
+        _sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        _elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
     ) -> Result<ToolResult, AppError> {
         let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
@@ -251,6 +254,7 @@ impl McpClient for StdioMcpClient {
                 }
             }).collect(),
             is_error: result.is_error.unwrap_or(false),
+            is_final_response: false,
         })
     }
 

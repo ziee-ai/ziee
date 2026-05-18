@@ -45,7 +45,7 @@ impl SseMcpClient {
         // SSE typically uses HTTP POST for requests
         let client = reqwest::Client::new();
 
-        let mut request = client.post(format!("{}/rpc", self.base_url))
+        let mut request = client.post(&self.base_url)
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -102,8 +102,8 @@ impl McpClient for SseMcpClient {
 
         // Test connection with initialize
         let _: Value = self.send_request("initialize", serde_json::json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
+            "protocolVersion": "2025-03-26",
+            "capabilities": { "elicitation": {} },
             "clientInfo": {
                 "name": "ziee-chat",
                 "version": env!("CARGO_PKG_VERSION")
@@ -142,6 +142,9 @@ impl McpClient for SseMcpClient {
         &mut self,
         name: &str,
         arguments: Value,
+        _message_id: Option<uuid::Uuid>,
+        _sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        _elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
     ) -> Result<ToolResult, AppError> {
         if !self.is_connected() {
             return Err(AppError::internal_error("Not connected"));

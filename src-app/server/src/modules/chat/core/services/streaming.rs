@@ -315,7 +315,7 @@ impl StreamingService {
                     model: model_name.clone(),
                     messages,
                     temperature: Some(0.7),
-                    max_tokens: Some(4096),
+                    max_tokens: Some(8192),
                     ..Default::default()
                 };
 
@@ -344,6 +344,60 @@ impl StreamingService {
                             }));
                             break;
                         }
+                        Ok(BeforeLlmAction::CompleteWithContent { text, annotations }) => {
+                            // Approved sampling tool returned is_final_response: true before LLM call.
+                            // Stream the final text directly and skip the LLM entirely.
+                            tracing::info!("Skipping LLM call - extension provided final content");
+
+                            let content_offset = match Repos.chat.core.get_message_with_content(assistant_message_id).await {
+                                Ok(Some(msg)) => msg.contents.len() as i32,
+                                _ => 0,
+                            };
+
+                            let (content_type, content_data) = if annotations.is_empty() {
+                                ("text", MessageContentData::Text { text: text.clone() })
+                            } else {
+                                (
+                                    "annotated_text",
+                                    MessageContentData::AnnotatedText {
+                                        text: text.clone(),
+                                        annotations,
+                                    },
+                                )
+                            };
+                            if let Err(e) = Repos.chat.core.create_content(
+                                assistant_message_id,
+                                content_type,
+                                content_data,
+                                content_offset,
+                            ).await {
+                                let _ = tx.send(Err(e));
+                                break;
+                            }
+
+                            let text_chunk = ChatStreamChunk {
+                                content: vec![ContentBlockDelta::TextDelta { index: 0, delta: text }],
+                                message_id: Some(assistant_message_id),
+                                conversation_id: Some(conversation_id),
+                                branch_id: Some(branch_id),
+                                finish_reason: None,
+                                usage: None,
+                                error: None,
+                            };
+                            let _ = tx.send(Ok(text_chunk));
+
+                            let complete_chunk = ChatStreamChunk {
+                                content: Vec::new(),
+                                message_id: None,
+                                conversation_id: Some(conversation_id),
+                                branch_id: Some(branch_id),
+                                finish_reason: Some("stop".to_string()),
+                                usage: None,
+                                error: None,
+                            };
+                            let _ = tx.send(Ok(complete_chunk));
+                            break;
+                        }
                         Err(e) => {
                             let _ = tx.send(Err(e));
                             break;
@@ -365,6 +419,15 @@ impl StreamingService {
                     }
                 };
 
+                // Calculate content_offset from how many blocks the assistant message already has.
+                // Iteration 1 has offset=0; each subsequent iteration starts after the previous
+                // iteration's text+tool_use blocks (tool_results are added by the Continue handler).
+                let content_offset = history
+                    .iter()
+                    .find(|m| m.message.id == assistant_message_id)
+                    .map(|m| m.contents.len())
+                    .unwrap_or(0);
+
                 // Create accumulator with extension event channel
                 // Clone ext_tx for this iteration (allows multiple iterations with same channel)
                 let accumulator = Arc::new(Mutex::new(DeltaAccumulator {
@@ -380,6 +443,7 @@ impl StreamingService {
                     usage: None,
                     extension_tx: Some(ext_tx.clone()),
                     finalized: false,
+                    content_offset,
                 }));
 
                 // Stream chunks through accumulator
@@ -438,6 +502,63 @@ impl StreamingService {
                 };
 
                 match action {
+                    Some(crate::modules::chat::core::extension::ExtensionAction::CompleteWithContent { text, annotations }) => {
+                        // Tool result is a final user-facing answer (is_final_response: true).
+                        // Emit the text as a delta, save it to the DB, then complete.
+
+                        // Determine sequence_order for the new text block
+                        let content_offset = match Repos.chat.core.get_message_with_content(assistant_message_id).await {
+                            Ok(Some(msg)) => msg.contents.len() as i32,
+                            _ => 0,
+                        };
+
+                        // Persist as AnnotatedText (with annotations) or plain Text
+                        let (content_type, content_data) = if annotations.is_empty() {
+                            ("text", MessageContentData::Text { text: text.clone() })
+                        } else {
+                            (
+                                "annotated_text",
+                                MessageContentData::AnnotatedText {
+                                    text: text.clone(),
+                                    annotations,
+                                },
+                            )
+                        };
+                        if let Err(e) = Repos.chat.core.create_content(
+                            assistant_message_id,
+                            content_type,
+                            content_data,
+                            content_offset,
+                        ).await {
+                            let _ = tx.send(Err(e));
+                            break;
+                        }
+
+                        // Stream the text as a single delta to the client
+                        let text_chunk = ChatStreamChunk {
+                            content: vec![ContentBlockDelta::TextDelta { index: 0, delta: text }],
+                            message_id: Some(assistant_message_id),
+                            conversation_id: Some(conversation_id),
+                            branch_id: Some(branch_id),
+                            finish_reason: None,
+                            usage: None,
+                            error: None,
+                        };
+                        let _ = tx.send(Ok(text_chunk));
+
+                        // Send Complete event
+                        let complete_chunk = ChatStreamChunk {
+                            content: Vec::new(),
+                            message_id: None,
+                            conversation_id: Some(conversation_id),
+                            branch_id: Some(branch_id),
+                            finish_reason: Some("stop".to_string()),
+                            usage: None,
+                            error: None,
+                        };
+                        let _ = tx.send(Ok(complete_chunk));
+                        break;
+                    }
                     Some(crate::modules::chat::core::extension::ExtensionAction::Continue {
                         assistant_message_content,
                     }) => {
@@ -612,86 +733,123 @@ impl StreamingService {
                 continue;
             }
 
-            // Convert content blocks and categorize them
-            let mut tool_use_blocks = Vec::new();
-            let mut tool_result_blocks = Vec::new();
-            let mut other_blocks = Vec::new();
+            // For assistant messages: reconstruct proper per-iteration interleaving.
+            // The assistant DB message contains content from all previous iterations merged
+            // together. Walk blocks in sequence_order and flush one Assistant+Tool pair each
+            // time a complete tool_use → tool_result round trip is detected.
+            if role == MessageRole::Assistant {
+                let mut current_text: Vec<ai_providers::ContentBlock> = Vec::new();
+                let mut current_tool_uses: Vec<ai_providers::ContentBlock> = Vec::new();
+                let mut pending_ids: std::collections::HashSet<String> = Default::default();
+                let mut current_results: Vec<ai_providers::ContentBlock> = Vec::new();
 
+                for content in &msg_with_content.contents {
+                    let content_data = content.parse_content()?;
+
+                    // Skip FileAttachment in assistant messages — MCP artifacts are stored for
+                    // UI display only. The ToolResult content already tells the LLM about them.
+                    // Including them as image blocks confuses the LLM into embedding them inline.
+                    if matches!(content_data, MessageContentData::FileAttachment { .. }) {
+                        continue;
+                    }
+
+                    let block = if let Some(registry) = extension_registry {
+                        match registry.process_content_for_llm(&content_data, context).await? {
+                            Some(transformed_block) => Some(transformed_block),
+                            None => {
+                                let ext_content = serde_json::to_value(&content_data)
+                                    .map_err(|e| AppError::internal_error(format!("Failed to serialize content: {}", e)))?;
+                                registry.convert_extension_to_content_block(&ext_content)
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                    if let Some(b) = block {
+                        match &b {
+                            ai_providers::ContentBlock::ToolUse { id, .. } => {
+                                pending_ids.insert(id.clone());
+                                current_tool_uses.push(b);
+                            }
+                            ai_providers::ContentBlock::ToolResult { tool_use_id, .. } => {
+                                pending_ids.remove(tool_use_id);
+                                current_results.push(b);
+                                // All tool_uses for this iteration have results — flush one pair.
+                                // Each provider handles Role::Tool correctly:
+                                // - Anthropic: converts to "user" with tool_result content
+                                // - OpenAI: converts to "tool" role
+                                if pending_ids.is_empty() && !current_tool_uses.is_empty() {
+                                    let assistant_content: Vec<_> = current_text
+                                        .drain(..)
+                                        .chain(current_tool_uses.drain(..))
+                                        .collect();
+                                    messages.push(ChatMessage {
+                                        role: ai_providers::Role::Assistant,
+                                        content: assistant_content,
+                                    });
+                                    messages.push(ChatMessage {
+                                        role: ai_providers::Role::Tool,
+                                        content: current_results.drain(..).collect(),
+                                    });
+                                }
+                            }
+                            _ => current_text.push(b),
+                        }
+                    }
+                }
+
+                // Trailing content: in-progress iteration with no result yet, or a pure-text
+                // final answer. Anthropic requires text and tool_use in the same message, and
+                // the conversation must NOT end with an assistant message — both are satisfied
+                // because in normal operation the last block in history is always a tool_result
+                // (the Continue handler only advances the loop after writing the result to DB).
+                // During the approval flow, unmatched tool_uses here are intentional: before_llm_call
+                // will append the real tool_results as a following User message.
+                let trailing: Vec<_> = current_text.into_iter().chain(current_tool_uses).collect();
+                if !trailing.is_empty() {
+                    messages.push(ChatMessage {
+                        role: ai_providers::Role::Assistant,
+                        content: trailing,
+                    });
+                }
+
+                continue; // skip the non-assistant path below
+            }
+
+            // Non-assistant messages (user): convert all blocks normally
+            let mut all_blocks = Vec::new();
             for content in &msg_with_content.contents {
                 let content_data = content.parse_content()?;
 
-                // All content types are now extension types - use registry for all conversions
                 let block = if let Some(registry) = extension_registry {
-                    // Try extension-specific transformation first
                     match registry.process_content_for_llm(&content_data, context).await? {
                         Some(transformed_block) => Some(transformed_block),
                         None => {
-                            // Fallback: convert extension content to ContentBlock
                             let ext_content = serde_json::to_value(&content_data)
                                 .map_err(|e| AppError::internal_error(format!("Failed to serialize content: {}", e)))?;
                             registry.convert_extension_to_content_block(&ext_content)
                         }
                     }
                 } else {
-                    None // No registry, cannot convert content
+                    None
                 };
 
-                // Categorize block by type
                 if let Some(b) = block {
-                    match &b {
-                        ai_providers::ContentBlock::ToolUse { .. } => tool_use_blocks.push(b),
-                        ai_providers::ContentBlock::ToolResult { .. } => tool_result_blocks.push(b),
-                        _ => other_blocks.push(b),
-                    }
+                    all_blocks.push(b);
                 }
             }
 
-            // For assistant messages with tool blocks, split into proper sequence for API
-            if role == MessageRole::Assistant && (!tool_use_blocks.is_empty() || !tool_result_blocks.is_empty()) {
-                // 1. Tool use blocks → Assistant message
-                if !tool_use_blocks.is_empty() {
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Assistant,
-                        content: tool_use_blocks,
-                    });
-                }
-
-                // 2. Tool result blocks → Tool message (unified interface!)
-                // Each provider handles Role::Tool correctly:
-                // - Anthropic: converts to "user" with tool_result content
-                // - OpenAI: converts to "tool" role
-                if !tool_result_blocks.is_empty() {
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Tool,
-                        content: tool_result_blocks,
-                    });
-                }
-
-                // 3. Other content (text, thinking) → Assistant message
-                if !other_blocks.is_empty() {
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Assistant,
-                        content: other_blocks,
-                    });
-                }
-            } else {
-                // Non-tool messages: combine all blocks normally
-                let all_blocks: Vec<_> = [tool_use_blocks, tool_result_blocks, other_blocks]
-                    .into_iter()
-                    .flatten()
-                    .collect();
-
-                if !all_blocks.is_empty() {
-                    let ai_role = match role {
-                        MessageRole::User => ai_providers::Role::User,
-                        MessageRole::Assistant => ai_providers::Role::Assistant,
-                        MessageRole::System => continue,
-                    };
-                    messages.push(ChatMessage {
-                        role: ai_role,
-                        content: all_blocks,
-                    });
-                }
+            if !all_blocks.is_empty() {
+                let ai_role = match role {
+                    MessageRole::User => ai_providers::Role::User,
+                    MessageRole::Assistant => ai_providers::Role::Assistant,
+                    MessageRole::System => continue,
+                };
+                messages.push(ChatMessage {
+                    role: ai_role,
+                    content: all_blocks,
+                });
             }
         }
 
@@ -795,6 +953,9 @@ struct DeltaAccumulator {
     extension_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     /// Flag to track if finalize() has been called (prevents double-finalization)
     finalized: bool,
+    /// Offset into the assistant message's global sequence_order for this iteration.
+    /// Iteration 1 starts at 0, iteration 2 starts at 3 (after text+tool_use+result), etc.
+    content_offset: usize,
 }
 
 impl DeltaAccumulator {
@@ -941,7 +1102,7 @@ impl DeltaAccumulator {
                 self.assistant_message_id,
                 accumulated.content_type,
                 content_json,
-                accumulated.index as i32
+                (self.content_offset + accumulated.index) as i32
             )
             .execute(&mut *tx)
             .await
@@ -979,7 +1140,7 @@ impl DeltaAccumulator {
                     self.assistant_message_id,
                     content_type,
                     content_json,
-                    index as i32
+                    (self.content_offset + index) as i32
                 )
                 .execute(&mut *tx)
                 .await

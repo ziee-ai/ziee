@@ -56,8 +56,8 @@ pub struct SendMessageRequestFields {
 
 /// Factory function to create the extension instance
 /// Called by the auto-registration system
-pub fn create(pool: PgPool) -> Arc<dyn ChatExtension> {
-    Arc::new(super::mcp::McpChatExtension::new(pool))
+pub fn create(pool: PgPool, config: Arc<crate::core::config::Config>) -> Arc<dyn ChatExtension> {
+    Arc::new(super::mcp::McpChatExtension::new(pool, config))
 }
 
 /// Register this extension with the distributed slice
@@ -81,6 +81,22 @@ pub struct SSEChatStreamMcpToolStartData {
     pub tool_name: String,
     /// MCP server executing the tool
     pub server: String,
+    /// Tool input parameters (for display in "Show details" panel)
+    pub input: serde_json::Value,
+}
+
+/// Event data for an artifact file created by a tool (via MCP resource_link)
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SSEChatStreamArtifactCreatedData {
+    /// UUID of the file in the files table
+    pub file_id: String,
+    /// Display filename
+    pub filename: String,
+    /// MIME type of the file
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// File size in bytes
+    pub file_size: i64,
 }
 
 /// Event data for MCP tool execution completion
@@ -94,6 +110,23 @@ pub struct SSEChatStreamMcpToolCompleteData {
     pub server: String,
     /// Whether the tool execution resulted in an error
     pub is_error: bool,
+    /// Tool result text, truncated to 2000 chars (for display in "Show details" panel)
+    pub result: Option<String>,
+}
+
+/// Event data for MCP elicitation required (server is requesting human input)
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SSEChatStreamMcpElicitationRequiredData {
+    /// Per-elicitation random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond
+    pub elicitation_id: String,
+    /// ID of the assistant message that triggered this elicitation (informational)
+    pub message_id: Option<String>,
+    /// Human-readable prompt from the MCP server
+    pub message: String,
+    /// JSON Schema describing the requested fields (per SEP-1330)
+    pub requested_schema: serde_json::Value,
+    /// Display name of the MCP server that sent the request
+    pub server: String,
 }
 
 /// Event data for MCP tool approval required
@@ -128,6 +161,10 @@ pub enum SSEChatStreamEventVariants {
     McpToolComplete(SSEChatStreamMcpToolCompleteData),
     /// Tool requires approval before execution
     McpApprovalRequired(SSEChatStreamMcpApprovalRequiredData),
+    /// MCP server requires structured human input (elicitation)
+    McpElicitationRequired(SSEChatStreamMcpElicitationRequiredData),
+    /// A tool created an artifact file (via MCP resource_link) that should be shown as a file card
+    ArtifactCreated(SSEChatStreamArtifactCreatedData),
 }
 
 // ============================================================================
@@ -177,5 +214,37 @@ pub enum MessageContentDataVariants {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
+        /// System context for the LLM (e.g. download URLs) — never rendered to users.
+        /// Stripped from API responses by strip_hidden_content_serialize in core/models/content.rs.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hidden_content: Option<String>,
+    },
+
+    /// Final answer with inline annotation markers and server-resolved annotation content.
+    /// Produced when an MCP server returns is_final_response: true with an annotations block.
+    /// The text contains inline [id] markers; annotations hold the server-formatted markdown content.
+    AnnotatedText {
+        /// Answer text with inline annotation markers (e.g. [chunk-abc-001], [fig1])
+        text: String,
+        /// Annotations keyed by ID — each has a markdown `content` field rendered in the drawer
+        annotations: Vec<crate::modules::chat::extensions::mcp::content::Annotation>,
+    },
+
+    /// Elicitation request — MCP server asking the user for structured input.
+    /// Persisted to DB immediately when the request arrives so it survives page reloads.
+    ElicitationRequest {
+        /// Per-elicitation random UUID matching the SSE event
+        elicitation_id: String,
+        /// Human-readable prompt from the MCP server
+        message: String,
+        /// JSON Schema (SEP-1330) describing the requested fields
+        requested_schema: serde_json::Value,
+        /// Display name of the MCP server that sent the request
+        server: String,
+        /// "pending" | "accepted" | "declined" | "cancelled"
+        status: String,
+        /// User's submitted field values (only present when status = "accepted")
+        #[serde(skip_serializing_if = "Option::is_none")]
+        response_content: Option<serde_json::Value>,
     },
 }

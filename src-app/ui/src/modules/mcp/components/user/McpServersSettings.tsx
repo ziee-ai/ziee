@@ -13,7 +13,7 @@ export function McpServersSettings() {
   const { servers, loading, error } = Stores.McpServer
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sortBy, setSortBy] = useState('name')
+  const [sortBy, setSortBy] = useState('created_at')
 
   useEffect(() => {
     if (error) {
@@ -57,6 +57,8 @@ export function McpServersSettings() {
           return Number(b.enabled) - Number(a.enabled)
         case 'type':
           return Number(b.is_system) - Number(a.is_system)
+        case 'created_at':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         default:
           return 0
       }
@@ -142,6 +144,7 @@ export function McpServersSettings() {
             style={{ minWidth: 120 }}
             aria-label="Sort servers"
             options={[
+              { label: 'Date Added', value: 'created_at' },
               { label: 'Name', value: 'name' },
               { label: 'Status', value: 'status' },
               { label: 'Type', value: 'type' },

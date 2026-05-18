@@ -173,9 +173,12 @@ export function McpConfigModal() {
 
     setSaving(true)
     try {
-      // Pass available server IDs to compute disabled_servers
+      // Pass available server IDs and full tool lists to compute disabled_servers (including partial tool disabling)
       const availableServerIds = enabledServers.map(s => s.id)
-      await mcpStore.saveConversationConfig(currentConversationId, availableServerIds)
+      const serverToolsMap = new Map(
+        Array.from(serverTools.entries()).map(([id, tools]) => [id, tools.map(t => t.name)])
+      )
+      await mcpStore.saveConversationConfig(currentConversationId, availableServerIds, serverToolsMap)
       console.log('[MCP Config Modal] Configuration saved successfully')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save configuration:', error)
@@ -197,7 +200,7 @@ export function McpConfigModal() {
     setSavingDefaults(true)
     try {
       const availableServerIds = enabledServers.map(s => s.id)
-      await mcpStore.saveUserDefaults(currentConversationId, availableServerIds)
+      await mcpStore.saveUserDefaults(currentConversationId, availableServerIds, true)
       console.log('[MCP Config Modal] Saved as user defaults')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save as defaults:', error)
@@ -259,7 +262,7 @@ export function McpConfigModal() {
                   <Text strong className="text-sm">{tool.name}</Text>
                   {approvalMode === 'manual_approve' && (
                     <div className="flex items-center gap-1">
-                      <Text type="secondary" className="text-xs">Auto</Text>
+                      <Text type="secondary" className="text-xs">Auto Approve</Text>
                       <Switch
                         size="small"
                         checked={isToolAutoApproved(server.id, tool.name)}
