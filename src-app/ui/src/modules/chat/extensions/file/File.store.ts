@@ -35,6 +35,19 @@ interface FileExtensionStore {
   backupSelectedFiles: Map<string, FileEntity> | null
   backupUploadingFiles: Map<string, FileUploadProgress> | null
 
+  // Cache for file entities shown in message history (fetched on demand)
+  messageFilesCache: Map<string, FileEntity>
+  messageFilesLoadingSet: Set<string>
+
+  // Cache for thumbnail blob URLs (shared across selectedFiles + messageFilesCache)
+  thumbnailUrls: Map<string, string>
+  thumbnailLoadingSet: Set<string>
+
+  // Cache for all preview page blob URLs (used for PDF scroll view)
+  // Map<fileId, Array<blobUrl|null>> — null means that page hasn't loaded yet
+  previewPageUrls: Map<string, (string | null)[]>
+  previewPageLoadingSet: Set<string>
+
   // Actions
   uploadFiles: (files: File[]) => Promise<void>
   removeFile: (fileId: string) => void
@@ -56,6 +69,82 @@ interface FileExtensionStore {
   getBackupFiles: () => { selectedFiles: Map<string, FileEntity>; uploadingFiles: Map<string, FileUploadProgress> } | null
   restoreFromBackup: () => void
   clearBackup: () => void
+
+  // Per-ID content cache for right panel tabs (supports multiple open tabs)
+  fileTextContents: Map<string, string>
+  fileTextLoadingSet: Set<string>
+  fileBinaryContents: Map<string, ArrayBuffer | null>
+  fileBinaryLoadingSet: Set<string>
+  fileViewModes: Map<string, 'compiled' | 'raw'>
+
+  /**
+   * Returns cached text content for the file. Triggers load on first call.
+   * Returns null while loading. Call from render — no useEffect needed.
+   * Pass the file entity to avoid a race condition when messageFilesCache hasn't loaded yet.
+   */
+  getFileTextContent: (fileId: string, file?: FileEntity) => string | null
+
+  /**
+   * Async action: fetches text/html/svg content and stores in fileTextContents.
+   */
+  loadFileTextContent: (fileId: string, file?: FileEntity) => Promise<void>
+
+  /**
+   * Returns cached binary content for the file. Triggers load on first call.
+   * Returns null while loading. Only populated for binary formats (e.g. xlsx).
+   * Pass the file entity to avoid a race condition when messageFilesCache hasn't loaded yet.
+   */
+  getFileBinaryContent: (fileId: string, file?: FileEntity) => ArrayBuffer | null
+
+  /**
+   * Async action: fetches binary content and stores in fileBinaryContents.
+   */
+  loadFileBinaryContent: (fileId: string, file?: FileEntity) => Promise<void>
+
+  /** Sets the view mode (compiled/raw) for a specific file tab. */
+  setFileViewMode: (fileId: string, mode: 'compiled' | 'raw') => void
+
+  /**
+   * Returns the cached file entity for a message file, or the fallback if not yet loaded.
+   * Triggers async loading in the background on first call for a given fileId.
+   * Components call this directly (no useEffect needed) — store handles re-renders.
+   */
+  getMessageFile: (fileId: string, fallback: FileEntity) => FileEntity
+
+  /**
+   * Async action: fetches full file entity and updates messageFilesCache.
+   */
+  loadMessageFile: (fileId: string) => Promise<void>
+
+  /**
+   * Returns the cached thumbnail blob URL for a file, or null if not yet loaded.
+   * Triggers async loading when the file has has_thumbnail=true and preview_page_count>0.
+   * Components call this directly (no useEffect needed) — store handles re-renders.
+   * Pass the file entity to avoid a race condition when messageFilesCache hasn't loaded yet.
+   */
+  getThumbnailUrl: (fileId: string, file?: FileEntity) => string | null
+
+  /**
+   * Async action: fetches page-1 preview and stores blob URL in thumbnailUrls.
+   */
+  loadThumbnail: (fileId: string) => Promise<void>
+
+  /**
+   * Returns the cached preview page URLs for a file, or a null-filled array if not yet loaded.
+   * Triggers async loading on first call. Components call this directly — store re-renders progressively.
+   */
+  getPreviewPageUrls: (file: FileEntity) => (string | null)[]
+
+  /**
+   * Async action: fetches all preview pages one by one and stores blob URLs.
+   * Updates page slots individually so the UI renders progressively.
+   */
+  loadPreviewPages: (file: FileEntity) => Promise<void>
+
+  /**
+   * Triggers a browser download for the given file. Throws on failure.
+   */
+  downloadFile: (file: FileEntity) => Promise<void>
 }
 
 /**
@@ -69,6 +158,19 @@ export const createFileExtensionStore = () =>
     restoredFileIds: new Set(),
     backupSelectedFiles: null,
     backupUploadingFiles: null,
+    messageFilesCache: new Map(),
+    messageFilesLoadingSet: new Set(),
+    thumbnailUrls: new Map(),
+    thumbnailLoadingSet: new Set(),
+    previewPageUrls: new Map(),
+    previewPageLoadingSet: new Set(),
+
+    // Per-ID content cache for right panel tabs
+    fileTextContents: new Map(),
+    fileTextLoadingSet: new Set(),
+    fileBinaryContents: new Map(),
+    fileBinaryLoadingSet: new Set(),
+    fileViewModes: new Map(),
 
     // Upload files with progress tracking
     uploadFiles: async (files: File[]) => {
@@ -134,17 +236,14 @@ export const createFileExtensionStore = () =>
             newUploading.delete(progressId)
             newSelected.set(uploadedFile.id, uploadedFile)
 
-            console.log(
-              `[FileStore] File uploaded: ${uploadedFile.filename} (${uploadedFile.id})`,
-            )
-            console.log(
-              '[FileStore] Selected files:',
-              Array.from(newSelected.keys()),
-            )
-
             state.uploadingFiles = newUploading
             state.selectedFiles = newSelected
           })
+
+          // Trigger thumbnail loading if the uploaded file has a preview
+          if (uploadedFile.has_thumbnail && uploadedFile.preview_page_count > 0) {
+            get().loadThumbnail(uploadedFile.id)
+          }
         } catch (error) {
           // Upload failed
           set((state) => {
@@ -170,10 +269,28 @@ export const createFileExtensionStore = () =>
     // Remove a selected file
     removeFile: (fileId: string) => {
       const isRestored = get().restoredFileIds.has(fileId)
+      // Revoke thumbnail blob URL if present
+      const thumbnailUrl = get().thumbnailUrls.get(fileId)
+      if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl)
+      // Revoke preview page blob URLs if present
+      const pageUrls = get().previewPageUrls.get(fileId)
+      if (pageUrls) pageUrls.forEach(url => url && URL.revokeObjectURL(url))
       set((state) => {
         const newSelected = new Map(state.selectedFiles)
         newSelected.delete(fileId)
+        const newThumbnails = new Map(state.thumbnailUrls)
+        newThumbnails.delete(fileId)
+        const newLoadingSet = new Set(state.thumbnailLoadingSet)
+        newLoadingSet.delete(fileId)
+        const newPageUrls = new Map(state.previewPageUrls)
+        newPageUrls.delete(fileId)
+        const newPageLoadingSet = new Set(state.previewPageLoadingSet)
+        newPageLoadingSet.delete(fileId)
         state.selectedFiles = newSelected
+        state.thumbnailUrls = newThumbnails
+        state.thumbnailLoadingSet = newLoadingSet
+        state.previewPageUrls = newPageUrls
+        state.previewPageLoadingSet = newPageLoadingSet
       })
       // Only delete from server if the file was uploaded in this session,
       // not if it was restored from an existing message
@@ -199,17 +316,40 @@ export const createFileExtensionStore = () =>
     clearFiles: () => {
       console.log('[FileStore] clearFiles() called')
       const restoredIds = get().restoredFileIds
-      const sessionFileIds = [...get().selectedFiles.keys()].filter(
-        id => !restoredIds.has(id)
-      )
+      const selectedIds = [...get().selectedFiles.keys()]
+      const sessionFileIds = selectedIds.filter(id => !restoredIds.has(id))
       if (sessionFileIds.length > 0) {
         // Server deletion for session-uploaded files would go here
         console.log('[FileStore] Session files cleared (server deletion if applicable):', sessionFileIds)
       }
+      // Revoke thumbnail blob URLs for all selected files
+      const thumbnailUrls = get().thumbnailUrls
+      for (const fileId of selectedIds) {
+        const url = thumbnailUrls.get(fileId)
+        if (url) URL.revokeObjectURL(url)
+      }
+      // Revoke preview page blob URLs for all selected files
+      const previewPageUrls = get().previewPageUrls
+      for (const fileId of selectedIds) {
+        const pages = previewPageUrls.get(fileId)
+        if (pages) pages.forEach(url => url && URL.revokeObjectURL(url))
+      }
       set((state) => {
+        const newThumbnails = new Map(state.thumbnailUrls)
+        for (const fileId of selectedIds) newThumbnails.delete(fileId)
+        const newLoadingSet = new Set(state.thumbnailLoadingSet)
+        for (const fileId of selectedIds) newLoadingSet.delete(fileId)
+        const newPageUrls = new Map(state.previewPageUrls)
+        for (const fileId of selectedIds) newPageUrls.delete(fileId)
+        const newPageLoadingSet = new Set(state.previewPageLoadingSet)
+        for (const fileId of selectedIds) newPageLoadingSet.delete(fileId)
         state.selectedFiles = new Map()
         state.uploadingFiles = new Map()
         state.restoredFileIds = new Set()
+        state.thumbnailUrls = newThumbnails
+        state.thumbnailLoadingSet = newLoadingSet
+        state.previewPageUrls = newPageUrls
+        state.previewPageLoadingSet = newPageLoadingSet
       })
     },
 
@@ -226,6 +366,17 @@ export const createFileExtensionStore = () =>
         state.selectedFiles = newSelected
         state.restoredFileIds = newRestoredIds
       })
+      // Trigger thumbnail loading for restored files that have previews
+      for (const file of files) {
+        if (
+          file.has_thumbnail &&
+          file.preview_page_count > 0 &&
+          !get().thumbnailUrls.has(file.id) &&
+          !get().thumbnailLoadingSet.has(file.id)
+        ) {
+          get().loadThumbnail(file.id)
+        }
+      }
       console.log(`[FileStore] Restored ${files.length} file(s) from edit message`)
     },
 
@@ -245,6 +396,114 @@ export const createFileExtensionStore = () =>
       return Array.from(uploadingFiles.values()).some(
         file => file.status === 'pending' || file.status === 'uploading'
       )
+    },
+
+    getFileTextContent: (fileId: string, file?: FileEntity): string | null => {
+      const cached = get().fileTextContents.get(fileId)
+      if (cached !== undefined) return cached
+
+      if (!get().fileTextLoadingSet.has(fileId)) {
+        Promise.resolve().then(() => get().loadFileTextContent(fileId, file))
+      }
+
+      return null
+    },
+
+    loadFileTextContent: async (fileId: string, fallbackFile?: FileEntity): Promise<void> => {
+      if (get().fileTextLoadingSet.has(fileId) || get().fileTextContents.has(fileId)) return
+
+      const file = get().messageFilesCache.get(fileId) ?? get().selectedFiles.get(fileId) ?? fallbackFile
+      if (!file) return
+
+      set((state) => {
+        const newSet = new Set(state.fileTextLoadingSet)
+        newSet.add(fileId)
+        state.fileTextLoadingSet = newSet
+      })
+
+      try {
+        let text = ''
+        const e = file.filename.split('.').pop()?.toLowerCase() ?? ''
+        const isHtmlOrSvg =
+          file.mime_type === 'text/html' || file.mime_type === 'image/svg+xml' ||
+          e === 'html' || e === 'htm' || e === 'svg'
+        if (isHtmlOrSvg) {
+          const response = await ApiClient.File.download({ file_id: file.id })
+          const blob = response instanceof Blob ? response : new Blob([response])
+          text = await blob.text()
+        } else {
+          const response = await ApiClient.File.getTextContent({ file_id: file.id })
+          text = typeof response === 'string' ? response : await (response as Blob).text()
+        }
+        set((state) => {
+          const newContents = new Map(state.fileTextContents)
+          newContents.set(fileId, text)
+          const newSet = new Set(state.fileTextLoadingSet)
+          newSet.delete(fileId)
+          state.fileTextContents = newContents
+          state.fileTextLoadingSet = newSet
+        })
+      } catch (error) {
+        set((state) => {
+          const newSet = new Set(state.fileTextLoadingSet)
+          newSet.delete(fileId)
+          state.fileTextLoadingSet = newSet
+        })
+        console.error('[FileStore] Failed to load file text content:', error)
+      }
+    },
+
+    getFileBinaryContent: (fileId: string, file?: FileEntity): ArrayBuffer | null => {
+      const cached = get().fileBinaryContents.get(fileId)
+      if (cached !== undefined) return cached
+
+      if (!get().fileBinaryLoadingSet.has(fileId)) {
+        Promise.resolve().then(() => get().loadFileBinaryContent(fileId, file))
+      }
+
+      return null
+    },
+
+    loadFileBinaryContent: async (fileId: string, fallbackFile?: FileEntity): Promise<void> => {
+      if (get().fileBinaryLoadingSet.has(fileId) || get().fileBinaryContents.has(fileId)) return
+
+      const file = get().messageFilesCache.get(fileId) ?? get().selectedFiles.get(fileId) ?? fallbackFile
+      if (!file) return
+
+      set((state) => {
+        const newSet = new Set(state.fileBinaryLoadingSet)
+        newSet.add(fileId)
+        state.fileBinaryLoadingSet = newSet
+      })
+
+      try {
+        const response = await ApiClient.File.download({ file_id: file.id })
+        const blob = response instanceof Blob ? response : new Blob([response])
+        const buffer = await blob.arrayBuffer()
+        set((state) => {
+          const newContents = new Map(state.fileBinaryContents)
+          newContents.set(fileId, buffer)
+          const newSet = new Set(state.fileBinaryLoadingSet)
+          newSet.delete(fileId)
+          state.fileBinaryContents = newContents
+          state.fileBinaryLoadingSet = newSet
+        })
+      } catch (error) {
+        set((state) => {
+          const newSet = new Set(state.fileBinaryLoadingSet)
+          newSet.delete(fileId)
+          state.fileBinaryLoadingSet = newSet
+        })
+        console.error('[FileStore] Failed to load file binary content:', error)
+      }
+    },
+
+    setFileViewMode: (fileId: string, mode: 'compiled' | 'raw') => {
+      set((state) => {
+        const newModes = new Map(state.fileViewModes)
+        newModes.set(fileId, mode)
+        state.fileViewModes = newModes
+      })
     },
 
     // Backup current files (before clearing)
@@ -288,6 +547,151 @@ export const createFileExtensionStore = () =>
         state.backupUploadingFiles = null
       })
       console.log('[FileStore] Cleared file backup')
+    },
+
+    getMessageFile: (fileId: string, fallback: FileEntity): FileEntity => {
+      const cached = get().messageFilesCache.get(fileId)
+      if (!cached && !get().messageFilesLoadingSet.has(fileId)) {
+        // Defer to avoid calling set() during React render (would cause React warning)
+        Promise.resolve().then(() => get().loadMessageFile(fileId))
+      }
+      return cached ?? fallback
+    },
+
+    loadMessageFile: async (fileId: string): Promise<void> => {
+      set((state) => {
+        const newSet = new Set(state.messageFilesLoadingSet)
+        newSet.add(fileId)
+        state.messageFilesLoadingSet = newSet
+      })
+      try {
+        const fileInfo = await ApiClient.File.get({ file_id: fileId })
+        set((state) => {
+          const newCache = new Map(state.messageFilesCache)
+          newCache.set(fileId, fileInfo)
+          const newSet = new Set(state.messageFilesLoadingSet)
+          newSet.delete(fileId)
+          state.messageFilesCache = newCache
+          state.messageFilesLoadingSet = newSet
+        })
+        // Trigger thumbnail loading if the file has a preview
+        if (fileInfo.has_thumbnail && fileInfo.preview_page_count > 0) {
+          get().loadThumbnail(fileId)
+        }
+      } catch (error) {
+        set((state) => {
+          const newSet = new Set(state.messageFilesLoadingSet)
+          newSet.delete(fileId)
+          state.messageFilesLoadingSet = newSet
+        })
+        console.error(`[FileStore] Failed to load message file ${fileId}:`, error)
+      }
+    },
+
+    getThumbnailUrl: (fileId: string, fallbackFile?: FileEntity): string | null => {
+      const cached = get().thumbnailUrls.get(fileId)
+      if (cached) return cached
+
+      if (!get().thumbnailLoadingSet.has(fileId)) {
+        const file = get().selectedFiles.get(fileId) ?? get().messageFilesCache.get(fileId) ?? fallbackFile
+        if (file?.has_thumbnail && file?.preview_page_count > 0) {
+          get().loadThumbnail(fileId)
+        }
+      }
+
+      return null
+    },
+
+    getPreviewPageUrls: (file: FileEntity): (string | null)[] => {
+      const cached = get().previewPageUrls.get(file.id)
+      if (cached) return cached
+
+      if (!get().previewPageLoadingSet.has(file.id) && file.preview_page_count > 0) {
+        Promise.resolve().then(() => get().loadPreviewPages(file))
+      }
+
+      // Return a null-filled placeholder array so the component can render spinners
+      return Array(file.preview_page_count).fill(null)
+    },
+
+    loadPreviewPages: async (file: FileEntity): Promise<void> => {
+      set((state) => {
+        const newSet = new Set(state.previewPageLoadingSet)
+        newSet.add(file.id)
+        // Initialise with null slots
+        const newPageUrls = new Map(state.previewPageUrls)
+        newPageUrls.set(file.id, Array(file.preview_page_count).fill(null))
+        state.previewPageLoadingSet = newSet
+        state.previewPageUrls = newPageUrls
+      })
+
+      const blobUrls: string[] = []
+      try {
+        for (let page = 1; page <= file.preview_page_count; page++) {
+          const response = await ApiClient.File.getPreview({ file_id: file.id, page })
+          const url = URL.createObjectURL(response)
+          blobUrls.push(url)
+
+          // Update slot-by-slot so the UI renders progressively
+          set((state) => {
+            const existing = state.previewPageUrls.get(file.id)
+            if (!existing) return
+            const updated = [...existing]
+            updated[page - 1] = url
+            const newPageUrls = new Map(state.previewPageUrls)
+            newPageUrls.set(file.id, updated)
+            state.previewPageUrls = newPageUrls
+          })
+        }
+      } catch (error) {
+        console.debug(`[FileStore] Failed to load preview pages for ${file.id}:`, error)
+      } finally {
+        set((state) => {
+          const newSet = new Set(state.previewPageLoadingSet)
+          newSet.delete(file.id)
+          state.previewPageLoadingSet = newSet
+        })
+      }
+    },
+
+    loadThumbnail: async (fileId: string): Promise<void> => {
+      set((state) => {
+        const newSet = new Set(state.thumbnailLoadingSet)
+        newSet.add(fileId)
+        state.thumbnailLoadingSet = newSet
+      })
+      try {
+        const response = await ApiClient.File.getPreview({ file_id: fileId, page: 1 })
+        const objectUrl = URL.createObjectURL(response)
+        set((state) => {
+          const newUrls = new Map(state.thumbnailUrls)
+          newUrls.set(fileId, objectUrl)
+          const newSet = new Set(state.thumbnailLoadingSet)
+          newSet.delete(fileId)
+          state.thumbnailUrls = newUrls
+          state.thumbnailLoadingSet = newSet
+        })
+      } catch (error) {
+        set((state) => {
+          const newSet = new Set(state.thumbnailLoadingSet)
+          newSet.delete(fileId)
+          state.thumbnailLoadingSet = newSet
+        })
+        console.debug(`[FileStore] Failed to load thumbnail for ${fileId}:`, error)
+      }
+    },
+
+    downloadFile: async (file: FileEntity): Promise<void> => {
+      const response = await ApiClient.File.download({ file_id: file.id })
+      const blob = response instanceof Blob ? response : new Blob([response])
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file.filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
     },
   }))
 

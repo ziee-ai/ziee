@@ -22,12 +22,14 @@ impl FileRepository {
             r#"
             INSERT INTO files (
                 id, user_id, filename, file_size, mime_type, checksum,
-                has_thumbnail, preview_page_count, text_page_count, processing_metadata
+                has_thumbnail, preview_page_count, text_page_count, processing_metadata,
+                created_by
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id, user_id, filename, file_size, mime_type, checksum,
                       has_thumbnail, preview_page_count, text_page_count,
                       processing_metadata as "processing_metadata!: _",
+                      created_by,
                       created_at as "created_at: _",
                       updated_at as "updated_at: _"
             "#,
@@ -40,7 +42,8 @@ impl FileRepository {
             data.has_thumbnail,
             data.preview_page_count,
             data.text_page_count,
-            data.processing_metadata
+            data.processing_metadata,
+            data.created_by
         )
         .fetch_one(&self.pool)
         .await
@@ -57,6 +60,7 @@ impl FileRepository {
             SELECT id, user_id, filename, file_size, mime_type, checksum,
                    has_thumbnail, preview_page_count, text_page_count,
                    processing_metadata as "processing_metadata!: _",
+                   created_by,
                    created_at as "created_at: _",
                    updated_at as "updated_at: _"
             FROM files
@@ -83,6 +87,7 @@ impl FileRepository {
             SELECT id, user_id, filename, file_size, mime_type, checksum,
                    has_thumbnail, preview_page_count, text_page_count,
                    processing_metadata as "processing_metadata!: _",
+                   created_by,
                    created_at as "created_at: _",
                    updated_at as "updated_at: _"
             FROM files
@@ -123,6 +128,7 @@ impl FileRepository {
             SELECT id, user_id, filename, file_size, mime_type, checksum,
                    has_thumbnail, preview_page_count, text_page_count,
                    processing_metadata as "processing_metadata!: _",
+                   created_by,
                    created_at as "created_at: _",
                    updated_at as "updated_at: _"
             FROM files

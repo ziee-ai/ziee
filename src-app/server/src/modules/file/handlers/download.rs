@@ -46,7 +46,7 @@ pub async fn download_file(
     let file_data = storage
         .load_original(user_id, file_id, &extension)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     // Build response headers using array of tuples (like reference implementation)
     let headers = [
@@ -152,7 +152,7 @@ pub async fn download_with_token(
     let file_data = storage
         .load_original(user_id, file_id, &extension)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     // Build response headers using array of tuples (like reference implementation)
     let headers = [
