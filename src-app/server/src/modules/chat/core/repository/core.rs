@@ -184,13 +184,16 @@ impl ChatCoreRepository {
         .await
     }
 
-    /// Create a new message
+    /// Create a new message with optional context (model, assistant, MCP servers used)
     pub async fn create_message(
         &self,
         branch_id: Uuid,
         role: &str,
+        model_id: Option<Uuid>,
+        assistant_id: Option<Uuid>,
+        mcp_server_ids: Option<Vec<Uuid>>,
     ) -> Result<crate::modules::chat::core::models::Message, AppError> {
-        messages::create_message(&self.pool, branch_id, role).await
+        messages::create_message(&self.pool, branch_id, role, model_id, assistant_id, mcp_server_ids).await
     }
 
     /// Get a message by ID
