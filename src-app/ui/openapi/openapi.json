@@ -8225,6 +8225,10 @@
             ],
             "format": "uuid"
           },
+          "fork_level": {
+            "description": "Distinguishes edit ('user') from regenerate ('assistant') branches.\n Used by the frontend to anchor the branch navigator at the correct message after page reload.",
+            "type": "string"
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -8240,6 +8244,7 @@
         "required": [
           "id",
           "conversation_id",
+          "fork_level",
           "created_at"
         ]
       },
@@ -8776,6 +8781,11 @@
         "description": "Request to create a new branch (for edit/regenerate)\n Both parent_branch_id (from conversation's active branch) and from_message_id are required",
         "type": "object",
         "properties": {
+          "fork_level": {
+            "description": "Whether this branch was created by editing the user message ('user')\n or regenerating the assistant response ('assistant'). Defaults to 'user'.",
+            "type": "string",
+            "default": "user"
+          },
           "from_message_id": {
             "type": "string",
             "format": "uuid"
@@ -11927,6 +11937,13 @@
         "description": "Message entity - Represents a single message in a conversation\n Messages belong to branches via the branch_messages junction table",
         "type": "object",
         "properties": {
+          "assistant_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -11937,6 +11954,23 @@
           },
           "id": {
             "type": "string",
+            "format": "uuid"
+          },
+          "mcp_server_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "originated_from_id": {
@@ -12168,6 +12202,13 @@
         "description": "Message with its content blocks",
         "type": "object",
         "properties": {
+          "assistant_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "contents": {
             "type": "array",
             "items": {
@@ -12184,6 +12225,23 @@
           },
           "id": {
             "type": "string",
+            "format": "uuid"
+          },
+          "mcp_server_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "originated_from_id": {
@@ -13799,6 +13857,11 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "fork_level": {
+            "description": "Fork level for the new branch: 'user' (edit flow) or 'assistant' (regenerate flow).\n Only used when create_branch_from_message_id is set. Defaults to 'user'.",
+            "type": "string",
+            "default": "user"
           },
           "mcp_config": {
             "description": "MCP configuration specifying which servers and tools to enable",

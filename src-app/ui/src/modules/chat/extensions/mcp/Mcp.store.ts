@@ -136,6 +136,8 @@ interface McpStore {
   getSelectedServersConfig: () => McpServerConfig[]
   /** Clear all server selections */
   clearSelection: () => void
+  /** Set enabled servers from a list of IDs (deselects all others) */
+  setEnabledServers: (serverIds: string[]) => void
 
   // Initialization methods
   __init__: {
@@ -769,6 +771,20 @@ export const createMcpStore = () =>
         state.selectedServers.clear()
       })
       console.log('[MCP Store] Cleared all server selections')
+    },
+
+    /**
+     * Set enabled servers from a list of IDs
+     * Deselects all current servers, then selects only the provided IDs
+     */
+    setEnabledServers: (serverIds: string[]) => {
+      set(state => {
+        state.selectedServers.clear()
+        for (const serverId of serverIds) {
+          state.selectedServers.set(serverId, { server_id: serverId, tools: [] })
+        }
+      })
+      console.log('[MCP Store] Set enabled servers:', serverIds)
     },
 
     // User defaults actions

@@ -22,6 +22,8 @@ interface AssistantStore {
   loadAssistants: () => Promise<void>
   /** Select assistant for current conversation */
   selectAssistant: (assistantId: string) => void
+  /** Clear selected assistant */
+  clearAssistant: () => void
 }
 
 /**
@@ -72,6 +74,15 @@ export const createAssistantStore = () =>
     selectAssistant: (assistantId: string) => {
       set(state => {
         state.selectedAssistantId = assistantId
+      })
+    },
+
+    /**
+     * Clear selected assistant
+     */
+    clearAssistant: () => {
+      set(state => {
+        state.selectedAssistantId = null
       })
     },
 
