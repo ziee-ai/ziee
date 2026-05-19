@@ -47,6 +47,15 @@ pub enum ExtensionAction {
         /// These are appended to the existing assistant message, NOT sent as new user message
         assistant_message_content: Vec<MessageContentData>,
     },
+
+    /// Stop streaming and emit the provided text directly to the user, bypassing the LLM.
+    /// Used when a tool result is already a final user-facing answer (e.g. is_final_response: true).
+    /// The text is streamed as a text delta and appended to the assistant message in the DB.
+    /// If annotations is non-empty, saved as AnnotatedText content type; otherwise plain Text.
+    CompleteWithContent {
+        text: String,
+        annotations: Vec<crate::modules::chat::extensions::mcp::content::Annotation>,
+    },
 }
 
 /// Action returned by extensions BEFORE LLM call
@@ -58,6 +67,14 @@ pub enum BeforeLlmAction {
     Continue,
     /// Skip LLM call, complete the turn gracefully
     Complete,
+    /// Skip LLM call and emit the provided text directly to the user.
+    /// Used when an approved sampling tool returns is_final_response: true —
+    /// the text is streamed as a text delta and appended to the assistant message in the DB.
+    /// If annotations is non-empty, saved as AnnotatedText content type; otherwise plain Text.
+    CompleteWithContent {
+        text: String,
+        annotations: Vec<crate::modules::chat::extensions::mcp::content::Annotation>,
+    },
 }
 
 /// Context passed to extension hooks during streaming
@@ -301,10 +318,10 @@ impl ExtensionRegistry {
         for ext in &self.extensions {
             let action = ext.before_llm_call(context, request, send_request, tx).await?;
 
-            // If any extension returns Complete, stop iterating and return it
-            if matches!(action, BeforeLlmAction::Complete) {
+            // If any extension returns Complete or CompleteWithContent, stop iterating and return it
+            if matches!(action, BeforeLlmAction::Complete | BeforeLlmAction::CompleteWithContent { .. }) {
                 tracing::info!("Extension {} requested to skip LLM call", ext.name());
-                return Ok(BeforeLlmAction::Complete);
+                return Ok(action);
             }
         }
         Ok(BeforeLlmAction::Continue)
@@ -321,8 +338,8 @@ impl ExtensionRegistry {
         for ext in &self.extensions {
             let action = ext.after_llm_call(context, final_message, tx).await?;
 
-            // If any extension returns Continue, stop iterating and return it
-            if matches!(action, ExtensionAction::Continue { .. }) {
+            // If any extension returns Continue or CompleteWithContent, stop iterating and return it
+            if matches!(action, ExtensionAction::Continue { .. } | ExtensionAction::CompleteWithContent { .. }) {
                 return Ok(action);
             }
         }

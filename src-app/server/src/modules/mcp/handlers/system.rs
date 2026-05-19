@@ -143,8 +143,8 @@ pub async fn delete_system_server(
 ) -> ApiResult<StatusCode> {
     Repos.mcp.delete_system_server(id).await?;
 
-    // Emit deletion event for other modules to react
-    event_bus.emit_async(McpServerEvent::system_server_deleted(id));
+    // Emit deletion event for other modules to react (synchronous so cleanup completes before response)
+    event_bus.emit(McpServerEvent::system_server_deleted(id)).await;
 
     Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
 }

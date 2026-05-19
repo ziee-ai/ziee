@@ -1,0 +1,167 @@
+name: llm-runtime-infrastructure-tests
+
+services:
+  # SSH server for testing SSH deployment
+  ssh-server:
+    image: linuxserver/openssh-server:latest
+    container_name: llm-runtime-ssh-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - PASSWORD_ACCESS=true
+      - USER_PASSWORD=testpass123
+      - USER_NAME=testuser
+    ports:
+      - "2222:2222"
+    volumes:
+      - ./test-ssh-keys:/config/.ssh
+    healthcheck:
+      test: ["CMD", "pgrep", "sshd"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - llm-test-network
+
+  # GPU-enabled llama.cpp server for testing model inference
+  llamacpp-gpu:
+    image: nvidia/cuda:12.2.0-devel-ubuntu22.04
+    container_name: llm-runtime-llamacpp-gpu
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
+    command: |
+      bash -c "
+        apt-get update &&
+        apt-get install -y wget build-essential cmake git libcurl4-openssl-dev &&
+        git clone https://github.com/ggerganov/llama.cpp.git /workspace/llama.cpp &&
+        cd /workspace/llama.cpp &&
+        cmake -B build -DGGML_CUDA=ON &&
+        cmake --build build --config Release --target llama-server &&
+        tail -f /dev/null
+      "
+    volumes:
+      - llama-workspace:/workspace
+      - llm-models:/models
+    networks:
+      - llm-test-network
+    healthcheck:
+      test: ["CMD", "test", "-f", "/workspace/llama.cpp/build/bin/llama-server"]
+      interval: 10s
+      timeout: 5s
+      retries: 120  # Allow ~20 minutes for build
+
+  # CPU-only llama.cpp for fallback testing
+  llamacpp-cpu:
+    image: ubuntu:22.04
+    container_name: llm-runtime-llamacpp-cpu
+    command: |
+      bash -c "
+        apt-get update &&
+        apt-get install -y wget build-essential cmake git libcurl4-openssl-dev &&
+        git clone https://github.com/ggerganov/llama.cpp.git /workspace/llama.cpp &&
+        cd /workspace/llama.cpp &&
+        cmake -B build &&
+        cmake --build build --config Release --target llama-server &&
+        tail -f /dev/null
+      "
+    volumes:
+      - llama-cpu-workspace:/workspace
+      - llm-models:/models
+    networks:
+      - llm-test-network
+    healthcheck:
+      test: ["CMD", "test", "-f", "/workspace/llama.cpp/build/bin/llama-server"]
+      interval: 10s
+      timeout: 5s
+      retries: 120  # Allow ~20 minutes for build
+
+  # Model downloader - downloads TinyLlama for testing
+  model-downloader:
+    image: python:3.11-slim
+    container_name: llm-runtime-model-downloader
+    command:
+      - bash
+      - -c
+      - |
+        pip install -q huggingface-hub
+        python << 'PYEOF'
+        from huggingface_hub import hf_hub_download
+        import os
+        print('Downloading TinyLlama test model...')
+        model_path = hf_hub_download(
+            repo_id='TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF',
+            filename='tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
+            local_dir='/models',
+            local_dir_use_symlinks=False
+        )
+        print(f'Model downloaded to: {model_path}')
+        PYEOF
+    volumes:
+      - llm-models:/models
+    networks:
+      - llm-test-network
+
+  # SSH server with GPU access for remote deployment testing
+  ssh-gpu-server:
+    image: nvidia/cuda:12.2.0-devel-ubuntu22.04
+    container_name: llm-runtime-ssh-gpu
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+      - CUDA_VISIBLE_DEVICES=0
+    command: |
+      bash -c "
+        apt-get update &&
+        apt-get install -y openssh-server sudo build-essential cmake git wget python3 libcurl4-openssl-dev &&
+        mkdir /var/run/sshd &&
+        useradd -m -s /bin/bash testuser &&
+        echo 'testuser:testpass123' | chpasswd &&
+        echo 'testuser ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
+        mkdir -p /home/testuser/.ssh &&
+        chmod 700 /home/testuser/.ssh &&
+        chown -R testuser:testuser /home/testuser/.ssh &&
+        git clone https://github.com/ggerganov/llama.cpp.git /opt/llama.cpp &&
+        cd /opt/llama.cpp &&
+        cmake -B build -DGGML_CUDA=ON &&
+        cmake --build build --config Release --target llama-server &&
+        ln -s /opt/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server &&
+        /usr/sbin/sshd -D -p 2223
+      "
+    ports:
+      - "2223:2223"
+    volumes:
+      - ./test-ssh-keys:/config/.ssh:ro
+      - llm-models:/models
+    networks:
+      - llm-test-network
+    healthcheck:
+      test: ["CMD", "pgrep", "sshd"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  llama-workspace:
+  llama-cpu-workspace:
+  llm-models:
+
+networks:
+  llm-test-network:
+    driver: bridge

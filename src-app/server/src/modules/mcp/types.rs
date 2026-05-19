@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::models::{McpServer, TransportType};
+use super::models::{McpServer, TransportType, UsageMode};
 
 // =====================================================
 // Request Types
@@ -31,6 +31,11 @@ pub struct CreateMcpServerRequest {
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
+
+    // Sampling configuration
+    pub supports_sampling: Option<bool>,
+    pub usage_mode: Option<UsageMode>,
+    pub max_concurrent_sessions: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -51,6 +56,11 @@ pub struct UpdateMcpServerRequest {
 
     // Runtime configuration
     pub timeout_seconds: Option<i32>,
+
+    // Sampling configuration
+    pub supports_sampling: Option<bool>,
+    pub usage_mode: Option<UsageMode>,
+    pub max_concurrent_sessions: Option<i32>,
 }
 
 // =====================================================

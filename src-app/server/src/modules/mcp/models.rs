@@ -70,6 +70,63 @@ impl TransportType {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageMode {
+    Auto,
+    Always,
+}
+
+impl<'r> Decode<'r, Postgres> for UsageMode {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
+        let s = <&str as Decode<Postgres>>::decode(value)?;
+        match s {
+            "auto" => Ok(UsageMode::Auto),
+            "always" => Ok(UsageMode::Always),
+            _ => Err(format!("Unknown usage mode: {}", s).into()),
+        }
+    }
+}
+
+impl<'q> Encode<'q, Postgres> for UsageMode {
+    fn encode_by_ref(
+        &self,
+        buf: &mut sqlx::postgres::PgArgumentBuffer,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        let s = match self {
+            UsageMode::Auto => "auto",
+            UsageMode::Always => "always",
+        };
+        <&str as Encode<Postgres>>::encode_by_ref(&s, buf)
+    }
+}
+
+impl Type<Postgres> for UsageMode {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <&str as Type<Postgres>>::type_info()
+    }
+}
+
+impl UsageMode {
+    pub fn from_str(s: &str) -> Result<Self, crate::common::AppError> {
+        match s {
+            "auto" => Ok(UsageMode::Auto),
+            "always" => Ok(UsageMode::Always),
+            _ => Err(crate::common::AppError::internal_error(format!(
+                "Unknown usage mode: {}",
+                s
+            ))),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            UsageMode::Auto => "auto".to_string(),
+            UsageMode::Always => "always".to_string(),
+        }
+    }
+}
+
 // =====================================================
 // Database Models
 // =====================================================
@@ -83,6 +140,7 @@ pub struct McpServer {
     pub description: Option<String>,
     pub enabled: bool,
     pub is_system: bool,
+    pub is_built_in: bool,
     pub transport_type: TransportType,
 
     // stdio transport
@@ -96,6 +154,11 @@ pub struct McpServer {
 
     // Runtime configuration
     pub timeout_seconds: i32,
+
+    // Sampling configuration
+    pub supports_sampling: bool,
+    pub usage_mode: UsageMode,
+    pub max_concurrent_sessions: Option<i32>,
 
     // Metadata
     pub created_at: DateTime<Utc>,

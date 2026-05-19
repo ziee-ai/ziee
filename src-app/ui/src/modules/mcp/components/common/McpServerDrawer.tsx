@@ -1,4 +1,4 @@
-import { Button, Form, Input, Select, Switch, App } from 'antd'
+import { Button, Form, Input, InputNumber, Select, Switch, App, Divider } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
@@ -52,7 +52,16 @@ export function McpServerDrawer() {
         env: editingServer.environment_variables
           ? JSON.stringify(editingServer.environment_variables, null, 2)
           : '',
+        headers:
+          editingServer.headers &&
+          Object.keys(editingServer.headers).length > 0
+            ? JSON.stringify(editingServer.headers, null, 2)
+            : '',
         enabled: editingServer.enabled,
+        supports_sampling: editingServer.supports_sampling ?? false,
+        usage_mode: editingServer.usage_mode ?? 'auto',
+        max_concurrent_sessions: editingServer.max_concurrent_sessions ?? undefined,
+        timeout_seconds: editingServer.timeout_seconds ?? 30,
       }
       form.setFieldsValue(formValues)
     } else if (open && (mode === 'create' || mode === 'create-system')) {
@@ -60,6 +69,8 @@ export function McpServerDrawer() {
       form.setFieldsValue({
         transport_type: 'stdio',
         enabled: true,
+        supports_sampling: false,
+        usage_mode: 'auto',
       })
     }
   }, [editingServer, open, mode, form])
@@ -107,6 +118,23 @@ export function McpServerDrawer() {
         }
       }
 
+      // Parse HTTP headers from JSON string
+      let headers = {}
+      if (values.headers && values.headers.trim()) {
+        try {
+          headers = JSON.parse(values.headers)
+          if (typeof headers !== 'object' || Array.isArray(headers)) {
+            message.error('HTTP Headers must be a JSON object')
+            Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
+            return
+          }
+        } catch (_error) {
+          message.error('Invalid JSON in HTTP Headers')
+          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
+          return
+        }
+      }
+
       const serverData = {
         name: values.name,
         display_name: values.display_name,
@@ -116,7 +144,12 @@ export function McpServerDrawer() {
         command: values.command,
         args: args,
         environment_variables: environmentVariables,
+        headers: headers,
         enabled: values.enabled ?? true,
+        supports_sampling: values.supports_sampling ?? false,
+        usage_mode: values.usage_mode ?? 'auto',
+        max_concurrent_sessions: values.max_concurrent_sessions ?? null,
+        timeout_seconds: values.timeout_seconds ?? 30,
       }
 
       if (mode === 'create') {
@@ -132,7 +165,12 @@ export function McpServerDrawer() {
           command: values.command,
           args: args,
           environment_variables: environmentVariables,
+          headers: headers,
           enabled: values.enabled ?? true,
+          supports_sampling: values.supports_sampling ?? false,
+          usage_mode: values.usage_mode ?? 'auto',
+          max_concurrent_sessions: values.max_concurrent_sessions ?? null,
+          timeout_seconds: values.timeout_seconds ?? 30,
         }
         await Stores.McpServer.updateMcpServer(editingServer.id, updateData)
         message.success('MCP server updated successfully')
@@ -149,7 +187,12 @@ export function McpServerDrawer() {
           command: values.command,
           args: args,
           environment_variables: environmentVariables,
+          headers: headers,
           enabled: values.enabled ?? true,
+          supports_sampling: values.supports_sampling ?? false,
+          usage_mode: values.usage_mode ?? 'auto',
+          max_concurrent_sessions: values.max_concurrent_sessions ?? null,
+          timeout_seconds: values.timeout_seconds ?? 30,
         }
         await Stores.SystemMcpServer.updateSystemServer(
           editingServer.id,
@@ -302,21 +345,79 @@ export function McpServerDrawer() {
           )}
 
           {(transportType === 'http' || transportType === 'sse') && (
-            <Form.Item
-              label="URL"
-              name="url"
-              rules={[
-                { required: true, message: 'Please enter a URL' },
-                { type: 'url', message: 'Please enter a valid URL' },
-              ]}
-            >
-              <Input placeholder="https://example.com/mcp" />
-            </Form.Item>
+            <>
+              <Form.Item
+                label="URL"
+                name="url"
+                rules={[
+                  { required: true, message: 'Please enter a URL' },
+                  { type: 'url', message: 'Please enter a valid URL' },
+                ]}
+              >
+                <Input placeholder="https://example.com/mcp" />
+              </Form.Item>
+
+              <Form.Item
+                label="HTTP Headers"
+                name="headers"
+                help='JSON object format, e.g., {"Authorization": "Bearer token"}'
+              >
+                <TextArea
+                  placeholder='{"Authorization": "Bearer token"}'
+                  rows={4}
+                  className="font-mono text-xs"
+                />
+              </Form.Item>
+            </>
           )}
 
           {/* Enabled */}
           <Form.Item label="Enabled" name="enabled" valuePropName="checked">
             <Switch />
+          </Form.Item>
+
+          {/* Timeout */}
+          <Form.Item
+            label="Timeout (seconds)"
+            name="timeout_seconds"
+            help="Maximum time to wait for a tool call response. Increase for servers that use sampling (multiple LLM calls)."
+          >
+            <InputNumber min={1} max={600} placeholder="30" style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Divider orientationMargin={0} className="text-sm text-gray-400">Sampling</Divider>
+
+          {/* Supports Sampling */}
+          <Form.Item
+            label="Enable MCP Sampling"
+            name="supports_sampling"
+            valuePropName="checked"
+            help="Allow this server to request LLM completions inline during tool execution (requires HTTP transport and server support)"
+          >
+            <Switch />
+          </Form.Item>
+
+          {/* Usage Mode */}
+          <Form.Item
+            label="Usage Mode"
+            name="usage_mode"
+            help="Auto: LLM decides when to call this server. Always: server is called before every LLM request to enrich context."
+          >
+            <Select
+              options={[
+                { label: 'Auto (LLM decides)', value: 'auto' },
+                { label: 'Always (pre-process every prompt)', value: 'always' },
+              ]}
+            />
+          </Form.Item>
+
+          {/* Max Concurrent Sessions */}
+          <Form.Item
+            label="Max Concurrent Sessions"
+            name="max_concurrent_sessions"
+            help="Limit simultaneous sampling sessions. Leave blank for unlimited. Users over the limit receive a friendly error."
+          >
+            <InputNumber min={1} placeholder="Unlimited" style={{ width: '100%' }} />
           </Form.Item>
         </Form>
 

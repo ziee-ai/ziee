@@ -23,6 +23,20 @@ pub use common::AppError;
 // Re-export async_trait for consistent EventHandler implementations
 pub use async_trait::async_trait;
 
+// Re-export MCP client types for integration tests
+pub use modules::mcp::client::http::HttpMcpClient;
+pub use modules::mcp::client::traits::McpClient;
+pub use modules::mcp::{McpServer, TransportType, UsageMode};
+pub use modules::mcp::sampling::handler::{ChatSamplingHandler, SamplingHandler};
+pub use modules::mcp::sampling::models::{
+    SamplingContent, SamplingCreateMessageRequest, SamplingCreateMessageResult,
+};
+pub use ai_providers::Provider as AiProvider;
+
+// Re-export MCP content types for integration tests
+#[doc(hidden)]
+pub use modules::chat::extensions::mcp::content::{Annotation, McpContentData, RichFile};
+
 // Re-export axum types for route building
 pub use axum::{Extension, Json, extract::State, http::StatusCode};
 pub use axum::routing::{get, post};

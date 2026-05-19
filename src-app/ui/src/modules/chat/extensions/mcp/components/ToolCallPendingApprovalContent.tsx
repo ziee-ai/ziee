@@ -27,48 +27,38 @@ interface ToolCallPendingApprovalContentProps {
 export function ToolCallPendingApprovalContent({
   toolCall,
 }: ToolCallPendingApprovalContentProps) {
-  const [isHidden, setIsHidden] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  // Hide the approval UI if already handled
-  if (isHidden) {
-    return null
-  }
 
   const handleApproveOnce = async () => {
     setIsSubmitting(true)
+    const mcpStore = Stores.Chat.__state.McpStore
+    // Optimistic status update: immediately switch out of 'pending_approval' so the
+    // approval panel disappears and shows the 'Running…' card instead. This update
+    // lives in McpStore (not local React state) and therefore survives the component
+    // remount that happens when loadMessages replaces the messages Map after streaming.
+    mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'started' })
     try {
-      const mcpStore = Stores.Chat.__state.McpStore
-
-      // Store approval decision (will be picked up by composeRequestFields)
       mcpStore.addApprovalDecision({
         tool_use_id: toolCall.tool_use_id,
         decision: 'approve',
         note: 'User approved tool execution (once)',
       })
-
-      // Hide the approval UI
-      setIsHidden(true)
-
-      // Resume chat by sending empty message with approval decision
-      // The MCP extension's composeRequestFields will include tool_approvals
       await Stores.Chat.sendMessage()
-
-      console.log(
-        '[MCP Approval] Tool approved once:',
-        toolCall.tool_name,
-      )
+      console.log('[MCP Approval] Tool approved once:', toolCall.tool_name)
     } catch (error) {
       console.error('[MCP Approval] Failed to approve tool:', error)
+      // Revert optimistic update so the approval panel reappears on failure
+      mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'pending_approval' })
       setIsSubmitting(false)
-      setIsHidden(false) // Show UI again on error
     }
   }
 
   const handleApproveForConversation = async () => {
     setIsSubmitting(true)
+    const mcpStore = Stores.Chat.__state.McpStore
+    // Optimistic status update (same rationale as handleApproveOnce)
+    mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'started' })
     try {
-      const mcpStore = Stores.Chat.__state.McpStore
       const chatState = Stores.Chat.__state
       const conversationId = chatState.conversation?.id || null
 
@@ -82,7 +72,7 @@ export function ToolCallPendingApprovalContent({
           const availableServerIds = (mcpServerState?.servers || [])
             .filter((s: { enabled: boolean }) => s.enabled)
             .map((s: { id: string }) => s.id)
-          await mcpStore.saveConversationConfig(conversationId, availableServerIds)
+          await mcpStore.saveConversationConfig(conversationId, availableServerIds, undefined, true)
         }
       }
 
@@ -93,49 +83,35 @@ export function ToolCallPendingApprovalContent({
         note: 'User approved tool for this conversation',
       })
 
-      setIsHidden(true)
       await Stores.Chat.sendMessage()
-
-      console.log(
-        '[MCP Approval] Tool approved for conversation:',
-        toolCall.tool_name,
-      )
+      console.log('[MCP Approval] Tool approved for conversation:', toolCall.tool_name)
     } catch (error) {
       console.error('[MCP Approval] Failed to approve tool:', error)
+      mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'pending_approval' })
       setIsSubmitting(false)
-      setIsHidden(false)
     }
   }
 
   const handleDeny = async () => {
     setIsSubmitting(true)
+    const mcpStore = Stores.Chat.__state.McpStore
+    // Optimistic status update to 'error' so the panel immediately shows denied state
+    mcpStore.updateToolCall(toolCall.tool_use_id, {
+      status: 'error',
+      error: 'Tool execution denied by user',
+    })
     try {
-      const mcpStore = Stores.Chat.__state.McpStore
-
-      // Store denial decision (will be picked up by composeRequestFields)
       mcpStore.addApprovalDecision({
         tool_use_id: toolCall.tool_use_id,
         decision: 'deny',
         note: 'User denied tool execution',
       })
-
-      // Hide the approval UI
-      setIsHidden(true)
-
-      // Update tool call status in store
-      mcpStore.updateToolCall(toolCall.tool_use_id, {
-        status: 'error',
-        error: 'Tool execution denied by user',
-      })
-
-      // Resume chat by sending empty message with denial decision
       await Stores.Chat.sendMessage()
-
       console.log('[MCP Approval] Tool denied:', toolCall.tool_name)
     } catch (error) {
       console.error('[MCP Approval] Failed to deny tool:', error)
+      mcpStore.updateToolCall(toolCall.tool_use_id, { status: 'pending_approval' })
       setIsSubmitting(false)
-      setIsHidden(false) // Show UI again on error
     }
   }
 

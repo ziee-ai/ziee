@@ -30,7 +30,10 @@ pub struct ToolContent {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ToolResult {
     pub content: Vec<ToolContent>,
+    #[serde(default, alias = "isError")]
     pub is_error: bool,
+    #[serde(default, alias = "isFinalResponse")]
+    pub is_final_response: bool,
 }
 
 #[async_trait]
@@ -47,11 +50,23 @@ pub trait McpClient: Send + Sync {
     /// List available tools
     async fn list_tools(&mut self) -> Result<Vec<Tool>, AppError>;
 
-    /// Call a tool
+    /// Call a tool.
+    ///
+    /// `sse_tx` — optional Axum browser SSE sender. When provided, the HTTP client
+    /// will forward `mcpElicitationRequired` events to the browser if the MCP server
+    /// sends an `elicitation/create` request mid-stream. Non-HTTP clients (stdio, SSE)
+    /// accept the parameter but ignore it.
+    ///
+    /// `message_id` — ID of the assistant message driving this tool call. Used by the
+    /// HTTP client to key the elicitation registry so that only the message owner can
+    /// respond via the REST endpoint. Non-HTTP clients accept and ignore it.
     async fn call_tool(
         &mut self,
         name: &str,
         arguments: Value,
+        message_id: Option<uuid::Uuid>,
+        sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
     ) -> Result<ToolResult, AppError>;
 
     /// List available resources

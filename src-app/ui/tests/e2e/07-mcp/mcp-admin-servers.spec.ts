@@ -265,4 +265,121 @@ test.describe('MCP - Admin System Servers', () => {
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
   })
+
+  test('should create HTTP server with sampling enabled', async ({ page }) => {
+    const serverData: McpServerFormData = {
+      name: 'test-sampling-http',
+      displayName: 'Test Sampling HTTP',
+      description: 'HTTP server with sampling enabled',
+      transportType: 'http',
+      url: 'https://sampling.example.com/mcp',
+      enabled: true,
+      supportsSampling: true,
+      usageMode: 'always',
+      maxConcurrentSessions: 3,
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    // Verify sampling badge and always badge are visible on the card
+    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).toBeVisible()
+    await expect(serverCard.locator('.ant-tag:has-text("Always")')).toBeVisible()
+  })
+
+  test('should show no sampling badge when supports_sampling is false', async ({ page }) => {
+    const serverData: McpServerFormData = {
+      name: 'test-no-sampling',
+      displayName: 'Test No Sampling',
+      transportType: 'http',
+      url: 'https://nosampling.example.com/mcp',
+      enabled: true,
+      // supportsSampling defaults to false — no explicit value
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).not.toBeVisible()
+    await expect(serverCard.locator('.ant-tag:has-text("Always")')).not.toBeVisible()
+  })
+
+  test('should preserve sampling fields when editing a server', async ({ page }) => {
+    // First create a server with sampling enabled
+    const serverData: McpServerFormData = {
+      name: 'test-edit-sampling',
+      displayName: 'Test Edit Sampling',
+      transportType: 'http',
+      url: 'https://editsampling.example.com/mcp',
+      enabled: true,
+      supportsSampling: true,
+      usageMode: 'always',
+      maxConcurrentSessions: 5,
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    // Open edit drawer
+    await clickEditServerButton(page, serverData.displayName, true)
+
+    // Verify sampling fields are pre-filled
+    const samplingSwitch = page.getByLabel('Enable MCP Sampling')
+    const isSamplingChecked = await samplingSwitch.evaluate((el) =>
+      el.classList.contains('ant-switch-checked')
+    )
+    expect(isSamplingChecked).toBe(true)
+
+    await expect(page.getByLabel('Usage Mode')).toContainText('Always')
+    await expect(page.getByLabel('Max Concurrent Sessions')).toHaveValue('5')
+  })
+
+  test('should update sampling settings via edit', async ({ page }) => {
+    // Create server without sampling
+    const serverData: McpServerFormData = {
+      name: 'test-update-sampling',
+      displayName: 'Test Update Sampling',
+      transportType: 'http',
+      url: 'https://updatesampling.example.com/mcp',
+      enabled: true,
+      supportsSampling: false,
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    // Verify no sampling badges initially
+    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).not.toBeVisible()
+
+    // Edit and enable sampling
+    await clickEditServerButton(page, serverData.displayName, true)
+    await fillMcpServerForm(page, {
+      ...serverData,
+      supportsSampling: true,
+      usageMode: 'always',
+    })
+    await submitMcpServerForm(page, 'update', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    // Verify sampling and always badges now appear
+    const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(updatedCard.locator('.ant-tag:has-text("Sampling")')).toBeVisible()
+    await expect(updatedCard.locator('.ant-tag:has-text("Always")')).toBeVisible()
+  })
 })
