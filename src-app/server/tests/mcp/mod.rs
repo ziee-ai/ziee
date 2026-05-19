@@ -1209,6 +1209,7 @@ mod conformance_test;         // Spec-conformance tests against `server-everythi
 mod conformance_errors_test;     // Error-path tests against in-process mock server
 mod conformance_streaming_test;  // SSE streaming edge-case tests via mock
 mod conformance_extended_test;   // Deeper conformance tests against `server-everything`
+mod conformance_elicitation_test; // Elicitation roundtrip tests via mock SSE server
 
 // ============================================================================
 // Sampling Field CRUD Tests

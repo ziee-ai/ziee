@@ -33,6 +33,14 @@ pub use modules::mcp::sampling::models::{
 };
 pub use ai_providers::Provider as AiProvider;
 
+// Re-export elicitation primitives for integration tests.
+#[doc(hidden)]
+pub use modules::mcp::elicitation::models::{
+    ElicitationResponse, ElicitationStartedNotification,
+};
+#[doc(hidden)]
+pub use modules::mcp::elicitation::registry as elicitation_registry;
+
 // Re-export MCP content types for integration tests
 #[doc(hidden)]
 pub use modules::chat::extensions::mcp::content::{Annotation, McpContentData, RichFile};
