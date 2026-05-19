@@ -18,6 +18,7 @@ pub struct File {
     pub preview_page_count: i32,
     pub text_page_count: i32,
     pub processing_metadata: serde_json::Value,
+    pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -35,6 +36,7 @@ pub struct FileCreateData {
     pub preview_page_count: i32,
     pub text_page_count: i32,
     pub processing_metadata: serde_json::Value,
+    pub created_by: String,
 }
 
 /// Processing metadata structure

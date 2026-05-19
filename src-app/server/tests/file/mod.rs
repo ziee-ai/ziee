@@ -465,6 +465,67 @@ async fn test_upload_xlsx_multisheet() {
 }
 
 // ============================================================================
+// File Provenance Tests (migration 34 — created_by column)
+// ============================================================================
+
+#[tokio::test]
+async fn test_upload_writes_created_by_user() {
+    // The created_by column is provenance metadata: who put the file into the
+    // system. Uploads through the HTTP endpoint are always user-attributed
+    // (the handler hardcodes "user"). Other write paths — code-sandbox LLM
+    // artifacts ("llm"), MCP-tool outputs ("mcp") — will land in follow-on
+    // branches; this test pins the upload-path contract so a future refactor
+    // can't silently drop or change the default.
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "provenance_user",
+        &["files::upload", "files::read"],
+    )
+    .await;
+
+    let file_bytes = b"provenance check".to_vec();
+    let form = multipart::Form::new().part(
+        "file",
+        multipart::Part::bytes(file_bytes)
+            .file_name("provenance.txt")
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+
+    let upload_resp = reqwest::Client::new()
+        .post(&server.api_url("/files/upload"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("upload request failed");
+    assert_eq!(upload_resp.status(), 201);
+
+    let upload_body: serde_json::Value = upload_resp.json().await.unwrap();
+    assert_eq!(
+        upload_body["created_by"], "user",
+        "upload response must report created_by='user'",
+    );
+
+    // Verify the column is also persisted (read-back via GET metadata).
+    let file_id = upload_body["id"].as_str().expect("upload response missing id");
+    let get_resp = reqwest::Client::new()
+        .get(&server.api_url(&format!("/files/{}", file_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("get request failed");
+    assert_eq!(get_resp.status(), 200);
+
+    let get_body: serde_json::Value = get_resp.json().await.unwrap();
+    assert_eq!(
+        get_body["created_by"], "user",
+        "GET /files/{{id}} must return created_by='user' for an uploaded file",
+    );
+}
+
+// ============================================================================
 // File Upload Tests - Validation & Errors
 // ============================================================================
 

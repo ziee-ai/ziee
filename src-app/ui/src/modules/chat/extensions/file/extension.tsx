@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   createExtension,
   type ChatExtension,
@@ -8,63 +7,59 @@ import { createFileExtensionStore } from '@/modules/chat/extensions/file/File.st
 import { FilePreviewList } from '@/modules/chat/extensions/file/components/FilePreviewList'
 import { FileAttachMenuItem } from '@/modules/chat/extensions/file/components/FileAttachMenuItem'
 import { FileCard } from '@/modules/chat/extensions/file/components/FileCard'
+import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment } from '@/api-client/types'
 
+// Augment the central PanelRendererMap so `displayInRightPanel({ type: 'file',
+// data: ... })` and `registerPanelRenderer('file', ...)` are type-checked.
+declare module '@/modules/chat/core/stores/Chat.store' {
+  interface PanelRendererMap {
+    file: { fileId: string }
+  }
+}
+
 /**
  * File attachment content renderer component
- * Renders file attachments in message bubbles using FileCard
+ * Renders file attachments in message bubbles using FileCard.
+ * Store handles all async fetching — no useState or useEffect needed here.
  */
-function FileAttachmentRenderer({ content: data }: ContentRendererProps) {
-  // data is the full MessageContent object, data.content has the file attachment data
+function FileAttachmentRenderer({ content: data, isUser }: ContentRendererProps) {
   const fileData = data.content as MessageContentDataFileAttachment
 
-  // Initialize immediately from content block data — card renders without waiting for API
-  // Use file_id as a stable key; fall back to empty string so hooks run unconditionally
-  const [file, setFile] = React.useState<FileEntity | null>(
-    fileData?.file_id && fileData?.filename
-      ? {
-          id: fileData.file_id,
-          filename: fileData.filename,
-          file_size: fileData.file_size,
-          mime_type: fileData.mime_type ?? undefined,
-          has_thumbnail: false,
-          preview_page_count: 0,
-          created_at: '',
-          updated_at: '',
-          user_id: '',
-          processing_metadata: null,
-          text_page_count: 0,
-        }
-      : null
-  )
+  if (!fileData?.file_id || !fileData?.filename) return null
 
-  // Fetch full file entity to enable thumbnails and preview modal
-  React.useEffect(() => {
-    if (!fileData?.file_id) return
-    const fetchFileInfo = async () => {
-      try {
-        const fileInfo = await ApiClient.File.get({ file_id: fileData.file_id })
-        if (fileInfo) setFile(fileInfo)
-      } catch (error) {
-        console.error('Failed to fetch file info:', error)
-        // Card already rendered from content block data — silent failure is acceptable
-      }
-    }
-    fetchFileInfo()
-  }, [fileData?.file_id])
+  // Fallback entity from content block data (shown while store fetches the full entity)
+  const fallback = {
+    id: fileData.file_id,
+    filename: fileData.filename,
+    file_size: fileData.file_size,
+    mime_type: fileData.mime_type ?? undefined,
+    has_thumbnail: false,
+    preview_page_count: 0,
+    created_at: '',
+    updated_at: '',
+    user_id: '',
+    created_by: '',
+    processing_metadata: null,
+    text_page_count: 0,
+  }
 
-  if (!file) return null
+  // Reactive subscription to messageFilesCache — re-renders when the file entity is loaded
+  const messageFilesCache = Stores.Chat.FileStore.messageFilesCache
+  const file = messageFilesCache.get(fileData.file_id) ?? fallback
+
+  // Trigger background load on first access (deferred inside store action — safe in render)
+  Stores.Chat.FileStore.getMessageFile(fileData.file_id, fallback)
 
   return (
-    <div className="inline-block">
-      <FileCard
-        file={file}
-        showFileName={true}
-        canRemove={false}
-        canDelete={false}
-      />
-    </div>
+    <FileCard
+      file={file}
+      variant={isUser ? 'square' : 'row'}
+      showFileName={true}
+      canRemove={false}
+      canDelete={false}
+    />
   )
 }
 
@@ -90,6 +85,26 @@ const fileExtension: ChatExtension = createExtension({
    * When edit ends (null): clear the file selection.
    */
   initialize: async () => {
+    // Register the file panel renderer so file tabs can be rendered AND
+    // restored from localStorage after reload. The renderer receives the
+    // serialized `data` ({ fileId }) and looks the actual File entity up
+    // from FileStore at render time.
+    const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
+    const { FilePanel: FilePanelComponent } = await import('./components/FilePanel')
+    const { FileOutlined: FileOutlinedIcon } = await import('@ant-design/icons')
+    const { Spin: SpinComponent } = await import('antd')
+    const { Stores: StoresRef } = await import('@/core/stores')
+
+    registerPanelRenderer('file', {
+      icon: <FileOutlinedIcon />,
+      component: ({ fileId }) => {
+        const { selectedFiles, messageFilesCache } = StoresRef.Chat.FileStore
+        const file = selectedFiles.get(fileId) ?? messageFilesCache.get(fileId) ?? null
+        if (!file) return <SpinComponent />
+        return <FilePanelComponent file={file} />
+      },
+    })
+
     const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
     const { Stores } = await import('@/core/stores')
 
@@ -119,6 +134,7 @@ const fileExtension: ChatExtension = createExtension({
                 created_at: '',
                 updated_at: '',
                 user_id: '',
+                created_by: '',
                 processing_metadata: null,
                 text_page_count: 0,
               }

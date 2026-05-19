@@ -28,12 +28,24 @@ export interface ConversationTitleUpdatedEvent extends BaseEvent {
 }
 
 /**
+ * Emitted when a conversation's message count changes
+ */
+export interface ConversationMessageCountChangedEvent extends BaseEvent {
+  type: 'conversation.messageCountChanged'
+  data: {
+    conversationId: string
+    messageCount: number
+  }
+}
+
+/**
  * Augment global AppEvents registry
  */
 declare module '@/core/events' {
   interface AppEvents {
     'conversation.created': ConversationCreatedEvent
     'conversation.titleUpdated': ConversationTitleUpdatedEvent
+    'conversation.messageCountChanged': ConversationMessageCountChangedEvent
   }
 }
 

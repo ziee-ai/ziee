@@ -1,240 +1,48 @@
-import { useState, useEffect } from 'react'
-import { Button, Spin, Typography, theme, App, Drawer, Card } from 'antd'
-import { CloseOutlined, DeleteOutlined, DownloadOutlined } from '@ant-design/icons'
-import { ApiClient } from '@/api-client'
+import { Button, Spin, Typography, theme, App } from 'antd'
+import {
+  CloseOutlined,
+  DeleteOutlined,
+  FileTextOutlined,
+  DownloadOutlined,
+} from '@ant-design/icons'
+import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileUploadProgress } from '@/modules/chat/extensions/file/File.store'
+import { getViewer } from '@/modules/chat/extensions/file/fileViewerRegistry'
 
 const { Text } = Typography
 
-/**
- * Format file size for display
- */
 function formatFileSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-  if (bytes < 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
-/**
- * Check if file is a text file based on extension
- */
-function isTextFile(filename: string): boolean {
-  const textExtensions = [
-    'txt',
-    'md',
-    'json',
-    'xml',
-    'yaml',
-    'yml',
-    'csv',
-    'log',
-    'ini',
-    'conf',
-    'sh',
-    'bash',
-    'py',
-    'js',
-    'ts',
-    'jsx',
-    'tsx',
-    'html',
-    'css',
-    'scss',
-    'sql',
-    'env',
-  ]
-  const ext = filename.split('.').pop()?.toLowerCase() || ''
-  return textExtensions.includes(ext)
+// Icon comes from the matching viewer module's entry. Falls back to a generic
+// file-text icon when no viewer is registered or the viewer omitted the field.
+function getFileIcon(file: FileEntity): React.ReactNode {
+  return getViewer(file.filename, file.mime_type ?? undefined)?.icon
+    ?? <FileTextOutlined />
 }
 
 export interface FileCardProps {
-  // Either a completed file or an uploading file
   file?: FileEntity
   uploadProgress?: FileUploadProgress
-
-  // Actions
   onRemove?: () => void
-  onDownload?: () => void
   onClick?: () => void
-
-  // Display options
   showFileName?: boolean
   canRemove?: boolean
   canDelete?: boolean
-}
-
-interface FileModalContentProps {
-  file: FileEntity
-}
-
-/**
- * File preview modal content showing thumbnails and download button
- */
-function FileModalContent({ file }: FileModalContentProps) {
-  const [thumbnails, setThumbnails] = useState<string[]>([])
-  const [thumbnailOrder, setThumbnailOrder] = useState<number[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isAnimating, setIsAnimating] = useState(false)
-  const { message } = App.useApp()
-
-  // Load all page thumbnails
-  useEffect(() => {
-    console.log('[FileModalContent] Loading thumbnails for:', {
-      filename: file.filename,
-      preview_page_count: file.preview_page_count,
-    })
-
-    if (file.preview_page_count === 0) {
-      console.log('[FileModalContent] No preview pages available')
-      setLoading(false)
-      return
-    }
-
-    let isMounted = true
-    const urls: string[] = []
-
-    const loadThumbnails = async () => {
-      setLoading(true)
-      try {
-        for (let page = 1; page <= file.preview_page_count; page++) {
-          console.log('[FileModalContent] Loading page:', page)
-          const response = await ApiClient.File.getPreview({
-            file_id: file.id,
-            page,
-          })
-          const objectUrl = window.URL.createObjectURL(response)
-          urls.push(objectUrl)
-        }
-        if (isMounted) {
-          setThumbnails(urls)
-          setThumbnailOrder(Array.from({ length: urls.length }, (_, i) => i))
-        }
-      } catch (error) {
-        console.debug('Failed to load thumbnails:', error)
-        message.error('Failed to load file preview')
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
-      }
-    }
-
-    loadThumbnails()
-
-    return () => {
-      isMounted = false
-      urls.forEach(url => window.URL.revokeObjectURL(url))
-    }
-  }, [file.id, file.preview_page_count])
-
-  const handleThumbnailClick = () => {
-    if (thumbnailOrder.length <= 1 || isAnimating) return
-
-    setIsAnimating(true)
-
-    setTimeout(() => {
-      const newOrder = [...thumbnailOrder]
-      const frontIndex = newOrder.shift()
-      if (frontIndex !== undefined) {
-        newOrder.push(frontIndex)
-      }
-      setThumbnailOrder(newOrder)
-    }, 50)
-
-    setTimeout(() => {
-      setIsAnimating(false)
-    }, 350)
-  }
-
-  const handleDownload = async () => {
-    try {
-      const response = await ApiClient.File.download({ file_id: file.id })
-      const blob = response instanceof Blob ? response : new Blob([response])
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = file.filename
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-    } catch (error) {
-      console.error('Failed to download file:', error)
-      message.error('Failed to download file')
-    }
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-4 py-4">
-      <div className="text-center">
-        {loading ? (
-          <div className="text-6xl mb-4">⏳</div>
-        ) : thumbnails.length > 0 ? (
-          <div className="mb-4 relative">
-            <div
-              className="relative group"
-              style={{ width: 'fit-content', margin: '0 auto' }}
-              onClick={handleThumbnailClick}
-              title={
-                thumbnailOrder.length > 1
-                  ? 'Click to cycle through thumbnails'
-                  : ''
-              }
-            >
-              {thumbnailOrder.map((originalIndex, displayIndex) => (
-                <img
-                  key={`${originalIndex}-${displayIndex}`}
-                  src={thumbnails[originalIndex]}
-                  alt={`${file.filename} - Page ${originalIndex + 1}`}
-                  className="max-w-full max-h-96 object-contain rounded shadow transition-all duration-300 ease-in-out hover:scale-105"
-                  style={{
-                    position: displayIndex === 0 ? 'relative' : 'absolute',
-                    top: displayIndex === 0 ? 0 : `${displayIndex * 8}px`,
-                    left: displayIndex === 0 ? 0 : `${displayIndex * 8}px`,
-                    zIndex: thumbnailOrder.length - displayIndex,
-                    transform: `${displayIndex > 0 ? 'rotate(2deg)' : 'none'} ${
-                      isAnimating && displayIndex === 0
-                        ? 'scale(0.95) translateY(-5px)'
-                        : ''
-                    }`,
-                    opacity: isAnimating && displayIndex === 0 ? 0.8 : 1,
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div>
-            <div className="text-6xl mb-4">📄</div>
-            <Text type="secondary">
-              Preview not available for this file type
-            </Text>
-          </div>
-        )}
-        <div className="pt-4">
-          <Text type="secondary">
-            File size: {formatFileSize(file.file_size)}
-          </Text>
-        </div>
-      </div>
-      <Button type="primary" icon={<DownloadOutlined />} onClick={handleDownload}>
-        Download File
-      </Button>
-    </div>
-  )
+  variant?: 'row' | 'square'
 }
 
 /**
  * FileCard Component
- * Square thumbnail card matching reference implementation
+ *
+ * Two variants:
+ * - 'row' (default): full-width horizontal card for assistant artifact messages
+ * - 'square': compact square card for user message attachments and file input area
  */
 export function FileCard({
   file,
@@ -244,98 +52,26 @@ export function FileCard({
   showFileName = true,
   canRemove = true,
   canDelete = false,
+  variant = 'row',
 }: FileCardProps) {
   const { token } = theme.useToken()
-  const { modal, message } = App.useApp()
-  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
-  const [fileContent, setFileContent] = useState<string>('')
+  const { message } = App.useApp()
 
-  // Load thumbnail for files that have previews
-  useEffect(() => {
-    if (!file || !file.has_thumbnail || file.preview_page_count === 0) {
-      return
-    }
+  const thumbnailUrls = Stores.Chat.FileStore.thumbnailUrls
+  const thumbnailUrl = file ? (thumbnailUrls.get(file.id) ?? null) : null
 
-    let isMounted = true
-    let objectUrl: string | null = null
-
-    const loadThumbnail = async () => {
-      try {
-        const response = await ApiClient.File.getPreview({
-          file_id: file.id,
-          page: 1,
-        })
-        objectUrl = window.URL.createObjectURL(response)
-        if (isMounted) {
-          setThumbnailUrl(objectUrl)
-        }
-      } catch (error) {
-        console.debug('Failed to load thumbnail:', error)
-      }
-    }
-
-    loadThumbnail()
-
-    // Cleanup function to revoke object URL and prevent memory leaks
-    return () => {
-      isMounted = false
-      if (objectUrl) {
-        window.URL.revokeObjectURL(objectUrl)
-      }
-    }
-  }, [file?.id])
-
-  // Handle card click to show preview or download
-  const handleCardClick = async () => {
+  const handleCardClick = () => {
     if (!file || uploadProgress) return
+    if (onClick) { onClick(); return }
 
-    console.log('[FileCard] Click - file:', {
-      filename: file.filename,
-      has_thumbnail: file.has_thumbnail,
-      preview_page_count: file.preview_page_count,
-      mime_type: file.mime_type,
+    Stores.Chat.displayInRightPanel({
+      id: file.id,
+      title: file.filename,
+      type: 'file',
+      data: { fileId: file.id },
     })
-
-    // If custom onClick is provided, use that instead
-    if (onClick) {
-      onClick()
-      return
-    }
-
-    // For text files, show content in drawer
-    if (isTextFile(file.filename)) {
-      try {
-        const response = await ApiClient.File.getTextContent({ file_id: file.id })
-        // Response is a Blob, convert to text
-        const text = await response.text()
-        setFileContent(text)
-        setIsDrawerOpen(true)
-      } catch (error) {
-        console.error('Failed to fetch file content:', error)
-        message.error('Failed to load file content')
-      }
-    } else {
-      // For other files, show modal with thumbnails
-      modal.info({
-        icon: null,
-        title: file.filename,
-        width: 600,
-        content: <FileModalContent file={file} />,
-        footer: null,
-        closable: true,
-        maskClosable: true,
-        styles: {
-          body: {
-            backgroundColor: token.colorBgLayout,
-            border: `1px solid ${token.colorBorderSecondary}`,
-          },
-        },
-      })
-    }
   }
 
-  // Uploading state
   if (uploadProgress) {
     return (
       <div className="relative flex flex-col w-full h-full">
@@ -346,20 +82,15 @@ export function FileCard({
             backgroundColor: token.colorBgContainer,
           }}
         >
-          {/* Square aspect ratio enforcer - invisible 1x1 base64 image */}
           <img
             src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB2aWV3Qm94PSIwIDAgMSAxIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9InRyYW5zcGFyZW50Ii8+PC9zdmc+"
             alt=""
             className="block w-full h-auto opacity-0"
             style={{ aspectRatio: '1' }}
           />
-
-          {/* Spinner - centered */}
           <div className="absolute inset-0 flex items-center justify-center">
             <Spin />
           </div>
-
-          {/* Remove button for uploading files */}
           {onRemove && (
             <Button
               danger
@@ -369,26 +100,17 @@ export function FileCard({
               className="!absolute top-1 right-1"
             />
           )}
-
-          {/* File extension */}
           <Text
             className="absolute top-1 left-1 rounded px-1 !text-[9px]"
-            style={{
-              backgroundColor: token.colorBgContainer,
-            }}
+            style={{ backgroundColor: token.colorBgContainer }}
             strong
           >
             {uploadProgress.filename.split('.').pop()?.toUpperCase() || 'FILE'}
           </Text>
-
-          {/* Upload status */}
           {uploadProgress.status === 'error' && (
             <Text
               className="absolute top-1 right-1 rounded px-1 !text-[9px]"
-              style={{
-                backgroundColor: token.colorError,
-                color: token.colorWhite,
-              }}
+              style={{ backgroundColor: token.colorError, color: token.colorWhite }}
             >
               ERROR
             </Text>
@@ -396,9 +118,7 @@ export function FileCard({
         </div>
         <div
           className="w-full text-center text-xs text-ellipsis overflow-hidden"
-          style={{
-            display: showFileName ? 'block' : 'none',
-          }}
+          style={{ display: showFileName ? 'block' : 'none' }}
         >
           <Text ellipsis={true} className="whitespace-nowrap !truncate !text-xs">
             {uploadProgress.filename}
@@ -408,32 +128,110 @@ export function FileCard({
     )
   }
 
-  if (!file) {
-    return null
+  if (!file) return null
+
+  const isImage = file.mime_type?.startsWith('image/')
+  const ext = file.filename.split('.').pop()?.toUpperCase() || 'FILE'
+  const viewerLabel = getViewer(file.filename, file.mime_type ?? undefined)?.label ?? ext
+
+  // ── Row variant (assistant artifacts) ──────────────────────────────────────
+  if (variant === 'row') {
+    return (
+      <div
+        className="w-full flex flex-row items-center gap-3 cursor-pointer rounded-lg p-3 transition-opacity hover:opacity-80"
+        style={{
+          border: `1px solid ${token.colorBorderSecondary}`,
+          backgroundColor: token.colorBgContainer,
+        }}
+        onClick={handleCardClick}
+        data-testid="file-card"
+        data-file-id={file.id}
+        data-filename={file.filename}
+      >
+        {/* Left: icon box */}
+        <div
+          className="flex-shrink-0 flex items-center justify-center rounded-lg overflow-hidden"
+          style={{
+            width: 40,
+            height: 40,
+            backgroundColor: token.colorFillTertiary,
+            fontSize: 20,
+            color: token.colorTextSecondary,
+          }}
+        >
+          {isImage && thumbnailUrl ? (
+            <img src={thumbnailUrl} alt={file.filename} className="w-full h-full object-cover" />
+          ) : (
+            getFileIcon(file)
+          )}
+        </div>
+
+        {/* Right: name + type */}
+        <div className="flex flex-col min-w-0 flex-1">
+          <Text className="!text-sm font-medium truncate" title={file.filename}>
+            {file.filename}
+          </Text>
+          <Text type="secondary" className="!text-xs truncate">
+            {viewerLabel} · {ext}
+          </Text>
+        </div>
+
+        {/* Download button */}
+        <Button
+          type="text"
+          icon={<DownloadOutlined style={{ fontSize: 20 }} />}
+          onClick={e => {
+            e.stopPropagation()
+            Stores.Chat.FileStore.downloadFile(file)
+              .catch(() => message.error('Failed to download file'))
+          }}
+        />
+      </div>
+    )
   }
 
+  // ── Square variant (user message attachments & input area) ─────────────────
   return (
-    <>
-      <div className="relative flex flex-col w-full h-full">
-        <div
-          className="group relative cursor-pointer rounded min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full"
-          style={{
-            border: `1px solid ${token.colorBorderSecondary}`,
-            backgroundColor: token.colorBgContainer,
-            backgroundImage: thumbnailUrl ? `url(${thumbnailUrl})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-          }}
-          onClick={handleCardClick}
-        >
-        {/* Square aspect ratio enforcer - invisible 1x1 base64 image */}
+    <div
+      className="relative flex flex-col"
+      style={{ width: 96, maxWidth: 96 }}
+      data-testid="file-card"
+      data-file-id={file.id}
+      data-filename={file.filename}
+    >
+      <div
+        className="group relative cursor-pointer rounded-2xl min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full flex items-center justify-center"
+        style={{
+          border: `1px solid ${token.colorBorderSecondary}`,
+          backgroundColor: token.colorBgContainer,
+          ...(isImage && thumbnailUrl
+            ? {
+                backgroundImage: `url(${thumbnailUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+              }
+            : {}),
+        }}
+        onClick={handleCardClick}
+      >
+        {/* Square aspect ratio enforcer */}
         <img
           src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB2aWV3Qm94PSIwIDAgMSAxIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9InRyYW5zcGFyZW50Ii8+PC9zdmc+"
           alt=""
           className="block w-full h-auto opacity-0"
           style={{ aspectRatio: '1' }}
         />
+
+        {/* Centered file type icon (for non-images) */}
+        {!isImage && (
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ fontSize: 28, color: token.colorTextTertiary }}
+          >
+            {getFileIcon(file)}
+          </div>
+        )}
 
         {/* Delete/Remove button - only visible on hover */}
         {(canDelete || canRemove) && onRemove && (
@@ -445,60 +243,28 @@ export function FileCard({
               e.stopPropagation()
               onRemove()
             }}
-            style={{
-              display: canRemove ? 'block' : 'none',
-            }}
+            style={{ display: canRemove ? 'block' : 'none' }}
             className="!absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-transparent"
           />
         )}
 
-        {/* File extension badge */}
-        <Text
-          className="absolute top-1 left-1 rounded px-1 !text-[9px]"
-          style={{
-            backgroundColor: token.colorBgContainer,
-          }}
-          strong
-        >
-          {file.filename.split('.').pop()?.toUpperCase() || 'FILE'}
-        </Text>
-
         {/* File size badge */}
         <Text
           className="absolute bottom-1 right-1 rounded px-1 !text-[9px]"
-          style={{
-            backgroundColor: token.colorBgContainer,
-          }}
+          style={{ backgroundColor: token.colorBgContainer }}
         >
           {formatFileSize(file.file_size)}
         </Text>
       </div>
-        <div
-          className="w-full text-center text-xs text-ellipsis overflow-hidden"
-          style={{
-            display: showFileName ? 'block' : 'none',
-          }}
-        >
-          <Text ellipsis={true} className="whitespace-nowrap !truncate !text-xs">
-            {file.filename}
-          </Text>
-        </div>
-      </div>
 
-      {/* Drawer for text file content */}
-      <Drawer
-        title={file.filename}
-        open={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        size={600}
-        classNames={{
-          body: '!px-3 !pt-0',
-        }}
+      <div
+        className="w-full text-center text-xs text-ellipsis overflow-hidden"
+        style={{ display: showFileName ? 'block' : 'none' }}
       >
-        <Card className="font-mono text-sm whitespace-pre-wrap p-4 rounded max-h-full overflow-auto">
-          {fileContent}
-        </Card>
-      </Drawer>
-    </>
+        <Text ellipsis={true} className="whitespace-nowrap !truncate !text-xs">
+          {file.filename}
+        </Text>
+      </div>
+    </div>
   )
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
+import { memo, type ComponentType, type ReactNode } from 'react'
 import type {
   Branch,
   Conversation,
@@ -13,6 +14,204 @@ import {
   computeParentAnchor,
   computeChildAnchor,
 } from '@/modules/chat/core/utils/branchAnchor.utils'
+
+// ── Right panel types ──────────────────────────────────────────────────────
+
+/**
+ * Map of panel renderer type keys → the props each renderer expects.
+ *
+ * Extensions augment this interface via declaration merging so the rest of
+ * the API can statically link a `type` to the `data` shape it accepts:
+ *
+ *   declare module '@/modules/chat/core/stores/Chat.store' {
+ *     interface PanelRendererMap {
+ *       file: { fileId: string }
+ *     }
+ *   }
+ *
+ * Each extension also calls `registerPanelRenderer(type, { component, icon })`
+ * at runtime (typically in its `initialize()` hook) so the panel can resolve
+ * the React component when rendering or rehydrating tabs.
+ */
+export interface PanelRendererMap {}
+
+export type PanelType = keyof PanelRendererMap
+
+export interface PanelRenderer<T extends PanelType> {
+  component: ComponentType<PanelRendererMap[T]>
+  icon?: ReactNode
+}
+
+/**
+ * A right-panel tab record.
+ *
+ * Fully serializable — `data` carries everything the renderer needs to
+ * reconstruct the view. There is intentionally no `component` field; the
+ * panel resolves it through `panelRendererRegistry` keyed by `type`.
+ */
+export interface RightPanelTab<T extends PanelType = PanelType> {
+  id: string
+  title: string
+  type: T
+  data: PanelRendererMap[T]
+}
+
+interface ConversationPanelSnapshot {
+  tabs: RightPanelTab[]
+  activeId: string | null
+  /**
+   * ms epoch of last user access. Updated when the user navigates to the
+   * conversation (touchPanelSnapshot) or modifies its panel
+   * (savePanelSnapshotForConversation). Snapshots older than PANEL_TTL_MS
+   * are evicted on the next write.
+   */
+  lastAccessedAt: number
+}
+
+// Module-level registry of panel renderers, populated by extensions.
+const panelRendererRegistry = new Map<PanelType, PanelRenderer<PanelType>>()
+
+export function registerPanelRenderer<T extends PanelType>(
+  type: T,
+  renderer: PanelRenderer<T>,
+): void {
+  // Auto-memoize the registered component so it only re-renders when its
+  // serialized `data` props actually change. `ActivePanelContent` re-runs
+  // on every rightPanel state change (width drag, drawer toggle, tab
+  // activation, etc.), and most renderers (PDF, XLSX, image) are expensive
+  // to re-mount; memoization gives every extension props-shallow-equality
+  // render skipping by default.
+  panelRendererRegistry.set(type, {
+    ...renderer,
+    // memo(...) returns a MemoExoticComponent which is structurally a
+    // ComponentType but TS can't see through PanelRendererMap[T] indexing,
+    // so widen via unknown.
+    component: memo(renderer.component) as unknown as ComponentType<PanelRendererMap[T]>,
+  } as PanelRenderer<PanelType>)
+}
+
+/**
+ * Resolve a tab's renderer to its component + icon. Returns null and warns
+ * (in dev) if no renderer is registered for the tab's type — this typically
+ * means the owning extension hasn't initialized yet, or the type was removed.
+ */
+export function resolvePanelRenderer(tab: RightPanelTab): {
+  Component: ComponentType<PanelRendererMap[PanelType]>
+  icon?: ReactNode
+} | null {
+  const renderer = panelRendererRegistry.get(tab.type)
+  if (!renderer) {
+    if (import.meta.env.DEV) {
+      console.warn(
+        `[ChatRightPanel] No renderer registered for type "${String(tab.type)}" — ` +
+          `tab "${tab.title}" will not render. Make sure the owning extension ` +
+          `calls registerPanelRenderer in its initialize() hook.`,
+      )
+    }
+    return null
+  }
+  return { Component: renderer.component, icon: renderer.icon }
+}
+
+// ── localStorage helpers ───────────────────────────────────────────────────
+
+// v2 bump: tab shape changed from { id, title } to { id, title, type, data }.
+// Old v1 snapshots are discarded (panel state, not user data).
+const PANEL_STORAGE_KEY = 'ziee-chat-right-panel-tabs-v2'
+
+/**
+ * Snapshots not touched within this window are evicted on the next write.
+ * Bounds storage growth from deleted/stale conversations whose snapshots
+ * would otherwise live forever as orphans.
+ */
+const PANEL_TTL_MS = 30 * 24 * 60 * 60 * 1000  // 30 days
+
+function loadAllPanelSnapshots(): Record<string, ConversationPanelSnapshot> {
+  try {
+    const raw = localStorage.getItem(PANEL_STORAGE_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as Record<string, ConversationPanelSnapshot>
+  } catch {
+    return {}
+  }
+}
+
+function saveAllPanelSnapshots(snapshots: Record<string, ConversationPanelSnapshot>): void {
+  try {
+    localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(snapshots))
+  } catch {
+    // Storage quota exceeded or unavailable — silently ignore
+  }
+}
+
+/**
+ * In-place evict snapshots older than PANEL_TTL_MS. Called at every write
+ * point so the storage map self-cleans without a dedicated background task.
+ * Entries that pre-date the lastAccessedAt field are treated as fresh
+ * (timestamp = now) on first read in loadAllPanelSnapshots' caller path.
+ */
+function evictStaleSnapshots(snapshots: Record<string, ConversationPanelSnapshot>): void {
+  const now = Date.now()
+  const cutoff = now - PANEL_TTL_MS
+  for (const [id, snap] of Object.entries(snapshots)) {
+    // Pre-TTL entries (no lastAccessedAt) get a 30-day grace period rather
+    // than being evicted immediately — backfill the timestamp to now so they
+    // survive at least one full TTL window after this code first runs.
+    if (snap.lastAccessedAt === undefined) {
+      snap.lastAccessedAt = now
+      continue
+    }
+    if (snap.lastAccessedAt < cutoff) {
+      delete snapshots[id]
+    }
+  }
+}
+
+/**
+ * Bump lastAccessedAt for a conversation without changing its tabs/activeId.
+ * Called when the user navigates to a conversation that already has a
+ * snapshot — without this, a conversation whose panel state is never modified
+ * (user opens it daily but never touches the panel) would eventually be
+ * evicted despite being actively used.
+ */
+function touchPanelSnapshot(conversationId: string): void {
+  const all = loadAllPanelSnapshots()
+  const snap = all[conversationId]
+  if (!snap) return
+  snap.lastAccessedAt = Date.now()
+  evictStaleSnapshots(all)
+  saveAllPanelSnapshots(all)
+}
+
+function savePanelSnapshotForConversation(
+  conversationId: string,
+  tabs: RightPanelTab[],
+  activeId: string | null,
+): void {
+  const all = loadAllPanelSnapshots()
+  if (tabs.length === 0) {
+    delete all[conversationId]
+  } else {
+    const persistedIds = new Set(tabs.map(t => t.id))
+    const persistedActiveId =
+      activeId && persistedIds.has(activeId) ? activeId : (tabs[0]?.id ?? null)
+    // Tabs are already serializable (no React values), persist as-is.
+    all[conversationId] = { tabs, activeId: persistedActiveId, lastAccessedAt: Date.now() }
+  }
+  // Opportunistic GC: every write is a chance to evict stale entries.
+  evictStaleSnapshots(all)
+  saveAllPanelSnapshots(all)
+}
+
+/**
+ * Filter persisted tabs to those whose renderer is currently registered.
+ * Tabs for unregistered types are silently dropped — typically that means
+ * the extension that owned them hasn't loaded yet (e.g. lazy-loaded module
+ * not pulled in for this route), so the tab simply won't appear.
+ */
+function rehydrateTabs(persisted: RightPanelTab[]): RightPanelTab[] {
+  return persisted.filter(t => panelRendererRegistry.has(t.type))
+}
 
 /**
  * Snapshot of conversation state for caching
@@ -105,7 +304,7 @@ interface ChatState {
 
   // ── Core actions ──────────────────────────────────────────────────────────
 
-  createConversation: (title?: string) => Promise<Conversation>
+  createConversation: (title?: string, modelId?: string) => Promise<Conversation>
   loadConversation: (id: string) => Promise<void>
   loadMessages: (id: string) => Promise<void>
   sendMessage: () => Promise<void>
@@ -142,6 +341,21 @@ interface ChatState {
    */
   startRegenerateMessage: (assistantMessageId: string) => Promise<void>
 
+  // ── Stop streaming ────────────────────────────────────────────────────────
+
+  streamingAbortController: AbortController | null
+  stopStreaming: () => void
+
+  // ── Right panel ───────────────────────────────────────────────────────────
+
+  rightPanel: { panelWidth: number; tabs: RightPanelTab[]; activeId: string | null; mobileDrawerOpen: boolean }
+  displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => void
+  setActiveRightPanelTab: (id: string) => void
+  closeRightPanelTab: (id: string) => void
+  closeAllRightPanelTabs: () => void
+  closeMobileDrawer: () => void
+  setRightPanelWidth: (width: number) => void
+
   // ── Lifecycle methods ─────────────────────────────────────────────────────
 
   __init__: {
@@ -163,6 +377,7 @@ export const useChatStore = create<ChatState>()(
       error: null,
       streamingMessage: null,
       tempUserMessageId: null,
+      streamingAbortController: null,
 
       conversationStateCache: new Map<string, ChatStateSnapshot>(),
       cacheClearTimers: new Map<string, NodeJS.Timeout>(),
@@ -176,6 +391,9 @@ export const useChatStore = create<ChatState>()(
       branchChangedDuringStream: false,
       forkPoints: new Map(),
       editingMessage: null,
+
+      // Right panel initial state
+      rightPanel: { panelWidth: 440, tabs: [], activeId: null, mobileDrawerOpen: false },
 
       // ── Conversation state management ──────────────────────────────────────
 
@@ -275,11 +493,12 @@ export const useChatStore = create<ChatState>()(
 
       // ── Core actions ───────────────────────────────────────────────────────
 
-      createConversation: async (title?: string) => {
+      createConversation: async (title?: string, modelId?: string) => {
         set({ loading: true, error: null })
         try {
           const conversation = await ApiClient.Conversation.create({
             title: title,
+            model_id: modelId,
           })
           set({ conversation, loading: false })
 
@@ -320,8 +539,13 @@ export const useChatStore = create<ChatState>()(
           get().saveConversationState(currentConversation.id)
           get().scheduleCacheClear(currentConversation.id)
 
+          // Save outgoing conversation's panel tabs to localStorage, then clear panel
+          const { rightPanel } = get()
+          savePanelSnapshotForConversation(currentConversation.id, rightPanel.tabs, rightPanel.activeId)
+          set(state => ({ rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false } }))
+
           await chatExtensionRegistry.cleanup()
-          set({ isStreaming: false, sending: false, streamingMessage: null, tempUserMessageId: null })
+          set({ isStreaming: false, sending: false, streamingMessage: null, tempUserMessageId: null, streamingAbortController: null })
         }
 
         get().cancelCacheClear(id)
@@ -335,6 +559,18 @@ export const useChatStore = create<ChatState>()(
           if (conversation) {
             await chatExtensionRegistry.onConversationLoad(conversation)
             await get().loadBranches(id)
+          }
+
+          // Restore panel tabs from localStorage (after initialize() so registry is populated)
+          const panelSnapshot = loadAllPanelSnapshots()[id]
+          if (panelSnapshot) {
+            const tabs = rehydrateTabs(panelSnapshot.tabs)
+            if (tabs.length > 0) {
+              set(state => ({ rightPanel: { ...state.rightPanel, tabs, activeId: panelSnapshot.activeId } }))
+            }
+            // Bump lastAccessedAt so the snapshot isn't evicted just because
+            // the user keeps revisiting without modifying the panel.
+            touchPanelSnapshot(id)
           }
           return
         }
@@ -350,6 +586,16 @@ export const useChatStore = create<ChatState>()(
 
           await chatExtensionRegistry.initialize()
           await chatExtensionRegistry.onConversationLoad(conversation)
+
+          // Restore panel tabs from localStorage (after initialize() so registry is populated)
+          const panelSnapshot = loadAllPanelSnapshots()[id]
+          if (panelSnapshot) {
+            const tabs = rehydrateTabs(panelSnapshot.tabs)
+            if (tabs.length > 0) {
+              set(state => ({ rightPanel: { ...state.rightPanel, tabs, activeId: panelSnapshot.activeId } }))
+            }
+            touchPanelSnapshot(id)
+          }
         } catch (error: any) {
           set({
             error: error.message || 'Failed to load conversation',
@@ -602,6 +848,39 @@ export const useChatStore = create<ChatState>()(
           return ''
         })()
 
+        // Restore file attachments from the user message so they are included
+        // in the regenerated request. The MessageContentDataFileAttachment block
+        // only carries file_id/filename/file_size/mime_type — remaining
+        // FileEntity fields use defaults because sendMessage() fires immediately
+        // and clearFiles() runs right after, so an async server fetch would
+        // never complete in time to be useful.
+        const fileContents = precedingUserMsg.contents.filter(
+          c => c.content_type === 'file_attachment'
+        )
+        if (fileContents.length > 0) {
+          const fileStore = (get() as any).FileStore
+          if (fileStore) {
+            const stubs = fileContents.map(c => {
+              const data = c.content as any
+              return {
+                id: data.file_id,
+                filename: data.filename,
+                file_size: data.file_size,
+                mime_type: data.mime_type ?? undefined,
+                has_thumbnail: false,
+                preview_page_count: 0,
+                created_at: '',
+                updated_at: '',
+                user_id: '',
+                created_by: '',
+                processing_metadata: null,
+                text_page_count: 0,
+              }
+            })
+            fileStore.restoreFilesFromEdit(stubs)
+          }
+        }
+
         if (!userText) return
 
         // Pre-fill text input with the original user message text
@@ -644,7 +923,7 @@ export const useChatStore = create<ChatState>()(
         }
 
         if (!conversation) {
-          conversation = await get().createConversation()
+          conversation = await get().createConversation(undefined, allRequestFields.model_id as string | undefined)
           await chatExtensionRegistry.initialize()
           await chatExtensionRegistry.onConversationLoad(conversation)
         }
@@ -685,9 +964,8 @@ export const useChatStore = create<ChatState>()(
             } as any,
             {
               SSE: {
-                __init: async _data => {
-                  console.log('Chat SSE initialized with abortController')
-                  set({ sending: false })
+                __init: async (data: { abortController: AbortController }) => {
+                  set({ sending: false, streamingAbortController: data.abortController })
 
                   await chatExtensionRegistry.onMessageSent()
 
@@ -888,10 +1166,20 @@ export const useChatStore = create<ChatState>()(
                     const { streamingMessage } = get()
                     const isOnOriginalConversation = get().conversation?.id === streamConversationId
 
-                    set({
-                      isStreaming: false,
-                      sending: false,
-                      streamingMessage: null,
+                    // Remove the streaming message from the messages map so it doesn't
+                    // briefly coexist with DB messages during the async loadMessages call
+                    set(state => {
+                      const newMessages = new Map(state.messages)
+                      if (state.streamingMessage) {
+                        newMessages.delete(state.streamingMessage.id)
+                      }
+                      return {
+                        isStreaming: false,
+                        sending: false,
+                        streamingMessage: null,
+                        streamingAbortController: null,
+                        messages: newMessages,
+                      }
                     })
 
                     if (isOnOriginalConversation) {
@@ -905,6 +1193,16 @@ export const useChatStore = create<ChatState>()(
                       const conversation = get().conversation
                       if (conversation) {
                         await get().loadMessages(conversation.id)
+
+                        // Notify ChatHistory of the updated message count
+                        const { Stores } = await import('@/core/stores')
+                        await Stores.EventBus.emit({
+                          type: 'conversation.messageCountChanged',
+                          data: {
+                            conversationId: conversation.id,
+                            messageCount: get().messages.size,
+                          },
+                        })
                       }
 
                       // Always recompute fork points so the navigator is up to date
@@ -928,7 +1226,7 @@ export const useChatStore = create<ChatState>()(
                   const isOnOriginalConversation = get().conversation?.id === streamConversationId
 
                   if (!isOnOriginalConversation) {
-                    set({ isStreaming: false, sending: false, streamingMessage: null })
+                    set({ isStreaming: false, sending: false, streamingMessage: null, streamingAbortController: null })
                     get().clearConversationCache(streamConversationId)
                     return
                   }
@@ -946,6 +1244,7 @@ export const useChatStore = create<ChatState>()(
                         isStreaming: false,
                         sending: false,
                         streamingMessage: null,
+                        streamingAbortController: null,
                       }
                     })
                   } else {
@@ -954,6 +1253,7 @@ export const useChatStore = create<ChatState>()(
                       isStreaming: false,
                       sending: false,
                       streamingMessage: null,
+                      streamingAbortController: null,
                     })
                   }
                 },
@@ -972,32 +1272,38 @@ export const useChatStore = create<ChatState>()(
             },
           )
         } catch (error: any) {
-          await chatExtensionRegistry.onStreamError(
-            error instanceof Error ? error : new Error(error.message || 'Failed to send message')
-          )
+          const isAborted = error instanceof Error && error.name === 'AbortError'
+
+          if (!isAborted) {
+            await chatExtensionRegistry.onStreamError(
+              error instanceof Error ? error : new Error(error.message || 'Failed to send message')
+            )
+          }
 
           const state = get()
+          const baseUpdate = {
+            error: isAborted ? null : (error.message || 'Failed to send message'),
+            sending: false,
+            isStreaming: false,
+            streamingMessage: null,
+            streamingAbortController: null,
+          }
 
           if (state.tempUserMessageId) {
             set(state => {
               const newMessages = new Map(state.messages)
               newMessages.delete(state.tempUserMessageId!)
-              return {
-                messages: newMessages,
-                tempUserMessageId: null,
-                error: error.message || 'Failed to send message',
-                sending: false,
-                isStreaming: false,
-                streamingMessage: null,
-              }
+              return { messages: newMessages, tempUserMessageId: null, ...baseUpdate }
             })
           } else {
-            set({
-              error: error.message || 'Failed to send message',
-              sending: false,
-              isStreaming: false,
-              streamingMessage: null,
-            })
+            set(baseUpdate)
+          }
+
+          if (isAborted) {
+            const conversation = get().conversation
+            if (conversation) {
+              await get().loadMessages(conversation.id)
+            }
           }
         }
       },
@@ -1041,15 +1347,86 @@ export const useChatStore = create<ChatState>()(
 
       clearError: () => set({ error: null }),
 
+      stopStreaming: () => {
+        get().streamingAbortController?.abort()
+      },
+
+      displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => {
+        set(state => {
+          const exists = state.rightPanel.tabs.some(t => t.id === entry.id)
+          if (exists) {
+            return { rightPanel: { ...state.rightPanel, activeId: entry.id, mobileDrawerOpen: true } }
+          }
+          return {
+            rightPanel: {
+              ...state.rightPanel,
+              tabs: [...state.rightPanel.tabs, entry as RightPanelTab],
+              activeId: entry.id,
+              mobileDrawerOpen: true,
+            },
+          }
+        })
+        const { rightPanel, conversation } = get()
+        if (conversation) {
+          savePanelSnapshotForConversation(conversation.id, rightPanel.tabs, rightPanel.activeId)
+        }
+      },
+
+      setActiveRightPanelTab: (id: string) => {
+        set(state => {
+          if (!state.rightPanel.tabs.some(t => t.id === id)) return state
+          return { rightPanel: { ...state.rightPanel, activeId: id } }
+        })
+      },
+
+      closeRightPanelTab: (id: string) => {
+        set(state => {
+          const tabs = state.rightPanel.tabs.filter(t => t.id !== id)
+          let activeId = state.rightPanel.activeId
+          if (activeId === id) {
+            const closedIndex = state.rightPanel.tabs.findIndex(t => t.id === id)
+            const next = tabs[closedIndex] ?? tabs[closedIndex - 1] ?? null
+            activeId = next?.id ?? null
+          }
+          const mobileDrawerOpen = tabs.length > 0 ? state.rightPanel.mobileDrawerOpen : false
+          return { rightPanel: { ...state.rightPanel, tabs, activeId, mobileDrawerOpen } }
+        })
+        const { rightPanel, conversation } = get()
+        if (conversation) {
+          savePanelSnapshotForConversation(conversation.id, rightPanel.tabs, rightPanel.activeId)
+        }
+      },
+
+      closeAllRightPanelTabs: () => {
+        set(state => ({ rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false } }))
+        const { conversation } = get()
+        if (conversation) {
+          savePanelSnapshotForConversation(conversation.id, [], null)
+        }
+      },
+
+      closeMobileDrawer: () => {
+        set(state => ({ rightPanel: { ...state.rightPanel, mobileDrawerOpen: false } }))
+      },
+
+      setRightPanelWidth: (width: number) => {
+        set(state => ({ rightPanel: { ...state.rightPanel, panelWidth: width } }))
+      },
+
       reset: async () => {
         const { conversation } = get()
         if (conversation) {
           get().saveConversationState(conversation.id)
           get().scheduleCacheClear(conversation.id)
+
+          // Save outgoing conversation's panel tabs to localStorage before clearing
+          const { rightPanel } = get()
+          savePanelSnapshotForConversation(conversation.id, rightPanel.tabs, rightPanel.activeId)
+
           await chatExtensionRegistry.cleanup()
         }
 
-        set({
+        set(state => ({
           conversation: null,
           messages: new Map<string, MessageWithContent>(),
           loading: false,
@@ -1067,7 +1444,8 @@ export const useChatStore = create<ChatState>()(
           branchChangedDuringStream: false,
           forkPoints: new Map(),
           editingMessage: null,
-        })
+          rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false },
+        }))
       },
 
       // ── Lifecycle methods ──────────────────────────────────────────────────
