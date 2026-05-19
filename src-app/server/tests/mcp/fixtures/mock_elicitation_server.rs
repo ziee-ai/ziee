@@ -34,6 +34,12 @@ use tokio::task::JoinHandle;
 /// Programmable per-test plan for a single tool call.
 #[derive(Clone)]
 pub struct ElicitationScript {
+    /// Tool name advertised in tools/list (the LLM picks tools by name).
+    pub tool_name: String,
+    /// Tool description shown to the LLM via tools/list.
+    pub tool_description: String,
+    /// Tool input schema shown to the LLM via tools/list.
+    pub tool_input_schema: serde_json::Value,
     /// elicitation/create `message` field
     pub message: String,
     /// elicitation/create `requestedSchema` field
@@ -48,6 +54,12 @@ pub struct ElicitationScript {
 impl Default for ElicitationScript {
     fn default() -> Self {
         Self {
+            tool_name: "elicit_tool".to_string(),
+            tool_description: "A tool that requires user input via elicitation".to_string(),
+            tool_input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+            }),
             message: "Please confirm.".to_string(),
             requested_schema: serde_json::json!({
                 "type": "object",
@@ -199,6 +211,25 @@ async fn handle_post(
             .status(StatusCode::ACCEPTED)
             .body(Body::from(""))
             .unwrap(),
+        Some("tools/list") => {
+            let script = state.script.lock().unwrap().clone();
+            let body = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "tools": [{
+                        "name": script.tool_name,
+                        "description": script.tool_description,
+                        "inputSchema": script.tool_input_schema,
+                    }]
+                }
+            });
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap()
+        }
         Some("tools/call") => {
             // Return a long-lived SSE stream that emits elicitation/create
             // event(s), waits for the client's response, then emits the

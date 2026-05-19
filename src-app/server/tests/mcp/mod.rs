@@ -1204,12 +1204,13 @@ async fn test_duplicate_server_name_allowed() {
 mod runtime;              // Stdio transport tests (18 tests)
 mod http_transport_test;  // HTTP transport tests (12 tests)
 // sse_transport_test removed — SSE transport deprecated in MCP 2025-03-26
-mod fixtures;                 // External MCP server fixtures (everything-server + mock)
+pub mod fixtures;             // External MCP server fixtures (everything-server + mock)
 mod conformance_test;         // Spec-conformance tests against `server-everything`
 mod conformance_errors_test;     // Error-path tests against in-process mock server
 mod conformance_streaming_test;  // SSE streaming edge-case tests via mock
 mod conformance_extended_test;   // Deeper conformance tests against `server-everything`
 mod conformance_elicitation_test; // Elicitation roundtrip tests via mock SSE server
+mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
 
 // ============================================================================
 // Sampling Field CRUD Tests

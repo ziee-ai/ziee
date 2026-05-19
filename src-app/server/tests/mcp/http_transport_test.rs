@@ -469,3 +469,286 @@ async fn test_http_concurrent_tool_calls() {
                 "Concurrent request {} returned wrong content (id mixup?): {}", i, body);
     }
 }
+
+// ============================================================================
+// Prompts Tests (new in feat/mcp-rewrite-v2)
+// ============================================================================
+
+#[tokio::test]
+async fn test_http_list_server_prompts() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create", "mcp_servers::read"],
+    )
+    .await;
+
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_list_server_prompts").await
+    else { return; };
+
+    let url = server.api_url(&format!("/mcp/servers/{}/prompts", server_id));
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    let body_text = response.text().await.unwrap_or_default();
+    assert_eq!(status, 200, "Should list prompts (body: {})", body_text);
+
+    let body: serde_json::Value = serde_json::from_str(&body_text).expect("Failed to parse JSON");
+    let prompts = body["prompts"].as_array().expect("Should have prompts array");
+    assert!(!prompts.is_empty(), "server-everything exposes prompts");
+    let first = &prompts[0];
+    assert!(first["name"].is_string(), "Prompt should have name");
+}
+
+#[tokio::test]
+async fn test_http_list_prompts_permission_required() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create"],
+    )
+    .await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
+
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_list_prompts_permission_required").await
+    else { return; };
+
+    let url = server.api_url(&format!("/mcp/servers/{}/prompts", server_id));
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should require permission");
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+}
+
+#[tokio::test]
+async fn test_http_list_prompts_server_not_found() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read"])
+        .await;
+
+    let random_id = Uuid::new_v4();
+    let url = server.api_url(&format!("/mcp/servers/{}/prompts", random_id));
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server");
+}
+
+#[tokio::test]
+async fn test_http_get_server_prompt() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create", "mcp_servers::read"],
+    )
+    .await;
+
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_get_server_prompt").await
+    else { return; };
+
+    // First list prompts to find one we can render
+    let list_url = server.api_url(&format!("/mcp/servers/{}/prompts", server_id));
+    let list_body: serde_json::Value = reqwest::Client::new()
+        .get(&list_url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let prompts = list_body["prompts"].as_array().expect("prompts array");
+    let target = prompts
+        .iter()
+        .find(|p| p["arguments"].as_array().map(|a| a.is_empty()).unwrap_or(true))
+        .or_else(|| prompts.first())
+        .expect("at least one prompt available");
+    let name = target["name"].as_str().expect("prompt name");
+
+    // Build args object (empty if none required)
+    let mut args = serde_json::Map::new();
+    if let Some(arg_array) = target["arguments"].as_array() {
+        for a in arg_array {
+            if let Some(arg_name) = a["name"].as_str() {
+                args.insert(arg_name.to_string(),
+                            serde_json::Value::String("test-value".to_string()));
+            }
+        }
+    }
+
+    let url = server.api_url(&format!("/mcp/servers/{}/prompts/get", server_id));
+    let payload = serde_json::json!({
+        "name": name,
+        "arguments": serde_json::Value::Object(args),
+    });
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    let body_text = response.text().await.unwrap_or_default();
+    assert_eq!(status, 200, "get_prompt should succeed (body: {})", body_text);
+
+    let body: serde_json::Value = serde_json::from_str(&body_text).expect("parse");
+    // GetPromptResponse flattens PromptResult, so the body is {description, messages} directly.
+    let messages = body["messages"].as_array()
+        .unwrap_or_else(|| panic!("messages array missing or wrong type; full body: {}", body));
+    assert!(!messages.is_empty(), "rendered prompt must yield messages");
+}
+
+#[tokio::test]
+async fn test_http_get_prompt_permission_required() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create"],
+    )
+    .await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
+
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_get_prompt_permission_required").await
+    else { return; };
+
+    let url = server.api_url(&format!("/mcp/servers/{}/prompts/get", server_id));
+    let payload = json!({ "name": "anything", "arguments": {} });
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should require permission");
+
+    let body: serde_json::Value = response.json().await.expect("parse");
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+}
+
+#[tokio::test]
+async fn test_http_get_prompt_server_not_found() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read"])
+        .await;
+
+    let random_id = Uuid::new_v4();
+    let url = server.api_url(&format!("/mcp/servers/{}/prompts/get", random_id));
+    let payload = json!({ "name": "anything", "arguments": {} });
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server");
+}
+
+// ============================================================================
+// Ping Tests (new in feat/mcp-rewrite-v2)
+// ============================================================================
+
+#[tokio::test]
+async fn test_http_ping_server() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create", "mcp_servers::read"],
+    )
+    .await;
+
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_ping_server").await
+    else { return; };
+
+    let url = server.api_url(&format!("/mcp/servers/{}/ping", server_id));
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    let body_text = response.text().await.unwrap_or_default();
+    assert_eq!(status, 200, "ping should succeed (body: {})", body_text);
+    let body: serde_json::Value = serde_json::from_str(&body_text).expect("parse");
+    assert_eq!(body["ok"], true);
+}
+
+#[tokio::test]
+async fn test_http_ping_permission_required() {
+    let server = crate::common::TestServer::start().await;
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["mcp_servers_admin::create"],
+    )
+    .await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
+
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_ping_permission_required").await
+    else { return; };
+
+    let url = server.api_url(&format!("/mcp/servers/{}/ping", server_id));
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should require permission");
+
+    let body: serde_json::Value = response.json().await.expect("parse");
+    assert_eq!(body["error_code"], "INSUFFICIENT_PERMISSIONS");
+}
+
+#[tokio::test]
+async fn test_http_ping_server_not_found() {
+    let server = crate::common::TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read"])
+        .await;
+
+    let random_id = Uuid::new_v4();
+    let url = server.api_url(&format!("/mcp/servers/{}/ping", random_id));
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+
+    assert_eq!(response.status(), 403, "Should return 403 for inaccessible server");
+}
