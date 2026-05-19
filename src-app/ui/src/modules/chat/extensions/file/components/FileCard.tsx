@@ -2,17 +2,13 @@ import { Button, Spin, Typography, theme, App } from 'antd'
 import {
   CloseOutlined,
   DeleteOutlined,
-  FileOutlined,
   FileTextOutlined,
-  FilePdfOutlined,
-  PictureOutlined,
   DownloadOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { File as FileEntity } from '@/api-client/types'
 import type { FileUploadProgress } from '@/modules/chat/extensions/file/File.store'
 import { getViewer } from '@/modules/chat/extensions/file/fileViewerRegistry'
-import { FilePanel } from './FilePanel'
 
 const { Text } = Typography
 
@@ -23,10 +19,11 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
+// Icon comes from the matching viewer module's entry. Falls back to a generic
+// file-text icon when no viewer is registered or the viewer omitted the field.
 function getFileIcon(file: FileEntity): React.ReactNode {
-  if (file.mime_type?.startsWith('image/')) return <PictureOutlined />
-  if (file.mime_type === 'application/pdf') return <FilePdfOutlined />
-  return <FileTextOutlined />
+  return getViewer(file.filename, file.mime_type ?? undefined)?.icon
+    ?? <FileTextOutlined />
 }
 
 export interface FileCardProps {
@@ -70,8 +67,8 @@ export function FileCard({
     Stores.Chat.displayInRightPanel({
       id: file.id,
       title: file.filename,
-      icon: <FileOutlined />,
-      component: () => <FilePanel file={file} />,
+      type: 'file',
+      data: { fileId: file.id },
     })
   }
 
@@ -147,6 +144,9 @@ export function FileCard({
           backgroundColor: token.colorBgContainer,
         }}
         onClick={handleCardClick}
+        data-testid="file-card"
+        data-file-id={file.id}
+        data-filename={file.filename}
       >
         {/* Left: icon box */}
         <div
@@ -192,7 +192,13 @@ export function FileCard({
 
   // ── Square variant (user message attachments & input area) ─────────────────
   return (
-    <div className="relative flex flex-col" style={{ width: 96, maxWidth: 96 }}>
+    <div
+      className="relative flex flex-col"
+      style={{ width: 96, maxWidth: 96 }}
+      data-testid="file-card"
+      data-file-id={file.id}
+      data-filename={file.filename}
+    >
       <div
         className="group relative cursor-pointer rounded-2xl min-h-20 min-w-20 max-h-28 max-w-28 w-full h-full flex items-center justify-center"
         style={{

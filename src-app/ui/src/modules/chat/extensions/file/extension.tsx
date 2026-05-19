@@ -11,6 +11,14 @@ import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment } from '@/api-client/types'
 
+// Augment the central PanelRendererMap so `displayInRightPanel({ type: 'file',
+// data: ... })` and `registerPanelRenderer('file', ...)` are type-checked.
+declare module '@/modules/chat/core/stores/Chat.store' {
+  interface PanelRendererMap {
+    file: { fileId: string }
+  }
+}
+
 /**
  * File attachment content renderer component
  * Renders file attachments in message bubbles using FileCard.
@@ -77,24 +85,25 @@ const fileExtension: ChatExtension = createExtension({
    * When edit ends (null): clear the file selection.
    */
   initialize: async () => {
-    // Register tab rehydrator so file tabs can be restored from localStorage after reload
-    const { setTabRehydrator } = await import('@/modules/chat/core/stores/Chat.store')
+    // Register the file panel renderer so file tabs can be rendered AND
+    // restored from localStorage after reload. The renderer receives the
+    // serialized `data` ({ fileId }) and looks the actual File entity up
+    // from FileStore at render time.
+    const { registerPanelRenderer } = await import('@/modules/chat/core/stores/Chat.store')
     const { FilePanel: FilePanelComponent } = await import('./components/FilePanel')
     const { FileOutlined: FileOutlinedIcon } = await import('@ant-design/icons')
     const { Spin: SpinComponent } = await import('antd')
     const { Stores: StoresRef } = await import('@/core/stores')
 
-    setTabRehydrator((id, title) => ({
-      id,
-      title,
+    registerPanelRenderer('file', {
       icon: <FileOutlinedIcon />,
-      component: () => {
+      component: ({ fileId }) => {
         const { selectedFiles, messageFilesCache } = StoresRef.Chat.FileStore
-        const file = selectedFiles.get(id) ?? messageFilesCache.get(id) ?? null
+        const file = selectedFiles.get(fileId) ?? messageFilesCache.get(fileId) ?? null
         if (!file) return <SpinComponent />
         return <FilePanelComponent file={file} />
       },
-    }))
+    })
 
     const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
     const { Stores } = await import('@/core/stores')

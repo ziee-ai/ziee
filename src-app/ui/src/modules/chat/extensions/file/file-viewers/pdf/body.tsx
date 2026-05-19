@@ -1,12 +1,18 @@
 import { Spin, Typography } from 'antd'
 import { FileOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import type { FileViewRendererProps } from '../../types'
+import type { FileViewerSlotProps } from '../../types'
 
 const { Text } = Typography
 
-export function PdfViewer({ file }: FileViewRendererProps) {
-  const pageUrls = Stores.Chat.FileStore.getPreviewPageUrls(file)
+export function PdfBody({ file }: FileViewerSlotProps) {
+  // Subscribe to previewPageUrls Map directly so we re-render as each
+  // page slot loads. Calling the `getPreviewPageUrls()` action instead
+  // would only subscribe to the function reference (whose identity never
+  // changes), so the body would freeze at the initial placeholder array.
+  const previewPageUrls = Stores.Chat.FileStore.previewPageUrls
+  const cachedUrls = previewPageUrls.get(file.id)
+  const pageUrls = cachedUrls ?? Stores.Chat.FileStore.getPreviewPageUrls(file)
 
   if (file.preview_page_count === 0) {
     return (

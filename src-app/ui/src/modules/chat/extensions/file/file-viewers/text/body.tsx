@@ -1,10 +1,10 @@
 import { Spin } from 'antd'
-import { Stores } from '@/core/stores'
+import type { FileViewerSlotProps } from '../../types'
+import { useFileTextContent } from '../shared/hooks'
 import { RawCodeView } from '../shared/RawCodeView'
-import type { FileViewRendererProps } from '../../types'
 
-export function TextViewer({ file }: FileViewRendererProps) {
-  const content = Stores.Chat.FileStore.getFileTextContent(file.id, file)
+export function TextBody({ file }: FileViewerSlotProps) {
+  const content = useFileTextContent(file)
   if (content === null) {
     return <div className="flex items-center justify-center h-full"><Spin /></div>
   }

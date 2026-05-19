@@ -1,12 +1,23 @@
+import { useMemo } from 'react'
 import { theme, Alert } from 'antd'
 
 const MAX_LINES = 100
 
 export function RawCodeView({ text }: { text: string }) {
   const { token } = theme.useToken()
-  const allLines = text.split('\n')
-  const truncated = allLines.length > MAX_LINES
-  const lines = truncated ? allLines.slice(0, MAX_LINES) : allLines
+  // Memoize the split — for large files (logs, source code) this is the only
+  // expensive work in this component. Without memo, every parent re-render
+  // (panel resize, drawer toggle, sibling state change) re-splits the entire
+  // file just to throw away everything past MAX_LINES.
+  const { lines, truncated } = useMemo(() => {
+    const allLines = text.split('\n')
+    const wasTruncated = allLines.length > MAX_LINES
+    return {
+      lines: wasTruncated ? allLines.slice(0, MAX_LINES) : allLines,
+      truncated: wasTruncated,
+    }
+  }, [text])
+
   return (
     <div className="flex flex-col w-full h-full">
       {truncated && (

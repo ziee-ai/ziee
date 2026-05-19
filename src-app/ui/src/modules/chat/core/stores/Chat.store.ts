@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type { ComponentType, ReactNode } from 'react'
+import { memo, type ComponentType, type ReactNode } from 'react'
 import type {
   Branch,
   Conversation,
@@ -17,36 +17,114 @@ import {
 
 // ── Right panel types ──────────────────────────────────────────────────────
 
-export interface RightPanelTab {
-  id: string
-  title: string
+/**
+ * Map of panel renderer type keys → the props each renderer expects.
+ *
+ * Extensions augment this interface via declaration merging so the rest of
+ * the API can statically link a `type` to the `data` shape it accepts:
+ *
+ *   declare module '@/modules/chat/core/stores/Chat.store' {
+ *     interface PanelRendererMap {
+ *       file: { fileId: string }
+ *     }
+ *   }
+ *
+ * Each extension also calls `registerPanelRenderer(type, { component, icon })`
+ * at runtime (typically in its `initialize()` hook) so the panel can resolve
+ * the React component when rendering or rehydrating tabs.
+ */
+export interface PanelRendererMap {}
+
+export type PanelType = keyof PanelRendererMap
+
+export interface PanelRenderer<T extends PanelType> {
+  component: ComponentType<PanelRendererMap[T]>
   icon?: ReactNode
-  component: ComponentType<{}>
 }
 
-// Serializable form of a tab — stored in localStorage (no React values)
-interface SerializableTab {
+/**
+ * A right-panel tab record.
+ *
+ * Fully serializable — `data` carries everything the renderer needs to
+ * reconstruct the view. There is intentionally no `component` field; the
+ * panel resolves it through `panelRendererRegistry` keyed by `type`.
+ */
+export interface RightPanelTab<T extends PanelType = PanelType> {
   id: string
   title: string
+  type: T
+  data: PanelRendererMap[T]
 }
 
 interface ConversationPanelSnapshot {
-  tabs: SerializableTab[]
+  tabs: RightPanelTab[]
   activeId: string | null
+  /**
+   * ms epoch of last user access. Updated when the user navigates to the
+   * conversation (touchPanelSnapshot) or modifies its panel
+   * (savePanelSnapshotForConversation). Snapshots older than PANEL_TTL_MS
+   * are evicted on the next write.
+   */
+  lastAccessedAt: number
 }
 
-// Module-level rehydration factory — set by the file extension in initialize().
-// Called when restoring tabs from localStorage after a page reload.
-type TabRehydrator = (id: string, title: string) => RightPanelTab
-let _tabRehydrator: TabRehydrator | null = null
+// Module-level registry of panel renderers, populated by extensions.
+const panelRendererRegistry = new Map<PanelType, PanelRenderer<PanelType>>()
 
-export function setTabRehydrator(factory: TabRehydrator): void {
-  _tabRehydrator = factory
+export function registerPanelRenderer<T extends PanelType>(
+  type: T,
+  renderer: PanelRenderer<T>,
+): void {
+  // Auto-memoize the registered component so it only re-renders when its
+  // serialized `data` props actually change. `ActivePanelContent` re-runs
+  // on every rightPanel state change (width drag, drawer toggle, tab
+  // activation, etc.), and most renderers (PDF, XLSX, image) are expensive
+  // to re-mount; memoization gives every extension props-shallow-equality
+  // render skipping by default.
+  panelRendererRegistry.set(type, {
+    ...renderer,
+    // memo(...) returns a MemoExoticComponent which is structurally a
+    // ComponentType but TS can't see through PanelRendererMap[T] indexing,
+    // so widen via unknown.
+    component: memo(renderer.component) as unknown as ComponentType<PanelRendererMap[T]>,
+  } as PanelRenderer<PanelType>)
+}
+
+/**
+ * Resolve a tab's renderer to its component + icon. Returns null and warns
+ * (in dev) if no renderer is registered for the tab's type — this typically
+ * means the owning extension hasn't initialized yet, or the type was removed.
+ */
+export function resolvePanelRenderer(tab: RightPanelTab): {
+  Component: ComponentType<PanelRendererMap[PanelType]>
+  icon?: ReactNode
+} | null {
+  const renderer = panelRendererRegistry.get(tab.type)
+  if (!renderer) {
+    if (import.meta.env.DEV) {
+      console.warn(
+        `[ChatRightPanel] No renderer registered for type "${String(tab.type)}" — ` +
+          `tab "${tab.title}" will not render. Make sure the owning extension ` +
+          `calls registerPanelRenderer in its initialize() hook.`,
+      )
+    }
+    return null
+  }
+  return { Component: renderer.component, icon: renderer.icon }
 }
 
 // ── localStorage helpers ───────────────────────────────────────────────────
 
-const PANEL_STORAGE_KEY = 'ziee-chat-right-panel-tabs-v1'
+// v2 bump: tab shape changed from { id, title } to { id, title, type, data }.
+// Old v1 snapshots are discarded (panel state, not user data).
+const PANEL_STORAGE_KEY = 'ziee-chat-right-panel-tabs-v2'
+
+/**
+ * Snapshots not touched within this window are evicted on the next write.
+ * Bounds storage growth from deleted/stale conversations whose snapshots
+ * would otherwise live forever as orphans.
+ */
+const PANEL_TTL_MS = 30 * 24 * 60 * 60 * 1000  // 30 days
 
 function loadAllPanelSnapshots(): Record<string, ConversationPanelSnapshot> {
   try {
@@ -66,27 +144,73 @@ function saveAllPanelSnapshots(snapshots: Record<string, ConversationPanelSnapsh
   }
 }
 
+/**
+ * In-place evict snapshots older than PANEL_TTL_MS. Called at every write
+ * point so the storage map self-cleans without a dedicated background task.
+ * Entries that pre-date the lastAccessedAt field are treated as fresh
+ * (timestamp = now) on first read in loadAllPanelSnapshots' caller path.
+ */
+function evictStaleSnapshots(snapshots: Record<string, ConversationPanelSnapshot>): void {
+  const now = Date.now()
+  const cutoff = now - PANEL_TTL_MS
+  for (const [id, snap] of Object.entries(snapshots)) {
+    // Pre-TTL entries (no lastAccessedAt) get a 30-day grace period rather
+    // than being evicted immediately — backfill the timestamp to now so they
+    // survive at least one full TTL window after this code first runs.
+    if (snap.lastAccessedAt === undefined) {
+      snap.lastAccessedAt = now
+      continue
+    }
+    if (snap.lastAccessedAt < cutoff) {
+      delete snapshots[id]
+    }
+  }
+}
+
+/**
+ * Bump lastAccessedAt for a conversation without changing its tabs/activeId.
+ * Called when the user navigates to a conversation that already has a
+ * snapshot — without this, a conversation whose panel state is never modified
+ * (user opens it daily but never touches the panel) would eventually be
+ * evicted despite being actively used.
+ */
+function touchPanelSnapshot(conversationId: string): void {
+  const all = loadAllPanelSnapshots()
+  const snap = all[conversationId]
+  if (!snap) return
+  snap.lastAccessedAt = Date.now()
+  evictStaleSnapshots(all)
+  saveAllPanelSnapshots(all)
+}
+
 function savePanelSnapshotForConversation(
   conversationId: string,
   tabs: RightPanelTab[],
   activeId: string | null,
 ): void {
   const all = loadAllPanelSnapshots()
-  const serializable: SerializableTab[] = tabs.map(t => ({ id: t.id, title: t.title }))
-  if (serializable.length === 0) {
+  if (tabs.length === 0) {
     delete all[conversationId]
   } else {
-    const persistedIds = new Set(serializable.map(t => t.id))
+    const persistedIds = new Set(tabs.map(t => t.id))
     const persistedActiveId =
-      activeId && persistedIds.has(activeId) ? activeId : (serializable[0]?.id ?? null)
-    all[conversationId] = { tabs: serializable, activeId: persistedActiveId }
+      activeId && persistedIds.has(activeId) ? activeId : (tabs[0]?.id ?? null)
+    // Tabs are already serializable (no React values), persist as-is.
+    all[conversationId] = { tabs, activeId: persistedActiveId, lastAccessedAt: Date.now() }
   }
+  // Opportunistic GC: every write is a chance to evict stale entries.
+  evictStaleSnapshots(all)
   saveAllPanelSnapshots(all)
 }
 
-function rehydrateTabs(serializable: SerializableTab[]): RightPanelTab[] {
-  if (!_tabRehydrator) return []
-  return serializable.map(st => _tabRehydrator!(st.id, st.title))
+/**
+ * Filter persisted tabs to those whose renderer is currently registered.
+ * Tabs for unregistered types are silently dropped — typically that means
+ * the extension that owned them hasn't loaded yet (e.g. lazy-loaded module
+ * not pulled in for this route), so the tab simply won't appear.
+ */
+function rehydrateTabs(persisted: RightPanelTab[]): RightPanelTab[] {
+  return persisted.filter(t => panelRendererRegistry.has(t.type))
 }
 
 /**
@@ -225,7 +349,7 @@ interface ChatState {
   // ── Right panel ───────────────────────────────────────────────────────────
 
   rightPanel: { panelWidth: number; tabs: RightPanelTab[]; activeId: string | null; mobileDrawerOpen: boolean }
-  displayInRightPanel: (entry: RightPanelTab) => void
+  displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => void
   setActiveRightPanelTab: (id: string) => void
   closeRightPanelTab: (id: string) => void
   closeAllRightPanelTabs: () => void
@@ -444,6 +568,9 @@ export const useChatStore = create<ChatState>()(
             if (tabs.length > 0) {
               set(state => ({ rightPanel: { ...state.rightPanel, tabs, activeId: panelSnapshot.activeId } }))
             }
+            // Bump lastAccessedAt so the snapshot isn't evicted just because
+            // the user keeps revisiting without modifying the panel.
+            touchPanelSnapshot(id)
           }
           return
         }
@@ -467,6 +594,7 @@ export const useChatStore = create<ChatState>()(
             if (tabs.length > 0) {
               set(state => ({ rightPanel: { ...state.rightPanel, tabs, activeId: panelSnapshot.activeId } }))
             }
+            touchPanelSnapshot(id)
           }
         } catch (error: any) {
           set({
@@ -1223,7 +1351,7 @@ export const useChatStore = create<ChatState>()(
         get().streamingAbortController?.abort()
       },
 
-      displayInRightPanel: (entry: RightPanelTab) => {
+      displayInRightPanel: <T extends PanelType>(entry: RightPanelTab<T>) => {
         set(state => {
           const exists = state.rightPanel.tabs.some(t => t.id === entry.id)
           if (exists) {
@@ -1232,7 +1360,7 @@ export const useChatStore = create<ChatState>()(
           return {
             rightPanel: {
               ...state.rightPanel,
-              tabs: [...state.rightPanel.tabs, entry],
+              tabs: [...state.rightPanel.tabs, entry as RightPanelTab],
               activeId: entry.id,
               mobileDrawerOpen: true,
             },

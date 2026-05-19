@@ -64,5 +64,6 @@ export default defineConfig(async () => {
   build: {
     outDir: '../../dist/ui',
   },
+
   }
 })
