@@ -23,8 +23,9 @@ export async function waitForNewChatPageLoad(page: Page) {
   await page.waitForSelector('textarea[placeholder*="Type your message"]', {
     timeout: 10000,
   })
-  // Wait for model selector to be visible
-  await page.waitForSelector('.ant-select', { timeout: 10000 })
+  // Wait for the model selector specifically (page now has multiple Ant Selects
+  // — model, mobile sidebar dropdown, etc. — so a bare .ant-select would race).
+  await page.waitForSelector('[data-testid="model-selector"] .ant-select', { timeout: 10000 })
 
   // Wait for models to load with retry logic
   // The store's loadProviders() is async and not awaited, so we need to poll
@@ -33,7 +34,7 @@ export async function waitForNewChatPageLoad(page: Page) {
 
   for (let i = 0; i < maxRetries; i++) {
     // Open dropdown
-    await page.click('.ant-select-selector')
+    await page.click('[data-testid="model-selector"] .ant-select')
     await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
 
     // Check if models are loaded (not showing "No data")
@@ -77,7 +78,7 @@ export async function waitForChatPageLoad(page: Page) {
 
 export async function getVisibleModelsInDropdown(page: Page): Promise<string[]> {
   // Click the model selector to open dropdown
-  await page.click('.ant-select-selector')
+  await page.click('[data-testid="model-selector"] .ant-select')
 
   // Wait for dropdown to appear
   await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
@@ -97,7 +98,7 @@ export async function selectModelInDropdown(
   modelName: string
 ): Promise<void> {
   // Check if the model is already selected
-  const currentSelection = await page.locator('.ant-select-selection-item').textContent()
+  const currentSelection = await page.locator('.ant-select-content-value').textContent()
 
   if (currentSelection === modelName) {
     // Model already selected, nothing to do
@@ -105,16 +106,21 @@ export async function selectModelInDropdown(
   }
 
   // Model not selected, open dropdown and select it
-  await page.click('.ant-select-selector')
+  await page.click('[data-testid="model-selector"] .ant-select')
 
   // Wait for dropdown to appear
   await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
 
-  // Click the option with the model name
-  await page.click(`.ant-select-item-option:has-text("${modelName}")`)
+  // Click the option with the model name. Use the semantic role-based locator
+  // — AntD renders dropdown items with role="option" and the matching aria-label.
+  await page.getByRole('option', { name: modelName, exact: false }).first().click()
 
-  // Wait for dropdown to close
-  await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 })
+  // Best-effort dismiss in case AntD didn't auto-close after the option click
+  // (some versions of AntD keep the dropdown open until an outside click).
+  await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 }).catch(async () => {
+    await page.keyboard.press('Escape')
+    await page.waitForSelector('.ant-select-dropdown', { state: 'hidden', timeout: 5000 })
+  })
 }
 
 export async function assertModelVisibleInDropdown(
@@ -135,7 +141,7 @@ export async function assertModelNotVisibleInDropdown(
 
 export async function assertDropdownEmpty(page: Page): Promise<void> {
   // Click the model selector to open dropdown
-  await page.click('.ant-select-selector')
+  await page.click('[data-testid="model-selector"] .ant-select')
 
   // Wait for dropdown to appear
   await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })

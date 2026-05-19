@@ -90,6 +90,7 @@ export function ModelSelector() {
         onChange={handleChange}
         popupMatchSelectWidth={false}
         placeholder="Select Model"
+        aria-label="Model"
         disabled={sending}
         options={availableModels}
         style={{ fontSize: 15, maxWidth: mainContentMinSize.xs ? 130 : undefined }}

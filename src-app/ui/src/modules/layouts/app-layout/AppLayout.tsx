@@ -30,6 +30,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const MIN_WIDTH = 150
   const MAX_WIDTH = 400
+  const ICON_ONLY_WIDTH = 52
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -40,6 +41,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         if (spacerRef.current) {
           spacerRef.current.style.transition = 'none'
+        }
+        if (sidebarRef.current) {
+          sidebarRef.current.style.transition = 'none'
         }
 
         if (newWidth < MIN_WIDTH / 2) {
@@ -99,6 +103,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       const handleMouseUp = () => {
         if (spacerRef.current) {
           spacerRef.current.style.transition = 'all 200ms ease-out'
+        }
+        if (sidebarRef.current) {
+          sidebarRef.current.style.transition = 'width 200ms ease-out'
         }
 
         document.removeEventListener('mousemove', handleMouseMove)
@@ -212,7 +219,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         ref={sidebarRef}
         className="absolute h-full z-1 overflow-hidden"
         style={{
-          width: `${currentWidth.current}px`,
+          width: isSidebarCollapsed
+            ? `${ICON_ONLY_WIDTH}px`
+            : `${currentWidth.current}px`,
+          transition: 'width 200ms ease-out',
           ...(windowMinSize.xs
             ? {
                 zIndex: 3,
@@ -226,6 +236,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 borderRight: `1px solid ${token.colorBorderSecondary}`,
                 borderRadius: 12,
                 boxShadow: 'rgba(0, 0, 0, 0.075) 0px 2px 16px 0px',
+                transition: 'transform 200ms ease-out',
               }
             : {}),
         }}
@@ -245,7 +256,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 width: 0,
               }
             : {
-                width: isSidebarCollapsed ? 0 : `${currentWidth.current}px`,
+                width: isSidebarCollapsed
+                  ? `${ICON_ONLY_WIDTH}px`
+                  : `${currentWidth.current}px`,
                 transition: 'all 200ms ease-out', // Default transition, overridden during dragging
               }
         }

@@ -19,7 +19,12 @@ export const ChatMessage = memo(function ChatMessage({
   }
 
   return (
-    <div className={'w-full flex flex-col overflow-visible'}>
+    <div
+      className={'w-full flex flex-col overflow-visible'}
+      data-testid="chat-message"
+      data-role={message.role}
+      data-message-id={message.id}
+    >
       <div
         key={message.id}
         className={`flex gap-2 rounded-lg relative min-w-36 flex-col`}

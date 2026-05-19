@@ -5,7 +5,8 @@ import {
 } from '@/modules/chat/core/extensions'
 import { Stores } from '@/core/stores'
 import { createAssistantStore } from '@/modules/chat/extensions/assistant/Assistant.store'
-import { AssistantSelector } from '@/modules/chat/extensions/assistant/components/AssistantSelector'
+import { AssistantMenuItem } from '@/modules/chat/extensions/assistant/components/AssistantMenuItem'
+import { AssistantStatusChip } from '@/modules/chat/extensions/assistant/components/AssistantStatusChip'
 
 /**
  * Assistant Extension
@@ -27,7 +28,8 @@ const assistantExtension: ChatExtension = createExtension({
 
   // Register slot components
   slots: {
-    toolbar_actions: { component: AssistantSelector, order: 80 },
+    toolbar_plus_items: { component: AssistantMenuItem, order: 30 },
+    toolbar_status: { component: AssistantStatusChip, order: 20 },
   },
 
   composeRequestFields: async (): Promise<ExtensionRequestFields> => {
