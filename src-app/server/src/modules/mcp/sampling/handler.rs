@@ -12,7 +12,6 @@ use uuid::Uuid;
 use ai_providers::{ChatMessage, ChatRequest, ContentBlockDelta, Role};
 
 use crate::common::AppError;
-use crate::core::Repos;
 use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 
 use super::models::{SamplingContent, SamplingCreateMessageRequest, SamplingCreateMessageResult};
@@ -42,9 +41,13 @@ pub struct ChatSamplingHandler {
 impl ChatSamplingHandler {
     /// Initialize once: look up the model + provider from the DB, build the HTTP client.
     /// All subsequent `create_message()` calls reuse this cached state.
-    pub async fn new(model_id: Uuid, _user_id: Uuid) -> Result<Self, AppError> {
+    pub async fn new(model_id: Uuid, user_id: Uuid) -> Result<Self, AppError> {
+        // user_id is needed by `create_provider_from_model_id` to resolve
+        // the API key (falls back to user's personal key when the system
+        // key is missing — a behavior added on main after this branch
+        // forked, where the call was `(pool, model_id)`).
         let (provider, model_name, _, _) =
-            create_provider_from_model_id(Repos.pool(), model_id).await?;
+            create_provider_from_model_id(model_id, user_id).await?;
         Ok(Self { provider, model_name })
     }
 }
