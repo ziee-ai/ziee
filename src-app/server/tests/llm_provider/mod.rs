@@ -1362,3 +1362,846 @@ async fn get_admin_group_id(server: &crate::common::TestServer, token: &str) -> 
 
     admin_group["id"].as_str().unwrap().to_string()
 }
+
+// =====================================================
+// User-Facing LLM Provider API Key Management Tests
+// =====================================================
+//
+// Tests for the routes registered in src/modules/llm_provider/handlers/user.rs:
+//   GET    /api/user-llm-providers              (requires user_llm_providers::read)
+//   GET    /api/user-llm-providers/api-keys      (requires profile::read)
+//   POST   /api/user-llm-providers/api-keys      (requires profile::edit)
+//   DELETE /api/user-llm-providers/api-keys/{id} (requires profile::edit)
+
+/// Like `create_test_provider`, but lets the caller choose the system api_key
+/// (passing None creates a provider with no system-side key — needed for
+/// `api_key_configured` flag tests).
+async fn create_test_provider_with_key(
+    server: &crate::common::TestServer,
+    token: &str,
+    name: &str,
+    api_key: Option<&str>,
+) -> serde_json::Value {
+    // Use "custom" when no api_key — the backend validates that enabled non-local
+    // / non-custom providers must have an api_key, so an `enabled: true, api_key: None`
+    // openai provider would 400. "custom" skips that check.
+    let provider_type = if api_key.is_some() { "openai" } else { "custom" };
+    let mut payload = json!({
+        "name": name,
+        "provider_type": provider_type,
+        "enabled": true,  // get_providers_for_user filters on p.enabled = true
+    });
+    if let Some(k) = api_key {
+        payload["api_key"] = json!(k);
+    }
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    response.json().await.unwrap()
+}
+
+/// Migration 27 grants `profile::read`, `profile::edit`, and
+/// `user_llm_providers::read` to the default "Users" group, so a vanilla
+/// `create_user_with_permissions(server, "u", &[])` user would have these
+/// perms automatically — useless for testing 403.
+///
+/// This helper registers a user normally and then REMOVES them from the
+/// default Users group so only their explicitly-granted permissions apply.
+async fn create_user_without_default_group(
+    server: &crate::common::TestServer,
+    name: &str,
+    permissions: &[&str],
+) -> crate::common::test_helpers::TestUser {
+    let user = crate::common::test_helpers::create_user_with_permissions(server, name, permissions)
+        .await;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let user_uuid = Uuid::parse_str(&user.user_id).expect("Invalid user id");
+    sqlx::query(
+        "DELETE FROM user_groups
+         WHERE user_id = $1
+           AND group_id IN (SELECT id FROM groups WHERE is_default = true)",
+    )
+    .bind(user_uuid)
+    .execute(&pool)
+    .await
+    .expect("Failed to remove default group membership");
+
+    user
+}
+
+// ---------- Permission gating (4 tests) ----------
+
+#[tokio::test]
+async fn test_get_user_llm_providers_requires_user_llm_providers_read() {
+    let server = crate::common::TestServer::start().await;
+    let user = create_user_without_default_group(&server, "no_perm", &[]).await;
+
+    let response = reqwest::Client::new()
+        .get(&server.api_url("/user-llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_list_user_api_keys_requires_profile_read() {
+    let server = crate::common::TestServer::start().await;
+    let user = create_user_without_default_group(&server, "no_perm", &[]).await;
+
+    let response = reqwest::Client::new()
+        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_save_user_api_key_requires_profile_edit() {
+    let server = crate::common::TestServer::start().await;
+    let user = create_user_without_default_group(&server, "no_perm", &[]).await;
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "provider_id": Uuid::new_v4(),
+            "api_key": "sk-test-1234",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_delete_user_api_key_requires_profile_edit() {
+    let server = crate::common::TestServer::start().await;
+    let user = create_user_without_default_group(&server, "no_perm", &[]).await;
+    let provider_id = Uuid::new_v4();
+
+    let response = reqwest::Client::new()
+        .delete(&server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+// ---------- Happy-path CRUD round-trip (3 tests) ----------
+
+#[tokio::test]
+async fn test_save_user_api_key_round_trip() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let provider = create_test_provider_with_key(&server, &admin.token, "OpenAI", None).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Save a key.
+    let save_response = reqwest::Client::new()
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": provider_id, "api_key": "sk-secret-key-1234" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(save_response.status(), StatusCode::NO_CONTENT);
+
+    // List keys, assert the entry is present and the plaintext is NOT leaked
+    // (masked_key = first 4 chars + "***").
+    let list_response = reqwest::Client::new()
+        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let body: serde_json::Value = list_response.json().await.unwrap();
+    let keys = body["keys"].as_array().expect("keys array");
+    assert_eq!(keys.len(), 1, "expected exactly one saved key");
+    assert_eq!(keys[0]["provider_id"].as_str().unwrap(), provider_id);
+    let masked = keys[0]["masked_key"].as_str().unwrap();
+    assert_eq!(masked, "sk-s***", "key must be masked as first-4 + ***");
+    assert!(
+        !masked.contains("secret"),
+        "plaintext must never appear in the masked key"
+    );
+}
+
+#[tokio::test]
+async fn test_save_user_api_key_upserts_existing() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let provider = create_test_provider_with_key(&server, &admin.token, "OpenAI", None).await;
+    let provider_id = provider["id"].as_str().unwrap();
+    let client = reqwest::Client::new();
+
+    // Save twice — second time with a different key.
+    for key in &["aaaa-first", "bbbb-second"] {
+        let r = client
+            .post(&server.api_url("/user-llm-providers/api-keys"))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .json(&json!({ "provider_id": provider_id, "api_key": key }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NO_CONTENT);
+    }
+
+    // List — expect exactly one entry (upsert, not duplicate) with the SECOND
+    // key's masked prefix.
+    let list = client
+        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = list.json().await.unwrap();
+    let keys = body["keys"].as_array().unwrap();
+    assert_eq!(keys.len(), 1, "upsert must not produce a duplicate row");
+    assert_eq!(
+        keys[0]["masked_key"].as_str().unwrap(),
+        "bbbb***",
+        "second save must overwrite the first"
+    );
+}
+
+#[tokio::test]
+async fn test_delete_user_api_key_removes_key_and_is_idempotent() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let provider = create_test_provider_with_key(&server, &admin.token, "OpenAI", None).await;
+    let provider_id = provider["id"].as_str().unwrap();
+    let client = reqwest::Client::new();
+
+    // Save then delete.
+    client
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": provider_id, "api_key": "sk-x" }))
+        .send()
+        .await
+        .unwrap();
+
+    let delete1 = client
+        .delete(&server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete1.status(), StatusCode::NO_CONTENT);
+
+    // List should be empty.
+    let list = client
+        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = list.json().await.unwrap();
+    assert!(body["keys"].as_array().unwrap().is_empty());
+
+    // Second delete must also succeed (idempotent).
+    let delete2 = client
+        .delete(&server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        delete2.status(),
+        StatusCode::NO_CONTENT,
+        "delete must be idempotent (NO_CONTENT even when no key exists)"
+    );
+}
+
+// ---------- Validation errors (3 tests) ----------
+
+#[tokio::test]
+async fn test_save_user_api_key_rejects_empty_key() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": Uuid::new_v4(), "api_key": "" }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("VALIDATION_ERROR")
+    );
+}
+
+#[tokio::test]
+async fn test_save_user_api_key_rejects_oversized_key() {
+    let server = crate::common::TestServer::start().await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "provider_id": Uuid::new_v4(),
+            "api_key": "x".repeat(501),
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("VALIDATION_ERROR")
+    );
+}
+
+#[tokio::test]
+async fn test_save_user_api_key_control_char_handling() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let provider = create_test_provider_with_key(&server, &admin.token, "OpenAI", None).await;
+    let provider_id = provider["id"].as_str().unwrap();
+    let client = reqwest::Client::new();
+
+    // Control char other than \t is rejected.
+    let r_bad = client
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "provider_id": provider_id,
+            "api_key": "sk-bad\u{01}",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r_bad.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = r_bad.json().await.unwrap();
+    assert_eq!(
+        body.get("error_code").and_then(|v| v.as_str()),
+        Some("VALIDATION_ERROR")
+    );
+
+    // \t (tab) is the documented allowed exception.
+    let r_ok = client
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "provider_id": provider_id,
+            "api_key": "sk-ok\there",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        r_ok.status(),
+        StatusCode::NO_CONTENT,
+        "\\t must be an allowed exception in the control-char filter"
+    );
+}
+
+// ---------- `api_key_configured` flag logic (2 tests) ----------
+
+#[tokio::test]
+async fn test_get_user_providers_flag_true_with_system_key() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create", "groups::edit", "groups::read"],
+    )
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    // Admin creates a provider WITH a system api_key.
+    let provider =
+        create_test_provider_with_key(&server, &admin.token, "WithKey", Some("sk-admin-key")).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Assign provider to default users group so the user sees it.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO user_group_llm_providers (id, group_id, provider_id)
+         SELECT gen_random_uuid(), id, $1 FROM groups WHERE is_default = true
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(Uuid::parse_str(provider_id).unwrap())
+    .execute(&pool)
+    .await
+    .expect("Failed to assign provider to default group");
+
+    let r = reqwest::Client::new()
+        .get(&server.api_url("/user-llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body: serde_json::Value = r.json().await.unwrap();
+    let providers = body["providers"].as_array().unwrap();
+    // ProviderWithModels uses #[serde(flatten)] on the inner LlmProvider, so the
+    // fields (id, name, etc.) live at the top level alongside api_key_configured
+    // and llm_models — there is no `provider` sub-object in the JSON.
+    let our = providers
+        .iter()
+        .find(|p| p["id"].as_str() == Some(provider_id))
+        .expect("provider must be visible to the user");
+    assert_eq!(
+        our["api_key_configured"].as_bool(),
+        Some(true),
+        "system key set → api_key_configured must be true even without a user key"
+    );
+}
+
+#[tokio::test]
+async fn test_get_user_providers_flag_with_and_without_user_key() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    // Admin creates a provider with NO system key.
+    let provider =
+        create_test_provider_with_key(&server, &admin.token, "NoSystemKey", None).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO user_group_llm_providers (id, group_id, provider_id)
+         SELECT gen_random_uuid(), id, $1 FROM groups WHERE is_default = true
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(Uuid::parse_str(provider_id).unwrap())
+    .execute(&pool)
+    .await
+    .expect("Failed to assign provider to default group");
+
+    let client = reqwest::Client::new();
+
+    // BEFORE any user key: flag should be false (no system key, no user key).
+    let r_before = client
+        .get(&server.api_url("/user-llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let body_before: serde_json::Value = r_before.json().await.unwrap();
+    let p_before = body_before["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"].as_str() == Some(provider_id))
+        .expect("provider visible");
+    assert_eq!(
+        p_before["api_key_configured"].as_bool(),
+        Some(false),
+        "no system + no user key → flag must be false"
+    );
+
+    // Save a personal key.
+    client
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "provider_id": provider_id, "api_key": "sk-mine" }))
+        .send()
+        .await
+        .unwrap();
+
+    // AFTER user key: flag must flip to true even though system key remains empty.
+    let r_after = client
+        .get(&server.api_url("/user-llm-providers"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let body_after: serde_json::Value = r_after.json().await.unwrap();
+    let p_after = body_after["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"].as_str() == Some(provider_id))
+        .expect("provider visible");
+    assert_eq!(
+        p_after["api_key_configured"].as_bool(),
+        Some(true),
+        "user key set → flag must be true"
+    );
+}
+
+// ---------- Cross-user isolation (1 test) ----------
+
+#[tokio::test]
+async fn test_user_keys_are_isolated_between_users() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user_a = crate::common::test_helpers::create_user_with_permissions(&server, "alice", &[]).await;
+    let user_b = crate::common::test_helpers::create_user_with_permissions(&server, "bob", &[]).await;
+
+    let provider = create_test_provider_with_key(&server, &admin.token, "Shared", None).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    let client = reqwest::Client::new();
+
+    // A and B each save their own key for the same provider.
+    for (token, key) in &[
+        (&user_a.token, "aaaa-alice"),
+        (&user_b.token, "bbbb-bob"),
+    ] {
+        let r = client
+            .post(&server.api_url("/user-llm-providers/api-keys"))
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&json!({ "provider_id": provider_id, "api_key": key }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NO_CONTENT);
+    }
+
+    // A sees only A's masked key.
+    let list_a: serde_json::Value = client
+        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user_a.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let keys_a = list_a["keys"].as_array().unwrap();
+    assert_eq!(keys_a.len(), 1);
+    assert_eq!(keys_a[0]["masked_key"].as_str().unwrap(), "aaaa***");
+
+    // B sees only B's masked key.
+    let list_b: serde_json::Value = client
+        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user_b.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let keys_b = list_b["keys"].as_array().unwrap();
+    assert_eq!(keys_b.len(), 1);
+    assert_eq!(keys_b[0]["masked_key"].as_str().unwrap(), "bbbb***");
+
+    // A deletes — must not affect B.
+    client
+        .delete(&server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
+        .header("Authorization", format!("Bearer {}", user_a.token))
+        .send()
+        .await
+        .unwrap();
+
+    let list_b_after: serde_json::Value = client
+        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user_b.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        list_b_after["keys"].as_array().unwrap().len(),
+        1,
+        "B's key must survive A's delete (cross-user isolation)"
+    );
+}
+
+// ---------- API-key resolution (`resolve_api_key_for_user`) ----------
+//
+// These tests directly exercise the helper that the chat streaming pipeline
+// uses to decide which API key (user's personal key vs. admin system key) to
+// pass to the LLM provider. They go through the real DB via the test server,
+// but call the function directly instead of running a full chat round-trip
+// (which would require a mock LLM server).
+
+use ziee_chat::{resolve_api_key_for_user, UserKeyRepository};
+
+/// Build a UserKeyRepository talking directly to the test server's database
+/// — bypasses the global `Repos` (which lives in a different process from
+/// the integration tests).
+async fn test_user_key_repo(server: &crate::common::TestServer) -> UserKeyRepository {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+    UserKeyRepository::new(pool)
+}
+
+/// User has a personal key → it wins, even if a system key is set.
+#[tokio::test]
+async fn test_resolve_api_key_user_key_wins_over_system_key() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    // Provider WITH a system key.
+    let provider = create_test_provider_with_key(
+        &server,
+        &admin.token,
+        "WithSysKey",
+        Some("sk-system-admin"),
+    )
+    .await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // User saves their personal key.
+    reqwest::Client::new()
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({
+            "provider_id": provider_id,
+            "api_key": "sk-user-personal",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let provider_uuid = Uuid::parse_str(provider_id).unwrap();
+
+    let repo = test_user_key_repo(&server).await;
+    let resolved = resolve_api_key_for_user(
+        &repo,
+        user_uuid,
+        provider_uuid,
+        Some("sk-system-admin".to_string()),
+    )
+    .await
+    .expect("resolution must not error");
+
+    assert_eq!(
+        resolved, "sk-user-personal",
+        "user's personal key must take precedence over the system key"
+    );
+}
+
+/// User has no personal key → system key is used.
+#[tokio::test]
+async fn test_resolve_api_key_falls_back_to_system_key() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    // No user key saved. Random provider_id (resolution shouldn't depend on
+    // whether the provider row exists — it only reads user_llm_provider_api_keys).
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let provider_uuid = Uuid::new_v4();
+
+    let repo = test_user_key_repo(&server).await;
+    let resolved = resolve_api_key_for_user(
+        &repo,
+        user_uuid,
+        provider_uuid,
+        Some("sk-system-fallback".to_string()),
+    )
+    .await
+    .expect("resolution must not error");
+
+    assert_eq!(
+        resolved, "sk-system-fallback",
+        "with no user key, the resolver must return the supplied system key"
+    );
+}
+
+/// User has a personal key and the system key is None → user key wins.
+#[tokio::test]
+async fn test_resolve_api_key_user_key_used_when_no_system_key() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let provider = create_test_provider_with_key(&server, &admin.token, "NoSysKey", None).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    reqwest::Client::new()
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&serde_json::json!({
+            "provider_id": provider_id,
+            "api_key": "sk-only-user",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+    let provider_uuid = Uuid::parse_str(provider_id).unwrap();
+
+    let repo = test_user_key_repo(&server).await;
+    let resolved = resolve_api_key_for_user(&repo, user_uuid, provider_uuid, None)
+        .await
+        .expect("resolution must not error");
+
+    assert_eq!(
+        resolved, "sk-only-user",
+        "with no system key, the user's personal key must be returned"
+    );
+}
+
+/// Neither user nor system key → resolver returns an empty string
+/// (some provider types — `local`, `custom` — accept this and don't authenticate).
+#[tokio::test]
+async fn test_resolve_api_key_returns_empty_string_when_no_keys() {
+    let server = crate::common::TestServer::start().await;
+    let user =
+        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+
+    let user_uuid = Uuid::parse_str(&user.user_id).unwrap();
+
+    let repo = test_user_key_repo(&server).await;
+    let resolved = resolve_api_key_for_user(&repo, user_uuid, Uuid::new_v4(), None)
+        .await
+        .expect("resolution must not error even when both keys are absent");
+
+    assert_eq!(
+        resolved, "",
+        "with no user key and no system key, resolver must return an empty string"
+    );
+}
+
+/// Cross-user isolation at the resolver level: a key saved by user A must
+/// not leak to user B's resolution.
+#[tokio::test]
+async fn test_resolve_api_key_is_isolated_between_users() {
+    let server = crate::common::TestServer::start().await;
+
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let user_a =
+        crate::common::test_helpers::create_user_with_permissions(&server, "alice", &[]).await;
+    let user_b =
+        crate::common::test_helpers::create_user_with_permissions(&server, "bob", &[]).await;
+
+    let provider = create_test_provider_with_key(&server, &admin.token, "Shared", None).await;
+    let provider_id = provider["id"].as_str().unwrap();
+
+    // Only A saves a key.
+    reqwest::Client::new()
+        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .header("Authorization", format!("Bearer {}", user_a.token))
+        .json(&serde_json::json!({
+            "provider_id": provider_id,
+            "api_key": "sk-alice-only",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let a_uuid = Uuid::parse_str(&user_a.user_id).unwrap();
+    let b_uuid = Uuid::parse_str(&user_b.user_id).unwrap();
+    let provider_uuid = Uuid::parse_str(provider_id).unwrap();
+    let system_key = Some("sk-system".to_string());
+
+    let repo = test_user_key_repo(&server).await;
+    let resolved_for_a =
+        resolve_api_key_for_user(&repo, a_uuid, provider_uuid, system_key.clone()).await.unwrap();
+    let resolved_for_b =
+        resolve_api_key_for_user(&repo, b_uuid, provider_uuid, system_key.clone()).await.unwrap();
+
+    assert_eq!(resolved_for_a, "sk-alice-only", "A's resolution should return A's key");
+    assert_eq!(
+        resolved_for_b, "sk-system",
+        "B has no personal key — resolution must fall through to system key"
+    );
+}
