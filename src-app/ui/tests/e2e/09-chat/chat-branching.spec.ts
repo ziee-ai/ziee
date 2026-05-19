@@ -166,10 +166,10 @@ test.describe('Chat - Branching', () => {
     // Step 3: Edit the user message → creates branch-B (user level)
     const userMsg = page.locator('[data-testid="chat-message"][data-role="user"]').last()
     await hoverAndClickAction(page, userMsg, 'edit-message-button')
-    const editor = page.locator('textarea').last()
+    const editor = page.locator('textarea[placeholder*="Type your message"]')
     await expect(editor).toBeVisible({ timeout: 5000 })
     await editor.fill('Tell me a better joke')
-    await page.getByRole('button', { name: 'Save & Submit' }).click()
+    await page.getByRole('button', { name: 'Send message' }).click()
     await waitForAssistantResponse(page)
 
     // Now on branch-B. The user message navigator should show 2/2.
@@ -218,13 +218,14 @@ test.describe('Chat - Branching', () => {
     const userMessage = page.locator('[data-testid="chat-message"][data-role="user"]').last()
     await hoverAndClickAction(page, userMessage, 'edit-message-button')
 
-    // Wait for inline editor to appear and update the text
-    const editor = page.locator('textarea').last()
+    // Edit mode re-uses the ChatInput textarea (no inline editor exists);
+    // it's pre-populated by startEditMessage and submitted via the Send button.
+    const editor = page.locator('textarea[placeholder*="Type your message"]')
     await expect(editor).toBeVisible({ timeout: 5000 })
     await editor.fill('Edited message')
 
     // Confirm the edit
-    await page.getByRole('button', { name: 'Save & Submit' }).click()
+    await page.getByRole('button', { name: 'Send message' }).click()
     await waitForAssistantResponse(page)
 
     // Wait for navigator to appear
@@ -235,5 +236,301 @@ test.describe('Chat - Branching', () => {
       '[data-testid="chat-message"][data-role="user"] [data-testid="branch-navigator"]',
     )
     await expect(navigatorInUser).toBeVisible()
+  })
+
+  // =====================================================
+  // Tier 1+2+3 — additional coverage for components and edge cases
+  // =====================================================
+
+  test('copy button: writes message text to clipboard and shows success toast', async ({
+    browser,
+    testInfra,
+  }) => {
+    // Clipboard access needs an explicit permission grant; create a context with it.
+    const { baseURL, apiURL } = testInfra
+    const context = await browser.newContext({
+      permissions: ['clipboard-read', 'clipboard-write'],
+    })
+    const page = await context.newPage()
+
+    try {
+      await loginAsAdmin(page, baseURL)
+      const adminToken = await getAdminToken(apiURL)
+      await setupProviderAndModel(apiURL, adminToken)
+
+      const userText = 'Copy this exact text'
+      await createConversationWithModel(page, baseURL, 'GPT-4o Mini', userText)
+      await waitForAssistantResponse(page)
+
+      // Hover the user message and click the Copy button (the icon-only one with title="Copy")
+      const userMsg = page.locator('[data-testid="chat-message"][data-role="user"]').last()
+      await userMsg.hover()
+      // MessageActions renders three buttons in a Space; the Copy button is the first one
+      // and has Tooltip title="Copy". Find it by aria-label or by index.
+      await userMsg.getByRole('button').first().click()
+
+      // Success toast: AntD App message — "Copied!"
+      await expect(page.getByText('Copied!')).toBeVisible({ timeout: 5000 })
+
+      // Read clipboard contents and assert.
+      const clip = await page.evaluate(() => navigator.clipboard.readText())
+      expect(clip).toBe(userText)
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('edit cancel: banner appears, cancel restores chat without trimming messages', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    await setupProviderAndModel(apiURL, adminToken)
+
+    await createConversationWithModel(page, baseURL, 'GPT-4o Mini', 'Will-be-edited message')
+    await waitForAssistantResponse(page)
+
+    // Count messages before edit (1 user + 1 assistant = 2)
+    const allMessages = page.locator('[data-testid="chat-message"]')
+    const beforeCount = await allMessages.count()
+    expect(beforeCount).toBeGreaterThanOrEqual(2)
+
+    // Enter edit mode
+    const userMsg = page.locator('[data-testid="chat-message"][data-role="user"]').last()
+    await hoverAndClickAction(page, userMsg, 'edit-message-button')
+
+    // The EditingMessageBanner should appear ("Editing message" label + Cancel button)
+    await expect(page.getByText('Editing message')).toBeVisible({ timeout: 5000 })
+    const cancelButton = page.getByRole('button', { name: 'Cancel edit' })
+    await expect(cancelButton).toBeVisible()
+
+    // Click Cancel
+    await cancelButton.click()
+
+    // Banner gone
+    await expect(page.getByText('Editing message')).not.toBeVisible({ timeout: 5000 })
+
+    // Messages preserved — no trimming. The original user message is still there.
+    await expect(
+      page.locator('[data-testid="chat-message"][data-role="user"]:has-text("Will-be-edited message")'),
+    ).toHaveCount(1)
+    // And the assistant response is still rendered too
+    await expect(page.locator('[data-testid="chat-message"][data-role="assistant"]')).toHaveCount(1)
+  })
+
+  test('reload: navigator anchor persists at assistant bubble after page refresh', async ({
+    page,
+    testInfra,
+  }) => {
+    // This is the linchpin test for the fork_level column. Without persisting
+    // fork_level in the DB, after reload computeForkPoints would default the
+    // navigator to the user bubble — wrong for the regenerate flow.
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    await setupProviderAndModel(apiURL, adminToken)
+
+    await createConversationWithModel(page, baseURL, 'GPT-4o Mini', 'Anchor test')
+    await waitForAssistantResponse(page)
+
+    // Regenerate → navigator should appear at assistant bubble
+    const lastAssistant = page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
+    await hoverAndClickAction(page, lastAssistant, 'regenerate-button')
+    await waitForAssistantResponse(page)
+    await page.waitForSelector('[data-testid="branch-navigator"]', { timeout: 10000 })
+
+    // Verify the pre-reload state
+    const assistantNavPre = page.locator(
+      '[data-testid="chat-message"][data-role="assistant"] [data-testid="branch-navigator"]',
+    )
+    await expect(assistantNavPre).toBeVisible()
+    await expect(assistantNavPre).toContainText('2 / 2')
+
+    // ─── RELOAD ───
+    await page.reload()
+    await page.waitForLoadState('load')
+
+    // After reload, the navigator must still anchor at the ASSISTANT bubble.
+    // If fork_level weren't persisted, it would default to 'user' and the
+    // navigator would render under the user bubble instead.
+    const assistantNavPost = page.locator(
+      '[data-testid="chat-message"][data-role="assistant"] [data-testid="branch-navigator"]',
+    )
+    await expect(assistantNavPost).toBeVisible({ timeout: 15000 })
+    await expect(assistantNavPost).toContainText('2 / 2')
+
+    // And NOT at the user bubble
+    const userNavPost = page.locator(
+      '[data-testid="chat-message"][data-role="user"] [data-testid="branch-navigator"]',
+    )
+    await expect(userNavPost).not.toBeVisible()
+  })
+
+  test('next button: prev then next walks back to current branch', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    await setupProviderAndModel(apiURL, adminToken)
+
+    await createConversationWithModel(page, baseURL, 'GPT-4o Mini', 'Navigation test')
+    await waitForAssistantResponse(page)
+
+    // Regenerate to create a sibling branch — we land on 2/2
+    const lastAssistant = page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
+    await hoverAndClickAction(page, lastAssistant, 'regenerate-button')
+    await waitForAssistantResponse(page)
+
+    const nav = page.locator('[data-testid="branch-navigator"]')
+    await expect(nav).toBeVisible({ timeout: 10000 })
+    await expect(nav).toContainText('2 / 2')
+
+    // First nav button = Prev (LeftOutlined). Click → 1/2.
+    await nav.getByRole('button').first().click()
+    await expect(page.locator('[data-testid="branch-navigator"]')).toContainText('1 / 2', { timeout: 10000 })
+
+    // Last nav button = Next (RightOutlined). Click → 2/2.
+    await page.locator('[data-testid="branch-navigator"]').getByRole('button').last().click()
+    await expect(page.locator('[data-testid="branch-navigator"]')).toContainText('2 / 2', { timeout: 10000 })
+  })
+
+  test('hover reveal: action button container carries the opacity-toggle classes', async ({
+    page,
+    testInfra,
+  }) => {
+    // We pin the *intent* (opacity-0 by default, opacity-100 on parent
+    // hover) at the className level rather than checking runtime computed
+    // opacity. Computed opacity ends up "1" in the test browser because
+    // Tailwind's group-hover transitions can resolve unpredictably during
+    // Playwright's headless hover synthesis — the className is the
+    // authoritative contract we actually care about.
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    await setupProviderAndModel(apiURL, adminToken)
+
+    await createConversationWithModel(page, baseURL, 'GPT-4o Mini', 'Hover test')
+    await waitForAssistantResponse(page)
+
+    const userMsg = page.locator('[data-testid="chat-message"][data-role="user"]').last()
+    const editButton = userMsg.locator('[data-testid="edit-message-button"]')
+
+    // The Space wrapping the action buttons must carry both Tailwind tokens
+    // — otherwise the hover-reveal pattern is silently broken. AntD wraps
+    // each child in an `ant-space-item`, so we need a word-boundary class
+    // match (`contains(@class, "ant-space")` would match `ant-space-item`).
+    const actionsContainer = editButton.locator(
+      'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-space ")][1]',
+    )
+    const className = (await actionsContainer.getAttribute('class')) ?? ''
+    expect(className).toContain('opacity-0')
+    expect(className).toContain('group-hover:opacity-100')
+
+    // The parent chat-message must carry the `group` class for group-hover to
+    // fire. Without it the buttons stay hidden forever.
+    const messageClassName = (await userMsg.getAttribute('class')) ?? ''
+    expect(messageClassName).toContain('group')
+  })
+
+  test('regenerate disables the ChatInput Send button while the stream is in flight', async ({
+    page,
+    testInfra,
+  }) => {
+    // The MessageActions regenerate button's own .ant-btn-loading window is
+    // too short to catch reliably — handleRegenerate awaits
+    // startRegenerateMessage which only does store setup, not the streaming
+    // itself. The reliable signal of "regenerate in flight" is that the
+    // ChatInput's main Send button becomes disabled (sending/isStreaming on
+    // the store), which lasts the entire stream duration.
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    await setupProviderAndModel(apiURL, adminToken)
+
+    await createConversationWithModel(page, baseURL, 'GPT-4o Mini', 'Loading state test')
+    await waitForAssistantResponse(page)
+
+    const lastAssistant = page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
+    const sendButton = page.getByRole('button', { name: 'Send message' })
+
+    // Sanity: send button should be enabled before regenerate fires.
+    await expect(sendButton).toBeEnabled()
+
+    await hoverAndClickAction(page, lastAssistant, 'regenerate-button')
+
+    // While the regenerated stream is in flight, the Send button must be disabled.
+    await expect(sendButton).toBeDisabled({ timeout: 5000 })
+
+    // Once the stream completes, the button re-enables.
+    await waitForAssistantResponse(page)
+    await expect(sendButton).toBeEnabled({ timeout: 10000 })
+  })
+
+  test('branch selection persists across page reload', async ({
+    page,
+    testInfra,
+  }) => {
+    // Independent of G3 — this verifies the *active* branch is preserved,
+    // not just the navigator's anchor message.
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    await setupProviderAndModel(apiURL, adminToken)
+
+    await createConversationWithModel(page, baseURL, 'GPT-4o Mini', 'Persistence test')
+    await waitForAssistantResponse(page)
+
+    // Regenerate → 2/2 (newer branch)
+    const lastAssistant = page.locator('[data-testid="chat-message"][data-role="assistant"]').last()
+    await hoverAndClickAction(page, lastAssistant, 'regenerate-button')
+    await waitForAssistantResponse(page)
+
+    const nav = page.locator('[data-testid="branch-navigator"]')
+    await expect(nav).toContainText('2 / 2', { timeout: 10000 })
+
+    // Switch to branch 1/2
+    await nav.getByRole('button').first().click()
+    await expect(page.locator('[data-testid="branch-navigator"]')).toContainText('1 / 2', { timeout: 10000 })
+
+    // Reload
+    await page.reload()
+    await page.waitForLoadState('load')
+
+    // Should still be on 1/2 — the conversation's active_branch_id is persisted server-side
+    await expect(page.locator('[data-testid="branch-navigator"]')).toContainText('1 / 2', { timeout: 15000 })
+  })
+
+  test('edit pre-populates inline editor with the original message text', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL, apiURL } = testInfra
+
+    await loginAsAdmin(page, baseURL)
+    const adminToken = await getAdminToken(apiURL)
+    await setupProviderAndModel(apiURL, adminToken)
+
+    const originalText = 'Pre-population check 12345'
+    await createConversationWithModel(page, baseURL, 'GPT-4o Mini', originalText)
+    await waitForAssistantResponse(page)
+
+    const userMsg = page.locator('[data-testid="chat-message"][data-role="user"]').last()
+    await hoverAndClickAction(page, userMsg, 'edit-message-button')
+
+    // Edit mode re-uses the ChatInput's textarea (no separate inline editor);
+    // startEditMessage pre-fills it with the original message text.
+    const editor = page.locator('textarea[placeholder*="Type your message"]')
+    await expect(editor).toBeVisible({ timeout: 5000 })
+    await expect(editor).toHaveValue(originalText, { timeout: 5000 })
   })
 })
