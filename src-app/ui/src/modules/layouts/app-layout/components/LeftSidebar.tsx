@@ -199,7 +199,7 @@ export function LeftSidebar() {
           {contentWidgets
             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
             .map(widget => (
-              <div key={widget.id}>
+              <div key={widget.id} className="flex-1 min-h-0 flex flex-col">
                 <LazyComponentRenderer component={widget.component} />
               </div>
             ))}

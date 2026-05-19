@@ -70,10 +70,12 @@ export const ResizeHandle = ({
   if (placement === 'bottom') classNames.push('bottom-0', 'left-0')
   if (placement === 'left') classNames.push('top-0', 'left-0')
 
+  const isHorizontal = placement === 'left' || placement === 'right'
+
   return (
     <div className={classNames.join(' ')} ref={ref} style={style}>
       <div
-        className={'w-full h-full'}
+        className={'w-full h-full relative group'}
         onMouseDown={event => {
           event.preventDefault()
           event.stopPropagation()
@@ -184,7 +186,11 @@ export const ResizeHandle = ({
             targetWindow.addEventListener('mouseup', upHandler)
           }
         }}
-      ></div>
+      >
+        {isHorizontal && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[3px] h-10 rounded-full bg-gray-400 opacity-20 group-hover:opacity-60 transition-opacity pointer-events-none" />
+        )}
+      </div>
     </div>
   )
 }
