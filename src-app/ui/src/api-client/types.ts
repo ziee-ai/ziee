@@ -447,6 +447,10 @@ export interface GetUserProvidersResponse {
   providers: ProviderWithModels[]
 }
 
+export interface GetUserProvidersResponse2 {
+  providers: ProviderWithModels2[]
+}
+
 export interface Group {
   description?: string
   created_at: string
@@ -1059,6 +1063,22 @@ export interface ProviderInstancesResponse {
 
 export interface ProviderWithModels {
   api_key?: string
+  api_key_configured: boolean
+  base_url?: string
+  built_in: boolean
+  created_at: string
+  default_runtime_version_id?: string
+  enabled: boolean
+  id: string
+  llm_models: LlmModel[]
+  name: string
+  provider_type: string
+  proxy_settings: ProxySettings
+  updated_at: string
+}
+
+export interface ProviderWithModels2 {
+  api_key?: string
   base_url?: string
   built_in: boolean
   created_at: string
@@ -1206,6 +1226,11 @@ export interface SSEHardwareUsageConnectedData {
 export type SSEHardwareUsageEvent = {
   connected: SSEHardwareUsageConnectedData
   update: HardwareUsageUpdate
+}
+
+export interface SaveUserApiKeyRequest {
+  api_key: string
+  provider_id: string
 }
 
 export interface SendMessageRequest {
@@ -1432,6 +1457,15 @@ export interface UserActiveStatusResponse {
   user_id: string
 }
 
+export interface UserApiKeyEntry {
+  masked_key: string
+  provider_id: string
+}
+
+export interface UserApiKeyListResponse {
+  keys: UserApiKeyEntry[]
+}
+
 export interface UserListResponse {
   page: number
   per_page: number
@@ -1515,10 +1549,13 @@ export enum Permissions {
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
+  ProfileEdit = 'profile::edit',
+  ProfileRead = 'profile::read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
+  UserLlmProvidersRead = 'user_llm_providers::read',
   UsersCreate = 'users::create',
   UsersDelete = 'users::delete',
   UsersEdit = 'users::edit',
@@ -1583,10 +1620,13 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
+  ProfileEdit: 'Edit own profile information',
+  ProfileRead: 'View own profile information',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
   RuntimeVersionUpdate: 'Update runtime version settings and defaults',
+  UserLlmProvidersRead: 'View available LLM providers and models',
   UsersCreate: 'Create new user accounts',
   UsersDelete: 'Delete user accounts',
   UsersEdit: 'Edit existing user information',
@@ -1678,10 +1718,14 @@ export const ApiEndpoints = {
   'LlmProvider.assignGroup': 'POST /api/llm-providers/{provider_id}/groups',
   'LlmProvider.create': 'POST /api/llm-providers',
   'LlmProvider.delete': 'DELETE /api/llm-providers/{provider_id}',
+  'LlmProvider.deleteUserApiKey': 'DELETE /api/user-llm-providers/api-keys/{provider_id}',
   'LlmProvider.get': 'GET /api/llm-providers/{provider_id}',
   'LlmProvider.getGroups': 'GET /api/llm-providers/{provider_id}/groups',
+  'LlmProvider.getUserLlmProviders': 'GET /api/user-llm-providers',
   'LlmProvider.list': 'GET /api/llm-providers',
+  'LlmProvider.listUserApiKeys': 'GET /api/user-llm-providers/api-keys',
   'LlmProvider.removeGroup': 'DELETE /api/llm-providers/{provider_id}/groups/{group_id}',
+  'LlmProvider.saveUserApiKey': 'POST /api/user-llm-providers/api-keys',
   'LlmProvider.update': 'POST /api/llm-providers/{provider_id}',
   'LlmRepository.create': 'POST /api/llm-repositories',
   'LlmRepository.delete': 'DELETE /api/llm-repositories/{repository_id}',
@@ -1825,10 +1869,14 @@ export type ApiEndpointParameters = {
   'LlmProvider.assignGroup': { provider_id: string } & AssignProviderToGroupRequest
   'LlmProvider.create': CreateLlmProviderRequest
   'LlmProvider.delete': { provider_id: string }
+  'LlmProvider.deleteUserApiKey': { provider_id: string }
   'LlmProvider.get': { provider_id: string }
   'LlmProvider.getGroups': { provider_id: string }
+  'LlmProvider.getUserLlmProviders': void
   'LlmProvider.list': PaginationQuery
+  'LlmProvider.listUserApiKeys': void
   'LlmProvider.removeGroup': { provider_id: string; group_id: string }
+  'LlmProvider.saveUserApiKey': SaveUserApiKeyRequest
   'LlmProvider.update': { provider_id: string } & UpdateLlmProviderRequest
   'LlmRepository.create': CreateLlmRepositoryRequest
   'LlmRepository.delete': { repository_id: string }
@@ -1918,7 +1966,7 @@ export type ApiEndpointResponses = {
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
-  'Chat.getUserLlmProviders': GetUserProvidersResponse
+  'Chat.getUserLlmProviders': GetUserProvidersResponse2
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation
@@ -1972,10 +2020,14 @@ export type ApiEndpointResponses = {
   'LlmProvider.assignGroup': void
   'LlmProvider.create': LlmProvider
   'LlmProvider.delete': void
+  'LlmProvider.deleteUserApiKey': void
   'LlmProvider.get': LlmProvider
   'LlmProvider.getGroups': Group[]
+  'LlmProvider.getUserLlmProviders': GetUserProvidersResponse
   'LlmProvider.list': LlmProviderListResponse
+  'LlmProvider.listUserApiKeys': UserApiKeyListResponse
   'LlmProvider.removeGroup': void
+  'LlmProvider.saveUserApiKey': void
   'LlmProvider.update': LlmProvider
   'LlmRepository.create': LlmRepository
   'LlmRepository.delete': void

@@ -154,6 +154,7 @@ declare_repositories! {
     user: UserRepository => crate::modules::user,
     group: GroupRepository => crate::modules::user,
     llm_provider: LlmProviderRepository => crate::modules::llm_provider,
+    user_key: UserKeyRepository => crate::modules::llm_provider,
     llm_model: LlmModelRepository => crate::modules::llm_model,
     download_instance: DownloadInstanceRepository => crate::modules::llm_model,
     llm_repository: LlmRepositoryRepository => crate::modules::llm_repository,

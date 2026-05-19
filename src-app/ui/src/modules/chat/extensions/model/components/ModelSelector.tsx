@@ -1,12 +1,9 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
-import { Select, Button } from 'antd'
-import { SettingOutlined } from '@ant-design/icons'
-import { IoIosArrowDown } from 'react-icons/io'
+import { useState, useMemo } from 'react'
+import { Select } from 'antd'
+import { WarningOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-
-const UI_BREAKPOINT = 480
-
-const calculateIsBreaking = (width: number): boolean => width <= UI_BREAKPOINT
+import { ProviderApiKeyModal } from './ProviderApiKeyModal'
+import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 /**
  * ModelSelector Component
@@ -15,21 +12,22 @@ const calculateIsBreaking = (width: number): boolean => width <= UI_BREAKPOINT
  * Features:
  * - Computes available models from providers on-demand
  * - Manages selected model via ModelStore.setModelId()
- * - Responsive UI (compact on small screens)
- * - No props needed - fully self-contained
+ * - Shows warning icon for providers without an API key configured
+ * - Prompts user to enter an API key when selecting a model with no key
  */
 export function ModelSelector() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [isBreaking, setIsBreaking] = useState<boolean>(false)
-
-  // Read state from stores
   const { selectedModelId, providers } = Stores.Chat.ModelStore
   const { sending } = Stores.Chat
+  const mainContentMinSize = useMainContentMinSize()
+  const [pendingProviderForKey, setPendingProviderForKey] = useState<{
+    providerId: string
+    providerName: string
+    modelId: string
+  } | null>(null)
 
-  // Compute available models from providers
   const availableModels = useMemo(() => {
     const modelGroups: Array<{
-      label: string
+      label: React.ReactNode
       options: Array<{ label: string; value: string; description?: string }>
     }> = []
 
@@ -38,11 +36,20 @@ export function ModelSelector() {
         const enabledModels = provider.llm_models.filter(model => model.enabled)
 
         if (enabledModels.length > 0) {
+          const label = provider.api_key_configured ? (
+            provider.name
+          ) : (
+            <span className="flex items-center gap-1">
+              <WarningOutlined className="text-yellow-500" />
+              {provider.name}
+            </span>
+          )
+
           modelGroups.push({
-            label: provider.name,
+            label,
             options: enabledModels.map(model => ({
               label: model.display_name || model.name,
-              value: model.id, // Just the model ID - UUIDs are globally unique
+              value: model.id,
               description: model.description,
             })),
           })
@@ -53,34 +60,31 @@ export function ModelSelector() {
     return modelGroups
   }, [providers])
 
-  // Handle responsive breakpoint
-  useEffect(() => {
-    const containerElement = containerRef.current
-    if (!containerElement) return
-
-    const updateBreaking = (width: number) => {
-      setIsBreaking(calculateIsBreaking(width))
-    }
-
-    updateBreaking(containerElement.offsetWidth)
-
-    const resizeObserver = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        updateBreaking(entry.contentRect.width)
-      }
-    })
-
-    resizeObserver.observe(containerElement)
-
-    return () => resizeObserver.disconnect()
-  }, [])
-
   const handleChange = (value: string) => {
+    // Check if selected model belongs to a provider without an API key
+    for (const provider of providers) {
+      if (!provider.api_key_configured && provider.llm_models) {
+        const model = provider.llm_models.find(m => m.id === value)
+        if (model) {
+          setPendingProviderForKey({
+            providerId: provider.id,
+            providerName: provider.name,
+            modelId: value,
+          })
+          return
+        }
+      }
+    }
     Stores.Chat.ModelStore.setModelId(value)
   }
 
+  const handleKeyProvided = (modelId: string) => {
+    setPendingProviderForKey(null)
+    Stores.Chat.ModelStore.setModelId(modelId)
+  }
+
   return (
-    <div ref={containerRef} style={{ display: 'inline-block' }}>
+    <div data-testid="model-selector">
       <Select
         value={selectedModelId}
         onChange={handleChange}
@@ -88,18 +92,19 @@ export function ModelSelector() {
         placeholder="Select Model"
         disabled={sending}
         options={availableModels}
-        style={{ width: isBreaking ? 40 : 120 }}
-        variant={isBreaking ? 'borderless' : undefined}
-        labelRender={isBreaking ? () => '' : undefined}
-        prefix={
-          isBreaking && (
-            <Button>
-              <SettingOutlined />
-            </Button>
-          )
-        }
-        suffixIcon={<IoIosArrowDown />}
+        style={{ fontSize: 15, maxWidth: mainContentMinSize.xs ? 130 : undefined }}
+        className="[&_.ant-select-selector]:!w-auto [&_.ant-select-selector]:!min-w-0"
+        variant="borderless"
       />
+      {pendingProviderForKey && (
+        <ProviderApiKeyModal
+          providerId={pendingProviderForKey.providerId}
+          providerName={pendingProviderForKey.providerName}
+          modelId={pendingProviderForKey.modelId}
+          onSuccess={handleKeyProvided}
+          onCancel={() => setPendingProviderForKey(null)}
+        />
+      )}
     </div>
   )
 }

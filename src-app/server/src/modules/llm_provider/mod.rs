@@ -9,13 +9,14 @@ pub mod events;
 pub mod handlers;
 pub mod models;
 pub mod permissions;
-pub mod repository;
+pub mod repositories;
 pub mod routes;
 pub mod types;
 pub mod utils;
 
 // Re-export main types and router
-pub use repository::LlmProviderRepository;
+pub use repositories::admin::LlmProviderRepository;
+pub use repositories::user::UserKeyRepository;
 pub use routes::llm_provider_router;
 
 use aide::axum::ApiRouter;

@@ -61,7 +61,7 @@ impl StreamingService {
         use crate::modules::chat::core::ai_provider::create_provider_from_model_id;
 
         let (provider, model_name, model_id, provider_id) =
-            create_provider_from_model_id(&self.pool, request.model_id).await?;
+            create_provider_from_model_id(request.model_id, user_id).await?;
 
         // Conditionally create user message (check extensions)
         // Extensions can prevent user message creation (e.g., MCP tool approval resumption)

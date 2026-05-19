@@ -1,5 +1,5 @@
 import { createExtensionStore } from '@/modules/chat/core/extensions'
-import type { LlmProviderWithModels } from '@/modules/llm-provider/stores/LlmProvider.store'
+import type { ProviderWithModels } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 
@@ -17,7 +17,7 @@ import { Stores } from '@/core/stores'
 interface ModelStore {
   // Provider data (merged from ChatLlmProvider)
   /** User-accessible providers from chat endpoint */
-  providers: LlmProviderWithModels[]
+  providers: ProviderWithModels[]
 
   /** Loading state for providers */
   loading: boolean
@@ -84,9 +84,11 @@ export const createModelStore = () =>
               )
               if (!existingProvider) return state
 
-              const updatedProvider: LlmProviderWithModels = {
+              const updatedProvider: ProviderWithModels = {
+                ...existingProvider,
                 ...provider,
                 llm_models: existingProvider.llm_models || [],
+                api_key_configured: existingProvider.api_key_configured,
               }
               return {
                 providers: state.providers.map(p =>
@@ -182,11 +184,15 @@ export const createModelStore = () =>
         state.error = null
       })
       try {
-        const response = await ApiClient.Chat.getUserLlmProviders()
+        const response = await ApiClient.LlmProvider.getUserLlmProviders(undefined, undefined)
         set(state => {
           state.providers = response.providers
           state.loading = false
         })
+        // Auto-select first model if none is selected yet
+        if (!get().selectedModelId) {
+          get().initializeFromConversation()
+        }
       } catch (error: any) {
         console.error('[ModelStore] loadProviders error:', error)
         set(state => {

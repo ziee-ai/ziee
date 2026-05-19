@@ -17,6 +17,8 @@ pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{JwtService, AuthResponse, hash_password};
 pub use modules::user::models::User;
 pub use modules::llm_provider::events::LlmProviderEvent;
+pub use modules::llm_provider::UserKeyRepository;
+pub use modules::chat::core::ai_provider::resolve_api_key_for_user;
 pub use common::AppError;
 // Re-export async_trait for consistent EventHandler implementations
 pub use async_trait::async_trait;

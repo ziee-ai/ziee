@@ -2024,6 +2024,216 @@
         ]
       }
     },
+    "/api/user-llm-providers": {
+      "get": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Get user's accessible LLM providers",
+        "description": "Returns all enabled LLM providers assigned to the user's groups, with enabled models and API key configuration status.",
+        "operationId": "LlmProvider.getUserLlmProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View available LLM providers and models",
+                        "name": "UserLlmProvidersRead",
+                        "value": "user_llm_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: user_llm_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response for user-accessible LLM providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUserProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers/api-keys": {
+      "get": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "List user's provider API keys (masked)",
+        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
+        "operationId": "LlmProvider.listUserApiKeys",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View own profile information",
+                        "name": "ProfileRead",
+                        "value": "profile::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response listing user API keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserApiKeyListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Save or update user API key for a provider",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
+        "operationId": "LlmProvider.saveUserApiKey",
+        "requestBody": {
+          "description": "Request to save a user API key",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveUserApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/user-llm-providers/api-keys/{provider_id}": {
+      "delete": {
+        "tags": [
+          "LlmProvider"
+        ],
+        "summary": "Delete user API key for a provider",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
+        "operationId": "LlmProvider.deleteUserApiKey",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: profile::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "no content"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/files/upload": {
       "post": {
         "tags": [
@@ -5621,7 +5831,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetUserProvidersResponse"
+                  "$ref": "#/components/schemas/GetUserProvidersResponse2"
                 }
               }
             }
@@ -9841,13 +10051,28 @@
         ]
       },
       "GetUserProvidersResponse": {
-        "description": "Response containing all providers accessible to the user",
+        "description": "Response for user-accessible LLM providers",
         "type": "object",
         "properties": {
           "providers": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProviderWithModels"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ]
+      },
+      "GetUserProvidersResponse2": {
+        "description": "Response containing all providers accessible to the user",
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderWithModels2"
             }
           }
         },
@@ -12724,6 +12949,81 @@
         ]
       },
       "ProviderWithModels": {
+        "description": "Provider with its available models and user-facing key status",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "api_key_configured": {
+            "description": "Whether an API key is configured (either system-level or user-level)",
+            "type": "boolean"
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "built_in": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "default_runtime_version_id": {
+            "description": "Default runtime version for local models in this provider",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "llm_models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmModel"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string"
+          },
+          "proxy_settings": {
+            "$ref": "#/components/schemas/ProxySettings"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "enabled",
+          "built_in",
+          "proxy_settings",
+          "created_at",
+          "updated_at",
+          "llm_models",
+          "api_key_configured"
+        ]
+      },
+      "ProviderWithModels2": {
         "description": "Provider with its available models",
         "type": "object",
         "properties": {
@@ -13436,6 +13736,23 @@
               "update"
             ]
           }
+        ]
+      },
+      "SaveUserApiKeyRequest": {
+        "description": "Request to save a user API key",
+        "type": "object",
+        "properties": {
+          "api_key": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "provider_id",
+          "api_key"
         ]
       },
       "SendMessageRequest": {
@@ -14481,6 +14798,38 @@
         "required": [
           "user_id",
           "is_active"
+        ]
+      },
+      "UserApiKeyEntry": {
+        "description": "Masked user API key entry",
+        "type": "object",
+        "properties": {
+          "masked_key": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "provider_id",
+          "masked_key"
+        ]
+      },
+      "UserApiKeyListResponse": {
+        "description": "Response listing user API keys",
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserApiKeyEntry"
+            }
+          }
+        },
+        "required": [
+          "keys"
         ]
       },
       "UserListResponse": {
