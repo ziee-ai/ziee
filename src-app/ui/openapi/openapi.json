@@ -6459,6 +6459,115 @@
         ]
       }
     },
+    "/api/mcp/servers/{id}/prompts": {
+      "get": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "List MCP server prompts",
+        "description": "List prompt templates available from an MCP server",
+        "operationId": "McpServerRuntime.listPrompts",
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPromptsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/prompts/get": {
+      "post": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "Get rendered MCP prompt",
+        "description": "Render a prompt template with the given arguments",
+        "operationId": "McpServerRuntime.getPrompt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetPromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "Result of a `prompts/get` call — server's rendered prompt messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPromptResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server or prompt not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/ping": {
+      "post": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "Ping MCP server",
+        "description": "Liveness check — verifies the server is reachable and responsive",
+        "operationId": "McpServerRuntime.ping",
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PingResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/system-servers": {
       "get": {
         "tags": [
@@ -10184,6 +10293,39 @@
           "device_name"
         ]
       },
+      "GetPromptRequest": {
+        "type": "object",
+        "properties": {
+          "arguments": {
+            "default": null
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "GetPromptResponse": {
+        "description": "Result of a `prompts/get` call — server's rendered prompt messages.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messages": {
+            "type": "array",
+            "items": true
+          }
+        },
+        "required": [
+          "messages"
+        ]
+      },
       "GetUserProvidersResponse": {
         "description": "Response for user-accessible LLM providers",
         "type": "object",
@@ -11167,6 +11309,20 @@
             "format": "uuid"
           }
         }
+      },
+      "ListPromptsResponse": {
+        "type": "object",
+        "properties": {
+          "prompts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prompt"
+            }
+          }
+        },
+        "required": [
+          "prompts"
+        ]
       },
       "ListResourcesResponse": {
         "type": "object",
@@ -13191,6 +13347,17 @@
           "required_permissions"
         ]
       },
+      "PingResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
       "PreviewQuery": {
         "description": "Preview query params",
         "type": "object",
@@ -13202,6 +13369,52 @@
             "minimum": 0
           }
         }
+      },
+      "Prompt": {
+        "description": "MCP Prompt template metadata (per MCP spec § server/prompts).\n Returned by `prompts/list`.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arguments": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PromptArgument"
+            }
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "PromptArgument": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "ProviderInstancesResponse": {
         "type": "object",

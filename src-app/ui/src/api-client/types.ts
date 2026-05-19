@@ -456,6 +456,16 @@ export interface GPUUsage {
   utilization_percentage?: number
 }
 
+export interface GetPromptRequest {
+  arguments?: any
+  name: string
+}
+
+export interface GetPromptResponse {
+  description?: string
+  messages: any[]
+}
+
 export interface GetUserProvidersResponse {
   providers: ProviderWithModels[]
 }
@@ -666,6 +676,10 @@ export interface ListModelsQuery {
   page?: number
   perPage?: number
   providerId?: string
+}
+
+export interface ListPromptsResponse {
+  prompts: Prompt[]
 }
 
 export interface ListResourcesResponse {
@@ -1090,8 +1104,24 @@ export interface PermissionErrorDetails {
   required_permissions: PermissionDetail[]
 }
 
+export interface PingResponse {
+  ok: boolean
+}
+
 export interface PreviewQuery {
   page?: number
+}
+
+export interface Prompt {
+  description?: string
+  arguments?: PromptArgument[]
+  name: string
+}
+
+export interface PromptArgument {
+  description?: string
+  name: string
+  required?: boolean
 }
 
 export interface ProviderInstancesResponse {
@@ -1823,8 +1853,11 @@ export const ApiEndpoints = {
   'McpServer.update': 'PUT /api/mcp/servers/{id}',
   'McpServerRuntime.callTool': 'POST /api/mcp/servers/{id}/tools/{name}/call',
   'McpServerRuntime.disconnect': 'DELETE /api/mcp/servers/{id}/disconnect',
+  'McpServerRuntime.getPrompt': 'POST /api/mcp/servers/{id}/prompts/get',
+  'McpServerRuntime.listPrompts': 'GET /api/mcp/servers/{id}/prompts',
   'McpServerRuntime.listResources': 'GET /api/mcp/servers/{id}/resources',
   'McpServerRuntime.listTools': 'GET /api/mcp/servers/{id}/tools',
+  'McpServerRuntime.ping': 'POST /api/mcp/servers/{id}/ping',
   'McpServerRuntime.readResource': 'POST /api/mcp/servers/{id}/resources/read',
   'McpServerSystem.assignServerToGroups': 'POST /api/mcp/system-servers/{id}/groups',
   'McpServerSystem.create': 'POST /api/mcp/system-servers',
@@ -1975,8 +2008,11 @@ export type ApiEndpointParameters = {
   'McpServer.update': { id: string } & UpdateMcpServerRequest
   'McpServerRuntime.callTool': { id: string; name: string } & CallToolRequest
   'McpServerRuntime.disconnect': { id: string }
+  'McpServerRuntime.getPrompt': { id: string } & GetPromptRequest
+  'McpServerRuntime.listPrompts': { id: string }
   'McpServerRuntime.listResources': { id: string }
   'McpServerRuntime.listTools': { id: string }
+  'McpServerRuntime.ping': { id: string }
   'McpServerRuntime.readResource': { id: string } & ReadResourceRequest
   'McpServerSystem.assignServerToGroups': { id: string } & ServerGroupsRequest
   'McpServerSystem.create': CreateMcpServerRequest
@@ -2127,8 +2163,11 @@ export type ApiEndpointResponses = {
   'McpServer.update': McpServer
   'McpServerRuntime.callTool': CallToolResponse
   'McpServerRuntime.disconnect': any
+  'McpServerRuntime.getPrompt': GetPromptResponse
+  'McpServerRuntime.listPrompts': ListPromptsResponse
   'McpServerRuntime.listResources': ListResourcesResponse
   'McpServerRuntime.listTools': ListToolsResponse
+  'McpServerRuntime.ping': PingResponse
   'McpServerRuntime.readResource': ReadResourceResponse
   'McpServerSystem.assignServerToGroups': void
   'McpServerSystem.create': McpServer

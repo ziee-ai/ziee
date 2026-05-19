@@ -296,6 +296,37 @@ pub mod test_helpers {
         TestUser { token, user_id }
     }
 
+    /// Create a user that has NO permissions at all — including no membership
+    /// in the default "Users" group (which grants `mcp_servers::*`, `chat::*`,
+    /// etc. via migration 27).
+    ///
+    /// Use this for route-level "should return 403" tests where you need to
+    /// prove the authorization gate works. `create_user_with_permissions(_, _, &[])`
+    /// is NOT suitable — registration auto-assigns the default group, so the
+    /// resulting user actually has a broad set of inherited permissions.
+    pub async fn create_user_with_no_permissions(
+        server: &TestServer,
+        username: &str,
+    ) -> TestUser {
+        let user = create_user_with_permissions(server, username, &[]).await;
+
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&server.database_url)
+            .await
+            .expect("Failed to connect to test database");
+
+        let user_uuid = Uuid::parse_str(&user.user_id).expect("Invalid user ID");
+        sqlx::query("DELETE FROM user_groups WHERE user_id = $1")
+            .bind(user_uuid)
+            .execute(&pool)
+            .await
+            .expect("Failed to strip user from groups");
+
+        pool.close().await;
+        user
+    }
+
     /// Create a test user via API (requires admin token)
     pub async fn create_test_user(
         server: &TestServer,

@@ -2,13 +2,24 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
-use super::traits::{McpClient, Tool, Resource, ToolResult};
+use super::traits::{McpClient, Prompt, PromptResult, Resource, Tool, ToolResult};
 use super::stdio::StdioMcpClient;
 use super::http::HttpMcpClient;
-use super::sse::SseMcpClient;
 use crate::common::AppError;
 use crate::modules::mcp::models::{McpServer, TransportType};
 use crate::modules::mcp::sampling::SamplingHandler;
+
+/// Error returned when a server is configured with the deprecated SSE
+/// transport (removed in MCP 2025-03-26 in favour of Streamable HTTP).
+fn sse_deprecated_error() -> AppError {
+    AppError::bad_request(
+        "DEPRECATED_TRANSPORT",
+        "The SSE (HTTP+SSE) transport was deprecated in MCP 2025-03-26. \
+         Reconfigure this server to use the Streamable HTTP transport (\"http\") \
+         instead. The new transport uses the same JSON-RPC payloads but a \
+         single POST endpoint that may respond with either JSON or SSE."
+    )
+}
 
 pub struct McpSession {
     #[allow(dead_code)] // Kept for debugging/logging (future use)
@@ -21,11 +32,12 @@ pub struct McpSession {
 
 impl McpSession {
     pub async fn new(server: McpServer) -> Result<Self, AppError> {
-        // Create appropriate client based on transport type
+        // Create appropriate client based on transport type.
+        // SSE is intentionally rejected — see sse_deprecated_error doc.
         let mut client: Box<dyn McpClient> = match server.transport_type {
             TransportType::Stdio => Box::new(StdioMcpClient::new(server.clone())?),
             TransportType::Http => Box::new(HttpMcpClient::new(server.clone())?),
-            TransportType::Sse => Box::new(SseMcpClient::new(server.clone())?),
+            TransportType::Sse => return Err(sse_deprecated_error()),
         };
 
         client.connect().await?;
@@ -47,18 +59,14 @@ impl McpSession {
     ) -> Result<Self, AppError> {
         let mut client: Box<dyn McpClient> = match server.transport_type {
             TransportType::Http => Box::new(HttpMcpClient::new_with_sampling(server.clone(), handler)?),
-            TransportType::Stdio | TransportType::Sse => {
-                // Fallback to regular session for non-HTTP transports
+            TransportType::Stdio => {
                 tracing::warn!(
-                    "Sampling is only supported for HTTP transport; server '{}' uses {:?}. Falling back to non-sampling session.",
-                    server.name, server.transport_type
+                    "Sampling is only supported for HTTP transport; server '{}' uses stdio. Falling back to non-sampling session.",
+                    server.name
                 );
-                match server.transport_type {
-                    TransportType::Stdio => Box::new(StdioMcpClient::new(server.clone())?),
-                    TransportType::Sse => Box::new(SseMcpClient::new(server.clone())?),
-                    _ => unreachable!(),
-                }
+                Box::new(StdioMcpClient::new(server.clone())?)
             }
+            TransportType::Sse => return Err(sse_deprecated_error()),
         };
 
         client.connect().await?;
@@ -111,6 +119,25 @@ impl McpSession {
     pub async fn read_resource(&mut self, uri: &str) -> Result<serde_json::Value, AppError> {
         self.last_used = Instant::now();
         self.client.read_resource(uri).await
+    }
+
+    pub async fn list_prompts(&mut self) -> Result<Vec<Prompt>, AppError> {
+        self.last_used = Instant::now();
+        self.client.list_prompts().await
+    }
+
+    pub async fn get_prompt(
+        &mut self,
+        name: &str,
+        arguments: Option<serde_json::Value>,
+    ) -> Result<PromptResult, AppError> {
+        self.last_used = Instant::now();
+        self.client.get_prompt(name, arguments).await
+    }
+
+    pub async fn ping(&mut self) -> Result<(), AppError> {
+        self.last_used = Instant::now();
+        self.client.ping().await
     }
 
     pub async fn disconnect(&mut self) -> Result<(), AppError> {

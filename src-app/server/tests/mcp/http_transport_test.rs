@@ -1,6 +1,13 @@
 // MCP HTTP transport integration tests
 // Tests for MCP server with HTTP transport (Streamable HTTP)
+//
+// These tests cover the full request stack: HTTP route → permission gate →
+// repository → session manager → HttpMcpClient → upstream MCP server. The
+// upstream server is `@modelcontextprotocol/server-everything` spawned via
+// the `EverythingServer` fixture; tests that need an upstream server return
+// early (skip) when `npx` is not on PATH.
 
+use super::fixtures::everything_server::EverythingServer;
 use crate::common::test_helpers::{self, TestUser};
 use serde_json::json;
 use uuid::Uuid;
@@ -9,23 +16,32 @@ use uuid::Uuid;
 // Helper Functions
 // ============================================================================
 
-/// Create an HTTP MCP server for testing (uses streamable-http weather server)
-async fn create_http_weather_server(server: &crate::common::TestServer, user: &TestUser) -> Uuid {
+/// Spawn `server-everything` and register it in the test DB as a system MCP
+/// server. Returns the upstream fixture (kept alive by the caller's scope)
+/// and the DB row id. Returns `None` if the fixture can't start (e.g., no
+/// node in CI) — the test should `return;` in that case.
+async fn create_http_everything_server(
+    server: &crate::common::TestServer,
+    admin: &TestUser,
+    test_name: &str,
+) -> Option<(EverythingServer, Uuid)> {
+    let everything = EverythingServer::try_start_or_skip(test_name).await?;
+
     let unique_id = Uuid::new_v4().to_string();
     let payload = json!({
-        "name": format!("test_http_weather_{}", &unique_id[..8]),
-        "display_name": "Test HTTP Weather Server",
-        "description": "MCP server using HTTP transport (streamable-http)",
+        "name": format!("test_http_everything_{}", &unique_id[..8]),
+        "display_name": "Test HTTP Everything Server",
+        "description": "Reference MCP server (HTTP/Streamable HTTP transport)",
         "enabled": true,
         "transport_type": "http",
-        "url": "http://localhost:8123",
+        "url": everything.base_url(),
         "timeout_seconds": 30
     });
 
     let url = server.api_url("/mcp/system-servers");
     let response = reqwest::Client::new()
         .post(&url)
-        .header("Authorization", format!("Bearer {}", user.token))
+        .header("Authorization", format!("Bearer {}", admin.token))
         .json(&payload)
         .send()
         .await
@@ -38,7 +54,8 @@ async fn create_http_weather_server(server: &crate::common::TestServer, user: &T
     );
 
     let body: serde_json::Value = response.json().await.unwrap();
-    Uuid::parse_str(body["id"].as_str().unwrap()).unwrap()
+    let server_id = Uuid::parse_str(body["id"].as_str().unwrap()).unwrap();
+    Some((everything, server_id))
 }
 
 // ============================================================================
@@ -55,8 +72,9 @@ async fn test_http_list_server_tools() {
     )
     .await;
 
-    // Create an HTTP weather server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_list_server_tools").await
+    else { return; };
 
     // List tools from the server
     let url = server.api_url(&format!("/mcp/servers/{}/tools", server_id));
@@ -70,31 +88,19 @@ async fn test_http_list_server_tools() {
     let status = response.status();
     let body_text = response.text().await.expect("Failed to get response text");
 
-    if status != 200 {
-        eprintln!("Error response (status {}): {}", status, body_text);
-    }
-
-    assert_eq!(status, 200, "Should list tools successfully via HTTP");
+    assert_eq!(status, 200, "Should list tools (status {}, body: {})", status, body_text);
 
     let body: serde_json::Value = serde_json::from_str(&body_text).expect("Failed to parse JSON");
-
-    // Verify tools array exists
     let tools = body["tools"].as_array().expect("Should have tools array");
+    assert!(!tools.is_empty(), "server-everything exposes multiple tools");
 
-    // Verify weather-related tools are present
-    assert!(!tools.is_empty(), "Should have tools in the list");
+    // server-everything exposes `echo`
+    let has_echo = tools.iter().any(|t| t["name"].as_str() == Some("echo"));
+    assert!(has_echo, "expected `echo` tool from server-everything");
 
-    // Verify tool structure
-    if let Some(first_tool) = tools.first() {
-        assert!(
-            first_tool["name"].is_string(),
-            "Tool should have name"
-        );
-        assert!(
-            first_tool["input_schema"].is_object(),
-            "Tool should have input_schema"
-        );
-    }
+    let first_tool = tools.first().unwrap();
+    assert!(first_tool["name"].is_string(), "Tool should have name");
+    assert!(first_tool["input_schema"].is_object(), "Tool should have input_schema");
 }
 
 #[tokio::test]
@@ -106,10 +112,11 @@ async fn test_http_list_tools_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
-    // Create an HTTP server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_list_tools_permission_required").await
+    else { return; };
 
     // User without permission tries to list tools
     let url = server.api_url(&format!("/mcp/servers/{}/tools", server_id));
@@ -150,7 +157,7 @@ async fn test_http_list_tools_server_not_found() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_http_call_weather_tool() {
+async fn test_http_call_echo_tool() {
     let server = crate::common::TestServer::start().await;
     let admin = test_helpers::create_user_with_permissions(
         &server,
@@ -159,33 +166,14 @@ async fn test_http_call_weather_tool() {
     )
     .await;
 
-    // Create an HTTP weather server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_call_echo_tool").await
+    else { return; };
 
-    // First, list tools to see what's available
-    let list_url = server.api_url(&format!("/mcp/servers/{}/tools", server_id));
-    let list_response = reqwest::Client::new()
-        .get(&list_url)
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .send()
-        .await
-        .expect("List tools request failed");
-
-    let tools_body: serde_json::Value = list_response.json().await.unwrap();
-    let tools = tools_body["tools"].as_array().expect("Should have tools");
-
-    // Get first tool name
-    let tool_name = tools[0]["name"].as_str().expect("Tool should have name");
-
-    // Call the tool with appropriate arguments based on tool schema
-    let url = server.api_url(&format!("/mcp/servers/{}/tools/{}/call", server_id, tool_name));
-
-    // Most weather tools require location
+    // Call `echo` — simplest round-trip on server-everything.
+    let url = server.api_url(&format!("/mcp/servers/{}/tools/echo/call", server_id));
     let payload = json!({
-        "arguments": {
-            "latitude": 35.6762,
-            "longitude": 139.6503
-        }
+        "arguments": { "message": "http-route-canary" }
     });
 
     let response = reqwest::Client::new()
@@ -198,22 +186,13 @@ async fn test_http_call_weather_tool() {
 
     let status = response.status();
     let body_text = response.text().await.expect("Failed to get response text");
+    assert_eq!(status, 200, "echo call should succeed (body: {})", body_text);
 
-    if status != 200 {
-        eprintln!("Call tool response (status {}): {}", status, body_text);
-    }
-
-    // HTTP call might succeed or fail depending on external API
-    assert!(
-        status == 200 || status == 500,
-        "Should call tool via HTTP (got status {})",
-        status
-    );
-
-    if status == 200 {
-        let body: serde_json::Value = serde_json::from_str(&body_text).expect("Failed to parse JSON");
-        assert!(body["content"].is_array(), "Should have content array");
-    }
+    let body: serde_json::Value = serde_json::from_str(&body_text).expect("Failed to parse JSON");
+    assert!(body["content"].is_array(), "Should have content array");
+    let combined = body["content"].to_string();
+    assert!(combined.contains("http-route-canary"),
+            "echo response must include our input; got: {}", combined);
 }
 
 #[tokio::test]
@@ -225,19 +204,15 @@ async fn test_http_call_tool_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
-    // Create an HTTP server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_call_tool_permission_required").await
+    else { return; };
 
     // User without permission tries to call tool
-    let url = server.api_url(&format!("/mcp/servers/{}/tools/get_weather/call", server_id));
-    let payload = json!({
-        "arguments": {
-            "latitude": 35.6762,
-            "longitude": 139.6503
-        }
-    });
+    let url = server.api_url(&format!("/mcp/servers/{}/tools/echo/call", server_id));
+    let payload = json!({ "arguments": { "message": "denied" } });
 
     let response = reqwest::Client::new()
         .post(&url)
@@ -259,15 +234,9 @@ async fn test_http_call_tool_server_not_found() {
     let user = test_helpers::create_user_with_permissions(&server, "user", &["mcp_servers::read"])
         .await;
 
-    // Use random UUID for server_id
     let random_id = Uuid::new_v4();
-    let url = server.api_url(&format!("/mcp/servers/{}/tools/get_weather/call", random_id));
-    let payload = json!({
-        "arguments": {
-            "latitude": 35.6762,
-            "longitude": 139.6503
-        }
-    });
+    let url = server.api_url(&format!("/mcp/servers/{}/tools/echo/call", random_id));
+    let payload = json!({ "arguments": { "message": "x" } });
 
     let response = reqwest::Client::new()
         .post(&url)
@@ -294,10 +263,10 @@ async fn test_http_list_server_resources() {
     )
     .await;
 
-    // Create an HTTP server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_list_server_resources").await
+    else { return; };
 
-    // List resources from the server
     let url = server.api_url(&format!("/mcp/servers/{}/resources", server_id));
     let response = reqwest::Client::new()
         .get(&url)
@@ -307,13 +276,11 @@ async fn test_http_list_server_resources() {
         .expect("Request failed");
 
     let status = response.status();
+    let body_text = response.text().await.unwrap_or_default();
+    assert_eq!(status, 200, "server-everything supports resources (body: {})", body_text);
 
-    // HTTP weather server may or may not support resources
-    assert!(
-        status == 200 || status == 500,
-        "Should handle list resources request via HTTP (got {})",
-        status
-    );
+    let body: serde_json::Value = serde_json::from_str(&body_text).expect("Failed to parse JSON");
+    assert!(body["resources"].is_array(), "Should have resources array");
 }
 
 #[tokio::test]
@@ -325,12 +292,12 @@ async fn test_http_list_resources_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
-    // Create an HTTP server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_list_resources_permission_required").await
+    else { return; };
 
-    // User without permission tries to list resources
     let url = server.api_url(&format!("/mcp/servers/{}/resources", server_id));
     let response = reqwest::Client::new()
         .get(&url)
@@ -359,10 +326,11 @@ async fn test_http_disconnect_server() {
     )
     .await;
 
-    // Create an HTTP server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_disconnect_server").await
+    else { return; };
 
-    // First, connect to the server by listing tools
+    // First connect by listing tools
     let list_url = server.api_url(&format!("/mcp/servers/{}/tools", server_id));
     let list_response = reqwest::Client::new()
         .get(&list_url)
@@ -371,13 +339,8 @@ async fn test_http_disconnect_server() {
         .await
         .expect("Request failed");
 
-    assert_eq!(
-        list_response.status(),
-        200,
-        "Should connect to HTTP server successfully"
-    );
+    assert_eq!(list_response.status(), 200, "Should connect to HTTP server successfully");
 
-    // Now disconnect
     let disconnect_url = server.api_url(&format!("/mcp/servers/{}/disconnect", server_id));
     let response = reqwest::Client::new()
         .delete(&disconnect_url)
@@ -398,12 +361,12 @@ async fn test_http_disconnect_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
-    // Create an HTTP server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_disconnect_permission_required").await
+    else { return; };
 
-    // User without permission tries to disconnect
     let url = server.api_url(&format!("/mcp/servers/{}/disconnect", server_id));
     let response = reqwest::Client::new()
         .delete(&url)
@@ -428,10 +391,10 @@ async fn test_http_disconnect_idempotent() {
     )
     .await;
 
-    // Create an HTTP server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_disconnect_idempotent").await
+    else { return; };
 
-    // Disconnect once
     let url = server.api_url(&format!("/mcp/servers/{}/disconnect", server_id));
     let response1 = reqwest::Client::new()
         .delete(&url)
@@ -442,7 +405,6 @@ async fn test_http_disconnect_idempotent() {
 
     assert_eq!(response1.status(), 200, "First disconnect should succeed");
 
-    // Disconnect again (should be idempotent)
     let response2 = reqwest::Client::new()
         .delete(&url)
         .header("Authorization", format!("Bearer {}", admin.token))
@@ -450,11 +412,7 @@ async fn test_http_disconnect_idempotent() {
         .await
         .expect("Request failed");
 
-    assert_eq!(
-        response2.status(),
-        200,
-        "Second disconnect should also succeed (idempotent)"
-    );
+    assert_eq!(response2.status(), 200, "Second disconnect should also succeed (idempotent)");
 }
 
 // ============================================================================
@@ -471,38 +429,19 @@ async fn test_http_concurrent_tool_calls() {
     )
     .await;
 
-    // Create an HTTP server
-    let server_id = create_http_weather_server(&server, &admin).await;
+    let Some((_upstream, server_id)) =
+        create_http_everything_server(&server, &admin, "test_http_concurrent_tool_calls").await
+    else { return; };
 
-    // Get first tool name
-    let list_url = server.api_url(&format!("/mcp/servers/{}/tools", server_id));
-    let list_response = reqwest::Client::new()
-        .get(&list_url)
-        .header("Authorization", format!("Bearer {}", admin.token))
-        .send()
-        .await
-        .expect("List tools request failed");
-
-    let tools_body: serde_json::Value = list_response.json().await.unwrap();
-    let tools = tools_body["tools"].as_array().expect("Should have tools");
-    let tool_name = tools[0]["name"].as_str().expect("Tool should have name");
-
-    // Make multiple concurrent tool calls
     let client = reqwest::Client::new();
-    let url = server.api_url(&format!("/mcp/servers/{}/tools/{}/call", server_id, tool_name));
-    let payload = json!({
-        "arguments": {
-            "latitude": 35.6762,
-            "longitude": 139.6503
-        }
-    });
+    let url = server.api_url(&format!("/mcp/servers/{}/tools/echo/call", server_id));
 
     let mut handles = vec![];
     for i in 0..3 {
         let client = client.clone();
         let url = url.clone();
-        let payload = payload.clone();
         let token = admin.token.clone();
+        let payload = json!({ "arguments": { "message": format!("concurrent-{}", i) } });
 
         let handle = tokio::spawn(async move {
             let response = client
@@ -513,23 +452,20 @@ async fn test_http_concurrent_tool_calls() {
                 .await
                 .expect(&format!("Request {} failed", i));
 
-            (i, response.status())
+            let status = response.status();
+            let body_text = response.text().await.unwrap_or_default();
+            (i, status, body_text)
         });
 
         handles.push(handle);
     }
 
-    // Wait for all requests to complete
     let results = futures::future::join_all(handles).await;
 
-    // Verify all requests completed (may succeed or fail depending on external API)
     for result in results {
-        let (i, status) = result.expect("Task panicked");
-        assert!(
-            status == 200 || status == 500,
-            "Concurrent HTTP request {} should complete (got {})",
-            i,
-            status
-        );
+        let (i, status, body) = result.expect("Task panicked");
+        assert_eq!(status, 200, "Concurrent HTTP request {} failed (body: {})", i, body);
+        assert!(body.contains(&format!("concurrent-{}", i)),
+                "Concurrent request {} returned wrong content (id mixup?): {}", i, body);
     }
 }

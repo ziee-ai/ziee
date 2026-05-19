@@ -37,6 +37,9 @@ fn test_tool_result_conversion() {
         is_error: Some(false),
         annotations: None,
         attachment: None,
+        server_id: None,
+        hidden_content: None,
+        resource_links: None,
     };
 
     // Convert to MessageContentData
@@ -115,6 +118,9 @@ fn test_tool_result_with_annotations_roundtrip() {
             content: "## Paper on X\n\n**Authors:** Doe, J.\n\n> Full chunk text...".to_string(),
         }]),
         attachment: None,
+        server_id: None,
+        hidden_content: None,
+        resource_links: None,
     };
 
     let json = serde_json::to_value(&tool_result).expect("Should serialize");
@@ -147,6 +153,9 @@ fn test_to_content_block_does_not_append_annotations_to_llm() {
             content: "## Doc A\n\n> Doc A content".to_string(),
         }]),
         attachment: None,
+        server_id: None,
+        hidden_content: None,
+        resource_links: None,
     };
 
     let block = tool_result.to_content_block().unwrap();
@@ -177,6 +186,9 @@ fn test_tool_result_no_annotations_no_sources_section() {
         is_error: Some(false),
         annotations: None,
         attachment: None,
+        server_id: None,
+        hidden_content: None,
+        resource_links: None,
     };
 
     let block = tool_result.to_content_block().unwrap();
@@ -213,6 +225,9 @@ fn test_tool_result_with_attachment_roundtrip() {
             mime_type: "image/png".to_string(),
             data: "base64encodeddata".to_string(),
         }),
+        server_id: None,
+        hidden_content: None,
+        resource_links: None,
     };
 
     let json = serde_json::to_value(&tool_result).expect("Should serialize");

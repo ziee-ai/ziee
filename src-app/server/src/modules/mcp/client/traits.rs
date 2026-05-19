@@ -21,6 +21,31 @@ pub struct Resource {
     pub mime_type: Option<String>,
 }
 
+/// MCP Prompt template metadata (per MCP spec § server/prompts).
+/// Returned by `prompts/list`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Prompt {
+    pub name: String,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub arguments: Vec<PromptArgument>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PromptArgument {
+    pub name: String,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+}
+
+/// Result of a `prompts/get` call — server's rendered prompt messages.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PromptResult {
+    pub description: Option<String>,
+    pub messages: Vec<Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ToolContent {
     #[serde(flatten)]
@@ -74,4 +99,20 @@ pub trait McpClient: Send + Sync {
 
     /// Read a resource
     async fn read_resource(&mut self, uri: &str) -> Result<Value, AppError>;
+
+    /// List available prompt templates (MCP spec § server/prompts).
+    /// Returns an empty Vec if the server didn't advertise the `prompts`
+    /// capability or doesn't implement this method.
+    async fn list_prompts(&mut self) -> Result<Vec<Prompt>, AppError>;
+
+    /// Render a prompt template with the given arguments.
+    async fn get_prompt(
+        &mut self,
+        name: &str,
+        arguments: Option<Value>,
+    ) -> Result<PromptResult, AppError>;
+
+    /// Liveness check (MCP spec § utilities/ping). Returns Ok if the server
+    /// responds within the underlying transport's timeout.
+    async fn ping(&mut self) -> Result<(), AppError>;
 }

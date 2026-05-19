@@ -59,7 +59,7 @@ async fn test_create_user_mcp_server() {
 #[tokio::test]
 async fn test_create_user_server_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let payload = json!({
         "name": "my_server",
@@ -1044,7 +1044,7 @@ async fn test_update_group_system_servers_requires_permission() {
 #[tokio::test]
 async fn test_get_group_system_servers_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let group_id = Uuid::new_v4();
     let url = server.api_url(&format!("/groups/{}/system-servers", group_id));
@@ -1203,7 +1203,12 @@ async fn test_duplicate_server_name_allowed() {
 
 mod runtime;              // Stdio transport tests (18 tests)
 mod http_transport_test;  // HTTP transport tests (12 tests)
-mod sse_transport_test;   // SSE transport tests (12 tests)
+// sse_transport_test removed — SSE transport deprecated in MCP 2025-03-26
+mod fixtures;                 // External MCP server fixtures (everything-server + mock)
+mod conformance_test;         // Spec-conformance tests against `server-everything`
+mod conformance_errors_test;     // Error-path tests against in-process mock server
+mod conformance_streaming_test;  // SSE streaming edge-case tests via mock
+mod conformance_extended_test;   // Deeper conformance tests against `server-everything`
 
 // ============================================================================
 // Sampling Field CRUD Tests
@@ -1387,6 +1392,7 @@ fn make_sampling_server_config(url: String, timeout_seconds: i32) -> ziee_chat::
         supports_sampling: true,
         usage_mode: ziee_chat::UsageMode::Auto,
         max_concurrent_sessions: None,
+        is_built_in: false,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     }
@@ -1441,6 +1447,9 @@ async fn test_call_tool_with_sampling_sse_roundtrip() {
         client.call_tool(
             "research",
             serde_json::json!({"query": "What is the capital of Germany?"}),
+            None, // message_id (sampling test doesn't need it)
+            None, // sse_tx (no Axum SSE forwarding)
+            None, // elicit_notify_tx (no elicitation notifications)
         ),
     )
     .await
@@ -1552,6 +1561,9 @@ async fn test_call_tool_with_real_llm_sampling() {
         client.call_tool(
             "research",
             serde_json::json!({"query": "What is the capital of Germany?"}),
+            None, // message_id (sampling test doesn't need it)
+            None, // sse_tx (no Axum SSE forwarding)
+            None, // elicit_notify_tx (no elicitation notifications)
         ),
     )
     .await

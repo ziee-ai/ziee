@@ -1,0 +1,7 @@
+//! Test fixtures for MCP integration tests.
+//!
+//! Spawns external MCP servers (currently `@modelcontextprotocol/server-everything`)
+//! as child processes for empirical conformance testing.
+
+pub mod everything_server;
+pub mod mock_mcp_server;
