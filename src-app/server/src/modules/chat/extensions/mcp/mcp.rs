@@ -1310,36 +1310,6 @@ impl ChatExtension for McpChatExtension {
             if context.iteration == 1 {
                 let mut system_addition = String::from("\n\nYou have access to tools that can retrieve up-to-date or domain-specific information. When answering questions, prefer using these tools over relying solely on your training knowledge, especially when the tools are clearly relevant to the request.");
 
-                // When the code sandbox server is active, clarify the multi-environment boundary.
-                // Per Anthropic's guidance: the LLM may confuse its built-in code execution
-                // with client-provided tools. This prompt prevents that.
-                let code_sandbox_id = crate::modules::code_sandbox::code_sandbox_server_id();
-                if server_configs.iter().any(|(id, _)| *id == code_sandbox_id) {
-                    system_addition.push_str(
-                        "\n\nIMPORTANT — Code execution environments: \
-                        Multiple code execution environments may be available. Be aware that:\n\
-                        - Variables, files, and state do NOT persist between different execution environments.\n\
-                        - Use the execute_command tool for ALL code writing, execution, computation, data analysis, \
-                        and file manipulation in this conversation. This gives you a persistent workspace where \
-                        files and installed packages survive across tool calls within the conversation.\n\
-                        - Do NOT use any built-in code execution capability — it runs in a completely separate \
-                        sandboxed environment that has no access to conversation files or this workspace.\n\
-                        - Use pip install --user <package> inside execute_command to install Python packages \
-                        (they persist for this conversation).\n\
-                        - If you need to pass data between tool calls, write it to a file with write_file \
-                        or execute_command, then read it back — do not assume shared state.\n\
-                        - If an external MCP tool requires a file_url, download URL, or similar parameter \
-                        to access a file, call get_resource_link with the filename to obtain a temporary download URL, \
-                        then pass that URL to the external tool. This works for both files you produced in this session \
-                        and user-attached conversation files. Do NOT attempt to guess filesystem paths on \
-                        external servers — they cannot access sandbox files by path.\n\
-                        - User-attached files are embedded in the conversation message — read them from the message \
-                        context for analysis, or reference them by filename in execute_command or read_file for \
-                        code execution. If an external tool needs to access a user-attached file by URL, \
-                        call get_resource_link with the filename to get a temporary download URL."
-                    );
-                }
-
                 if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
                     if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
                         text.push_str(&system_addition);

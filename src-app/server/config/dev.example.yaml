@@ -83,9 +83,3 @@ jwt:
   audience: "ziee-chat-api"
   access_token_expiry_hours: 24  # Access token expires in 24 hours
   refresh_token_expiry_days: 30  # Refresh token expires in 30 days
-
-
-# Code sandbox settings
-code_sandbox:
-  enabled: true
-  rootfs_path: "/opt/ziee-sandbox-rootfs"
