@@ -526,7 +526,8 @@ impl AIProvider for AnthropicProvider {
                                     }
 
                                     // DEBUG: Log raw SSE event
-                                    tracing::info!("Anthropic SSE event: {}", if data.len() > 200 { &data[..200] } else { data });
+                                    let truncated = data.char_indices().nth(200).map(|(i, _)| &data[..i]).unwrap_or(data);
+                                    tracing::info!("Anthropic SSE event: {}", truncated);
 
                                     // Try to parse as JSON
                                     if let Ok(chunk_data) = serde_json::from_str::<AnthropicStreamChunk>(data) {
@@ -773,5 +774,57 @@ impl AIProvider for AnthropicProvider {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The SSE-event debug log truncates at 200 bytes via `char_indices().nth(200)`
+    /// so the slice always ends on a UTF-8 char boundary. Slicing with `&data[..200]`
+    /// would panic when the 200-byte cut falls inside a multi-byte character.
+    #[test]
+    fn test_sse_log_truncation_respects_utf8_char_boundary() {
+        // Build a string where byte 200 lands inside a multi-byte UTF-8 char.
+        // 198 ASCII bytes + a 4-byte emoji "😀" (U+1F600) → byte 198..202 is the emoji.
+        let data: String = "a".repeat(198) + "\u{1F600}" + "rest";
+
+        // The exact expression used in chat_stream
+        let truncated = data
+            .char_indices()
+            .nth(200)
+            .map(|(i, _)| &data[..i])
+            .unwrap_or(&data);
+
+        // Must not panic and must be valid UTF-8 (free, since it's &str)
+        assert!(truncated.is_char_boundary(truncated.len()));
+        // And it must include at least the 198 'a's (the cut happens at char 200, which
+        // includes the emoji at char index 198).
+        assert!(truncated.len() >= 198);
+    }
+
+    /// Sanity: the previous incorrect approach `&data[..200]` would panic on the
+    /// same input. We don't run it (would actually panic), but we document the
+    /// motivation here.
+    #[test]
+    fn test_sse_log_truncation_handles_pure_ascii() {
+        let data = "x".repeat(500);
+        let truncated = data
+            .char_indices()
+            .nth(200)
+            .map(|(i, _)| &data[..i])
+            .unwrap_or(&data);
+        assert_eq!(truncated.len(), 200);
+    }
+
+    /// Strings shorter than 200 chars must return the whole string (no truncation).
+    #[test]
+    fn test_sse_log_truncation_short_string_unchanged() {
+        let data = "short";
+        let truncated = data
+            .char_indices()
+            .nth(200)
+            .map(|(i, _)| &data[..i])
+            .unwrap_or(data);
+        assert_eq!(truncated, "short");
     }
 }
