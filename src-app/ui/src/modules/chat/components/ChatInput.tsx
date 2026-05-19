@@ -4,6 +4,7 @@ import { SendOutlined, PlusOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
 import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
+import { EditingMessageBanner } from '@/modules/chat/components/EditingMessageBanner'
 
 interface ChatInputProps {
   disabled?: boolean
@@ -27,8 +28,14 @@ export function ChatInput({
   // Get stores
   const { sendMessage, sending, isStreaming } = Stores.Chat
 
+  const uploadingFilesMap = Stores.Chat.FileStore?.uploadingFiles
+  const isUploadingFiles = !!(uploadingFilesMap &&
+    Array.from(uploadingFilesMap.values()).some(
+      f => f.status === 'pending' || f.status === 'uploading'
+    ))
+
   const handleSend = async () => {
-    if (sending || isStreaming || disabled) return
+    if (sending || isStreaming || disabled || isUploadingFiles) return
 
     try {
       // sendMessage auto-creates conversation if missing
@@ -54,6 +61,9 @@ export function ChatInput({
           boxShadow: focused ? `0 0 0 2px ${token.colorPrimaryBg}` : undefined,
         }}
       >
+        {/* Edit mode indicator — shown when user is editing an existing message */}
+        <EditingMessageBanner />
+
         {/* Input area */}
         <div style={{ padding: '10px 12px 4px' }}>
           {/* Extension slot: input area prefix (file previews, etc.) */}
@@ -114,8 +124,8 @@ export function ChatInput({
               size="large"
               icon={<SendOutlined rotate={270} />}
               onClick={handleSend}
-              disabled={sending || disabled}
-              loading={sending}
+              disabled={sending || isStreaming || disabled || isUploadingFiles}
+              loading={sending || isStreaming || isUploadingFiles}
               aria-label="Send message"
             />
           </div>

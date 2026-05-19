@@ -2,12 +2,17 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
+  Branch,
   Conversation,
   MessageContent,
   MessageWithContent,
 } from '@/api-client/types'
 import { chatExtensionRegistry } from '@/modules/chat/extensions'
 import type { SSEEvent, GenericSSEEvent } from '@/modules/chat/core/extensions/types'
+import {
+  computeParentAnchor,
+  computeChildAnchor,
+} from '@/modules/chat/core/utils/branchAnchor.utils'
 
 /**
  * Snapshot of conversation state for caching
@@ -17,6 +22,7 @@ interface ChatStateSnapshot {
   messages: Map<string, MessageWithContent>
   streamingMessage: MessageWithContent | null
   tempUserMessageId: string | null
+  isStreaming: boolean
 }
 
 interface ChatState {
@@ -39,14 +45,66 @@ interface ChatState {
   conversationStateCache: Map<string, ChatStateSnapshot>
   cacheClearTimers: Map<string, NodeJS.Timeout>
 
-  // Conversation state management
+  // ── Branch state ──────────────────────────────────────────────────────────
+
+  /** All branches for the current conversation */
+  branches: Branch[]
+  branchesLoading: boolean
+
+  /**
+   * Message ID to create a new branch from on the next sendMessage call.
+   * Set by startEditMessage (edit flow) and startRegenerateMessage (regenerate flow).
+   * Cleared by clearPendingBranch() after the message is sent.
+   */
+  pendingBranchFromMessageId: string | null
+
+  /**
+   * The fork level for the next branch to be created.
+   * - 'user': edit flow — navigator anchors at the edited user message bubble.
+   * - 'assistant': regenerate flow — navigator anchors at the assistant bubble.
+   * - null: no pending branch.
+   */
+  pendingBranchForkLevel: 'user' | 'assistant' | null
+
+  /**
+   * Per-branch fork level map.
+   * Maps branchId → 'user' | 'assistant'.
+   * Persists the fork level captured at branch creation so computeForkPoints
+   * can determine the correct anchor even after pendingBranchForkLevel is cleared.
+   * In-memory only — defaults to 'user' on page reload.
+   */
+  branchForkLevels: Map<string, 'user' | 'assistant'>
+
+  /**
+   * Set to true when the SSE 'started' event reveals a new branch was created.
+   * Cleared in the complete SSE handler after reloading messages.
+   */
+  branchChangedDuringStream: boolean
+
+  /**
+   * Per-message fork points.
+   * Maps messageId → ordered list of branch IDs that diverge at that message.
+   * Used by BranchNavigator to render < X/N > at the right bubble.
+   */
+  forkPoints: Map<string, string[]>
+
+  /**
+   * The message currently being edited. Non-null puts the Chat Input into
+   * edit mode — extensions subscribe to this field via Zustand subscribe
+   * in their initialize() hooks to restore their state (e.g. files).
+   */
+  editingMessage: MessageWithContent | null
+
+  // ── Conversation state management ────────────────────────────────────────
+
   saveConversationState: (conversationId: string) => void
   loadConversationState: (conversationId: string) => boolean
   scheduleCacheClear: (conversationId: string, delayMs?: number) => void
   cancelCacheClear: (conversationId: string) => void
   clearConversationCache: (conversationId: string) => void
 
-  // Actions
+  // ── Core actions ──────────────────────────────────────────────────────────
+
   createConversation: (title?: string) => Promise<Conversation>
   loadConversation: (id: string) => Promise<void>
   loadMessages: (id: string) => Promise<void>
@@ -55,7 +113,37 @@ interface ChatState {
   clearError: () => void
   reset: () => void
 
-  // Lifecycle methods
+  // ── Branch actions ────────────────────────────────────────────────────────
+
+  loadBranches: (conversationId: string) => Promise<void>
+  activateBranch: (conversationId: string, branchId: string) => Promise<void>
+  computeForkPoints: () => Promise<void>
+  trimMessagesToForkPoint: (forkMessageId: string) => void
+  captureBranchForkLevel: (branchId: string) => void
+  clearPendingBranch: () => void
+
+  /**
+   * Enter edit mode for a user message.
+   * Trims messages to the fork point, pre-fills the text input, and emits
+   * the editingMessage field change so extensions can restore their state.
+   */
+  startEditMessage: (messageId: string) => Promise<void>
+
+  /**
+   * Cancel edit mode without sending.
+   * Clears editingMessage (extensions react via subscribe), clears the text
+   * input, and reloads messages to restore what was trimmed.
+   */
+  cancelEdit: () => Promise<void>
+
+  /**
+   * Regenerate an assistant response on a new branch.
+   * Finds the preceding user message, pre-fills text, trims, and auto-sends.
+   */
+  startRegenerateMessage: (assistantMessageId: string) => Promise<void>
+
+  // ── Lifecycle methods ─────────────────────────────────────────────────────
+
   __init__: {
     __store__?: () => void
   }
@@ -64,7 +152,8 @@ interface ChatState {
 
 export const useChatStore = create<ChatState>()(
   subscribeWithSelector((set, get) => ({
-      // Initial state
+      // ── Initial state ──────────────────────────────────────────────────────
+
       conversation: null,
       messages: new Map<string, MessageWithContent>(),
       loading: false,
@@ -75,14 +164,21 @@ export const useChatStore = create<ChatState>()(
       streamingMessage: null,
       tempUserMessageId: null,
 
-      // Conversation state cache (whole-store snapshots)
       conversationStateCache: new Map<string, ChatStateSnapshot>(),
       cacheClearTimers: new Map<string, NodeJS.Timeout>(),
 
-      /**
-       * Save current conversation state to cache
-       * Creates a snapshot of the entire state for later restoration
-       */
+      // Branch initial state
+      branches: [],
+      branchesLoading: false,
+      pendingBranchFromMessageId: null,
+      pendingBranchForkLevel: null,
+      branchForkLevels: new Map(),
+      branchChangedDuringStream: false,
+      forkPoints: new Map(),
+      editingMessage: null,
+
+      // ── Conversation state management ──────────────────────────────────────
+
       saveConversationState: (conversationId: string) => {
         const state = get()
         const snapshot: ChatStateSnapshot = {
@@ -90,6 +186,7 @@ export const useChatStore = create<ChatState>()(
           messages: new Map(state.messages),
           streamingMessage: state.streamingMessage,
           tempUserMessageId: state.tempUserMessageId,
+          isStreaming: state.isStreaming,
         }
         set(state => {
           const newCache = new Map(state.conversationStateCache)
@@ -101,11 +198,6 @@ export const useChatStore = create<ChatState>()(
         )
       },
 
-      /**
-       * Load conversation state from cache
-       * Restores the entire state from a previous snapshot
-       * @returns true if cache hit, false if cache miss
-       */
       loadConversationState: (conversationId: string): boolean => {
         const state = get()
         const snapshot = state.conversationStateCache.get(conversationId)
@@ -113,7 +205,7 @@ export const useChatStore = create<ChatState>()(
           console.log(
             `[Chat.store] Cache miss for conversation: ${conversationId}`,
           )
-          return false // Cache miss
+          return false
         }
 
         set({
@@ -121,23 +213,18 @@ export const useChatStore = create<ChatState>()(
           messages: new Map(snapshot.messages),
           streamingMessage: snapshot.streamingMessage,
           tempUserMessageId: snapshot.tempUserMessageId,
+          isStreaming: snapshot.isStreaming,
         })
         console.log(
           `[Chat.store] Cache hit - restored conversation state for: ${conversationId}`,
         )
-        return true // Cache hit
+        return true
       },
 
-      /**
-       * Schedule cache clear for a conversation
-       * Clears cache after delay (default 5 minutes)
-       * Can be cancelled by calling cancelCacheClear
-       */
       scheduleCacheClear: (
         conversationId: string,
         delayMs: number = 5 * 60 * 1000,
       ) => {
-        // Cancel existing timer if any
         get().cancelCacheClear(conversationId)
 
         const timer = setTimeout(() => {
@@ -158,10 +245,6 @@ export const useChatStore = create<ChatState>()(
         )
       },
 
-      /**
-       * Cancel scheduled cache clear for a conversation
-       * Call this when conversation is remounted before timer expires
-       */
       cancelCacheClear: (conversationId: string) => {
         const state = get()
         const timer = state.cacheClearTimers.get(conversationId)
@@ -178,12 +261,8 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
-      /**
-       * Clear cached state for a conversation
-       * Removes the snapshot and any pending timers
-       */
       clearConversationCache: (conversationId: string) => {
-        get().cancelCacheClear(conversationId) // Cancel any pending timer
+        get().cancelCacheClear(conversationId)
         set(state => {
           const newCache = new Map(state.conversationStateCache)
           newCache.delete(conversationId)
@@ -194,17 +273,16 @@ export const useChatStore = create<ChatState>()(
         )
       },
 
-      // Create new conversation
+      // ── Core actions ───────────────────────────────────────────────────────
+
       createConversation: async (title?: string) => {
         set({ loading: true, error: null })
         try {
           const conversation = await ApiClient.Conversation.create({
             title: title,
-            // NO model_id - backend auto-updates on first message
           })
           set({ conversation, loading: false })
 
-          // Emit conversation.created event
           const { Stores } = await import('@/core/stores')
           await Stores.EventBus.emit({
             type: 'conversation.created',
@@ -221,24 +299,20 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
-      // Load conversation by ID
       loadConversation: async (id: string) => {
         const currentConversation = get().conversation
         const loadingId = get().loadingConversationId
 
-        // If conversation is already loaded, do nothing
         if (currentConversation && currentConversation.id === id) {
           console.log(`[Chat.store] Conversation ${id} already loaded, skipping`)
           return
         }
 
-        // If already loading this conversation, do nothing
         if (loadingId === id) {
           console.log(`[Chat.store] Conversation ${id} is already loading, skipping`)
           return
         }
 
-        // If switching to a different conversation, save current state first
         if (currentConversation && currentConversation.id !== id) {
           console.log(
             `[Chat.store] Switching from ${currentConversation.id} to ${id} - saving current state`,
@@ -246,39 +320,35 @@ export const useChatStore = create<ChatState>()(
           get().saveConversationState(currentConversation.id)
           get().scheduleCacheClear(currentConversation.id)
 
-          // Cleanup extensions for current conversation
           await chatExtensionRegistry.cleanup()
+          set({ isStreaming: false, sending: false, streamingMessage: null, tempUserMessageId: null })
         }
 
-        // Cancel any pending cache clear timer for the new conversation
         get().cancelCacheClear(id)
 
-        // Try to load from cache first
         const cacheHit = get().loadConversationState(id)
         if (cacheHit) {
-          // Cache hit - state already restored, just initialize extensions
           console.log(`[Chat.store] Cache hit for conversation: ${id}`)
           await chatExtensionRegistry.initialize()
 
-          // Notify extensions that conversation loaded
           const { conversation } = get()
           if (conversation) {
             await chatExtensionRegistry.onConversationLoad(conversation)
+            await get().loadBranches(id)
           }
           return
         }
 
-        // Cache miss - load from API
         console.log(`[Chat.store] Cache miss for conversation: ${id}`)
         set({ loading: true, loadingConversationId: id, error: null })
         try {
           const conversation = await ApiClient.Conversation.get({ id })
           set({ conversation, loading: false, loadingConversationId: null })
 
-          // Load messages for this conversation
           await get().loadMessages(id)
+          await get().loadBranches(id)
 
-          // Notify extensions that conversation loaded
+          await chatExtensionRegistry.initialize()
           await chatExtensionRegistry.onConversationLoad(conversation)
         } catch (error: any) {
           set({
@@ -289,7 +359,6 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
-      // Load messages for conversation
       loadMessages: async (id: string) => {
         set({ loading: true, error: null })
         try {
@@ -306,37 +375,284 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
-      // Send message with SSE streaming
+      // ── Branch actions ─────────────────────────────────────────────────────
+
+      loadBranches: async (conversationId: string) => {
+        set({ branchesLoading: true })
+        try {
+          const branches = await ApiClient.Branch.list({ id: conversationId })
+
+          // Seed branchForkLevels from the persisted fork_level on each branch.
+          // This ensures computeForkPoints anchors the navigator correctly after page reload,
+          // without relying on in-memory state that is lost on refresh.
+          const branchForkLevels = new Map(
+            branches.map(b => [b.id, (b.fork_level ?? 'user') as 'user' | 'assistant'])
+          )
+
+          set({ branches, branchForkLevels, branchesLoading: false })
+          await get().computeForkPoints()
+        } catch (err) {
+          console.error('[Chat.store] Failed to load branches:', err)
+          set({ branchesLoading: false })
+        }
+      },
+
+      activateBranch: async (conversationId: string, branchId: string) => {
+        await ApiClient.Branch.activate({ id: conversationId, branch_id: branchId })
+
+        set(state => ({
+          conversation: state.conversation
+            ? { ...state.conversation, active_branch_id: branchId }
+            : null,
+        }))
+
+        await get().loadMessages(conversationId)
+
+        const { branches } = get()
+        if (!branches.find(b => b.id === branchId)) {
+          await get().loadBranches(conversationId)
+        } else {
+          await get().computeForkPoints()
+        }
+      },
+
+      computeForkPoints: async () => {
+        const state = get()
+        const { branches, branchForkLevels } = state
+        const conversation = state.conversation
+
+        if (!conversation || branches.length <= 1) {
+          set({ forkPoints: new Map() })
+          return
+        }
+
+        const activeBranchId = conversation.active_branch_id
+        const messages = [...state.messages.values()].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        )
+        const messageIds = new Set(messages.map(m => m.id))
+
+        const forkPoints = new Map<string, string[]>()
+
+        // Group child branches by composite key: `${created_from_message_id}__${forkLevel}`.
+        // A user message can be the fork origin for two independent sets of branches —
+        // one from Regenerate ('assistant' level) and one from Edit ('user' level).
+        // Grouping by both dimensions ensures each produces its own independent navigator.
+        const forkGroups = new Map<string, string[]>()
+        for (const branch of branches) {
+          if (branch.created_from_message_id) {
+            const forkLevel = branchForkLevels.get(branch.id) ?? 'user'
+            const key = `${branch.created_from_message_id}__${forkLevel}`
+            if (!forkGroups.has(key)) {
+              forkGroups.set(key, [])
+            }
+            forkGroups.get(key)!.push(branch.id)
+          }
+        }
+
+        const currentBranch = branches.find(b => b.id === activeBranchId)
+
+        for (const [groupKey, childBranchIds] of forkGroups) {
+          const separatorIdx = groupKey.lastIndexOf('__')
+          const forkMsgId = groupKey.slice(0, separatorIdx)
+          const forkLevel = groupKey.slice(separatorIdx + 2) as 'user' | 'assistant'
+
+          const firstChild = branches.find(b => b.id === childBranchIds[0])
+          const parentBranchId = firstChild?.parent_branch_id
+
+          const groupBranchIds = parentBranchId
+            ? [parentBranchId, ...childBranchIds]
+            : childBranchIds
+
+          const groupBranches = groupBranchIds
+            .map(id => branches.find(b => b.id === id))
+            .filter(Boolean)
+            .sort(
+              (a, b) =>
+                new Date(a!.created_at).getTime() -
+                new Date(b!.created_at).getTime(),
+            )
+          const sortedGroupIds = groupBranches.map(b => b!.id)
+
+          if (sortedGroupIds.length <= 1) continue
+
+          let anchorMessageId: string | null = null
+
+          if (activeBranchId === parentBranchId) {
+            anchorMessageId = computeParentAnchor(
+              forkMsgId,
+              forkLevel,
+              messages,
+              messageIds,
+            )
+          } else if (activeBranchId && childBranchIds.includes(activeBranchId) && currentBranch) {
+            anchorMessageId = computeChildAnchor(
+              activeBranchId,
+              currentBranch.created_at,
+              messages,
+              branchForkLevels,
+            )
+          }
+
+          if (anchorMessageId) {
+            forkPoints.set(anchorMessageId, sortedGroupIds)
+          }
+        }
+
+        set({ forkPoints })
+      },
+
+      trimMessagesToForkPoint: (forkMessageId: string) => {
+        set(state => {
+          const sorted = [...state.messages.values()].sort(
+            (a, b) =>
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+          )
+          const forkIndex = sorted.findIndex(m => m.id === forkMessageId)
+          if (forkIndex === -1) return {}
+          const newMessages = new Map(state.messages)
+          sorted.slice(forkIndex).forEach(m => newMessages.delete(m.id))
+          return { messages: newMessages }
+        })
+      },
+
+      captureBranchForkLevel: (branchId: string) => {
+        const level = get().pendingBranchForkLevel
+        const newLevels = new Map(get().branchForkLevels)
+        newLevels.set(branchId, level ?? 'user')
+        set({ branchForkLevels: newLevels, pendingBranchForkLevel: null })
+      },
+
+      clearPendingBranch: () => {
+        set({
+          pendingBranchFromMessageId: null,
+          pendingBranchForkLevel: null,
+          editingMessage: null,
+        })
+      },
+
+      startEditMessage: async (messageId: string) => {
+        const message = get().messages.get(messageId)
+        if (!message || message.role !== 'user') return
+
+        // Trim messages to fork point so UI shows clean branch base immediately
+        get().trimMessagesToForkPoint(messageId)
+
+        // Set editing state — extensions subscribe to editingMessage via
+        // useChatStore.subscribe() in their initialize() hooks
+        set({
+          editingMessage: message,
+          pendingBranchFromMessageId: messageId,
+          pendingBranchForkLevel: 'user',
+        })
+
+        // Pre-fill text input with message text content
+        const textContent = message.contents
+          .filter(c => c.content_type === 'text')
+          .map(c => (c.content as any).text as string)
+          .join('')
+        ;(get() as any).TextStore?.setText(textContent)
+      },
+
+      cancelEdit: async () => {
+        // Clear text input first
+        ;(get() as any).TextStore?.clearText()
+
+        // Clear editing state — extensions react via their subscribe handlers
+        set({
+          editingMessage: null,
+          pendingBranchFromMessageId: null,
+          pendingBranchForkLevel: null,
+        })
+
+        // Reload messages to restore what was trimmed by startEditMessage
+        const conversationId = get().conversation?.id
+        if (conversationId) {
+          await get().loadMessages(conversationId)
+        }
+      },
+
+      startRegenerateMessage: async (assistantMessageId: string) => {
+        const sorted = [...get().messages.values()].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        )
+
+        const currentIndex = sorted.findIndex(m => m.id === assistantMessageId)
+        if (currentIndex <= 0) return
+
+        let precedingUserMsg = null
+        for (let i = currentIndex - 1; i >= 0; i--) {
+          if (sorted[i].role === 'user') {
+            precedingUserMsg = sorted[i]
+            break
+          }
+        }
+
+        if (!precedingUserMsg) return
+
+        const userText = (() => {
+          for (const content of precedingUserMsg.contents) {
+            const data = content.content as any
+            if (data?.type === 'text' && typeof data.text === 'string') {
+              return data.text
+            }
+          }
+          return ''
+        })()
+
+        if (!userText) return
+
+        // Pre-fill text input with the original user message text
+        ;(get() as any).TextStore?.setText(userText)
+
+        // Mark as assistant-level fork so computeForkPoints anchors the
+        // navigator at the assistant bubble on both parent and child branches
+        set({
+          pendingBranchForkLevel: 'assistant',
+          pendingBranchFromMessageId: precedingUserMsg.id,
+        })
+
+        // Trim the user message and everything after so the UI shows a clean
+        // state during streaming
+        get().trimMessagesToForkPoint(precedingUserMsg.id)
+
+        await get().sendMessage()
+      },
+
+      // ── Send message with SSE streaming ───────────────────────────────────
+
       sendMessage: async () => {
         let { conversation } = get()
 
-        // Validate message BEFORE creating conversation
-        // Text extension validates text is not empty, file extension checks uploads, etc.
         const beforeResult = await chatExtensionRegistry.beforeSendMessage()
 
-        // Check if any extension cancelled the send
         if (beforeResult.cancel) {
           console.log('[Chat.store] Message send cancelled by extension')
           throw new Error(beforeResult.errorMessage || 'Message send was cancelled')
         }
 
-        // Collect all request fields from extensions BEFORE creating conversation
-        // (createConversation can trigger re-renders that reset form state)
-        // Text extension provides 'content', MCP provides 'enable_mcp', 'mcp_config', etc.
+        // Collect all request fields from extensions
         const allRequestFields = await chatExtensionRegistry.composeRequestFields()
 
-        // Create conversation if needed (only after validation passes)
+        // Inject branching fields directly (moved from branching extension)
+        const pendingBranchFromMessageId = get().pendingBranchFromMessageId
+        if (pendingBranchFromMessageId) {
+          allRequestFields.create_branch_from_message_id = pendingBranchFromMessageId
+          allRequestFields.fork_level = get().pendingBranchForkLevel ?? 'user'
+        }
+
         if (!conversation) {
           conversation = await get().createConversation()
-
-          // Initialize extensions with new conversation
+          await chatExtensionRegistry.initialize()
           await chatExtensionRegistry.onConversationLoad(conversation)
         }
 
+        const streamConversationId = conversation.id
+
         set({ sending: true, isStreaming: true, error: null })
 
-        // Create optimistic user message using extension hooks
-        // Extensions provide content (text, file attachments, etc.)
         const userContents = await chatExtensionRegistry.provideUserContent(
           allRequestFields.content as string || '',
           allRequestFields,
@@ -351,7 +667,6 @@ export const useChatStore = create<ChatState>()(
           created_at: new Date().toISOString(),
         }
 
-        // Add optimistic user message and track its temp ID
         set(state => {
           const newMessages = new Map(state.messages)
           newMessages.set(tempUserMessage.id, tempUserMessage)
@@ -366,7 +681,6 @@ export const useChatStore = create<ChatState>()(
             {
               id: conversation.id,
               branch_id: conversation.active_branch_id || '',
-              // All fields from extensions (content, model_id, enable_mcp, etc.)
               ...allRequestFields,
             } as any,
             {
@@ -375,43 +689,54 @@ export const useChatStore = create<ChatState>()(
                   console.log('Chat SSE initialized with abortController')
                   set({ sending: false })
 
-                  // Call onMessageSent hook after message is successfully sent
                   await chatExtensionRegistry.onMessageSent()
+
+                  // Clear pending branch state after message is sent
+                  get().clearPendingBranch()
                 },
                 started: async data => {
-                  // Call onStreamStart hook when streaming starts
                   await chatExtensionRegistry.onStreamStart()
 
-                  // Route through extensions first
+                  // Detect branch change (moved from branching extension handleSSEEvent)
+                  const currentBranchId = get().conversation?.active_branch_id
+                  if (data.branch_id && data.branch_id !== currentBranchId) {
+                    set(state => ({
+                      conversation: state.conversation
+                        ? { ...state.conversation, active_branch_id: data.branch_id }
+                        : null,
+                      branchChangedDuringStream: true,
+                    }))
+                    // Capture fork level before clearPendingBranch() clears it
+                    get().captureBranchForkLevel(data.branch_id!)
+
+                    // Reload branches for the navigator
+                    const conversation = get().conversation
+                    if (conversation) {
+                      await get().loadBranches(conversation.id)
+                    }
+                  }
+
+                  // Route through extensions
                   const sseEvent: SSEEvent = {
                     event_type: 'started',
                     data,
                   }
-                  const handled = await chatExtensionRegistry.handleSSEEvent(
-                    sseEvent,
-                  )
+                  const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
 
-                  // Always handle locally (extensions don't need to handle this)
                   if (!handled) {
-                    // Handle started event - update optimistic user message with real message ID
                     const state = get()
                     if (data.user_message_id && state.tempUserMessageId) {
-                      const tempMessage = state.messages.get(
-                        state.tempUserMessageId,
-                      )
+                      const tempMessage = state.messages.get(state.tempUserMessageId)
                       if (tempMessage) {
                         set(state => {
                           const newMessages = new Map(state.messages)
                           newMessages.delete(state.tempUserMessageId!)
 
-                          // Update message with real message ID
-                          // Content IDs keep their frontend-generated UUIDs
                           const updatedMessage = {
                             ...tempMessage,
                             id: data.user_message_id!,
                             contents: tempMessage.contents.map(content => ({
                               ...content,
-                              // id stays as temp UUID (don't update)
                               message_id: data.user_message_id!,
                             })),
                           }
@@ -433,30 +758,24 @@ export const useChatStore = create<ChatState>()(
                   }
                 },
                 content: async data => {
-                  // Route through extensions first
                   const sseEvent: SSEEvent = {
                     event_type: 'content',
                     data,
                   }
-                  const handled = await chatExtensionRegistry.handleSSEEvent(
-                    sseEvent,
-                  )
+                  const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
 
-                  // Handle locally if not handled by extension
                   if (!handled) {
+                    if (get().conversation?.id !== streamConversationId) return
+
                     const state = get()
 
-                    // Handle content chunks
                     if (data.content && Array.isArray(data.content)) {
                       for (const block of data.content) {
                         if (block.type === 'text_delta') {
-                          // Initialize or update streaming message using extensions
                           if (!state.streamingMessage) {
-                            // Create new assistant message using extension hooks
                             const messageId =
                               data.message_id || `streaming-${Date.now()}`
 
-                            // Ask extensions to provide initial content
                             const initialContent = await chatExtensionRegistry.provideStreamingContent(
                               'text',
                               block.delta,
@@ -488,22 +807,17 @@ export const useChatStore = create<ChatState>()(
                               })
                             }
                           } else {
-                            // Append delta to streaming message
-                            // IMPORTANT: Do all state mutations inside set() callback to avoid race conditions
-                            // Multiple SSE events can arrive quickly, so we must use fresh state
                             const delta = block.delta || ''
                             const incomingMessageId = data.message_id
 
                             set(currentState => {
                               if (!currentState.streamingMessage) {
-                                // Another handler might have cleared it
                                 return {}
                               }
 
                               const messageId = incomingMessageId || currentState.streamingMessage.id
                               const idChanged = messageId !== currentState.streamingMessage.id
 
-                              // Find existing text content block to append to
                               const textContentIndex = currentState.streamingMessage.contents.findIndex(
                                 c => c.content_type === 'text' || (c.content as any)?.type === 'text'
                               )
@@ -511,7 +825,6 @@ export const useChatStore = create<ChatState>()(
                               let updatedContents: MessageContent[]
 
                               if (textContentIndex >= 0) {
-                                // Append delta to existing text content
                                 const currentContent = currentState.streamingMessage.contents[textContentIndex]
                                 const currentText = (currentContent.content as any)?.text || ''
                                 const updatedContent: MessageContent = {
@@ -525,7 +838,6 @@ export const useChatStore = create<ChatState>()(
                                 updatedContents = [...currentState.streamingMessage.contents]
                                 updatedContents[textContentIndex] = updatedContent
                               } else {
-                                // No text content exists, create new one
                                 const now = new Date().toISOString()
                                 const newContent: MessageContent = {
                                   id: `${messageId}-content-${currentState.streamingMessage.contents.length}`,
@@ -539,7 +851,6 @@ export const useChatStore = create<ChatState>()(
                                 updatedContents = [...currentState.streamingMessage.contents, newContent]
                               }
 
-                              // Update message ID if it changed (preserves link to backend message)
                               const updatedMessage: MessageWithContent = {
                                 ...currentState.streamingMessage,
                                 id: messageId,
@@ -550,7 +861,6 @@ export const useChatStore = create<ChatState>()(
                               }
 
                               const newMessages = new Map(currentState.messages)
-                              // Remove old ID entry if ID changed
                               if (idChanged) {
                                 newMessages.delete(currentState.streamingMessage.id)
                               }
@@ -568,41 +878,63 @@ export const useChatStore = create<ChatState>()(
                   }
                 },
                 complete: async _data => {
-                  // Route through extensions first
                   const sseEvent: SSEEvent = {
                     event_type: 'complete',
                     data: _data,
                   }
-                  const handled = await chatExtensionRegistry.handleSSEEvent(
-                    sseEvent,
-                  )
+                  const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
 
-                  // Always handle locally
                   if (!handled) {
-                    // Streaming complete - messages are already in state from SSE events
+                    const { streamingMessage } = get()
+                    const isOnOriginalConversation = get().conversation?.id === streamConversationId
+
                     set({
                       isStreaming: false,
                       sending: false,
                       streamingMessage: null,
                     })
+
+                    if (isOnOriginalConversation) {
+                      if (streamingMessage) {
+                        await chatExtensionRegistry.afterStreamComplete(streamingMessage)
+                      }
+
+                      // Always reload messages after stream completes so the UI
+                      // reflects authoritative server state (including file_attachment blocks)
+                      set({ branchChangedDuringStream: false })
+                      const conversation = get().conversation
+                      if (conversation) {
+                        await get().loadMessages(conversation.id)
+                      }
+
+                      // Always recompute fork points so the navigator is up to date
+                      await get().computeForkPoints()
+                    } else {
+                      // Invalidate A's stale snapshot so messages reload fresh when user returns
+                      get().clearConversationCache(streamConversationId)
+                    }
                   }
                 },
                 error: async data => {
-                  // Call onStreamError hook when streaming encounters an error
                   const streamError = new Error(data.message || 'Stream error')
                   await chatExtensionRegistry.onStreamError(streamError)
 
-                  // Route through extensions first
                   const sseEvent: SSEEvent = {
                     event_type: 'error',
                     data,
                   }
                   await chatExtensionRegistry.handleSSEEvent(sseEvent)
 
-                  // Always handle errors locally
+                  const isOnOriginalConversation = get().conversation?.id === streamConversationId
+
+                  if (!isOnOriginalConversation) {
+                    set({ isStreaming: false, sending: false, streamingMessage: null })
+                    get().clearConversationCache(streamConversationId)
+                    return
+                  }
+
                   const state = get()
 
-                  // Remove optimistic user message if it still has temp ID
                   if (state.tempUserMessageId) {
                     set(state => {
                       const newMessages = new Map(state.messages)
@@ -617,7 +949,6 @@ export const useChatStore = create<ChatState>()(
                       }
                     })
                   } else {
-                    // Message already has real ID - it was successfully created, keep it
                     set({
                       error: data.message || 'Stream error',
                       isStreaming: false,
@@ -627,16 +958,12 @@ export const useChatStore = create<ChatState>()(
                   }
                 },
                 default: async (event, data) => {
-                  // Route unknown events through extensions as GenericSSEEvent
                   const sseEvent: GenericSSEEvent = {
                     event_type: event,
                     data,
                   }
-                  const handled = await chatExtensionRegistry.handleSSEEvent(
-                    sseEvent,
-                  )
+                  const handled = await chatExtensionRegistry.handleSSEEvent(sseEvent)
 
-                  // Log if not handled by any extension
                   if (!handled) {
                     console.log('Unknown chat SSE event:', event, data)
                   }
@@ -645,14 +972,12 @@ export const useChatStore = create<ChatState>()(
             },
           )
         } catch (error: any) {
-          // Call onStreamError hook when stream initialization fails
           await chatExtensionRegistry.onStreamError(
             error instanceof Error ? error : new Error(error.message || 'Failed to send message')
           )
 
           const state = get()
 
-          // Remove optimistic user message if it still has temp ID
           if (state.tempUserMessageId) {
             set(state => {
               const newMessages = new Map(state.messages)
@@ -667,7 +992,6 @@ export const useChatStore = create<ChatState>()(
               }
             })
           } else {
-            // Message already has real ID - it was successfully created, keep it
             set({
               error: error.message || 'Failed to send message',
               sending: false,
@@ -678,7 +1002,6 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
-      // Update conversation properties (e.g., title)
       updateConversation: async (updates: { title?: string }) => {
         const { conversation } = get()
         if (!conversation) {
@@ -698,7 +1021,6 @@ export const useChatStore = create<ChatState>()(
               : null,
           }))
 
-          // Emit titleUpdated event if title was updated
           if (updates.title !== undefined) {
             const { Stores } = await import('@/core/stores')
             await Stores.EventBus.emit({
@@ -720,15 +1042,10 @@ export const useChatStore = create<ChatState>()(
       clearError: () => set({ error: null }),
 
       reset: async () => {
-        // Save snapshot and cleanup for current conversation
         const { conversation } = get()
         if (conversation) {
-          // Save entire conversation state snapshot
           get().saveConversationState(conversation.id)
-
-          // Schedule cache clear after 5 minutes
           get().scheduleCacheClear(conversation.id)
-
           await chatExtensionRegistry.cleanup()
         }
 
@@ -742,16 +1059,21 @@ export const useChatStore = create<ChatState>()(
           error: null,
           streamingMessage: null,
           tempUserMessageId: null,
+          branches: [],
+          branchesLoading: false,
+          pendingBranchFromMessageId: null,
+          pendingBranchForkLevel: null,
+          branchForkLevels: new Map(),
+          branchChangedDuringStream: false,
+          forkPoints: new Map(),
+          editingMessage: null,
         })
       },
 
-      // Lifecycle methods
+      // ── Lifecycle methods ──────────────────────────────────────────────────
+
       __init__: {
         __store__: () => {
-          // No event listeners currently needed
-          // Could be extended later for:
-          // - Event bus subscriptions
-          // - Initial conversation loading
           console.log('[Chat.store] Initialized')
         },
       },
@@ -761,23 +1083,16 @@ export const useChatStore = create<ChatState>()(
 
         const state = get()
 
-        // Clear ALL cache timers to prevent memory leaks
-        for (const [
-          conversationId,
-          timer,
-        ] of state.cacheClearTimers.entries()) {
+        for (const [conversationId, timer] of state.cacheClearTimers.entries()) {
           clearTimeout(timer)
           console.log(
             `[Chat.store] Cleared pending timer for conversation: ${conversationId}`,
           )
         }
 
-        // Save current conversation state if exists
         if (state.conversation) {
           get().saveConversationState(state.conversation.id)
 
-          // Cleanup extensions for current conversation
-          // Run cleanup synchronously (can't await in destroy)
           chatExtensionRegistry
             .cleanup()
             .catch(error =>
@@ -785,7 +1100,6 @@ export const useChatStore = create<ChatState>()(
             )
         }
 
-        // Clear all cached conversations
         state.conversationStateCache.clear()
         state.cacheClearTimers.clear()
 

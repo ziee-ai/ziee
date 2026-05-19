@@ -30,4 +30,13 @@ pub struct SendMessageRequest {
     /// The new branch becomes the active branch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub create_branch_from_message_id: Option<Uuid>,
+
+    /// Fork level for the new branch: 'user' (edit flow) or 'assistant' (regenerate flow).
+    /// Only used when create_branch_from_message_id is set. Defaults to 'user'.
+    #[serde(default = "default_fork_level")]
+    pub fork_level: String,
+}
+
+fn default_fork_level() -> String {
+    "user".to_string()
 }

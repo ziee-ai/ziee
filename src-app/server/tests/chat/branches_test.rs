@@ -407,3 +407,166 @@ async fn test_created_branch_structure() {
     assert_eq!(branch.conversation_id, conversation_id);
     // parent_branch_id may or may not be set depending on implementation
 }
+
+// =====================================================
+// Fork Level Tests (migration 22 — fork_level column)
+// =====================================================
+//
+// fork_level distinguishes two branching flows so the frontend can anchor the
+// branch navigator at the right message after page reload:
+//   - "user"      → user edited their own message
+//   - "assistant" → user clicked "regenerate" on an assistant reply
+//
+// The column has a CHECK constraint restricting it to those two values, and
+// CreateBranchRequest / SendMessageRequest default it to "user" when omitted.
+
+async fn fork_level_test_setup(
+    server: &crate::common::TestServer,
+) -> (crate::common::test_helpers::TestUser, uuid::Uuid, uuid::Uuid) {
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "user",
+        &[
+            "conversations::create",
+            "conversations::read",
+            "branches::create",
+            "messages::create",
+            "messages::read",
+            "messages::edit",
+            "llm_models::read",
+        ],
+    )
+    .await;
+
+    let model = super::helpers::get_or_create_test_model(server, &user.user_id).await;
+    let model_id = super::helpers::parse_uuid(&model["id"]);
+    let conversation = super::helpers::create_conversation(server, &user.token, Some(model_id), None).await;
+    let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
+    let branch_id = super::helpers::parse_uuid(&conversation["active_branch_id"]);
+
+    let message = super::helpers::send_message(
+        server,
+        &user.token,
+        conversation_id,
+        branch_id,
+        model_id,
+        "Test message",
+    )
+    .await;
+    let message_id = super::helpers::parse_uuid(&message["id"]);
+
+    (user, conversation_id, message_id)
+}
+
+#[tokio::test]
+async fn test_create_branch_defaults_fork_level_user() {
+    // POST /branches without a fork_level field → server defaults to "user".
+    // Pins the wire-level default contract; if SendMessageRequest's
+    // default_fork_level() changes, this test fails.
+    let server = crate::common::TestServer::start().await;
+    let (user, conversation_id, message_id) = fork_level_test_setup(&server).await;
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "from_message_id": message_id.to_string() }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["fork_level"], "user", "default fork_level should be 'user'");
+}
+
+#[tokio::test]
+async fn test_create_branch_with_assistant_fork_level() {
+    // Explicit fork_level=assistant → round-trips in response AND persists in DB.
+    let server = crate::common::TestServer::start().await;
+    let (user, conversation_id, message_id) = fork_level_test_setup(&server).await;
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "from_message_id": message_id.to_string(),
+            "fork_level": "assistant",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["fork_level"], "assistant");
+
+    // Verify persistence (response could lie; the column is what matters for reload).
+    let new_branch_id = super::helpers::parse_uuid(&body["id"]);
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let row = sqlx::query!(
+        "SELECT fork_level FROM branches WHERE id = $1",
+        new_branch_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+    assert_eq!(row.fork_level, "assistant");
+}
+
+#[tokio::test]
+async fn test_edit_message_creates_user_level_branch() {
+    // edit_message hardcodes fork_level='user' in the repository layer — this
+    // test pins that contract so a future refactor can't silently emit
+    // 'assistant' (which would scramble the frontend branch navigator).
+    let server = crate::common::TestServer::start().await;
+    let (user, conversation_id, message_id) = fork_level_test_setup(&server).await;
+
+    let edited = super::helpers::edit_message(
+        &server,
+        &user.token,
+        conversation_id,
+        message_id,
+        "Edited content",
+    )
+    .await;
+
+    // EditMessageResponse { message, branch } — branch contains fork_level.
+    assert_eq!(
+        edited["branch"]["fork_level"], "user",
+        "edit_message must always create a 'user' branch",
+    );
+}
+
+#[tokio::test]
+async fn test_create_branch_rejects_invalid_fork_level() {
+    // The CHECK constraint on the branches.fork_level column rejects anything
+    // outside ('user', 'assistant'). The handler doesn't pre-validate, so the
+    // failure happens at INSERT time → AppError::database_error → 500.
+    // Pinning the rejection (regardless of status code) prevents bad enums
+    // from silently being persisted if the constraint is ever dropped.
+    let server = crate::common::TestServer::start().await;
+    let (user, conversation_id, message_id) = fork_level_test_setup(&server).await;
+
+    let response = reqwest::Client::new()
+        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({
+            "from_message_id": message_id.to_string(),
+            "fork_level": "garbage",
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert!(
+        response.status().is_server_error() || response.status().is_client_error(),
+        "expected error status for invalid fork_level, got {}",
+        response.status(),
+    );
+    assert_ne!(response.status(), StatusCode::CREATED);
+}

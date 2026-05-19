@@ -9,55 +9,52 @@ import { FilePreviewList } from '@/modules/chat/extensions/file/components/FileP
 import { FileAttachMenuItem } from '@/modules/chat/extensions/file/components/FileAttachMenuItem'
 import { FileCard } from '@/modules/chat/extensions/file/components/FileCard'
 import { ApiClient } from '@/api-client'
-import type { File as FileEntity, MessageContentDataFileAttachment } from '@/api-client/types'
+import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment } from '@/api-client/types'
 
 /**
  * File attachment content renderer component
  * Renders file attachments in message bubbles using FileCard
  */
 function FileAttachmentRenderer({ content: data }: ContentRendererProps) {
-  const [file, setFile] = React.useState<FileEntity | null>(null)
-  const [loading, setLoading] = React.useState(true)
-
   // data is the full MessageContent object, data.content has the file attachment data
   const fileData = data.content as MessageContentDataFileAttachment
 
-  // Fetch full file info using file_id
-  React.useEffect(() => {
-    if (!fileData?.file_id) {
-      setLoading(false)
-      return
-    }
+  // Initialize immediately from content block data — card renders without waiting for API
+  // Use file_id as a stable key; fall back to empty string so hooks run unconditionally
+  const [file, setFile] = React.useState<FileEntity | null>(
+    fileData?.file_id && fileData?.filename
+      ? {
+          id: fileData.file_id,
+          filename: fileData.filename,
+          file_size: fileData.file_size,
+          mime_type: fileData.mime_type ?? undefined,
+          has_thumbnail: false,
+          preview_page_count: 0,
+          created_at: '',
+          updated_at: '',
+          user_id: '',
+          processing_metadata: null,
+          text_page_count: 0,
+        }
+      : null
+  )
 
+  // Fetch full file entity to enable thumbnails and preview modal
+  React.useEffect(() => {
+    if (!fileData?.file_id) return
     const fetchFileInfo = async () => {
       try {
         const fileInfo = await ApiClient.File.get({ file_id: fileData.file_id })
-        setFile(fileInfo)
+        if (fileInfo) setFile(fileInfo)
       } catch (error) {
         console.error('Failed to fetch file info:', error)
-      } finally {
-        setLoading(false)
+        // Card already rendered from content block data — silent failure is acceptable
       }
     }
-
     fetchFileInfo()
   }, [fileData?.file_id])
 
-  if (!fileData?.file_id || !fileData?.filename) {
-    return null
-  }
-
-  if (loading) {
-    return (
-      <div className="inline-block">
-        <div className="min-h-20 min-w-20">Loading...</div>
-      </div>
-    )
-  }
-
-  if (!file) {
-    return null
-  }
+  if (!file) return null
 
   return (
     <div className="inline-block">
@@ -84,6 +81,104 @@ const fileExtension: ChatExtension = createExtension({
   store: {
     name: 'FileStore',
     createStore: createFileExtensionStore,
+  },
+
+  /**
+   * Subscribe to editingMessage changes in Chat.store.
+   * When a message is being edited: restore its file attachments into the
+   * file selection so they appear in the input area prefix (FilePreviewList).
+   * When edit ends (null): clear the file selection.
+   */
+  initialize: async () => {
+    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+    const { Stores } = await import('@/core/stores')
+
+    useChatStore.subscribe(
+      state => state.editingMessage,
+      async (editingMessage) => {
+        const fileStore = Stores.Chat.__state.FileStore
+        if (!fileStore) return
+
+        if (editingMessage) {
+          // Restore file_attachment content blocks from the edited message
+          const fileContents = editingMessage.contents.filter(
+            c => c.content_type === 'file_attachment'
+          )
+          if (fileContents.length > 0) {
+            // Phase 1 — Synchronous: build stubs from content block data immediately.
+            // This ensures selectedFiles is populated before the user can click Send.
+            const stubs: FileEntity[] = fileContents.map(c => {
+              const data = c.content as MessageContentDataFileAttachment
+              return {
+                id: data.file_id,
+                filename: data.filename,
+                file_size: data.file_size,
+                mime_type: data.mime_type ?? undefined,
+                has_thumbnail: false,
+                preview_page_count: 0,
+                created_at: '',
+                updated_at: '',
+                user_id: '',
+                processing_metadata: null,
+                text_page_count: 0,
+              }
+            })
+            fileStore.restoreFilesFromEdit(stubs)
+
+            // Phase 2 — Async: upgrade stubs with full server entities (enables thumbnails).
+            try {
+              const fullFiles = await Promise.all(
+                fileContents.map(c => {
+                  const data = c.content as MessageContentDataFileAttachment
+                  return ApiClient.File.get({ file_id: data.file_id })
+                })
+              )
+              const validFiles = fullFiles.filter(Boolean) as FileEntity[]
+              if (validFiles.length > 0) {
+                fileStore.restoreFilesFromEdit(validFiles)
+              }
+            } catch (error) {
+              console.error('[FileExtension] Failed to upgrade files from edit:', error)
+              // Stubs are still in place — basic preview still works
+            }
+          }
+        } else {
+          // Edit ended (cancel or send) — clear the file selection
+          fileStore.clearFiles()
+        }
+      }
+    )
+  },
+
+  /**
+   * Provide file attachment content blocks for the temp user message created
+   * during sendMessage(). Without this, the message bubble shows no file
+   * previews until loadMessages() replaces the temp message with the real one.
+   */
+  provideUserContent: async (_text: string, _composedRequest: any): Promise<MessageContent[]> => {
+    const { Stores } = await import('@/core/stores')
+    const fileStore = Stores.Chat.__state.FileStore
+    if (!fileStore) return []
+
+    const files = fileStore.getFiles()
+    if (files.length === 0) return []
+
+    const now = new Date().toISOString()
+    return files.map((file, index) => ({
+      id: crypto.randomUUID(),
+      message_id: '',
+      content_type: 'file_attachment',
+      content: {
+        type: 'file_attachment',
+        file_id: file.id,
+        filename: file.filename,
+        file_size: file.file_size,
+        mime_type: file.mime_type ?? undefined,
+      } as MessageContentDataFileAttachment,
+      sequence_order: index + 1, // text block is at sequence_order 0
+      created_at: now,
+      updated_at: now,
+    }))
   },
 
   // Check if files are still uploading before sending message

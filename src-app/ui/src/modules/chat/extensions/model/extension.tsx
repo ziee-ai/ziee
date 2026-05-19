@@ -21,6 +21,30 @@ const modelExtension: ChatExtension = createExtension({
   },
 
   /**
+   * Subscribe to editingMessage to restore model selection when editing a message
+   */
+  initialize: async () => {
+    const { useChatStore } = await import('@/modules/chat/core/stores/Chat.store')
+    const { Stores } = await import('@/core/stores')
+
+    useChatStore.subscribe(
+      state => state.editingMessage,
+      (editingMessage) => {
+        const modelStore = Stores.Chat.__state.ModelStore
+        if (!modelStore) return
+
+        if (editingMessage?.model_id) {
+          modelStore.setModelId(editingMessage.model_id)
+        } else if (!editingMessage) {
+          // Edit cancelled or sent — restore from conversation default
+          const conversation = useChatStore.getState().conversation
+          modelStore.initializeFromConversation(conversation?.model_id)
+        }
+      }
+    )
+  },
+
+  /**
    * Provide model_id to request
    */
   composeRequestFields: async () => {
