@@ -91,9 +91,20 @@ impl StreamingService {
                 Vec::new()
             };
 
-            // Create user message
-            let user_message =
-                Repos.chat.core.create_message(branch_id, MessageRole::User.as_str()).await?;
+            // Extract context values to persist on the user message
+            let msg_assistant_id = request.assistant_id;
+            let msg_mcp_server_ids: Option<Vec<uuid::Uuid>> = request.mcp_config.as_ref().map(|c| {
+                c.mcp_servers.iter().map(|s| s.server_id).collect()
+            });
+
+            // Create user message with context (model, assistant, mcp servers used)
+            let user_message = Repos.chat.core.create_message(
+                branch_id,
+                MessageRole::User.as_str(),
+                Some(request.model_id),
+                msg_assistant_id,
+                msg_mcp_server_ids,
+            ).await?;
 
             // Create content blocks from extensions (text, files, etc.)
             // Extensions are called in priority order (text extension runs first at order 5)
@@ -119,12 +130,12 @@ impl StreamingService {
                 msg_id  // Existing message (resuming)
             } else {
                 // No extension provided message, create new one
-                let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str()).await?;
+                let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None, None, None).await?;
                 msg.id  // New message
             }
         } else {
             // No extension registry, create new message
-            let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str()).await?;
+            let msg = Repos.chat.core.create_message(branch_id, MessageRole::Assistant.as_str(), None, None, None).await?;
             msg.id  // New message
         };
 
@@ -635,53 +646,12 @@ impl StreamingService {
                 }
             }
 
-            // For assistant messages with tool blocks, split into proper sequence for API
-            if role == MessageRole::Assistant && (!tool_use_blocks.is_empty() || !tool_result_blocks.is_empty()) {
-                // 1. Tool use blocks → Assistant message
-                if !tool_use_blocks.is_empty() {
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Assistant,
-                        content: tool_use_blocks,
-                    });
-                }
-
-                // 2. Tool result blocks → Tool message (unified interface!)
-                // Each provider handles Role::Tool correctly:
-                // - Anthropic: converts to "user" with tool_result content
-                // - OpenAI: converts to "tool" role
-                if !tool_result_blocks.is_empty() {
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Tool,
-                        content: tool_result_blocks,
-                    });
-                }
-
-                // 3. Other content (text, thinking) → Assistant message
-                if !other_blocks.is_empty() {
-                    messages.push(ChatMessage {
-                        role: ai_providers::Role::Assistant,
-                        content: other_blocks,
-                    });
-                }
-            } else {
-                // Non-tool messages: combine all blocks normally
-                let all_blocks: Vec<_> = [tool_use_blocks, tool_result_blocks, other_blocks]
-                    .into_iter()
-                    .flatten()
-                    .collect();
-
-                if !all_blocks.is_empty() {
-                    let ai_role = match role {
-                        MessageRole::User => ai_providers::Role::User,
-                        MessageRole::Assistant => ai_providers::Role::Assistant,
-                        MessageRole::System => continue,
-                    };
-                    messages.push(ChatMessage {
-                        role: ai_role,
-                        content: all_blocks,
-                    });
-                }
-            }
+            messages.extend(group_blocks_into_provider_messages(
+                role,
+                tool_use_blocks,
+                tool_result_blocks,
+                other_blocks,
+            ));
         }
 
         Ok(messages)
@@ -1008,5 +978,223 @@ impl DeltaAccumulator {
         self.finalized = true;
 
         Ok(())
+    }
+}
+
+/// Group already-categorized content blocks into provider-ready ChatMessage(s).
+///
+/// For an Assistant turn with tool blocks the result is two messages:
+///   `[Assistant { text + tool_use }, Tool { tool_result }]`
+/// matching Anthropic's requirement that text and tool_use share a single
+/// assistant message, and that the conversation does NOT end on an assistant
+/// turn. The `Role::Tool` message is a unified abstraction — each provider
+/// maps it correctly (Anthropic → "user" with tool_result content, OpenAI →
+/// "tool" role).
+///
+/// For non-tool messages (or User messages) all blocks are combined into a
+/// single message with the original role.
+fn group_blocks_into_provider_messages(
+    role: MessageRole,
+    tool_use_blocks: Vec<ai_providers::ContentBlock>,
+    tool_result_blocks: Vec<ai_providers::ContentBlock>,
+    other_blocks: Vec<ai_providers::ContentBlock>,
+) -> Vec<ChatMessage> {
+    let mut messages = Vec::new();
+
+    if role == MessageRole::Assistant
+        && (!tool_use_blocks.is_empty() || !tool_result_blocks.is_empty())
+    {
+        // 1. Text + tool_use blocks → single Assistant message (text before tool_use).
+        let assistant_content: Vec<_> = other_blocks.into_iter().chain(tool_use_blocks).collect();
+        if !assistant_content.is_empty() {
+            messages.push(ChatMessage {
+                role: ai_providers::Role::Assistant,
+                content: assistant_content,
+            });
+        }
+        // 2. Tool result blocks → Tool message (unified).
+        if !tool_result_blocks.is_empty() {
+            messages.push(ChatMessage {
+                role: ai_providers::Role::Tool,
+                content: tool_result_blocks,
+            });
+        }
+    } else {
+        let all_blocks: Vec<_> = [tool_use_blocks, tool_result_blocks, other_blocks]
+            .into_iter()
+            .flatten()
+            .collect();
+        if !all_blocks.is_empty() {
+            let ai_role = match role {
+                MessageRole::User => ai_providers::Role::User,
+                MessageRole::Assistant => ai_providers::Role::Assistant,
+                MessageRole::System => return messages, // skipped at caller
+            };
+            messages.push(ChatMessage {
+                role: ai_role,
+                content: all_blocks,
+            });
+        }
+    }
+
+    messages
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ai_providers::ContentBlock;
+    use serde_json::json;
+
+    fn text(s: &str) -> ContentBlock {
+        ContentBlock::Text {
+            text: s.to_string(),
+        }
+    }
+
+    fn tool_use(id: &str, name: &str) -> ContentBlock {
+        ContentBlock::ToolUse {
+            id: id.to_string(),
+            name: name.to_string(),
+            input: json!({}),
+        }
+    }
+
+    fn tool_result(id: &str, content: &str) -> ContentBlock {
+        ContentBlock::ToolResult {
+            tool_use_id: id.to_string(),
+            name: None,
+            content: vec![ContentBlock::Text {
+                text: content.to_string(),
+            }],
+            is_error: None,
+        }
+    }
+
+    /// The core fix: an Assistant turn with text + tool_use + tool_result must
+    /// produce TWO messages — `[Assistant { text + tool_use }, Tool { tool_result }]`
+    /// — not three with text as a trailing assistant message. Anthropic rejects
+    /// the latter (text + tool_use must share a message; conversation must not
+    /// end on an assistant turn).
+    #[test]
+    fn assistant_with_text_tool_use_and_tool_result_groups_to_two_messages() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![tool_use("call_1", "search")],
+            vec![tool_result("call_1", "ok")],
+            vec![text("Let me search for that.")],
+        );
+
+        assert_eq!(msgs.len(), 2, "must produce exactly two provider messages");
+
+        // First: Assistant with text BEFORE tool_use (Anthropic requires this order)
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(msgs[0].content.len(), 2);
+        assert!(matches!(msgs[0].content[0], ContentBlock::Text { .. }));
+        assert!(matches!(msgs[0].content[1], ContentBlock::ToolUse { .. }));
+
+        // Second: Tool with tool_result (provider maps Role::Tool appropriately)
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+        assert_eq!(msgs[1].content.len(), 1);
+        assert!(matches!(msgs[1].content[0], ContentBlock::ToolResult { .. }));
+    }
+
+    /// Even with NO text, tool_use + tool_result still produce two messages.
+    #[test]
+    fn assistant_with_tool_use_and_tool_result_only_groups_to_two_messages() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![tool_use("call_1", "search")],
+            vec![tool_result("call_1", "ok")],
+            vec![],
+        );
+
+        assert_eq!(msgs.len(), 2);
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(msgs[0].content.len(), 1);
+        assert!(matches!(msgs[0].content[0], ContentBlock::ToolUse { .. }));
+        assert!(matches!(msgs[1].role, ai_providers::Role::Tool));
+    }
+
+    /// tool_result without tool_use (e.g. resumed approval) still emits the
+    /// Tool message but skips the empty Assistant message.
+    #[test]
+    fn assistant_with_only_tool_result_emits_single_tool_message() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![],
+            vec![tool_result("call_1", "ok")],
+            vec![],
+        );
+
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(msgs[0].role, ai_providers::Role::Tool));
+    }
+
+    /// Plain assistant text (no tool blocks) stays as a single Assistant message
+    /// — the categorization path must not fire.
+    #[test]
+    fn assistant_with_only_text_emits_single_assistant_message() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![],
+            vec![],
+            vec![text("Hello!")],
+        );
+
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(msgs[0].role, ai_providers::Role::Assistant));
+        assert_eq!(msgs[0].content.len(), 1);
+        assert!(matches!(msgs[0].content[0], ContentBlock::Text { .. }));
+    }
+
+    /// User messages are never split — even if they (hypothetically) carried tool
+    /// blocks, they're combined into one User message.
+    #[test]
+    fn user_messages_are_never_split() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::User,
+            vec![],
+            vec![],
+            vec![text("question")],
+        );
+
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(msgs[0].role, ai_providers::Role::User));
+    }
+
+    /// Empty blocks → no message emitted.
+    #[test]
+    fn no_blocks_emits_no_messages() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![],
+            vec![],
+            vec![],
+        );
+        assert!(msgs.is_empty());
+    }
+
+    /// Regression guard for the OLD bug: the previous implementation emitted
+    /// `[Assistant { tool_use }, Tool { tool_result }, Assistant { text }]` —
+    /// three messages, with the conversation ending on an Assistant turn. This
+    /// test fails loudly if anyone reintroduces that order.
+    #[test]
+    fn no_trailing_assistant_message_after_tool_result() {
+        let msgs = group_blocks_into_provider_messages(
+            MessageRole::Assistant,
+            vec![tool_use("call_1", "search")],
+            vec![tool_result("call_1", "ok")],
+            vec![text("Let me search.")],
+        );
+        // The LAST message must NOT be an Assistant turn — Anthropic rejects
+        // conversations that end on an assistant message.
+        let last = msgs.last().expect("at least one message");
+        assert!(
+            !matches!(last.role, ai_providers::Role::Assistant),
+            "last message must not be Assistant (would break Anthropic no-prefill rule); \
+             got role={:?}",
+            last.role
+        );
     }
 }

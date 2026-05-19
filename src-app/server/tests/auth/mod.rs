@@ -84,11 +84,52 @@ async fn test_auth_registration_duplicate_username() {
         .await
         .expect("Second registration request failed");
 
-    // NOTE: Currently duplicate username validation is handled at database level
-    // which returns 500 instead of 400. This should be fixed to return proper validation error.
-    assert!(
-        response.status().is_server_error() || response.status().is_client_error(),
-        "Should fail when registering duplicate username"
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::CONFLICT,
+        "Duplicate username must return 409 CONFLICT (got {:?})",
+        response.status()
+    );
+}
+
+#[tokio::test]
+async fn test_auth_registration_duplicate_email() {
+    let server = crate::common::TestServer::start().await;
+    let client = reqwest::Client::new();
+
+    // Register first user
+    let register_body = json!({
+        "username": "emailtest1",
+        "email": "shared@example.com",
+        "password": "testpass123"
+    });
+
+    client
+        .post(&server.api_url("/auth/register"))
+        .json(&register_body)
+        .send()
+        .await
+        .expect("First registration failed");
+
+    // Try to register with different username but the same email
+    let duplicate_body = json!({
+        "username": "emailtest2",
+        "email": "shared@example.com",
+        "password": "testpass456"
+    });
+
+    let response = client
+        .post(&server.api_url("/auth/register"))
+        .json(&duplicate_body)
+        .send()
+        .await
+        .expect("Second registration request failed");
+
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::CONFLICT,
+        "Duplicate email must return 409 CONFLICT (got {:?})",
+        response.status()
     );
 }
 

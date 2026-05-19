@@ -41,7 +41,9 @@ struct GeminiRequest {
 /// Gemini content structure
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct GeminiContent {
+    #[serde(default)]
     role: String,
+    #[serde(default)]
     parts: Vec<GeminiPart>,
 }
 
@@ -172,7 +174,8 @@ struct GeminiResponse {
 /// Gemini candidate
 #[derive(Deserialize, Debug)]
 struct GeminiCandidate {
-    content: GeminiContent,
+    #[serde(default)]
+    content: Option<GeminiContent>,
     #[serde(rename = "finishReason")]
     finish_reason: Option<String>,
     #[serde(rename = "safetyRatings", default)]
@@ -530,7 +533,8 @@ impl GeminiProvider {
     fn convert_stream_chunk(candidate: &GeminiCandidate) -> Option<StreamChatChunk> {
         let mut content_deltas = Vec::new();
 
-        for (idx, part) in candidate.content.parts.iter().enumerate() {
+        let parts = candidate.content.as_ref().map(|c| c.parts.as_slice()).unwrap_or_default();
+        for (idx, part) in parts.iter().enumerate() {
             match part {
                 GeminiPart::Text { text, thought } => {
                     // If this is a thought part, use ThinkingDelta; otherwise use TextDelta
@@ -569,7 +573,7 @@ impl GeminiProvider {
             }
         }
 
-        if content_deltas.is_empty() {
+        if content_deltas.is_empty() && candidate.finish_reason.is_none() {
             return None;
         }
 
@@ -801,8 +805,9 @@ impl AIProvider for GeminiProvider {
                                     // Extract content from candidate
                                     if let Some(candidate) = response.candidates.first() {
                                         // Log candidate parts for debugging
-                                        tracing::info!("Gemini candidate has {} parts", candidate.content.parts.len());
-                                        for (i, part) in candidate.content.parts.iter().enumerate() {
+                                        let parts = candidate.content.as_ref().map(|c| c.parts.as_slice()).unwrap_or_default();
+                                        tracing::info!("Gemini candidate has {} parts, finish_reason={:?}", parts.len(), candidate.finish_reason);
+                                        for (i, part) in parts.iter().enumerate() {
                                             match part {
                                                 GeminiPart::Text { text, .. } => {
                                                     tracing::info!("  Part {}: Text ({}chars)", i, text.len());
@@ -1099,5 +1104,85 @@ impl AIProvider for GeminiProvider {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Gemini sometimes returns a candidate with `content: null` — e.g. when the
+    /// response is safety-blocked or when a streaming chunk only carries
+    /// `finishReason`. With the old `content: GeminiContent` (non-optional) field
+    /// these payloads failed serde deserialization and broke the stream.
+    #[test]
+    fn test_gemini_candidate_deserializes_with_null_content() {
+        let json = r#"{
+            "content": null,
+            "finishReason": "STOP"
+        }"#;
+        let candidate: GeminiCandidate =
+            serde_json::from_str(json).expect("should deserialize with null content");
+        assert!(candidate.content.is_none());
+        assert_eq!(candidate.finish_reason.as_deref(), Some("STOP"));
+    }
+
+    /// Same as above but `content` is missing entirely (older Gemini SDKs).
+    #[test]
+    fn test_gemini_candidate_deserializes_with_missing_content() {
+        let json = r#"{
+            "finishReason": "STOP"
+        }"#;
+        let candidate: GeminiCandidate =
+            serde_json::from_str(json).expect("should deserialize with missing content");
+        assert!(candidate.content.is_none());
+    }
+
+    /// `GeminiContent.role` and `.parts` are `#[serde(default)]` so a partial
+    /// content (only one field) deserializes cleanly.
+    #[test]
+    fn test_gemini_content_deserializes_with_missing_fields() {
+        let json_no_role = r#"{ "parts": [] }"#;
+        let content: GeminiContent =
+            serde_json::from_str(json_no_role).expect("should deserialize without role");
+        assert_eq!(content.role, "");
+
+        let json_no_parts = r#"{ "role": "model" }"#;
+        let content: GeminiContent =
+            serde_json::from_str(json_no_parts).expect("should deserialize without parts");
+        assert_eq!(content.role, "model");
+        assert!(content.parts.is_empty());
+    }
+
+    /// A streaming chunk with only `finishReason` (no parts) must yield a
+    /// `StreamChatChunk` so the caller's loop can terminate. Without this the
+    /// stream silently truncates and the assistant message never finalizes.
+    #[test]
+    fn test_convert_stream_chunk_yields_on_finish_reason_only() {
+        let candidate = GeminiCandidate {
+            content: None,
+            finish_reason: Some("STOP".to_string()),
+            safety_ratings: None,
+        };
+        let chunk = GeminiProvider::convert_stream_chunk(&candidate);
+        assert!(
+            chunk.is_some(),
+            "finish_reason-only chunk must produce a StreamChatChunk"
+        );
+        let chunk = chunk.unwrap();
+        assert!(chunk.content.is_empty());
+        assert_eq!(chunk.finish_reason.as_deref(), Some("STOP"));
+    }
+
+    /// A chunk with neither content nor finish_reason returns `None` (nothing
+    /// to do).
+    #[test]
+    fn test_convert_stream_chunk_returns_none_when_empty() {
+        let candidate = GeminiCandidate {
+            content: None,
+            finish_reason: None,
+            safety_ratings: None,
+        };
+        assert!(GeminiProvider::convert_stream_chunk(&candidate).is_none());
     }
 }
