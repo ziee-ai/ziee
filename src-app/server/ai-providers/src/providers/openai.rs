@@ -766,3 +766,80 @@ impl AIProvider for OpenAIProvider {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// gpt-5 and gpt-5-mini require the org-verification "non-streaming" workaround
+    /// AND they reject the older `max_tokens` / non-default `temperature` / `top_p`
+    /// parameters. The list drives the per-request body shape.
+    #[test]
+    fn test_models_requiring_non_streaming_includes_gpt5_family() {
+        assert!(MODELS_REQUIRING_NON_STREAMING.contains(&"gpt-5"));
+        assert!(MODELS_REQUIRING_NON_STREAMING.contains(&"gpt-5-mini"));
+        // gpt-4 family should NOT be in this list (they support streaming +
+        // max_tokens + temperature normally).
+        assert!(!MODELS_REQUIRING_NON_STREAMING.contains(&"gpt-4o"));
+        assert!(!MODELS_REQUIRING_NON_STREAMING.contains(&"gpt-4-turbo"));
+    }
+
+    /// OpenAI streams often emit a final chunk whose `delta` is empty and whose
+    /// only meaningful field is `finish_reason: "tool_calls"` (or "stop"). The
+    /// chat_stream loop yields on any of: content deltas, refusal, OR
+    /// finish_reason present — so this chunk shape must deserialize cleanly so
+    /// the guard sees it.
+    #[test]
+    fn test_stream_chunk_with_empty_delta_and_finish_reason_deserializes() {
+        // Real-world OpenAI streaming chunk that carries only finish_reason
+        let json = r#"{
+            "id": "chatcmpl-1",
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "finish_reason": "tool_calls"
+            }]
+        }"#;
+        let chunk: OpenAIStreamChunk = serde_json::from_str(json)
+            .expect("empty-delta + finish_reason chunk must deserialize");
+        let choice = &chunk.choices[0];
+        assert_eq!(choice.finish_reason.as_deref(), Some("tool_calls"));
+        assert!(choice.delta.content.is_none());
+        assert!(choice.delta.refusal.is_none());
+        assert!(choice.delta.tool_calls.is_none());
+
+        // The yield guard in chat_stream evaluates exactly this disjunction:
+        let content_deltas: Vec<()> = vec![]; // (empty — no content deltas in this chunk)
+        let should_yield = !content_deltas.is_empty()
+            || choice.delta.refusal.is_some()
+            || choice.finish_reason.is_some();
+        assert!(
+            should_yield,
+            "guard must yield when only finish_reason is present"
+        );
+    }
+
+    /// And the regression direction: a chunk with neither content nor refusal
+    /// nor finish_reason must NOT yield (would emit spurious empty chunks).
+    #[test]
+    fn test_stream_chunk_with_nothing_does_not_yield() {
+        let json = r#"{
+            "id": "chatcmpl-1",
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "finish_reason": null
+            }]
+        }"#;
+        let chunk: OpenAIStreamChunk = serde_json::from_str(json).unwrap();
+        let choice = &chunk.choices[0];
+        let content_deltas: Vec<()> = vec![];
+        let should_yield = !content_deltas.is_empty()
+            || choice.delta.refusal.is_some()
+            || choice.finish_reason.is_some();
+        assert!(
+            !should_yield,
+            "guard must NOT yield when nothing is present"
+        );
+    }
+}
