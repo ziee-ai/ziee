@@ -29,4 +29,16 @@
     height: 100dvh;
     width: 100dvw;
   }
+
+  /* Thin horizontal scrollbar for right panel tab bar */
+  .tab-bar-scroll::-webkit-scrollbar {
+    height: 4px;
+  }
+  .tab-bar-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(128, 128, 128, 0.4);
+    border-radius: 2px;
+  }
+  .tab-bar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
