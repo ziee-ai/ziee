@@ -1,6 +1,10 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin, login, createTestUser, clearAuthState } from '../../common/auth-helpers'
 import {
+  assignProviderToAdministratorsGroup,
+  getAdministratorsGroupId,
+} from '../../common/provider-helpers'
+import {
   goToNewChatPage,
   getVisibleModelsInDropdown,
   assertModelVisibleInDropdown,
@@ -35,6 +39,12 @@ test.describe('Chat - Model Access Control', () => {
     // Create provider 2 with 1 model
     const provider2Id = await createProviderViaAPI(apiURL, adminToken, 'Test Provider 2')
     await createModelViaAPI(apiURL, adminToken, provider2Id, 'Model C', 'Test Model C')
+
+    // Assign BOTH providers to the Administrators group in a single call.
+    // PUT /api/groups/{id}/providers replaces the whole list — calling
+    // assignProviderToAdministratorsGroup twice would wipe the first assignment.
+    const adminGroupId = await getAdministratorsGroupId(apiURL, adminToken)
+    await assignProviderToGroupViaAPI(apiURL, adminToken, adminGroupId, [provider1Id, provider2Id])
 
     // Logout and login again so store loads with newly created models
     await clearAuthState(page)
