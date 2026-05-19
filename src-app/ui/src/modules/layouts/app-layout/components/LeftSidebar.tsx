@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { theme, Typography, Divider } from 'antd'
+import { theme, Typography, Divider, Tooltip } from 'antd'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
@@ -17,62 +17,99 @@ interface SidebarItemProps {
   isActive?: boolean
   to?: string
   onClick?: () => void
+  collapsed?: boolean
 }
 
-function SidebarItem({ icon, label, isActive, to, onClick }: SidebarItemProps) {
+function SidebarItem({ icon, label, isActive, to, onClick, collapsed }: SidebarItemProps) {
   const { token } = theme.useToken()
-  return (
+
+  const item = (
     <Link
       to={to || '#'}
       onClick={onClick}
-      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer transition-colors duration-150 no-underline"
+      className="flex items-center px-3 py-1 mx-2 rounded-md cursor-pointer no-underline"
       style={{
         textDecoration: 'none',
         backgroundColor: isActive ? token.colorPrimary : 'transparent',
         color: isActive ? token.colorTextLightSolid : token.colorTextBase,
         borderRadius: token.borderRadius,
+        transition: 'background-color 150ms, color 150ms',
       }}
       onMouseEnter={e => {
         if (!isActive) {
           e.currentTarget.style.backgroundColor = token.colorPrimaryHover
+          e.currentTarget.style.color = token.colorTextLightSolid
         }
       }}
       onMouseLeave={e => {
         if (!isActive) {
           e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.style.color = token.colorTextBase
         }
       }}
     >
       <div
         className="w-4 h-4 mr-1.5 flex items-center justify-center"
         style={{
-          color: isActive ? token.colorTextLightSolid : token.colorTextBase,
-          transition: 'color 0.15s ease',
+          fontSize: 18,
         }}
       >
         {icon}
       </div>
-      <Text style={{ color: 'inherit' }}>{label}</Text>
+      <Text
+        style={{
+          color: 'inherit',
+          fontSize: 15,
+          opacity: collapsed ? 0 : 1,
+          maxWidth: collapsed ? 0 : 200,
+          overflow: 'hidden',
+          whiteSpace: 'nowrap',
+          transition: 'opacity 200ms ease-out, max-width 200ms ease-out',
+        }}
+      >
+        {label}
+      </Text>
     </Link>
   )
+
+  if (collapsed) {
+    return (
+      <Tooltip title={label} placement="right">
+        {item}
+      </Tooltip>
+    )
+  }
+
+  return item
 }
 
 interface SectionHeaderProps {
   children: React.ReactNode
+  collapsed?: boolean
 }
 
-function SectionHeader({ children }: SectionHeaderProps) {
+function SectionHeader({ children, collapsed }: SectionHeaderProps) {
   const { token } = theme.useToken()
+
   return (
-    <Text
-      className="px-3 pb-0.5 block font-semibold tracking-wide"
+    <div
       style={{
-        fontSize: '11px',
-        color: token.colorTextSecondary,
+        maxHeight: collapsed ? 0 : 32,
+        opacity: collapsed ? 0 : 1,
+        overflow: 'hidden',
+        transition: 'opacity 200ms ease-out, max-height 200ms ease-out',
       }}
     >
-      {children}
-    </Text>
+      <Text
+        className="px-3 pb-0.5 block font-semibold tracking-wide"
+        style={{
+          fontSize: '11px',
+          color: token.colorTextSecondary,
+        }}
+      >
+        {children}
+      </Text>
+    </div>
   )
 }
 
@@ -81,6 +118,7 @@ export function LeftSidebar() {
   const { token } = theme.useToken()
   const windowMinSize = useWindowMinSize()
   const { slots } = Stores.ModuleSystem
+  const { isSidebarCollapsed } = Stores.AppLayout
 
   const isActive = (path: string) => {
     return location.pathname.startsWith(path)
@@ -102,6 +140,9 @@ export function LeftSidebar() {
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
   const sortedTools = [...tools].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+
+  // On desktop, collapsed means icon-only mode (not fully hidden)
+  const isIconOnly = isSidebarCollapsed && !windowMinSize.xs
 
   return (
     <div
@@ -127,6 +168,7 @@ export function LeftSidebar() {
               label={action.label}
               to={action.to}
               onClick={action.onClick}
+              collapsed={isIconOnly}
             />
           ))}
         </div>
@@ -135,7 +177,7 @@ export function LeftSidebar() {
       {/* Navigation Section */}
       {sortedNavigation.length > 0 && (
         <div className="mb-4">
-          <SectionHeader>Navigation</SectionHeader>
+          <SectionHeader collapsed={isIconOnly}>Navigation</SectionHeader>
           <div className="space-y-0">
             {sortedNavigation.map(item => (
               <SidebarItem
@@ -144,27 +186,33 @@ export function LeftSidebar() {
                 label={item.label}
                 isActive={isActive(item.path)}
                 to={item.path}
+                collapsed={isIconOnly}
               />
             ))}
           </div>
         </div>
       )}
 
-      {/* Content Section - Widget Slot */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {contentWidgets
-          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-          .map(widget => (
-            <div key={widget.id}>
-              <LazyComponentRenderer component={widget.component} />
-            </div>
-          ))}
-      </div>
+      {/* Content Section - Widget Slot (hidden in icon-only mode) */}
+      {!isIconOnly && (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {contentWidgets
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            .map(widget => (
+              <div key={widget.id}>
+                <LazyComponentRenderer component={widget.component} />
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* Spacer in icon-only mode to push tools to bottom */}
+      {isIconOnly && <div className="flex-1" />}
 
       {/* Tools Section */}
       {sortedTools.length > 0 && (
         <div>
-          <SectionHeader>Tools</SectionHeader>
+          <SectionHeader collapsed={isIconOnly}>Tools</SectionHeader>
           <div className="space-y-0 mb-2">
             {sortedTools.map(item => (
               <SidebarItem
@@ -173,12 +221,13 @@ export function LeftSidebar() {
                 label={item.label}
                 isActive={isActive(item.path)}
                 to={item.path}
+                collapsed={isIconOnly}
               />
             ))}
           </div>
 
-          {/* Bottom Widgets */}
-          {bottomWidgets.length > 0 && (
+          {/* Bottom Widgets (hidden in icon-only mode) */}
+          {!isIconOnly && bottomWidgets.length > 0 && (
             <div className="px-2">
               {bottomWidgets
                 .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -196,13 +245,15 @@ export function LeftSidebar() {
       {footerWidgets.length > 0 && (
         <>
           <Divider className="!m-0" />
-          {footerWidgets
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-            .map(widget => (
-              <div key={widget.id}>
-                <LazyComponentRenderer component={widget.component} />
-              </div>
-            ))}
+          <div className="py-2">
+            {footerWidgets
+              .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+              .map(widget => (
+                <div key={widget.id}>
+                  <LazyComponentRenderer component={widget.component} />
+                </div>
+              ))}
+          </div>
         </>
       )}
     </div>

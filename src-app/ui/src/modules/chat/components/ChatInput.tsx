@@ -1,14 +1,9 @@
-import {
-  Button,
-  Card,
-  Flex,
-  theme,
-  message as antMessage,
-} from 'antd'
-import { SendOutlined } from '@ant-design/icons'
-import { ModelSelector } from '@/modules/chat/extensions/model/components/ModelSelector'
+import { useState } from 'react'
+import { Button, Dropdown, theme, message as antMessage } from 'antd'
+import { SendOutlined, PlusOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ExtensionSlot } from '@/modules/chat/core/extensions'
+import { PlusDropdownContext } from '@/modules/chat/components/PlusDropdownContext'
 
 interface ChatInputProps {
   disabled?: boolean
@@ -26,6 +21,8 @@ export function ChatInput({
   style,
 }: ChatInputProps) {
   const { token } = theme.useToken()
+  const [focused, setFocused] = useState(false)
+  const [plusOpen, setPlusOpen] = useState(false)
 
   // Get stores
   const { sendMessage, sending, isStreaming } = Stores.Chat
@@ -46,49 +43,88 @@ export function ChatInput({
 
   return (
     <div className={`w-full relative ${className}`} style={style}>
-      <Card
-        classNames={{ body: '!p-0' }}
+      <div
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         style={{
-          borderColor: token.colorBorderSecondary,
-          transition: 'border-color 0.2s, box-shadow 0.2s',
+          border: `1px solid ${focused ? token.colorPrimary : token.colorBorderSecondary}`,
+          borderRadius: token.borderRadiusLG,
           backgroundColor: token.colorBgContainer,
+          transition: 'border-color 0.2s, box-shadow 0.2s',
+          boxShadow: focused ? `0 0 0 2px ${token.colorPrimaryBg}` : undefined,
         }}
       >
-        <div style={{ padding: '8px' }}>
-          <Flex className="flex-col gap-3 w-full">
-            {/* Extension slot: input area prefix */}
-            <ExtensionSlot name="input_area_prefix" />
+        {/* Input area */}
+        <div style={{ padding: '10px 12px 4px' }}>
+          {/* Extension slot: input area prefix (file previews, etc.) */}
+          <ExtensionSlot name="input_area_prefix" />
 
-            {/* Extension slot: main text input */}
-            <ExtensionSlot name="text_input" />
+          {/* Extension slot: main text input */}
+          <ExtensionSlot name="text_input" />
 
-            {/* Extension slot: input area suffix */}
-            <ExtensionSlot name="input_area_suffix" />
-
-            <div className="w-full flex justify-between gap-0">
-              <div className="flex gap-1">
-                {/* Extension slot: toolbar actions (file upload, tools, etc.) */}
-                <ExtensionSlot name="toolbar_actions" />
-              </div>
-
-              <div className={'flex items-center gap-[6px]'}>
-                <ModelSelector />
-
-                <div className={'items-center justify-end gap-1 flex'}>
-                  <Button
-                    type="primary"
-                    icon={<SendOutlined rotate={270} />}
-                    onClick={handleSend}
-                    disabled={sending || disabled}
-                    loading={sending}
-                    aria-label="Send message"
-                  />
-                </div>
-              </div>
-            </div>
-          </Flex>
+          {/* Extension slot: input area suffix */}
+          <ExtensionSlot name="input_area_suffix" />
         </div>
-      </Card>
+
+        {/* Toolbar */}
+        <div
+          style={{
+            padding: '4px 8px 8px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          {/* Left: + dropdown + other toolbar actions */}
+          <div className="flex items-center gap-1">
+            <Dropdown
+              open={plusOpen}
+              onOpenChange={setPlusOpen}
+              trigger={['click']}
+              dropdownRender={() => (
+                <PlusDropdownContext.Provider value={{ close: () => setPlusOpen(false) }}>
+                  <div
+                    style={{
+                      backgroundColor: token.colorBgContainer,
+                      borderRadius: token.borderRadiusLG,
+                      boxShadow: token.boxShadowSecondary,
+                      padding: 4,
+                    }}
+                  >
+                    <ExtensionSlot name="toolbar_plus_items" className="flex flex-col" />
+                  </div>
+                </PlusDropdownContext.Provider>
+              )}
+            >
+              <Button
+                icon={<PlusOutlined style={{ fontSize: 16 }} />}
+                type="text"
+                size="large"
+              />
+            </Dropdown>
+            <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1" />
+          </div>
+
+          {/* Right: model selector + send button */}
+          <div className="flex items-center gap-2">
+            <ExtensionSlot name="toolbar_model" />
+            <Button
+              type="primary"
+              size="large"
+              icon={<SendOutlined rotate={270} />}
+              onClick={handleSend}
+              disabled={sending || disabled}
+              loading={sending}
+              aria-label="Send message"
+            />
+          </div>
+        </div>
+        {/* Status row: active MCP servers + selected assistant */}
+        <ExtensionSlot
+          name="toolbar_status"
+          className="flex flex-wrap items-center gap-1.5 px-3 pb-2 empty:hidden"
+        />
+      </div>
     </div>
   )
 }

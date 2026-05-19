@@ -76,6 +76,21 @@ export const CHAT_SLOTS = {
     description: 'Message-level actions',
     component: 'ChatMessage',
   },
+  /** Model selector rendered in the toolbar, left of the Send button */
+  toolbar_model: {
+    description: 'Model selector rendered in the toolbar, left of the Send button',
+    component: 'ChatInput',
+  },
+  /** Items shown inside the + dropdown menu (attach files, MCP, etc.) */
+  toolbar_plus_items: {
+    description: 'Items shown inside the + dropdown menu',
+    component: 'ChatInput',
+  },
+  /** Active selection status row below the toolbar (MCP servers, assistant, etc.) */
+  toolbar_status: {
+    description: 'Active selection chips shown below the toolbar',
+    component: 'ChatInput',
+  },
 } as const
 
 /**
