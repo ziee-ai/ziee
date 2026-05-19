@@ -58,7 +58,7 @@ impl AppModule for ChatModule {
 
         // Auto-register extensions using generated code
         // Extensions are discovered at build time and registered in order based on METADATA.order
-        let registry = auto_register_extensions((*ctx.db_pool).clone());
+        let registry = auto_register_extensions((*ctx.db_pool).clone(), ctx.config.clone());
         self.extension_registry = Some(Arc::new(registry));
 
         tracing::info!("Chat module initialized with auto-registered extensions");
