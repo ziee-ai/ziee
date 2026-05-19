@@ -100,6 +100,7 @@ export function ChatInput({
                 icon={<PlusOutlined style={{ fontSize: 16 }} />}
                 type="text"
                 size="large"
+                aria-label="Add attachment"
               />
             </Dropdown>
             <ExtensionSlot name="toolbar_actions" className="flex items-center gap-1" />
