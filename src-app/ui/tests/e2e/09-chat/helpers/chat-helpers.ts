@@ -56,7 +56,10 @@ export async function waitForNewChatPageLoad(page: Page) {
     }
   }
 
-  throw new Error(`Models did not load after ${maxRetries} retries (${maxRetries * retryDelay / 1000} seconds)`)
+  // After all retries, the dropdown is still showing "No data". That's a valid
+  // page state — the user may legitimately have no model access. Return
+  // successfully and let the caller's own assertions (assertDropdownEmpty,
+  // getVisibleModelsInDropdown, etc.) decide whether that's expected.
 }
 
 export async function goToChatPage(page: Page, baseURL: string, conversationId: string) {

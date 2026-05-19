@@ -112,7 +112,17 @@ export async function loginAsAdmin(
 }
 
 /**
- * Login as a specific user
+ * Login as a specific user.
+ *
+ * Strategy: hit /api/auth/login directly to get the JWT, inject it into the
+ * page's localStorage (in the same `auth-storage` shape the Auth store
+ * persists), then reload. This bypasses the auth form entirely.
+ *
+ * Why this and not "type into the login form"? Because tests routinely call
+ * loginAsAdmin first → clearAuthState → login(regularUser), and the
+ * persisted in-memory React tree can keep the previous user's chat page
+ * mounted across SPA navigations. Direct token injection + reload is the
+ * most reliable way to swap identities mid-test.
  */
 export async function login(
   page: Page,
@@ -120,6 +130,49 @@ export async function login(
   username: string,
   password: string
 ) {
+  // Get token via the backend.
+  const loginResponse = await fetch(`${baseURL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!loginResponse.ok) {
+    throw new Error(
+      `login: API returned ${loginResponse.status}: ${await loginResponse.text()}`,
+    )
+  }
+  const { access_token } = await loginResponse.json()
+  if (!access_token) {
+    throw new Error('login: API response had no access_token')
+  }
+
+  // Inject the token BEFORE any app JS runs — addInitScript runs on every
+  // page navigation in this context, so Zustand's persist middleware will
+  // see the token during its very first hydration pass.
+  await page.addInitScript((token) => {
+    try {
+      localStorage.setItem(
+        'auth-storage',
+        JSON.stringify({ state: { token }, version: 0 }),
+      )
+    } catch {
+      /* localStorage not available on about:blank — ignore */
+    }
+  }, access_token)
+
+  // Navigate to home; Zustand initAuth reads the injected token and calls
+  // /api/auth/me which flips isAuthenticated → true.
+  await page.goto(`${baseURL}/`)
+  await page.waitForLoadState('load')
+
+  // Wait for the chat input (the home page rendered for an authenticated
+  // user) to appear — proves the token was accepted by AuthGuard.
+  await page.waitForSelector('textarea[placeholder*="Type your message"]', {
+    timeout: 15000,
+  })
+  return
+
+  // ─── unreachable code below kept for reference; original UI-form login ───
   await page.goto(`${baseURL}/auth`)
   await page.waitForSelector('#login_username', { timeout: 30000 })
   await page.fill('#login_username', username)
@@ -220,8 +273,17 @@ export async function getAdminToken(
  * Used in: auth.spec.ts and potentially others
  */
 export async function clearAuthState(page: Page) {
+  // Clear ALL client-side state: localStorage, sessionStorage, AND cookies.
+  // (HTTP-only refresh-token cookies aren't visible to JS but ARE sent
+  // automatically on requests, which can cause the backend to re-authenticate
+  // the user even after localStorage is cleared.)
   await page.evaluate(() => {
     localStorage.clear()
     sessionStorage.clear()
   })
+  await page.context().clearCookies()
+  // Detach the React tree so Zustand's in-memory state is discarded, then
+  // navigate fresh so the next page.goto from the caller starts with
+  // isAuthenticated=false.
+  await page.goto('about:blank')
 }
