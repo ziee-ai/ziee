@@ -54,6 +54,9 @@ pub struct Message {
     pub role: String,
     pub originated_from_id: Uuid, // Original message ID in edit lineage
     pub edit_count: i32,          // Number of edits in this lineage
+    pub model_id: Option<Uuid>,          // Model used when this message was sent
+    pub assistant_id: Option<Uuid>,      // Assistant used when this message was sent
+    pub mcp_server_ids: Option<Vec<Uuid>>, // MCP servers enabled when this message was sent
     pub created_at: DateTime<Utc>,
 }
 

@@ -56,6 +56,14 @@ pub async fn register(
         ));
     }
 
+    // Check if username or email already exists
+    if Repos.user.get_by_username(&req.username).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?.is_some() {
+        return Err((StatusCode::CONFLICT, AppError::conflict("Username")));
+    }
+    if Repos.user.get_by_email(&req.email).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?.is_some() {
+        return Err((StatusCode::CONFLICT, AppError::conflict("Email")));
+    }
+
     // Hash password
     let password_hash = password::hash_password(&req.password).map_err(|e| {
         (
