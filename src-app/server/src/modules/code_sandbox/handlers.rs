@@ -1,13 +1,18 @@
-//! JSON-RPC dispatch + JWT validation + per-conversation concurrency
-//! gate for the code_sandbox loopback HTTP surface.
+//! JSON-RPC dispatch + per-conversation concurrency gate for the
+//! code_sandbox loopback HTTP surface.
+//!
+//! Auth (JWT validation + `code_sandbox::execute` permission check)
+//! is handled by the standard `RequirePermissions<(CodeSandboxExecute,)>`
+//! axum extractor — same JWT secret the MCP manager
+//! (`client/manager.rs:96-107`) signs with, plus the permission grant
+//! migration 35 adds to the default Users group.
 
 use std::sync::Arc;
 
 use axum::extract::Query;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::Json;
 use dashmap::DashMap;
-use jsonwebtoken::{decode, DecodingKey, Validation};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -15,12 +20,14 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::core::repository::Repos;
-use crate::modules::auth::jwt::Claims;
 use crate::modules::code_sandbox::config;
+use crate::modules::code_sandbox::permissions::CodeSandboxExecute;
 use crate::modules::code_sandbox::types::{
-    CodeSandboxState, JsonRpcError, JsonRpcRequest, JsonRpcResponse, SandboxContext,
+    CodeSandboxState, ConversationIdHeader, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
+    SandboxContext,
 };
 use crate::modules::code_sandbox::{code_sandbox_server_id, tools};
+use crate::modules::permissions::extractors::RequirePermissions;
 
 /// Per-conversation mutex map. Two parallel tool calls in the same
 /// conversation serialize; different conversations stay parallel.
@@ -45,7 +52,11 @@ fn conv_lock(conversation_id: Uuid) -> Arc<Mutex<()>> {
 // --------------------------------------------------------------------
 
 pub async fn jsonrpc_handler(
-    headers: HeaderMap,
+    // Extractor order matters: auth runs first (rejects 401/403 before
+    // body parse). Conversation-id parses next. Body is the last
+    // extractor so a body-parse failure can never leak past auth.
+    auth: RequirePermissions<(CodeSandboxExecute,)>,
+    ConversationIdHeader(conversation_id): ConversationIdHeader,
     Json(req): Json<JsonRpcRequest>,
 ) -> (StatusCode, Json<JsonRpcResponse>) {
     let state = match config::get_state() {
@@ -61,25 +72,7 @@ pub async fn jsonrpc_handler(
         }
     };
 
-    // Extract conversation_id + user_id (via JWT) BEFORE dispatch so we
-    // can take the per-conversation mutex.
-    let conversation_id = match extract_conversation_id(&headers) {
-        Ok(cid) => cid,
-        Err(status) => {
-            return error_response(
-                req.id,
-                status,
-                JsonRpcError::invalid_params("missing or malformed x-conversation-id header"),
-            );
-        }
-    };
-
-    let user_id = match extract_user_id_from_jwt(&headers, &state) {
-        Ok(uid) => uid,
-        Err((status, msg)) => {
-            return error_response(req.id, status, JsonRpcError::invalid_params(msg));
-        }
-    };
+    let user_id = auth.user.id;
 
     // Per-conversation serialization gate.
     let lock = conv_lock(conversation_id);
@@ -242,7 +235,8 @@ pub struct DownloadQuery {
 }
 
 pub async fn download_handler(
-    headers: HeaderMap,
+    _auth: RequirePermissions<(CodeSandboxExecute,)>,
+    ConversationIdHeader(conversation_id): ConversationIdHeader,
     Query(q): Query<DownloadQuery>,
 ) -> Result<axum::response::Response, (StatusCode, String)> {
     use axum::body::Body;
@@ -252,11 +246,6 @@ pub async fn download_handler(
         StatusCode::SERVICE_UNAVAILABLE,
         "code_sandbox not initialized".to_string(),
     ))?;
-
-    let conversation_id = extract_conversation_id(&headers)
-        .map_err(|s| (s, "missing/invalid x-conversation-id".to_string()))?;
-    let _user_id = extract_user_id_from_jwt(&headers, &state)
-        .map_err(|(s, m)| (s, m))?;
 
     let workspace = workspace_for(&state, conversation_id);
     let path = crate::modules::code_sandbox::tools::files::canonicalize_in_workspace(
@@ -300,76 +289,6 @@ fn error_response(
             error: Some(err),
         }),
     )
-}
-
-fn extract_conversation_id(headers: &HeaderMap) -> Result<Uuid, StatusCode> {
-    let raw = headers
-        .get("x-conversation-id")
-        .ok_or(StatusCode::BAD_REQUEST)?
-        .to_str()
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
-    Uuid::parse_str(raw.trim()).map_err(|_| StatusCode::BAD_REQUEST)
-}
-
-/// Read the Authorization: Bearer <jwt> header and verify against the
-/// server's JWT secret. Returns the `sub` claim parsed as a Uuid.
-fn extract_user_id_from_jwt(
-    headers: &HeaderMap,
-    _state: &CodeSandboxState,
-) -> Result<Uuid, (StatusCode, String)> {
-    let raw = headers
-        .get("authorization")
-        .or_else(|| headers.get("Authorization"))
-        .ok_or((StatusCode::UNAUTHORIZED, "missing Authorization header".into()))?
-        .to_str()
-        .map_err(|_| (StatusCode::UNAUTHORIZED, "non-ASCII Authorization".into()))?;
-    let token = raw
-        .strip_prefix("Bearer ")
-        .or_else(|| raw.strip_prefix("bearer "))
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Authorization must be Bearer <token>".into(),
-        ))?;
-
-    // The JWT secret lives in the server's loaded Config. We don't
-    // have a direct hand-off, so we ask the file module for its cached
-    // copy (initialized at server boot from the same config.jwt).
-    let jwt_cfg = std::panic::catch_unwind(|| {
-        crate::modules::file::config::get_jwt_config().clone()
-    })
-    .map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "JWT config not initialized".to_string(),
-        )
-    })?;
-
-    let mut validation = Validation::default();
-    validation.set_audience(&[jwt_cfg.audience.clone()]);
-    validation.set_issuer(&[jwt_cfg.issuer.clone()]);
-    // The mcp manager's short-lived JWT for built-in servers uses a 5s
-    // TTL; allow a small leeway for clock skew between request enter
-    // and validation.
-    validation.leeway = 2;
-
-    let data = decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(jwt_cfg.secret.as_bytes()),
-        &validation,
-    )
-    .map_err(|e| {
-        (
-            StatusCode::UNAUTHORIZED,
-            format!("invalid Authorization token: {e}"),
-        )
-    })?;
-
-    Uuid::parse_str(&data.claims.sub).map_err(|e| {
-        (
-            StatusCode::UNAUTHORIZED,
-            format!("JWT sub is not a valid uuid: {e}"),
-        )
-    })
 }
 
 async fn build_context(
@@ -549,27 +468,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn extract_conversation_id_parses_uuid() {
-        let mut h = HeaderMap::new();
-        h.insert(
-            "x-conversation-id",
-            "11111111-2222-3333-4444-555555555555".parse().unwrap(),
-        );
-        let got = extract_conversation_id(&h).expect("ok");
-        assert_eq!(got.to_string(), "11111111-2222-3333-4444-555555555555");
-    }
-
-    #[test]
-    fn extract_conversation_id_rejects_missing_header() {
-        let h = HeaderMap::new();
-        assert!(extract_conversation_id(&h).is_err());
-    }
-
-    #[test]
-    fn extract_conversation_id_rejects_garbage() {
-        let mut h = HeaderMap::new();
-        h.insert("x-conversation-id", "not-a-uuid".parse().unwrap());
-        assert!(extract_conversation_id(&h).is_err());
-    }
+    // Conversation-id extraction tests moved to types.rs alongside
+    // the ConversationIdHeader axum FromRequestParts implementation
+    // they exercise.
 }

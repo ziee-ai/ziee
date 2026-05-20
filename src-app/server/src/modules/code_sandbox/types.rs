@@ -148,6 +148,7 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 
+#[derive(Debug, Clone, Copy)]
 pub struct ConversationIdHeader(pub Uuid);
 
 impl<S: Send + Sync> FromRequestParts<S> for ConversationIdHeader {
@@ -210,6 +211,46 @@ mod tests {
         let internal = JsonRpcError::internal("boom");
         assert_eq!(internal.code, JsonRpcError::INTERNAL);
         assert_eq!(internal.code, -32603);
+    }
+
+    // ─── ConversationIdHeader extractor ──────────────────────────
+
+    fn make_parts(headers: Vec<(&str, &str)>) -> axum::http::request::Parts {
+        let mut builder = axum::http::Request::builder().uri("/");
+        for (k, v) in headers {
+            builder = builder.header(k, v);
+        }
+        let (parts, _) = builder.body(()).unwrap().into_parts();
+        parts
+    }
+
+    #[tokio::test]
+    async fn conversation_id_header_parses_uuid() {
+        let mut parts = make_parts(vec![(
+            "x-conversation-id",
+            "11111111-2222-3333-4444-555555555555",
+        )]);
+        let ConversationIdHeader(id) =
+            ConversationIdHeader::from_request_parts(&mut parts, &()).await.unwrap();
+        assert_eq!(id.to_string(), "11111111-2222-3333-4444-555555555555");
+    }
+
+    #[tokio::test]
+    async fn conversation_id_header_rejects_missing() {
+        let mut parts = make_parts(vec![]);
+        let err = ConversationIdHeader::from_request_parts(&mut parts, &())
+            .await
+            .expect_err("missing must reject");
+        assert_eq!(err.0, axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn conversation_id_header_rejects_garbage() {
+        let mut parts = make_parts(vec![("x-conversation-id", "not-a-uuid")]);
+        let err = ConversationIdHeader::from_request_parts(&mut parts, &())
+            .await
+            .expect_err("garbage must reject");
+        assert_eq!(err.0, axum::http::StatusCode::BAD_REQUEST);
     }
 
     #[test]

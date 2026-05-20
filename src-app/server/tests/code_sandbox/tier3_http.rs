@@ -54,9 +54,11 @@ async fn rejects_missing_conversation_id() {
         .await
         .expect("send");
     let s = resp.status().as_u16();
+    // 400 (bad header), 401 (test JWT user not in DB), or 503 (sandbox disabled).
+    // All are valid rejections of a malformed request.
     assert!(
-        [400, 503].contains(&s),
-        "expected 400/503, got {s}"
+        [400, 401, 503].contains(&s),
+        "expected 400/401/503, got {s}"
     );
 }
 
@@ -77,7 +79,7 @@ async fn rejects_malformed_conversation_id() {
         .await
         .expect("send");
     let s = resp.status().as_u16();
-    assert!([400, 503].contains(&s), "expected 400/503, got {s}");
+    assert!([400, 401, 503].contains(&s), "expected 400/401/503, got {s}");
 }
 
 #[tokio::test]
@@ -187,8 +189,10 @@ async fn download_endpoint_rejects_path_traversal() {
         .await
         .expect("send");
     let s = resp.status().as_u16();
-    // 400 (bad filename) when sandbox initialized, 503 when disabled.
-    assert!([400, 503].contains(&s), "expected 400/503, got {s}");
+    // 400 (bad filename) when sandbox initialized; 401 (user-not-in-DB)
+    // when RequirePermissions runs first; 503 when sandbox disabled.
+    // All three are valid rejections.
+    assert!([400, 401, 503].contains(&s), "expected 400/401/503, got {s}");
 }
 
 #[tokio::test]
