@@ -360,10 +360,10 @@ export function McpServerDrawer() {
               <Form.Item
                 label="HTTP Headers"
                 name="headers"
-                help='JSON object format, e.g., {"Authorization": "Bearer token"}'
+                help={'JSON object format, e.g., {"Authorization": "Bearer token"}'}
               >
                 <TextArea
-                  placeholder='{"Authorization": "Bearer token"}'
+                  placeholder={'{"Authorization": "Bearer token"}'}
                   rows={4}
                   className="font-mono text-xs"
                 />

@@ -44,6 +44,13 @@ export function ToolCallPendingApprovalContent({
         note: 'User approved tool execution (once)',
       })
       await Stores.Chat.sendMessage()
+      // sendMessage swallows stream errors and surfaces them via
+      // Chat.store.error. Poll once after the call returns so a failed
+      // resume reverts the optimistic update (panel reappears).
+      const chatError = Stores.Chat.__state.error
+      if (chatError) {
+        throw new Error(chatError)
+      }
       console.log('[MCP Approval] Tool approved once:', toolCall.tool_name)
     } catch (error) {
       console.error('[MCP Approval] Failed to approve tool:', error)
@@ -84,6 +91,10 @@ export function ToolCallPendingApprovalContent({
       })
 
       await Stores.Chat.sendMessage()
+      const chatError = Stores.Chat.__state.error
+      if (chatError) {
+        throw new Error(chatError)
+      }
       console.log('[MCP Approval] Tool approved for conversation:', toolCall.tool_name)
     } catch (error) {
       console.error('[MCP Approval] Failed to approve tool:', error)

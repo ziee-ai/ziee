@@ -15,6 +15,9 @@ import {
   textDeltaEvent,
   completeEvent,
   serializeSseScript,
+  mockGetMessages,
+  mockUserMessage,
+  mockAssistantToolUseMessage,
 } from '../helpers/sse-mock-helpers'
 
 /**
@@ -31,17 +34,7 @@ import {
  * state in the brief window before the mock returns.
  */
 
-// SKIPPED: same architectural mismatch as the elicitation specs —
-// page.route on /messages/stream alone is insufficient because the chat
-// store reloads messages from the real backend after the stream ends,
-// wiping the optimistic tool-call state.
-//
-// The optimistic-update logic is unit-testable (synchronous store calls,
-// no async backend dependency) and would be better validated with a
-// component-level vitest rather than a full Playwright E2E. The
-// data-testid attributes added to ToolCallPendingApprovalContent in this
-// branch enable that future vitest spec to find the elements.
-test.describe.skip('MCP Tool Approval — optimistic UX', () => {
+test.describe('MCP Tool Approval — optimistic UX', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
@@ -55,10 +48,9 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
     page,
     testInfra,
   }) => {
-    await goToNewChatPage(page, testInfra.baseURL)
-
     const toolUseId = 'tu_approve_1'
-    const messageId = 'msg_approve_1'
+    const assistantMessageId = 'amsg_approve_1'
+    const serverId = 'mock-server'
 
     // Two-call sequence: first call surfaces approval; second call resumes.
     await mockChatStream(page, [
@@ -67,26 +59,40 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
         mcpApprovalRequiredEvent({
           toolUseId,
           toolName: 'dangerous_op',
-          server: 'mock-server',
+          server: serverId,
           input: { target: 'production' },
         }),
         completeEvent({ finishReason: 'tool_use' }),
       ],
       [
-        startedEvent({ userMessageId: 'umsg_approve_resume', conversationId: messageId }),
-        mcpToolStartEvent({ toolUseId, toolName: 'dangerous_op', server: 'mock-server' }),
+        startedEvent({ userMessageId: 'umsg_approve_resume' }),
+        mcpToolStartEvent({ toolUseId, toolName: 'dangerous_op', server: serverId }),
         mcpToolCompleteEvent({ toolUseId, isError: false, result: { ok: true } }),
         textDeltaEvent({ delta: 'Done.' }),
         completeEvent(),
       ],
     ])
 
+    // Mock the loadMessages reload after each SSE complete: keeps the tool_use
+    // content block alive in the messages map so McpToolUseRenderer can mount.
+    await mockGetMessages(page, [
+      mockUserMessage({ id: 'umsg_approve_1', text: 'Please run the dangerous op' }),
+      mockAssistantToolUseMessage({
+        id: assistantMessageId,
+        toolUseId,
+        toolName: 'dangerous_op',
+        serverId,
+        input: { target: 'production' },
+      }),
+    ])
+
+    await goToNewChatPage(page, testInfra.baseURL)
     await sendChatMessage(page, 'Please run the dangerous op')
 
-    const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`)
+    const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()
     await expect(approval).toBeVisible({ timeout: 10000 })
 
-    await page.click('[data-testid="tool-approval-approve-once"]')
+    await page.locator('[data-testid="tool-approval-approve-once"]').first().click()
 
     // Optimistic: panel must disappear immediately, BEFORE the second
     // /messages/stream call resolves. The mock returns synchronously so this
@@ -101,12 +107,29 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
     page,
     testInfra,
   }) => {
-    await goToNewChatPage(page, testInfra.baseURL)
     const toolUseId = 'tu_approve_fail'
+    const assistantMessageId = 'amsg_approve_fail'
+    const serverId = 'mock-server'
+
+    await mockGetMessages(page, [
+      mockUserMessage({ id: 'umsg_fail_1', text: 'Please run the risky op' }),
+      mockAssistantToolUseMessage({
+        id: assistantMessageId,
+        toolUseId,
+        toolName: 'risky_op',
+        serverId,
+      }),
+    ])
+
+    await goToNewChatPage(page, testInfra.baseURL)
 
     // First call: approval required. Second call: HTTP 500 (simulates resume failure).
     let callIndex = 0
-    await page.route(/\/api\/conversations\/[^/]+\/messages\/stream/, async route => {
+    await page.route(/\/api\/conversations\/[^/]+\/messages\/stream(\?|$)/, async (route, request) => {
+      // Only intercept POST — let GETs fall through to mockGetMessages (above).
+      if (request.method() !== 'POST') {
+        return route.fallback()
+      }
       callIndex++
       if (callIndex === 1) {
         const body = serializeSseScript([
@@ -131,10 +154,10 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
     })
 
     await sendChatMessage(page, 'Please run the risky op')
-    const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`)
+    const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()
     await expect(approval).toBeVisible({ timeout: 10000 })
 
-    await page.click('[data-testid="tool-approval-approve-once"]')
+    await page.locator('[data-testid="tool-approval-approve-once"]').first().click()
 
     // After the resume call fails, the optimistic update is reverted →
     // approval panel reappears.
@@ -145,8 +168,19 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
     page,
     testInfra,
   }) => {
-    await goToNewChatPage(page, testInfra.baseURL)
     const toolUseId = 'tu_deny_1'
+    const assistantMessageId = 'amsg_deny_1'
+    const serverId = 'mock-server'
+
+    await mockGetMessages(page, [
+      mockUserMessage({ id: 'umsg_deny_1', text: 'Try the unwanted op' }),
+      mockAssistantToolUseMessage({
+        id: assistantMessageId,
+        toolUseId,
+        toolName: 'unwanted_op',
+        serverId,
+      }),
+    ])
 
     await mockChatStream(page, [
       [
@@ -154,7 +188,7 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
         mcpApprovalRequiredEvent({
           toolUseId,
           toolName: 'unwanted_op',
-          server: 'mock-server',
+          server: serverId,
           input: {},
         }),
         completeEvent({ finishReason: 'tool_use' }),
@@ -167,11 +201,12 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
       ],
     ])
 
+    await goToNewChatPage(page, testInfra.baseURL)
     await sendChatMessage(page, 'Try the unwanted op')
-    const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`)
+    const approval = page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()
     await expect(approval).toBeVisible({ timeout: 10000 })
 
-    await page.click('[data-testid="tool-approval-deny"]')
+    await page.locator('[data-testid="tool-approval-deny"]').first().click()
 
     // Approval panel disappears (status flipped to 'error')
     await expect(approval).not.toBeVisible({ timeout: 5000 })
@@ -184,9 +219,21 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
     page,
     testInfra,
   }) => {
-    await goToNewChatPage(page, testInfra.baseURL)
     const toolUseId = 'tu_approve_conv'
     const serverId = 'srv_approve_conv'
+    const assistantMessageId = 'amsg_approve_conv'
+
+    await mockGetMessages(page, [
+      mockUserMessage({ id: 'umsg_conv_1', text: 'Approve me for the whole conversation' }),
+      mockAssistantToolUseMessage({
+        id: assistantMessageId,
+        toolUseId,
+        toolName: 'auto_me',
+        serverId,
+      }),
+    ])
+
+    await goToNewChatPage(page, testInfra.baseURL)
 
     // Capture all /mcp-settings PUTs
     const settingsBodies: unknown[] = []
@@ -228,11 +275,11 @@ test.describe.skip('MCP Tool Approval — optimistic UX', () => {
     ])
 
     await sendChatMessage(page, 'Approve me for the whole conversation')
-    await expect(page.locator(`[data-testid="tool-approval-${toolUseId}"]`)).toBeVisible({
+    await expect(page.locator(`[data-testid="tool-approval-${toolUseId}"]`).first()).toBeVisible({
       timeout: 10000,
     })
 
-    await page.click('[data-testid="tool-approval-approve-conv"]')
+    await page.locator('[data-testid="tool-approval-approve-conv"]').first().click()
 
     // Wait for the PUT to fire — it may take up to a couple seconds for the
     // sendMessage() call chain to issue the settings save.

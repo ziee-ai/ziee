@@ -58,7 +58,13 @@ export async function mockChatStream(
   let callIndex = 0
   const captured: Array<{ url: string; body: unknown }> = []
 
-  await page.route(/\/api\/conversations\/[^/]+\/messages\/stream/, async (route, request) => {
+  await page.route(/\/api\/conversations\/[^/]+\/messages\/stream(\?|$)/, async (route, request) => {
+    // Defensive: only intercept POST. Some Playwright versions may route GETs
+    // here transiently during route-handler reordering; falling through avoids
+    // returning SSE bytes to a JSON-expecting GET /messages call.
+    if (request.method() !== 'POST') {
+      return route.fallback()
+    }
     let body: unknown = null
     try {
       body = JSON.parse(request.postData() || '{}')
@@ -248,5 +254,145 @@ export function completeEvent(opts: { finishReason?: string } = {}): ScriptedSse
     data: {
       finish_reason: opts.finishReason ?? 'end_turn',
     },
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// GET /messages mock — critical for chat-stream tests because the chat
+// store calls loadMessages() AFTER the SSE stream completes, which wipes
+// the optimistic streamingMessage state. Returning a synthetic message list
+// here keeps the elicitation/tool-use content blocks alive in the UI.
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface MockMessageContent {
+  id?: string
+  message_id?: string
+  content_type: string
+  content: unknown
+  sequence_order?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface MockMessageWithContent {
+  id: string
+  role: 'user' | 'assistant'
+  contents: MockMessageContent[]
+  originated_from_id?: string
+  edit_count?: number
+  created_at?: string
+}
+
+/**
+ * Mock GET /api/conversations/*\/messages to return the given message list
+ * for ANY conversation id. The chat store calls this after the SSE stream
+ * completes (`complete` event handler), so without this mock the optimistic
+ * elicitation/tool-use content gets wiped.
+ */
+export async function mockGetMessages(
+  page: Page,
+  messages: MockMessageWithContent[],
+): Promise<void> {
+  const fullMessages = messages.map(m => ({
+    id: m.id,
+    role: m.role,
+    contents: m.contents.map((c, idx) => ({
+      id: c.id ?? `${m.id}-content-${idx}`,
+      message_id: c.message_id ?? m.id,
+      content_type: c.content_type,
+      content: c.content,
+      sequence_order: c.sequence_order ?? idx,
+      created_at: c.created_at ?? new Date().toISOString(),
+      updated_at: c.updated_at ?? new Date().toISOString(),
+    })),
+    originated_from_id: m.originated_from_id ?? '',
+    edit_count: m.edit_count ?? 0,
+    created_at: m.created_at ?? new Date().toISOString(),
+  }))
+
+  await page.route(/\/api\/conversations\/[^/]+\/messages(\?|$)/, async (route, req) => {
+    console.log(`[mockGetMessages] intercepted ${req.method()} ${req.url()}`)
+    if (req.method() !== 'GET') {
+      return route.fallback()
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(fullMessages),
+    })
+  })
+}
+
+/** Convenience: build a user message with one text content block. */
+export function mockUserMessage(opts: {
+  id: string
+  text: string
+}): MockMessageWithContent {
+  return {
+    id: opts.id,
+    role: 'user',
+    contents: [
+      {
+        content_type: 'text',
+        content: { type: 'text', text: opts.text },
+      },
+    ],
+  }
+}
+
+/** Convenience: assistant message carrying an elicitation_request content block. */
+export function mockAssistantElicitationMessage(opts: {
+  id: string
+  elicitationId: string
+  message: string
+  requestedSchema: unknown
+  server?: string
+  status?: 'pending' | 'accepted' | 'declined' | 'cancelled'
+  responseContent?: Record<string, unknown>
+}): MockMessageWithContent {
+  return {
+    id: opts.id,
+    role: 'assistant',
+    contents: [
+      {
+        content_type: 'elicitation_request',
+        content: {
+          type: 'elicitation_request',
+          elicitation_id: opts.elicitationId,
+          message_id: opts.id,
+          message: opts.message,
+          requested_schema: opts.requestedSchema,
+          server: opts.server ?? 'mock-server',
+          status: opts.status ?? 'pending',
+          response_content: opts.responseContent,
+        },
+      },
+    ],
+  }
+}
+
+/** Convenience: assistant message carrying a tool_use content block. */
+export function mockAssistantToolUseMessage(opts: {
+  id: string
+  toolUseId: string
+  toolName: string
+  serverId: string
+  input?: unknown
+}): MockMessageWithContent {
+  return {
+    id: opts.id,
+    role: 'assistant',
+    contents: [
+      {
+        content_type: 'tool_use',
+        content: {
+          type: 'tool_use',
+          id: opts.toolUseId,
+          name: opts.toolName,
+          server_id: opts.serverId,
+          input: opts.input ?? {},
+        },
+      },
+    ],
   }
 }

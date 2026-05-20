@@ -12,6 +12,9 @@ import {
   mcpElicitationRequiredEvent,
   completeEvent,
   captureElicitationResponses,
+  mockGetMessages,
+  mockUserMessage,
+  mockAssistantElicitationMessage,
 } from '../helpers/sse-mock-helpers'
 
 /**
@@ -25,14 +28,7 @@ import {
  * layer in isolation from MCP server orchestration.
  */
 
-// SKIPPED: same architectural mismatch as mcp-elicitation-form-rendering.spec.ts —
-// page.route on /messages/stream is insufficient; the chat store's
-// post-stream reload from the real backend wipes the elicitation content
-// block. Backend coverage exists in
-// src-app/server/tests/chat/mcp_elicitation_test.rs and
-// src-app/server/tests/mcp/conformance_elicitation_test.rs (full e2e
-// against a real MCP server fixture).
-test.describe.skip('Elicitation form — submit / decline / cancel roundtrip', () => {
+test.describe('Elicitation form — submit / decline / cancel roundtrip', () => {
   test.beforeEach(async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     await loginAsAdmin(page, baseURL)
@@ -52,11 +48,11 @@ test.describe.skip('Elicitation form — submit / decline / cancel roundtrip', (
       properties: { confirm: { type: 'boolean', title: 'Confirm' } },
     })
 
-    await page.locator('[data-testid="elicitation-field-confirm"]').click()
-    await page.click('[data-testid="elicitation-submit"]')
+    await page.locator('[data-testid="elicitation-field-confirm"]').first().click()
+    await page.locator('[data-testid="elicitation-submit"]').first().click()
 
     await expect(
-      page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`),
+      page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`).first(),
     ).toBeVisible({ timeout: 5000 })
 
     expect(capture.count()).toBe(1)
@@ -75,10 +71,10 @@ test.describe.skip('Elicitation form — submit / decline / cancel roundtrip', (
       properties: { name: { type: 'string', title: 'Name' } },
     })
 
-    await page.click('[data-testid="elicitation-decline"]')
+    await page.locator('[data-testid="elicitation-decline"]').first().click()
 
     await expect(
-      page.locator(`[data-testid="elicitation-declined-${elicitId}"]`),
+      page.locator(`[data-testid="elicitation-declined-${elicitId}"]`).first(),
     ).toBeVisible({ timeout: 5000 })
 
     expect(capture.count()).toBe(1)
@@ -97,14 +93,14 @@ test.describe.skip('Elicitation form — submit / decline / cancel roundtrip', (
       properties: { day: { type: 'string', format: 'date', title: 'Day' } },
     })
 
-    const picker = page.locator('[data-testid="elicitation-field-day"]')
+    const picker = page.locator('[data-testid="elicitation-field-day"]').first()
     await picker.fill('2026-05-19')
     await page.keyboard.press('Enter')
     await page.waitForTimeout(300)
 
-    await page.click('[data-testid="elicitation-submit"]')
+    await page.locator('[data-testid="elicitation-submit"]').first().click()
     await expect(
-      page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`),
+      page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`).first(),
     ).toBeVisible({ timeout: 5000 })
 
     const body = capture.responses()[0].body as { content?: Record<string, string> }
@@ -121,14 +117,14 @@ test.describe.skip('Elicitation form — submit / decline / cancel roundtrip', (
       properties: { when: { type: 'string', format: 'date-time', title: 'When' } },
     })
 
-    const picker = page.locator('[data-testid="elicitation-field-when"]')
+    const picker = page.locator('[data-testid="elicitation-field-when"]').first()
     await picker.fill('2026-05-19 14:30:00')
     await page.keyboard.press('Enter')
     await page.waitForTimeout(300)
 
-    await page.click('[data-testid="elicitation-submit"]')
+    await page.locator('[data-testid="elicitation-submit"]').first().click()
     await expect(
-      page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`),
+      page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`).first(),
     ).toBeVisible({ timeout: 5000 })
 
     const body = capture.responses()[0].body as { content?: Record<string, string> }
@@ -145,10 +141,10 @@ test.describe.skip('Elicitation form — submit / decline / cancel roundtrip', (
       },
     })
 
-    await page.locator('[data-testid="elicitation-field-nickname"]').fill('Phi')
-    await page.click('[data-testid="elicitation-submit"]')
+    await page.locator('[data-testid="elicitation-field-nickname"]').first().fill('Phi')
+    await page.locator('[data-testid="elicitation-submit"]').first().click()
 
-    const accepted = page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`)
+    const accepted = page.locator(`[data-testid="elicitation-accepted-${elicitId}"]`).first()
     await expect(accepted).toBeVisible({ timeout: 5000 })
     await expect(accepted).toContainText('Phi')
   })
@@ -167,17 +163,32 @@ async function injectElicitation(
   elicitationId: string,
   schemaPartial: { properties: Record<string, unknown>; required?: string[] },
 ): Promise<void> {
+  const userMessageId = `umsg_${elicitationId}`
+  const assistantMessageId = `amsg_${elicitationId}`
+  const requestedSchema = { type: 'object', ...schemaPartial }
+
   await mockChatStream(page, [
     [
-      startedEvent({ userMessageId: `umsg_${elicitationId}` }),
+      startedEvent({ userMessageId }),
       mcpElicitationRequiredEvent({
         elicitationId,
-        messageId: `mid_${elicitationId}`,
+        messageId: assistantMessageId,
         message: 'Please fill this in',
-        requestedSchema: { type: 'object', ...schemaPartial },
+        requestedSchema,
       }),
       completeEvent({ finishReason: 'tool_use' }),
     ],
+  ])
+
+  await mockGetMessages(page, [
+    mockUserMessage({ id: userMessageId, text: 'trigger' }),
+    mockAssistantElicitationMessage({
+      id: assistantMessageId,
+      elicitationId,
+      message: 'Please fill this in',
+      requestedSchema,
+      status: 'pending',
+    }),
   ])
 
   await goToNewChatPage(page, baseURL)
@@ -189,6 +200,6 @@ async function injectElicitation(
   await sendButton.click()
 
   await expect(
-    page.locator(`[data-testid="elicitation-pending-${elicitationId}"]`),
+    page.locator(`[data-testid="elicitation-pending-${elicitationId}"]`).first(),
   ).toBeVisible({ timeout: 10000 })
 }
