@@ -1,0 +1,69 @@
+name: server PR (fast)
+
+# Triggers on PRs touching the backend OR generic top-level files.
+# Deliberately excludes src-app/sandbox-rootfs/** — those changes
+# trigger sandbox-rootfs-pr.yml instead so cross-cutting test work
+# happens in the right workflow.
+
+on:
+  pull_request:
+    paths:
+      - 'src-app/server/**'
+      - 'src-app/sandbox-rootfs/compat.toml'   # schema-version bump → server must update embedded constant
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/server-pr.yml'
+    paths-ignore:
+      - 'src-app/sandbox-rootfs/Dockerfile'
+      - 'src-app/sandbox-rootfs/build.sh'
+      - 'src-app/sandbox-rootfs/pins/**'
+  push:
+    branches: [main]
+    paths:
+      - 'src-app/server/**'
+
+# Cancel in-progress runs on the same PR when a new commit lands.
+concurrency:
+  group: server-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: cargo test (no bwrap)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: postgres
+        ports:
+          - 54321:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-app/server
+
+      - name: cargo build (lib + tests)
+        working-directory: src-app/server
+        run: cargo build --tests --quiet
+
+      - name: cargo test --lib (Tier 1 unit, all 33 sandbox tests run here)
+        working-directory: src-app/server
+        run: cargo test --lib code_sandbox::
+
+      - name: cargo test --test integration_tests (Tier 2 + 3; bwrap tests are #[ignore]'d)
+        working-directory: src-app/server
+        env:
+          DATABASE_URL: postgresql://postgres:password@127.0.0.1:54321/postgres
+        run: |
+          # NOT --ignored: the Tier 4 bwrap tests stay skipped here.
+          # They run in sandbox-rootfs-pr.yml + nightly.
+          cargo test --test integration_tests -- --test-threads=1 code_sandbox::
