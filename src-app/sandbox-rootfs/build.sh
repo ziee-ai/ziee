@@ -9,8 +9,9 @@
 #   --output  .ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v{schema}.r{rev}-{arch}-{flavor}.squashfs
 #
 # Two backends, auto-detected:
-#   1. docker (Dockerfile-based; portable)
-#   2. mmdebstrap (planned; faster + more reproducible; not yet wired)
+#   1. mmdebstrap (primary; reproducible-by-design, no daemon)
+#   2. docker  (fallback when mmdebstrap unavailable)
+#   Override with --backend={mmdebstrap|docker}.
 #
 # Reproducibility:
 #   SOURCE_DATE_EPOCH is exported (default: today's commit timestamp)
@@ -28,7 +29,7 @@ REVISION="r0"
 ARCH="$(uname -m)"
 OUTPUT=""
 APT_CACHE=""
-USE_DOCKER=1   # set to 0 to force mmdebstrap (not yet wired)
+BACKEND="auto"   # auto | mmdebstrap | docker
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,7 +39,8 @@ while [[ $# -gt 0 ]]; do
     --arch)      ARCH="$2";      shift 2 ;;
     --output)    OUTPUT="$2";    shift 2 ;;
     --apt-cache) APT_CACHE="$2"; shift 2 ;;
-    --no-docker) USE_DOCKER=0;   shift ;;
+    --backend)   BACKEND="$2";   shift 2 ;;
+    --no-docker) BACKEND="mmdebstrap"; shift ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -46,6 +48,20 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+# --backend=auto: prefer mmdebstrap if installed, else docker.
+if [[ "$BACKEND" == "auto" ]]; then
+  if command -v mmdebstrap >/dev/null; then
+    BACKEND="mmdebstrap"
+  elif command -v docker >/dev/null; then
+    BACKEND="docker"
+  else
+    echo "build.sh: neither mmdebstrap nor docker found in PATH" >&2
+    echo "  apt install mmdebstrap   # primary, faster, reproducible-by-design" >&2
+    echo "  OR install docker         # fallback" >&2
+    exit 1
+  fi
+fi
 
 # --------------------------------------------------------------------
 # Read schema version from compat.toml if not given.
@@ -79,22 +95,94 @@ fi
 export SOURCE_DATE_EPOCH
 
 # --------------------------------------------------------------------
-# Build via docker (default)
+# Common: mksquashfs check
 # --------------------------------------------------------------------
 
-if [[ "$USE_DOCKER" == "1" ]]; then
-  if ! command -v docker >/dev/null; then
-    echo "build.sh: docker not found in PATH; install docker or pass --no-docker (mmdebstrap not yet wired)" >&2
-    exit 1
+if ! command -v mksquashfs >/dev/null; then
+  echo "build.sh: mksquashfs not found in PATH; apt install squashfs-tools" >&2
+  exit 1
+fi
+
+STAGE_DIR="$(dirname "$OUTPUT")/.stage-v${SCHEMA}.${REVISION}-${FLAVOR}"
+rm -rf "$STAGE_DIR"
+mkdir -p "$STAGE_DIR"
+
+trap 'rm -rf "$STAGE_DIR"' EXIT
+
+# --------------------------------------------------------------------
+# Backend: mmdebstrap (primary)
+# --------------------------------------------------------------------
+
+build_mmdebstrap() {
+  echo "==> mmdebstrap (flavor=$FLAVOR schema=$SCHEMA rev=$REVISION arch=$ARCH)"
+  local apt_snapshot
+  apt_snapshot="$(cat "$SCRIPT_DIR/pins/apt-snapshot" 2>/dev/null | grep -v '^#' | head -1 | tr -d '[:space:]')"
+  apt_snapshot="${apt_snapshot:-current}"
+  local mirror="http://snapshot.ubuntu.com/ubuntu/${apt_snapshot}"
+
+  local pkgs="bash,coreutils,util-linux,ca-certificates,curl,wget,bzip2,xz-utils,unzip,locales,tzdata,python3,python3-pip,python3-venv"
+  if [[ "$FLAVOR" == "full" ]]; then
+    pkgs+=",build-essential,gfortran,git,git-lfs,libffi-dev,libssl-dev,zlib1g-dev,vim,jq,ripgrep,fd-find,tree,net-tools,dnsutils,iputils-ping,gnupg,lsb-release,apt-transport-https,r-base,r-base-dev"
   fi
-  if ! command -v mksquashfs >/dev/null; then
-    echo "build.sh: mksquashfs not found in PATH; apt install squashfs-tools" >&2
+
+  # mmdebstrap does the bootstrap directly into the staging dir.
+  mmdebstrap \
+    --variant=minbase \
+    --mode=auto \
+    --components=main,universe \
+    --include="$pkgs" \
+    noble \
+    "$STAGE_DIR" \
+    "$mirror" 2>&1 | grep -vE "^I:" || true
+
+  # Layer 2: pip packages for full flavor (mmdebstrap can't reach
+  # PyPI directly; use chroot pip after bootstrap).
+  if [[ "$FLAVOR" == "full" ]]; then
+    echo "==> chroot pip install (full flavor Python stack)"
+    # Bind /etc/resolv.conf so pip can resolve pypi.
+    sudo systemd-nspawn --quiet -D "$STAGE_DIR" \
+      --bind-ro=/etc/resolv.conf \
+      /bin/bash -c "
+        pip3 install --no-cache-dir --break-system-packages \
+          numpy pandas matplotlib scipy scikit-learn \
+          seaborn plotly statsmodels sympy \
+          requests httpx beautifulsoup4 \
+          ipython jupyter pillow openpyxl xlrd pyarrow && \
+        pip3 install --no-cache-dir --break-system-packages \
+          torch torchvision --extra-index-url https://download.pytorch.org/whl/cpu
+      " 2>&1 | tail -20
+
+    echo "==> chroot R + Node install"
+    sudo systemd-nspawn --quiet -D "$STAGE_DIR" \
+      --bind-ro=/etc/resolv.conf \
+      /bin/bash -c "
+        Rscript -e \"install.packages(c('ggplot2','dplyr','tidyr','readr','stringr','lubridate','purrr','tibble','jsonlite','httr','data.table','caret','forecast'), repos='https://cloud.r-project.org', Ncpus=parallel::detectCores())\" && \
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+        apt-get install -y --no-install-recommends nodejs && \
+        npm install -g typescript ts-node
+      " 2>&1 | tail -20
+  fi
+
+  # Write the schema sentinel.
+  echo "$SCHEMA" | sudo tee "$STAGE_DIR/.ziee-sandbox-rootfs-schema" >/dev/null
+
+  # Strip setuid bits (defense in depth).
+  sudo find "$STAGE_DIR" -xdev \( -perm /u+s -o -perm /g+s \) -type f \
+    -exec chmod u-s,g-s {} \; 2>/dev/null || true
+}
+
+# --------------------------------------------------------------------
+# Backend: docker (fallback)
+# --------------------------------------------------------------------
+
+build_docker() {
+  if ! command -v docker >/dev/null; then
+    echo "build.sh: docker not found; install docker or use mmdebstrap" >&2
     exit 1
   fi
 
-  IMAGE_TAG="ziee-sandbox-rootfs-v${SCHEMA}.${REVISION}-${FLAVOR}"
-  STAGE_TAR="$(dirname "$OUTPUT")/.stage-${IMAGE_TAG}.tar"
-  STAGE_DIR="$(dirname "$OUTPUT")/.stage-${IMAGE_TAG}"
+  local image_tag="ziee-sandbox-rootfs-v${SCHEMA}.${REVISION}-${FLAVOR}"
+  local stage_tar="$(dirname "$OUTPUT")/.stage-${image_tag}.tar"
 
   echo "==> docker build (flavor=$FLAVOR schema=$SCHEMA rev=$REVISION arch=$ARCH)"
   build_args=(
@@ -104,35 +192,39 @@ if [[ "$USE_DOCKER" == "1" ]]; then
   if [[ -n "$APT_CACHE" ]]; then
     build_args+=(--build-arg "http_proxy=$APT_CACHE" --build-arg "HTTP_PROXY=$APT_CACHE")
   fi
-  docker build -f "$SCRIPT_DIR/Dockerfile" "${build_args[@]}" -t "$IMAGE_TAG" "$SCRIPT_DIR"
+  docker build -f "$SCRIPT_DIR/Dockerfile" "${build_args[@]}" -t "$image_tag" "$SCRIPT_DIR"
 
   echo "==> docker export → tar"
-  CONTAINER_ID="$(docker create "$IMAGE_TAG")"
-  trap 'docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true' EXIT
-  docker export "$CONTAINER_ID" -o "$STAGE_TAR"
+  local container_id
+  container_id="$(docker create "$image_tag")"
+  trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true; rm -rf "$STAGE_DIR"' EXIT
+  docker export "$container_id" -o "$stage_tar"
 
   echo "==> extract tar → staging dir"
-  rm -rf "$STAGE_DIR"
-  mkdir -p "$STAGE_DIR"
-  tar -xf "$STAGE_TAR" -C "$STAGE_DIR" --xattrs --acls --numeric-owner
-  rm -f "$STAGE_TAR"
+  tar -xf "$stage_tar" -C "$STAGE_DIR" --xattrs --acls --numeric-owner
+  rm -f "$stage_tar"
+}
 
-  echo "==> mksquashfs ($OUTPUT)"
-  rm -f "$OUTPUT"
-  mksquashfs "$STAGE_DIR" "$OUTPUT" \
-    -comp zstd -Xcompression-level 19 \
-    -no-xattrs \
-    -all-time "$SOURCE_DATE_EPOCH" \
-    -mkfs-time "$SOURCE_DATE_EPOCH" \
-    -noappend -no-progress \
-    -quiet
+# --------------------------------------------------------------------
+# Dispatch + finalize
+# --------------------------------------------------------------------
 
-  rm -rf "$STAGE_DIR"
+case "$BACKEND" in
+  mmdebstrap) build_mmdebstrap ;;
+  docker)     build_docker ;;
+  *) echo "build.sh: unknown backend '$BACKEND' (want mmdebstrap|docker|auto)" >&2; exit 2 ;;
+esac
 
-  size_h="$(du -h "$OUTPUT" | cut -f1)"
-  sha="$(sha256sum "$OUTPUT" | cut -d' ' -f1)"
-  echo "==> done: $OUTPUT ($size_h, sha256=$sha)"
-else
-  echo "build.sh: --no-docker (mmdebstrap backend) not yet implemented" >&2
-  exit 1
-fi
+echo "==> mksquashfs ($OUTPUT)"
+rm -f "$OUTPUT"
+mksquashfs "$STAGE_DIR" "$OUTPUT" \
+  -comp zstd -Xcompression-level 19 \
+  -no-xattrs \
+  -all-time "$SOURCE_DATE_EPOCH" \
+  -mkfs-time "$SOURCE_DATE_EPOCH" \
+  -noappend -no-progress \
+  -quiet
+
+size_h="$(du -h "$OUTPUT" | cut -f1)"
+sha="$(sha256sum "$OUTPUT" | cut -d' ' -f1)"
+echo "==> done: $OUTPUT ($size_h, sha256=$sha)"
