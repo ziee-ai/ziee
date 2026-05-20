@@ -39,7 +39,16 @@ async fn rejects_missing_authorization_header() {
 }
 
 #[tokio::test]
-async fn rejects_missing_conversation_id() {
+async fn initialize_succeeds_without_conversation_id() {
+    // The MCP manager probes `initialize` during server discovery
+    // BEFORE any conversation exists. The endpoint must accept the
+    // call without x-conversation-id.
+    //
+    // We can't easily assert the inner JSON-RPC result here (test_jwt
+    // signs for a random user that doesn't exist in the DB → 401 at
+    // the RequirePermissions extractor). But we CAN confirm that a
+    // 400 "missing header" is no longer returned: if the auth layer
+    // were bypassed we'd get 200 with a proper initialize result.
     let server = TestServer::start().await;
     let token = test_jwt(Uuid::new_v4(), Uuid::new_v4());
     let resp = reqwest::Client::new()
@@ -54,11 +63,12 @@ async fn rejects_missing_conversation_id() {
         .await
         .expect("send");
     let s = resp.status().as_u16();
-    // 400 (bad header), 401 (test JWT user not in DB), or 503 (sandbox disabled).
-    // All are valid rejections of a malformed request.
+    // 401 (test user not in DB) or 503 (sandbox disabled). The key
+    // invariant: NOT 400 — that would mean the missing header itself
+    // is being rejected, which would break MCP discovery.
     assert!(
-        [400, 401, 503].contains(&s),
-        "expected 400/401/503, got {s}"
+        [401, 503].contains(&s),
+        "expected 401/503, got {s} (a 400 would mean we broke MCP discovery)"
     );
 }
 

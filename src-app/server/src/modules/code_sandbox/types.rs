@@ -148,22 +148,35 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 
+/// Extractor for the optional `x-conversation-id` request header.
+///
+/// Wraps `Option<Uuid>` rather than `Uuid` because the MCP manager
+/// only sets the header when a conversation context exists
+/// (`client/manager.rs:88-93`). Requests without a conversation
+/// context — `initialize` during MCP discovery, `tools/list` stateless
+/// catalog queries — MUST succeed. Requests that actually need the
+/// context (`tools/call`) validate the inner Option themselves and
+/// reject with a JSON-RPC error if it's None.
+///
+/// A malformed (non-UUID) header is still rejected at extractor time
+/// with 400 — that's a real client bug, not a missing-context case.
 #[derive(Debug, Clone, Copy)]
-pub struct ConversationIdHeader(pub Uuid);
+pub struct ConversationIdHeader(pub Option<Uuid>);
 
 impl<S: Send + Sync> FromRequestParts<S> for ConversationIdHeader {
     type Rejection = (StatusCode, &'static str);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let raw = parts
-            .headers
-            .get("x-conversation-id")
-            .ok_or((StatusCode::BAD_REQUEST, "missing x-conversation-id"))?
+        let raw = match parts.headers.get("x-conversation-id") {
+            Some(v) => v,
+            None => return Ok(ConversationIdHeader(None)),
+        };
+        let s = raw
             .to_str()
             .map_err(|_| (StatusCode::BAD_REQUEST, "x-conversation-id is not ASCII"))?;
-        let uuid = Uuid::parse_str(raw.trim())
+        let uuid = Uuid::parse_str(s.trim())
             .map_err(|_| (StatusCode::BAD_REQUEST, "x-conversation-id is not a uuid"))?;
-        Ok(ConversationIdHeader(uuid))
+        Ok(ConversationIdHeader(Some(uuid)))
     }
 }
 
@@ -230,22 +243,28 @@ mod tests {
             "x-conversation-id",
             "11111111-2222-3333-4444-555555555555",
         )]);
-        let ConversationIdHeader(id) =
+        let ConversationIdHeader(opt) =
             ConversationIdHeader::from_request_parts(&mut parts, &()).await.unwrap();
-        assert_eq!(id.to_string(), "11111111-2222-3333-4444-555555555555");
+        assert_eq!(
+            opt.unwrap().to_string(),
+            "11111111-2222-3333-4444-555555555555"
+        );
     }
 
     #[tokio::test]
-    async fn conversation_id_header_rejects_missing() {
+    async fn conversation_id_header_missing_returns_none() {
+        // initialize + tools/list calls land WITHOUT a conversation
+        // context. The extractor must succeed; per-call methods that
+        // need the context will reject downstream.
         let mut parts = make_parts(vec![]);
-        let err = ConversationIdHeader::from_request_parts(&mut parts, &())
-            .await
-            .expect_err("missing must reject");
-        assert_eq!(err.0, axum::http::StatusCode::BAD_REQUEST);
+        let ConversationIdHeader(opt) =
+            ConversationIdHeader::from_request_parts(&mut parts, &()).await.unwrap();
+        assert!(opt.is_none());
     }
 
     #[tokio::test]
     async fn conversation_id_header_rejects_garbage() {
+        // A malformed header IS a client bug — reject at extractor time.
         let mut parts = make_parts(vec![("x-conversation-id", "not-a-uuid")]);
         let err = ConversationIdHeader::from_request_parts(&mut parts, &())
             .await

@@ -53,8 +53,9 @@ fn conv_lock(conversation_id: Uuid) -> Arc<Mutex<()>> {
 
 pub async fn jsonrpc_handler(
     // Extractor order matters: auth runs first (rejects 401/403 before
-    // body parse). Conversation-id parses next. Body is the last
-    // extractor so a body-parse failure can never leak past auth.
+    // body parse). Conversation-id parses next (always succeeds; may
+    // be None for stateless methods like initialize/tools/list). Body
+    // is last so a body-parse failure can never leak past auth.
     auth: RequirePermissions<(CodeSandboxExecute,)>,
     ConversationIdHeader(conversation_id): ConversationIdHeader,
     Json(req): Json<JsonRpcRequest>,
@@ -73,6 +74,47 @@ pub async fn jsonrpc_handler(
     };
 
     let user_id = auth.user.id;
+    let id = req.id.clone();
+
+    // Stateless methods: succeed WITHOUT a conversation context. The
+    // MCP client probes these during server discovery before any
+    // conversation is established (manager.rs:88-93 only injects the
+    // header when a conversation_id exists).
+    match req.method.as_str() {
+        "initialize" => {
+            return ok_response(
+                id,
+                json!({
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": { "tools": {} },
+                    "serverInfo": {
+                        "name": "code_sandbox",
+                        "version": env!("CARGO_PKG_VERSION"),
+                    },
+                }),
+            );
+        }
+        "tools/list" => {
+            return ok_response(id, json!({ "tools": tool_definitions() }));
+        }
+        _ => {}
+    }
+
+    // Past this point we're dispatching a stateful method (today: only
+    // `tools/call`), which requires the conversation context.
+    let conversation_id = match conversation_id {
+        Some(c) => c,
+        None => {
+            return error_response(
+                id,
+                StatusCode::OK,
+                JsonRpcError::invalid_params(format!(
+                    "method `{}` requires the x-conversation-id header",
+                    req.method
+                )),
+            );
+        }
+    };
 
     // Per-conversation serialization gate.
     let lock = conv_lock(conversation_id);
@@ -83,40 +125,27 @@ pub async fn jsonrpc_handler(
         Ok(c) => c,
         Err(e) => {
             return error_response(
-                req.id,
+                id,
                 StatusCode::INTERNAL_SERVER_ERROR,
                 JsonRpcError::internal(format!("build_context: {e:?}")),
             );
         }
     };
 
-    let id = req.id.clone();
-    let result = dispatch(&ctx, &req).await;
-    match result {
-        Ok(value) => (
-            StatusCode::OK,
-            Json(JsonRpcResponse {
-                jsonrpc: "2.0",
-                id,
-                result: Some(value),
-                error: None,
-            }),
-        ),
+    match dispatch(&ctx, &req).await {
+        Ok(value) => ok_response(id, value),
         Err(err) => error_response(id, StatusCode::OK, err),
     }
 }
 
+/// Dispatch the stateful methods (the stateless ones — `initialize`,
+/// `tools/list` — are handled in `jsonrpc_handler` before this is
+/// reached, so they don't need a SandboxContext).
 async fn dispatch(
     ctx: &SandboxContext,
     req: &JsonRpcRequest,
 ) -> Result<Value, JsonRpcError> {
     match req.method.as_str() {
-        "initialize" => Ok(json!({
-            "protocolVersion": "2025-11-25",
-            "capabilities": { "tools": {} },
-            "serverInfo": { "name": "code_sandbox", "version": env!("CARGO_PKG_VERSION") },
-        })),
-        "tools/list" => Ok(json!({ "tools": tool_definitions() })),
         "tools/call" => {
             #[derive(Deserialize)]
             struct CallParams {
@@ -144,6 +173,18 @@ async fn dispatch(
         }
         other => Err(JsonRpcError::method_not_found(other)),
     }
+}
+
+fn ok_response(id: Option<Value>, result: Value) -> (StatusCode, Json<JsonRpcResponse>) {
+    (
+        StatusCode::OK,
+        Json(JsonRpcResponse {
+            jsonrpc: "2.0",
+            id,
+            result: Some(result),
+            error: None,
+        }),
+    )
 }
 
 async fn invoke_tool(
@@ -245,6 +286,12 @@ pub async fn download_handler(
     let state = config::get_state().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         "code_sandbox not initialized".to_string(),
+    ))?;
+
+    // Download is per-conversation; require the header.
+    let conversation_id = conversation_id.ok_or((
+        StatusCode::BAD_REQUEST,
+        "x-conversation-id header required for file download".to_string(),
     ))?;
 
     let workspace = workspace_for(&state, conversation_id);
