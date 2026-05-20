@@ -63,6 +63,8 @@ export function McpServerSelector() {
           icon={<ToolOutlined />}
           onClick={() => mcpStore.openConfigModal()}
           loading={loading}
+          data-testid="mcp-config-open"
+          aria-label="Configure MCP settings"
         >
           {selectedServers.size > 0 ? `${selectedServers.size} server${selectedServers.size > 1 ? 's' : ''}` : 'MCP'}
         </Button>

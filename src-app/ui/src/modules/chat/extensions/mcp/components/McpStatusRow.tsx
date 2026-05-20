@@ -45,6 +45,7 @@ export function McpStatusRow() {
               }
             }}
             style={{ margin: 0 }}
+            data-testid={`mcp-chip-${serverId}`}
           >
             {server.display_name}
           </Tag>

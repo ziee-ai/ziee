@@ -116,7 +116,7 @@ export function ToolCallPendingApprovalContent({
   }
 
   return (
-    <div className="my-2">
+    <div className="my-2" data-testid={`tool-approval-${toolCall.tool_use_id}`}>
       <Alert
         type="warning"
         icon={<ClockCircleOutlined />}
@@ -153,6 +153,7 @@ export function ToolCallPendingApprovalContent({
                   onClick={handleApproveOnce}
                   loading={isSubmitting}
                   size="small"
+                  data-testid="tool-approval-approve-once"
                 >
                   Approve once
                 </Button>
@@ -161,6 +162,7 @@ export function ToolCallPendingApprovalContent({
                   onClick={handleApproveForConversation}
                   loading={isSubmitting}
                   size="small"
+                  data-testid="tool-approval-approve-conv"
                 >
                   Approve for this conversation
                 </Button>
@@ -170,6 +172,7 @@ export function ToolCallPendingApprovalContent({
                   onClick={handleDeny}
                   loading={isSubmitting}
                   size="small"
+                  data-testid="tool-approval-deny"
                 >
                   Deny
                 </Button>

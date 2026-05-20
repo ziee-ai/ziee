@@ -77,6 +77,7 @@ function getOptions(fieldSchema: FieldSchema): { value: string; label: string }[
 function renderField(name: string, fieldSchema: FieldSchema, required: boolean): React.ReactNode {
   const label = fieldSchema.title || name
   const rules: object[] = required ? [{ required: true, message: `${label} is required` }] : []
+  const testId = `elicitation-field-${name}`
 
   // Select fields (single or multi)
   const isMultiSelect =
@@ -105,6 +106,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
           options={options}
           mode={isMultiSelect ? 'multiple' : undefined}
           placeholder={`Select ${label.toLowerCase()}`}
+          data-testid={testId}
         />
       </Form.Item>
     )
@@ -119,7 +121,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         valuePropName="checked"
         tooltip={fieldSchema.description}
       >
-        <Switch />
+        <Switch data-testid={testId} />
       </Form.Item>
     )
   }
@@ -138,6 +140,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
           max={fieldSchema.maximum}
           precision={fieldSchema.type === 'integer' ? 0 : undefined}
           style={{ width: '100%' }}
+          data-testid={testId}
         />
       </Form.Item>
     )
@@ -156,7 +159,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         rules={rules}
         tooltip={fieldSchema.description}
       >
-        <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+        <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} data-testid={testId} />
       </Form.Item>
     )
   }
@@ -174,6 +177,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
           showTime
           format="YYYY-MM-DD HH:mm:ss"
           style={{ width: '100%' }}
+          data-testid={testId}
         />
       </Form.Item>
     )
@@ -217,7 +221,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         rules={rules}
         tooltip={fieldSchema.description}
       >
-        <Input.Password />
+        <Input.Password data-testid={testId} />
       </Form.Item>
     )
   }
@@ -235,7 +239,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
       rules={rules}
       tooltip={fieldSchema.description}
     >
-      <Input type={inputType} />
+      <Input type={inputType} data-testid={testId} />
     </Form.Item>
   )
 }
@@ -334,7 +338,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
       : []
 
     return (
-      <div className="my-2">
+      <div className="my-2" data-testid={`elicitation-accepted-${elicitation.elicitation_id}`}>
         <Alert
           type="success"
           icon={<CheckCircleOutlined />}
@@ -364,7 +368,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
 
   if (status === 'declined') {
     return (
-      <div className="my-2">
+      <div className="my-2" data-testid={`elicitation-declined-${elicitation.elicitation_id}`}>
         <Alert
           type="warning"
           icon={<CloseCircleOutlined />}
@@ -384,7 +388,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
 
   if (status === 'cancelled') {
     return (
-      <div className="my-2">
+      <div className="my-2" data-testid={`elicitation-cancelled-${elicitation.elicitation_id}`}>
         <Alert
           type="error"
           icon={<StopOutlined />}
@@ -405,7 +409,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
 
   // --- Pending state: interactive form ---
   return (
-    <div className="my-2">
+    <div className="my-2" data-testid={`elicitation-pending-${elicitation.elicitation_id}`}>
       <Alert
         type="info"
         icon={<FormOutlined />}
@@ -438,10 +442,16 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
                 onClick={handleSubmit}
                 loading={isSubmitting}
                 size="small"
+                data-testid="elicitation-submit"
               >
                 Submit
               </Button>
-              <Button onClick={handleDecline} loading={isSubmitting} size="small">
+              <Button
+                onClick={handleDecline}
+                loading={isSubmitting}
+                size="small"
+                data-testid="elicitation-decline"
+              >
                 Decline
               </Button>
             </Space>

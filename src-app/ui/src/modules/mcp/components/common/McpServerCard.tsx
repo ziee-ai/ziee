@@ -89,6 +89,7 @@ export function McpServerCard({
         body: '!p-3',
       }}
       bordered={bordered}
+      data-testid={`mcp-server-card-${server.id}`}
     >
       <div className="flex items-start gap-3 flex-wrap">
         {/* Server Info */}
@@ -114,11 +115,11 @@ export function McpServerCard({
                 </Tag>
                 {server.supports_sampling && (
                   <Tooltip title={`Sampling enabled · ${server.usage_mode === 'always' ? 'Always mode' : 'Auto mode'}`}>
-                    <Tag color="cyan">Sampling</Tag>
+                    <Tag color="cyan" data-testid="mcp-sampling-badge">Sampling</Tag>
                   </Tooltip>
                 )}
                 {server.usage_mode === 'always' && (
-                  <Tag color="orange">Always</Tag>
+                  <Tag color="orange" data-testid="mcp-always-badge">Always</Tag>
                 )}
               </Flex>
             </div>
@@ -141,6 +142,7 @@ export function McpServerCard({
                       e.stopPropagation()
                       handleEdit()
                     }}
+                    data-testid="mcp-server-edit-btn"
                   >
                     Edit
                   </Button>
@@ -153,6 +155,7 @@ export function McpServerCard({
                         handleDelete()
                       }}
                       aria-label={`Delete ${server.display_name}`}
+                      data-testid="mcp-server-delete-btn"
                     >
                       Delete
                     </Button>
