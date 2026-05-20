@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Alert, Button, Descriptions, Form, Input, InputNumber, Select, Space, Switch, Typography } from 'antd'
+import { Alert, Button, DatePicker, Descriptions, Form, Input, InputNumber, Select, Space, Switch, Typography } from 'antd'
 import { CheckCircleOutlined, CloseCircleOutlined, FormOutlined, StopOutlined } from '@ant-design/icons'
+import dayjs, { type Dayjs } from 'dayjs'
 import { Stores } from '@/core/stores'
 import type { ContentRendererProps } from '@/modules/chat/core/extensions'
 
@@ -27,12 +28,15 @@ interface FieldSchema {
   type?: string
   title?: string
   description?: string
+  /** JSON Schema string format. Per MCP spec: email, uri, date, date-time, password. */
   format?: string
   default?: unknown
   minimum?: number
   maximum?: number
   minLength?: number
   maxLength?: number
+  /** JSON Schema regex constraint for strings. */
+  pattern?: string
   minItems?: number
   maxItems?: number
   enum?: string[]
@@ -139,9 +143,69 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
     )
   }
 
-  // Default: string
+  // ─── String formats with dedicated pickers ─────────────────────────────
+  // DatePicker stores Dayjs objects in form state; handleSubmit converts to
+  // ISO strings before submission so the MCP server receives the expected
+  // JSON Schema `date` / `date-time` shape.
+  if (fieldSchema.type === 'string' && fieldSchema.format === 'date') {
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={rules}
+        tooltip={fieldSchema.description}
+      >
+        <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+      </Form.Item>
+    )
+  }
+
+  if (fieldSchema.type === 'string' && fieldSchema.format === 'date-time') {
+    return (
+      <Form.Item
+        key={name}
+        name={name}
+        label={label}
+        rules={rules}
+        tooltip={fieldSchema.description}
+      >
+        <DatePicker
+          showTime
+          format="YYYY-MM-DD HH:mm:ss"
+          style={{ width: '100%' }}
+        />
+      </Form.Item>
+    )
+  }
+
+  // ─── String constraints ────────────────────────────────────────────────
   if (fieldSchema.minLength !== undefined || fieldSchema.maxLength !== undefined) {
     rules.push({ min: fieldSchema.minLength, max: fieldSchema.maxLength })
+  }
+
+  if (fieldSchema.pattern) {
+    try {
+      const re = new RegExp(fieldSchema.pattern)
+      rules.push({ pattern: re, message: `${label} must match the required pattern` })
+    } catch {
+      // Server sent a malformed regex — surface it as a soft validation
+      // failure rather than crashing the form render.
+      rules.push({
+        validator: (_: unknown, value: string) =>
+          value
+            ? Promise.reject(new Error('Server sent an invalid pattern for this field'))
+            : Promise.resolve(),
+      })
+    }
+  }
+
+  if (fieldSchema.format === 'email') {
+    rules.push({ type: 'email', message: 'Enter a valid email address' })
+  }
+
+  if (fieldSchema.format === 'uri') {
+    rules.push({ type: 'url', message: 'Enter a valid URL' })
   }
 
   if (fieldSchema.format === 'password') {
@@ -158,6 +222,11 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
     )
   }
 
+  const inputType =
+    fieldSchema.format === 'email' ? 'email'
+    : fieldSchema.format === 'uri' ? 'url'
+    : 'text'
+
   return (
     <Form.Item
       key={name}
@@ -166,7 +235,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
       rules={rules}
       tooltip={fieldSchema.description}
     >
-      <Input type={fieldSchema.format === 'email' ? 'email' : 'text'} />
+      <Input type={inputType} />
     </Form.Item>
   )
 }
@@ -203,16 +272,44 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
   const properties = schema?.properties || {}
   const requiredFields = new Set(schema?.required || [])
 
+  // Date/date-time defaults come from the server as ISO strings; convert to
+  // dayjs so AntD DatePicker can display them. Other defaults pass through.
   const initialValues = Object.fromEntries(
-    Object.entries(properties).map(([key, field]) => [key, (field as FieldSchema).default])
+    Object.entries(properties).map(([key, field]) => {
+      const fs = field as FieldSchema
+      const def = fs.default
+      if (
+        typeof def === 'string' &&
+        fs.type === 'string' &&
+        (fs.format === 'date' || fs.format === 'date-time')
+      ) {
+        const d = dayjs(def)
+        return [key, d.isValid() ? d : undefined]
+      }
+      return [key, def]
+    })
   )
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
       setIsSubmitting(true)
+      // Convert dayjs values back to ISO strings per the field's schema format
+      // so the MCP server receives the canonical JSON Schema representation.
+      const submitValues: Record<string, unknown> = {}
+      for (const [key, val] of Object.entries(values)) {
+        const fs = properties[key] as FieldSchema | undefined
+        if (val != null && dayjs.isDayjs(val)) {
+          const d = val as Dayjs
+          submitValues[key] = fs?.format === 'date'
+            ? d.format('YYYY-MM-DD')
+            : d.toISOString()
+        } else {
+          submitValues[key] = val
+        }
+      }
       const mcpStore = Stores.Chat.__state.McpStore
-      await mcpStore.resolveElicitation(elicitation.elicitation_id, 'accept', values)
+      await mcpStore.resolveElicitation(elicitation.elicitation_id, 'accept', submitValues)
     } catch {
       // Validation failed — form shows inline errors, stay interactive
       setIsSubmitting(false)
