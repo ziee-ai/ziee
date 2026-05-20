@@ -1,24 +1,27 @@
 //! Tier 3 — HTTP handler tests against a live TestServer.
 //!
-//! These exercise the full /api/code-sandbox route stack including
-//! JWT validation, JSON-RPC dispatch, and the conversation/user
-//! resolution path. They DO NOT actually run bwrap (the dispatched
-//! tool calls without bwrap return a clean "SANDBOX_NOT_INITIALIZED"
-//! error when code_sandbox.enabled=false in the test config — which is
-//! the default).
-//!
-//! For tests that actually run bwrap end-to-end, see Tier 4.
+//! Exercise the full /api/code-sandbox route stack including JWT
+//! validation + conversation-id parsing. The dispatched tool calls
+//! without bwrap return a clean "SANDBOX_NOT_INITIALIZED" error
+//! (code_sandbox.enabled = false in the test config, which is the
+//! default).
 
+use uuid::Uuid;
+
+use crate::code_sandbox::harness::test_jwt;
 use crate::common::TestServer;
 use ziee_chat::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
 
+fn endpoint(server: &TestServer) -> String {
+    format!("{}/api/code-sandbox", server.base_url)
+}
+
 #[tokio::test]
-async fn jsonrpc_endpoint_rejects_missing_authorization() {
+async fn rejects_missing_authorization_header() {
     let server = TestServer::start().await;
-    let url = format!("{}/api/code-sandbox", server.base_url);
     let resp = reqwest::Client::new()
-        .post(&url)
-        .header("x-conversation-id", uuid::Uuid::new_v4().to_string())
+        .post(endpoint(&server))
+        .header("x-conversation-id", Uuid::new_v4().to_string())
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -27,21 +30,21 @@ async fn jsonrpc_endpoint_rejects_missing_authorization() {
         .send()
         .await
         .expect("send");
+    let s = resp.status().as_u16();
     assert!(
-        resp.status().is_server_error()
-            || resp.status().as_u16() == 401
-            || resp.status().as_u16() == 503,
-        "expected 401/503, got {}",
-        resp.status()
+        [401, 503].contains(&s),
+        "expected 401/503, got {s}: {:?}",
+        resp.text().await
     );
 }
 
 #[tokio::test]
-async fn jsonrpc_endpoint_rejects_missing_conversation_id() {
+async fn rejects_missing_conversation_id() {
     let server = TestServer::start().await;
-    let url = format!("{}/api/code-sandbox", server.base_url);
+    let token = test_jwt(Uuid::new_v4(), Uuid::new_v4());
     let resp = reqwest::Client::new()
-        .post(&url)
+        .post(endpoint(&server))
+        .header("Authorization", format!("Bearer {token}"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -50,13 +53,156 @@ async fn jsonrpc_endpoint_rejects_missing_conversation_id() {
         .send()
         .await
         .expect("send");
-    // Either 400 (missing header), 401 (missing auth checked first),
-    // or 503 (sandbox not initialized). All are acceptable rejections
-    // for a malformed request.
-    let status = resp.status().as_u16();
+    let s = resp.status().as_u16();
     assert!(
-        [400, 401, 503].contains(&status),
-        "expected 400/401/503, got {status}"
+        [400, 503].contains(&s),
+        "expected 400/503, got {s}"
+    );
+}
+
+#[tokio::test]
+async fn rejects_malformed_conversation_id() {
+    let server = TestServer::start().await;
+    let token = test_jwt(Uuid::new_v4(), Uuid::new_v4());
+    let resp = reqwest::Client::new()
+        .post(endpoint(&server))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("x-conversation-id", "not-a-uuid")
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+        }))
+        .send()
+        .await
+        .expect("send");
+    let s = resp.status().as_u16();
+    assert!([400, 503].contains(&s), "expected 400/503, got {s}");
+}
+
+#[tokio::test]
+async fn rejects_expired_jwt() {
+    let server = TestServer::start().await;
+    // Manually craft an expired token (iat/exp in the past).
+    let header = jsonwebtoken::Header::default();
+    #[derive(serde::Serialize)]
+    struct Expired {
+        sub: String,
+        exp: i64,
+        iat: i64,
+        iss: String,
+        aud: String,
+        username: String,
+        email: String,
+        is_admin: bool,
+    }
+    let claims = Expired {
+        sub: Uuid::new_v4().to_string(),
+        exp: chrono::Utc::now().timestamp() - 3600,
+        iat: chrono::Utc::now().timestamp() - 7200,
+        iss: "ziee-chat".into(),
+        aud: "ziee-chat-api".into(),
+        username: String::new(),
+        email: String::new(),
+        is_admin: false,
+    };
+    let secret = std::env::var("TEST_JWT_SECRET")
+        .unwrap_or_else(|_| "dev-secret-change-in-production-min-32-chars-long".into());
+    let token = jsonwebtoken::encode(
+        &header,
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .unwrap();
+
+    let resp = reqwest::Client::new()
+        .post(endpoint(&server))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("x-conversation-id", Uuid::new_v4().to_string())
+        .json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize"}))
+        .send()
+        .await
+        .expect("send");
+    let s = resp.status().as_u16();
+    assert!([401, 503].contains(&s), "expected 401/503, got {s}");
+}
+
+#[tokio::test]
+async fn rejects_wrong_secret_jwt() {
+    let server = TestServer::start().await;
+    let header = jsonwebtoken::Header::default();
+    #[derive(serde::Serialize)]
+    struct C {
+        sub: String,
+        exp: i64,
+        iat: i64,
+        iss: String,
+        aud: String,
+        username: String,
+        email: String,
+        is_admin: bool,
+    }
+    let claims = C {
+        sub: Uuid::new_v4().to_string(),
+        exp: chrono::Utc::now().timestamp() + 600,
+        iat: chrono::Utc::now().timestamp(),
+        iss: "ziee-chat".into(),
+        aud: "ziee-chat-api".into(),
+        username: String::new(),
+        email: String::new(),
+        is_admin: false,
+    };
+    let token = jsonwebtoken::encode(
+        &header,
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(b"completely-different-secret-32-chars-min-len"),
+    )
+    .unwrap();
+
+    let resp = reqwest::Client::new()
+        .post(endpoint(&server))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("x-conversation-id", Uuid::new_v4().to_string())
+        .json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize"}))
+        .send()
+        .await
+        .expect("send");
+    let s = resp.status().as_u16();
+    assert!([401, 503].contains(&s), "expected 401/503, got {s}");
+}
+
+#[tokio::test]
+async fn download_endpoint_rejects_path_traversal() {
+    let server = TestServer::start().await;
+    let url = format!(
+        "{}/api/code-sandbox/file/download?filename=../../../etc/passwd",
+        server.base_url
+    );
+    let token = test_jwt(Uuid::new_v4(), Uuid::new_v4());
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("x-conversation-id", Uuid::new_v4().to_string())
+        .send()
+        .await
+        .expect("send");
+    let s = resp.status().as_u16();
+    // 400 (bad filename) when sandbox initialized, 503 when disabled.
+    assert!([400, 503].contains(&s), "expected 400/503, got {s}");
+}
+
+#[tokio::test]
+async fn download_endpoint_requires_auth() {
+    let server = TestServer::start().await;
+    let url = format!(
+        "{}/api/code-sandbox/file/download?filename=foo.txt",
+        server.base_url
+    );
+    let resp = reqwest::Client::new().get(&url).send().await.expect("send");
+    let s = resp.status().as_u16();
+    assert!(
+        [400, 401, 503].contains(&s),
+        "expected 400/401/503, got {s}"
     );
 }
 

@@ -12,10 +12,17 @@
 // Tier 5 (real-LLM chat-level) lives under tests/chat/ alongside the
 // existing mcp_*_test.rs files; not gathered here.
 
+pub mod harness;
+
 mod tier2_repository;
 mod tier2_migrations;
 mod tier2_mcp_listing;
+mod tier2_built_in_protection;
+mod tier2_workspace_reaper;
 mod tier3_http;
 mod tier3_concurrency;
 mod tier4_sandbox_smoke;
 mod tier4_hardening;
+mod tier4_pid_ns_fallback;
+mod tier4_cgroup_fallback;
+mod tier4_seccomp;
