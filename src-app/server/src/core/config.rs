@@ -9,6 +9,42 @@ pub struct Config {
     pub jwt: JwtConfig,
     #[serde(default)]
     pub app: Option<AppConfig>,
+    #[serde(default)]
+    pub code_sandbox: Option<CodeSandboxConfig>,
+}
+
+/// Configuration for the code_sandbox built-in MCP server.
+///
+/// Disabled by default so dev environments without bwrap / rootfs boot cleanly.
+/// Flip `enabled` to true after bwrap is installed and the rootfs is mounted.
+#[derive(Debug, Deserialize, Clone)]
+pub struct CodeSandboxConfig {
+    /// Master switch. When false, the module's `init()` returns early
+    /// (no boot probes, no MCP row upsert, no reaper task).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Path to the mounted rootfs (squashfuse target). Bind-mounted
+    /// read-only into every bwrap call.
+    #[serde(default = "default_rootfs_path")]
+    pub rootfs_path: String,
+    /// Delegated cgroup v2 parent. Empty string → rlimits-only mode
+    /// (no per-call cgroup scope; rlimits still enforce memory + procs).
+    #[serde(default)]
+    pub cgroup_parent: String,
+}
+
+impl Default for CodeSandboxConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            rootfs_path: default_rootfs_path(),
+            cgroup_parent: String::new(),
+        }
+    }
+}
+
+fn default_rootfs_path() -> String {
+    "/var/lib/ziee/sandbox-rootfs/current".to_string()
 }
 
 #[derive(Debug, Deserialize, Clone)]
