@@ -6,7 +6,7 @@ mod modules;
 mod openapi;
 mod utils;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use module_api::ModuleContext;
 use tokio::signal;
 
@@ -22,11 +22,63 @@ struct Cli {
     /// If no value is provided, defaults to ../ui/openapi
     #[arg(long, value_name = "OUTPUT_DIR", num_args = 0..=1, default_missing_value = "../ui/openapi")]
     generate_openapi: Option<String>,
+
+    /// Sub-commands for operational tasks (rootfs build/fetch/mount/gc,
+    /// etc.). Without a subcommand, ziee-chat boots as a server.
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Build a sandbox rootfs squashfs from src-app/sandbox-rootfs/ sources.
+    /// Wraps src-app/sandbox-rootfs/build.sh; pass-through args.
+    BuildSandboxRootfs {
+        /// Rootfs flavor: minimal (~150 MB) or full (~1.6 GB).
+        #[arg(long, default_value = "full")]
+        flavor: String,
+        /// Optional output path override.
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Mount a built rootfs squashfs via squashfuse and flip the
+    /// `current` symlink atomically.
+    MountSandboxRootfs {
+        /// Path to the .squashfs to mount. If omitted, picks the most
+        /// recent one in .ziee-cache/sandbox-rootfs/.
+        #[arg(long)]
+        rootfs: Option<String>,
+    },
+    /// Download a published rootfs from GitHub Releases (v2 stub).
+    /// Currently prints the gh-release command; will perform real
+    /// fetch + sha256 + cosign verification once releases exist.
+    FetchSandboxRootfs {
+        /// Tag suffix to download (e.g. v1.r0-x86_64-minimal).
+        #[arg(long, default_value = "latest")]
+        version: String,
+        /// Flavor selector.
+        #[arg(long, default_value = "minimal")]
+        flavor: String,
+    },
+    /// Remove cached rootfs versions, keeping only the N most recent.
+    GcSandboxRootfs {
+        /// Number of recent versions to keep.
+        #[arg(long, default_value_t = 2)]
+        keep: usize,
+    },
 }
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+
+    // Dispatch operational subcommands BEFORE any of the server
+    // boot sequence runs (these are short-lived; they don't need the
+    // full module init).
+    if let Some(cmd) = cli.command {
+        let code = run_sandbox_subcommand(cmd);
+        std::process::exit(code);
+    }
 
     // Check for OpenAPI generation flag
     if cli.generate_openapi.is_some() {
@@ -204,6 +256,189 @@ async fn main() {
     }
 
     core::database::cleanup_database().await;
+}
+
+/// Dispatch the operational sandbox subcommands. Each wraps the
+/// corresponding shell tooling so users don't have to remember the
+/// exact path/flags. Returns the exit code to propagate.
+fn run_sandbox_subcommand(cmd: Command) -> i32 {
+    match cmd {
+        Command::BuildSandboxRootfs { flavor, output } => {
+            let script = repo_relative("src-app/sandbox-rootfs/build.sh");
+            if !script.exists() {
+                eprintln!("missing: {}", script.display());
+                return 1;
+            }
+            let mut args: Vec<String> = vec!["--flavor".into(), flavor];
+            if let Some(o) = output {
+                args.push("--output".into());
+                args.push(o);
+            }
+            std::process::Command::new(&script)
+                .args(&args)
+                .status()
+                .map(|s| s.code().unwrap_or(1))
+                .unwrap_or_else(|e| {
+                    eprintln!("failed to invoke {}: {e}", script.display());
+                    1
+                })
+        }
+        Command::MountSandboxRootfs { rootfs } => {
+            let cache = repo_relative(".ziee-cache/sandbox-rootfs");
+            let sqfs = match rootfs {
+                Some(p) => std::path::PathBuf::from(p),
+                None => match latest_squashfs(&cache) {
+                    Some(p) => p,
+                    None => {
+                        eprintln!(
+                            "no squashfs found in {}; run `ziee-chat build-sandbox-rootfs` first",
+                            cache.display()
+                        );
+                        return 1;
+                    }
+                },
+            };
+            if !sqfs.exists() {
+                eprintln!("squashfs not found: {}", sqfs.display());
+                return 1;
+            }
+            let stem = sqfs
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("sandbox-rootfs");
+            let mnt = cache.join(stem);
+            if let Err(e) = std::fs::create_dir_all(&mnt) {
+                eprintln!("mkdir {}: {e}", mnt.display());
+                return 1;
+            }
+            // Idempotent: skip if already mounted (mountpoint(1)).
+            let already = std::process::Command::new("mountpoint")
+                .args(["-q", mnt.to_str().unwrap()])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if !already {
+                let status = std::process::Command::new("squashfuse")
+                    .arg(&sqfs)
+                    .arg(&mnt)
+                    .status();
+                match status {
+                    Ok(s) if s.success() => {
+                        eprintln!("mounted {} at {}", sqfs.display(), mnt.display());
+                    }
+                    Ok(s) => {
+                        eprintln!("squashfuse failed with exit {:?}", s.code());
+                        return 1;
+                    }
+                    Err(e) => {
+                        eprintln!("squashfuse not available: {e}");
+                        return 1;
+                    }
+                }
+            } else {
+                eprintln!("already mounted: {}", mnt.display());
+            }
+            // Atomic symlink swap: write new symlink to a temp name,
+            // then `rename` (POSIX-atomic).
+            let current = cache.join("current");
+            let tmp = cache.join(".current.new");
+            let _ = std::fs::remove_file(&tmp);
+            if let Err(e) = std::os::unix::fs::symlink(stem, &tmp) {
+                eprintln!("symlink {}: {e}", tmp.display());
+                return 1;
+            }
+            if let Err(e) = std::fs::rename(&tmp, &current) {
+                eprintln!("rename current symlink: {e}");
+                return 1;
+            }
+            eprintln!("current → {stem}");
+            0
+        }
+        Command::FetchSandboxRootfs { version, flavor } => {
+            // v1 stub: print the gh-release invocation for users to
+            // run manually. v2 wires this into actual sha256+cosign
+            // verification once releases exist.
+            let arch = std::env::consts::ARCH.replace("aarch64", "aarch64");
+            eprintln!("ziee-chat fetch-sandbox-rootfs (v1 stub)");
+            eprintln!("Once releases exist, run:");
+            eprintln!(
+                "  gh release download sandbox-rootfs-{version}-{arch} \\"
+            );
+            eprintln!(
+                "    --pattern '*-{arch}-{flavor}.squashfs*' \\"
+            );
+            eprintln!("    --dir .ziee-cache/sandbox-rootfs/");
+            eprintln!("  ziee-chat mount-sandbox-rootfs");
+            eprintln!();
+            eprintln!("Or build locally with: ziee-chat build-sandbox-rootfs --flavor {flavor}");
+            0
+        }
+        Command::GcSandboxRootfs { keep } => {
+            let cache = repo_relative(".ziee-cache/sandbox-rootfs");
+            let mut sqfs: Vec<std::path::PathBuf> = match std::fs::read_dir(&cache) {
+                Ok(rd) => rd
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("squashfs"))
+                    .collect(),
+                Err(_) => return 0,
+            };
+            sqfs.sort_by_key(|p| {
+                std::fs::metadata(p)
+                    .and_then(|m| m.modified())
+                    .ok()
+            });
+            sqfs.reverse(); // newest first
+            let to_delete: Vec<_> = sqfs.into_iter().skip(keep).collect();
+            for p in &to_delete {
+                // Also try to unmount the mountpoint that mirrors the
+                // squashfs basename.
+                if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                    let mnt = cache.join(stem);
+                    let _ = std::process::Command::new("fusermount")
+                        .args(["-u", mnt.to_str().unwrap_or("")])
+                        .status();
+                    let _ = std::fs::remove_dir(&mnt);
+                }
+                if let Err(e) = std::fs::remove_file(p) {
+                    eprintln!("rm {}: {e}", p.display());
+                } else {
+                    eprintln!("removed {}", p.display());
+                }
+            }
+            0
+        }
+    }
+}
+
+/// Resolve a path relative to the repo root, walking up from CWD
+/// until we find a marker file. Falls back to CWD-relative.
+fn repo_relative(suffix: &str) -> std::path::PathBuf {
+    let mut cur = std::env::current_dir().unwrap_or_default();
+    for _ in 0..6 {
+        if cur.join("src-app").is_dir() {
+            return cur.join(suffix);
+        }
+        if !cur.pop() {
+            break;
+        }
+    }
+    std::path::PathBuf::from(suffix)
+}
+
+fn latest_squashfs(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("squashfs"))
+        .collect();
+    entries.sort_by_key(|p| {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .ok()
+    });
+    entries.last().cloned()
 }
 
 async fn shutdown_signal() {

@@ -1,7 +1,9 @@
-# ziee-chat dev workflows
+# ziee-chat dev workflows.
 #
-# Most targets are thin wrappers around `src-app/sandbox-rootfs/`
-# scripts so backend devs don't have to remember the exact flags.
+# Most sandbox targets are thin wrappers around the equivalent
+# `ziee-chat <subcommand>` CLI in src-app/server/src/main.rs. Run the
+# CLI directly if you prefer (e.g. `cargo run --bin ziee-chat --
+# build-sandbox-rootfs --flavor minimal`).
 
 # default: list targets
 default:
@@ -12,33 +14,13 @@ default:
 # Build the sandbox rootfs locally (10-15 min first time).
 # Flavors: minimal | full
 sandbox-build flavor="full":
-    src-app/sandbox-rootfs/build.sh --flavor {{flavor}}
+    cd src-app/server && cargo run -q --bin ziee-chat -- build-sandbox-rootfs --flavor {{flavor}}
 
 # Mount a built squashfs and flip the `current` symlink atomically.
 # Idempotent: re-running with the same version is a no-op.
-sandbox-mount version="latest":
-    @bash -euo pipefail -c '\
-        CACHE=.ziee-cache/sandbox-rootfs; \
-        mkdir -p "$CACHE"; \
-        if [ "{{version}}" = "latest" ]; then \
-            sqfs=$(ls -t "$CACHE"/ziee-sandbox-rootfs-*.squashfs 2>/dev/null | head -1); \
-        else \
-            sqfs="$CACHE/ziee-sandbox-rootfs-{{version}}.squashfs"; \
-        fi; \
-        if [ -z "$sqfs" ] || [ ! -f "$sqfs" ]; then \
-            echo "no squashfs found; run \`just sandbox-build\` or \`just sandbox-fetch\` first" >&2; exit 1; \
-        fi; \
-        name=$(basename "$sqfs" .squashfs); \
-        mnt="$CACHE/$name"; \
-        mkdir -p "$mnt"; \
-        if ! mountpoint -q "$mnt"; then \
-            squashfuse "$sqfs" "$mnt"; \
-            echo "mounted $sqfs at $mnt"; \
-        else \
-            echo "already mounted: $mnt"; \
-        fi; \
-        ln -sfn "$name" "$CACHE/current"; \
-        echo "current → $name"'
+sandbox-mount rootfs="":
+    cd src-app/server && cargo run -q --bin ziee-chat -- mount-sandbox-rootfs \
+        {{ if rootfs == "" { "" } else { "--rootfs=" + rootfs } }}
 
 # Tear down dev sandbox state (unmount + rm). Safe to run anytime.
 sandbox-clean:
@@ -53,21 +35,15 @@ sandbox-clean:
             echo "cleaned $CACHE"; \
         fi'
 
-# Fetch latest published rootfs from GitHub Releases.
-# Stub for v1: documents the URL pattern. v2 wires this into a real
-# `ziee-server fetch-sandbox-rootfs` subcommand with sha256 + cosign
-# verification.
-sandbox-fetch version="latest" flavor="minimal" arch="x86_64":
-    @bash -euo pipefail -c '\
-        echo "(v1 stub) Once releases exist, fetch with:" ; \
-        echo "  gh release download sandbox-rootfs-v1.r0-{{arch}} \\"; \
-        echo "    --pattern \"ziee-sandbox-rootfs-v1.r0-{{arch}}-{{flavor}}.squashfs*\" \\"; \
-        echo "    --dir .ziee-cache/sandbox-rootfs/"; \
-        echo "  just sandbox-mount v1.r0-{{arch}}-{{flavor}}"; \
-        echo ""; \
-        echo "For now, build locally:"; \
-        echo "  just sandbox-build {{flavor}}"; \
-        echo "  just sandbox-mount"'
+# Fetch a published rootfs from GitHub Releases (v1 stub: prints
+# instructions; v2 will perform real sha256 + cosign verification).
+sandbox-fetch version="latest" flavor="minimal":
+    cd src-app/server && cargo run -q --bin ziee-chat -- fetch-sandbox-rootfs \
+        --version={{version}} --flavor={{flavor}}
+
+# Remove cached rootfs versions, keeping the N most recent.
+sandbox-gc keep="2":
+    cd src-app/server && cargo run -q --bin ziee-chat -- gc-sandbox-rootfs --keep={{keep}}
 
 # Run the bwrap-dependent integration tests.
 # Requires: bwrap + rootfs mounted at .ziee-cache/sandbox-rootfs/current.
