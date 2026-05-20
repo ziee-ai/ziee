@@ -68,8 +68,8 @@ async fn migration_36_seeds_read_only_tools_for_new_user_defaults() {
     // updates the new row too.
     let user_id = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO users (id, username, email, password_hash, is_active, is_protected, profile)
-           VALUES ($1, $2, $3, 'x', true, false, '{}'::jsonb)"#,
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true)"#,
     )
     .bind(user_id)
     .bind(format!("u-{user_id}"))
@@ -138,8 +138,8 @@ async fn migration_36_is_idempotent() {
 
     let user_id = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO users (id, username, email, password_hash, is_active, is_protected, profile)
-           VALUES ($1, $2, $3, 'x', true, false, '{}'::jsonb)"#,
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true)"#,
     )
     .bind(user_id)
     .bind(format!("u2-{user_id}"))

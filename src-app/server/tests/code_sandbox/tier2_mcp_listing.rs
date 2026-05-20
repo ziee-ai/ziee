@@ -26,8 +26,8 @@ async fn sandbox_row_is_accessible_to_default_group_user() {
     // Create a user and add them to the default group.
     let user_id = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO users (id, username, email, password_hash, is_active, is_protected, profile)
-           VALUES ($1, $2, $3, 'x', true, false, '{}'::jsonb)"#,
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true)"#,
     )
     .bind(user_id)
     .bind(format!("listing-{user_id}"))

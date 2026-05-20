@@ -177,9 +177,9 @@ async fn get_file_by_id_denies_foreign_user() {
     let user_a = Uuid::new_v4();
     let user_b = Uuid::new_v4();
     sqlx::query(
-        r#"INSERT INTO users (id, username, email, password_hash, is_active, is_protected, profile)
-           VALUES ($1, $2, $3, 'x', true, false, '{}'::jsonb),
-                  ($4, $5, $6, 'x', true, false, '{}'::jsonb)"#,
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true),
+                  ($4, $5, $6, 'x', true)"#,
     )
     .bind(user_a)
     .bind(format!("a-{}", user_a))
