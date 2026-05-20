@@ -4,7 +4,6 @@
 // and are initialized here in order based on their metadata.order value
 
 use std::sync::Arc;
-
 use sqlx::PgPool;
 
 use crate::core::config::Config;

@@ -24,7 +24,6 @@ use crate::{
 use super::super::{
     client::manager::McpSessionManager,
     permissions::*,
-    repository::McpRepository,
     runtime_types::*,
 };
 
@@ -55,8 +54,7 @@ pub async fn list_server_tools(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.groups) {
-        let repo = McpRepository::new(Repos.pool().clone());
-        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
             return Err(AppError::forbidden(
@@ -68,7 +66,7 @@ pub async fn list_server_tools(
     }
 
     // Get or create session
-    let session = session_manager.get_or_create(server_id).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
 
     // List tools
     let mut session = session.write().await;
@@ -87,8 +85,7 @@ pub async fn call_server_tool(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.groups) {
-        let repo = McpRepository::new(Repos.pool().clone());
-        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
             return Err(AppError::forbidden(
@@ -100,11 +97,11 @@ pub async fn call_server_tool(
     }
 
     // Get session
-    let session = session_manager.get_or_create(server_id).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
 
     // Call tool
     let mut session = session.write().await;
-    let result = session.call_tool(&tool_name, request.arguments).await?;
+    let result = session.call_tool(&tool_name, request.arguments, None, None, None).await?;
 
     Ok((
         StatusCode::OK,
@@ -124,8 +121,7 @@ pub async fn list_server_resources(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.groups) {
-        let repo = McpRepository::new(Repos.pool().clone());
-        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
             return Err(AppError::forbidden(
@@ -137,7 +133,7 @@ pub async fn list_server_resources(
     }
 
     // Get session
-    let session = session_manager.get_or_create(server_id).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
 
     // List resources
     let mut session = session.write().await;
@@ -156,8 +152,7 @@ pub async fn read_server_resource(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.groups) {
-        let repo = McpRepository::new(Repos.pool().clone());
-        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
             return Err(AppError::forbidden(
@@ -169,7 +164,7 @@ pub async fn read_server_resource(
     }
 
     // Get session
-    let session = session_manager.get_or_create(server_id).await?;
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
 
     // Read resource
     let mut session = session.write().await;
@@ -187,8 +182,7 @@ pub async fn disconnect_server(
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
     if !has_admin_access(&auth.groups) {
-        let repo = McpRepository::new(Repos.pool().clone());
-        let has_access = repo.can_user_access_server(auth.user.id, server_id).await?;
+        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
             return Err(AppError::forbidden(
@@ -273,5 +267,107 @@ pub fn disconnect_server_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<403, (), _>(|res| {
             res.description("User does not have access to this server")
         })
+        .response_with::<404, (), _>(|res| res.description("Server not found"))
+}
+
+// =====================================================
+// Prompts (MCP spec § server/prompts)
+// =====================================================
+
+#[debug_handler]
+pub async fn list_server_prompts(
+    auth: RequirePermissions<(McpServersRead,)>,
+    Extension(session_manager): Extension<Arc<McpSessionManager>>,
+    Path(server_id): Path<Uuid>,
+) -> ApiResult<Json<ListPromptsResponse>> {
+    if !has_admin_access(&auth.groups) {
+        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        if !has_access {
+            return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
+        }
+    }
+
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let mut session = session.write().await;
+    let prompts = session.list_prompts().await?;
+
+    Ok((StatusCode::OK, Json(ListPromptsResponse { prompts })))
+}
+
+#[debug_handler]
+pub async fn get_server_prompt(
+    auth: RequirePermissions<(McpServersRead,)>,
+    Extension(session_manager): Extension<Arc<McpSessionManager>>,
+    Path(server_id): Path<Uuid>,
+    Json(request): Json<GetPromptRequest>,
+) -> ApiResult<Json<GetPromptResponse>> {
+    if !has_admin_access(&auth.groups) {
+        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        if !has_access {
+            return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
+        }
+    }
+
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let mut session = session.write().await;
+    let prompt = session.get_prompt(&request.name, request.arguments).await?;
+
+    Ok((StatusCode::OK, Json(GetPromptResponse { prompt })))
+}
+
+pub fn list_server_prompts_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(McpServersRead,)>(op)
+        .id("McpServerRuntime.listPrompts")
+        .tag("MCP Servers - Runtime")
+        .summary("List MCP server prompts")
+        .description("List prompt templates available from an MCP server")
+        .response::<200, Json<ListPromptsResponse>>()
+        .response_with::<403, (), _>(|res| res.description("User does not have access to this server"))
+        .response_with::<404, (), _>(|res| res.description("Server not found"))
+}
+
+pub fn get_server_prompt_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(McpServersRead,)>(op)
+        .id("McpServerRuntime.getPrompt")
+        .tag("MCP Servers - Runtime")
+        .summary("Get rendered MCP prompt")
+        .description("Render a prompt template with the given arguments")
+        .response::<200, Json<GetPromptResponse>>()
+        .response_with::<403, (), _>(|res| res.description("User does not have access to this server"))
+        .response_with::<404, (), _>(|res| res.description("Server or prompt not found"))
+}
+
+// =====================================================
+// Ping (MCP spec § utilities/ping)
+// =====================================================
+
+#[debug_handler]
+pub async fn ping_server(
+    auth: RequirePermissions<(McpServersRead,)>,
+    Extension(session_manager): Extension<Arc<McpSessionManager>>,
+    Path(server_id): Path<Uuid>,
+) -> ApiResult<Json<PingResponse>> {
+    if !has_admin_access(&auth.groups) {
+        let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
+        if !has_access {
+            return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
+        }
+    }
+
+    let session = session_manager.get_or_create_with_context(server_id, auth.user.id, None, None).await?;
+    let mut session = session.write().await;
+    session.ping().await?;
+
+    Ok((StatusCode::OK, Json(PingResponse { ok: true })))
+}
+
+pub fn ping_server_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(McpServersRead,)>(op)
+        .id("McpServerRuntime.ping")
+        .tag("MCP Servers - Runtime")
+        .summary("Ping MCP server")
+        .description("Liveness check — verifies the server is reachable and responsive")
+        .response::<200, Json<PingResponse>>()
+        .response_with::<403, (), _>(|res| res.description("User does not have access to this server"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }

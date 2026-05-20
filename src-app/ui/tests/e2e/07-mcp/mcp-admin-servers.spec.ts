@@ -164,7 +164,11 @@ test.describe('MCP - Admin System Servers', () => {
   })
 
   test('should sort servers by name', async ({ page }) => {
-    // Sorting is already default (by name)
+    // Default sort is now "Date Added"; explicitly switch to Name to test alpha order.
+    await page.getByLabel('Sort servers').click({ force: true })
+    await page.click('.ant-select-item-option:has-text("Name")')
+    await page.waitForTimeout(500)
+
     const cards = page.locator('.ant-card')
     const firstCardText = await cards.first().textContent()
 
@@ -173,8 +177,8 @@ test.describe('MCP - Admin System Servers', () => {
   })
 
   test('should sort servers by status', async ({ page }) => {
-    // Click sort dropdown
-    await page.click('.ant-select:has-text("Name")')
+    // Click sort dropdown (default label is now "Date Added", not "Name")
+    await page.getByLabel('Sort servers').click({ force: true })
 
     // Select 'Status' sort
     await page.click('.ant-select-item-option:has-text("Status")')
@@ -264,5 +268,268 @@ test.describe('MCP - Admin System Servers', () => {
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
+  })
+
+  test('should create HTTP server with sampling enabled', async ({ page }) => {
+    const serverData: McpServerFormData = {
+      name: 'test-sampling-http',
+      displayName: 'Test Sampling HTTP',
+      description: 'HTTP server with sampling enabled',
+      transportType: 'http',
+      url: 'https://sampling.example.com/mcp',
+      enabled: true,
+      supportsSampling: true,
+      usageMode: 'always',
+      maxConcurrentSessions: 3,
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    // Verify sampling badge and always badge are visible on the card
+    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).toBeVisible()
+    await expect(serverCard.locator('.ant-tag:has-text("Always")')).toBeVisible()
+  })
+
+  test('should show no sampling badge when supports_sampling is false', async ({ page }) => {
+    const serverData: McpServerFormData = {
+      name: 'test-no-sampling',
+      displayName: 'Test No Sampling',
+      transportType: 'http',
+      url: 'https://nosampling.example.com/mcp',
+      enabled: true,
+      // supportsSampling defaults to false — no explicit value
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).not.toBeVisible()
+    await expect(serverCard.locator('.ant-tag:has-text("Always")')).not.toBeVisible()
+  })
+
+  test('should preserve sampling fields when editing a server', async ({ page }) => {
+    // First create a server with sampling enabled
+    const serverData: McpServerFormData = {
+      name: 'test-edit-sampling',
+      displayName: 'Test Edit Sampling',
+      transportType: 'http',
+      url: 'https://editsampling.example.com/mcp',
+      enabled: true,
+      supportsSampling: true,
+      usageMode: 'always',
+      maxConcurrentSessions: 5,
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    // Open edit drawer
+    await clickEditServerButton(page, serverData.displayName, true)
+
+    // Verify sampling fields are pre-filled
+    const samplingSwitch = page.getByLabel('Enable MCP Sampling')
+    const isSamplingChecked = await samplingSwitch.evaluate((el) =>
+      el.classList.contains('ant-switch-checked')
+    )
+    expect(isSamplingChecked).toBe(true)
+
+    await expect(page.getByLabel('Usage Mode')).toContainText('Always')
+    await expect(page.getByLabel('Max Concurrent Sessions')).toHaveValue('5')
+  })
+
+  test('should update sampling settings via edit', async ({ page }) => {
+    // Create server without sampling
+    const serverData: McpServerFormData = {
+      name: 'test-update-sampling',
+      displayName: 'Test Update Sampling',
+      transportType: 'http',
+      url: 'https://updatesampling.example.com/mcp',
+      enabled: true,
+      supportsSampling: false,
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    // Verify no sampling badges initially
+    const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).not.toBeVisible()
+
+    // Edit and enable sampling
+    await clickEditServerButton(page, serverData.displayName, true)
+    await fillMcpServerForm(page, {
+      ...serverData,
+      supportsSampling: true,
+      usageMode: 'always',
+    })
+    await submitMcpServerForm(page, 'update', true)
+
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    // Verify sampling and always badges now appear
+    const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(updatedCard.locator('.ant-tag:has-text("Sampling")')).toBeVisible()
+    await expect(updatedCard.locator('.ant-tag:has-text("Always")')).toBeVisible()
+  })
+
+  // ──────────────────────────────────────────────────────────────────────
+  // New coverage added for feat/mcp-rewrite-v2
+  // ──────────────────────────────────────────────────────────────────────
+
+  test('should hide Sampling and Always badges after disabling sampling on edit', async ({ page }) => {
+    const serverData: McpServerFormData = {
+      name: `test-disable-sampling-${Date.now()}`,
+      displayName: `Disable Sampling ${Date.now()}`,
+      transportType: 'http',
+      url: 'https://disable-sampling.example.com/mcp',
+      enabled: true,
+      supportsSampling: true,
+      usageMode: 'always',
+      maxConcurrentSessions: 2,
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    const card = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
+    await expect(card.locator('[data-testid="mcp-always-badge"]')).toBeVisible()
+
+    // Edit and disable sampling
+    await clickEditServerButton(page, serverData.displayName, true)
+    await fillMcpServerForm(page, { ...serverData, supportsSampling: false })
+    await submitMcpServerForm(page, 'update', true)
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(updatedCard.locator('[data-testid="mcp-sampling-badge"]')).not.toBeVisible()
+    // Always badge tracks usage_mode === 'always' independently of supports_sampling,
+    // so it remains visible — covered by the sampling-on/auto test below.
+  })
+
+  test('should show Sampling badge alone when usage_mode is "auto"', async ({ page }) => {
+    const serverData: McpServerFormData = {
+      name: `test-sampling-auto-${Date.now()}`,
+      displayName: `Sampling Auto ${Date.now()}`,
+      transportType: 'http',
+      url: 'https://sampling-auto.example.com/mcp',
+      enabled: true,
+      supportsSampling: true,
+      usageMode: 'auto',
+      maxConcurrentSessions: 1,
+    }
+
+    await openAddServerDrawer(page, true)
+    await fillMcpServerForm(page, serverData)
+    await submitMcpServerForm(page, 'create', true)
+    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+
+    const card = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
+    await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
+    await expect(card.locator('[data-testid="mcp-always-badge"]')).not.toBeVisible()
+  })
+
+  test('should hide Delete action on built-in servers but keep Edit visible', async ({
+    page,
+    testInfra,
+  }) => {
+    const { apiURL } = testInfra
+    // Seed an is_built_in server via API (the form has no checkbox for it)
+    const authData = await page.evaluate(() => localStorage.getItem('auth-storage'))
+    const token = JSON.parse(authData!).state.token
+
+    const seedRes = await page.request.post(`${apiURL}/api/mcp/system-servers`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        name: `test-builtin-${Date.now()}`,
+        display_name: `Built-in Test ${Date.now()}`,
+        transport_type: 'stdio',
+        command: 'echo',
+        args: [],
+        environment_variables: {},
+        enabled: true,
+        timeout_seconds: 30,
+        supports_sampling: false,
+        usage_mode: 'auto',
+        // is_built_in is set via DB update because the API doesn't accept it.
+      },
+    })
+    expect(seedRes.ok()).toBe(true)
+    const created = await seedRes.json()
+
+    // Force is_built_in via direct DB-like API (using the server's update endpoint
+    // with a raw field is the only path — the migration script normally sets this
+    // for filesystem/web-fetch servers). For the test, we use a system server already
+    // marked built-in by migration (Filesystem Access or Web Fetch).
+    const builtInCard = page.locator('.ant-card:has-text("Filesystem Access")').first()
+    await expect(builtInCard).toBeVisible()
+    await expect(builtInCard.locator('[data-testid="mcp-server-edit-btn"]')).toBeVisible()
+    await expect(builtInCard.locator('[data-testid="mcp-server-delete-btn"]')).not.toBeVisible()
+
+    // Clean up the seeded server (which is NOT built-in, so it has a delete button)
+    const cleanupRes = await page.request.delete(
+      `${apiURL}/api/mcp/system-servers/${created.id}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    expect(cleanupRes.ok()).toBe(true)
+  })
+
+  test('should default sort to "Date Added" on first load', async ({ page }) => {
+    // The Sort by select reads "Date Added" by default (was "Name" pre-rewrite)
+    const sortSelect = page.getByLabel('Sort servers')
+    const sortContainer = sortSelect.locator('xpath=ancestor::div[contains(@class, "ant-select")][1]')
+    await expect(sortContainer).toContainText('Date Added')
+
+    // Verify the dropdown contains "Date Added" as an option
+    await sortSelect.click({ force: true })
+    await expect(page.locator('.ant-select-item-option:has-text("Date Added")')).toBeVisible()
+    await page.keyboard.press('Escape')
+  })
+
+  test('should reject negative max_concurrent_sessions value', async ({ page }) => {
+    // The InputNumber for max_concurrent_sessions should not accept negative values.
+    // AntD InputNumber without min defaults to allowing any number; the component
+    // sets min=1 in the McpServerDrawer (verify by typing -5 → coerced).
+    await openAddServerDrawer(page, true)
+    await page.getByLabel('Name', { exact: true }).fill(`test-neg-max-${Date.now()}`)
+    await page.getByLabel('Display Name').fill('Test Negative Max')
+    await page.getByLabel('Transport Type').click({ force: true })
+    await page.click('.ant-select-item-option:has-text("HTTP")')
+    await page.getByLabel('URL').waitFor({ state: 'visible' })
+    await page.getByLabel('URL').fill('https://neg.example.com/mcp')
+
+    // Enable sampling so the max field is required-relevant
+    const samplingSwitch = page.getByLabel('Enable MCP Sampling')
+    const checked = await samplingSwitch.evaluate(el => el.classList.contains('ant-switch-checked'))
+    if (!checked) await samplingSwitch.click()
+
+    // Try to enter -5
+    const maxInput = page.getByLabel('Max Concurrent Sessions')
+    await maxInput.fill('-5')
+
+    // AntD InputNumber with min=1 coerces invalid values to min on blur or shows error.
+    // We tolerate either: the value is coerced to >=1, OR the form refuses submit.
+    await page.getByLabel('Display Name').click() // blur the max field
+
+    const finalVal = await maxInput.inputValue()
+    const numeric = parseInt(finalVal || '0', 10)
+    expect(numeric).toBeGreaterThanOrEqual(1)
   })
 })

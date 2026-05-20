@@ -188,7 +188,7 @@ impl ChatCoreRepository {
         .await
     }
 
-    /// Create a new message with optional context (model, assistant, MCP servers used)
+    /// Create a new message
     pub async fn create_message(
         &self,
         branch_id: Uuid,
@@ -219,5 +219,32 @@ impl ChatCoreRepository {
         index: i32,
     ) -> Result<MessageContent, AppError> {
         contents::create_content(&self.pool, message_id, content_type, data, index).await
+    }
+
+    /// Create content with a pre-determined UUID (used for elicitation rows registered before insertion)
+    pub async fn create_content_with_id(
+        &self,
+        id: Uuid,
+        message_id: Uuid,
+        content_type: &str,
+        data: MessageContentData,
+        index: i32,
+    ) -> Result<MessageContent, AppError> {
+        contents::create_content_with_id(&self.pool, id, message_id, content_type, data, index).await
+    }
+
+    /// Update the JSONB content of an existing content block (e.g. to update elicitation status)
+    pub async fn update_content_json(
+        &self,
+        content_id: Uuid,
+        new_content: serde_json::Value,
+    ) -> Result<(), AppError> {
+        contents::update_content_json(&self.pool, content_id, new_content).await
+    }
+
+    /// Cancel any pending elicitation_request content blocks for the given message.
+    /// Called when the streaming task ends to mark stale pending rows as cancelled.
+    pub async fn cancel_pending_elicitations(&self, message_id: Uuid) -> Result<(), AppError> {
+        contents::cancel_pending_elicitations(&self.pool, message_id).await
     }
 }

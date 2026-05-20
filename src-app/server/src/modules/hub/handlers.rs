@@ -359,6 +359,9 @@ pub async fn create_mcp_server_from_hub(
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok()),
         timeout_seconds: Some(30),
+        supports_sampling: None,
+        usage_mode: None,
+        max_concurrent_sessions: None,
     };
 
     // 4. Create user MCP server (hub interface only creates user servers, not system servers)

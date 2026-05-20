@@ -264,4 +264,22 @@ test.describe('MCP - User Servers', () => {
     // Should display empty state
     await expect(page.locator('text=No servers match your search criteria')).toBeVisible()
   })
+
+  // ──────────────────────────────────────────────────────────────────────
+  // New coverage added for feat/mcp-rewrite-v2
+  // ──────────────────────────────────────────────────────────────────────
+
+  test('should default sort to "Date Added" on user MCP page', async ({ page }) => {
+    await expect(page.locator('.ant-select:has-text("Date Added")')).toBeVisible()
+    await page.click('.ant-select:has-text("Date Added")')
+    await expect(page.locator('.ant-select-item-option:has-text("Date Added")')).toBeVisible()
+    await page.keyboard.press('Escape')
+  })
+
+  test('should hide Delete on group-assigned system servers (read-only)', async ({ page }) => {
+    // Web Fetch ships in the default group; verify it appears with no Delete button.
+    const card = page.locator('.ant-card:has-text("Web Fetch")').first()
+    await expect(card).toBeVisible()
+    await expect(card.locator('[data-testid="mcp-server-delete-btn"]')).not.toBeVisible()
+  })
 })

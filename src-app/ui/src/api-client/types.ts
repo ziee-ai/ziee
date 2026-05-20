@@ -236,10 +236,13 @@ export interface CreateMcpServerRequest {
   enabled?: boolean
   environment_variables?: any
   headers?: any
+  max_concurrent_sessions?: number
   name: string
+  supports_sampling?: boolean
   timeout_seconds?: number
   transport_type: TransportType
   url?: string
+  usage_mode?: UsageMode
 }
 
 export interface CreateModelFromHubRequest {
@@ -394,6 +397,7 @@ export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 export interface File {
   checksum?: string
   created_at: string
+  created_by: string
   file_size: number
   filename: string
   has_thumbnail: boolean
@@ -443,6 +447,16 @@ export interface GPUUsage {
   power_usage?: number
   temperature?: number
   utilization_percentage?: number
+}
+
+export interface GetPromptRequest {
+  arguments?: any
+  name: string
+}
+
+export interface GetPromptResponse {
+  description?: string
+  messages: any[]
 }
 
 export interface GetUserProvidersResponse {
@@ -657,6 +671,10 @@ export interface ListModelsQuery {
   providerId?: string
 }
 
+export interface ListPromptsResponse {
+  prompts: Prompt[]
+}
+
 export interface ListResourcesResponse {
   resources: Resource[]
 }
@@ -801,12 +819,16 @@ export interface McpServer {
   environment_variables: any
   headers: any
   id: string
+  is_built_in: boolean
   is_system: boolean
+  max_concurrent_sessions?: number
   name: string
+  supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
   updated_at: string
   url?: string
+  usage_mode: UsageMode
   user_id?: string
 }
 
@@ -902,12 +924,22 @@ export interface MessageContentDataToolUse {
 export interface MessageContentDataToolResult {
   type: 'tool_result'
   content: string
+  hidden_content?: string | null
   is_error?: boolean | null
   name?: string | null
   tool_use_id: string
 }
+export interface MessageContentDataElicitationRequest {
+  type: 'elicitation_request'
+  elicitation_id: string
+  message: string
+  requested_schema: any
+  response_content?: any
+  server: string
+  status: string
+}
 
-export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult
+export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataElicitationRequest
 
 export interface MessageWithContent {
   assistant_id?: string
@@ -1060,8 +1092,24 @@ export interface PermissionErrorDetails {
   required_permissions: PermissionDetail[]
 }
 
+export interface PingResponse {
+  ok: boolean
+}
+
 export interface PreviewQuery {
   page?: number
+}
+
+export interface Prompt {
+  description?: string
+  arguments?: PromptArgument[]
+  name: string
+}
+
+export interface PromptArgument {
+  description?: string
+  name: string
+  required?: boolean
 }
 
 export interface ProviderInstancesResponse {
@@ -1148,6 +1196,15 @@ export interface Resource {
   uri: string
 }
 
+export interface RespondToElicitationRequest {
+  action: string
+  content?: any
+}
+
+export interface RespondToElicitationResponse {
+  success: boolean
+}
+
 export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
 }
@@ -1162,6 +1219,13 @@ export interface RuntimeVersionResponse {
   is_system_default: boolean
   platform: string
   version: string
+}
+
+export interface SSEChatStreamArtifactCreatedData {
+  file_id: string
+  file_size: number
+  filename: string
+  mime_type?: string
 }
 
 export interface SSEChatStreamCompleteData {
@@ -1182,6 +1246,8 @@ export type SSEChatStreamEvent = {
   mcpToolStart: SSEChatStreamMcpToolStartData
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
+  mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
+  artifactCreated: SSEChatStreamArtifactCreatedData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
 
@@ -1193,14 +1259,24 @@ export interface SSEChatStreamMcpApprovalRequiredData {
   tool_use_id: string
 }
 
+export interface SSEChatStreamMcpElicitationRequiredData {
+  elicitation_id: string
+  message: string
+  message_id?: string
+  requested_schema: any
+  server: string
+}
+
 export interface SSEChatStreamMcpToolCompleteData {
   is_error: boolean
+  result?: string
   server: string
   tool_name: string
   tool_use_id: string
 }
 
 export interface SSEChatStreamMcpToolStartData {
+  input: any
   server: string
   tool_name: string
   tool_use_id: string
@@ -1415,9 +1491,12 @@ export interface UpdateMcpServerRequest {
   enabled?: boolean
   environment_variables?: any
   headers?: any
+  max_concurrent_sessions?: number
   name?: string
+  supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
+  usage_mode?: UsageMode
 }
 
 export interface UpdateUserRequest {
@@ -1446,6 +1525,8 @@ export interface Usage {
   input_tokens?: number
   output_tokens?: number
 }
+
+export type UsageMode = 'auto' | 'always'
 
 export interface User {
   avatar_url?: string
@@ -1751,6 +1832,7 @@ export const ApiEndpoints = {
   'LocalRuntime.startModel': 'POST /api/local-runtime/models/{model_id}/start',
   'LocalRuntime.stopModel': 'POST /api/local-runtime/models/{model_id}/stop',
   'Mcp.getDefaults': 'GET /api/mcp/defaults',
+  'Mcp.respondToElicitation': 'POST /api/mcp/elicitation/{elicitation_id}/respond',
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
   'McpServer.create': 'POST /api/mcp/servers',
   'McpServer.delete': 'DELETE /api/mcp/servers/{id}',
@@ -1759,8 +1841,11 @@ export const ApiEndpoints = {
   'McpServer.update': 'PUT /api/mcp/servers/{id}',
   'McpServerRuntime.callTool': 'POST /api/mcp/servers/{id}/tools/{name}/call',
   'McpServerRuntime.disconnect': 'DELETE /api/mcp/servers/{id}/disconnect',
+  'McpServerRuntime.getPrompt': 'POST /api/mcp/servers/{id}/prompts/get',
+  'McpServerRuntime.listPrompts': 'GET /api/mcp/servers/{id}/prompts',
   'McpServerRuntime.listResources': 'GET /api/mcp/servers/{id}/resources',
   'McpServerRuntime.listTools': 'GET /api/mcp/servers/{id}/tools',
+  'McpServerRuntime.ping': 'POST /api/mcp/servers/{id}/ping',
   'McpServerRuntime.readResource': 'POST /api/mcp/servers/{id}/resources/read',
   'McpServerSystem.assignServerToGroups': 'POST /api/mcp/system-servers/{id}/groups',
   'McpServerSystem.create': 'POST /api/mcp/system-servers',
@@ -1902,6 +1987,7 @@ export type ApiEndpointParameters = {
   'LocalRuntime.startModel': { model_id: string } & StartInstanceRequest
   'LocalRuntime.stopModel': { model_id: string }
   'Mcp.getDefaults': void
+  'Mcp.respondToElicitation': { elicitation_id: string } & RespondToElicitationRequest
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
   'McpServer.create': CreateMcpServerRequest
   'McpServer.delete': { id: string }
@@ -1910,8 +1996,11 @@ export type ApiEndpointParameters = {
   'McpServer.update': { id: string } & UpdateMcpServerRequest
   'McpServerRuntime.callTool': { id: string; name: string } & CallToolRequest
   'McpServerRuntime.disconnect': { id: string }
+  'McpServerRuntime.getPrompt': { id: string } & GetPromptRequest
+  'McpServerRuntime.listPrompts': { id: string }
   'McpServerRuntime.listResources': { id: string }
   'McpServerRuntime.listTools': { id: string }
+  'McpServerRuntime.ping': { id: string }
   'McpServerRuntime.readResource': { id: string } & ReadResourceRequest
   'McpServerSystem.assignServerToGroups': { id: string } & ServerGroupsRequest
   'McpServerSystem.create': CreateMcpServerRequest
@@ -2053,6 +2142,7 @@ export type ApiEndpointResponses = {
   'LocalRuntime.startModel': InstanceResponse
   'LocalRuntime.stopModel': InstanceResponse
   'Mcp.getDefaults': UserMcpDefaultsGetResponse
+  'Mcp.respondToElicitation': RespondToElicitationResponse
   'Mcp.updateDefaults': UserMcpDefaultsResponse
   'McpServer.create': McpServer
   'McpServer.delete': void
@@ -2061,8 +2151,11 @@ export type ApiEndpointResponses = {
   'McpServer.update': McpServer
   'McpServerRuntime.callTool': CallToolResponse
   'McpServerRuntime.disconnect': any
+  'McpServerRuntime.getPrompt': GetPromptResponse
+  'McpServerRuntime.listPrompts': ListPromptsResponse
   'McpServerRuntime.listResources': ListResourcesResponse
   'McpServerRuntime.listTools': ListToolsResponse
+  'McpServerRuntime.ping': PingResponse
   'McpServerRuntime.readResource': ReadResourceResponse
   'McpServerSystem.assignServerToGroups': void
   'McpServerSystem.create': McpServer

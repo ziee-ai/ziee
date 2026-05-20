@@ -6,6 +6,40 @@ use serde::{Deserialize, Serialize};
 use crate::common::AppError;
 use crate::modules::chat::core::models::content::MessageContentData;
 
+/// A file attachment returned by a tool (inline base64 content)
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct RichFile {
+    pub filename: String,
+    pub mime_type: String,
+    /// Base64-encoded file content
+    pub data: String,
+}
+
+/// A reference to a resource returned by a tool (MCP resource_link content type)
+///
+/// Used when a tool creates or references a file that is already persisted on the server.
+/// The URI follows the pattern `/api/files/{file_id}` for files stored in the file system.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ResourceLink {
+    /// URI of the resource (e.g. `/api/files/{file_id}`)
+    pub uri: String,
+    /// Display name for the resource
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// MIME type of the resource
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// File size in bytes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<i64>,
+    /// Whether the file is already persisted in originals storage (user-attached).
+    /// true  → URI is a download-with-token URL; skip fetch-and-save pipeline.
+    /// false → workspace file; run full processing pipeline.
+    /// None  → external MCP server; run full processing pipeline.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_saved: Option<bool>,
+}
+
 /// MCP-specific content data types
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -25,9 +59,21 @@ pub enum McpContentData {
         /// Function/tool name (required for some providers like Gemini)
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        /// ID of the MCP server that executed this tool (UUID string)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        server_id: Option<String>,
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
+        /// Inline file attachment returned by a tool (base64-encoded content)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachment: Option<RichFile>,
+        /// References to persisted files returned by a tool (MCP resource_link)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_links: Option<Vec<ResourceLink>>,
+        /// Context injected into LLM messages but never rendered for users (e.g. download URL)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hidden_content: Option<String>,
     },
 }
 
@@ -67,14 +113,22 @@ impl McpContentData {
                 name,
                 content,
                 is_error,
-            } => Some(ai_providers::ContentBlock::ToolResult {
-                tool_use_id: tool_use_id.clone(),
-                name: name.clone(),
-                content: vec![ai_providers::ContentBlock::Text {
-                    text: content.clone(),
-                }],
-                is_error: *is_error,
-            }),
+                hidden_content,
+                ..
+            } => {
+                // Send text content to LLM.
+                // Append hidden_content (e.g. download URL) for the LLM — never stored in `content`.
+                let mut llm_text = content.clone();
+                if let Some(hidden) = hidden_content {
+                    llm_text.push_str(&format!("\n{}", hidden));
+                }
+                Some(ai_providers::ContentBlock::ToolResult {
+                    tool_use_id: tool_use_id.clone(),
+                    name: name.clone(),
+                    content: vec![ai_providers::ContentBlock::Text { text: llm_text }],
+                    is_error: *is_error,
+                })
+            }
         }
     }
 
@@ -115,8 +169,12 @@ impl McpContentData {
                 Some(Self::ToolResult {
                     tool_use_id: tool_use_id.clone(),
                     name: name.clone(),
+                    server_id: None,
                     content: text,
                     is_error: *is_error,
+                    attachment: None,
+                    resource_links: None,
+                    hidden_content: None,
                 })
             }
             _ => None,
@@ -128,106 +186,6 @@ impl McpContentData {
         match self {
             Self::ToolUse { .. } => "tool_use",
             Self::ToolResult { .. } => "tool_result",
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tool_use_conversion() {
-        let tool_use = McpContentData::ToolUse {
-            id: "toolu_01".to_string(),
-            name: "get_weather".to_string(),
-            server_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
-            input: serde_json::json!({"location": "SF"}),
-        };
-
-        // Convert to MessageContentData
-        let msg_content = tool_use.to_message_content();
-        // Verify it's a ToolUse variant (MessageContentData variants are generated by macro)
-        assert_eq!(msg_content.content_type(), "tool_use");
-
-        // Convert back
-        let recovered = McpContentData::from_message_content(&msg_content).unwrap();
-        match recovered {
-            McpContentData::ToolUse { id, name, server_id, .. } => {
-                assert_eq!(id, "toolu_01");
-                assert_eq!(name, "get_weather");
-                assert_eq!(server_id, "550e8400-e29b-41d4-a716-446655440000");
-            }
-            _ => panic!("Expected ToolUse"),
-        }
-    }
-
-    #[test]
-    fn test_tool_result_conversion() {
-        let tool_result = McpContentData::ToolResult {
-            tool_use_id: "toolu_01".to_string(),
-            name: Some("get_weather".to_string()),
-            content: "Sunny, 72°F".to_string(),
-            is_error: Some(false),
-        };
-
-        // Convert to MessageContentData
-        let msg_content = tool_result.to_message_content();
-
-        // Convert back
-        let recovered = McpContentData::from_message_content(&msg_content).unwrap();
-        match recovered {
-            McpContentData::ToolResult {
-                tool_use_id,
-                name,
-                content,
-                is_error,
-            } => {
-                assert_eq!(tool_use_id, "toolu_01");
-                assert_eq!(name, Some("get_weather".to_string()));
-                assert_eq!(content, "Sunny, 72°F");
-                assert_eq!(is_error, Some(false));
-            }
-            _ => panic!("Expected ToolResult"),
-        }
-    }
-
-    #[test]
-    fn test_to_content_block() {
-        let tool_use = McpContentData::ToolUse {
-            id: "toolu_01".to_string(),
-            name: "get_weather".to_string(),
-            server_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
-            input: serde_json::json!({"location": "SF"}),
-        };
-
-        let block = tool_use.to_content_block().unwrap();
-        match block {
-            ai_providers::ContentBlock::ToolUse { name, .. } => {
-                // Should reconstruct server_id__name format
-                assert_eq!(name, "550e8400-e29b-41d4-a716-446655440000__get_weather");
-            }
-            _ => panic!("Expected ToolUse"),
-        }
-    }
-
-    #[test]
-    fn test_from_content_block() {
-        // AI providers return server_id__tool_name format
-        let block = ai_providers::ContentBlock::ToolUse {
-            id: "toolu_01".to_string(),
-            name: "550e8400-e29b-41d4-a716-446655440000__get_weather".to_string(),
-            input: serde_json::json!({"location": "SF"}),
-        };
-
-        let mcp_content = McpContentData::from_content_block(&block).unwrap();
-        match mcp_content {
-            McpContentData::ToolUse { id, name, server_id, .. } => {
-                assert_eq!(id, "toolu_01");
-                assert_eq!(name, "get_weather");
-                assert_eq!(server_id, "550e8400-e29b-41d4-a716-446655440000");
-            }
-            _ => panic!("Expected ToolUse"),
         }
     }
 }

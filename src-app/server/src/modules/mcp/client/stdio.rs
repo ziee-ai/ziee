@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 use rmcp::{ServiceExt, transport::TokioChildProcess, service::RunningService};
-use rmcp::model::{CallToolRequestParam, ReadResourceRequestParam};
+use rmcp::model::{CallToolRequestParam, GetPromptRequestParam, ReadResourceRequestParam};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use tokio::process::Command;
 use uuid::Uuid;
 
-use super::traits::{McpClient, Tool, Resource, ToolResult, ToolContent};
+use super::traits::{
+    McpClient, Prompt, PromptArgument, PromptResult, Resource, Tool, ToolContent, ToolResult,
+};
 use crate::common::AppError;
 use crate::modules::mcp::models::{McpServer, TransportType};
 use crate::modules::mcp::utils::embedded;
@@ -227,6 +229,9 @@ impl McpClient for StdioMcpClient {
         &mut self,
         name: &str,
         arguments: serde_json::Value,
+        _message_id: Option<uuid::Uuid>,
+        _sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+        _elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
     ) -> Result<ToolResult, AppError> {
         let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
@@ -280,5 +285,71 @@ impl McpClient for StdioMcpClient {
 
         serde_json::to_value(result.contents)
             .map_err(|e| AppError::internal_error(format!("Failed to serialize resource: {}", e)))
+    }
+
+    async fn list_prompts(&mut self) -> Result<Vec<Prompt>, AppError> {
+        let service = self.service.as_ref()
+            .ok_or_else(|| AppError::internal_error("Not connected"))?;
+
+        // rmcp returns an empty list (or errors) for servers that don't
+        // advertise the prompts capability. We map any error to an empty
+        // Vec so callers don't have to special-case the missing-capability
+        // path — matches the behaviour of HttpMcpClient::list_prompts.
+        let result = match service.list_prompts(Default::default()).await {
+            Ok(r) => r,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        Ok(result.prompts.into_iter().map(|p| Prompt {
+            name: p.name.to_string(),
+            description: p.description.map(|d| d.to_string()),
+            arguments: p.arguments.unwrap_or_default().into_iter().map(|a| PromptArgument {
+                name: a.name.to_string(),
+                description: a.description.map(|d| d.to_string()),
+                required: a.required.unwrap_or(false),
+            }).collect(),
+        }).collect())
+    }
+
+    async fn get_prompt(
+        &mut self,
+        name: &str,
+        arguments: Option<serde_json::Value>,
+    ) -> Result<PromptResult, AppError> {
+        let service = self.service.as_ref()
+            .ok_or_else(|| AppError::internal_error("Not connected"))?;
+
+        let args_map = arguments.and_then(|v| {
+            v.as_object().map(|o| o.clone().into_iter().collect())
+        });
+
+        let result = service.get_prompt(GetPromptRequestParam {
+            name: name.to_string(),
+            arguments: args_map,
+        }).await
+        .map_err(|e| AppError::internal_error(format!("get_prompt failed: {}", e)))?;
+
+        // Convert rmcp's typed PromptMessage list back to opaque JSON values
+        // to match the HttpMcpClient shape; callers don't need rmcp types.
+        let messages = result.messages.into_iter()
+            .map(|m| serde_json::to_value(m).unwrap_or(serde_json::Value::Null))
+            .collect();
+
+        Ok(PromptResult {
+            description: result.description.map(|d| d.to_string()),
+            messages,
+        })
+    }
+
+    async fn ping(&mut self) -> Result<(), AppError> {
+        // rmcp doesn't currently expose `ping` as a high-level method.
+        // For stdio transport, liveness is implicit in the child process
+        // being alive, so we report success when the service handle exists.
+        // If rmcp later exposes ping, swap to that.
+        if self.service.is_some() {
+            Ok(())
+        } else {
+            Err(AppError::internal_error("Not connected"))
+        }
     }
 }

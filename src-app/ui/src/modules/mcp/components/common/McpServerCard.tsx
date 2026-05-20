@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { App, Button, Card, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
-import { EditOutlined, ToolOutlined } from '@ant-design/icons'
+import { EditOutlined, ToolOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { McpServer } from '@/api-client/types'
 
@@ -9,13 +9,15 @@ const { Text } = Typography
 interface McpServerCardProps {
   server: McpServer
   isEditable?: boolean
+  bordered?: boolean
 }
 
 export function McpServerCard({
   server,
   isEditable = true,
+  bordered = true,
 }: McpServerCardProps) {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [enableLoading, setEnableLoading] = useState(false)
 
   const handleEdit = () => {
@@ -24,6 +26,33 @@ export function McpServerCard({
     } else {
       Stores.McpServerDrawer.openMcpServerDrawer(server, 'edit')
     }
+  }
+
+  const handleDelete = () => {
+    if (server.enabled) {
+      message.warning('Please disable the server before deleting it')
+      return
+    }
+
+    modal.confirm({
+      title: 'Delete Server',
+      content: `Are you sure you want to delete "${server.display_name}"? This action cannot be undone.`,
+      okText: 'Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          if (server.is_system) {
+            await Stores.SystemMcpServer.deleteSystemServer(server.id)
+          } else {
+            await Stores.McpServer.deleteMcpServer(server.id)
+          }
+          message.success('Server deleted successfully')
+        } catch (error) {
+          message.error('Failed to delete server')
+        }
+      },
+    })
   }
 
   const handleToggleEnable = async (enabled: boolean) => {
@@ -47,20 +76,29 @@ export function McpServerCard({
     }
   }
 
+  const headerBg =
+    server.transport_type === 'stdio'
+      ? 'bg-blue-50'
+      : server.transport_type === 'http'
+        ? 'bg-green-50'
+        : 'bg-purple-50'
+
   return (
     <Card
       classNames={{
         body: '!p-3',
       }}
+      bordered={bordered}
+      data-testid={`mcp-server-card-${server.id}`}
     >
       <div className="flex items-start gap-3 flex-wrap">
         {/* Server Info */}
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <div className={`-mx-3 -mt-3 mb-3 px-3 py-2 flex items-center gap-2 flex-wrap ${headerBg}`}>
             <div className="flex-1 min-w-48">
               <Flex className="gap-2 items-center">
-                <ToolOutlined aria-hidden="true" />
-                <Text className="font-medium">{server.display_name}</Text>
+                <ToolOutlined aria-hidden="true" className="text-base" />
+                <Text className="font-semibold text-base">{server.display_name}</Text>
                 {!isEditable && server.is_system && (
                   <Tag color="blue">System</Tag>
                 )}
@@ -75,6 +113,14 @@ export function McpServerCard({
                 >
                   {server.transport_type.toUpperCase()}
                 </Tag>
+                {server.supports_sampling && (
+                  <Tooltip title={`Sampling enabled · ${server.usage_mode === 'always' ? 'Always mode' : 'Auto mode'}`}>
+                    <Tag color="cyan" data-testid="mcp-sampling-badge">Sampling</Tag>
+                  </Tooltip>
+                )}
+                {server.usage_mode === 'always' && (
+                  <Tag color="orange" data-testid="mcp-always-badge">Always</Tag>
+                )}
               </Flex>
             </div>
             <div className="flex gap-2 items-center justify-end">
@@ -96,9 +142,24 @@ export function McpServerCard({
                       e.stopPropagation()
                       handleEdit()
                     }}
+                    data-testid="mcp-server-edit-btn"
                   >
                     Edit
                   </Button>
+                  {!server.is_built_in && (
+                    <Button
+                      icon={<DeleteOutlined />}
+                      danger
+                      onClick={e => {
+                        e.stopPropagation()
+                        handleDelete()
+                      }}
+                      aria-label={`Delete ${server.display_name}`}
+                      data-testid="mcp-server-delete-btn"
+                    >
+                      Delete
+                    </Button>
+                  )}
                 </>
               )}
             </div>

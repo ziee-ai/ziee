@@ -135,7 +135,7 @@ async fn test_list_tools_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Create a fetch server
     let server_id = create_fetch_server(&server, &admin).await;
@@ -236,7 +236,7 @@ async fn test_call_tool_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Create a fetch server
     let server_id = create_fetch_server(&server, &admin).await;
@@ -391,7 +391,7 @@ async fn test_list_resources_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Create a fetch server
     let server_id = create_fetch_server(&server, &admin).await;
@@ -478,7 +478,7 @@ async fn test_read_resource_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Create a fetch server
     let server_id = create_fetch_server(&server, &admin).await;
@@ -556,7 +556,7 @@ async fn test_disconnect_server_permission_required() {
         &["mcp_servers_admin::create"],
     )
     .await;
-    let user = test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Create a fetch server
     let server_id = create_fetch_server(&server, &admin).await;

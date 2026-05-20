@@ -154,7 +154,7 @@ async fn main() {
 
     // Set up MCP session manager
     let mcp_session_manager = std::sync::Arc::new(modules::mcp::client::McpSessionManager::new(
-        (*pool).clone(),
+        module_context.config.clone(),
     ));
     tracing::info!("MCP session manager initialized");
 

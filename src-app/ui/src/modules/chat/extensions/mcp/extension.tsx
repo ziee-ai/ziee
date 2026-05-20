@@ -12,11 +12,12 @@ import {
 } from '@/modules/chat/core/extensions'
 import { Stores } from '@/core/stores'
 import { createMcpStore, type McpToolCall } from '@/modules/chat/extensions/mcp/Mcp.store'
-import type { MessageContent, MessageContentDataToolResult, MessageContentDataToolUse, MessageWithContent } from '@/api-client/types'
+import type { MessageContent, MessageContentDataToolUse, MessageContentDataFileAttachment, MessageWithContent } from '@/api-client/types'
 import { ToolCallPendingApprovalContent } from '@/modules/chat/extensions/mcp/components/ToolCallPendingApprovalContent'
 import { McpMenuItem } from '@/modules/chat/extensions/mcp/components/McpMenuItem'
 import { McpStatusRow } from '@/modules/chat/extensions/mcp/components/McpStatusRow'
 import { McpInitializer } from '@/modules/chat/extensions/mcp/components/McpInitializer'
+import { ElicitationFormContent } from '@/modules/chat/extensions/mcp/components/ElicitationFormContent'
 
 const { Text } = Typography
 
@@ -141,25 +142,63 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
   const server = servers.find(s => s.id === toolUseData.server_id)
   const serverName = server?.display_name || toolUseData.server_id || 'Unknown'
 
-  // Otherwise render a basic view for untracked tool calls (e.g., from history)
+  // Look up matching tool_result for historical display
+  const message = Stores.Chat.messages.get(data.message_id)
+  const toolResultData = message?.contents.find(
+    c =>
+      c.content_type === 'tool_result' &&
+      ((c.content as unknown as { tool_use_id: string }).tool_use_id === toolUseData.id),
+  )?.content as unknown as { content: string; is_error?: boolean } | undefined
+
+  const hasDetails = toolUseData.input || toolResultData
+
+  // Historical view for tool calls loaded from DB (store is empty after reload)
   return (
     <Card size="small" className="mb-2" style={{ backgroundColor: 'rgba(0, 0, 0, 0.02)' }}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <ToolOutlined className="text-blue-500" />
+          {toolResultData?.is_error ? (
+            <CloseCircleOutlined className="text-red-500" />
+          ) : toolResultData ? (
+            <CheckCircleOutlined className="text-green-500" />
+          ) : (
+            <ToolOutlined className="text-blue-500" />
+          )}
           <Text strong>{toolUseData.name || 'Tool Call'}</Text>
           <Text type="secondary" className="text-xs">({serverName})</Text>
+          {toolResultData && (
+            <Text type="secondary" className="text-xs">
+              {toolResultData.is_error ? 'Failed' : 'Completed'}
+            </Text>
+          )}
         </div>
-        {toolUseData.input && (
+        {hasDetails && (
           <Button size="small" type="text" onClick={() => setIsExpanded(!isExpanded)}>
-            {isExpanded ? 'Hide' : 'Show'} parameters
+            {isExpanded ? 'Hide' : 'Show'} details
           </Button>
         )}
       </div>
-      {isExpanded && toolUseData.input && (
-        <pre className=" p-2 rounded mt-2 overflow-auto max-h-40 text-xs">
-          {JSON.stringify(toolUseData.input, null, 2)}
-        </pre>
+      {isExpanded && (
+        <div className="mt-2 text-xs">
+          {toolUseData.input && (
+            <div className="mb-2">
+              <Text strong>Input:</Text>
+              <pre className="p-2 rounded mt-1 overflow-auto max-h-40">
+                {JSON.stringify(toolUseData.input, null, 2)}
+              </pre>
+            </div>
+          )}
+          {toolResultData && (
+            <div className="mb-2">
+              <Text strong>Result:</Text>
+              {toolResultData.is_error ? (
+                <Alert type="error" message="Error" description={toolResultData.content} showIcon className="mt-1" />
+              ) : (
+                <pre className="p-2 rounded mt-1 overflow-auto max-h-40">{toolResultData.content}</pre>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </Card>
   )
@@ -167,26 +206,14 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
 
 /**
  * MCP tool result content renderer component
- * Renders tool execution results from MCP servers
+ * Returns null — McpToolUseRenderer (tool_use content type) already renders the full
+ * tool call UI including completed/error states. Rendering here too would cause a
+ * duplicate box for every tool call since both tool_use and tool_result blocks are
+ * persisted to DB after streaming completes.
  */
-function McpToolResultRenderer({ content: data }: ContentRendererProps) {
-  // Access toolCalls Map directly to create a reactive subscription
-  const { toolCalls } = Stores.Chat.McpStore
-
-  // data is the full MessageContent object, data.content has the tool result data
-  const toolResultData = data.content as MessageContentDataToolResult
-
-  if (!toolResultData.tool_use_id) {
-    return null
-  }
-
-  const toolCall = toolCalls.get(toolResultData.tool_use_id)
-
-  if (!toolCall) {
-    return null
-  }
-
-  return <McpToolCallUI toolCall={toolCall} />
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function McpToolResultRenderer(_props: ContentRendererProps) {
+  return null
 }
 
 /**
@@ -244,6 +271,7 @@ const mcpExtension: ChatExtension = createExtension({
         server: data.server,
         tool_name: data.tool_name,
         status: 'started',
+        input: data.input,
       })
 
       // Inject tool_use content block into streaming message so McpToolUseRenderer can mount
@@ -292,26 +320,36 @@ const mcpExtension: ChatExtension = createExtension({
           })
         }
       } else {
-        // No streaming message exists - CREATE one with the tool_use block
-        const messageId = `streaming-${Date.now()}`
-        toolUseContent.id = `${messageId}-tool-${data.tool_use_id}`
-        toolUseContent.message_id = messageId
+        // No streaming message exists — check messages map for an existing block first (dedup)
+        const existingInMap = [...chatState.messages.values()].some(m =>
+          m.contents.some(
+            c => c.content_type === 'tool_use' &&
+                 (c.content as MessageContentDataToolUse).id === data.tool_use_id
+          )
+        )
 
-        const newMessage: MessageWithContent = {
-          id: messageId,
-          role: 'assistant',
-          contents: [toolUseContent],
-          originated_from_id: '',
-          edit_count: 0,
-          created_at: now,
+        if (!existingInMap) {
+          // CREATE a new streaming message with the tool_use block
+          const messageId = `streaming-${Date.now()}`
+          toolUseContent.id = `${messageId}-tool-${data.tool_use_id}`
+          toolUseContent.message_id = messageId
+
+          const newMessage: MessageWithContent = {
+            id: messageId,
+            role: 'assistant',
+            contents: [toolUseContent],
+            originated_from_id: '',
+            edit_count: 0,
+            created_at: now,
+          }
+
+          const newMessages = new Map(chatState.messages)
+          newMessages.set(newMessage.id, newMessage)
+          set({
+            streamingMessage: newMessage,
+            messages: newMessages,
+          })
         }
-
-        const newMessages = new Map(chatState.messages)
-        newMessages.set(newMessage.id, newMessage)
-        set({
-          streamingMessage: newMessage,
-          messages: newMessages,
-        })
       }
 
       console.log('[MCP Extension] Tool started:', data.tool_name)
@@ -356,35 +394,140 @@ const mcpExtension: ChatExtension = createExtension({
       }
 
       if (streamingMessage) {
-        // Streaming message exists - add tool_use content to it
-        toolUseContent.id = `${streamingMessage.id}-tool-${data.tool_use_id}`
-        toolUseContent.message_id = streamingMessage.id
-        toolUseContent.sequence_order = streamingMessage.contents.length
+        // Streaming message exists - add tool_use content to it (dedup check)
+        const existsInStreaming = streamingMessage.contents.some(
+          c => c.content_type === 'tool_use' &&
+               (c.content as MessageContentDataToolUse).id === data.tool_use_id
+        )
+        // Also check the full messages map: on approval-resend streams, asst_msg_1 may
+        // already be loaded via loadMessages and contain this tool_use_id. Without this
+        // check the handler would add a second tool_use block to the new streaming message,
+        // producing two McpToolUseRenderer instances → two approval panels.
+        const existsInMap = !existsInStreaming && [...chatState.messages.values()].some(m =>
+          m.id !== streamingMessage.id &&
+          m.contents.some(
+            c => c.content_type === 'tool_use' &&
+                 (c.content as MessageContentDataToolUse).id === data.tool_use_id
+          )
+        )
+        if (!existsInStreaming && !existsInMap) {
+          toolUseContent.id = `${streamingMessage.id}-tool-${data.tool_use_id}`
+          toolUseContent.message_id = streamingMessage.id
+          toolUseContent.sequence_order = streamingMessage.contents.length
 
-        const updatedMessage = {
-          ...streamingMessage,
-          contents: [...streamingMessage.contents, toolUseContent],
+          const updatedMessage = {
+            ...streamingMessage,
+            contents: [...streamingMessage.contents, toolUseContent],
+          }
+
+          const newMessages = new Map(chatState.messages)
+          newMessages.set(updatedMessage.id, updatedMessage)
+          set({
+            streamingMessage: updatedMessage,
+            messages: newMessages,
+          })
+
+          console.log('[MCP Extension] Added tool_use content block to existing streaming message:', data.tool_name)
         }
-
-        const newMessages = new Map(chatState.messages)
-        newMessages.set(updatedMessage.id, updatedMessage)
-        set({
-          streamingMessage: updatedMessage,
-          messages: newMessages,
-        })
-
-        console.log('[MCP Extension] Added tool_use content block to existing streaming message:', data.tool_name)
       } else {
-        // No streaming message exists - CREATE one with the tool_use block
-        // This happens when LLM returns a tool call without any text first
+        // No streaming message exists — check messages map for an existing one first (dedup)
+        const existingStreaming = [...chatState.messages.values()].find(m =>
+          m.contents.some(
+            c => c.content_type === 'tool_use' &&
+                 (c.content as MessageContentDataToolUse).id === data.tool_use_id
+          )
+        )
+
+        if (!existingStreaming) {
+          // CREATE a new streaming message with the tool_use block
+          // This happens when LLM returns a tool call without any text first
+          const messageId = `streaming-${Date.now()}`
+          toolUseContent.id = `${messageId}-tool-${data.tool_use_id}`
+          toolUseContent.message_id = messageId
+
+          const newMessage: MessageWithContent = {
+            id: messageId,
+            role: 'assistant',
+            contents: [toolUseContent],
+            originated_from_id: '',
+            edit_count: 0,
+            created_at: now,
+          }
+
+          const newMessages = new Map(chatState.messages)
+          newMessages.set(newMessage.id, newMessage)
+          set({
+            streamingMessage: newMessage,
+            messages: newMessages,
+          })
+
+          console.log('[MCP Extension] Created new streaming message with tool_use block:', data.tool_name)
+        }
+      }
+
+      console.log('[MCP Extension] Approval required for:', data.tool_name)
+    },
+
+    mcpElicitationRequired: async (data, get, set) => {
+      // data is automatically typed as SSEChatStreamMcpElicitationRequiredData
+      const mcpStore = Stores.Chat.__state.McpStore
+      mcpStore.addElicitationRequest(data)
+
+      // Inject elicitation_request content block into streaming message so
+      // ElicitationFormContent can mount and render the form inline
+      const chatState = get()
+      const streamingMessage = chatState.streamingMessage
+      const now = new Date().toISOString()
+
+      const elicitContent = {
+        id: '',
+        message_id: '',
+        content_type: 'elicitation_request',
+        content: {
+          type: 'elicitation_request',
+          status: 'pending',
+          elicitation_id: data.elicitation_id,
+          message_id: data.message_id,
+          message: data.message,
+          requested_schema: data.requested_schema,
+          server: data.server,
+        },
+        sequence_order: 0,
+        created_at: now,
+        updated_at: now,
+      } as unknown as MessageContent
+
+      if (streamingMessage) {
+        // Dedup: don't inject the same elicitation block twice (keyed by unique elicitation_id)
+        const exists = streamingMessage.contents.some(
+          c =>
+            c.content_type === 'elicitation_request' &&
+            (c.content as unknown as { elicitation_id: string }).elicitation_id === data.elicitation_id,
+        )
+        if (!exists) {
+          elicitContent.id = `${streamingMessage.id}-elicit-${data.elicitation_id}`
+          elicitContent.message_id = streamingMessage.id
+          elicitContent.sequence_order = streamingMessage.contents.length
+
+          const updatedMessage = {
+            ...streamingMessage,
+            contents: [...streamingMessage.contents, elicitContent],
+          }
+
+          const newMessages = new Map(chatState.messages)
+          newMessages.set(updatedMessage.id, updatedMessage)
+          set({ streamingMessage: updatedMessage, messages: newMessages })
+        }
+      } else {
+        // No streaming message — create one to host the form
         const messageId = `streaming-${Date.now()}`
-        toolUseContent.id = `${messageId}-tool-${data.tool_use_id}`
-        toolUseContent.message_id = messageId
+        elicitContent.id = `${messageId}-elicit-${data.elicitation_id}`
+        elicitContent.message_id = messageId
 
         const newMessage: MessageWithContent = {
           id: messageId,
           role: 'assistant',
-          contents: [toolUseContent],
+          contents: [elicitContent],
           originated_from_id: '',
           edit_count: 0,
           created_at: now,
@@ -392,15 +535,10 @@ const mcpExtension: ChatExtension = createExtension({
 
         const newMessages = new Map(chatState.messages)
         newMessages.set(newMessage.id, newMessage)
-        set({
-          streamingMessage: newMessage,
-          messages: newMessages,
-        })
-
-        console.log('[MCP Extension] Created new streaming message with tool_use block:', data.tool_name)
+        set({ streamingMessage: newMessage, messages: newMessages })
       }
 
-      console.log('[MCP Extension] Approval required for:', data.tool_name)
+      console.log('[MCP Extension] Elicitation required:', data.message_id, 'from', data.server)
     },
 
     mcpToolComplete: async (data, _get, _set) => {
@@ -410,6 +548,7 @@ const mcpExtension: ChatExtension = createExtension({
       mcpStore.updateToolCall(data.tool_use_id, {
         status: data.is_error ? 'error' : 'completed',
         error: data.is_error ? 'Tool execution failed' : undefined,
+        result: data.result,
       })
 
       console.log(
@@ -417,6 +556,42 @@ const mcpExtension: ChatExtension = createExtension({
         data.tool_use_id,
         data.is_error ? '(error)' : '(success)',
       )
+    },
+
+    artifactCreated: async (data, get, set) => {
+      // data is automatically typed as SSEChatStreamArtifactCreatedData
+      // A tool returned a resource_link — inject a file_attachment content block into the
+      // streaming message so the user sees a file card immediately (same as user file uploads).
+      const chatState = get()
+      const streamingMessage = chatState.streamingMessage
+      if (!streamingMessage) return
+
+      const now = new Date().toISOString()
+      const fileContent: MessageContent = {
+        id: `artifact-${data.file_id}`,
+        message_id: streamingMessage.id,
+        content_type: 'file_attachment',
+        content: {
+          type: 'file_attachment',
+          file_id: data.file_id,
+          filename: data.filename,
+          mime_type: data.mime_type ?? null,
+          file_size: data.file_size,
+        } as MessageContentDataFileAttachment,
+        sequence_order: streamingMessage.contents.length,
+        created_at: now,
+        updated_at: now,
+      }
+
+      const updatedMessage = {
+        ...streamingMessage,
+        contents: [...streamingMessage.contents, fileContent],
+      }
+      const newMessages = new Map(chatState.messages)
+      newMessages.set(updatedMessage.id, updatedMessage)
+      set({ streamingMessage: updatedMessage, messages: newMessages })
+
+      console.log('[MCP Extension] Artifact created:', data.filename, data.file_id)
     },
   },
 
@@ -485,15 +660,32 @@ const mcpExtension: ChatExtension = createExtension({
       if (response.settings) {
         // Get disabled servers from backend
         const disabledServers = response.settings.disabled_servers || []
-        const disabledServerIds = new Set(disabledServers.map(d => d.server_id))
 
-        // Compute selectedServers: all available servers that are NOT disabled
+        // Compute selectedServers: all available servers that are NOT fully disabled.
+        // Entries with non-empty tools = partially disabled (specific tools disabled, server still enabled).
         const selectedServers = new Map<string, { server_id: string; tools: string[] }>()
         for (const serverId of availableServerIds) {
-          if (!disabledServerIds.has(serverId)) {
-            // Server is not disabled, add to selected with all tools
+          const disabledEntry = disabledServers.find(d => d.server_id === serverId)
+
+          if (!disabledEntry) {
+            // Not in disabled list → all tools selected
             selectedServers.set(serverId, { server_id: serverId, tools: [] })
+          } else if (disabledEntry.tools.length > 0) {
+            // Partially disabled: specific tools are disabled, compute selected = all - disabled
+            try {
+              const toolsResponse = await ApiClient.McpServerRuntime.listTools({ id: serverId })
+              const allTools = toolsResponse.tools.map(t => t.name)
+              const selectedTools = allTools.filter(t => !disabledEntry.tools.includes(t))
+              if (selectedTools.length > 0) {
+                selectedServers.set(serverId, { server_id: serverId, tools: selectedTools })
+              }
+              // If all tools are disabled (selectedTools empty), treat server as disabled → skip
+            } catch {
+              // On error fetching tools, fall back to all tools selected
+              selectedServers.set(serverId, { server_id: serverId, tools: [] })
+            }
           }
+          // disabledEntry.tools.length === 0 → entire server disabled → skip
         }
 
         const config = {
@@ -623,6 +815,7 @@ const mcpExtension: ChatExtension = createExtension({
   contentTypes: {
     tool_use: McpToolUseRenderer,
     tool_result: McpToolResultRenderer,
+    elicitation_request: ElicitationFormContent,
   },
 
   // Register slot components

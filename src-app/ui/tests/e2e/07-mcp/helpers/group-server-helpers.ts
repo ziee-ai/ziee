@@ -206,33 +206,49 @@ export async function assertGroupWidgetShowsCount(
 // Group Assignment in MCP Servers (Card + Drawer)
 // =====================================================
 
+/**
+ * Locate the User Groups widget for a specific server. After the
+ * Card→Collapse refactor (feat/mcp-rewrite-v2), the widget is identified by
+ * `[data-card-type="user-groups-assignment"]` and scoped per-server via the
+ * outer `[data-server-name]` Card wrapper.
+ */
+function groupsWidgetForServer(page: Page, serverDisplayName?: string) {
+  if (serverDisplayName) {
+    return page
+      .locator(`[data-server-name="${serverDisplayName}"]`)
+      .locator('[data-card-type="user-groups-assignment"]')
+  }
+  return page.locator('[data-card-type="user-groups-assignment"]').first()
+}
+
+/** Expand the Collapse so the assigned-groups list (or empty state) is visible. */
+async function expandGroupsCollapseFor(page: Page, serverDisplayName?: string) {
+  const widget = groupsWidgetForServer(page, serverDisplayName)
+  await widget.waitFor({ state: 'visible', timeout: 10000 })
+  const header = widget.locator('.ant-collapse-header').first()
+  const expanded = (await header.getAttribute('aria-expanded')) === 'true'
+  if (!expanded) {
+    // Click the panel summary (the "User Groups" label). Avoid the edit
+    // button's bounding box — it has `e.stopPropagation()`.
+    await header.getByText('User Groups').first().click()
+    await page.waitForTimeout(300)
+  }
+}
+
 export async function openGroupAssignmentDrawerFromServer(
   page: Page,
   serverDisplayName?: string
 ) {
-  // The User Groups card is rendered inline on the list page, below the server card
-  // Both cards are in the same parent container
-  let card
+  const widget = groupsWidgetForServer(page, serverDisplayName)
   if (serverDisplayName) {
-    // Find the container that has both the server card and User Groups card
-    // Use filter() with has() to find the right container
-    // Use .last() to get the innermost matching div (the actual server container)
-    const containers = page.locator('div.flex.flex-col.gap-3')
-    const container = containers.filter({
-      has: page.locator(`.ant-card:has-text("${serverDisplayName}")`)
-    }).last()
-    await container.scrollIntoViewIfNeeded()
-    await page.waitForTimeout(500) // Wait for scroll to complete
-
-    card = container.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
-  } else {
-    // Fallback to first card
-    card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
+    await page
+      .locator(`[data-server-name="${serverDisplayName}"]`)
+      .scrollIntoViewIfNeeded()
+    await page.waitForTimeout(300)
   }
+  await widget.waitFor({ state: 'visible', timeout: 10000 })
 
-  await card.waitFor({ state: 'visible', timeout: 10000 })
-
-  const editButton = card.locator('button[aria-label="Manage user groups"]')
+  const editButton = widget.locator('button[aria-label="Manage user groups"]')
   await editButton.click()
 
   // Wait for drawer to open
@@ -320,23 +336,9 @@ export async function assertGroupInServerCard(
   groupName: string,
   serverDisplayName?: string
 ) {
-  // Find the User Groups card specific to the server
-  let card
-  if (serverDisplayName) {
-    const containers = page.locator('div.flex.flex-col.gap-3')
-    const container = containers.filter({
-      has: page.locator(`.ant-card:has-text("${serverDisplayName}")`)
-    }).last()
-    await container.scrollIntoViewIfNeeded()
-    await page.waitForTimeout(500)
-
-    card = container.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
-  } else {
-    card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
-  }
-  await card.waitFor({ state: 'visible', timeout: 5000 })
-
-  const groupTag = card.locator(`.ant-tag:has-text("${groupName}")`)
+  await expandGroupsCollapseFor(page, serverDisplayName)
+  const widget = groupsWidgetForServer(page, serverDisplayName)
+  const groupTag = widget.locator(`.ant-tag:has-text("${groupName}")`)
   await expect(groupTag).toBeVisible()
 }
 
@@ -345,23 +347,9 @@ export async function assertGroupNotInServerCard(
   groupName: string,
   serverDisplayName?: string
 ) {
-  // Find the User Groups card specific to the server
-  let card
-  if (serverDisplayName) {
-    const containers = page.locator('div.flex.flex-col.gap-3')
-    const container = containers.filter({
-      has: page.locator(`.ant-card:has-text("${serverDisplayName}")`)
-    }).last()
-    await container.scrollIntoViewIfNeeded()
-    await page.waitForTimeout(500)
-
-    card = container.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
-  } else {
-    card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
-  }
-  await card.waitFor({ state: 'visible', timeout: 5000 })
-
-  const groupTag = card.locator(`.ant-tag:has-text("${groupName}")`)
+  await expandGroupsCollapseFor(page, serverDisplayName)
+  const widget = groupsWidgetForServer(page, serverDisplayName)
+  const groupTag = widget.locator(`.ant-tag:has-text("${groupName}")`)
   await expect(groupTag).not.toBeVisible()
 }
 
@@ -370,27 +358,15 @@ export async function assertServerCardShowsCount(
   expectedCount: number,
   serverDisplayName?: string
 ) {
-  // Find the User Groups card specific to the server
-  let card
-  if (serverDisplayName) {
-    const containers = page.locator('div.flex.flex-col.gap-3')
-    const container = containers.filter({
-      has: page.locator(`.ant-card:has-text("${serverDisplayName}")`)
-    }).last()
-    await container.scrollIntoViewIfNeeded()
-    await page.waitForTimeout(500)
-
-    card = container.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
-  } else {
-    card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
-  }
-  await card.waitFor({ state: 'visible', timeout: 5000 })
+  await expandGroupsCollapseFor(page, serverDisplayName)
+  const widget = groupsWidgetForServer(page, serverDisplayName)
 
   if (expectedCount === 0) {
-    // Check for empty state (using Empty component's description)
-    await expect(card.locator('.ant-empty-description:has-text("No groups assigned")')).toBeVisible()
+    await expect(
+      widget.locator('.ant-empty-description:has-text("No groups assigned")'),
+    ).toBeVisible()
   } else {
-    const tags = card.locator('.ant-tag')
+    const tags = widget.locator('.ant-tag')
     await expect(tags).toHaveCount(expectedCount)
   }
 }

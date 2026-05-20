@@ -6459,6 +6459,115 @@
         ]
       }
     },
+    "/api/mcp/servers/{id}/prompts": {
+      "get": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "List MCP server prompts",
+        "description": "List prompt templates available from an MCP server",
+        "operationId": "McpServerRuntime.listPrompts",
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPromptsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/prompts/get": {
+      "post": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "Get rendered MCP prompt",
+        "description": "Render a prompt template with the given arguments",
+        "operationId": "McpServerRuntime.getPrompt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetPromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "Result of a `prompts/get` call — server's rendered prompt messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetPromptResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server or prompt not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/servers/{id}/ping": {
+      "post": {
+        "tags": [
+          "MCP Servers - Runtime"
+        ],
+        "summary": "Ping MCP server",
+        "description": "Liveness check — verifies the server is reachable and responsive",
+        "operationId": "McpServerRuntime.ping",
+        "responses": {
+          "403": {
+            "description": "User does not have access to this server"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PingResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Server not found"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/mcp/system-servers": {
       "get": {
         "tags": [
@@ -7049,6 +7158,73 @@
           },
           "401": {
             "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/mcp/elicitation/{elicitation_id}/respond": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Respond to an elicitation request",
+        "description": "Submit a user's response to an MCP server elicitation form. The elicitation_id is the per-elicitation UUID received via the mcpElicitationRequired SSE event.",
+        "operationId": "Mcp.respondToElicitation",
+        "requestBody": {
+          "description": "Request body for POST /api/mcp/elicitation/{id}/respond",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RespondToElicitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response body for POST /api/mcp/elicitation/{id}/respond",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespondToElicitationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid action value"
+          },
+          "404": {
+            "description": "Elicitation request not found or expired"
           }
         },
         "security": [
@@ -9074,8 +9250,21 @@
               "type": "string"
             }
           },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "name": {
             "type": "string"
+          },
+          "supports_sampling": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "timeout_seconds": {
             "type": [
@@ -9091,6 +9280,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "usage_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageMode"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         },
@@ -9835,6 +10034,9 @@
             "type": "string",
             "format": "date-time"
           },
+          "created_by": {
+            "type": "string"
+          },
           "file_size": {
             "type": "integer",
             "format": "int64"
@@ -9882,6 +10084,7 @@
           "preview_page_count",
           "text_page_count",
           "processing_metadata",
+          "created_by",
           "created_at",
           "updated_at"
         ]
@@ -10058,6 +10261,39 @@
         "required": [
           "device_id",
           "device_name"
+        ]
+      },
+      "GetPromptRequest": {
+        "type": "object",
+        "properties": {
+          "arguments": {
+            "default": null
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "GetPromptResponse": {
+        "description": "Result of a `prompts/get` call — server's rendered prompt messages.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messages": {
+            "type": "array",
+            "items": true
+          }
+        },
+        "required": [
+          "messages"
         ]
       },
       "GetUserProvidersResponse": {
@@ -11044,6 +11280,20 @@
           }
         }
       },
+      "ListPromptsResponse": {
+        "type": "object",
+        "properties": {
+          "prompts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prompt"
+            }
+          }
+        },
+        "required": [
+          "prompts"
+        ]
+      },
       "ListResourcesResponse": {
         "type": "object",
         "properties": {
@@ -11710,11 +11960,24 @@
             "type": "string",
             "format": "uuid"
           },
+          "is_built_in": {
+            "type": "boolean"
+          },
           "is_system": {
             "type": "boolean"
           },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "name": {
             "type": "string"
+          },
+          "supports_sampling": {
+            "type": "boolean"
           },
           "timeout_seconds": {
             "type": "integer",
@@ -11733,6 +11996,9 @@
               "null"
             ]
           },
+          "usage_mode": {
+            "$ref": "#/components/schemas/UsageMode"
+          },
           "user_id": {
             "type": [
               "string",
@@ -11747,11 +12013,14 @@
           "display_name",
           "enabled",
           "is_system",
+          "is_built_in",
           "transport_type",
           "args",
           "environment_variables",
           "headers",
           "timeout_seconds",
+          "supports_sampling",
+          "usage_mode",
           "created_at",
           "updated_at"
         ]
@@ -12173,6 +12442,13 @@
               "content": {
                 "type": "string"
               },
+              "hidden_content": {
+                "description": "System context for the LLM (e.g. download URLs) — never rendered to users.\n Stripped from API responses by strip_hidden_content_serialize in core/models/content.rs.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "is_error": {
                 "type": [
                   "boolean",
@@ -12194,6 +12470,46 @@
               "type",
               "tool_use_id",
               "content"
+            ]
+          },
+          {
+            "description": "Elicitation request — MCP server asking the user for structured input.\n Persisted to DB immediately when the request arrives so it survives page reloads.",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "elicitation_request"
+              },
+              "elicitation_id": {
+                "description": "Per-elicitation random UUID matching the SSE event",
+                "type": "string"
+              },
+              "message": {
+                "description": "Human-readable prompt from the MCP server",
+                "type": "string"
+              },
+              "requested_schema": {
+                "description": "JSON Schema (SEP-1330) describing the requested fields"
+              },
+              "response_content": {
+                "description": "User's submitted field values (only present when status = \"accepted\")"
+              },
+              "server": {
+                "description": "Display name of the MCP server that sent the request",
+                "type": "string"
+              },
+              "status": {
+                "description": "\"pending\" | \"accepted\" | \"declined\" | \"cancelled\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "elicitation_id",
+              "message",
+              "requested_schema",
+              "server",
+              "status"
             ]
           }
         ]
@@ -12975,6 +13291,17 @@
           "required_permissions"
         ]
       },
+      "PingResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
       "PreviewQuery": {
         "description": "Preview query params",
         "type": "object",
@@ -12986,6 +13313,52 @@
             "minimum": 0
           }
         }
+      },
+      "Prompt": {
+        "description": "MCP Prompt template metadata (per MCP spec § server/prompts).\n Returned by `prompts/list`.",
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arguments": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PromptArgument"
+            }
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "PromptArgument": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "ProviderInstancesResponse": {
         "type": "object",
@@ -13316,6 +13689,34 @@
           "name"
         ]
       },
+      "RespondToElicitationRequest": {
+        "description": "Request body for POST /api/mcp/elicitation/{id}/respond",
+        "type": "object",
+        "properties": {
+          "action": {
+            "description": "\"accept\" | \"decline\" | \"cancel\"",
+            "type": "string"
+          },
+          "content": {
+            "description": "Field values — only present when action == \"accept\""
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "RespondToElicitationResponse": {
+        "description": "Response body for POST /api/mcp/elicitation/{id}/respond",
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
       "RuntimeVersionListResponse": {
         "description": "Response containing a list of runtime versions",
         "type": "object",
@@ -13375,6 +13776,37 @@
           "binary_path",
           "is_system_default",
           "created_at"
+        ]
+      },
+      "SSEChatStreamArtifactCreatedData": {
+        "description": "Event data for an artifact file created by a tool (via MCP resource_link)",
+        "type": "object",
+        "properties": {
+          "file_id": {
+            "description": "UUID of the file in the files table",
+            "type": "string"
+          },
+          "file_size": {
+            "description": "File size in bytes",
+            "type": "integer",
+            "format": "int64"
+          },
+          "filename": {
+            "description": "Display filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "description": "MIME type of the file",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_id",
+          "filename",
+          "file_size"
         ]
       },
       "SSEChatStreamCompleteData": {
@@ -13552,6 +13984,40 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "mcpElicitationRequired"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamMcpElicitationRequiredData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "artifactCreated"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SSEChatStreamArtifactCreatedData"
+              }
+            ],
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "titleUpdated"
               }
             },
@@ -13598,6 +14064,40 @@
           "input"
         ]
       },
+      "SSEChatStreamMcpElicitationRequiredData": {
+        "description": "Event data for MCP elicitation required (server is requesting human input)",
+        "type": "object",
+        "properties": {
+          "elicitation_id": {
+            "description": "Per-elicitation random UUID — POST to /api/mcp/elicitation/{elicitation_id}/respond",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable prompt from the MCP server",
+            "type": "string"
+          },
+          "message_id": {
+            "description": "ID of the assistant message that triggered this elicitation (informational)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requested_schema": {
+            "description": "JSON Schema describing the requested fields (per SEP-1330)"
+          },
+          "server": {
+            "description": "Display name of the MCP server that sent the request",
+            "type": "string"
+          }
+        },
+        "required": [
+          "elicitation_id",
+          "message",
+          "requested_schema",
+          "server"
+        ]
+      },
       "SSEChatStreamMcpToolCompleteData": {
         "description": "Event data for MCP tool execution completion",
         "type": "object",
@@ -13605,6 +14105,13 @@
           "is_error": {
             "description": "Whether the tool execution resulted in an error",
             "type": "boolean"
+          },
+          "result": {
+            "description": "Tool result text, truncated to 2000 chars (for display in \"Show details\" panel)",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "server": {
             "description": "MCP server that executed the tool",
@@ -13630,6 +14137,9 @@
         "description": "Event data for MCP tool execution start",
         "type": "object",
         "properties": {
+          "input": {
+            "description": "Tool input parameters (for display in \"Show details\" panel)"
+          },
           "server": {
             "description": "MCP server executing the tool",
             "type": "string"
@@ -13646,7 +14156,8 @@
         "required": [
           "tool_use_id",
           "tool_name",
-          "server"
+          "server",
+          "input"
         ]
       },
       "SSEChatStreamStartedData": {
@@ -14606,9 +15117,22 @@
               "type": "string"
             }
           },
+          "max_concurrent_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "name": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "supports_sampling": {
+            "type": [
+              "boolean",
               "null"
             ]
           },
@@ -14623,6 +15147,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "usage_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageMode"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
@@ -14678,9 +15212,12 @@
             ]
           },
           "auto_approved_tools": {
-            "description": "Auto-approved tools grouped by server\n Format: [{\"server_id\": \"uuid\", \"tools\": [\"tool1\", \"tool2\"]}, ...]",
-            "type": "array",
-            "default": [],
+            "description": "Auto-approved tools grouped by server\n Format: [{\"server_id\": \"uuid\", \"tools\": [\"tool1\", \"tool2\"]}, ...]\n None = preserve existing value in DB; Some(vec) = overwrite with this value",
+            "type": [
+              "array",
+              "null"
+            ],
+            "default": null,
             "items": {
               "$ref": "#/components/schemas/AutoApprovedServer"
             }
@@ -14726,9 +15263,12 @@
             ]
           },
           "auto_approved_tools": {
-            "description": "Auto-approved tools grouped by server",
-            "type": "array",
-            "default": [],
+            "description": "Auto-approved tools grouped by server\n None = preserve existing value in DB; Some(vec) = overwrite with this value",
+            "type": [
+              "array",
+              "null"
+            ],
+            "default": null,
             "items": {
               "$ref": "#/components/schemas/AutoApprovedServer"
             }
@@ -14782,6 +15322,13 @@
             "minimum": 0
           }
         }
+      },
+      "UsageMode": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "always"
+        ]
       },
       "User": {
         "type": "object",

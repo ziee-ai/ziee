@@ -87,14 +87,17 @@ export const useMcpStore = create<McpState>()(
             const eventBus = Stores.EventBus
             const GROUP = 'McpServerStore'
 
-            // Subscribe to mcp_server.created
+            // Subscribe to mcp_server.created (user-owned servers only)
             eventBus.on(
               'mcp_server.created',
               async event => {
                 const { server } = event.data
-                set(draft => {
-                  draft.servers.push(server)
-                })
+                // Skip system servers — they arrive via group reload
+                if (!server.is_system) {
+                  set(draft => {
+                    draft.servers.push(server)
+                  })
+                }
               },
               GROUP,
             )
@@ -136,6 +139,15 @@ export const useMcpStore = create<McpState>()(
               GROUP,
             )
 
+            // Subscribe to mcp_server.group_servers_changed (emitted by group assignment widget)
+            eventBus.on(
+              'mcp_server.group_servers_changed',
+              async () => {
+                await get().loadMcpServers()
+              },
+              GROUP,
+            )
+
             // Subscribe to group.member_added
             eventBus.on(
               'group.member_added',
@@ -163,8 +175,8 @@ export const useMcpStore = create<McpState>()(
         loadMcpServers: async (): Promise<void> => {
           const state = get()
 
-          // Check both isInitialized AND loading to prevent duplicate loads
-          if (state.isInitialized || state.loading) {
+          // Only prevent concurrent loads, not repeated ones
+          if (state.loading) {
             return
           }
 

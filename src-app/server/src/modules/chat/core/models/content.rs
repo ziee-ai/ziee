@@ -11,6 +11,19 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 
+/// Serializer that strips `hidden_content` from the JSONB Value before sending to clients.
+/// DB writes go through `MessageContentData` (not `MessageContent`), so storage is unaffected.
+fn strip_hidden_content_serialize<S>(value: &Value, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let mut v = value.clone();
+    if let Value::Object(ref mut m) = v {
+        m.remove("hidden_content");
+    }
+    v.serialize(serializer)
+}
+
 /// Message content entity - Represents a content block within a message
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MessageContent {
@@ -18,6 +31,7 @@ pub struct MessageContent {
     pub message_id: Uuid,
     pub content_type: String,
     #[schemars(with = "MessageContentData")]
+    #[serde(serialize_with = "strip_hidden_content_serialize")]
     pub content: Value, // JSONB - contains MessageContentData
     pub sequence_order: i32,
     pub created_at: DateTime<Utc>,

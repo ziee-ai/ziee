@@ -1,7 +1,6 @@
 pub mod traits;
 pub mod stdio;
 pub mod http;
-pub mod sse;
 pub mod session;
 pub mod manager;
 
@@ -11,4 +10,4 @@ pub use manager::McpSessionManager;
 #[allow(unused_imports)]
 pub use session::McpSession;
 #[allow(unused_imports)]
-pub use traits::{McpClient, Tool, Resource, ToolResult, ToolContent};
+pub use traits::{McpClient, Prompt, PromptArgument, PromptResult, Resource, Tool, ToolContent, ToolResult};

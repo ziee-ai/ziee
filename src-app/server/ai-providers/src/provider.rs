@@ -37,12 +37,14 @@
 
 use crate::{
     error::ProviderError,
-    models::{ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload, FileUploadResponse, StreamChatChunk},
+    models::{ChatMessage, ChatRequest, EmbeddingsRequest, EmbeddingsResponse, FileUpload, FileUploadResponse, StreamChatChunk},
     providers::{AnthropicProvider, GeminiProvider, OpenAIProvider},
     traits::AIProvider,
 };
 use futures_core::Stream;
+use reqwest::Client;
 use std::pin::Pin;
+use std::time::Duration;
 
 /// Unified provider that wraps different AI provider implementations
 ///
@@ -53,6 +55,8 @@ pub struct Provider {
     api_key: String,
     base_url: String,
     provider_type: String,
+    /// Shared HTTP client — created once, connection pool reused across all calls
+    client: Client,
 }
 
 impl Provider {
@@ -103,11 +107,17 @@ impl Provider {
             }
         };
 
+        let client = Client::builder()
+            .timeout(Duration::from_secs(120))
+            .build()
+            .map_err(|e| ProviderError::InvalidRequest(format!("Failed to create HTTP client: {}", e)))?;
+
         Ok(Self {
             inner,
             api_key,
             base_url,
             provider_type,
+            client,
         })
     }
 
@@ -225,6 +235,11 @@ impl Provider {
     /// # Ok(())
     /// # }
     /// ```
+    /// Sends a non-streaming chat completion request (used for MCP sampling)
+    pub async fn complete(&self, request: ChatRequest) -> Result<ChatMessage, ProviderError> {
+        self.inner.complete(&self.api_key, &self.base_url, &self.client, request).await
+    }
+
     pub async fn embeddings(
         &self,
         request: EmbeddingsRequest,

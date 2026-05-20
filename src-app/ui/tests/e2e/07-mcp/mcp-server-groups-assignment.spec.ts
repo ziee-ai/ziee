@@ -63,19 +63,18 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await goToMcpAdminPage(page, baseURL)
     await clickServerCard(page, serverDisplayName, true)
 
-    // Find the container using filter() to avoid strict mode violations
-    const containers = page.locator('div.flex.flex-col.gap-3')
-    const container = containers.filter({
-      has: page.locator(`.ant-card:has-text("${serverDisplayName}")`)
-    }).last()
-    await container.scrollIntoViewIfNeeded()
-    await page.waitForTimeout(500)
+    // After the Card→Collapse refactor (feat/mcp-rewrite-v2), the widget is
+    // identified by data-card-type and scoped via the outer Card's data-server-name.
+    const widget = page
+      .locator(`[data-server-name="${serverDisplayName}"]`)
+      .locator('[data-card-type="user-groups-assignment"]')
+    await expect(widget).toBeVisible({ timeout: 15000 })
 
-    const card = container.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
-    await expect(card).toBeVisible({ timeout: 15000 })
+    // The Collapse header contains "User Groups" as the panel label
+    await expect(widget.locator('.ant-collapse-header').filter({ hasText: 'User Groups' })).toBeVisible()
 
-    // Verify edit button exists
-    const editButton = card.locator('button[aria-label="Manage user groups"]')
+    // Verify edit button exists in the Collapse "extra" slot
+    const editButton = widget.locator('button[aria-label="Manage user groups"]')
     await expect(editButton).toBeVisible()
 
     // Cleanup
@@ -462,5 +461,115 @@ test.describe('User Group Assignment in MCP Servers', () => {
     await deleteSystemServer(page, serverDisplayName)
     await goToUserGroupsPage(page, baseURL)
     await deleteUserGroup(page, groupName)
+  })
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Collapse refactor coverage (feat/mcp-rewrite-v2)
+  // ──────────────────────────────────────────────────────────────────────
+
+  test('User Groups Collapse is closed by default', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    const serverName = `test-collapse-default-${Date.now()}`
+    const serverDisplayName = `Collapse Default ${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createSystemServer(page, baseURL, serverName, serverDisplayName, 'Collapse-default test')
+
+    await goToMcpAdminPage(page, baseURL)
+    await clickServerCard(page, serverDisplayName, true)
+
+    const widget = page
+      .locator(`[data-server-name="${serverDisplayName}"]`)
+      .locator('[data-card-type="user-groups-assignment"]')
+    await expect(widget).toBeVisible()
+
+    const header = widget.locator('.ant-collapse-header').first()
+    await expect(header).toHaveAttribute('aria-expanded', 'false')
+
+    // Empty state must NOT be visible while collapsed
+    await expect(widget.locator('.ant-empty-description')).not.toBeVisible()
+
+    // Cleanup
+    await goToMcpAdminPage(page, baseURL)
+    await deleteSystemServer(page, serverDisplayName)
+  })
+
+  test('clicking the Collapse header expands and shows assigned groups', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const groupName = `test-collapse-expand-${Date.now()}`
+    const serverName = `test-collapse-expand-srv-${Date.now()}`
+    const serverDisplayName = `Collapse Expand ${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createUserGroup(page, baseURL, groupName, 'Collapse-expand test')
+    await createSystemServer(page, baseURL, serverName, serverDisplayName, 'Collapse-expand test')
+
+    await goToMcpAdminPage(page, baseURL)
+    await clickServerCard(page, serverDisplayName, true)
+
+    const url = page.url()
+    const serverId = url.split('/').pop()
+    await assignGroupToServer(page, serverId!, groupName, serverDisplayName)
+
+    const widget = page
+      .locator(`[data-server-name="${serverDisplayName}"]`)
+      .locator('[data-card-type="user-groups-assignment"]')
+    const header = widget.locator('.ant-collapse-header').first()
+
+    // Click the panel label "User Groups" (NOT the edit button — that has stopPropagation)
+    await header.getByText('User Groups').first().click()
+    await page.waitForTimeout(300)
+
+    await expect(header).toHaveAttribute('aria-expanded', 'true')
+    await expect(widget.locator(`.ant-tag:has-text("${groupName}")`)).toBeVisible()
+
+    // Cleanup
+    await goToMcpAdminPage(page, baseURL)
+    await deleteSystemServer(page, serverDisplayName)
+    await goToUserGroupsPage(page, baseURL)
+    await deleteUserGroup(page, groupName)
+  })
+
+  test('clicking the edit button does NOT toggle the Collapse', async ({
+    page,
+    testInfra,
+  }) => {
+    const { baseURL } = testInfra
+    const serverName = `test-collapse-edit-${Date.now()}`
+    const serverDisplayName = `Collapse Edit ${Date.now()}`
+
+    await loginAsAdmin(page, baseURL)
+    await createSystemServer(page, baseURL, serverName, serverDisplayName, 'Edit-no-toggle test')
+
+    await goToMcpAdminPage(page, baseURL)
+    await clickServerCard(page, serverDisplayName, true)
+
+    const widget = page
+      .locator(`[data-server-name="${serverDisplayName}"]`)
+      .locator('[data-card-type="user-groups-assignment"]')
+    const header = widget.locator('.ant-collapse-header').first()
+
+    // Initially collapsed
+    await expect(header).toHaveAttribute('aria-expanded', 'false')
+
+    // Click edit → opens the drawer
+    await widget.locator('button[aria-label="Manage user groups"]').click()
+    await page.waitForSelector('.ant-drawer-title:has-text("Assign User Groups")', {
+      state: 'visible',
+      timeout: 5000,
+    })
+
+    // Close drawer
+    await cancelGroupAssignment(page)
+
+    // Collapse should STILL be closed (edit handler called e.stopPropagation())
+    await expect(header).toHaveAttribute('aria-expanded', 'false')
+
+    // Cleanup
+    await goToMcpAdminPage(page, baseURL)
+    await deleteSystemServer(page, serverDisplayName)
   })
 })

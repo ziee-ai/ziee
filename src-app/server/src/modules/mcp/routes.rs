@@ -55,6 +55,20 @@ pub fn user_routes() -> ApiRouter {
             "/mcp/servers/{id}/disconnect",
             delete_with(runtime::disconnect_server, runtime::disconnect_server_docs),
         )
+        // Prompts (MCP spec § server/prompts)
+        .api_route(
+            "/mcp/servers/{id}/prompts",
+            get_with(runtime::list_server_prompts, runtime::list_server_prompts_docs),
+        )
+        .api_route(
+            "/mcp/servers/{id}/prompts/get",
+            post_with(runtime::get_server_prompt, runtime::get_server_prompt_docs),
+        )
+        // Ping (MCP spec § utilities/ping)
+        .api_route(
+            "/mcp/servers/{id}/ping",
+            post_with(runtime::ping_server, runtime::ping_server_docs),
+        )
 }
 
 // =====================================================
