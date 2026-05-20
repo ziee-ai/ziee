@@ -91,11 +91,7 @@ pub async fn read_file(
     start_line: Option<usize>,
     end_line: Option<usize>,
 ) -> Result<serde_json::Value, AppError> {
-    let path = canonicalize_in_workspace(&ctx.workspace, filename)?;
-    let content = tokio::fs::read_to_string(&path)
-        .await
-        .map_err(|e| io_err(format!("read {}: {e}", path.display())))?;
-
+    let content = load_file_content(ctx, filename).await?;
     let lines: Vec<&str> = content.lines().collect();
     let start = start_line.unwrap_or(1).max(1);
     let end = end_line.unwrap_or(lines.len()).min(lines.len());
@@ -109,6 +105,50 @@ pub async fn read_file(
         out.push_str(&format!("{}: {}\n", start + i, line));
     }
     Ok(json!({ "text": out, "total_lines": lines.len() }))
+}
+
+/// Load file contents with fallback to user-attached originals.
+///
+/// First tries the per-conversation workspace; if the file isn't there
+/// and the filename matches one of the conversation's attachments,
+/// loads it from the file module's `originals/<user_id>/<file_id>.<ext>`
+/// storage. This is what makes `read_file("foo.csv")` work for a CSV
+/// the user attached to the chat without first having to write it into
+/// the workspace.
+async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<String, AppError> {
+    let path = canonicalize_in_workspace(&ctx.workspace, filename)?;
+    match tokio::fs::read_to_string(&path).await {
+        Ok(s) => Ok(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Try the user-attachment fallback before giving up.
+            if let Some(att) = ctx
+                .files
+                .iter()
+                .find(|f| f.filename == filename && f.user_id == ctx.user_id)
+            {
+                let ext = filename
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or("bin");
+                let storage = crate::modules::file::storage::manager::get_file_storage();
+                let bytes = storage
+                    .load_original(ctx.user_id, att.file_id, ext)
+                    .await
+                    .map_err(|le| {
+                        io_err(format!("load attachment {filename}: {le:?}"))
+                    })?;
+                return String::from_utf8(bytes).map_err(|_| {
+                    AppError::new(
+                        StatusCode::BAD_REQUEST,
+                        "BINARY_FILE",
+                        format!("{filename} is not valid UTF-8 (binary file)"),
+                    )
+                });
+            }
+            Err(io_err(format!("read {}: {e}", path.display())))
+        }
+        Err(e) => Err(io_err(format!("read {}: {e}", path.display()))),
+    }
 }
 
 // ------------------------------------------------------------------
@@ -145,9 +185,11 @@ pub async fn edit_file(
     new_content: &str,
 ) -> Result<serde_json::Value, AppError> {
     let path = canonicalize_in_workspace(&ctx.workspace, filename)?;
-    let existing = tokio::fs::read_to_string(&path)
-        .await
-        .map_err(|e| io_err(format!("read {}: {e}", path.display())))?;
+    // Same fallback as read_file: if the workspace file doesn't exist,
+    // try loading from the user-attachment originals store. The first
+    // edit copies the original into the workspace so subsequent edits
+    // act on the workspace copy.
+    let existing = load_file_content(ctx, filename).await?;
     let mut lines: Vec<String> = existing.lines().map(String::from).collect();
     let len = lines.len();
 
@@ -193,6 +235,15 @@ pub async fn edit_file(
 // ------------------------------------------------------------------
 
 pub async fn list_files(ctx: &SandboxContext) -> Result<serde_json::Value, AppError> {
+    // Ensure the workspace exists (it may not on the first call before
+    // any write_file has run). Mirrors B's behavior so the LLM never
+    // sees a confusing "read_dir failed: no such file" error on a
+    // fresh conversation.
+    if !ctx.workspace.exists() {
+        tokio::fs::create_dir_all(&ctx.workspace)
+            .await
+            .map_err(|e| io_err(format!("mkdir workspace: {e}")))?;
+    }
     let mut entries = tokio::fs::read_dir(&ctx.workspace)
         .await
         .map_err(|e| io_err(format!("read_dir {}: {e}", ctx.workspace.display())))?;
@@ -216,6 +267,14 @@ pub async fn list_files(ctx: &SandboxContext) -> Result<serde_json::Value, AppEr
             "is_file": meta.is_file(),
         }));
     }
+    // Stable alphabetical sort. Without this the LLM sees a
+    // non-deterministic order each call (FS-dependent) which makes
+    // the conversation harder to reason about.
+    out.sort_by(|a, b| {
+        let an = a["name"].as_str().unwrap_or("");
+        let bn = b["name"].as_str().unwrap_or("");
+        an.cmp(bn)
+    });
     Ok(json!({ "files": out }))
 }
 
@@ -230,11 +289,26 @@ pub async fn get_resource_link(
     filename: &str,
     save_as: Option<&str>,
 ) -> Result<serde_json::Value, AppError> {
-    let _ = canonicalize_in_workspace(&ctx.workspace, filename)?;
+    let path = canonicalize_in_workspace(&ctx.workspace, filename)?;
+
+    // Base URL from the cached sandbox state's loopback URL — strip
+    // the API path to get the origin. MCP clients on a different host
+    // need an absolute URL to follow the link; relative paths only work
+    // for same-origin consumers.
+    let state = config::get_state().ok_or_else(|| {
+        AppError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "SANDBOX_NOT_INITIALIZED",
+            "code_sandbox state not initialized",
+        )
+    })?;
+    let origin = state
+        .loopback_url
+        .trim_end_matches("/api/code-sandbox")
+        .to_string();
 
     // First check whether the filename matches a known attachment by
-    // name. If yes, return a JWT-signed download URL via the file
-    // module's existing /api/files/{id}/download-with-token route.
+    // name AND owned by the current user.
     let attachment = ctx
         .files
         .iter()
@@ -242,29 +316,47 @@ pub async fn get_resource_link(
 
     if let Some(att) = attachment {
         let token = sign_download_token(att.file_id, ctx.user_id)?;
-        let url = format!("/api/files/{}/download-with-token?token={token}", att.file_id);
+        let url = format!(
+            "{origin}/api/files/{}/download-with-token?token={token}",
+            att.file_id
+        );
         let name = save_as.unwrap_or(&att.filename).to_string();
         return Ok(json!({
             "type": "resource_link",
             "uri": url,
             "name": name,
             "mimeType": att.mime_type,
-            "description": "User-uploaded attachment (signed URL, expires shortly)"
+            "description": "User-uploaded attachment (signed URL, expires shortly)",
+            "is_saved": true,
         }));
     }
 
-    // Otherwise treat as a workspace artifact, served by the sandbox
-    // download route.
+    // Workspace artifact path: confirm the file exists before returning
+    // a link (otherwise the LLM hands the user a 404).
+    if !path.exists() {
+        return Err(AppError::new(
+            StatusCode::NOT_FOUND,
+            "FILE_NOT_FOUND",
+            format!("{filename} not found in workspace"),
+        ));
+    }
+
+    let mime = mime_guess::from_path(filename)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_string();
     let name = save_as.unwrap_or(filename).to_string();
     let url = format!(
-        "/api/code-sandbox/file/download?filename={}",
+        "{origin}/api/code-sandbox/file/download?filename={}",
         urlencoding_encode(filename)
     );
     Ok(json!({
         "type": "resource_link",
         "uri": url,
         "name": name,
-        "description": "Sandbox workspace artifact"
+        "mimeType": mime,
+        "description": "Sandbox workspace artifact",
+        "is_saved": false,
     }))
 }
 

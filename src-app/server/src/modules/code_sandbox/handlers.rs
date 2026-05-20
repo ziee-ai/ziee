@@ -257,8 +257,14 @@ pub async fn download_handler(
         .await
         .map_err(|e| (StatusCode::NOT_FOUND, format!("read: {e}")))?;
 
+    let content_type = mime_guess::from_path(&q.filename)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_string();
+
     Ok(Response::builder()
         .status(StatusCode::OK)
+        .header("Content-Type", content_type)
         .header(
             "Content-Disposition",
             format!("attachment; filename=\"{}\"", basename(&q.filename)),
@@ -331,73 +337,158 @@ fn workspace_for(state: &CodeSandboxState, conversation_id: Uuid) -> std::path::
 // --------------------------------------------------------------------
 
 pub(crate) fn tool_definitions() -> Value {
+    // Descriptions carry runtime guidance the LLM uses to plan its
+    // tool calls (rootfs is read-only → --user installs; line-number
+    // format passes through read_file → edit_file; etc.). Kept verbose
+    // on purpose; clients surface these directly to the model.
     json!([
         {
             "name": "execute_command",
-            "description": "Run a shell command inside the sandbox. Returns stdout, stderr, exit_code. \
-                Wall-clock timeout 600s. Output capped at 1 MiB per stream.",
+            "description": "Execute a shell command in the sandbox.\n\
+                \n\
+                RUNTIMES: Python 3, R, Node.js 22 (TypeScript / ts-node globally installed).\n\
+                \n\
+                BEFORE INSTALLING A PACKAGE: Always check if it is already installed first.\n\
+                - Python: python3 -c \"import <pkg>\" 2>/dev/null && echo installed || echo missing\n\
+                - R: Rscript -e \"'<pkg>' %in% rownames(installed.packages())\"\n\
+                Only install if the check shows the package is missing.\n\
+                \n\
+                INSTALLING EXTRA PACKAGES: The rootfs /usr is read-only, so you MUST always use \
+                'pip install --user <pkg>' (NOT 'pip install <pkg>'). User-installed packages persist \
+                across calls in this conversation.\n\
+                \n\
+                FILES: Conversation attachments are available in the working directory by their \
+                original filenames.\n\
+                TIMEOUT: 10 minutes. Output capped at 1 MiB per stream.",
             "inputSchema": {
                 "type": "object",
                 "required": ["command"],
                 "properties": {
-                    "command": { "type": "string", "description": "Shell command to execute" }
+                    "command": {
+                        "type": "string",
+                        "description": "Shell command to execute (runs via /bin/bash -lc)"
+                    }
                 }
             }
         },
         {
             "name": "read_file",
-            "description": "Read a file from the sandbox workspace, line-numbered. Optional start/end line slice.",
+            "description": "Read a file by filename. Searches first in the sandbox working directory, \
+                then falls back to conversation attachments (loaded transparently from the user's \
+                originals store). Use just the filename (e.g., 'data.csv'), not a full path. \
+                Output includes 1-indexed line numbers in the format 'N: content' — these line numbers \
+                feed directly into edit_file.",
             "inputSchema": {
                 "type": "object",
                 "required": ["filename"],
                 "properties": {
-                    "filename": { "type": "string", "description": "Workspace-relative path; no traversal allowed" },
-                    "start_line": { "type": "integer", "minimum": 1 },
-                    "end_line": { "type": "integer", "minimum": 1 }
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename to read (plain name only, e.g. 'data.csv')"
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "First line to return (1-indexed, optional)"
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Last line to return (inclusive, optional)"
+                    }
                 }
             }
         },
         {
             "name": "write_file",
-            "description": "Create or overwrite a file in the sandbox workspace.",
+            "description": "Write content to a file in the sandbox working directory. Creates or \
+                overwrites the file (and any intermediate parent directories). Use a plain filename \
+                (e.g., 'script.py'). If the resulting file needs to be shared with the user or passed \
+                to another MCP server, call get_resource_link.",
             "inputSchema": {
                 "type": "object",
                 "required": ["filename", "content"],
                 "properties": {
-                    "filename": { "type": "string" },
-                    "content": { "type": "string" }
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename to write (plain name, e.g. 'script.py')"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "File content to write"
+                    }
                 }
             }
         },
         {
             "name": "edit_file",
-            "description": "Replace a range of lines in a file. start_line = len+1 appends.",
+            "description": "Edit a file by replacing lines start_line through end_line (1-indexed, \
+                inclusive) with new_content. Call read_file first to identify the correct line range — \
+                output is in 'N: content' format. \
+                new_content may be an empty string to delete lines without replacement. \
+                To append after the last line, set start_line = total_line_count + 1 \
+                (e.g., for a 10-line file, use start_line=11, end_line=11). \
+                Use a plain filename. If the resulting file needs to be shared with the user or passed \
+                to another MCP server, call get_resource_link.",
             "inputSchema": {
                 "type": "object",
                 "required": ["filename", "start_line", "end_line", "new_content"],
                 "properties": {
-                    "filename": { "type": "string" },
-                    "start_line": { "type": "integer", "minimum": 1 },
-                    "end_line": { "type": "integer", "minimum": 1 },
-                    "new_content": { "type": "string" }
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename to edit (plain name, e.g. 'script.py')"
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "First line to replace (1-indexed, inclusive). Use total_line_count+1 to append after last line."
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Last line to replace (1-indexed, inclusive). Ignored when appending."
+                    },
+                    "new_content": {
+                        "type": "string",
+                        "description": "Replacement content for the specified line range. May be empty to delete lines, or multi-line."
+                    }
                 }
             }
         },
         {
             "name": "list_files",
-            "description": "List top-level files in the sandbox workspace (skips hidden + sandbox state).",
+            "description": "List files in the sandbox working directory (root level only, sorted \
+                alphabetically). Shows user-written files and any conversation attachments that have \
+                been read into the workspace. Hidden files (.dotfiles) and sandbox-internal state \
+                (.sandbox_*) are excluded.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "get_resource_link",
-            "description": "Returns an MCP resource_link for a file. User attachments are served via a \
-                short-lived JWT-signed URL; workspace artifacts via the sandbox download route.",
+            "description": "Return a standard MCP resource_link for a file, either from the sandbox \
+                working directory or from user-attached conversation files.\n\
+                \n\
+                Use this tool when an external MCP server needs a download URL to access a file:\n\
+                - For files you produced in this session (via write_file, edit_file, or \
+                execute_command): returns an absolute URL the MCP client will fetch and may save as a \
+                permanent artifact (`is_saved: false`).\n\
+                - For user-attached files (referenced by their original filename): returns a short-lived \
+                JWT-signed download-with-token URL that can be passed directly to external MCP tools \
+                (`is_saved: true`).\n\
+                \n\
+                Use a plain filename (e.g., 'report.pdf' or 'data.csv').",
             "inputSchema": {
                 "type": "object",
                 "required": ["filename"],
                 "properties": {
-                    "filename": { "type": "string" },
-                    "save_as": { "type": "string", "description": "Optional display name override" }
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename of the file in the sandbox working directory"
+                    },
+                    "save_as": {
+                        "type": "string",
+                        "description": "Optional display name for the artifact (defaults to filename)"
+                    }
                 }
             }
         }
