@@ -134,3 +134,73 @@ pub struct CodeSandboxState {
     pub workspace_root: PathBuf,
     pub caps: HardeningCapabilities,
 }
+
+// =====================================================================
+// Tier 1 unit tests — JSON-RPC envelope
+// =====================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jsonrpc_request_round_trip() {
+        let raw = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"#;
+        let req: JsonRpcRequest = serde_json::from_str(raw).expect("parse");
+        assert_eq!(req.jsonrpc, "2.0");
+        assert_eq!(req.method, "tools/list");
+        assert_eq!(req.id, Some(serde_json::json!(1)));
+    }
+
+    #[test]
+    fn jsonrpc_request_accepts_missing_jsonrpc_field() {
+        let raw = r#"{"id":1,"method":"initialize"}"#;
+        let req: JsonRpcRequest = serde_json::from_str(raw).expect("parse");
+        assert_eq!(req.jsonrpc, "2.0"); // default applied
+    }
+
+    #[test]
+    fn jsonrpc_request_accepts_string_id() {
+        let raw = r#"{"jsonrpc":"2.0","id":"abc","method":"x"}"#;
+        let req: JsonRpcRequest = serde_json::from_str(raw).expect("parse");
+        assert_eq!(req.id, Some(serde_json::json!("abc")));
+    }
+
+    #[test]
+    fn jsonrpc_error_helpers_have_canonical_codes() {
+        let mnf = JsonRpcError::method_not_found("foo");
+        assert_eq!(mnf.code, JsonRpcError::METHOD_NOT_FOUND);
+        assert_eq!(mnf.code, -32601);
+
+        let ip = JsonRpcError::invalid_params("bad");
+        assert_eq!(ip.code, JsonRpcError::INVALID_PARAMS);
+        assert_eq!(ip.code, -32602);
+
+        let internal = JsonRpcError::internal("boom");
+        assert_eq!(internal.code, JsonRpcError::INTERNAL);
+        assert_eq!(internal.code, -32603);
+    }
+
+    #[test]
+    fn jsonrpc_response_serializes_with_either_result_or_error() {
+        let ok = JsonRpcResponse {
+            jsonrpc: "2.0",
+            id: Some(serde_json::json!(7)),
+            result: Some(serde_json::json!({"x": 1})),
+            error: None,
+        };
+        let s = serde_json::to_string(&ok).unwrap();
+        assert!(s.contains("\"result\""));
+        assert!(!s.contains("\"error\""));
+
+        let err = JsonRpcResponse {
+            jsonrpc: "2.0",
+            id: None,
+            result: None,
+            error: Some(JsonRpcError::method_not_found("nope")),
+        };
+        let s = serde_json::to_string(&err).unwrap();
+        assert!(s.contains("\"error\""));
+        assert!(!s.contains("\"result\""));
+    }
+}

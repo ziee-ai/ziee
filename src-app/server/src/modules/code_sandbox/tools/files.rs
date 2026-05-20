@@ -322,3 +322,177 @@ fn urlencoding_encode(s: &str) -> String {
     }
     out
 }
+
+// =====================================================================
+// Tier 1 unit tests — path traversal + file IO + edit_file arithmetic
+// =====================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::code_sandbox::models::ConversationFile;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+    use uuid::Uuid;
+
+    fn workspace() -> TempDir {
+        tempfile::tempdir().expect("tempdir")
+    }
+
+    fn ctx_for(tmp: &TempDir) -> SandboxContext {
+        SandboxContext {
+            conversation_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            workspace: tmp.path().to_path_buf(),
+            files: Arc::new(Vec::<ConversationFile>::new()),
+        }
+    }
+
+    // ─── path traversal ─────────────────────────────────────────────
+
+    #[test]
+    fn canonicalize_accepts_simple_names() {
+        let tmp = workspace();
+        assert!(canonicalize_in_workspace(tmp.path(), "foo.txt").is_ok());
+        assert!(canonicalize_in_workspace(tmp.path(), "sub/foo.txt").is_ok());
+        assert!(canonicalize_in_workspace(tmp.path(), "./sub/foo.txt").is_ok());
+    }
+
+    #[test]
+    fn canonicalize_rejects_absolute_paths() {
+        let tmp = workspace();
+        let err = canonicalize_in_workspace(tmp.path(), "/etc/passwd")
+            .expect_err("must reject absolute path");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("absolute"), "msg: {msg}");
+    }
+
+    #[test]
+    fn canonicalize_rejects_parent_dir_components() {
+        let tmp = workspace();
+        for path in &["../escape", "../../etc/passwd", "foo/../../../escape"] {
+            let err = canonicalize_in_workspace(tmp.path(), path).expect_err(path);
+            let msg = format!("{err:?}");
+            assert!(msg.contains("traversal") || msg.contains(".."), "msg: {msg}");
+        }
+    }
+
+    #[test]
+    fn canonicalize_rejects_empty_and_nul() {
+        let tmp = workspace();
+        assert!(canonicalize_in_workspace(tmp.path(), "").is_err());
+        assert!(canonicalize_in_workspace(tmp.path(), "foo\0bar").is_err());
+    }
+
+    // ─── read/write/list happy paths ───────────────────────────────
+
+    #[tokio::test]
+    async fn write_then_read_round_trip() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        write_file(&ctx, "hello.txt", "line1\nline2\nline3\n")
+            .await
+            .unwrap();
+        let result = read_file(&ctx, "hello.txt", None, None).await.unwrap();
+        let text = result["text"].as_str().unwrap();
+        assert!(text.contains("1: line1"));
+        assert!(text.contains("2: line2"));
+        assert_eq!(result["total_lines"].as_u64().unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn read_file_slice() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        write_file(&ctx, "h.txt", "a\nb\nc\nd\ne\n").await.unwrap();
+        let r = read_file(&ctx, "h.txt", Some(2), Some(4)).await.unwrap();
+        let text = r["text"].as_str().unwrap();
+        assert!(text.contains("2: b"));
+        assert!(text.contains("4: d"));
+        assert!(!text.contains("1: a"));
+        assert!(!text.contains("5: e"));
+    }
+
+    #[tokio::test]
+    async fn read_missing_file_returns_clean_error() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        let err = read_file(&ctx, "nope.txt", None, None)
+            .await
+            .expect_err("must error");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("read") || msg.contains("WORKSPACE_IO_ERROR"),
+            "msg: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_files_skips_hidden_and_sandbox_state() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        std::fs::write(tmp.path().join(".hidden"), "x").unwrap();
+        std::fs::write(tmp.path().join(".sandbox_passwd"), "x").unwrap();
+        std::fs::write(tmp.path().join("visible.txt"), "x").unwrap();
+        let r = list_files(&ctx).await.unwrap();
+        let names: Vec<String> = r["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(names, vec!["visible.txt".to_string()]);
+    }
+
+    // ─── edit_file arithmetic ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn edit_file_replaces_inner_range() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        write_file(&ctx, "f.txt", "a\nb\nc\nd\n").await.unwrap();
+        edit_file(&ctx, "f.txt", 2, 3, "X\nY").await.unwrap();
+        let r = read_file(&ctx, "f.txt", None, None).await.unwrap();
+        let text = r["text"].as_str().unwrap();
+        assert!(text.contains("1: a"));
+        assert!(text.contains("2: X"));
+        assert!(text.contains("3: Y"));
+        assert!(text.contains("4: d"));
+        assert!(!text.contains("b") || text.contains("X"));
+    }
+
+    #[tokio::test]
+    async fn edit_file_append_mode_when_start_is_len_plus_one() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        write_file(&ctx, "f.txt", "a\nb\n").await.unwrap();
+        // len = 2 → start_line = 3 should append.
+        edit_file(&ctx, "f.txt", 3, 3, "c\nd").await.unwrap();
+        let r = read_file(&ctx, "f.txt", None, None).await.unwrap();
+        assert_eq!(r["total_lines"].as_u64().unwrap(), 4);
+    }
+
+    #[tokio::test]
+    async fn edit_file_past_end_is_rejected() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        write_file(&ctx, "f.txt", "a\nb\n").await.unwrap();
+        let err = edit_file(&ctx, "f.txt", 99, 100, "x")
+            .await
+            .expect_err("past end");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("past end-of-file"), "msg: {msg}");
+    }
+
+    #[tokio::test]
+    async fn edit_file_rejects_inverted_range() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        write_file(&ctx, "f.txt", "a\nb\nc\n").await.unwrap();
+        let err = edit_file(&ctx, "f.txt", 3, 2, "x")
+            .await
+            .expect_err("inverted");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("end_line"), "msg: {msg}");
+    }
+}

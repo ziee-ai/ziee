@@ -544,3 +544,189 @@ fn _force_fd_imports(f: std::fs::File) -> RawFd {
     let _moved = unsafe { std::fs::File::from_raw_fd(fd) }.into_raw_fd();
     _moved
 }
+
+// =====================================================================
+// Tier 1 unit tests — argv builder + output cap
+// =====================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::config::CodeSandboxConfig;
+    use crate::modules::code_sandbox::models::ConversationFile;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn fake_caps() -> HardeningCapabilities {
+        HardeningCapabilities {
+            bwrap_path: PathBuf::from("/usr/bin/bwrap"),
+            pid_namespace: PidNsMode::Strict,
+            cgroup: CgroupMode::None,
+            seccomp: SeccompMode::NotLinked,
+        }
+    }
+
+    fn fake_state() -> CodeSandboxState {
+        CodeSandboxState {
+            config: CodeSandboxConfig {
+                enabled: true,
+                rootfs_path: "/opt/ziee-sandbox-rootfs/current".to_string(),
+                cgroup_parent: String::new(),
+            },
+            loopback_url: "http://127.0.0.1:8080/api/code-sandbox".to_string(),
+            workspace_root: PathBuf::from("/tmp/ziee-workspace"),
+            caps: fake_caps(),
+        }
+    }
+
+    fn fake_ctx() -> SandboxContext {
+        SandboxContext {
+            conversation_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            workspace: PathBuf::from("/tmp/ws"),
+            files: Arc::new(Vec::<ConversationFile>::new()),
+        }
+    }
+
+    #[test]
+    fn argv_always_terminates_user_input_with_dashdash() {
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state,
+            &ctx,
+            "echo hello",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+        );
+        // There should be at least one `--` before the prlimit wrapper.
+        let prlimit_idx = argv
+            .iter()
+            .position(|a| a == "/usr/bin/prlimit")
+            .expect("prlimit not in argv");
+        let dashdash_before = argv[..prlimit_idx]
+            .iter()
+            .rposition(|a| a == "--")
+            .expect("no -- before prlimit");
+        // Nothing flag-like between the last `--` and prlimit (only
+        // flag-like would be `--seccomp <fd>` which is correctly placed
+        // before the `--`).
+        assert!(prlimit_idx > dashdash_before);
+    }
+
+    #[test]
+    fn argv_uses_dev_bind_proc_in_fallback_mode() {
+        let mut caps = fake_caps();
+        caps.pid_namespace = PidNsMode::DevBindFallback;
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state,
+            &ctx,
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+        );
+        // Must use --dev-bind /proc /proc, NOT --proc /proc.
+        assert!(argv.windows(3).any(|w| w == ["--dev-bind", "/proc", "/proc"]));
+        assert!(!argv.windows(2).any(|w| w == ["--proc", "/proc"]));
+        assert!(!argv.iter().any(|a| a == "--unshare-pid"));
+    }
+
+    #[test]
+    fn argv_uses_strict_proc_when_pid_ns_strict() {
+        let caps = fake_caps(); // PidNsMode::Strict
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state,
+            &ctx,
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+        );
+        assert!(argv.iter().any(|a| a == "--unshare-pid"));
+        assert!(argv.windows(2).any(|w| w == ["--proc", "/proc"]));
+    }
+
+    #[test]
+    fn argv_includes_seccomp_fd_only_when_provided() {
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv_without = build_bwrap_argv(
+            &caps,
+            &state,
+            &ctx,
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+        );
+        assert!(!argv_without.iter().any(|a| a == "--seccomp"));
+
+        let argv_with = build_bwrap_argv(
+            &caps,
+            &state,
+            &ctx,
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            Some(7),
+        );
+        assert!(argv_with.windows(2).any(|w| w == ["--seccomp", "7"]));
+    }
+
+    #[test]
+    fn argv_prlimit_carries_expected_flags() {
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state,
+            &ctx,
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+        );
+        let s = argv.join(" ");
+        assert!(s.contains("/usr/bin/prlimit"));
+        assert!(s.contains("--nproc=256"));
+        assert!(s.contains("--core=0"));
+        assert!(s.contains("--fsize="));
+        assert!(s.contains("--as="));
+    }
+
+    #[test]
+    fn output_cap_is_one_mib() {
+        assert_eq!(OUTPUT_CAP_BYTES, 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn read_capped_truncates_at_one_mib() {
+        // 2 MiB of bytes through the reader; expect exactly 1 MiB out.
+        let big = vec![b'X'; 2 * 1024 * 1024];
+        let cursor = std::io::Cursor::new(big);
+        let (buf, truncated) = read_capped_owned(cursor).await;
+        assert_eq!(buf.len(), OUTPUT_CAP_BYTES);
+        assert!(truncated);
+    }
+
+    #[tokio::test]
+    async fn read_capped_passes_through_short_output() {
+        let cursor = std::io::Cursor::new(b"hello".to_vec());
+        let (buf, truncated) = read_capped_owned(cursor).await;
+        assert_eq!(&buf, b"hello");
+        assert!(!truncated);
+    }
+}

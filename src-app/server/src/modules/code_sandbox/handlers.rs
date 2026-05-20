@@ -411,7 +411,7 @@ fn workspace_for(state: &CodeSandboxState, conversation_id: Uuid) -> std::path::
 // Tier 1 against a checked-in fixture).
 // --------------------------------------------------------------------
 
-fn tool_definitions() -> Value {
+pub(crate) fn tool_definitions() -> Value {
     json!([
         {
             "name": "execute_command",
@@ -483,4 +483,93 @@ fn tool_definitions() -> Value {
             }
         }
     ])
+}
+
+// =====================================================================
+// Tier 1 unit tests — tool catalog snapshot + JWT helper
+// =====================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    /// Snapshot: the 6 tools' names + their required-arg sets. Bumping
+    /// this is a deliberate signal that the public sandbox surface
+    /// changed — schema bump territory.
+    #[test]
+    fn tool_definitions_snapshot() {
+        let tools: Value = super::tool_definitions();
+        let arr = tools.as_array().expect("tools is an array");
+        assert_eq!(arr.len(), 6, "expected exactly 6 tools");
+
+        let mut shape: Vec<(String, Vec<String>)> = arr
+            .iter()
+            .map(|t| {
+                let name = t["name"].as_str().unwrap().to_string();
+                let required: Vec<String> = t["inputSchema"]["required"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                (name, required)
+            })
+            .collect();
+        shape.sort();
+
+        let expected: Vec<(String, Vec<String>)> = vec![
+            ("edit_file".into(), vec!["filename".into(), "start_line".into(), "end_line".into(), "new_content".into()]),
+            ("execute_command".into(), vec!["command".into()]),
+            ("get_resource_link".into(), vec!["filename".into()]),
+            ("list_files".into(), vec![]),
+            ("read_file".into(), vec!["filename".into()]),
+            ("write_file".into(), vec!["filename".into(), "content".into()]),
+        ];
+
+        assert_eq!(
+            shape, expected,
+            "tool catalog changed — bump SANDBOX_ROOTFS_SCHEMA_VERSION + update this snapshot"
+        );
+    }
+
+    #[test]
+    fn tool_definitions_have_valid_input_schemas() {
+        let tools = super::tool_definitions();
+        for t in tools.as_array().unwrap() {
+            let schema = &t["inputSchema"];
+            assert_eq!(schema["type"], "object", "{} schema type", t["name"]);
+            assert!(
+                schema.get("properties").is_some(),
+                "{} missing properties",
+                t["name"]
+            );
+        }
+    }
+
+    #[test]
+    fn extract_conversation_id_parses_uuid() {
+        let mut h = HeaderMap::new();
+        h.insert(
+            "x-conversation-id",
+            "11111111-2222-3333-4444-555555555555".parse().unwrap(),
+        );
+        let got = extract_conversation_id(&h).expect("ok");
+        assert_eq!(got.to_string(), "11111111-2222-3333-4444-555555555555");
+    }
+
+    #[test]
+    fn extract_conversation_id_rejects_missing_header() {
+        let h = HeaderMap::new();
+        assert!(extract_conversation_id(&h).is_err());
+    }
+
+    #[test]
+    fn extract_conversation_id_rejects_garbage() {
+        let mut h = HeaderMap::new();
+        h.insert("x-conversation-id", "not-a-uuid".parse().unwrap());
+        assert!(extract_conversation_id(&h).is_err());
+    }
 }

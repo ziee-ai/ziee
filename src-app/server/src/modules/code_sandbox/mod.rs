@@ -41,11 +41,43 @@ pub fn code_sandbox_server_id() -> Uuid {
 
 /// Normalize a host string for loopback URL construction.
 /// `0.0.0.0`, `::`, empty → `127.0.0.1` (otherwise pass through).
-/// Unit-tested in Phase 9.
 pub fn loopback_host(server_host: &str) -> &str {
     match server_host.trim() {
         "" | "0.0.0.0" | "::" | "[::]" | "0:0:0:0:0:0:0:0" => "127.0.0.1",
         _ => server_host,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_host_normalizes_wildcards() {
+        assert_eq!(loopback_host("0.0.0.0"), "127.0.0.1");
+        assert_eq!(loopback_host("::"), "127.0.0.1");
+        assert_eq!(loopback_host("[::]"), "127.0.0.1");
+        assert_eq!(loopback_host("0:0:0:0:0:0:0:0"), "127.0.0.1");
+        assert_eq!(loopback_host(""), "127.0.0.1");
+        assert_eq!(loopback_host("  "), "127.0.0.1");
+    }
+
+    #[test]
+    fn loopback_host_passes_through_concrete_addresses() {
+        assert_eq!(loopback_host("127.0.0.1"), "127.0.0.1");
+        assert_eq!(loopback_host("10.0.0.5"), "10.0.0.5");
+        assert_eq!(loopback_host("example.local"), "example.local");
+        assert_eq!(loopback_host("[2001:db8::1]"), "[2001:db8::1]");
+    }
+
+    #[test]
+    fn code_sandbox_server_id_is_stable() {
+        // The migration-36 hardcoded UUID assumes this exact value;
+        // changing this constant requires a coordinated schema bump.
+        assert_eq!(
+            code_sandbox_server_id().to_string(),
+            "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd"
+        );
     }
 }
 
