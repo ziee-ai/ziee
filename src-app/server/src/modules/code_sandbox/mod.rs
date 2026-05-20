@@ -31,6 +31,28 @@ pub mod sandbox;
 pub mod tools;
 pub mod types;
 
+/// Embedded rootfs ↔ server compat matrix (single source of truth lives
+/// in `src-app/sandbox-rootfs/compat.toml`). The server include_str!s it
+/// at compile time so a server build is locked to the schema knowledge
+/// it was built with.
+pub const SANDBOX_COMPAT_TOML: &str =
+    include_str!("../../../../sandbox-rootfs/compat.toml");
+
+/// Embedded yanked-revision catalog. See `src-app/sandbox-rootfs/yanks.toml`.
+pub const SANDBOX_YANKS_TOML: &str =
+    include_str!("../../../../sandbox-rootfs/yanks.toml");
+
+/// Embedded known-revision sha256 map. Populated by the post-release
+/// PR-bot workflow; until then it's an empty scaffold and `fetch`
+/// callers must supply `--sha256` explicitly.
+pub const SANDBOX_KNOWN_REVISIONS_TOML: &str = include_str!("known_revisions.toml");
+
+/// Schema version this server binary expects from the mounted rootfs.
+/// Bumped only on ABI-breaking rootfs changes (Python major bump,
+/// binary path changes, layout changes). Mirrors `current_schema` in
+/// `src-app/sandbox-rootfs/compat.toml`.
+pub const SANDBOX_ROOTFS_SCHEMA_VERSION: u32 = 1;
+
 pub use repository::CodeSandboxRepository;
 
 /// Deterministic UUID for the built-in sandbox MCP server row.

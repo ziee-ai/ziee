@@ -28,6 +28,7 @@ paste = "1.0"
 linkme = "0.3"
 dashmap = "6"
 libc = "0.2"
+libseccomp = { version = "0.3", optional = true }
 thiserror = "2.0.12"
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -114,6 +115,11 @@ path = "tests/mcp/examples/mock_sampling_server.rs"
 [features]
 default = ["gpu-detect"]
 gpu-detect = ["nvml-wrapper", "opencl3", "ash", "wgpu-hal"]
+# Enable the code_sandbox seccomp-bpf syscall filter. Requires
+# libseccomp-dev (`apt install libseccomp-dev`). Without this feature
+# the sandbox runs with rlimits + namespaces only — no syscall-level
+# defense-in-depth.
+code_sandbox_seccomp = ["dep:libseccomp"]
 
 [build-dependencies]
 tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros"] }

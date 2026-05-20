@@ -1,0 +1,3 @@
+# snapshot.ubuntu.com date for reproducible apt installs.
+# Bump deliberately; CI's reproducibility check will catch silent drift.
+20250115T000000Z

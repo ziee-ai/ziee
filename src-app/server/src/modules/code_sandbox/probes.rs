@@ -247,7 +247,7 @@ mod seccomp_impl {
 
     pub fn build() -> Result<Vec<u8>, String> {
         let mut ctx =
-            ScmpFilterContext::new(ScmpAction::Allow).map_err(|e| format!("ctx: {e}"))?;
+            ScmpFilterContext::new_filter(ScmpAction::Allow).map_err(|e| format!("ctx: {e}"))?;
         for name in DENY {
             let sys = ScmpSyscall::from_name(name)
                 .map_err(|e| format!("resolve {name}: {e}"))?;

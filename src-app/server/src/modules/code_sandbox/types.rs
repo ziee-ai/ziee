@@ -136,6 +136,37 @@ pub struct CodeSandboxState {
 }
 
 // =====================================================================
+// ConversationIdHeader — axum extractor for the `x-conversation-id`
+// request header. Equivalent in behavior to the inline parser in
+// `handlers::extract_conversation_id`; we expose it as a proper
+// extractor for any future handler that wants typed-extraction
+// ergonomics. The existing handlers stay on the inline parser so the
+// per-conversation mutex acquisition order doesn't reshuffle.
+// =====================================================================
+
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+use axum::http::StatusCode;
+
+pub struct ConversationIdHeader(pub Uuid);
+
+impl<S: Send + Sync> FromRequestParts<S> for ConversationIdHeader {
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let raw = parts
+            .headers
+            .get("x-conversation-id")
+            .ok_or((StatusCode::BAD_REQUEST, "missing x-conversation-id"))?
+            .to_str()
+            .map_err(|_| (StatusCode::BAD_REQUEST, "x-conversation-id is not ASCII"))?;
+        let uuid = Uuid::parse_str(raw.trim())
+            .map_err(|_| (StatusCode::BAD_REQUEST, "x-conversation-id is not a uuid"))?;
+        Ok(ConversationIdHeader(uuid))
+    }
+}
+
+// =====================================================================
 // Tier 1 unit tests — JSON-RPC envelope
 // =====================================================================
 

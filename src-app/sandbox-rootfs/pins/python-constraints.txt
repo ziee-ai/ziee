@@ -1,0 +1,37 @@
+# Hashed pip pins for the full-flavor rootfs.
+#
+# Used by Dockerfile's full-flavor RUN block:
+#   pip3 install --no-cache-dir --break-system-packages --require-hashes \
+#     -c src-app/sandbox-rootfs/pins/python-constraints.txt \
+#     numpy pandas matplotlib scipy scikit-learn ...
+#
+# The Dockerfile currently installs without --require-hashes for v1.r0
+# bootstrap simplicity; tighten this file with `pip-compile --generate-hashes`
+# before the v2 release CI lands.
+
+# === stdlib + tooling (always present) ===
+# (intentionally minimal until first reproducible build pins these)
+
+# === full flavor: data science stack (Dockerfile RUN line) ===
+# numpy
+# pandas
+# matplotlib
+# scipy
+# scikit-learn
+# seaborn
+# plotly
+# statsmodels
+# sympy
+# requests
+# httpx
+# beautifulsoup4
+# ipython
+# jupyter
+# pillow
+# openpyxl
+# xlrd
+# pyarrow
+
+# === full flavor: torch CPU ===
+# torch
+# torchvision

@@ -1,0 +1,40 @@
+# Reusable workflow body for the rootfs publish pipeline.
+#
+# The actual GitHub Actions entry point lives at
+# .github/workflows/sandbox-rootfs-release.yml, which invokes the steps
+# documented here. Keeping the canonical step list in this file means
+# changes to the publish flow ship as part of the rootfs source tree
+# (auditable in the same PR that touches the build script / pins),
+# not buried in .github/.
+
+# Steps (mirrors the release workflow):
+#
+# 1. Build the rootfs:
+#      src-app/sandbox-rootfs/build.sh --flavor <minimal|full>
+#
+# 2. Reproducibility check (build twice, sha256 must match):
+#      src-app/sandbox-rootfs/ci/reproducibility-check.sh <flavor>
+#
+# 3. Surface assertions (binaries present, no setuid, schema file ok):
+#      src-app/sandbox-rootfs/ci/smoke-test.sh <built-squashfs>
+#
+# 4. Size sanity:
+#      - full flavor:     ≥ 500 MB AND ≤ 2 GiB (GitHub Releases cap)
+#      - minimal flavor:  ≥ 50 MB
+#
+# 5. Sidecar generation:
+#      - <name>.sha256        — `sha256sum <name> > <name>.sha256`
+#      - <name>.zsync         — `zsyncmake -o <name>.zsync <name>`
+#      - <name>.cosign.bundle — `cosign sign-blob --yes --bundle ...`
+#
+# 6. Publish:
+#      gh release upload <tag> <name> <sidecars> --clobber
+#
+# 7. Post-release PR-bot:
+#      open a PR against ziee-chat updating
+#      src-app/server/src/modules/code_sandbox/known_revisions.toml with
+#      the new (schema, revision, arch, flavor, sha256) tuple so the
+#      next server build's embedded map knows about this revision.
+
+# This file is documentation. The implementation is in
+# .github/workflows/sandbox-rootfs-release.yml.

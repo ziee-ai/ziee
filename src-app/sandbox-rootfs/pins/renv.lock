@@ -1,0 +1,11 @@
+{
+  "R": {
+    "Version": "4.4.0",
+    "Repositories": [
+      { "Name": "CRAN", "URL": "https://cloud.r-project.org" }
+    ]
+  },
+  "Packages": {
+    "_comment": "renv-style lockfile placeholder. v2 CI will regenerate this with exact pin versions captured from a successful reproducible build. Until then the Dockerfile installs unpinned CRAN packages: ggplot2, dplyr, tidyr, readr, stringr, lubridate, purrr, tibble, jsonlite, httr, data.table, caret, forecast."
+  }
+}

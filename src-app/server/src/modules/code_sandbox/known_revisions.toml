@@ -1,0 +1,18 @@
+# Embedded map of (schema, revision, arch, flavor) → sha256 for
+# rootfs revisions this server build was tested against.
+#
+# Populated by the post-release PR-bot workflow in Phase 12 workflow 3
+# step 7. Until that automation lands, this file stays empty and
+# `fetch-sandbox-rootfs` cannot verify by embedded digest — it must be
+# given an explicit `--sha256` or skip verification at the user's risk.
+#
+# Format:
+#   [[revisions]]
+#   schema = 1
+#   revision = "r0"
+#   arch = "x86_64"
+#   flavor = "minimal"        # or "full"
+#   sha256 = "abc123..."
+#   yanked = false
+
+# (no revisions seeded yet — bootstrap pending)
