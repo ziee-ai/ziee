@@ -165,8 +165,19 @@ async fn dispatch(
                     ))
                 })?;
 
+            // MCP spec: `content[]` is an array of typed content blocks
+            // ({type:"text"}, {type:"resource_link"}, {type:"image"}, ...).
+            // Tools whose result IS already an MCP content block (i.e. has
+            // a `type` field matching a known block type) must be passed
+            // through verbatim — wrapping such a result in a text block
+            // would silently break spec-conformant clients walking
+            // `content[].type == "resource_link"`. Other tools' results
+            // are structured JSON; serialize as a text block so the LLM
+            // can parse them.
+            let content = mcp_content_blocks(&result);
+
             Ok(json!({
-                "content": [{ "type": "text", "text": serde_json::to_string(&result).unwrap_or_default() }],
+                "content": content,
                 "isError": false,
                 "structuredContent": result,
             }))
@@ -266,6 +277,36 @@ fn invalid_tool_args(e: serde_json::Error) -> crate::common::AppError {
     )
 }
 
+/// Build the MCP `content[]` array for a tool result.
+///
+/// If the tool already returned a typed MCP content block
+/// (`{type:"resource_link", ...}`, `{type:"image", ...}`, etc.),
+/// pass it through verbatim. Otherwise serialize the structured
+/// result as JSON in a text block.
+///
+/// Why this matters: the MCP 2025-11-25 spec says `content[]` is an
+/// array of typed blocks. Wrapping a resource_link inside a text
+/// block would silently break clients that walk
+/// `content[].type == "resource_link"` to find downloadable URIs.
+fn mcp_content_blocks(result: &Value) -> Vec<Value> {
+    const KNOWN_CONTENT_TYPES: &[&str] = &[
+        "text",
+        "image",
+        "audio",
+        "resource_link",
+        "resource",
+    ];
+    if let Some(t) = result.get("type").and_then(|v| v.as_str()) {
+        if KNOWN_CONTENT_TYPES.contains(&t) {
+            return vec![result.clone()];
+        }
+    }
+    vec![json!({
+        "type": "text",
+        "text": serde_json::to_string(result).unwrap_or_default(),
+    })]
+}
+
 // --------------------------------------------------------------------
 // GET /api/code-sandbox/file/download — workspace artifact serving.
 // --------------------------------------------------------------------
@@ -314,7 +355,10 @@ pub async fn download_handler(
         .header("Content-Type", content_type)
         .header(
             "Content-Disposition",
-            format!("attachment; filename=\"{}\"", basename(&q.filename)),
+            format!(
+                "attachment; filename=\"{}\"",
+                disposition_filename(&q.filename)
+            ),
         )
         .body(Body::from(bytes))
         .unwrap())
@@ -322,6 +366,25 @@ pub async fn download_handler(
 
 fn basename(name: &str) -> String {
     name.rsplit('/').next().unwrap_or(name).to_string()
+}
+
+/// Sanitize a filename for use in the `Content-Disposition` header
+/// value. RFC 6266 quoted-string disallows `"` and bare backslash;
+/// non-ASCII would need RFC 5987 `filename*=` encoding which we don't
+/// emit. Replace problematic characters with `_` so the header is
+/// always a valid HTTP header value. The actual download bytes are
+/// the file content; the filename here is just a hint.
+fn disposition_filename(name: &str) -> String {
+    let base = basename(name);
+    base.chars()
+        .map(|c| {
+            if c == '"' || c == '\\' || c == '\r' || c == '\n' || !c.is_ascii() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 // --------------------------------------------------------------------
@@ -609,4 +672,88 @@ mod tests {
     // Conversation-id extraction tests moved to types.rs alongside
     // the ConversationIdHeader axum FromRequestParts implementation
     // they exercise.
+
+    // ─── mcp_content_blocks ─────────────────────────────────────────
+
+    #[test]
+    fn content_blocks_passes_through_resource_link() {
+        let result = json!({
+            "type": "resource_link",
+            "uri": "http://example/foo",
+            "name": "foo",
+        });
+        let blocks = super::mcp_content_blocks(&result);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["type"], "resource_link");
+        assert_eq!(blocks[0]["uri"], "http://example/foo");
+        // Critically: NOT wrapped in a text block.
+        assert!(blocks[0].get("text").is_none());
+    }
+
+    #[test]
+    fn content_blocks_passes_through_image_audio_resource() {
+        for t in &["image", "audio", "resource"] {
+            let result = json!({ "type": t, "data": "..." });
+            let blocks = super::mcp_content_blocks(&result);
+            assert_eq!(blocks[0]["type"], *t, "{t} block must pass through");
+        }
+    }
+
+    #[test]
+    fn content_blocks_wraps_structured_results_in_text() {
+        let result = json!({
+            "stdout": "hello",
+            "exit_code": 0,
+        });
+        let blocks = super::mcp_content_blocks(&result);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["type"], "text");
+        let text = blocks[0]["text"].as_str().unwrap();
+        // The serialized JSON should round-trip.
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(parsed, result);
+    }
+
+    #[test]
+    fn content_blocks_wraps_unknown_type_in_text() {
+        // A tool result with an unrelated `type` field (e.g. user data
+        // with a "type" key) should NOT be passed through as a content
+        // block — it must be wrapped in a text block so the LLM sees
+        // the structured data.
+        let result = json!({ "type": "user-defined", "color": "blue" });
+        let blocks = super::mcp_content_blocks(&result);
+        assert_eq!(blocks[0]["type"], "text");
+    }
+
+    // ─── Content-Disposition filename sanitization ──────────────────
+
+    #[test]
+    fn disposition_filename_strips_quotes_and_backslashes() {
+        let raw = r#"foo"bar\baz.txt"#;
+        let out = super::disposition_filename(raw);
+        assert_eq!(out, "foo_bar_baz.txt");
+    }
+
+    #[test]
+    fn disposition_filename_strips_non_ascii() {
+        let raw = "café.txt";
+        let out = super::disposition_filename(raw);
+        assert!(out.is_ascii());
+        assert!(out.ends_with(".txt"));
+    }
+
+    #[test]
+    fn disposition_filename_strips_crlf() {
+        let raw = "foo\r\nbar.txt";
+        let out = super::disposition_filename(raw);
+        assert!(!out.contains('\r'));
+        assert!(!out.contains('\n'));
+    }
+
+    #[test]
+    fn disposition_filename_takes_basename() {
+        let raw = "sub/dir/foo.txt";
+        let out = super::disposition_filename(raw);
+        assert_eq!(out, "foo.txt");
+    }
 }
