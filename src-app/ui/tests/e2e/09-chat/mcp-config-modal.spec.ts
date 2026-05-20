@@ -39,10 +39,7 @@ test.describe('MCP Config Modal — save semantics', () => {
     testInfra,
   }) => {
     await goToNewChatPage(page, testInfra.baseURL)
-
-    // Open the modal via the store (the button to open it lives in a slot —
-    // open-by-API is more robust across UI tweaks).
-    await page.locator('[data-testid="mcp-config-open"]').click()
+    await openMcpConfigModal(page)
 
     await expect(page.locator('.ant-modal-title:has-text("MCP Configuration")')).toBeVisible({
       timeout: 5000,
@@ -92,7 +89,7 @@ test.describe('MCP Config Modal — save semantics', () => {
     )
 
     // 4. Open and immediately close the modal (auto-save fires on close)
-    await page.locator('[data-testid="mcp-config-open"]').click()
+    await openMcpConfigModal(page)
     await expect(page.locator('.ant-modal-title:has-text("MCP Configuration")')).toBeVisible()
 
     await page.click('.ant-modal button.ant-btn-primary')
@@ -115,4 +112,19 @@ test.describe('MCP Config Modal — save semantics', () => {
 async function getAdminToken(page: import('@playwright/test').Page): Promise<string> {
   const authData = await page.evaluate(() => localStorage.getItem('auth-storage'))
   return JSON.parse(authData!).state.token
+}
+
+/**
+ * Opens the MCP Config modal via its real UI path:
+ *   Toolbar + button → dropdown → "MCP tools & servers" menu item.
+ * This is the only way the modal can be opened in the app today; there is
+ * no standalone toolbar button. Requires at least one enabled MCP server
+ * (otherwise the McpMenuItem hides itself).
+ */
+async function openMcpConfigModal(page: import('@playwright/test').Page): Promise<void> {
+  await page.getByRole('button', { name: 'Add attachment' }).first().click()
+  await page.getByText('MCP tools & servers').first().click()
+  await expect(page.locator('.ant-modal-title:has-text("MCP Configuration")')).toBeVisible({
+    timeout: 5000,
+  })
 }

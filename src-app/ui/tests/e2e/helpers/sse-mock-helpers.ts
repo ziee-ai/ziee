@@ -311,7 +311,6 @@ export async function mockGetMessages(
   }))
 
   await page.route(/\/api\/conversations\/[^/]+\/messages(\?|$)/, async (route, req) => {
-    console.log(`[mockGetMessages] intercepted ${req.method()} ${req.url()}`)
     if (req.method() !== 'GET') {
       return route.fallback()
     }

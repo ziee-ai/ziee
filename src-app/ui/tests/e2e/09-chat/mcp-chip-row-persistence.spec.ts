@@ -158,19 +158,24 @@ async function assignServerToDefaultGroup(
   token: string,
   serverId: string,
 ): Promise<void> {
-  // Find the default group
-  const groupsRes = await page.request.get(`${apiURL}/api/user-groups`, {
+  const groupsRes = await page.request.get(`${apiURL}/api/groups`, {
     headers: { Authorization: `Bearer ${token}` },
   })
+  if (!groupsRes.ok()) return
   const groupsBody = await groupsRes.json()
-  const groups: Array<{ id: string; is_default?: boolean; name: string }> =
+  const groups: Array<{ id: string; is_protected?: boolean; name: string }> =
     Array.isArray(groupsBody) ? groupsBody : (groupsBody.groups ?? [])
-  const defaultGroup = groups.find(g => g.is_default) ?? groups.find(g => g.name === 'Users')
-  if (!defaultGroup) return
+  // Admin user is in the Administrators group; assigning the server there is
+  // sufficient for the admin to see it.
+  const adminGroup =
+    groups.find(g => g.name === 'Administrators') ??
+    groups.find(g => g.is_protected) ??
+    groups[0]
+  if (!adminGroup) return
 
   await page.request.post(`${apiURL}/api/mcp/system-servers/${serverId}/groups`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { group_ids: [defaultGroup.id] },
+    data: { group_ids: [adminGroup.id] },
   })
 }
 
@@ -179,16 +184,40 @@ async function setUserDefaults(
   apiURL: string,
   token: string,
   serverIds: string[],
+  allKnownServerIds?: string[],
 ): Promise<void> {
-  await page.request.put(`${apiURL}/api/mcp/defaults`, {
+  // The backend stores ONLY disabled_servers; selectedServers is computed by
+  // the frontend as (all available - disabled). To "select only these N
+  // servers", we must disable all OTHER servers (the ones not in serverIds).
+  const knownIds = allKnownServerIds ?? (await listAllServerIds(page, apiURL, token))
+  const targetIds = new Set(serverIds)
+  const toDisable = knownIds.filter(id => !targetIds.has(id))
+
+  const res = await page.request.put(`${apiURL}/api/mcp/defaults`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
-      selected_servers: serverIds.map(id => ({ server_id: id, tools: [] })),
-      disabled_servers: [],
       approval_mode: 'manual_approve',
       auto_approved_tools: [],
+      disabled_servers: toDisable.map(id => ({ server_id: id, tools: [] })),
     },
   })
+  if (!res.ok()) {
+    const txt = await res.text()
+    throw new Error(`PUT /mcp/defaults failed: ${res.status()} ${txt}`)
+  }
+}
+
+async function listAllServerIds(
+  page: import('@playwright/test').Page,
+  apiURL: string,
+  token: string,
+): Promise<string[]> {
+  const res = await page.request.get(`${apiURL}/api/mcp/system-servers`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const body = await res.json()
+  const servers: Array<{ id: string }> = Array.isArray(body) ? body : (body.servers ?? [])
+  return servers.map(s => s.id)
 }
 
 async function fetchUserDefaults(
