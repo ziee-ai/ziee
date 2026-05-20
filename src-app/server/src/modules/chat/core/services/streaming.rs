@@ -344,7 +344,7 @@ impl StreamingService {
                             }));
                             break;
                         }
-                        Ok(BeforeLlmAction::CompleteWithContent { text, annotations }) => {
+                        Ok(BeforeLlmAction::CompleteWithContent { text }) => {
                             // Approved sampling tool returned is_final_response: true before LLM call.
                             // Stream the final text directly and skip the LLM entirely.
                             tracing::info!("Skipping LLM call - extension provided final content");
@@ -354,21 +354,10 @@ impl StreamingService {
                                 _ => 0,
                             };
 
-                            let (content_type, content_data) = if annotations.is_empty() {
-                                ("text", MessageContentData::Text { text: text.clone() })
-                            } else {
-                                (
-                                    "annotated_text",
-                                    MessageContentData::AnnotatedText {
-                                        text: text.clone(),
-                                        annotations,
-                                    },
-                                )
-                            };
                             if let Err(e) = Repos.chat.core.create_content(
                                 assistant_message_id,
-                                content_type,
-                                content_data,
+                                "text",
+                                MessageContentData::Text { text: text.clone() },
                                 content_offset,
                             ).await {
                                 let _ = tx.send(Err(e));
@@ -502,7 +491,7 @@ impl StreamingService {
                 };
 
                 match action {
-                    Some(crate::modules::chat::core::extension::ExtensionAction::CompleteWithContent { text, annotations }) => {
+                    Some(crate::modules::chat::core::extension::ExtensionAction::CompleteWithContent { text }) => {
                         // Tool result is a final user-facing answer (is_final_response: true).
                         // Emit the text as a delta, save it to the DB, then complete.
 
@@ -512,22 +501,10 @@ impl StreamingService {
                             _ => 0,
                         };
 
-                        // Persist as AnnotatedText (with annotations) or plain Text
-                        let (content_type, content_data) = if annotations.is_empty() {
-                            ("text", MessageContentData::Text { text: text.clone() })
-                        } else {
-                            (
-                                "annotated_text",
-                                MessageContentData::AnnotatedText {
-                                    text: text.clone(),
-                                    annotations,
-                                },
-                            )
-                        };
                         if let Err(e) = Repos.chat.core.create_content(
                             assistant_message_id,
-                            content_type,
-                            content_data,
+                            "text",
+                            MessageContentData::Text { text: text.clone() },
                             content_offset,
                         ).await {
                             let _ = tx.send(Err(e));

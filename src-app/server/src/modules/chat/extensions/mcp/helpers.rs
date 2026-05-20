@@ -128,7 +128,6 @@ pub async fn execute_tool(
         Ok(Ok(tool_result)) => {
             // Success - convert MCP ToolResult to our format, parsing rich content types
             let mut text_parts: Vec<String> = Vec::new();
-            let mut annotations: Vec<super::content::Annotation> = Vec::new();
             let mut attachment: Option<super::content::RichFile> = None;
             let mut resource_links: Vec<super::content::ResourceLink> = Vec::new();
 
@@ -138,24 +137,6 @@ pub async fn execute_tool(
                     "text" => {
                         if let Some(text) = item.content.get("text").and_then(|t| t.as_str()) {
                             text_parts.push(text.to_string());
-                        }
-                    }
-                    "annotations" => {
-                        if let Some(arr) = item.content.get("annotations").and_then(|a| a.as_array()) {
-                            for ann_val in arr {
-                                if let (Some(id), Some(atype), Some(content)) = (
-                                    ann_val.get("id").and_then(|v| v.as_str()),
-                                    ann_val.get("annotation_type").and_then(|v| v.as_str()),
-                                    ann_val.get("content").and_then(|v| v.as_str()),
-                                ) {
-                                    annotations.push(super::content::Annotation {
-                                        id: id.to_string(),
-                                        annotation_type: atype.to_string(),
-                                        label: ann_val.get("label").and_then(|v| v.as_str()).map(String::from),
-                                        content: content.to_string(),
-                                    });
-                                }
-                            }
                         }
                     }
                     "file" => {
@@ -215,7 +196,6 @@ pub async fn execute_tool(
                 server_id: None, // Will be set by caller
                 content: final_content,
                 is_error: Some(tool_result.is_error),
-                annotations: if annotations.is_empty() { None } else { Some(annotations) },
                 attachment,
                 resource_links: if resource_links.is_empty() { None } else { Some(resource_links) },
                 hidden_content: None, // Set later if resource_links artifacts are saved
@@ -241,7 +221,6 @@ pub async fn execute_tool(
                 server_id: None, // Will be set by caller
                 content: format!("Tool execution failed: {}", e),
                 is_error: Some(true),
-                annotations: None,
                 attachment: None,
                 resource_links: None,
                 hidden_content: None,
@@ -258,7 +237,6 @@ pub async fn execute_tool(
                     timeout_seconds.unwrap_or(30)
                 ),
                 is_error: Some(true),
-                annotations: None,
                 attachment: None,
                 resource_links: None,
                 hidden_content: None,

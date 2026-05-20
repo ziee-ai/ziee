@@ -67,7 +67,7 @@ impl McpChatExtension {
         approved_pending: &[super::approval::models::ToolUseApproval],
         context: &StreamContext,
         tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
-    ) -> Result<(Vec<MessageContentData>, Vec<String>, Option<(String, Vec<super::content::Annotation>)>), AppError> {
+    ) -> Result<(Vec<MessageContentData>, Vec<String>, Option<String>), AppError> {
         let mut tool_results = Vec::new();
         let mut executed_tool_use_ids = Vec::new();
         let accessible_servers =
@@ -123,7 +123,6 @@ impl McpChatExtension {
                     server_id: Some(server_id.to_string()),
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
-                    annotations: None,
                     attachment: None,
                     resource_links: None,
                     hidden_content: None,
@@ -192,8 +191,7 @@ impl McpChatExtension {
                         server_id: Some(server.id.to_string()),
                         content: "Cannot execute sampling tool: no model available. Ensure a model is selected.".to_string(),
                         is_error: Some(true),
-                        annotations: None,
-                        attachment: None,
+                            attachment: None,
                         resource_links: None,
                         hidden_content: None,
                     };
@@ -221,8 +219,7 @@ impl McpChatExtension {
                             server_id: Some(server.id.to_string()),
                             content: format!("Failed to connect to server: {}", e),
                             is_error: Some(true),
-                            annotations: None,
-                            attachment: None,
+                                    attachment: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -629,12 +626,12 @@ impl McpChatExtension {
             // If this tool returns a final response, capture it and return early.
             // The caller will stream it directly without calling the LLM.
             if is_final {
-                if let McpContentData::ToolResult { ref content, ref annotations, .. } = result {
+                if let McpContentData::ToolResult { ref content, .. } = result {
                     tracing::info!(
                         "is_final_response: approved tool '{}' marked as final, will bypass LLM",
                         tool_name
                     );
-                    let final_response = Some((content.clone(), annotations.clone().unwrap_or_default()));
+                    let final_response = Some(content.clone());
                     // Push the tool_result BEFORE returning so the caller can persist it to DB.
                     // Without this, the tool_use in the assistant message would have no matching
                     // tool_result, causing "tool_use ids found without tool_result" on the next message.
@@ -929,11 +926,8 @@ impl ChatExtension for McpChatExtension {
 
                 // If any approved tool returned is_final_response: true, bypass LLM entirely.
                 // tool_results are already saved to DB above.
-                if let Some((text, annotations)) = final_response {
-                    return Ok(BeforeLlmAction::CompleteWithContent {
-                        text,
-                        annotations,
-                    });
+                if let Some(text) = final_response {
+                    return Ok(BeforeLlmAction::CompleteWithContent { text });
                 }
 
                 // Store executed tool_use_ids in context metadata for later filtering
@@ -992,8 +986,7 @@ impl ChatExtension for McpChatExtension {
                             server_id: denied.server_id.map(|id| id.to_string()),
                             content: "Tool execution was denied by the user.".to_string(),
                             is_error: Some(true),
-                            annotations: None,
-                            attachment: None,
+                                    attachment: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -1397,8 +1390,7 @@ impl ChatExtension for McpChatExtension {
                             content: "Tool execution stopped: maximum iteration limit reached."
                                 .to_string(),
                             is_error: Some(true),
-                            annotations: None,
-                            attachment: None,
+                                    attachment: None,
                             resource_links: None,
                             hidden_content: None,
                         };
@@ -1455,11 +1447,8 @@ impl ChatExtension for McpChatExtension {
             }
 
             // If any approved tool returned is_final_response: true, bypass the next LLM call.
-            if let Some((text, annotations)) = final_response {
-                return Ok(ExtensionAction::CompleteWithContent {
-                    text,
-                    annotations,
-                });
+            if let Some(text) = final_response {
+                return Ok(ExtensionAction::CompleteWithContent { text });
             }
 
             // Return Continue action to append tool results to assistant message
@@ -1715,7 +1704,6 @@ impl ChatExtension for McpChatExtension {
         // Execute each auto-approved tool and collect results
         let mut tool_results = Vec::new();
         let mut final_response_text: Option<String> = None;
-        let mut final_annotations: Vec<super::content::Annotation> = Vec::new();
 
         // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
         let (elicit_notify_tx, mut elicit_notify_rx) =
@@ -1766,7 +1754,6 @@ impl ChatExtension for McpChatExtension {
                     server_id: Some(server_id_str.clone()),
                     content: format!("Server '{}' not found", server_id),
                     is_error: Some(true),
-                    annotations: None,
                     attachment: None,
                     resource_links: None,
                     hidden_content: None,
@@ -1797,8 +1784,7 @@ impl ChatExtension for McpChatExtension {
                                 server_id: Some(server.id.to_string()),
                                 content: e.to_string(),
                                 is_error: Some(true),
-                                annotations: None,
-                                attachment: None,
+                                            attachment: None,
                                 resource_links: None,
                                 hidden_content: None,
                             }, false)
@@ -1814,8 +1800,7 @@ impl ChatExtension for McpChatExtension {
                                         server_id: Some(server.id.to_string()),
                                         content: format!("Failed to initialize sampling provider: {}", e),
                                         is_error: Some(true),
-                                        annotations: None,
-                                        attachment: None,
+                                                            attachment: None,
                                         resource_links: None,
                                         hidden_content: None,
                                     }, false)
@@ -1843,8 +1828,7 @@ impl ChatExtension for McpChatExtension {
                                                 server_id: Some(server.id.to_string()),
                                                 content: format!("Failed to connect to server: {}", e),
                                                 is_error: Some(true),
-                                                annotations: None,
-                                                attachment: None,
+                                                                            attachment: None,
                                                 resource_links: None,
                                                 hidden_content: None,
                                             }, false)
@@ -1865,8 +1849,7 @@ impl ChatExtension for McpChatExtension {
                         server_id: Some(server.id.to_string()),
                         content: "Cannot execute sampling tool: no model available in context. Ensure a model is selected.".to_string(),
                         is_error: Some(true),
-                        annotations: None,
-                        attachment: None,
+                            attachment: None,
                         resource_links: None,
                         hidden_content: None,
                     }, false)
@@ -1894,8 +1877,7 @@ impl ChatExtension for McpChatExtension {
                             server_id: Some(server.id.to_string()),
                             content: format!("Failed to connect to server: {}", e),
                             is_error: Some(true),
-                            annotations: None,
-                            attachment: None,
+                                    attachment: None,
                             resource_links: None,
                             hidden_content: None,
                         }, false)
@@ -2261,15 +2243,14 @@ impl ChatExtension for McpChatExtension {
                 }
             }
 
-            // Capture is_final_response text + annotations before converting to MessageContentData
+            // Capture is_final_response text before converting to MessageContentData
             if is_final {
-                if let McpContentData::ToolResult { ref content, ref annotations, .. } = result {
+                if let McpContentData::ToolResult { ref content, .. } = result {
                     tracing::info!(
                         "is_final_response: tool '{}' on server '{}' marked as final, will bypass LLM",
                         tool_name, server.name
                     );
                     final_response_text = Some(content.clone());
-                    final_annotations = annotations.clone().unwrap_or_default();
                 }
             }
 
@@ -2328,10 +2309,7 @@ impl ChatExtension for McpChatExtension {
                 }
                 let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
             }
-            return Ok(ExtensionAction::CompleteWithContent {
-                text,
-                annotations: final_annotations,
-            });
+            return Ok(ExtensionAction::CompleteWithContent { text });
         }
 
         // Cancel any elicitations that are still pending after all tools have been executed.

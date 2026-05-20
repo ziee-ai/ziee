@@ -1,6 +1,6 @@
-//! Integration tests for MCP content data types (McpContentData, Annotation, etc.)
+//! Integration tests for MCP content data types (McpContentData, etc.)
 
-use ziee_chat::{Annotation, McpContentData, RichFile};
+use ziee_chat::{McpContentData, RichFile};
 
 #[test]
 fn test_tool_use_conversion() {
@@ -35,7 +35,6 @@ fn test_tool_result_conversion() {
         name: Some("get_weather".to_string()),
         content: "Sunny, 72°F".to_string(),
         is_error: Some(false),
-        annotations: None,
         attachment: None,
         server_id: None,
         hidden_content: None,
@@ -104,87 +103,12 @@ fn test_from_content_block() {
 }
 
 #[test]
-fn test_tool_result_with_annotations_roundtrip() {
-    // McpContentData is persisted as JSON in the DB, so test JSON roundtrip
-    let tool_result = McpContentData::ToolResult {
-        tool_use_id: "toolu_02".to_string(),
-        name: Some("search".to_string()),
-        content: "Some results [chunk-abc123-000001]".to_string(),
-        is_error: Some(false),
-        annotations: Some(vec![Annotation {
-            id: "chunk-abc123-000001".to_string(),
-            annotation_type: "citation".to_string(),
-            label: Some("Paper on X (2023)".to_string()),
-            content: "## Paper on X\n\n**Authors:** Doe, J.\n\n> Full chunk text...".to_string(),
-        }]),
-        attachment: None,
-        server_id: None,
-        hidden_content: None,
-        resource_links: None,
-    };
-
-    let json = serde_json::to_value(&tool_result).expect("Should serialize");
-    let recovered: McpContentData = serde_json::from_value(json).expect("Should deserialize");
-    match recovered {
-        McpContentData::ToolResult { annotations, .. } => {
-            let anns = annotations.expect("Annotations should be preserved");
-            assert_eq!(anns.len(), 1);
-            assert_eq!(anns[0].id, "chunk-abc123-000001");
-            assert_eq!(anns[0].annotation_type, "citation");
-            assert_eq!(anns[0].label, Some("Paper on X (2023)".to_string()));
-            assert!(anns[0].content.contains("Paper on X"));
-        }
-        _ => panic!("Expected ToolResult"),
-    }
-}
-
-#[test]
-fn test_to_content_block_does_not_append_annotations_to_llm() {
-    // Annotations are handled via AnnotatedText, not appended to LLM content
-    let tool_result = McpContentData::ToolResult {
-        tool_use_id: "toolu_03".to_string(),
-        name: Some("search".to_string()),
-        content: "Main result".to_string(),
-        is_error: Some(false),
-        annotations: Some(vec![Annotation {
-            id: "chunk-aaa-000001".to_string(),
-            annotation_type: "citation".to_string(),
-            label: None,
-            content: "## Doc A\n\n> Doc A content".to_string(),
-        }]),
-        attachment: None,
-        server_id: None,
-        hidden_content: None,
-        resource_links: None,
-    };
-
-    let block = tool_result.to_content_block().unwrap();
-    match block {
-        ai_providers::ContentBlock::ToolResult { content, .. } => {
-            let text = content
-                .iter()
-                .filter_map(|b| match b {
-                    ai_providers::ContentBlock::Text { text } => Some(text.as_str()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("");
-            // Annotations must NOT be appended to LLM content — they go in AnnotatedText
-            assert!(!text.contains("Sources:"), "Should not contain Sources section");
-            assert_eq!(text.trim(), "Main result");
-        }
-        _ => panic!("Expected ToolResult"),
-    }
-}
-
-#[test]
-fn test_tool_result_no_annotations_no_sources_section() {
+fn test_tool_result_no_sources_section_appended_to_llm() {
     let tool_result = McpContentData::ToolResult {
         tool_use_id: "toolu_04".to_string(),
         name: Some("search".to_string()),
         content: "Simple result".to_string(),
         is_error: Some(false),
-        annotations: None,
         attachment: None,
         server_id: None,
         hidden_content: None,
@@ -219,7 +143,6 @@ fn test_tool_result_with_attachment_roundtrip() {
         name: Some("generate_chart".to_string()),
         content: "Chart generated".to_string(),
         is_error: Some(false),
-        annotations: None,
         attachment: Some(RichFile {
             filename: "chart.png".to_string(),
             mime_type: "image/png".to_string(),

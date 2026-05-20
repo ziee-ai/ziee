@@ -220,16 +220,6 @@ pub enum MessageContentDataVariants {
         hidden_content: Option<String>,
     },
 
-    /// Final answer with inline annotation markers and server-resolved annotation content.
-    /// Produced when an MCP server returns is_final_response: true with an annotations block.
-    /// The text contains inline [id] markers; annotations hold the server-formatted markdown content.
-    AnnotatedText {
-        /// Answer text with inline annotation markers (e.g. [chunk-abc-001], [fig1])
-        text: String,
-        /// Annotations keyed by ID — each has a markdown `content` field rendered in the drawer
-        annotations: Vec<crate::modules::chat::extensions::mcp::content::Annotation>,
-    },
-
     /// Elicitation request — MCP server asking the user for structured input.
     /// Persisted to DB immediately when the request arrives so it survives page reloads.
     ElicitationRequest {

@@ -1,6 +1,6 @@
 import { enableMapSet } from 'immer'
 import { createExtensionStore } from '@/modules/chat/core/extensions'
-import type { ToolApprovalDecision, McpServerConfig, AutoApprovedServer, DisabledServer, UserMcpDefaultsResponse, LoopSettings, ToolIdentifier, PerToolLimit, Annotation, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
+import type { ToolApprovalDecision, McpServerConfig, AutoApprovedServer, DisabledServer, UserMcpDefaultsResponse, LoopSettings, ToolIdentifier, PerToolLimit, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 
 // Enable Map support in Immer
@@ -82,8 +82,6 @@ interface McpStore {
   userDefaultsLoaded: boolean
   /** Whether the config modal is visible */
   configModalVisible: boolean
-  /** Currently open annotation in the reference drawer (null = closed) */
-  openAnnotation: Annotation | null
   /** Pending elicitation requests keyed by message_id */
   elicitationRequests: Map<string, ElicitationRequestState>
 
@@ -172,10 +170,6 @@ interface McpStore {
   /** Close the config modal */
   closeConfigModal: () => void
 
-  // Annotation drawer actions
-  /** Open the annotation drawer with the given annotation */
-  setOpenAnnotation: (annotation: Annotation | null) => void
-
   // Elicitation actions
   /** Add a new elicitation request (called when mcpElicitationRequired SSE event arrives) */
   addElicitationRequest: (request: SSEChatStreamMcpElicitationRequiredData) => void
@@ -199,7 +193,6 @@ export const createMcpStore = () =>
     userDefaults: null,
     userDefaultsLoaded: false,
     configModalVisible: false,
-    openAnnotation: null,
     elicitationRequests: new Map<string, ElicitationRequestState>(),
 
     // Initialization methods
@@ -948,13 +941,6 @@ export const createMcpStore = () =>
     closeConfigModal: () => {
       set(state => {
         state.configModalVisible = false
-      })
-    },
-
-    // Annotation drawer actions
-    setOpenAnnotation: (annotation: Annotation | null) => {
-      set(state => {
-        state.openAnnotation = annotation
       })
     },
 

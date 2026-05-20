@@ -43,7 +43,7 @@ pub use modules::mcp::elicitation::registry as elicitation_registry;
 
 // Re-export MCP content types for integration tests
 #[doc(hidden)]
-pub use modules::chat::extensions::mcp::content::{Annotation, McpContentData, RichFile};
+pub use modules::chat::extensions::mcp::content::{McpContentData, RichFile};
 
 // Re-export axum types for route building
 pub use axum::{Extension, Json, extract::State, http::StatusCode};

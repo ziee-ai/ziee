@@ -51,10 +51,8 @@ pub enum ExtensionAction {
     /// Stop streaming and emit the provided text directly to the user, bypassing the LLM.
     /// Used when a tool result is already a final user-facing answer (e.g. is_final_response: true).
     /// The text is streamed as a text delta and appended to the assistant message in the DB.
-    /// If annotations is non-empty, saved as AnnotatedText content type; otherwise plain Text.
     CompleteWithContent {
         text: String,
-        annotations: Vec<crate::modules::chat::extensions::mcp::content::Annotation>,
     },
 }
 
@@ -70,10 +68,8 @@ pub enum BeforeLlmAction {
     /// Skip LLM call and emit the provided text directly to the user.
     /// Used when an approved sampling tool returns is_final_response: true —
     /// the text is streamed as a text delta and appended to the assistant message in the DB.
-    /// If annotations is non-empty, saved as AnnotatedText content type; otherwise plain Text.
     CompleteWithContent {
         text: String,
-        annotations: Vec<crate::modules::chat::extensions::mcp::content::Annotation>,
     },
 }
 

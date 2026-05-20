@@ -10,13 +10,6 @@
 // TYPE DEFINITIONS
 // =============================================================================
 
-export interface Annotation {
-  annotation_type: string
-  content: string
-  id: string
-  label?: string
-}
-
 export type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
 
 export interface AssignProviderToGroupRequest {
@@ -936,11 +929,6 @@ export interface MessageContentDataToolResult {
   name?: string | null
   tool_use_id: string
 }
-export interface MessageContentDataAnnotatedText {
-  type: 'annotated_text'
-  annotations: Annotation[]
-  text: string
-}
 export interface MessageContentDataElicitationRequest {
   type: 'elicitation_request'
   elicitation_id: string
@@ -951,7 +939,7 @@ export interface MessageContentDataElicitationRequest {
   status: string
 }
 
-export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataAnnotatedText | MessageContentDataElicitationRequest
+export type MessageContentData = MessageContentDataText | MessageContentDataThinking | MessageContentDataImage | MessageContentDataFileAttachment | MessageContentDataToolUse | MessageContentDataToolResult | MessageContentDataElicitationRequest
 
 export interface MessageWithContent {
   assistant_id?: string

@@ -17,8 +17,6 @@ import { ToolCallPendingApprovalContent } from '@/modules/chat/extensions/mcp/co
 import { McpMenuItem } from '@/modules/chat/extensions/mcp/components/McpMenuItem'
 import { McpStatusRow } from '@/modules/chat/extensions/mcp/components/McpStatusRow'
 import { McpInitializer } from '@/modules/chat/extensions/mcp/components/McpInitializer'
-import { AnnotatedContentRenderer } from '@/modules/chat/extensions/mcp/components/AnnotatedContentRenderer'
-import { AnnotationDrawerPortal } from '@/modules/chat/extensions/mcp/components/AnnotationDrawerPortal'
 import { ElicitationFormContent } from '@/modules/chat/extensions/mcp/components/ElicitationFormContent'
 
 const { Text } = Typography
@@ -817,7 +815,6 @@ const mcpExtension: ChatExtension = createExtension({
   contentTypes: {
     tool_use: McpToolUseRenderer,
     tool_result: McpToolResultRenderer,
-    annotated_text: AnnotatedContentRenderer,
     elicitation_request: ElicitationFormContent,
   },
 
@@ -826,12 +823,9 @@ const mcpExtension: ChatExtension = createExtension({
     toolbar_actions: { component: McpInitializer, order: 1 },
     toolbar_plus_items: { component: McpMenuItem, order: 20 },
     toolbar_status: { component: McpStatusRow, order: 10 },
-    message_list_footer: { component: AnnotationDrawerPortal, order: 1 },
   },
 
   cleanup: async () => {
-    const { Stores } = await import('@/core/stores')
-    Stores.Chat.McpStore.setOpenAnnotation(null)
     console.log('[MCP Extension] Cleaned up')
   },
 })

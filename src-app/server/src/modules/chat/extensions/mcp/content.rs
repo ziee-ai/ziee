@@ -6,27 +6,6 @@ use serde::{Deserialize, Serialize};
 use crate::common::AppError;
 use crate::modules::chat::core::models::content::MessageContentData;
 
-/// A generic annotation returned by any MCP server alongside a final answer.
-///
-/// The server uses whatever `id` scheme it wants (e.g. `chunk-{hash}-{index}`, UUID, slug).
-/// The `id` must match the inline marker `[id]` in the answer text exactly.
-/// The client maps IDs to sequential display numbers ([1], [2], …) at render time.
-///
-/// `content` is a Markdown string rendered by Streamdown on the frontend.
-/// The server controls exactly what appears in the reference drawer — no client-side parsing.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct Annotation {
-    /// Arbitrary ID chosen by the server — must match the inline `[id]` marker in the text
-    pub id: String,
-    /// Semantic type: "citation", "image", "audio", or any custom string
-    pub annotation_type: String,
-    /// Optional short label shown in the drawer header / badge tooltip
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    /// Markdown string rendered by Streamdown in the reference drawer
-    pub content: String,
-}
-
 /// A file attachment returned by a tool (inline base64 content)
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RichFile {
@@ -86,9 +65,6 @@ pub enum McpContentData {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
-        /// Generic annotations returned by the MCP server (citations, images, etc.)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        annotations: Option<Vec<Annotation>>,
         /// Inline file attachment returned by a tool (base64-encoded content)
         #[serde(skip_serializing_if = "Option::is_none")]
         attachment: Option<RichFile>,
@@ -140,7 +116,7 @@ impl McpContentData {
                 hidden_content,
                 ..
             } => {
-                // Send text content to LLM; annotations are handled separately via AnnotatedText.
+                // Send text content to LLM.
                 // Append hidden_content (e.g. download URL) for the LLM — never stored in `content`.
                 let mut llm_text = content.clone();
                 if let Some(hidden) = hidden_content {
@@ -196,7 +172,6 @@ impl McpContentData {
                     server_id: None,
                     content: text,
                     is_error: *is_error,
-                    annotations: None,
                     attachment: None,
                     resource_links: None,
                     hidden_content: None,

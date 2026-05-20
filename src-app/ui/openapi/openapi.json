@@ -8147,36 +8147,6 @@
   },
   "components": {
     "schemas": {
-      "Annotation": {
-        "description": "A generic annotation returned by any MCP server alongside a final answer.\n\n The server uses whatever `id` scheme it wants (e.g. `chunk-{hash}-{index}`, UUID, slug).\n The `id` must match the inline marker `[id]` in the answer text exactly.\n The client maps IDs to sequential display numbers ([1], [2], …) at render time.\n\n `content` is a Markdown string rendered by Streamdown on the frontend.\n The server controls exactly what appears in the reference drawer — no client-side parsing.",
-        "type": "object",
-        "properties": {
-          "annotation_type": {
-            "description": "Semantic type: \"citation\", \"image\", \"audio\", or any custom string",
-            "type": "string"
-          },
-          "content": {
-            "description": "Markdown string rendered by Streamdown in the reference drawer",
-            "type": "string"
-          },
-          "id": {
-            "description": "Arbitrary ID chosen by the server — must match the inline `[id]` marker in the text",
-            "type": "string"
-          },
-          "label": {
-            "description": "Optional short label shown in the drawer header / badge tooltip",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "annotation_type",
-          "content"
-        ]
-      },
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
         "oneOf": [
@@ -12500,32 +12470,6 @@
               "type",
               "tool_use_id",
               "content"
-            ]
-          },
-          {
-            "description": "Final answer with inline annotation markers and server-resolved annotation content.\n Produced when an MCP server returns is_final_response: true with an annotations block.\n The text contains inline [id] markers; annotations hold the server-formatted markdown content.",
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "annotated_text"
-              },
-              "annotations": {
-                "description": "Annotations keyed by ID — each has a markdown `content` field rendered in the drawer",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Annotation"
-                }
-              },
-              "text": {
-                "description": "Answer text with inline annotation markers (e.g. [chunk-abc-001], [fig1])",
-                "type": "string"
-              }
-            },
-            "required": [
-              "type",
-              "text",
-              "annotations"
             ]
           },
           {
