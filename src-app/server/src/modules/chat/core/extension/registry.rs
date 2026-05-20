@@ -49,7 +49,8 @@ pub enum ExtensionAction {
     },
 
     /// Stop streaming and emit the provided text directly to the user, bypassing the LLM.
-    /// Used when a tool result is already a final user-facing answer (e.g. is_final_response: true).
+    /// Used when a tool result is already a final user-facing answer
+    /// (signaled by MCP-spec `annotations.audience: ["user"]` on a content block).
     /// The text is streamed as a text delta and appended to the assistant message in the DB.
     CompleteWithContent {
         text: String,
@@ -66,8 +67,9 @@ pub enum BeforeLlmAction {
     /// Skip LLM call, complete the turn gracefully
     Complete,
     /// Skip LLM call and emit the provided text directly to the user.
-    /// Used when an approved sampling tool returns is_final_response: true —
-    /// the text is streamed as a text delta and appended to the assistant message in the DB.
+    /// Used when an approved tool returns content with MCP-spec
+    /// `annotations.audience: ["user"]` — the text is streamed as a text
+    /// delta and appended to the assistant message in the DB.
     CompleteWithContent {
         text: String,
     },

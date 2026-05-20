@@ -345,7 +345,7 @@ impl StreamingService {
                             break;
                         }
                         Ok(BeforeLlmAction::CompleteWithContent { text }) => {
-                            // Approved sampling tool returned is_final_response: true before LLM call.
+                            // Approved tool returned audience=["user"] content before LLM call.
                             // Stream the final text directly and skip the LLM entirely.
                             tracing::info!("Skipping LLM call - extension provided final content");
 
@@ -492,7 +492,7 @@ impl StreamingService {
 
                 match action {
                     Some(crate::modules::chat::core::extension::ExtensionAction::CompleteWithContent { text }) => {
-                        // Tool result is a final user-facing answer (is_final_response: true).
+                        // Tool result is a final user-facing answer (audience=["user"]).
                         // Emit the text as a delta, save it to the DB, then complete.
 
                         // Determine sequence_order for the new text block

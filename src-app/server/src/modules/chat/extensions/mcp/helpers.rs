@@ -110,9 +110,19 @@ pub async fn execute_tool(
     sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     elicit_notify_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::modules::mcp::elicitation::models::ElicitationStartedNotification>>,
 ) -> (McpContentData, bool) {
-    // Returns (result, is_final_response)
-    // is_final_response: true means the tool result is a complete user-facing answer —
-    // the caller should stream it directly to the user without another LLM call.
+    // Returns (result, user_only_audience).
+    //
+    // user_only_audience is true when at least one content block carries the
+    // MCP-spec `annotations.audience: ["user"]` metadata EXACTLY — meaning
+    // "intended for the human user only, not the assistant." When set, the
+    // caller streams the tool text directly to the user without another LLM
+    // call (the tool's output IS the assistant's final answer).
+    //
+    // The exact-match check (audience contains "user" and ONLY "user", not
+    // also "assistant") is deliberate: per the MCP spec
+    // (modelcontextprotocol.io/specification/2025-11-25/server/resources#annotations),
+    // `["user", "assistant"]` means "both audiences should see it" — the LLM
+    // should ALSO process such content, which means we must NOT bypass it.
 
     // Elicitation may block for up to 300s; use a generous outer timeout so that
     // elicitation requests have time to complete before we give up.
@@ -200,18 +210,20 @@ pub async fn execute_tool(
                 resource_links: if resource_links.is_empty() { None } else { Some(resource_links) },
                 hidden_content: None, // Set later if resource_links artifacts are saved
             };
-            // Check for MCP-standard audience: ["user"] on any content block (spec:
-            // https://modelcontextprotocol.io/specification/2025-06-18/server/tools).
-            // Fall back to the legacy is_final_response field for backward compat.
-            let has_user_audience = tool_result.content.iter().any(|c| {
+            // Bypass the LLM only when at least one content block is exactly
+            // user-targeted: audience == ["user"] (single-element array, no
+            // "assistant"). Per the MCP spec, ["user", "assistant"] means
+            // both should see it — the LLM still needs to process the content
+            // in that case, so we must NOT bypass.
+            let user_only_audience = tool_result.content.iter().any(|c| {
                 c.content
                     .get("annotations")
                     .and_then(|a| a.get("audience"))
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().any(|s| s.as_str() == Some("user")))
+                    .map(|arr| arr.len() == 1 && arr[0].as_str() == Some("user"))
                     .unwrap_or(false)
             });
-            (mcp_result, has_user_audience || tool_result.is_final_response)
+            (mcp_result, user_only_audience)
         }
         Ok(Err(e)) => {
             // MCP error

@@ -256,7 +256,6 @@ impl McpClient for StdioMcpClient {
                 }
             }).collect(),
             is_error: result.is_error.unwrap_or(false),
-            is_final_response: false,
         })
     }
 

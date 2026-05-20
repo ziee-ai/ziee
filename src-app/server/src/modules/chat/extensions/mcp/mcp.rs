@@ -628,7 +628,7 @@ impl McpChatExtension {
             if is_final {
                 if let McpContentData::ToolResult { ref content, .. } = result {
                     tracing::info!(
-                        "is_final_response: approved tool '{}' marked as final, will bypass LLM",
+                        "audience=[\"user\"]: approved tool '{}' marked as final, will bypass LLM",
                         tool_name
                     );
                     let final_response = Some(content.clone());
@@ -894,7 +894,7 @@ impl ChatExtension for McpChatExtension {
                 ).await?;
 
                 // Save tool results to the assistant message in database BEFORE any early returns.
-                // This ensures tool_result blocks are persisted even when is_final_response: true
+                // This ensures tool_result blocks are persisted even when audience=["user"] bypasses the LLM
                 // bypasses the normal Continue action. Without this, the tool_use block already in
                 // the DB would have no matching tool_result, causing API errors on subsequent messages.
                 if let Some(message_id) = context.message_id {
@@ -924,7 +924,7 @@ impl ChatExtension for McpChatExtension {
                     let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
                 }
 
-                // If any approved tool returned is_final_response: true, bypass LLM entirely.
+                // If any approved tool emitted audience=["user"] content, bypass LLM entirely.
                 // tool_results are already saved to DB above.
                 if let Some(text) = final_response {
                     return Ok(BeforeLlmAction::CompleteWithContent { text });
@@ -1446,7 +1446,7 @@ impl ChatExtension for McpChatExtension {
                 let _ = Repos.chat.core.cancel_pending_elicitations(message_id).await;
             }
 
-            // If any approved tool returned is_final_response: true, bypass the next LLM call.
+            // If any approved tool emitted audience=["user"] content, bypass the next LLM call.
             if let Some(text) = final_response {
                 return Ok(ExtensionAction::CompleteWithContent { text });
             }
@@ -2243,11 +2243,11 @@ impl ChatExtension for McpChatExtension {
                 }
             }
 
-            // Capture is_final_response text before converting to MessageContentData
+            // Capture user-only-audience text before converting to MessageContentData
             if is_final {
                 if let McpContentData::ToolResult { ref content, .. } = result {
                     tracing::info!(
-                        "is_final_response: tool '{}' on server '{}' marked as final, will bypass LLM",
+                        "audience=[\"user\"]: tool '{}' on server '{}' marked as final, will bypass LLM",
                         tool_name, server.name
                     );
                     final_response_text = Some(content.clone());
@@ -2285,7 +2285,7 @@ impl ChatExtension for McpChatExtension {
             }
         }
 
-        // If any tool marked is_final_response: true, process references and bypass the LLM.
+        // If any tool emitted audience=["user"] content, process references and bypass the LLM.
         // We must persist tool_results to DB BEFORE returning CompleteWithContent so that the
         // tool_use already stored by finalize() has a matching tool_result. Without this, the
         // next message's history reconstruction would see an unmatched tool_use and the API would

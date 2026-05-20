@@ -57,8 +57,6 @@ pub struct ToolResult {
     pub content: Vec<ToolContent>,
     #[serde(default, alias = "isError")]
     pub is_error: bool,
-    #[serde(default, alias = "isFinalResponse")]
-    pub is_final_response: bool,
 }
 
 #[async_trait]
