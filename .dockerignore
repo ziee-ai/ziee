@@ -1,0 +1,62 @@
+# Critical: prevents COPY in any Dockerfile from baking secrets / build
+# artifacts / VCS metadata into image layers (which are also published
+# to GitHub Actions cache when builds use `cache-to: type=gha`).
+#
+# The Dockerfile.prod multi-stage build only needs source + Cargo
+# manifests; tests, .env files, build artifacts, and editor state are
+# never required by the build.
+
+# ─── Secrets and env files ─────────────────────────────────────────
+**/.env
+**/.env.*
+**/tests/.env*
+*.pem
+*.key
+*_key
+*_secret*
+*_token*
+**/credentials.json
+**/.aws
+
+# ─── VCS + workspace metadata ──────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+.github
+.hg
+.svn
+
+# ─── Build artifacts (huge + unneeded) ─────────────────────────────
+**/target
+**/node_modules
+**/dist
+**/build
+**/.next
+**/.nuxt
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+**/*.swp
+
+# ─── Local caches (rootfs alone is ~800 MB) ────────────────────────
+.ziee-cache
+.cargo
+
+# ─── Editor state ──────────────────────────────────────────────────
+.idea
+.vscode
+.fleet
+*.iml
+.DS_Store
+
+# ─── Test fixtures + binary artifacts that aren't shipped ──────────
+**/sandbox-rootfs/.stage-*
+mcpserver*
+rcpa-mcpserver*
+
+# ─── Documentation only used by humans, not the build ──────────────
+**/*.md
+!**/README.md
+.claude
+.plans
+.sec-audits

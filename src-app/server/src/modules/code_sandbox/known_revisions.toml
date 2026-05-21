@@ -6,13 +6,18 @@
 # `fetch-sandbox-rootfs` cannot verify by embedded digest — it must be
 # given an explicit `--sha256` or skip verification at the user's risk.
 #
-# Format:
-#   [[revisions]]
+# Format (CRITICAL: table name is `[[revision]]` singular —
+# `main.rs::fetch_sandbox_rootfs` reads `.get("revision")`. A typo
+# of `[[revisions]]` would parse as TOML but yield an empty entries
+# list at runtime with a misleading "no published releases yet" error):
+#   [[revision]]
 #   schema = 1
 #   revision = "r0"
 #   arch = "x86_64"
 #   flavor = "minimal"        # or "full"
-#   sha256 = "abc123..."
-#   yanked = false
+#   sha256 = "abc123..."       # lowercase 64-hex; case-normalized at read
+#   signed = true              # if absent or false → cosign skip on miss
+#                              # if true → REQUIRE cosign + bundle (fail closed)
+#   yanked = false             # if true → excluded from `--version=latest`
 
 # (no revisions seeded yet — bootstrap pending)

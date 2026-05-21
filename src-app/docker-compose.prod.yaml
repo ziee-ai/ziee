@@ -108,3 +108,20 @@ services:
 volumes:
   postgres-data:
   ziee-data:
+
+# IMPORTANT: postgres lives on an internal-only network so the
+# sandbox (`--share-net` exposes the container's net namespace
+# to bwrap-isolated processes) CANNOT exfiltrate the postgres
+# password via direct TCP connection to postgres:5432. The
+# ziee-server container is on BOTH networks: it talks to postgres
+# over `internal` and to the outside world (your reverse proxy) on
+# the default network.
+#
+# To use, add `networks: [internal, default]` to ziee-server and
+# `networks: [internal]` to postgres. Left commented because the
+# bare compose above works; uncomment for production.
+# networks:
+#   internal:
+#     internal: true
+#   default:
+#     {}

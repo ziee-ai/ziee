@@ -465,6 +465,18 @@ fn fetch_sandbox_rootfs(version: &str, flavor: &str, arch: &str) -> i32 {
         return 2;
     }
 
+    // Helper: numeric extraction of an "rN" revision string. Used
+    // for `latest` resolution so r10 sorts AFTER r9 (lexicographic
+    // sort would put r10 before r2 — silent downgrade once revisions
+    // exceed r9).
+    fn revision_number(rev: &str) -> Option<u32> {
+        rev.strip_prefix('r').and_then(|n| n.parse().ok())
+    }
+    // Helper: is this entry marked yanked?
+    fn is_yanked(e: &toml::value::Table) -> bool {
+        e.get("yanked").and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
     // Resolve the version.
     let resolved = if version == "latest" {
         // Pick the newest non-yanked entry matching schema + arch + flavor.
@@ -472,18 +484,27 @@ fn fetch_sandbox_rootfs(version: &str, flavor: &str, arch: &str) -> i32 {
             .iter()
             .copied()
             .filter(|e| {
-                e.get("schema").and_then(|v| v.as_integer())
-                    == Some(SANDBOX_ROOTFS_SCHEMA_VERSION as i64)
+                !is_yanked(e)
+                    && e.get("schema").and_then(|v| v.as_integer())
+                        == Some(SANDBOX_ROOTFS_SCHEMA_VERSION as i64)
                     && e.get("arch").and_then(|v| v.as_str()) == Some(arch)
                     && e.get("flavor").and_then(|v| v.as_str()) == Some(flavor)
             })
             .collect();
-        candidates.sort_by_key(|e| e.get("revision").and_then(|v| v.as_str()).map(|s| s.to_string()));
+        // Numeric sort by revision number — lexicographic would give
+        // r10 < r2 < r9 → `latest` picks r9 once we hit r10+.
+        candidates.sort_by_key(|e| {
+            e.get("revision")
+                .and_then(|v| v.as_str())
+                .and_then(revision_number)
+                .unwrap_or(0)
+        });
         match candidates.last() {
             Some(c) => (*c).clone(),
             None => {
                 eprintln!(
-                    "ERROR: no published revision matches schema={} arch={} flavor={}",
+                    "ERROR: no published, non-yanked revision matches \
+                     schema={} arch={} flavor={}",
                     SANDBOX_ROOTFS_SCHEMA_VERSION, arch, flavor
                 );
                 return 2;
@@ -525,13 +546,32 @@ fn fetch_sandbox_rootfs(version: &str, flavor: &str, arch: &str) -> i32 {
 
     let schema = resolved.get("schema").and_then(|v| v.as_integer()).unwrap_or(0);
     let revision = resolved.get("revision").and_then(|v| v.as_str()).unwrap_or("");
+    // Normalize sha256 to lowercase + assert canonical 64-hex-char
+    // shape. A hand-edited known_revisions.toml with an uppercase or
+    // wrong-length sha would otherwise mismatch every download with a
+    // confusing error.
     let expected_sha = match resolved.get("sha256").and_then(|v| v.as_str()) {
-        Some(s) => s.to_string(),
+        Some(s) => {
+            let lc = s.trim().to_lowercase();
+            if lc.len() != 64 || !lc.chars().all(|c| c.is_ascii_hexdigit()) {
+                eprintln!(
+                    "ERROR: known_revisions entry has malformed sha256 {:?} \
+                     (expected 64 lowercase hex chars)",
+                    s
+                );
+                return 2;
+            }
+            lc
+        }
         None => {
             eprintln!("ERROR: known_revisions entry missing sha256 field");
             return 2;
         }
     };
+    let signed_required = resolved
+        .get("signed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // Schema compatibility check.
     if schema != SANDBOX_ROOTFS_SCHEMA_VERSION as i64 {
@@ -544,9 +584,22 @@ fn fetch_sandbox_rootfs(version: &str, flavor: &str, arch: &str) -> i32 {
         return 2;
     }
 
-    // Build the URL.
+    // Build the URL. Mirror env var honored, but HTTPS-only (sha256
+    // verification below makes payload tampering moot, but rejecting
+    // plain http stops downgrade-via-misconfig early).
     let base_url = std::env::var("CODE_SANDBOX_ROOTFS_MIRROR")
         .unwrap_or_else(|_| "https://github.com/phibya/ziee-chat/releases/download".to_string());
+    if !base_url.starts_with("https://") {
+        eprintln!(
+            "ERROR: CODE_SANDBOX_ROOTFS_MIRROR must be https:// (got {base_url:?}). \
+             Plain http is rejected even though sha256 verification \
+             would catch tampering — refusing to fall back."
+        );
+        return 2;
+    }
+    if std::env::var("CODE_SANDBOX_ROOTFS_MIRROR").is_ok() {
+        eprintln!("    WARNING: using mirror {base_url}");
+    }
     let tag = format!("sandbox-rootfs-v{schema}.{revision}-{arch}");
     let asset = format!("ziee-sandbox-rootfs-v{schema}.{revision}-{arch}-{flavor}.squashfs");
     let url = format!("{base_url}/{tag}/{asset}");
@@ -604,27 +657,72 @@ fn fetch_sandbox_rootfs(version: &str, flavor: &str, arch: &str) -> i32 {
     }
     eprintln!("    sha256 OK ({actual_sha})");
 
-    // Optional cosign verify.
+    // Cosign verify path. If the entry says `signed = true` in
+    // known_revisions.toml, we REQUIRE cosign + the bundle and fail
+    // closed on any error. If `signed = false` (or absent for
+    // legacy entries), we attempt cosign opportunistically but
+    // proceed sha256-only on miss.
+    //
+    // The certificate-identity-regexp is ANCHORED at both ends and
+    // pins the specific workflow file. An unanchored pattern would
+    // let any branch/workflow in the real repo mint signatures —
+    // e.g., a PR adding `.github/workflows/evil.yml` that calls
+    // `cosign sign-blob` would pass verification. The anchored
+    // regex below requires the signature to come from a tag-push
+    // run of sandbox-rootfs-release.yml.
     let bundle_url = format!("{url}.cosign.bundle");
     let bundle_path = out_path.with_extension("squashfs.cosign.bundle");
-    if std::process::Command::new("cosign").arg("version").status().map(|s| s.success()).unwrap_or(false) {
+    let cosign_installed = std::process::Command::new("cosign")
+        .arg("version")
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !cosign_installed {
+        if signed_required {
+            eprintln!(
+                "ERROR: this revision has `signed = true` but cosign is \
+                 not installed. Install cosign \
+                 (https://docs.sigstore.dev/system_config/installation/) \
+                 or pin to an unsigned revision."
+            );
+            let _ = std::fs::remove_file(&tmp_path);
+            return 2;
+        }
+        eprintln!("    (cosign not installed; sha256-only verification)");
+    } else {
         eprintln!("==> Downloading cosign bundle");
-        let _ = std::process::Command::new("curl")
+        let bundle_dl = std::process::Command::new("curl")
             .args(["-fSL", "-o"])
             .arg(&bundle_path)
             .arg(&bundle_url)
             .status();
-        if bundle_path.exists() {
+        let bundle_present = matches!(bundle_dl, Ok(s) if s.success()) && bundle_path.exists();
+        if !bundle_present {
+            if signed_required {
+                eprintln!(
+                    "ERROR: this revision has `signed = true` but the \
+                     cosign bundle was not downloadable from {bundle_url}. \
+                     Refusing to install — this could be a signature \
+                     downgrade attack. If you're certain the signature \
+                     was lost, unmark the revision as signed."
+                );
+                let _ = std::fs::remove_file(&tmp_path);
+                return 2;
+            }
+            eprintln!("    (no cosign bundle published; sha256-only)");
+        } else {
             eprintln!("==> Verifying cosign signature");
             let v = std::process::Command::new("cosign")
-                .args([
-                    "verify-blob",
-                    "--bundle",
-                ])
+                .args(["verify-blob", "--bundle"])
                 .arg(&bundle_path)
                 .args([
                     "--certificate-identity-regexp",
-                    "https://github.com/phibya/ziee-chat/.+",
+                    // Anchored: only signatures from a tag-push run of
+                    // sandbox-rootfs-release.yml on the official repo
+                    // satisfy this. Any other branch/workflow/repo
+                    // produces a different SAN that fails the match.
+                    r"^https://github\.com/phibya/ziee-chat/\.github/workflows/sandbox-rootfs-release\.yml@refs/tags/sandbox-rootfs-v[0-9]+\.r[0-9]+-[a-z0-9_]+$",
                     "--certificate-oidc-issuer",
                     "https://token.actions.githubusercontent.com",
                 ])
@@ -639,11 +737,7 @@ fn fetch_sandbox_rootfs(version: &str, flavor: &str, arch: &str) -> i32 {
                     return 2;
                 }
             }
-        } else {
-            eprintln!("    (no cosign bundle published; sha256-only)");
         }
-    } else {
-        eprintln!("    (cosign not installed; sha256-only verification)");
     }
 
     // Atomic rename — last step so a partial install doesn't shadow

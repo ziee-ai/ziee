@@ -49,15 +49,31 @@ async fn e2e_dangling_symlink_does_not_clobber_host() {
         "test setup: target must not preexist"
     );
 
-    // Step 1: plant the dangling symlink from inside the sandbox.
-    let _ = tool_call(
+    // Step 1: plant the dangling symlink from inside the sandbox AND
+    // positive-control that it was actually planted. Without this
+    // confirmation, a silent `ln -s` failure (e.g. /home/sandboxuser
+    // not writable) would make the "host target absent" assertion
+    // below pass for the WRONG reason (no symlink → no follow → no
+    // clobber → no detection of a broken defense).
+    let plant = tool_call(
         &server,
         &jwt,
         conv_id,
         "execute_command",
-        json!({ "command": format!("ln -s {} /home/sandboxuser/innocent.txt", target) }),
+        json!({ "command": format!(
+            "ln -s {} /home/sandboxuser/innocent.txt && \
+             test -L /home/sandboxuser/innocent.txt && echo SYMLINK_PLANTED",
+            target
+        ) }),
     )
     .await;
+    let plant_stdout = plant["result"]["structuredContent"]["stdout"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        plant_stdout.contains("SYMLINK_PLANTED"),
+        "setup did not plant the symlink: stdout={plant_stdout:?}"
+    );
 
     // Step 2: try to write through the symlink.
     let resp = post_jsonrpc(
@@ -179,12 +195,29 @@ async fn e2e_write_file_rejects_oversized_content() {
     )
     .await;
     let body: serde_json::Value = resp.json().await.expect("parse");
-    // Same as the symlink test: the envelope ships a generic message.
-    // The error itself proves the cap fired; the behavioral assertion
-    // (file NOT on disk) confirms the write was actually rejected.
     assert!(
         body.get("error").is_some(),
         "expected JSON-RPC error envelope, got: {body}"
+    );
+
+    // Behavioral assertion: the file MUST NOT exist in the workspace
+    // afterward. A follow-up read_file should fail with "not found"
+    // (since neither workspace nor attachments contain the file). If
+    // the size cap was BROKEN, write_file would have succeeded and
+    // read_file would return the 33 MiB back (a much different shape).
+    let follow_up = post_jsonrpc(
+        &server,
+        &jwt,
+        Some(conv_id),
+        "tools/call",
+        json!({ "name": "read_file", "arguments": { "filename": "huge.bin" } }),
+    )
+    .await;
+    let follow_body: serde_json::Value = follow_up.json().await.expect("parse");
+    assert!(
+        follow_body.get("error").is_some(),
+        "SECURITY: huge.bin was written despite the cap. follow-up read_file \
+         returned success: {follow_body}"
     );
 }
 
@@ -247,7 +280,38 @@ async fn e2e_cross_tenant_conversation_id_blocked() {
     let victim_conv_id = create_test_conversation(&pool, user_b_id).await;
     pool.close().await;
 
-    // User A → POST tools/call with User B's conversation_id.
+    // Positive control: User A → POST with User A's OWN
+    // conversation_id MUST succeed. Without this, a regression that
+    // returned 404 for ALL conversations (e.g., assert_owns_conversation
+    // bug that never finds anything) would silently make the negative
+    // case pass for the wrong reason.
+    let user_a_id = Uuid::parse_str(&user_a.user_id).unwrap();
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let user_a_conv = create_test_conversation(&pool, user_a_id).await;
+    pool.close().await;
+
+    let own_resp = post_jsonrpc(
+        &server,
+        &user_a.token,
+        Some(user_a_conv),
+        "tools/list",
+        json!({}),
+    )
+    .await;
+    let own_status = own_resp.status().as_u16();
+    assert!(
+        own_status == 200,
+        "POSITIVE CONTROL FAILED: user A calling tools/list on their OWN \
+         conversation returned {own_status} (expected 200). This means the \
+         negative-case 404 assertion below proves nothing — every call \
+         is being rejected, not just cross-tenant."
+    );
+
+    // Negative case: User A → POST tools/call with User B's conv_id.
     let resp = post_jsonrpc(
         &server,
         &user_a.token,

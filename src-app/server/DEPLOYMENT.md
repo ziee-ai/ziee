@@ -31,7 +31,11 @@ sudo mkdir -p /sys/fs/cgroup/ziee-sandbox.slice
 echo "+memory +pids +cpu" | sudo tee \
     /sys/fs/cgroup/ziee-sandbox.slice/cgroup.subtree_control
 
-# Chown to the uid the server runs as (default 10000 in the image)
+# Chown to the uid the server runs as (default 10000 in the image).
+# WARNING: uid 10000 may collide with an existing local user (e.g.
+# `gitlab-runner` on some distros). Check with `getent passwd 10000`
+# first. If collision, either pick a free uid via Dockerfile's
+# SERVER_UID build-arg or move the host user.
 sudo chown -R 10000:10000 /sys/fs/cgroup/ziee-sandbox.slice
 ```
 
@@ -57,10 +61,21 @@ docker build \
     .
 ```
 
-The build fetches the published rootfs from GitHub Releases and verifies
-its sha256 against the embedded `known_revisions.toml`. Build fails if
-the tag doesn't exist or sha256 doesn't match — there's no "skip
-verification" escape hatch.
+The build:
+1. Compiles the server with `--features code_sandbox_seccomp` (the
+   server's embedded `known_revisions.toml` is baked into the binary
+   at this stage).
+2. Uses **the just-built binary** to run `fetch-sandbox-rootfs`,
+   which downloads the squashfs from GitHub Releases AND verifies
+   its sha256 against `known_revisions.toml` (NOT the
+   `.sha256` file from the same release — that would be TOFU). If
+   the embedded entry has `signed = true`, cosign verification is
+   ALSO required (fails closed on missing bundle).
+3. Copies the verified squashfs into the runtime stage.
+
+Build fails if the tag doesn't exist, sha256 doesn't match the
+embedded value, or `signed=true` but cosign isn't installed in the
+builder. There's no "skip verification" escape hatch.
 
 ### Run
 
@@ -87,14 +102,39 @@ Why each option matters:
   `mount(MS_BIND, ...)`. Without this, EPERM at sandbox start.
 - `--security-opt seccomp=unconfined` — docker's default seccomp profile
   BLOCKS `unshare(CLONE_NEWUSER)`. The sandbox absolutely needs user
-  namespaces; this disables docker's profile (the SERVER then applies
-  its OWN seccomp filter inside bwrap, so the sandboxed processes are
-  still confined).
+  namespaces; this disables docker's profile.
+  - **Pattern A (this image)** is built with `--features
+    code_sandbox_seccomp`, so the server applies its OWN seccomp filter
+    inside bwrap and the sandboxed processes are still confined under
+    a tight syscall denylist.
+  - **Patterns B/C** (using the vanilla `ziee/server` image): you MUST
+    ensure that image was also built with `--features
+    code_sandbox_seccomp`, OR accept that disabling docker's seccomp
+    leaves NO seccomp on sandboxed processes (other defenses —
+    cgroup, prlimit, user-ns, --clearenv — still apply, but the
+    syscall denylist is gone). The server log will show
+    `seccomp: on` only when the feature was compiled in;
+    `seccomp: off-feature-not-linked` otherwise. **Grep your startup
+    logs to confirm.**
 - `--security-opt apparmor=unconfined` — AppArmor on Ubuntu/Debian
   hosts has a docker-default profile that blocks bwrap mounts. Disable
   per-container.
 - `--device /dev/fuse` — squashfuse needs the FUSE device node to mount
   the rootfs.
+
+#### Verify the image's cosign signature before running
+
+```bash
+cosign verify \
+    --certificate-identity-regexp '^https://github\.com/phibya/ziee-chat/\.github/workflows/docker-image-prod\.yml@.*$' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    ghcr.io/phibya/ziee-chat/server-with-sandbox:0.1.0-sandbox-rootfs-v1.r0-x86_64
+```
+
+The workflow signs **all three tags** (`:VERSION-ROOTFS`, `:VERSION`,
+`:latest`) AND the image digest. Pin operators to the immutable
+`@sha256:...` digest in production (the tags above are mutable —
+`:latest` in particular is republished on every release).
 
 Verify boot:
 
@@ -251,3 +291,14 @@ sudo -u ziee touch /sys/fs/cgroup/ziee-sandbox.slice/test \
 - [ ] Network egress from sandboxed code restricted to allowed
       destinations (the sandbox has `--share-net`; bwrap doesn't
       isolate egress — use docker's network policy or a firewall)
+- [ ] **Postgres on a separate / internal docker network.** Without
+      this, sandboxed code can connect to `postgres:5432` directly
+      (the container's `DATABASE_URL` is reachable from inside
+      bwrap because `--share-net` shares the container's network
+      namespace). Use a `networks: [internal: { internal: true }]`
+      block in compose, or block 5432 egress at the firewall.
+- [ ] **AWS IMDS at 169.254.169.254 blocked** if running on EC2.
+      Same reason as above — `--share-net` exposes the host's
+      metadata endpoint, which leaks instance-role credentials.
+      Block via iptables on the host or use IMDSv2-only on the
+      instance.

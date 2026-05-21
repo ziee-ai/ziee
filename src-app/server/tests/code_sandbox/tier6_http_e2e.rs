@@ -55,23 +55,37 @@ async fn setup_user_and_conv(server: &crate::common::TestServer) -> (Uuid, Strin
 #[ignore]
 async fn e2e_initialize_returns_protocol_version_and_server_info() {
     let Some(server) = enabled_test_server().await else { return };
-    let user_id = Uuid::new_v4();
-    let jwt = test_server_jwt(user_id);
-    // initialize doesn't need ownership of a conversation_id — it's
-    // stateless. Pass None for the header.
+    // initialize is a STATELESS MCP method — must work for any
+    // authenticated user without an ownership-checked conversation
+    // context. Use a registered user so the result body has real
+    // content to assert against (not just a 401).
+    let (_user_id, jwt, _conv_id) = setup_user_and_conv(&server).await;
+
     let resp = post_jsonrpc(&server, &jwt, None, "initialize", json!({})).await;
-    let status = resp.status();
+    assert!(resp.status().is_success(), "got {}", resp.status());
     let body: serde_json::Value = resp.json().await.expect("parse");
-    // Test JWT is for a random user not in DB so RequirePermissions
-    // rejects with 401 before reaching the handler. To get a real
-    // initialize response we'd need a registered user — but for the
-    // shape-of-initialize check, the cleaner path is the unit test
-    // (handlers::tests::tool_definitions_snapshot) which doesn't
-    // need a server at all. Here we assert ONLY that the unknown
-    // user is cleanly rejected (NOT a 5xx, NOT a panic).
+    let result = body
+        .get("result")
+        .expect("initialize MUST return a result envelope");
+    // Spec-required fields.
+    assert_eq!(
+        result["protocolVersion"].as_str(),
+        Some("2025-11-25"),
+        "protocolVersion changed unexpectedly: {result}"
+    );
+    let server_info = &result["serverInfo"];
+    assert_eq!(
+        server_info["name"].as_str(),
+        Some("code_sandbox"),
+        "serverInfo.name regressed: {server_info}"
+    );
     assert!(
-        [401, 503].contains(&status.as_u16()),
-        "expected 401/503 for unknown user, got {status}: {body}"
+        server_info["version"].is_string(),
+        "serverInfo.version must be a string: {server_info}"
+    );
+    assert!(
+        result["capabilities"]["tools"].is_object(),
+        "capabilities.tools must be an object: {result}"
     );
 }
 

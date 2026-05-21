@@ -78,6 +78,27 @@ async fn e2e_nproc_rlimit_enforced_via_http() {
 async fn e2e_memory_bomb_bounded_by_as_rlimit() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
+
+    // Positive control: confirm python3 is actually present in the
+    // rootfs. Without this check, `python3: command not found` would
+    // ALSO yield a non-zero exit + non-empty stderr → the assertion
+    // would pass for the wrong reason (no memory bomb ever ran).
+    let probe = tool_call(
+        &server,
+        &jwt,
+        conv_id,
+        "execute_command",
+        json!({ "command": "command -v python3 && echo PYTHON_OK" }),
+    )
+    .await;
+    let probe_stdout = probe["result"]["structuredContent"]["stdout"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        probe_stdout.contains("PYTHON_OK"),
+        "rootfs lacks python3 — cannot validate memory rlimit. stdout={probe_stdout:?}"
+    );
+
     let body = tool_call(
         &server,
         &jwt,
@@ -93,6 +114,11 @@ async fn e2e_memory_bomb_bounded_by_as_rlimit() {
     let stderr = body["result"]["structuredContent"]["stderr"]
         .as_str()
         .unwrap_or("");
+    // Stronger assertion: must NOT be "command not found"-shaped.
+    assert!(
+        !stderr.contains("not found") && !stdout.contains("not found"),
+        "command-not-found leak: stdout={stdout:?} stderr={stderr:?}"
+    );
     assert!(
         stdout.contains("BOUNDED")
             || stderr.contains("MemoryError")
@@ -161,10 +187,15 @@ async fn e2e_etc_passwd_is_synthetic() {
         stdout.contains("sandboxuser"),
         "expected sandboxuser in synthetic passwd: {stdout}"
     );
-    // Must NOT contain host's root user or any host-specific account.
-    assert!(
-        !stdout.contains("pbya"),
-        "host user pbya leaked into sandbox /etc/passwd: {stdout}"
+    // Stronger than a per-host denylist (which would silently pass
+    // on CI runners with `runner`/`root` as the host user): the
+    // synthetic file is exactly one line. If the host /etc/passwd
+    // leaked through (regression of the synthetic-identity bind),
+    // we'd see tens of lines.
+    let nonempty_lines = stdout.lines().filter(|l| !l.trim().is_empty()).count();
+    assert_eq!(
+        nonempty_lines, 1,
+        "synthetic /etc/passwd MUST be exactly 1 line; got {nonempty_lines}: {stdout}"
     );
 }
 

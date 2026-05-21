@@ -146,17 +146,29 @@ async fn setup_chat_with_anthropic(
         .await
         .unwrap();
     let sandbox_id = ziee_chat::code_sandbox::code_sandbox_server_id();
-    // Find the test group this user was added to (test_helpers
-    // creates one named `test_group_{8-hex-chars}` per user).
+    // Find the test group this user was added to. `test_helpers::
+    // create_user_with_permissions` creates ONE group per user named
+    // `test_group_{8-hex-chars}` with the requested permissions set.
+    // We must filter for that group SPECIFICALLY — the user is ALSO
+    // a member of the default Users group (auto-assigned at
+    // registration), and an earlier version of this query returned
+    // the Users group instead, which made the subsequent INSERT a
+    // no-op (Users already has the sandbox assigned at boot). The
+    // Tier-5 tests then "passed" without proving the assignment did
+    // anything.
     let group_id: Uuid = sqlx::query_scalar(
         "SELECT g.id FROM groups g \
          JOIN user_groups ug ON ug.group_id = g.id \
-         WHERE ug.user_id = $1 ORDER BY g.created_at DESC LIMIT 1",
+         WHERE ug.user_id = $1 \
+           AND g.is_default = false \
+           AND g.is_system = false \
+           AND g.name LIKE 'test_group_%' \
+         ORDER BY g.created_at DESC LIMIT 1",
     )
     .bind(user_id)
     .fetch_one(&pool)
     .await
-    .expect("user must be in a group");
+    .expect("user must be in a custom test group");
     sqlx::query(
         "INSERT INTO user_group_mcp_servers (group_id, mcp_server_id, assigned_at) \
          VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING",

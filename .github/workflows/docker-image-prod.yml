@@ -41,21 +41,37 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           tag="${{ github.event.inputs.rootfs_tag }}"
           if [ -z "$tag" ]; then
-            tag=$(gh release list --limit 50 \
-              --json tagName \
-              --jq '.[] | select(.tagName | startswith("sandbox-rootfs-v")) | .tagName' \
-              | head -1)
+            # Find the highest-revision tag matching this server's
+            # embedded SANDBOX_ROOTFS_SCHEMA_VERSION. `--limit 200`
+            # is generous; we sort numerically by revision below.
+            tag=$(gh release list --limit 200 \
+              --json tagName,isDraft \
+              --jq '.[] | select(.tagName | startswith("sandbox-rootfs-v")) | select(.isDraft == false) | .tagName' \
+              | sort -t r -k2 -n \
+              | tail -1)
           fi
           if [ -z "$tag" ]; then
             echo "ERROR: no sandbox-rootfs-* release tag found." >&2
             echo "       Run scripts/bootstrap-first-rootfs-release.sh first." >&2
             exit 1
           fi
+          # Validate shape — defense against shell/TOML/path injection
+          # via workflow_dispatch input (the only attacker-controllable
+          # path here, restricted to maintainers but worth defending).
+          if ! echo "$tag" | grep -Eq '^sandbox-rootfs-v[0-9]+\.r[0-9]+-(x86_64|aarch64)$'; then
+            echo "ERROR: tag '$tag' must match sandbox-rootfs-vN.rM-arch" >&2
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           flavor="${{ github.event.inputs.rootfs_flavor }}"
           flavor="${flavor:-full}"
+          if ! echo "$flavor" | grep -Eq '^(minimal|full)$'; then
+            echo "ERROR: flavor must be 'minimal' or 'full'" >&2
+            exit 1
+          fi
           echo "flavor=$flavor" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
@@ -75,6 +91,7 @@ jobs:
           echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - name: build + push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -87,11 +104,25 @@ jobs:
           build-args: |
             ROOTFS_TAG=${{ steps.rootfs.outputs.tag }}
             ROOTFS_FLAVOR=${{ steps.rootfs.outputs.flavor }}
+          # `mode=min` only caches the final layer (NOT intermediate
+          # builder layers). The builder stage COPYs src-app/server
+          # which contains the test directory; while .dockerignore
+          # blocks env files, mode=min adds a belt-and-braces guard
+          # against future regression by not exposing builder caches
+          # at all.
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
-      - name: cosign sign image
+      - name: cosign sign image (all tags — by digest)
         uses: sigstore/cosign-installer@v3
-      - run: |
-          cosign sign --yes \
-            ghcr.io/${{ github.repository }}/server-with-sandbox:${{ steps.server.outputs.version }}
+      - name: cosign sign
+        run: |
+          # Sign by digest (not by tag) so signatures bind to immutable
+          # content. Then sign each of the three tags that point at
+          # this digest so operators can verify any of them.
+          digest="${{ steps.build.outputs.digest }}"
+          base="ghcr.io/${{ github.repository }}/server-with-sandbox"
+          cosign sign --yes "${base}@${digest}"
+          cosign sign --yes "${base}:${{ steps.server.outputs.version }}-${{ steps.rootfs.outputs.tag }}"
+          cosign sign --yes "${base}:${{ steps.server.outputs.version }}"
+          cosign sign --yes "${base}:latest"
