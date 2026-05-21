@@ -13,6 +13,7 @@
 // existing mcp_*_test.rs files; not gathered here.
 
 pub mod harness;
+pub mod mirror_fixture;
 
 mod tier2_repository;
 mod tier2_migrations;
@@ -21,6 +22,7 @@ mod tier2_built_in_protection;
 mod tier2_workspace_reaper;
 mod tier3_http;
 mod tier3_concurrency;
+mod tier3_prefetch;
 mod tier4_sandbox_smoke;
 mod tier4_hardening;
 mod tier4_pid_ns_fallback;

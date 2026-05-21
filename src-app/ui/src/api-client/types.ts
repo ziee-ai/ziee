@@ -394,6 +394,19 @@ export interface EditMessageResponse {
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
+export interface EnvironmentInfo {
+  description: string
+  approximate_size_mb: number
+  cached: boolean
+  flavor: string
+}
+
+export interface EnvironmentsResponse {
+  available: EnvironmentInfo[]
+}
+
+export type FetchPhase = 'resolving' | 'downloading' | 'verifying_sha256' | 'verifying_cosign' | 'installing'
+
 export interface File {
   checksum?: string
   created_at: string
@@ -669,6 +682,10 @@ export interface ListModelsQuery {
   page?: number
   perPage?: number
   providerId?: string
+}
+
+export interface ListPrefetchTasksResponse {
+  tasks: PrefetchTaskSummary[]
 }
 
 export interface ListPromptsResponse {
@@ -1096,6 +1113,18 @@ export interface PingResponse {
   ok: boolean
 }
 
+export type PrefetchStatus = 'running' | 'completed' | 'failed' | 'already_cached'
+
+export interface PrefetchTaskSummary {
+  error?: string
+  flavor: string
+  last_phase?: FetchPhase
+  outcome?: SSEPrefetchCompleteData
+  started_at: string
+  status: PrefetchStatus
+  task_id: string
+}
+
 export interface PreviewQuery {
   page?: number
 }
@@ -1312,6 +1341,35 @@ export type SSEHardwareUsageEvent = {
   update: HardwareUsageUpdate
 }
 
+export interface SSEPrefetchCompleteData {
+  bytes_downloaded: number
+  cosign_verified: boolean
+  duration_ms: number
+}
+
+export interface SSEPrefetchConnectedData {
+  expected_size_mb: number
+  flavor: string
+  status: PrefetchStatus
+  task_id: string
+}
+
+export type SSEPrefetchEvent = {
+  connected: SSEPrefetchConnectedData
+  progress: SSEPrefetchProgressData
+  complete: SSEPrefetchCompleteData
+  failed: SSEPrefetchFailedData
+}
+
+export interface SSEPrefetchFailedData {
+  error: string
+}
+
+export interface SSEPrefetchProgressData {
+  message: string
+  phase: FetchPhase
+}
+
 export interface SaveUserApiKeyRequest {
   api_key: string
   provider_id: string
@@ -1348,6 +1406,18 @@ export interface SetupStatusResponse {
 }
 
 export type StartInstanceRequest = any
+
+export interface StartPrefetchBody {
+  flavor: string
+}
+
+export interface StartPrefetchResponse {
+  events_url: string
+  expected_size_mb: number
+  flavor: string
+  status: PrefetchStatus
+  task_id: string
+}
 
 export interface StreamError {
   code?: string
@@ -1755,6 +1825,10 @@ export const ApiEndpoints = {
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'CodeSandbox.listEnvironments': 'GET /api/code-sandbox/environments',
+  'CodeSandbox.listPrefetchTasks': 'GET /api/code-sandbox/prefetch',
+  'CodeSandbox.startPrefetch': 'POST /api/code-sandbox/prefetch',
+  'CodeSandbox.subscribePrefetchEvents': 'GET /api/code-sandbox/prefetch/{flavor}/events',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
@@ -1910,6 +1984,10 @@ export type ApiEndpointParameters = {
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
+  'CodeSandbox.listEnvironments': void
+  'CodeSandbox.listPrefetchTasks': void
+  'CodeSandbox.startPrefetch': StartPrefetchBody
+  'CodeSandbox.subscribePrefetchEvents': { flavor: string }
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
@@ -2065,6 +2143,10 @@ export type ApiEndpointResponses = {
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
+  'CodeSandbox.listEnvironments': EnvironmentsResponse
+  'CodeSandbox.listPrefetchTasks': ListPrefetchTasksResponse
+  'CodeSandbox.startPrefetch': StartPrefetchResponse
+  'CodeSandbox.subscribePrefetchEvents': SSEPrefetchEvent
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation

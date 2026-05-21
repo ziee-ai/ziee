@@ -23,6 +23,7 @@ pub mod cgroup;
 pub mod cli;
 pub mod config;
 pub mod handlers;
+pub mod prefetch;
 pub mod runtime_fetch;
 pub mod runtime_mount;
 pub mod models;

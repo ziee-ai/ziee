@@ -24,3 +24,30 @@ impl PermissionCheck for CodeSandboxExecute {
     const DESCRIPTION: &'static str = "Invoke code_sandbox tools (read/write/execute in the sandbox)";
     const MODULE: &'static str = "code_sandbox";
 }
+
+/// Read access to environment metadata + prefetch task state +
+/// SSE progress streams. Sufficient to render the admin UI's
+/// "Sandbox Environments" page without being able to spend
+/// bandwidth on a new download.
+pub struct CodeSandboxEnvironmentsRead;
+
+impl PermissionCheck for CodeSandboxEnvironmentsRead {
+    const NAME: &'static str = "CodeSandboxEnvironmentsRead";
+    const PERMISSION: &'static str = "code_sandbox::environments::read";
+    const DESCRIPTION: &'static str =
+        "List available sandbox environments and watch prefetch progress.";
+    const MODULE: &'static str = "code_sandbox";
+}
+
+/// Write access — triggers a network download. Split from Read so
+/// operators on metered connections can grant Read to a wider audience
+/// while keeping Manage on a smaller admin group.
+pub struct CodeSandboxEnvironmentsManage;
+
+impl PermissionCheck for CodeSandboxEnvironmentsManage {
+    const NAME: &'static str = "CodeSandboxEnvironmentsManage";
+    const PERMISSION: &'static str = "code_sandbox::environments::manage";
+    const DESCRIPTION: &'static str =
+        "Trigger pre-fetch + cache management of sandbox rootfs environments.";
+    const MODULE: &'static str = "code_sandbox";
+}

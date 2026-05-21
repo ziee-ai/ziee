@@ -7972,6 +7972,152 @@
         ]
       }
     },
+    "/api/code-sandbox/environments": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List available sandbox environments",
+        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
+        "operationId": "CodeSandbox.listEnvironments",
+        "responses": {
+          "403": {
+            "description": "Missing CodeSandboxEnvironmentsRead"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List known prefetch tasks",
+        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
+        "operationId": "CodeSandbox.listPrefetchTasks",
+        "responses": {
+          "403": {
+            "description": "Missing CodeSandboxEnvironmentsRead"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Start (or join) a rootfs prefetch task",
+        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
+        "operationId": "CodeSandbox.startPrefetch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPrefetchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Missing CodeSandboxEnvironmentsManage"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartPrefetchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown flavor"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch/{flavor}/events": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to prefetch progress via SSE",
+        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
+        "operationId": "CodeSandbox.subscribePrefetchEvents",
+        "responses": {
+          "403": {
+            "description": "Missing CodeSandboxEnvironmentsRead"
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEPrefetchEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "No task for this flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hardware": {
       "get": {
         "tags": [
@@ -10020,6 +10166,55 @@
           "none"
         ]
       },
+      "EnvironmentInfo": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "approximate_size_mb": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cached": {
+            "type": "boolean"
+          },
+          "flavor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "flavor",
+          "description",
+          "approximate_size_mb",
+          "cached"
+        ]
+      },
+      "EnvironmentsResponse": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentInfo"
+            }
+          }
+        },
+        "required": [
+          "available"
+        ]
+      },
+      "FetchPhase": {
+        "type": "string",
+        "enum": [
+          "resolving",
+          "downloading",
+          "verifying_sha256",
+          "verifying_cosign",
+          "installing"
+        ]
+      },
       "File": {
         "description": "File entity",
         "type": "object",
@@ -11279,6 +11474,20 @@
             "format": "uuid"
           }
         }
+      },
+      "ListPrefetchTasksResponse": {
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrefetchTaskSummary"
+            }
+          }
+        },
+        "required": [
+          "tasks"
+        ]
       },
       "ListPromptsResponse": {
         "type": "object",
@@ -13302,6 +13511,66 @@
           "ok"
         ]
       },
+      "PrefetchStatus": {
+        "type": "string",
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "already_cached"
+        ]
+      },
+      "PrefetchTaskSummary": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "flavor": {
+            "type": "string"
+          },
+          "last_phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FetchPhase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SSEPrefetchCompleteData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "description": "RFC 3339 UTC timestamp of task start.",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PrefetchStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "task_id",
+          "flavor",
+          "status",
+          "started_at"
+        ]
+      },
       "PreviewQuery": {
         "description": "Preview query params",
         "type": "object",
@@ -14307,6 +14576,134 @@
           }
         ]
       },
+      "SSEPrefetchCompleteData": {
+        "type": "object",
+        "properties": {
+          "bytes_downloaded": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cosign_verified": {
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "bytes_downloaded",
+          "duration_ms",
+          "cosign_verified"
+        ]
+      },
+      "SSEPrefetchConnectedData": {
+        "type": "object",
+        "properties": {
+          "expected_size_mb": {
+            "description": "Total expected size from `KNOWN_FLAVORS` metadata — lets the\n admin UI render a progress-bar denominator before any\n download bytes have arrived.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "flavor": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PrefetchStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "flavor",
+          "task_id",
+          "status",
+          "expected_size_mb"
+        ]
+      },
+      "SSEPrefetchEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "connected": {
+                "$ref": "#/components/schemas/SSEPrefetchConnectedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "connected"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "progress": {
+                "$ref": "#/components/schemas/SSEPrefetchProgressData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "progress"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "complete": {
+                "$ref": "#/components/schemas/SSEPrefetchCompleteData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "complete"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "failed": {
+                "$ref": "#/components/schemas/SSEPrefetchFailedData"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "failed"
+            ]
+          }
+        ]
+      },
+      "SSEPrefetchFailedData": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "SSEPrefetchProgressData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/FetchPhase"
+          }
+        },
+        "required": [
+          "phase",
+          "message"
+        ]
+      },
       "SaveUserApiKeyRequest": {
         "description": "Request to save a user API key",
         "type": "object",
@@ -14468,6 +14865,48 @@
       },
       "StartInstanceRequest": {
         "type": "object"
+      },
+      "StartPrefetchBody": {
+        "type": "object",
+        "properties": {
+          "flavor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "flavor"
+        ]
+      },
+      "StartPrefetchResponse": {
+        "type": "object",
+        "properties": {
+          "events_url": {
+            "description": "Ready-to-use SSE URL for the frontend's EventSource (relative\n to the API root).",
+            "type": "string"
+          },
+          "expected_size_mb": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "flavor": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PrefetchStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "task_id",
+          "flavor",
+          "expected_size_mb",
+          "status",
+          "events_url"
+        ]
       },
       "StreamError": {
         "description": "Stream error information",
