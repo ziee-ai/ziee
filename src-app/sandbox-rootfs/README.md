@@ -89,3 +89,16 @@ execution, escalate to gVisor or Firecracker.
 See `.claude/plans/replicated-enchanting-allen.md` (Phase 3) for the
 full threat model + the empirical validation table that justifies the
 bwrap flag set.
+
+## Cross-references
+
+- [`RELEASE-RUNBOOK.md`](./RELEASE-RUNBOOK.md) — bootstrap script +
+  ongoing release flow, schema bumps, yanks, troubleshooting.
+- [`../server/DEPLOYMENT.md`](../server/DEPLOYMENT.md) — production
+  deployment patterns: baked-in Docker image
+  (`src-app/server/Dockerfile.prod`), volume-mount
+  (`src-app/docker-compose.prod.yaml`), self-fetch via init container.
+- [`../../CLAUDE.md`](../../CLAUDE.md) — test tier overview, dev
+  workflow cheat sheet.
+- [`../../scripts/bootstrap-first-rootfs-release.sh`](../../scripts/bootstrap-first-rootfs-release.sh)
+  — one-time bootstrap of the first GitHub release tag.

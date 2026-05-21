@@ -1,0 +1,114 @@
+# Production Dockerfile for ziee-chat server with code_sandbox enabled.
+#
+# Multi-stage build:
+#   1. builder   — Rust release build with `code_sandbox_seccomp` feature
+#   2. rootfs    — fetch + verify the released sandbox rootfs
+#   3. runtime   — debian-slim with bubblewrap, squashfuse, libseccomp;
+#                  copies the server binary + the squashfs.
+#
+# Build with:
+#   docker build -f src-app/server/Dockerfile.prod \
+#       --build-arg ROOTFS_TAG=sandbox-rootfs-v1.r0-x86_64 \
+#       --build-arg ROOTFS_FLAVOR=full \
+#       -t ziee/server-with-sandbox:0.1.0-v1.r0 \
+#       .
+#
+# Run with cgroup v2 delegation (recommended) — see
+# `src-app/docker-compose.prod.yaml` for the full reference.
+
+# ─── Stage 1: Rust builder ─────────────────────────────────────────
+ARG RUST_VERSION=1.84
+FROM rust:${RUST_VERSION}-bookworm AS builder
+WORKDIR /build
+
+# libseccomp-dev needed to compile the optional `code_sandbox_seccomp`
+# feature. Without it the server builds fine but the sandbox runs
+# with seccomp: off-feature-not-linked.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libseccomp-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Cache dep compilation. Copy only manifests first so source edits
+# don't bust the cache.
+COPY src-app/server/Cargo.toml src-app/server/Cargo.lock ./src-app/server/
+COPY src-app/server/macros ./src-app/server/macros
+COPY Cargo.toml Cargo.lock ./
+# (Other workspace members would go here if the server's Cargo.toml
+# is workspace-aware. Adjust based on actual layout.)
+
+# Copy source and build.
+COPY src-app/server ./src-app/server
+WORKDIR /build/src-app/server
+RUN cargo build --release --bin ziee-chat --features code_sandbox_seccomp
+
+# ─── Stage 2: rootfs download + verify ─────────────────────────────
+FROM debian:bookworm-slim AS rootfs
+ARG ROOTFS_TAG
+ARG ROOTFS_FLAVOR=full
+ARG ROOTFS_ARCH=x86_64
+ARG GH_REPO=phibya/ziee-chat
+WORKDIR /rootfs
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl coreutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fetch the squashfs + sha256.
+RUN set -eux; \
+    base="https://github.com/${GH_REPO}/releases/download/${ROOTFS_TAG}"; \
+    asset="ziee-sandbox-rootfs-${ROOTFS_TAG#sandbox-rootfs-}-${ROOTFS_FLAVOR}.squashfs"; \
+    curl -fSL -o /rootfs/payload.squashfs "${base}/${asset}"; \
+    curl -fSL -o /rootfs/payload.squashfs.sha256 "${base}/${asset}.sha256"; \
+    cd /rootfs && sha256sum -c payload.squashfs.sha256
+
+# ─── Stage 3: runtime ──────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+LABEL org.opencontainers.image.source="https://github.com/phibya/ziee-chat"
+LABEL org.opencontainers.image.title="ziee-chat with sandbox"
+LABEL org.opencontainers.image.description="ziee-chat server with code_sandbox baked in (rootfs + bwrap + squashfuse)."
+
+# Runtime deps:
+#   - bubblewrap: the sandbox executor
+#   - squashfuse + fuse3: mount the rootfs without root
+#   - libseccomp2: the seccomp filter loaded by the server
+#   - ca-certificates: outbound HTTPS from sandboxed code (TLS roots)
+#   - util-linux: prlimit (the sandbox uses /usr/bin/prlimit INSIDE bwrap)
+#   - tini: PID 1 with reaper semantics (cleans up orphan bwraps if any)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bubblewrap squashfuse fuse3 libseccomp2 ca-certificates \
+        util-linux tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user matching the typical deployment uid (10000 by default).
+ARG SERVER_UID=10000
+ARG SERVER_GID=10000
+RUN groupadd --gid ${SERVER_GID} ziee \
+    && useradd --uid ${SERVER_UID} --gid ${SERVER_GID} --home-dir /var/lib/ziee --shell /usr/sbin/nologin ziee \
+    && mkdir -p /var/lib/ziee/sandbox-rootfs /var/lib/ziee/data \
+    && chown -R ziee:ziee /var/lib/ziee
+
+# Copy server binary + the verified squashfs.
+COPY --from=builder /build/src-app/server/target/release/ziee-chat /usr/local/bin/ziee-chat
+COPY --from=rootfs --chown=ziee:ziee /rootfs/payload.squashfs /var/lib/ziee/sandbox-rootfs/current.squashfs
+
+# Entrypoint script: mounts the squashfs at /var/lib/ziee/sandbox-rootfs/current/
+# (via squashfuse, runs as the ziee uid — no root needed inside the
+# container, only the FUSE device + SYS_ADMIN cap or
+# seccomp:unconfined depending on docker's defaults — see the
+# docker-compose.prod.yaml for the runtime options).
+COPY src-app/server/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+USER ziee
+WORKDIR /var/lib/ziee
+
+ENV CONFIG_FILE=/etc/ziee/config.yaml \
+    CODE_SANDBOX_ROOTFS_PATH=/var/lib/ziee/sandbox-rootfs/current
+
+# tini → entrypoint → ziee-chat. tini ensures orphan bwrap processes
+# get reaped if the server crashes mid-call.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
+CMD ["ziee-chat"]

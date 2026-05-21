@@ -14,7 +14,12 @@ name: sandbox integration (nightly)
 on:
   schedule:
     - cron: '0 4 * * *'   # 04:00 UTC daily
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      run_llm_tests:
+        description: 'Also run Tier-5 real-LLM tests (requires ANTHROPIC_API_KEY secret; ~$0.30 per run)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -86,13 +91,36 @@ jobs:
         with:
           workspaces: src-app/server
 
-      - name: run bwrap-dependent integration tests
+      - name: run bwrap-dependent integration tests (Tier 4 + Tier 6)
         working-directory: src-app/server
         env:
           ZIEE_SANDBOX_ROOTFS: /tmp/rootfs-nightly
           DATABASE_URL: postgresql://postgres:password@127.0.0.1:54321/postgres
         run: |
-          cargo test --test integration_tests -- --test-threads=1 --ignored code_sandbox::
+          cargo test --test integration_tests -- --test-threads=1 --ignored \
+              code_sandbox::tier4_ \
+              code_sandbox::tier6_
+
+      - name: run Tier-5 real-LLM tests (opt-in)
+        if: ${{ github.event.inputs.run_llm_tests == 'true' }}
+        working-directory: src-app/server
+        env:
+          ZIEE_SANDBOX_ROOTFS: /tmp/rootfs-nightly
+          DATABASE_URL: postgresql://postgres:password@127.0.0.1:54321/postgres
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY secret not set; skipping Tier-5"
+            exit 0
+          fi
+          cargo test --test integration_tests -- --test-threads=1 --ignored \
+              chat::sandbox_real_llm
+
+      - name: cleanup old rootfs squashfs files
+        if: always()
+        working-directory: src-app/server
+        run: |
+          cargo run -q --bin ziee-chat -- gc-sandbox-rootfs --keep=2 || true
 
       - name: open drift issue on failure
         if: failure()

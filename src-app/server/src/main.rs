@@ -355,23 +355,15 @@ fn run_sandbox_subcommand(cmd: Command) -> i32 {
             0
         }
         Command::FetchSandboxRootfs { version, flavor } => {
-            // v1 stub: print the gh-release invocation for users to
-            // run manually. v2 wires this into actual sha256+cosign
-            // verification once releases exist.
-            let arch = std::env::consts::ARCH.replace("aarch64", "aarch64");
-            eprintln!("ziee-chat fetch-sandbox-rootfs (v1 stub)");
-            eprintln!("Once releases exist, run:");
-            eprintln!(
-                "  gh release download sandbox-rootfs-{version}-{arch} \\"
-            );
-            eprintln!(
-                "    --pattern '*-{arch}-{flavor}.squashfs*' \\"
-            );
-            eprintln!("    --dir .ziee-cache/sandbox-rootfs/");
-            eprintln!("  ziee-chat mount-sandbox-rootfs");
-            eprintln!();
-            eprintln!("Or build locally with: ziee-chat build-sandbox-rootfs --flavor {flavor}");
-            0
+            // v2: real download + sha256 verify against embedded
+            // known_revisions.toml + optional cosign verify + atomic
+            // install. The `version` arg may be:
+            //   - "latest" → resolve to the newest non-yanked entry
+            //     in the embedded known_revisions.toml that matches
+            //     this binary's SANDBOX_ROOTFS_SCHEMA_VERSION
+            //   - "v1.r3" → exact pin (must appear in known_revisions)
+            let arch = std::env::consts::ARCH.to_string();
+            fetch_sandbox_rootfs(&version, &flavor, &arch)
         }
         Command::GcSandboxRootfs { keep } => {
             let cache = repo_relative(".ziee-cache/sandbox-rootfs");
@@ -424,6 +416,266 @@ fn repo_relative(suffix: &str) -> std::path::PathBuf {
         }
     }
     std::path::PathBuf::from(suffix)
+}
+
+/// Phase 8d: real fetch implementation.
+///
+/// Downloads the requested rootfs from GitHub Releases (override the
+/// base URL via `CODE_SANDBOX_ROOTFS_MIRROR`), verifies the sha256
+/// against the embedded `known_revisions.toml`, and runs cosign
+/// verification when the bundle file is published alongside the
+/// release. Falls back to sha256-only when cosign isn't installed.
+///
+/// Returns the process exit code (0 on success).
+fn fetch_sandbox_rootfs(version: &str, flavor: &str, arch: &str) -> i32 {
+    // Use the in-crate path, NOT `ziee_chat::code_sandbox::*`. The
+    // library-crate import causes linkme to see the MODULE_ENTRIES
+    // distributed_slice as registered twice at runtime (once via
+    // `mod modules` in main.rs, once via the implicit `extern crate
+    // ziee_chat` that `use ziee_chat::...` activates), panicking the
+    // binary with "duplicate #[distributed_slice]".
+    use crate::modules::code_sandbox::{
+        SANDBOX_KNOWN_REVISIONS_TOML, SANDBOX_ROOTFS_SCHEMA_VERSION,
+    };
+    // Parse the embedded known_revisions.toml.
+    let known: toml::Value = match toml::from_str(SANDBOX_KNOWN_REVISIONS_TOML) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "ERROR: embedded known_revisions.toml is invalid TOML: {e}\n\
+                 The server binary was built from an inconsistent tree. Re-build.\n\
+                 (If you're trying to bootstrap the first release, run\n\
+                 ./scripts/bootstrap-first-rootfs-release.sh first.)"
+            );
+            return 2;
+        }
+    };
+    let entries: Vec<&toml::value::Table> = known
+        .get("revision")
+        .and_then(|r| r.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_table()).collect())
+        .unwrap_or_default();
+    if entries.is_empty() {
+        eprintln!(
+            "ERROR: embedded known_revisions.toml is empty.\n\
+             No published releases yet — run\n\
+             ./scripts/bootstrap-first-rootfs-release.sh to cut the first one.\n\
+             Or build locally: ziee-chat build-sandbox-rootfs --flavor {flavor}"
+        );
+        return 2;
+    }
+
+    // Resolve the version.
+    let resolved = if version == "latest" {
+        // Pick the newest non-yanked entry matching schema + arch + flavor.
+        let mut candidates: Vec<&toml::value::Table> = entries
+            .iter()
+            .copied()
+            .filter(|e| {
+                e.get("schema").and_then(|v| v.as_integer())
+                    == Some(SANDBOX_ROOTFS_SCHEMA_VERSION as i64)
+                    && e.get("arch").and_then(|v| v.as_str()) == Some(arch)
+                    && e.get("flavor").and_then(|v| v.as_str()) == Some(flavor)
+            })
+            .collect();
+        candidates.sort_by_key(|e| e.get("revision").and_then(|v| v.as_str()).map(|s| s.to_string()));
+        match candidates.last() {
+            Some(c) => (*c).clone(),
+            None => {
+                eprintln!(
+                    "ERROR: no published revision matches schema={} arch={} flavor={}",
+                    SANDBOX_ROOTFS_SCHEMA_VERSION, arch, flavor
+                );
+                return 2;
+            }
+        }
+    } else {
+        // Exact match: parse "v1.r3" → schema=1, revision="r3".
+        let v = version.strip_prefix('v').unwrap_or(version);
+        let mut parts = v.splitn(2, '.');
+        let schema: i64 = match parts.next().and_then(|s| s.parse().ok()) {
+            Some(n) => n,
+            None => {
+                eprintln!("ERROR: invalid version {version:?} (expected vN.rM)");
+                return 2;
+            }
+        };
+        let revision = match parts.next() {
+            Some(s) => s.to_string(),
+            None => {
+                eprintln!("ERROR: invalid version {version:?} (expected vN.rM)");
+                return 2;
+            }
+        };
+        match entries.iter().find(|e| {
+            e.get("schema").and_then(|v| v.as_integer()) == Some(schema)
+                && e.get("revision").and_then(|v| v.as_str()) == Some(&revision)
+                && e.get("arch").and_then(|v| v.as_str()) == Some(arch)
+                && e.get("flavor").and_then(|v| v.as_str()) == Some(flavor)
+        }) {
+            Some(c) => (*c).clone(),
+            None => {
+                eprintln!(
+                    "ERROR: {version} (arch={arch} flavor={flavor}) not in known_revisions.toml"
+                );
+                return 2;
+            }
+        }
+    };
+
+    let schema = resolved.get("schema").and_then(|v| v.as_integer()).unwrap_or(0);
+    let revision = resolved.get("revision").and_then(|v| v.as_str()).unwrap_or("");
+    let expected_sha = match resolved.get("sha256").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            eprintln!("ERROR: known_revisions entry missing sha256 field");
+            return 2;
+        }
+    };
+
+    // Schema compatibility check.
+    if schema != SANDBOX_ROOTFS_SCHEMA_VERSION as i64 {
+        eprintln!(
+            "ERROR: schema mismatch — server binary expects {} but \
+             resolved revision is schema {}. Either rebuild the server \
+             or pin a compatible revision.",
+            SANDBOX_ROOTFS_SCHEMA_VERSION, schema
+        );
+        return 2;
+    }
+
+    // Build the URL.
+    let base_url = std::env::var("CODE_SANDBOX_ROOTFS_MIRROR")
+        .unwrap_or_else(|_| "https://github.com/phibya/ziee-chat/releases/download".to_string());
+    let tag = format!("sandbox-rootfs-v{schema}.{revision}-{arch}");
+    let asset = format!("ziee-sandbox-rootfs-v{schema}.{revision}-{arch}-{flavor}.squashfs");
+    let url = format!("{base_url}/{tag}/{asset}");
+
+    // Output path.
+    let cache_dir = repo_relative(".ziee-cache/sandbox-rootfs");
+    if let Err(e) = std::fs::create_dir_all(&cache_dir) {
+        eprintln!("ERROR: cannot create cache dir {}: {e}", cache_dir.display());
+        return 2;
+    }
+    let out_path = cache_dir.join(&asset);
+    let tmp_path = out_path.with_extension("squashfs.tmp");
+
+    // Download via curl (no async runtime here; main is already inside
+    // a tokio runtime but the subcommand path is sync — use curl to
+    // keep the dep surface small).
+    eprintln!("==> Downloading {url}");
+    let curl = std::process::Command::new("curl")
+        .args(["-fSL", "--retry", "3", "--retry-delay", "2", "-o"])
+        .arg(&tmp_path)
+        .arg(&url)
+        .status();
+    match curl {
+        Ok(s) if s.success() => {}
+        Ok(s) => {
+            eprintln!("ERROR: curl exited {s} downloading {url}");
+            let _ = std::fs::remove_file(&tmp_path);
+            return 2;
+        }
+        Err(e) => {
+            eprintln!("ERROR: curl spawn failed: {e}. Install curl: apt install curl");
+            return 2;
+        }
+    }
+
+    // Verify sha256 against embedded known value (NOT a downloaded
+    // .sha256 file — that would be circular).
+    eprintln!("==> Verifying sha256");
+    let actual_sha = match sha256_file(&tmp_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ERROR: sha256 failed: {e}");
+            let _ = std::fs::remove_file(&tmp_path);
+            return 2;
+        }
+    };
+    if actual_sha != expected_sha {
+        eprintln!(
+            "ERROR: sha256 mismatch.\n  expected: {expected_sha}\n  got:      {actual_sha}\n\
+             The download may be corrupt, intercepted, or the embedded\n\
+             known_revisions.toml is stale (rebuild the server)."
+        );
+        let _ = std::fs::remove_file(&tmp_path);
+        return 2;
+    }
+    eprintln!("    sha256 OK ({actual_sha})");
+
+    // Optional cosign verify.
+    let bundle_url = format!("{url}.cosign.bundle");
+    let bundle_path = out_path.with_extension("squashfs.cosign.bundle");
+    if std::process::Command::new("cosign").arg("version").status().map(|s| s.success()).unwrap_or(false) {
+        eprintln!("==> Downloading cosign bundle");
+        let _ = std::process::Command::new("curl")
+            .args(["-fSL", "-o"])
+            .arg(&bundle_path)
+            .arg(&bundle_url)
+            .status();
+        if bundle_path.exists() {
+            eprintln!("==> Verifying cosign signature");
+            let v = std::process::Command::new("cosign")
+                .args([
+                    "verify-blob",
+                    "--bundle",
+                ])
+                .arg(&bundle_path)
+                .args([
+                    "--certificate-identity-regexp",
+                    "https://github.com/phibya/ziee-chat/.+",
+                    "--certificate-oidc-issuer",
+                    "https://token.actions.githubusercontent.com",
+                ])
+                .arg(&tmp_path)
+                .status();
+            match v {
+                Ok(s) if s.success() => eprintln!("    cosign OK"),
+                _ => {
+                    eprintln!("ERROR: cosign verification failed. Refusing to install.");
+                    let _ = std::fs::remove_file(&tmp_path);
+                    let _ = std::fs::remove_file(&bundle_path);
+                    return 2;
+                }
+            }
+        } else {
+            eprintln!("    (no cosign bundle published; sha256-only)");
+        }
+    } else {
+        eprintln!("    (cosign not installed; sha256-only verification)");
+    }
+
+    // Atomic rename — last step so a partial install doesn't shadow
+    // a previously-good rootfs.
+    if let Err(e) = std::fs::rename(&tmp_path, &out_path) {
+        eprintln!("ERROR: rename to {} failed: {e}", out_path.display());
+        let _ = std::fs::remove_file(&tmp_path);
+        return 2;
+    }
+    eprintln!("==> Installed {}", out_path.display());
+    eprintln!();
+    eprintln!("Next: ziee-chat mount-sandbox-rootfs");
+    0
+}
+
+/// Compute sha256 of a file. Inline-implemented to avoid pulling
+/// `sha2` into main.rs's compile surface (it's already a transitive
+/// dep; we just need lowercase hex of the hash).
+fn sha256_file(path: &std::path::Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut f = std::fs::File::open(path)?;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", h.finalize()))
 }
 
 fn latest_squashfs(dir: &std::path::Path) -> Option<std::path::PathBuf> {

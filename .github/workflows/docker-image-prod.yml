@@ -1,0 +1,97 @@
+name: docker image (prod, sandbox baked)
+
+# Publish the ziee/server-with-sandbox container image. Triggered when
+# a server release tag is pushed (versioned independently of the
+# rootfs release tag — the server image embeds whichever rootfs tag
+# is the highest-revision match for the current schema at build time).
+#
+# Bootstrap requirement: a sandbox-rootfs-v* release tag MUST already
+# exist; the Dockerfile.prod build stage downloads the rootfs from
+# GitHub Releases. If no rootfs release exists, the docker build fails
+# loudly (it does NOT silently produce a brokenless image).
+
+on:
+  push:
+    tags: ['v*']  # ziee-chat server release tags (e.g. v0.1.0)
+  workflow_dispatch:
+    inputs:
+      rootfs_tag:
+        description: 'Rootfs tag to bake in (e.g. sandbox-rootfs-v1.r0-x86_64)'
+        required: false
+        default: ''
+      rootfs_flavor:
+        description: 'Rootfs flavor: minimal or full'
+        required: false
+        default: 'full'
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write   # for cosign-keyless
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: resolve rootfs tag
+        id: rootfs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ github.event.inputs.rootfs_tag }}"
+          if [ -z "$tag" ]; then
+            tag=$(gh release list --limit 50 \
+              --json tagName \
+              --jq '.[] | select(.tagName | startswith("sandbox-rootfs-v")) | .tagName' \
+              | head -1)
+          fi
+          if [ -z "$tag" ]; then
+            echo "ERROR: no sandbox-rootfs-* release tag found." >&2
+            echo "       Run scripts/bootstrap-first-rootfs-release.sh first." >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          flavor="${{ github.event.inputs.rootfs_flavor }}"
+          flavor="${flavor:-full}"
+          echo "flavor=$flavor" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: docker login (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: extract server version
+        id: server
+        run: |
+          ver="${GITHUB_REF#refs/tags/v}"
+          ver="${ver:-0.0.0-dev}"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src-app/server/Dockerfile.prod
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/server-with-sandbox:${{ steps.server.outputs.version }}-${{ steps.rootfs.outputs.tag }}
+            ghcr.io/${{ github.repository }}/server-with-sandbox:${{ steps.server.outputs.version }}
+            ghcr.io/${{ github.repository }}/server-with-sandbox:latest
+          build-args: |
+            ROOTFS_TAG=${{ steps.rootfs.outputs.tag }}
+            ROOTFS_FLAVOR=${{ steps.rootfs.outputs.flavor }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: cosign sign image
+        uses: sigstore/cosign-installer@v3
+      - run: |
+          cosign sign --yes \
+            ghcr.io/${{ github.repository }}/server-with-sandbox:${{ steps.server.outputs.version }}

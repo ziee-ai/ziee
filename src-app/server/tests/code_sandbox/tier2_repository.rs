@@ -217,3 +217,104 @@ async fn get_file_by_id_denies_foreign_user() {
         .expect("query ok");
     assert!(got_b.is_none(), "foreign user must NOT see the file");
 }
+
+// ─── JSONB defense regressions ───────────────────────────────────────
+
+/// Regression for the JSONB-UUID-cast hardening in commit a3fc827.
+/// Previously `(content ->> 'file_id')::uuid` would raise a query-level
+/// "invalid input syntax for type uuid" if any message in the
+/// conversation had a malformed file_id string — breaking
+/// build_context for the owning conversation. The regex filter in
+/// the SQL CTE means malformed entries are silently dropped (they
+/// couldn't have resolved to a real `files` row anyway).
+#[tokio::test]
+async fn get_conversation_files_filters_malformed_uuid_in_jsonb() {
+    let server = TestServer::start().await;
+    let repo = repo(&server).await;
+    let pool = repo.pool();
+
+    // Set up a user + conversation + branch + message + a message_content
+    // whose content.file_id is NOT a valid UUID.
+    let user_id = Uuid::new_v4();
+    let conv_id = Uuid::new_v4();
+    let branch_id = Uuid::new_v4();
+    let msg_id = Uuid::new_v4();
+
+    sqlx::query(
+        r#"INSERT INTO users (id, username, email, password_hash, is_active)
+           VALUES ($1, $2, $3, 'x', true)"#,
+    )
+    .bind(user_id)
+    .bind(format!("u_{}", &user_id.to_string()[..8]))
+    .bind(format!("u_{}@example.com", &user_id.to_string()[..8]))
+    .execute(pool)
+    .await
+    .unwrap();
+    // FK ordering: conversation row first (with active_branch_id NULL),
+    // then branch (FK back to conversation), then UPDATE conversation
+    // to point active_branch_id at the new branch.
+    sqlx::query(
+        r#"INSERT INTO conversations (id, user_id, title, active_branch_id, created_at, updated_at)
+           VALUES ($1, $2, 't', NULL, NOW(), NOW())"#,
+    )
+    .bind(conv_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO branches (id, conversation_id, parent_branch_id, created_from_message_id, created_at)
+           VALUES ($1, $2, NULL, NULL, NOW())"#,
+    )
+    .bind(branch_id)
+    .bind(conv_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE conversations SET active_branch_id = $1 WHERE id = $2")
+        .bind(branch_id)
+        .bind(conv_id)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"INSERT INTO messages (id, role, originated_from_id, created_at)
+           VALUES ($1, 'user', $1, NOW())"#,
+    )
+    .bind(msg_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"INSERT INTO branch_messages (branch_id, message_id, created_at)
+           VALUES ($1, $2, NOW())"#,
+    )
+    .bind(branch_id)
+    .bind(msg_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    // The poisoned message_content: content.file_id is a garbage string.
+    sqlx::query(
+        r#"INSERT INTO message_contents (id, message_id, content_type, content, sequence_order, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, 'file_attachment',
+                   '{"file_id":"not-a-uuid"}'::jsonb,
+                   0, NOW(), NOW())"#,
+    )
+    .bind(msg_id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // Without the regex filter, this would raise an "invalid input
+    // syntax for type uuid" error. With the filter, the malformed
+    // entry is silently dropped and we get an empty Vec.
+    let files = repo
+        .get_conversation_files(conv_id)
+        .await
+        .expect("query must succeed despite malformed file_id JSON");
+    assert!(
+        files.is_empty(),
+        "malformed file_id entries must be silently filtered, got: {files:?}"
+    );
+}

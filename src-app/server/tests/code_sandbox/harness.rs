@@ -183,6 +183,14 @@ pub fn run_bwrap(rootfs: &PathBuf, user_cmd: &str) -> std::process::Output {
         .expect("bwrap spawn")
 }
 
+// NOTE: the harness-uses-production-argv regression test lives in
+// `src/modules/code_sandbox/sandbox.rs` as a `#[cfg(test)]` unit test
+// (`argv_includes_security_critical_flags`). It can't live here
+// because integration tests linking the build_bwrap_argv via
+// `pub use` causes linkme to detect duplicate MODULE_ENTRIES slice
+// registrations at runtime (sequence of `pub use` re-exports from
+// `lib.rs` somehow forces the section to be emitted twice).
+
 // ─────────────────────────────────────────────────────────────────────
 // HTTP-E2E helpers (Tier 6)
 // ─────────────────────────────────────────────────────────────────────

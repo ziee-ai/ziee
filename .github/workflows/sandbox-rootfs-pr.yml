@@ -91,9 +91,34 @@ jobs:
         with:
           workspaces: src-app/server
 
-      - name: cross-test bwrap-dependent integration tests
+      - name: cross-test Tier-4 bwrap-direct
         env:
           ZIEE_SANDBOX_ROOTFS: /tmp/rootfs-check
         working-directory: src-app/server
         run: |
           cargo test --test integration_tests -- --test-threads=1 --ignored code_sandbox::tier4_
+
+      - name: postgres for Tier-6 HTTP-E2E
+        run: |
+          docker run -d --rm --name pg-tier6 \
+            -e POSTGRES_PASSWORD=password \
+            -e POSTGRES_DB=postgres \
+            -p 54321:5432 \
+            --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10 \
+            postgres:16
+          for _ in $(seq 1 30); do
+            if docker exec pg-tier6 pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
+      - name: cross-test Tier-6 HTTP-E2E (happy-path subset)
+        env:
+          ZIEE_SANDBOX_ROOTFS: /tmp/rootfs-check
+          DATABASE_URL: postgresql://postgres:password@127.0.0.1:54321/postgres
+        working-directory: src-app/server
+        run: |
+          # Just the smoke + initialize tests; full Tier-6 runs in nightly.
+          cargo test --test integration_tests -- --test-threads=1 --ignored \
+              code_sandbox::tier6_http_e2e::e2e_initialize_returns_protocol_version_and_server_info \
+              code_sandbox::tier6_http_e2e::e2e_tools_list_returns_six_tools_via_real_server \
+              code_sandbox::tier6_http_e2e::e2e_execute_command_echo_hello_returns_stdout

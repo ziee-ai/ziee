@@ -84,3 +84,109 @@ async fn deleting_built_in_via_repo_returns_built_in_server_error() {
         .unwrap();
     assert_eq!(count, 1);
 }
+
+/// Regression test for the audit-fix in commit d28cc88: the
+/// `ON CONFLICT DO UPDATE SET` clause must NOT include admin-tunable
+/// columns. Before the fix, the boot-time upsert clobbered any admin
+/// changes to display_name / description / timeout_seconds /
+/// usage_mode / max_concurrent_sessions on every server restart.
+#[tokio::test]
+async fn upsert_does_not_clobber_admin_tunable_fields() {
+    let server = TestServer::start().await;
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let repo = CodeSandboxRepository::new(pool.clone());
+    let id = code_sandbox_server_id();
+
+    // First boot — row gets created with the embedded defaults.
+    repo.upsert_builtin_server(id, "http://127.0.0.1:9999/api/code-sandbox")
+        .await
+        .unwrap();
+
+    // Admin tweaks via UI (simulated via direct UPDATE).
+    // usage_mode must satisfy migration 26's CHECK constraint
+    // (`'auto' | 'always'`); we use 'always' to differ from the
+    // default 'auto'.
+    sqlx::query(
+        r#"UPDATE mcp_servers
+           SET display_name = 'Admin Custom Name',
+               description = 'Admin custom description',
+               timeout_seconds = 1200,
+               usage_mode = 'always',
+               max_concurrent_sessions = 8,
+               enabled = false
+           WHERE id = $1"#,
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Server restarts → boot upsert fires again with the same URL.
+    repo.upsert_builtin_server(id, "http://127.0.0.1:9999/api/code-sandbox")
+        .await
+        .unwrap();
+
+    let row: (String, String, i32, String, i32, bool) = sqlx::query_as(
+        "SELECT display_name, description, timeout_seconds, usage_mode, \
+         max_concurrent_sessions, enabled FROM mcp_servers WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "Admin Custom Name", "display_name was clobbered");
+    assert_eq!(row.1, "Admin custom description", "description was clobbered");
+    assert_eq!(row.2, 1200, "timeout_seconds was clobbered");
+    assert_eq!(row.3, "always", "usage_mode was clobbered");
+    assert_eq!(row.4, 8, "max_concurrent_sessions was clobbered");
+    assert_eq!(row.5, false, "enabled was clobbered");
+}
+
+/// Boot upsert MUST refresh identity columns even on conflict.
+/// Tests that the URL gets re-asserted when the server port changes
+/// across restarts. (Can't easily test is_built_in/is_system flips
+/// because the DB has a check constraint
+/// `system_server_must_have_no_owner` that forbids partial
+/// inconsistent states; the upsert handles those atomically.)
+#[tokio::test]
+async fn upsert_refreshes_identity_columns_on_conflict() {
+    let server = TestServer::start().await;
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    let repo = CodeSandboxRepository::new(pool.clone());
+    let id = code_sandbox_server_id();
+
+    repo.upsert_builtin_server(id, "http://127.0.0.1:9999/api/code-sandbox")
+        .await
+        .unwrap();
+
+    // Simulate a port change across restarts: second boot uses a
+    // different port. URL MUST be refreshed (it's an identity field
+    // in the `ON CONFLICT DO UPDATE SET` clause).
+    repo.upsert_builtin_server(id, "http://127.0.0.1:8888/api/code-sandbox")
+        .await
+        .unwrap();
+
+    let (url, is_built_in, is_system, transport_type): (String, bool, bool, String) =
+        sqlx::query_as(
+            "SELECT url, is_built_in, is_system, transport_type FROM mcp_servers WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        url, "http://127.0.0.1:8888/api/code-sandbox",
+        "url must be refreshed across restarts"
+    );
+    assert!(is_built_in, "is_built_in must remain true");
+    assert!(is_system, "is_system must remain true");
+    assert_eq!(transport_type, "http", "transport_type must remain http");
+}

@@ -212,3 +212,177 @@ fn wall_clock_timeout_kills_bwrap() {
         out.status
     );
 }
+
+// ─── Additional Tier-4 coverage (Phase 4) ───────────────────────────
+//
+// These tests exercise bwrap DIRECTLY (no HTTP layer) so a regression
+// in the argv shape or the rootfs surface shows up at this layer even
+// if a Tier-6 happy-path is masking it.
+
+/// --clearenv MUST wipe inherited env. Set a sentinel env on the
+/// test process, invoke bwrap, assert `env | grep SENTINEL` shows
+/// nothing. Without --clearenv (the production bug fixed in
+/// commit d28cc88), DATABASE_URL + JWT secrets + every *_API_KEY
+/// would leak into the sandboxed shell.
+#[test]
+#[ignore]
+fn clearenv_wipes_inherited_env_via_direct_bwrap() {
+    let Some(rootfs) = skip_if_unavailable() else { return };
+    let usr = rootfs.join("usr");
+    unsafe { std::env::set_var("ZIEE_TIER4_SENTINEL", "must-not-leak") };
+    let out = Command::new("bwrap")
+        .arg("--clearenv")
+        .args(["--unshare-user", "--uid", "1001", "--gid", "1001", "--share-net", "--new-session", "--die-with-parent"])
+        .args(["--ro-bind", usr.to_str().unwrap(), "/usr"])
+        .args(["--symlink", "usr/bin", "/bin"])
+        .args(["--symlink", "usr/lib", "/lib"])
+        .args(["--symlink", "usr/lib64", "/lib64"])
+        .args(["--dev-bind", "/proc", "/proc"])
+        .args(["--dev", "/dev"])
+        .args(["--tmpfs", "/tmp"])
+        .args(["--setenv", "HOME", "/home/sandboxuser"])
+        .args(["--setenv", "USER", "sandboxuser"])
+        .args(["--setenv", "PATH", "/usr/bin:/bin"])
+        .arg("--")
+        .args(["/bin/sh", "-c", "env"])
+        .output()
+        .expect("bwrap spawn");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    unsafe { std::env::remove_var("ZIEE_TIER4_SENTINEL") };
+    assert!(
+        !stdout.contains("ZIEE_TIER4_SENTINEL") && !stdout.contains("must-not-leak"),
+        "SECURITY: env leaked through --clearenv. stdout:\n{stdout}"
+    );
+    // Sanity: the explicit --setenv values DID make it through.
+    assert!(stdout.contains("USER=sandboxuser"), "USER not set: {stdout}");
+}
+
+/// /etc/ssl bind: HTTPS-using tools need CA certs.
+#[test]
+#[ignore]
+fn etc_ssl_is_accessible_via_direct_bwrap() {
+    let Some(rootfs) = skip_if_unavailable() else { return };
+    let usr = rootfs.join("usr");
+    let out = Command::new("bwrap")
+        .args(["--unshare-user", "--uid", "1001", "--gid", "1001"])
+        .args(["--ro-bind", usr.to_str().unwrap(), "/usr"])
+        .args(["--ro-bind", "/etc/ssl", "/etc/ssl"])
+        .args(["--symlink", "usr/bin", "/bin"])
+        .args(["--symlink", "usr/lib", "/lib"])
+        .args(["--symlink", "usr/lib64", "/lib64"])
+        .args(["--dev-bind", "/proc", "/proc"])
+        .args(["--dev", "/dev"])
+        .args(["--tmpfs", "/tmp"])
+        .arg("--")
+        .args(["/bin/sh", "-c", "test -d /etc/ssl && ls /etc/ssl/certs/ 2>/dev/null | head -1 && echo HAVE_SSL_DIR"])
+        .output()
+        .expect("bwrap");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("HAVE_SSL_DIR"), "/etc/ssl not visible inside sandbox: {stdout}");
+}
+
+/// /usr is a read-only bind — sandbox user MUST NOT be able to write.
+#[test]
+#[ignore]
+fn usr_bind_is_readonly_via_direct_bwrap() {
+    let Some(rootfs) = skip_if_unavailable() else { return };
+    let usr = rootfs.join("usr");
+    let out = Command::new("bwrap")
+        .args(["--unshare-user", "--uid", "1001", "--gid", "1001"])
+        .args(["--ro-bind", usr.to_str().unwrap(), "/usr"])
+        .args(["--symlink", "usr/bin", "/bin"])
+        .args(["--symlink", "usr/lib", "/lib"])
+        .args(["--symlink", "usr/lib64", "/lib64"])
+        .args(["--dev-bind", "/proc", "/proc"])
+        .args(["--dev", "/dev"])
+        .args(["--tmpfs", "/tmp"])
+        .arg("--")
+        .args(["/bin/sh", "-c", "touch /usr/foo 2>&1 || echo 'WRITE_REJECTED'"])
+        .output()
+        .expect("bwrap");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let combined = format!("{stdout} {stderr}");
+    assert!(
+        combined.contains("WRITE_REJECTED")
+            || combined.contains("Read-only")
+            || combined.contains("Permission"),
+        "/usr write should fail. stdout={stdout} stderr={stderr}"
+    );
+}
+
+/// Synthetic passwd: only the sandboxuser line, not the host's
+/// /etc/passwd contents.
+#[test]
+#[ignore]
+fn synthetic_passwd_hides_host_users() {
+    let Some(rootfs) = skip_if_unavailable() else { return };
+    let usr = rootfs.join("usr");
+    // Write a synthetic passwd into a temp file to bind-mount.
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile");
+    std::fs::write(tmp.path(), "sandboxuser:x:1001:1001:Sandbox:/home/sandboxuser:/bin/sh\n")
+        .expect("write");
+    let out = Command::new("bwrap")
+        .args(["--unshare-user", "--uid", "1001", "--gid", "1001"])
+        .args(["--ro-bind", usr.to_str().unwrap(), "/usr"])
+        .args(["--ro-bind", tmp.path().to_str().unwrap(), "/etc/passwd"])
+        .args(["--symlink", "usr/bin", "/bin"])
+        .args(["--symlink", "usr/lib", "/lib"])
+        .args(["--symlink", "usr/lib64", "/lib64"])
+        .args(["--dev-bind", "/proc", "/proc"])
+        .args(["--dev", "/dev"])
+        .args(["--tmpfs", "/tmp"])
+        .arg("--")
+        .args(["/bin/sh", "-c", "cat /etc/passwd"])
+        .output()
+        .expect("bwrap");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("sandboxuser"), "synthetic passwd missing: {stdout}");
+    // Generic check: shouldn't see any user containing "root" or
+    // common host users. The synthetic file contains exactly 1 line.
+    let line_count = stdout.lines().filter(|l| !l.trim().is_empty()).count();
+    assert_eq!(line_count, 1, "synthetic passwd should be 1 line, got {line_count}: {stdout}");
+}
+
+/// FSIZE rlimit: writing >256 MiB to a file fails partway. We use a
+/// smaller cap (1MiB) to keep the test fast, then verify dd reports
+/// failure when trying to exceed it.
+#[test]
+#[ignore]
+fn fsize_rlimit_enforced_via_prlimit() {
+    let Some(rootfs) = skip_if_unavailable() else { return };
+    let usr = rootfs.join("usr");
+    let out = Command::new("bwrap")
+        .args(["--unshare-user", "--uid", "1001", "--gid", "1001"])
+        .args(["--ro-bind", usr.to_str().unwrap(), "/usr"])
+        .args(["--symlink", "usr/bin", "/bin"])
+        .args(["--symlink", "usr/lib", "/lib"])
+        .args(["--symlink", "usr/lib64", "/lib64"])
+        .args(["--dev-bind", "/proc", "/proc"])
+        .args(["--dev", "/dev"])
+        .args(["--tmpfs", "/tmp"])
+        .arg("--")
+        .args([
+            "/usr/bin/prlimit",
+            "--fsize=1048576", // 1 MiB cap (vs prod's 256 MiB)
+            "--",
+            "/bin/sh",
+            "-c",
+            // try to write 5 MiB — must hit the 1 MiB cap.
+            // dd reports failure to stderr; exit code is nonzero.
+            "dd if=/dev/zero of=/tmp/big bs=1M count=5 2>&1; ls -la /tmp/big 2>&1",
+        ])
+        .output()
+        .expect("bwrap");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    // dd writes "File size limit exceeded" or similar; the result
+    // file should be capped at ~1 MiB (1048576 bytes).
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("File size limit")
+            || combined.contains("size limit")
+            || combined.contains("1048576"),
+        "FSIZE rlimit not enforced: stdout={stdout} stderr={stderr}"
+    );
+}

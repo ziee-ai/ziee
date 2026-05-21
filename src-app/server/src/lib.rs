@@ -50,6 +50,7 @@ pub use modules::chat::extensions::mcp::content::{McpContentData, RichFile};
 pub mod code_sandbox {
     pub use crate::modules::code_sandbox::{
         code_sandbox_server_id, loopback_host, CodeSandboxRepository,
+        SANDBOX_KNOWN_REVISIONS_TOML, SANDBOX_ROOTFS_SCHEMA_VERSION,
     };
 }
 // MCP repository for integration tests that need McpRepository::list_accessible.

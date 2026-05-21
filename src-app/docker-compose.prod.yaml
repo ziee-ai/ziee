@@ -1,0 +1,110 @@
+# Production docker-compose reference for ziee-chat with code_sandbox.
+#
+# Two deployment patterns documented here:
+#   (A) ziee/server-with-sandbox image — rootfs baked into the image,
+#       no external volume needed. Simpler ops, larger image (~1 GB).
+#   (B) ziee/server (vanilla image) + externally-managed rootfs volume.
+#       Smaller image, separation of concerns, easier to update rootfs
+#       independently of the server binary.
+#
+# Choose ONE and remove the other. Both share the same Postgres + cgroup
+# delegation setup.
+#
+# Before first boot:
+#   1. Create the cgroup delegation slice on the HOST:
+#        sudo mkdir -p /sys/fs/cgroup/ziee-sandbox.slice
+#        echo "+memory +pids +cpu" | sudo tee \
+#          /sys/fs/cgroup/ziee-sandbox.slice/cgroup.subtree_control
+#        sudo chown -R 10000:10000 /sys/fs/cgroup/ziee-sandbox.slice
+#      (10000 = the ziee uid inside the container. Match
+#      `SERVER_UID` from Dockerfile.prod.)
+#   2. (Pattern B only) Fetch the rootfs onto the host:
+#        ziee-chat fetch-sandbox-rootfs --version=latest --flavor=full
+#        ziee-chat mount-sandbox-rootfs
+
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ziee
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Pattern A: baked-in image ─────────────────────────────────────
+  ziee-server-with-sandbox:
+    image: ziee/server-with-sandbox:${ZIEE_VERSION:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # Cgroup delegation. The slice must exist on the host BEFORE
+    # the container starts (see prep steps above).
+    cgroup_parent: ziee-sandbox.slice
+
+    # Capabilities + security_opt:
+    #
+    # Option A1 (recommended, least-privilege): SYS_ADMIN cap +
+    # seccomp:unconfined. bwrap needs SYS_ADMIN to call unshare/mount;
+    # docker's default seccomp blocks unshare(CLONE_NEWUSER).
+    cap_add: [SYS_ADMIN]
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse  # squashfuse needs this
+    #
+    # Option A2 (simpler, more privileged): privileged: true. Replaces
+    # the above three lines. Easier; broader blast radius if container
+    # escapes.
+    # privileged: true
+
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/ziee
+      CODE_SANDBOX_CGROUP_PARENT: /sys/fs/cgroup/ziee-sandbox.slice
+    ports:
+      - "8080:8080"
+    volumes:
+      - ziee-data:/var/lib/ziee/data
+      # If you set up the cgroup slice on the host AND need the
+      # container to write to it, the slice must be visible inside
+      # the container too. docker cgroup_parent normally handles this,
+      # but a bind-mount is the explicit fallback:
+      # - /sys/fs/cgroup/ziee-sandbox.slice:/sys/fs/cgroup/ziee-sandbox.slice
+    restart: unless-stopped
+
+  # ─── Pattern B: vanilla image + external rootfs volume ────────────
+  # Comment out Pattern A above when using this.
+  # ziee-server-volume:
+  #   image: ziee/server:${ZIEE_VERSION:-latest}
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   cgroup_parent: ziee-sandbox.slice
+  #   cap_add: [SYS_ADMIN]
+  #   security_opt:
+  #     - seccomp:unconfined
+  #     - apparmor:unconfined
+  #   devices:
+  #     - /dev/fuse
+  #   environment:
+  #     DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/ziee
+  #     CODE_SANDBOX_CGROUP_PARENT: /sys/fs/cgroup/ziee-sandbox.slice
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ziee-data:/var/lib/ziee/data
+  #     - /var/lib/ziee/sandbox-rootfs:/var/lib/ziee/sandbox-rootfs:ro
+  #   restart: unless-stopped
+
+volumes:
+  postgres-data:
+  ziee-data:

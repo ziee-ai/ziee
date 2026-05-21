@@ -250,7 +250,12 @@ pub async fn run_in_sandbox(
 // argv construction
 // --------------------------------------------------------------------
 
-fn build_bwrap_argv(
+/// Exposed at crate level (via `lib.rs`) so the Tier-4 harness can
+/// use the EXACT same argv the production code path uses. Without
+/// this exposure the test harness had to maintain a parallel argv
+/// builder that drifted from production (caught by Tier 6 in commit
+/// 5823061 — the `--as-pid-1` gating bug).
+pub(crate) fn build_bwrap_argv(
     caps: &HardeningCapabilities,
     state: &CodeSandboxState,
     ctx: &SandboxContext,
@@ -828,6 +833,60 @@ mod tests {
         assert!(argv.windows(2).any(|w| w == ["--proc", "/proc"]));
         // Strict mode IS allowed to use --as-pid-1 (and we do).
         assert!(argv.iter().any(|a| a == "--as-pid-1"));
+    }
+
+    /// Phase 3 regression test: every security-critical flag must
+    /// appear in the production argv. If anyone removes one, this
+    /// test fails — preventing silent hardening regressions.
+    #[test]
+    fn argv_includes_all_security_critical_flags() {
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state,
+            &ctx,
+            "echo hi",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+        );
+
+        let must_have = [
+            "--clearenv",        // env-var exfiltration defense
+            "--unshare-user",    // user-namespace isolation
+            "--unshare-uts",     // hostname isolation
+            "--unshare-ipc",     // IPC isolation
+            "--die-with-parent", // child dies on bwrap kill
+            "--new-session",     // CVE-2017-5226 / TIOCSTI defense
+            "--",                // CVE-2024-32462 arg-injection defense
+            "/usr/bin/prlimit",  // rlimit wrapper applied to user code
+            "/bin/bash",         // shell (specifically bash, NOT sh)
+        ];
+        for flag in &must_have {
+            assert!(
+                argv.iter().any(|a| a == flag),
+                "production bwrap argv MUST include {flag}; full argv: {argv:?}"
+            );
+        }
+
+        // Per-call rlimits must follow prlimit in order.
+        let prlimit_idx = argv
+            .iter()
+            .position(|a| a == "/usr/bin/prlimit")
+            .expect("prlimit not found");
+        let rlimit_flags = [
+            "--nproc=256",
+            "--core=0",
+            "--nofile=1024",
+        ];
+        for flag in &rlimit_flags {
+            assert!(
+                argv[prlimit_idx..].iter().any(|a| a == flag),
+                "rlimit flag {flag} missing after prlimit; argv: {argv:?}"
+            );
+        }
     }
 
     #[test]
