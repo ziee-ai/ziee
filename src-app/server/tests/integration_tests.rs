@@ -4,6 +4,7 @@
 mod assistant;
 mod auth;
 mod chat;
+mod code_sandbox;
 mod common;
 mod file;
 mod hardware;

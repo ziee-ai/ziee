@@ -83,3 +83,11 @@ jwt:
   audience: "ziee-chat-api"
   access_token_expiry_hours: 24  # Access token expires in 24 hours
   refresh_token_expiry_days: 30  # Refresh token expires in 30 days
+
+# Code sandbox (bwrap-isolated code execution exposed as a built-in MCP server).
+# Disabled by default; flip `enabled: true` after installing bubblewrap +
+# squashfuse and mounting a rootfs to `rootfs_path`. See CLAUDE.md.
+code_sandbox:
+  enabled: false
+  rootfs_path: "./.ziee-cache/sandbox-rootfs/current"
+  cgroup_parent: ""   # empty = rlimits-only mode (no per-call cgroup scope)

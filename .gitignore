@@ -1,0 +1,8 @@
+# Repo-local sandbox rootfs cache (squashfs files + squashfuse mountpoints).
+# Created by `just sandbox-fetch` / `just sandbox-build`; never committed.
+.ziee-cache/
+check-sandbox-*.log
+# Ad-hoc local test-run logs (E2E + integration tee output).
+e2e-*.log
+integration-all-*.log
+tier3-prefetch-*.log

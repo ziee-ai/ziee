@@ -3,6 +3,7 @@ pub mod app;
 pub mod assistant;
 pub mod auth;
 pub mod chat;
+pub mod code_sandbox;
 pub mod file;
 pub mod hardware;
 pub mod health;

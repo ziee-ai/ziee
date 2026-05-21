@@ -166,4 +166,5 @@ declare_repositories! {
     file: FileRepository => crate::modules::file,
     chat: ChatRepository => crate::modules::chat::core,
     local_runtime: LocalRuntimeRepository => crate::modules::llm_local_runtime,
+    code_sandbox: CodeSandboxRepository => crate::modules::code_sandbox,
 }

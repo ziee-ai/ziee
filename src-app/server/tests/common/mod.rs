@@ -25,9 +25,43 @@ pub struct TestServer {
     temp_config_path: String,
 }
 
+/// Options for spinning up a TestServer with non-default features.
+///
+/// Default = `code_sandbox.enabled: false`, matching legacy behavior.
+/// Tier-6 HTTP-E2E tests opt into sandbox enablement via
+/// `start_with_options`; the test MUST call
+/// `harness::skip_if_no_rootfs()` first to skip cleanly when bwrap or
+/// the rootfs aren't available on this host.
+#[derive(Debug, Clone, Default)]
+pub struct TestServerOptions {
+    /// Enable code_sandbox in the test server's config. Requires bwrap
+    /// installed AND `sandbox_rootfs` pointing at a mounted rootfs.
+    pub sandbox_enabled: bool,
+    /// Rootfs path written into the test config when sandbox_enabled.
+    /// Tests should pass `harness::rootfs_path()`.
+    pub sandbox_rootfs: Option<PathBuf>,
+    /// Cgroup parent path. Empty = rlimits-only mode (no cgroup
+    /// delegation needed, runs fine in plain containers / dev shells).
+    /// Tests that need cgroup enforcement should set this AND call
+    /// `harness::needs_cgroup_delegation()` first.
+    pub sandbox_cgroup_parent: String,
+    /// Extra env vars to set on the spawned server process (e.g.
+    /// `ANTHROPIC_API_KEY` for Tier-5 LLM tests). Honored verbatim;
+    /// the test is responsible for unsetting sensitive ones it didn't
+    /// intend to expose.
+    pub extra_env: Vec<(String, String)>,
+}
+
 impl TestServer {
-    /// Start a new test server instance with isolated database and random port
+    /// Start a TestServer with the default options (sandbox disabled).
+    /// Equivalent to `start_with_options(TestServerOptions::default())`.
     pub async fn start() -> Self {
+        Self::start_with_options(TestServerOptions::default()).await
+    }
+
+    /// Start a TestServer with the given options. Use this when a test
+    /// needs the code_sandbox enabled or wants to inject extra env.
+    pub async fn start_with_options(opts: TestServerOptions) -> Self {
         // Generate unique identifiers
         let test_id = Uuid::new_v4().to_string();
         let database_name = format!("test_db_{}", test_id.replace("-", "_"));
@@ -43,7 +77,7 @@ impl TestServer {
         let password = url.password().unwrap_or("");
 
         // Create test config for the server
-        let config = format!(
+        let mut config = format!(
             r#"
 postgresql:
   use_embedded: false
@@ -68,14 +102,42 @@ server:
   api_prefix: "/api"
 
 jwt:
+  # Must match the production issuer/audience because the MCP client
+  # (modules/mcp/client/manager.rs) hardcodes these values when minting
+  # JWTs for built-in MCP servers (code_sandbox loopback). If the
+  # TestServer used different values, the validator (JwtService) would
+  # reject the MCP client's tokens with InvalidIssuer and Tier-5 tests
+  # (LLM → sandbox via MCP) would fail with "no tools available".
   secret: "test-secret-key-for-jwt-tokens-min-32-chars-long"
-  issuer: "ziee-chat-test"
-  audience: "ziee-chat-test-api"
+  issuer: "ziee-chat"
+  audience: "ziee-chat-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
 "#,
             host, port, username, password, database_name, server_port
         );
+
+        // Optional code_sandbox section. Only written when the test
+        // explicitly opts in; otherwise the server boots with sandbox
+        // disabled (the default behavior every existing test relies on).
+        if opts.sandbox_enabled {
+            let rootfs = opts
+                .sandbox_rootfs
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "TestServerOptions.sandbox_enabled=true requires \
+                         sandbox_rootfs to be set. Call \
+                         harness::rootfs_path() and skip the test if it \
+                         returns None."
+                    )
+                });
+            config.push_str(&format!(
+                "\ncode_sandbox:\n  enabled: true\n  rootfs_path: \"{}\"\n  cgroup_parent: \"{}\"\n",
+                rootfs, opts.sandbox_cgroup_parent
+            ));
+        }
 
         // Write temporary config file
         let temp_config_path = format!("/tmp/ziee-chat-test-{}.yaml", test_id);
@@ -98,11 +160,12 @@ jwt:
         // Start the server process with the temporary config
         let binary_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/ziee-chat");
 
-        let child = Command::new(binary_path)
-            .arg("--config-file")
-            .arg(&temp_config_path)
-            .spawn()
-            .expect("Failed to start test server");
+        let mut cmd = Command::new(binary_path);
+        cmd.arg("--config-file").arg(&temp_config_path);
+        for (k, v) in &opts.extra_env {
+            cmd.env(k, v);
+        }
+        let child = cmd.spawn().expect("Failed to start test server");
 
         // Construct base URL
         let base_url = format!("http://127.0.0.1:{}", server_port);

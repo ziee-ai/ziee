@@ -1,0 +1,22 @@
+# Cargo build configuration for ziee-chat-server.
+#
+# Applies to all `cargo build`/`run`/`test` invocations inside this
+# crate. Variables here are visible to dependent build scripts
+# (notably libseccomp-sys) at compile time.
+
+[env]
+# Static-link libseccomp so operators don't need libseccomp2 on the
+# host. The libseccomp-sys build script honors LIBSECCOMP_LINK_TYPE.
+# Only takes effect when the `code_sandbox_seccomp` cargo feature is
+# enabled (i.e. Linux release builds with the feature flag on).
+LIBSECCOMP_LINK_TYPE = "static"
+
+# Where libseccomp.a lives. Default is Debian/Ubuntu's multilib path
+# (works for ~80% of installs out of the box). On Fedora/RHEL the
+# path is /usr/lib64; on Arch /usr/lib; on Alpine /usr/lib.
+#
+# Override via:
+#   - the `just sandbox-build` recipe (auto-detects via pkg-config),
+#   - or set LIBSECCOMP_LIB_PATH=$(pkg-config --variable=libdir libseccomp)
+#     in your shell before running cargo directly.
+LIBSECCOMP_LIB_PATH = "/usr/lib/x86_64-linux-gnu"

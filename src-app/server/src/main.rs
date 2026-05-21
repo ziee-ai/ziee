@@ -6,8 +6,8 @@ mod modules;
 mod openapi;
 mod utils;
 
-use clap::Parser;
-use module_api::ModuleContext;
+use clap::{CommandFactory, FromArgMatches, Parser};
+use module_api::{ModuleContext, CLI_ENTRIES};
 use tokio::signal;
 
 #[derive(Parser, Debug)]
@@ -26,7 +26,39 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
-    let cli = Cli::parse();
+    // Build the top-level clap Command from Cli derive, then extend
+    // with subcommands each module registered via
+    // `#[distributed_slice(CLI_ENTRIES)]`. Modules own their CLI
+    // surface end-to-end; main.rs just dispatches.
+    let mut cmd = Cli::command();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for entry in CLI_ENTRIES.iter() {
+        for sub in (entry.subcommands)() {
+            let name = sub.get_name().to_string();
+            if !seen.insert(name.clone()) {
+                panic!(
+                    "CLI subcommand name collision: {name:?} (registered by entry {})",
+                    entry.name
+                );
+            }
+            cmd = cmd.subcommand(sub);
+        }
+    }
+    let matches = cmd.get_matches();
+    let cli = Cli::from_arg_matches(&matches).expect("Cli derive must parse its own matches");
+
+    // Dispatch operational subcommands BEFORE any of the server boot
+    // sequence runs — these are short-lived; they don't need Config,
+    // DB, or module init.
+    if let Some((sub_name, _)) = matches.subcommand() {
+        for entry in CLI_ENTRIES.iter() {
+            if let Some(code) = (entry.dispatch)(&matches) {
+                std::process::exit(code);
+            }
+        }
+        eprintln!("ERROR: no module claimed subcommand {sub_name:?}");
+        std::process::exit(2);
+    }
 
     // Check for OpenAPI generation flag
     if cli.generate_openapi.is_some() {
@@ -230,4 +262,10 @@ async fn shutdown_signal() {
     }
 
     tracing::info!("Shutdown signal received");
+
+    // Tear down the server-owned squashfuse FUSE daemon (if any was
+    // lazily spawned by code_sandbox). No-op if sandbox is disabled
+    // or no execute_command ever ran. PDEATHSIG handles SIGKILL paths
+    // where this hook can't run.
+    modules::code_sandbox::runtime_mount::shutdown().await;
 }

@@ -13,6 +13,7 @@ macros = { path = "./macros" }
 
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
+toml = "0.8"
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-stream = "0.1"
 axum = { version = "0.8.4", features = ["macros", "multipart"] }
@@ -26,6 +27,8 @@ schemars = { version = "0.9.0", features = ["chrono04", "uuid1"] }
 once_cell = "1.21.3"
 paste = "1.0"
 linkme = "0.3"
+dashmap = "6"
+libc = "0.2"
 thiserror = "2.0.12"
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -84,7 +87,8 @@ jsonwebtoken = { version = "10.1.0", features = ["rust_crypto"] }
 ldap3 = "0.12.1"
 oauth2 = "5.0.0"
 openidconnect = "4.0.1"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+sigstore = { version = "0.13", default-features = false, features = ["bundle", "sigstore-trust-root", "native-tls"] }
 
 # AI providers (local package)
 ai-providers = { path = "./ai-providers" }
@@ -110,8 +114,25 @@ name = "mock-sampling-server"
 path = "tests/mcp/examples/mock_sampling_server.rs"
 
 [features]
-default = ["gpu-detect"]
+# `code_sandbox_seccomp` is on by default. The `libseccomp` dep
+# itself is target-conditional (Linux-only — see `[target.…]` below),
+# so non-Linux builds resolve the feature to a no-op and the
+# `#[cfg(all(feature = "…", target_os = "linux"))]`-gated code path
+# simply isn't compiled. Operators get the syscall-level
+# defense-in-depth out of the box on Linux without flipping any
+# build flag; Mac/Windows builds compile cleanly with no manual
+# `--no-default-features` dance.
+default = ["gpu-detect", "code_sandbox_seccomp"]
 gpu-detect = ["nvml-wrapper", "opencl3", "ash", "wgpu-hal"]
+code_sandbox_seccomp = ["dep:libseccomp"]
+
+# Linux-only deps. `libseccomp` is `optional = true` so the feature
+# machinery (`dep:libseccomp`) above can still reference it; on
+# Mac/Windows, the dep is target-skipped and the feature flag
+# becomes inert (the seccomp module gates on `target_os = "linux"`
+# in addition to the feature).
+[target.'cfg(target_os = "linux")'.dependencies]
+libseccomp = { version = "0.3", optional = true }
 
 [build-dependencies]
 tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros"] }

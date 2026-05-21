@@ -45,6 +45,20 @@ pub use modules::mcp::elicitation::registry as elicitation_registry;
 #[doc(hidden)]
 pub use modules::chat::extensions::mcp::content::{McpContentData, RichFile};
 
+// Re-export code_sandbox surface for integration tests (tier 2 + 3).
+#[doc(hidden)]
+pub mod code_sandbox {
+    pub use crate::modules::code_sandbox::{
+        code_sandbox_server_id, loopback_host, CodeSandboxRepository,
+        SANDBOX_KNOWN_REVISIONS_TOML, SANDBOX_ROOTFS_SCHEMA_VERSION,
+    };
+}
+// MCP repository for integration tests that need McpRepository::list_accessible.
+#[doc(hidden)]
+pub mod mcp {
+    pub use crate::modules::mcp::McpRepository;
+}
+
 // Re-export axum types for route building
 pub use axum::{Extension, Json, extract::State, http::StatusCode};
 pub use axum::routing::{get, post};
