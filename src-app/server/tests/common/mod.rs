@@ -102,9 +102,15 @@ server:
   api_prefix: "/api"
 
 jwt:
+  # Must match the production issuer/audience because the MCP client
+  # (modules/mcp/client/manager.rs) hardcodes these values when minting
+  # JWTs for built-in MCP servers (code_sandbox loopback). If the
+  # TestServer used different values, the validator (JwtService) would
+  # reject the MCP client's tokens with InvalidIssuer and Tier-5 tests
+  # (LLM → sandbox via MCP) would fail with "no tools available".
   secret: "test-secret-key-for-jwt-tokens-min-32-chars-long"
-  issuer: "ziee-chat-test"
-  audience: "ziee-chat-test-api"
+  issuer: "ziee-chat"
+  audience: "ziee-chat-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
 "#,

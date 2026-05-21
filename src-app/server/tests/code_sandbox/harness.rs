@@ -207,8 +207,11 @@ pub fn test_server_jwt(user_id: Uuid) -> String {
         sub: user_id.to_string(),
         exp: (now + Duration::seconds(300)).timestamp(),
         iat: now.timestamp(),
-        iss: "ziee-chat-test".to_string(),
-        aud: "ziee-chat-test-api".to_string(),
+        // Match the TestServer's JWT config (which uses prod issuer/
+        // audience values for MCP loopback compatibility — see
+        // tests/common/mod.rs).
+        iss: "ziee-chat".to_string(),
+        aud: "ziee-chat-api".to_string(),
         username: String::new(),
         email: String::new(),
         is_admin: false,
