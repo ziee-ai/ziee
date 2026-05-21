@@ -14,8 +14,20 @@ use crate::modules::code_sandbox::types::{
 
 /// Run all probes sequentially. Cost: ~50-100 ms one-time.
 pub fn probe_all(config: &CodeSandboxConfig) -> HardeningCapabilities {
-    let bwrap_path = which_bwrap().unwrap_or_else(|| PathBuf::from("bwrap"));
-    let pid_namespace = probe_pid_ns(&bwrap_path, &config.rootfs_path);
+    // If bwrap isn't on PATH, force Disabled mode rather than using a
+    // sentinel path. The earlier impl returned `PathBuf::from("bwrap")`
+    // and relied on `is_absolute()` checks downstream — fragile if any
+    // call site forgets to check.
+    let (bwrap_path, pid_namespace) = match which_bwrap() {
+        Some(p) => (p.clone(), probe_pid_ns(&p, &config.rootfs_path)),
+        None => {
+            tracing::error!(
+                "code_sandbox: bwrap not found on PATH; sandbox will refuse \
+                 to register. Install bubblewrap (apt install bubblewrap)."
+            );
+            (PathBuf::from("bwrap"), PidNsMode::Disabled)
+        }
+    };
     let cgroup = probe_cgroup(&config.cgroup_parent);
     let seccomp = compile_seccomp_filter();
 
@@ -155,11 +167,50 @@ fn probe_pid_ns(bwrap_path: &Path, rootfs: &str) -> PidNsMode {
 }
 
 /// Detect a writable delegated cgroup parent. Empty config → None.
+///
+/// SECURITY: the parent path comes from `code_sandbox.cgroup_parent`
+/// config. We canonicalize once at boot and require:
+///   1. the canonical path is under `/sys/fs/cgroup/` — refuses to
+///      operate on arbitrary filesystem paths even if the operator
+///      misconfigures a symlink,
+///   2. the path itself is NOT a symlink (a config-time symlink swap
+///      could otherwise point us at an unrelated cgroup),
+///   3. subtree_control is tokenized on whitespace (substring match
+///      would accept the kernel's `-memory` denied-controller form).
 fn probe_cgroup(parent_str: &str) -> CgroupMode {
     if parent_str.trim().is_empty() {
         return CgroupMode::None;
     }
-    let parent = PathBuf::from(parent_str);
+    let raw_parent = PathBuf::from(parent_str);
+    // Refuse symlinks at the parent path itself.
+    if let Ok(meta) = std::fs::symlink_metadata(&raw_parent) {
+        if meta.file_type().is_symlink() {
+            tracing::warn!(
+                "code_sandbox: cgroup_parent {} is a symlink; refusing for safety",
+                raw_parent.display()
+            );
+            return CgroupMode::None;
+        }
+    }
+    // Canonicalize and re-check the resolved path is under /sys/fs/cgroup.
+    let parent = match std::fs::canonicalize(&raw_parent) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(
+                "code_sandbox: cgroup_parent {} not accessible ({e}); rlimits-only mode",
+                raw_parent.display()
+            );
+            return CgroupMode::None;
+        }
+    };
+    if !parent.starts_with("/sys/fs/cgroup") {
+        tracing::warn!(
+            "code_sandbox: cgroup_parent resolved to {} which is NOT under \
+             /sys/fs/cgroup; refusing",
+            parent.display()
+        );
+        return CgroupMode::None;
+    }
     let subtree = parent.join("cgroup.subtree_control");
     if !subtree.exists() {
         tracing::warn!(
@@ -168,12 +219,17 @@ fn probe_cgroup(parent_str: &str) -> CgroupMode {
         );
         return CgroupMode::None;
     }
-    // Read subtree_control: must contain at least `memory` and `pids`
-    // for our scope-setting to work.
+    // Read subtree_control and tokenize properly. The kernel writes a
+    // space-separated list of active-controller names (no `+`/`-`
+    // prefix in the READ form, despite the WRITE syntax using prefixes).
+    // A naive `contains("memory")` would match a hypothetical
+    // `-memory` token (denied) or a substring like `memory_pressure`.
     let controllers = std::fs::read_to_string(&subtree).unwrap_or_default();
-    if !controllers.contains("memory") || !controllers.contains("pids") {
+    let active: std::collections::HashSet<&str> = controllers.split_whitespace().collect();
+    if !active.contains("memory") || !active.contains("pids") {
         tracing::warn!(
-            "code_sandbox: cgroup parent {} subtree_control lacks memory+pids ({controllers:?}); rlimits-only mode",
+            "code_sandbox: cgroup parent {} subtree_control lacks memory+pids \
+             (active={active:?}); rlimits-only mode",
             parent.display()
         );
         return CgroupMode::None;
@@ -183,6 +239,11 @@ fn probe_cgroup(parent_str: &str) -> CgroupMode {
     let _ = std::fs::remove_dir(&probe); // ignore prior leftovers
     if std::fs::create_dir(&probe).is_ok() {
         let _ = std::fs::remove_dir(&probe);
+        // Boot-time leak sweep: any pre-existing `sandbox-*` dirs
+        // older than 1 hour are stale from previous server runs that
+        // didn't get to clean up (crashes, SIGKILLs). Sweep them so
+        // they don't accumulate across restarts.
+        sweep_stale_cgroup_scopes(&parent);
         CgroupMode::Delegated(parent)
     } else {
         tracing::warn!(
@@ -190,6 +251,34 @@ fn probe_cgroup(parent_str: &str) -> CgroupMode {
             parent.display()
         );
         CgroupMode::None
+    }
+}
+
+/// Boot-time sweep of orphaned per-call cgroup scopes from prior
+/// server runs. We delete `sandbox-*` subdirs older than 1 hour;
+/// fresher ones are left alone to avoid racing a just-started in-flight
+/// call from a hot-restart scenario.
+fn sweep_stale_cgroup_scopes(parent: &std::path::Path) {
+    use std::time::{Duration, SystemTime};
+    const MIN_AGE: Duration = Duration::from_secs(3600);
+    let Ok(entries) = std::fs::read_dir(parent) else { return };
+    let mut swept = 0usize;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        if !name.starts_with("sandbox-") { continue }
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.is_dir() { continue }
+        let age = meta.modified().ok()
+            .and_then(|m| SystemTime::now().duration_since(m).ok())
+            .unwrap_or(Duration::ZERO);
+        if age < MIN_AGE { continue }
+        if std::fs::remove_dir(&path).is_ok() {
+            swept += 1;
+        }
+    }
+    if swept > 0 {
+        tracing::info!(swept, "code_sandbox: swept stale cgroup scopes at boot");
     }
 }
 

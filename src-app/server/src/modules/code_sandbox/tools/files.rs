@@ -312,7 +312,13 @@ pub async fn list_files(ctx: &SandboxContext) -> Result<serde_json::Value, AppEr
         .await
         .map_err(|e| io_err(format!("next_entry: {e}")))?
     {
-        let name = entry.file_name().to_string_lossy().into_owned();
+        // Skip entries whose names aren't valid UTF-8. Returning
+        // them via to_string_lossy() would corrupt the name (`??`)
+        // and a subsequent read_file/write_file would silently fail
+        // to find the file. Better to omit than to mislead the LLM.
+        let Some(name) = entry.file_name().to_str().map(|s| s.to_owned()) else {
+            continue;
+        };
         if name.starts_with(".sandbox_") || name.starts_with('.') {
             continue;
         }

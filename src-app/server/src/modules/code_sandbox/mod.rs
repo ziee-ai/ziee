@@ -88,15 +88,49 @@ pub fn loopback_host(_server_host: &str) -> &str {
 /// contains a single decimal integer (e.g. `1`). Whitespace is
 /// trimmed.
 ///
-/// Returns `Err` if the file is missing or unreadable, or if its
-/// content is not a base-10 u32.
+/// Returns `Err` if the file is missing, is a symlink, exceeds the
+/// size cap, or its content is not a base-10 u32.
+///
+/// SECURITY: rejects symlinks AND caps read size at 64 bytes. The
+/// rootfs path is operator-configurable; a misconfig (or a stale
+/// unmount that exposes a host dir) could place a symlink at the
+/// sentinel pointing at `/dev/zero` (infinite read → boot hang) or
+/// `/proc/kcore` (multi-GB allocation → boot OOM). Bounded read +
+/// no-follow defeats both.
 pub fn probe_rootfs_schema(rootfs_path: &str) -> Result<u32, String> {
+    use std::io::Read;
     let sentinel = std::path::Path::new(rootfs_path).join(".ziee-sandbox-rootfs-schema");
-    let raw = std::fs::read_to_string(&sentinel)
+    // Reject symlinks before opening — `read_to_string` follows them.
+    match std::fs::symlink_metadata(&sentinel) {
+        Ok(meta) => {
+            if meta.file_type().is_symlink() {
+                return Err(format!(
+                    "{} is a symlink; refusing to follow",
+                    sentinel.display()
+                ));
+            }
+            // Bound size BEFORE reading. A sentinel that's anything
+            // other than ~5 bytes is corrupt or hostile.
+            if meta.len() > 64 {
+                return Err(format!(
+                    "{} is {} bytes; refusing (cap 64)",
+                    sentinel.display(),
+                    meta.len()
+                ));
+            }
+        }
+        Err(e) => return Err(format!("stat {}: {e}", sentinel.display())),
+    }
+    let mut f = std::fs::File::open(&sentinel)
+        .map_err(|e| format!("open {}: {e}", sentinel.display()))?;
+    // Read into a tiny buffer so even if the metadata check above
+    // was racing a symlink swap, we still cap the read.
+    let mut buf = String::new();
+    f.take(64).read_to_string(&mut buf)
         .map_err(|e| format!("read {}: {e}", sentinel.display()))?;
-    raw.trim()
+    buf.trim()
         .parse::<u32>()
-        .map_err(|e| format!("parse schema sentinel {:?}: {e}", raw.trim()))
+        .map_err(|e| format!("parse schema sentinel {:?}: {e}", buf.trim()))
 }
 
 #[cfg(test)]
@@ -163,7 +197,12 @@ mod tests {
         // No sentinel file written.
         let err =
             probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must error");
-        assert!(err.contains("read"), "err: {err}");
+        // "stat" (no such file) is the first thing we try; "open" /
+        // "read" are also valid if stat passed but later steps fail.
+        assert!(
+            err.contains("stat") || err.contains("open") || err.contains("read"),
+            "err: {err}"
+        );
     }
 
     #[test]
@@ -173,6 +212,35 @@ mod tests {
         let err =
             probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must error");
         assert!(err.contains("parse"), "err: {err}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn probe_rootfs_schema_rejects_symlink_sentinel() {
+        // SECURITY regression test: a misconfigured rootfs path could
+        // expose a symlink to /dev/zero or /proc/kcore at the sentinel,
+        // which `read_to_string` would happily follow.
+        let dir = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(
+            "/etc/hostname", // any existing file; we just need a symlink
+            dir.path().join(".ziee-sandbox-rootfs-schema"),
+        ).unwrap();
+        let err =
+            probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must reject");
+        assert!(err.contains("symlink"), "err: {err}");
+    }
+
+    #[test]
+    fn probe_rootfs_schema_rejects_huge_sentinel() {
+        let dir = tempfile::tempdir().unwrap();
+        // 65 bytes of '1' — just over the 64-byte cap.
+        std::fs::write(
+            dir.path().join(".ziee-sandbox-rootfs-schema"),
+            "1".repeat(65),
+        ).unwrap();
+        let err =
+            probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must reject");
+        assert!(err.contains("cap") || err.contains("64"), "err: {err}");
     }
 }
 
@@ -355,15 +423,36 @@ async fn workspace_reaper(root: std::path::PathBuf) {
                 if !meta.is_dir() {
                     continue;
                 }
-                let mtime = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+                // Skip shared subsystem dirs (not per-conversation):
+                //   `attachments/` is shared staging for
+                //   bind-mounted user attachments;
+                //   `identity/` is the shared synthetic passwd/group.
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name == "attachments" || name == "identity" {
+                        continue;
+                    }
+                }
+                // Prefer the explicit `.last_used` sentinel: every
+                // `run_in_sandbox` call writes the current Unix
+                // timestamp here, so a long-running conversation that
+                // only reads/edits existing files keeps the sentinel
+                // mtime fresh. Fall back to the directory mtime if
+                // the sentinel doesn't exist (workspace created but
+                // no call yet, or pre-sentinel-era workspaces).
+                let sentinel = path.join(".last_used");
+                let mtime = std::fs::metadata(&sentinel)
+                    .and_then(|m| m.modified())
+                    .or_else(|_| meta.modified())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
                 let age = SystemTime::now()
                     .duration_since(mtime)
                     .unwrap_or(Duration::ZERO);
                 if age > MAX_AGE {
                     match std::fs::remove_dir_all(&path) {
                         Ok(()) => tracing::info!(
-                            "code_sandbox: reaped stale workspace {}",
-                            path.display()
+                            "code_sandbox: reaped stale workspace {} (age={}d)",
+                            path.display(),
+                            age.as_secs() / 86_400
                         ),
                         Err(e) => tracing::warn!(
                             "code_sandbox: failed to reap {}: {e}",

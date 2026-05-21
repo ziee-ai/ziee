@@ -88,7 +88,20 @@ pub async fn run_in_sandbox(
     }
 
     let workspace = ctx.workspace.clone();
-    let synthetic = SyntheticIdentity::write_to(&workspace)?;
+    // Identity files live OUTSIDE the per-conversation workspace bind
+    // (under `<workspace_root>/identity/`) so the sandboxed shell
+    // cannot tamper with them via the workspace RW mount.
+    let synthetic = SyntheticIdentity::ensure(&state.workspace_root)?;
+
+    // Touch the per-conversation last-used sentinel so the workspace
+    // reaper doesn't delete an active long-lived workspace. Without
+    // this sentinel, the reaper only sees the directory mtime, which
+    // does not update on file writes inside — a 30-day-old
+    // conversation that's still in use would get reaped mid-flight.
+    let _ = std::fs::write(
+        workspace.join(".last_used"),
+        chrono::Utc::now().timestamp().to_string(),
+    );
 
     // Per-call cgroup scope, if available.
     let cgroup_scope = match &state.caps.cgroup {
@@ -409,22 +422,45 @@ struct SyntheticIdentity {
     group: PathBuf,
 }
 
+const SYNTHETIC_PASSWD: &str =
+    "sandboxuser:x:1001:1001:Sandbox User:/home/sandboxuser:/bin/bash\n";
+const SYNTHETIC_GROUP: &str = "sandboxuser:x:1001:\n";
+
 impl SyntheticIdentity {
-    fn write_to(workspace: &Path) -> Result<Self, AppError> {
-        let passwd = workspace.join(".sandbox_passwd");
-        let group = workspace.join(".sandbox_group");
-        std::fs::write(
-            &passwd,
-            "sandboxuser:x:1001:1001:Sandbox User:/home/sandboxuser:/bin/bash\n",
-        )
-        .map_err(|e| {
+    /// Lazily ensure the synthetic passwd/group files exist under
+    /// `<workspace_root>/identity/` and return their paths.
+    ///
+    /// SECURITY: identity files live OUTSIDE the per-conversation
+    /// workspace bind. The earlier implementation wrote them into
+    /// `<workspace>/.sandbox_passwd`, which had two problems:
+    ///   1. Two concurrent calls in the same conversation raced on the
+    ///      write (mitigated by the per-conv mutex, but still fragile).
+    ///   2. A user who did `write_file(".sandbox_passwd", payload)`
+    ///      would have their data silently clobbered by the next
+    ///      execute_command — surprising and a small data-loss vector.
+    /// Moving the files to `<workspace_root>/identity/` makes them
+    /// per-process (shared by every conversation) and the content is
+    /// constant, so the write is idempotent: we only write if the
+    /// file doesn't already exist or has the wrong content.
+    fn ensure(workspace_root: &Path) -> Result<Self, AppError> {
+        let identity_dir = workspace_root.join("identity");
+        std::fs::create_dir_all(&identity_dir).map_err(|e| {
+            AppError::new(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "WORKSPACE_INIT_FAILED",
+                format!("mkdir identity dir: {e}"),
+            )
+        })?;
+        let passwd = identity_dir.join("passwd");
+        let group = identity_dir.join("group");
+        write_if_changed(&passwd, SYNTHETIC_PASSWD).map_err(|e| {
             AppError::new(
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "WORKSPACE_WRITE_FAILED",
                 format!("write synthetic passwd: {e}"),
             )
         })?;
-        std::fs::write(&group, "sandboxuser:x:1001:\n").map_err(|e| {
+        write_if_changed(&group, SYNTHETIC_GROUP).map_err(|e| {
             AppError::new(
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "WORKSPACE_WRITE_FAILED",
@@ -439,6 +475,16 @@ impl SyntheticIdentity {
     }
     fn group_path(&self) -> &Path {
         &self.group
+    }
+}
+
+/// Write `content` to `path` only if the file doesn't already exist
+/// or has different content. Avoids redundant disk writes on every
+/// sandbox call.
+fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
+    match std::fs::read_to_string(path) {
+        Ok(existing) if existing == content => Ok(()),
+        _ => std::fs::write(path, content),
     }
 }
 

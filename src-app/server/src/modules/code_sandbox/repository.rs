@@ -27,10 +27,15 @@ impl CodeSandboxRepository {
     }
 
     fn db_err(e: sqlx::Error) -> AppError {
+        // Log the full sqlx error server-side (it can include
+        // constraint names, column names, datatypes — useful for
+        // debugging). Return only the generic code to the client so
+        // an authenticated caller can't fingerprint the schema.
+        tracing::error!(error = ?e, "code_sandbox: database error");
         AppError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "DATABASE_ERROR",
-            format!("code_sandbox DB error: {e}"),
+            "database error",
         )
     }
 
@@ -69,11 +74,11 @@ impl CodeSandboxRepository {
         // surfaces once).
         let rows: Vec<ConversationFile> = sqlx::query_as::<_, ConversationFile>(
             r#"
-            WITH file_refs AS (
-                SELECT DISTINCT COALESCE(
+            WITH raw_refs AS (
+                SELECT COALESCE(
                     (mc.content ->> 'file_id'),
                     (mc.content -> 'source' ->> 'file_id')
-                )::uuid AS file_id
+                ) AS file_id_str
                 FROM conversations c
                 JOIN branch_messages bm ON bm.branch_id = c.active_branch_id
                 JOIN message_contents mc ON mc.message_id = bm.message_id
@@ -83,6 +88,18 @@ impl CodeSandboxRepository {
                       mc.content ? 'file_id'
                       OR (mc.content -> 'source' ->> 'file_id') IS NOT NULL
                   )
+            ),
+            -- Defense: a malformed file_id in user-supplied JSON
+            -- (chat messages can carry attacker-influenced content)
+            -- would crash the unconditional ::uuid cast and break
+            -- build_context for the conversation. Filter to
+            -- well-formed UUID strings before casting; malformed
+            -- entries are silently dropped (they wouldn't have
+            -- matched a real `files` row anyway).
+            file_refs AS (
+                SELECT DISTINCT file_id_str::uuid AS file_id
+                FROM raw_refs
+                WHERE file_id_str ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
             )
             SELECT
                 f.id AS file_id,
