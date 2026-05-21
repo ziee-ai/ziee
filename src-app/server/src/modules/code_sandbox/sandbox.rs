@@ -284,7 +284,11 @@ fn build_bwrap_argv(
         "--share-net".into(),
         "--new-session".into(),
         "--die-with-parent".into(),
-        "--as-pid-1".into(),
+        // NOTE: --as-pid-1 is appended ONLY in PID-ns strict mode below,
+        // because bwrap refuses `--as-pid-1` without `--unshare-pid`.
+        // In DevBindFallback mode the user code runs at whatever PID
+        // bwrap assigns (not PID 1) — acceptable, since PID 1 inside
+        // the sandbox doesn't change the security boundary.
         // Filesystem (rootfs bind + symlinks for /bin /sbin /lib /lib64).
         "--ro-bind".into(),
         format!("{rootfs}/usr"),
@@ -344,16 +348,19 @@ fn build_bwrap_argv(
     ];
 
     // PID namespace + /proc handling per cached mode.
+    // bwrap rejects `--as-pid-1` unless `--unshare-pid` is also set —
+    // so the pid-1 alias is gated on Strict mode here.
     match caps.pid_namespace {
         PidNsMode::Strict => {
             argv.push("--unshare-pid".into());
+            argv.push("--as-pid-1".into());
             argv.push("--proc".into());
             argv.push("/proc".into());
         }
         PidNsMode::DevBindFallback => {
-            // No --unshare-pid; bind host /proc. Sandbox sees host PIDs
-            // (info leak; no escape). Acceptable for docker hosts where
-            // nested proc-mount fails.
+            // No --unshare-pid (and therefore no --as-pid-1); bind host
+            // /proc. Sandbox sees host PIDs (info leak; no escape).
+            // Acceptable for docker hosts where nested proc-mount fails.
             argv.push("--dev-bind".into());
             argv.push("/proc".into());
             argv.push("/proc".into());
@@ -792,6 +799,15 @@ mod tests {
         assert!(argv.windows(3).any(|w| w == ["--dev-bind", "/proc", "/proc"]));
         assert!(!argv.windows(2).any(|w| w == ["--proc", "/proc"]));
         assert!(!argv.iter().any(|a| a == "--unshare-pid"));
+        // SECURITY/CORRECTNESS regression: --as-pid-1 MUST NOT appear in
+        // DevBindFallback mode — bwrap rejects it without --unshare-pid,
+        // which would cause every sandboxed call to fail with exit=1
+        // and a misleading "Specifying --as-pid-1 requires --unshare-pid"
+        // message in stderr.
+        assert!(
+            !argv.iter().any(|a| a == "--as-pid-1"),
+            "--as-pid-1 must be gated on --unshare-pid (Strict mode only)"
+        );
     }
 
     #[test]
@@ -810,6 +826,8 @@ mod tests {
         );
         assert!(argv.iter().any(|a| a == "--unshare-pid"));
         assert!(argv.windows(2).any(|w| w == ["--proc", "/proc"]));
+        // Strict mode IS allowed to use --as-pid-1 (and we do).
+        assert!(argv.iter().any(|a| a == "--as-pid-1"));
     }
 
     #[test]

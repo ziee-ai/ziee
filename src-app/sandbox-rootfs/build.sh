@@ -104,10 +104,22 @@ if ! command -v mksquashfs >/dev/null; then
 fi
 
 STAGE_DIR="$(dirname "$OUTPUT")/.stage-v${SCHEMA}.${REVISION}-${FLAVOR}"
-rm -rf "$STAGE_DIR"
+# Cleanup needs sudo on platforms where mmdebstrap ran in root mode
+# (the stage dir then contains root-owned files like /var/log/wtmp,
+# /boot, /var/cache/ldconfig that a plain `rm -rf` can't remove).
+cleanup_stage() {
+  if [[ -d "$STAGE_DIR" ]]; then
+    if command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
+      sudo rm -rf "$STAGE_DIR" 2>/dev/null || rm -rf "$STAGE_DIR" 2>/dev/null
+    else
+      rm -rf "$STAGE_DIR" 2>/dev/null
+    fi
+  fi
+}
+cleanup_stage
 mkdir -p "$STAGE_DIR"
 
-trap 'rm -rf "$STAGE_DIR"' EXIT
+trap cleanup_stage EXIT
 
 # --------------------------------------------------------------------
 # Backend: mmdebstrap (primary)
@@ -126,14 +138,29 @@ build_mmdebstrap() {
   fi
 
   # mmdebstrap does the bootstrap directly into the staging dir.
-  mmdebstrap \
-    --variant=minbase \
-    --mode=auto \
-    --components=main,universe \
-    --include="$pkgs" \
-    noble \
-    "$STAGE_DIR" \
-    "$mirror" 2>&1 | grep -vE "^I:" || true
+  # Mode selection:
+  #   - root (preferred): we have sudo and a proper subuid map, OR we're
+  #     running as root. Cleanest and most accurate file ownership.
+  #   - fakechroot: unprivileged fallback when subuid is empty (common on
+  #     personal workstations). Requires `fakechroot fakeroot` installed.
+  local mode="fakechroot"
+  if [[ "$EUID" -eq 0 ]] || (command -v sudo >/dev/null && sudo -n true 2>/dev/null); then
+    mode="root"
+  fi
+  echo "    (mmdebstrap mode=$mode)"
+  local mmd=(mmdebstrap
+    --variant=minbase
+    --mode="$mode"
+    --components=main,universe
+    --include="$pkgs"
+    noble
+    "$STAGE_DIR"
+    "$mirror")
+  if [[ "$mode" == "root" && "$EUID" -ne 0 ]]; then
+    sudo -E "${mmd[@]}" 2>&1 | grep -vE "^I:" || true
+  else
+    "${mmd[@]}" 2>&1 | grep -vE "^I:" || true
+  fi
 
   # Layer 2: pip packages for full flavor (mmdebstrap can't reach
   # PyPI directly; use chroot pip after bootstrap).
@@ -217,11 +244,17 @@ esac
 
 echo "==> mksquashfs ($OUTPUT)"
 rm -f "$OUTPUT"
+# squashfs-tools >=4.6 errors if BOTH the SOURCE_DATE_EPOCH env var AND
+# the explicit -all-time/-mkfs-time flags are set. Unset the env var
+# only for this invocation; we still pass the value via flags so the
+# output is bit-reproducible.
+sde="$SOURCE_DATE_EPOCH"
+env -u SOURCE_DATE_EPOCH \
 mksquashfs "$STAGE_DIR" "$OUTPUT" \
   -comp zstd -Xcompression-level 19 \
   -no-xattrs \
-  -all-time "$SOURCE_DATE_EPOCH" \
-  -mkfs-time "$SOURCE_DATE_EPOCH" \
+  -all-time "$sde" \
+  -mkfs-time "$sde" \
   -noappend -no-progress \
   -quiet
 

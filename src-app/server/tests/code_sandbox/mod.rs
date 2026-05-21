@@ -26,3 +26,13 @@ mod tier4_hardening;
 mod tier4_pid_ns_fallback;
 mod tier4_cgroup_fallback;
 mod tier4_seccomp;
+
+// Tier 6 — full HTTP-E2E suite: boots a real TestServer with
+// code_sandbox enabled, posts real JSON-RPC, the handler runs real
+// bwrap with the production argv, and the response carries the real
+// command output. All `#[ignore]`'d; requires rootfs mounted +
+// bwrap installed (the harness::enabled_test_server() helper skips
+// cleanly when either is missing).
+mod tier6_http_e2e;
+mod tier6_security_regression;
+mod tier6_hardening;

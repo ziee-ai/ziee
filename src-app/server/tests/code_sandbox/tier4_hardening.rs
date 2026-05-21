@@ -141,16 +141,21 @@ fn argument_injection_after_dashdash_is_inert() {
         .args(["--dev", "/dev"])
         .args(["--tmpfs", "/tmp"])
         .arg("--")
-        .args(["/bin/sh", "-c", &format!("echo received: {evil}; ls / | tr '\\n' ' '")])
+        // Echo on one line; `ls /` on a separate line so the test
+        // can isolate the LISTING and look for the escape dir there
+        // (the echo itself contains "escape-attempt" as data — we
+        // don't want to false-positive on that).
+        .args(["/bin/sh", "-c", &format!("echo received: {evil}; echo SEP; ls / | tr '\\n' ' '")])
         .output()
         .expect("bwrap spawn");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(out.status.success(), "exit: {}, stderr: {}", out.status, String::from_utf8_lossy(&out.stderr));
     assert!(stdout.contains(&format!("received: {evil}")), "stdout: {stdout}");
-    // The crucial assertion: bwrap did NOT bind / → /escape-attempt.
+    // Split on the SEP marker — only the second half is the `ls /` output.
+    let listing = stdout.splitn(2, "SEP").nth(1).unwrap_or("");
     assert!(
-        !stdout.contains("escape-attempt"),
-        "escape-attempt directory leaked into sandbox /: {stdout}"
+        !listing.contains("escape-attempt"),
+        "escape-attempt directory leaked into sandbox /: listing={listing}"
     );
 }
 
@@ -160,7 +165,15 @@ fn wall_clock_timeout_kills_bwrap() {
     let Some(rootfs) = skip_if_unavailable() else { return };
     let started = std::time::Instant::now();
     let usr = rootfs.join("usr");
-    let out = Command::new("timeout")
+    // Use Stdio::null() for stdout/stderr: when timeout SIGKILLs
+    // bwrap, the orphan sleep child can inherit the parent's pipe
+    // fds and hold them open for the full 30s — `Command::output()`
+    // would then wait for fd EOF and the test would falsely report
+    // a 30-second runtime. With null, the parent doesn't wait for
+    // anyone to read pipe data and `.wait()` returns as soon as the
+    // signal lands.
+    use std::process::Stdio;
+    let mut child = Command::new("timeout")
         .args(["--kill-after=1", "2"])
         .arg("bwrap")
         .args(["--unshare-user", "--uid", "1001", "--gid", "1001", "--share-net", "--new-session", "--die-with-parent"])
@@ -173,14 +186,29 @@ fn wall_clock_timeout_kills_bwrap() {
         .args(["--tmpfs", "/tmp"])
         .arg("--")
         .args(["/bin/sleep", "30"])
-        .output()
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("timeout/bwrap spawn");
+    let exit = child.wait().expect("wait");
     let elapsed = started.elapsed();
-    // timeout returns 124 when it kills.
+    // Mirror the .output() shape so the assertion below keeps working.
+    struct Out { status: std::process::ExitStatus }
+    let out = Out { status: exit };
+    // timeout(1) sends SIGTERM at the budget; with --kill-after it
+    // follows with SIGKILL. The signal lands on bwrap (our direct
+    // child). Possible outcomes:
+    //   - Normal exit 124 (timeout's documented signal-handler exit)
+    //   - Normal exit 137 (shell-shape SIGKILL)
+    //   - Signal-death status (Rust's ExitStatus carries .signal()
+    //     directly when the process died by signal — code() is None)
+    use std::os::unix::process::ExitStatusExt;
     assert!(elapsed < Duration::from_secs(5), "elapsed too long: {:?}", elapsed);
+    let died_via_signal = out.status.signal().is_some();
+    let exited_with_timeout_code = matches!(out.status.code(), Some(124) | Some(137));
     assert!(
-        out.status.code() == Some(124) || out.status.code() == Some(137),
-        "expected timeout exit, got {:?}",
+        exited_with_timeout_code || died_via_signal,
+        "expected timeout exit or signal-death, got {:?}",
         out.status
     );
 }

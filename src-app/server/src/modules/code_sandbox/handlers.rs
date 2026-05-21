@@ -539,6 +539,19 @@ async fn stage_attachments(
     state: &CodeSandboxState,
     files: &[crate::modules::code_sandbox::models::ConversationFile],
 ) {
+    let storage = crate::modules::file::storage::manager::get_file_storage();
+    stage_attachments_with(state, files, storage.as_ref()).await
+}
+
+/// Same as `stage_attachments` but with the storage backend passed in
+/// explicitly. Extracted from the global-getter wrapper so unit tests
+/// can drive the cap logic against a temp-dir-backed FilesystemStorage
+/// without touching the OnceCell-initialized global.
+async fn stage_attachments_with(
+    state: &CodeSandboxState,
+    files: &[crate::modules::code_sandbox::models::ConversationFile],
+    storage: &dyn crate::modules::file::storage::FileStorage,
+) {
     if files.is_empty() {
         return;
     }
@@ -551,7 +564,6 @@ async fn stage_attachments(
         );
         return;
     }
-    let storage = crate::modules::file::storage::manager::get_file_storage();
     let mut total_staged_bytes: u64 = 0;
     let mut staged_count: usize = 0;
     for f in files {
@@ -1036,4 +1048,302 @@ mod tests {
         assert_eq!(super::attachment_extension(".config.json"), "json");
     }
 
+    // ─── stage_attachments caps (DoS regressions) ───────────────────
+    //
+    // Each test builds a temp-dir FilesystemStorage, populates it with
+    // synthetic file blobs, then invokes stage_attachments_with(...)
+    // and inspects the resulting stage dir.
+
+    use crate::core::config::CodeSandboxConfig;
+    use crate::modules::code_sandbox::models::ConversationFile;
+    use crate::modules::code_sandbox::types::{
+        CgroupMode, CodeSandboxState, HardeningCapabilities, PidNsMode, SeccompMode,
+    };
+    use crate::modules::file::storage::filesystem::FilesystemStorage;
+    use std::path::PathBuf;
+
+    fn fake_state(workspace_root: PathBuf) -> CodeSandboxState {
+        CodeSandboxState {
+            config: CodeSandboxConfig {
+                enabled: true,
+                rootfs_path: String::new(),
+                cgroup_parent: String::new(),
+            },
+            loopback_url: "http://127.0.0.1:8080/api/code-sandbox".to_string(),
+            workspace_root,
+            caps: HardeningCapabilities {
+                bwrap_path: PathBuf::from("/usr/bin/bwrap"),
+                pid_namespace: PidNsMode::Strict,
+                cgroup: CgroupMode::None,
+                seccomp: SeccompMode::NotLinked,
+            },
+        }
+    }
+
+    /// Write a synthetic blob into the storage's `originals/<user>/<file>.<ext>`
+    /// path so `load_original(user, file, ext)` returns those bytes.
+    async fn seed_attachment(
+        storage: &FilesystemStorage,
+        user_id: Uuid,
+        file_id: Uuid,
+        extension: &str,
+        bytes: &[u8],
+    ) {
+        use crate::modules::file::storage::FileStorage;
+        storage
+            .save_original(user_id, file_id, extension, bytes)
+            .await
+            .expect("seed");
+    }
+
+    fn conv_file(file_id: Uuid, user_id: Uuid, filename: &str) -> ConversationFile {
+        ConversationFile {
+            file_id,
+            filename: filename.to_string(),
+            user_id,
+            mime_type: None,
+            created_at: chrono::Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn stage_attachments_writes_each_file_to_attachments_dir() {
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let storage_tmp = tempfile::tempdir().unwrap();
+        let storage = FilesystemStorage::new(storage_tmp.path());
+
+        let user = Uuid::new_v4();
+        let f1 = Uuid::new_v4();
+        let f2 = Uuid::new_v4();
+        seed_attachment(&storage, user, f1, "txt", b"hello").await;
+        seed_attachment(&storage, user, f2, "csv", b"a,b,c\n1,2,3\n").await;
+
+        let state = fake_state(workspace_tmp.path().to_path_buf());
+        let files = vec![
+            conv_file(f1, user, "greeting.txt"),
+            conv_file(f2, user, "data.csv"),
+        ];
+        super::stage_attachments_with(&state, &files, &storage).await;
+
+        let dir = state.workspace_root.join("attachments");
+        assert_eq!(
+            tokio::fs::read(dir.join(f1.to_string())).await.unwrap(),
+            b"hello"
+        );
+        assert_eq!(
+            tokio::fs::read(dir.join(f2.to_string())).await.unwrap(),
+            b"a,b,c\n1,2,3\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_attachments_skips_files_over_per_file_cap() {
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let storage_tmp = tempfile::tempdir().unwrap();
+        let storage = FilesystemStorage::new(storage_tmp.path());
+
+        let user = Uuid::new_v4();
+        let small_id = Uuid::new_v4();
+        let big_id = Uuid::new_v4();
+        // small: 1KB, well under cap. big: per-file cap + 1 byte.
+        let small = vec![b'a'; 1024];
+        let big = vec![b'X'; super::ATTACHMENT_STAGE_MAX_BYTES_PER_FILE as usize + 1];
+        seed_attachment(&storage, user, small_id, "txt", &small).await;
+        seed_attachment(&storage, user, big_id, "bin", &big).await;
+
+        let state = fake_state(workspace_tmp.path().to_path_buf());
+        let files = vec![
+            conv_file(small_id, user, "small.txt"),
+            conv_file(big_id, user, "big.bin"),
+        ];
+        super::stage_attachments_with(&state, &files, &storage).await;
+
+        let dir = state.workspace_root.join("attachments");
+        assert!(
+            dir.join(small_id.to_string()).exists(),
+            "small file MUST be staged"
+        );
+        assert!(
+            !dir.join(big_id.to_string()).exists(),
+            "oversized file MUST NOT be staged"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_attachments_respects_per_call_total_cap() {
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let storage_tmp = tempfile::tempdir().unwrap();
+        let storage = FilesystemStorage::new(storage_tmp.path());
+
+        // Stage 5 files, each just under per-file cap but together
+        // exceeding the per-call total cap. We expect to stop early.
+        let per_file: usize = super::ATTACHMENT_STAGE_MAX_BYTES_PER_FILE as usize;
+        let total_cap: usize = super::ATTACHMENT_STAGE_MAX_BYTES_PER_CALL as usize;
+        // n_files * per_file > total_cap → 5 * 64MiB = 320MiB > 256MiB
+        let n_files = (total_cap / per_file) + 2;
+
+        let user = Uuid::new_v4();
+        let blob = vec![b'q'; per_file];
+        let mut files = Vec::new();
+        for _ in 0..n_files {
+            let id = Uuid::new_v4();
+            seed_attachment(&storage, user, id, "bin", &blob).await;
+            files.push(conv_file(id, user, "x.bin"));
+        }
+
+        let state = fake_state(workspace_tmp.path().to_path_buf());
+        super::stage_attachments_with(&state, &files, &storage).await;
+
+        // Count how many of the staged files made it onto disk.
+        let dir = state.workspace_root.join("attachments");
+        let staged_count = std::fs::read_dir(&dir)
+            .map(|it| it.filter(|e| {
+                e.as_ref()
+                    .ok()
+                    .and_then(|e| e.file_name().to_str().map(|n| !n.contains(".tmp.")))
+                    .unwrap_or(false)
+            }).count())
+            .unwrap_or(0);
+        // total_cap / per_file files should fit; the next attempt
+        // hits the cap and breaks the loop.
+        let expected_max = total_cap / per_file;
+        assert!(
+            staged_count <= expected_max,
+            "staged {staged_count} > expected_max {expected_max} (per-call cap not enforced)"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_attachments_respects_per_call_count_cap() {
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let storage_tmp = tempfile::tempdir().unwrap();
+        let storage = FilesystemStorage::new(storage_tmp.path());
+
+        // Stage MAX+10 tiny files; expect only MAX bind-mounted.
+        let n = super::ATTACHMENT_STAGE_MAX_FILES_PER_CALL + 10;
+        let user = Uuid::new_v4();
+        let mut files = Vec::with_capacity(n);
+        for _ in 0..n {
+            let id = Uuid::new_v4();
+            seed_attachment(&storage, user, id, "txt", b"x").await;
+            files.push(conv_file(id, user, "x.txt"));
+        }
+
+        let state = fake_state(workspace_tmp.path().to_path_buf());
+        super::stage_attachments_with(&state, &files, &storage).await;
+
+        let dir = state.workspace_root.join("attachments");
+        let staged_count = std::fs::read_dir(&dir)
+            .map(|it| it.filter(|e| {
+                e.as_ref()
+                    .ok()
+                    .and_then(|e| e.file_name().to_str().map(|n| !n.contains(".tmp.")))
+                    .unwrap_or(false)
+            }).count())
+            .unwrap_or(0);
+        assert_eq!(
+            staged_count,
+            super::ATTACHMENT_STAGE_MAX_FILES_PER_CALL,
+            "expected exactly MAX_FILES_PER_CALL files staged"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_attachments_is_idempotent() {
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let storage_tmp = tempfile::tempdir().unwrap();
+        let storage = FilesystemStorage::new(storage_tmp.path());
+
+        let user = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        seed_attachment(&storage, user, id, "txt", b"original").await;
+
+        let state = fake_state(workspace_tmp.path().to_path_buf());
+        let files = vec![conv_file(id, user, "a.txt")];
+
+        super::stage_attachments_with(&state, &files, &storage).await;
+        let staged_path = state.workspace_root.join("attachments").join(id.to_string());
+        let mtime1 = std::fs::metadata(&staged_path).unwrap().modified().unwrap();
+
+        // Tamper with the upstream storage to confirm the second call
+        // does NOT re-stage (the staged-file mtime would change if it
+        // re-fetched and re-wrote).
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        super::stage_attachments_with(&state, &files, &storage).await;
+        let mtime2 = std::fs::metadata(&staged_path).unwrap().modified().unwrap();
+        assert_eq!(mtime1, mtime2, "second call must not re-write a staged file");
+    }
+
+    #[tokio::test]
+    async fn stage_attachments_atomic_overwrites_tmp_file_from_prior_crash() {
+        // Pre-plant a leftover .tmp.<pid> file (simulating a previous
+        // call that died between write and rename). The current call
+        // should still succeed: it writes a fresh tmp + renames over
+        // the final path. The leftover stays behind (cleaned up by
+        // a separate sweep — not in scope here) but doesn't break
+        // the new staging.
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let storage_tmp = tempfile::tempdir().unwrap();
+        let storage = FilesystemStorage::new(storage_tmp.path());
+
+        let user = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        seed_attachment(&storage, user, id, "txt", b"fresh").await;
+
+        let state = fake_state(workspace_tmp.path().to_path_buf());
+        let stage_dir = state.workspace_root.join("attachments");
+        tokio::fs::create_dir_all(&stage_dir).await.unwrap();
+        let leftover = stage_dir.join(format!("{id}.tmp.99999"));
+        tokio::fs::write(&leftover, b"stale crash leftover").await.unwrap();
+
+        let files = vec![conv_file(id, user, "a.txt")];
+        super::stage_attachments_with(&state, &files, &storage).await;
+
+        let staged = stage_dir.join(id.to_string());
+        let got = tokio::fs::read(&staged).await.unwrap();
+        assert_eq!(got, b"fresh", "fresh bytes must land at final path");
+    }
+
+    #[tokio::test]
+    async fn stage_attachments_empty_files_list_is_noop() {
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let storage_tmp = tempfile::tempdir().unwrap();
+        let storage = FilesystemStorage::new(storage_tmp.path());
+
+        let state = fake_state(workspace_tmp.path().to_path_buf());
+        super::stage_attachments_with(&state, &[], &storage).await;
+
+        // Empty input → we don't even create the attachments dir.
+        assert!(!state.workspace_root.join("attachments").exists());
+    }
+
+    #[tokio::test]
+    async fn stage_attachments_continues_when_one_file_load_fails() {
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let storage_tmp = tempfile::tempdir().unwrap();
+        let storage = FilesystemStorage::new(storage_tmp.path());
+
+        let user = Uuid::new_v4();
+        let good_id = Uuid::new_v4();
+        let missing_id = Uuid::new_v4();
+        // good is seeded; missing is NOT (load_original returns 404).
+        seed_attachment(&storage, user, good_id, "txt", b"ok").await;
+
+        let state = fake_state(workspace_tmp.path().to_path_buf());
+        let files = vec![
+            conv_file(missing_id, user, "missing.txt"),
+            conv_file(good_id, user, "good.txt"),
+        ];
+        super::stage_attachments_with(&state, &files, &storage).await;
+
+        let dir = state.workspace_root.join("attachments");
+        assert!(
+            !dir.join(missing_id.to_string()).exists(),
+            "missing source must NOT be staged"
+        );
+        assert!(
+            dir.join(good_id.to_string()).exists(),
+            "subsequent good file must still stage"
+        );
+    }
 }
