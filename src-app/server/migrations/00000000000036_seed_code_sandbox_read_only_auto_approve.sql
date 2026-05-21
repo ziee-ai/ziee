@@ -16,7 +16,8 @@
 --
 -- The sandbox server_id matches `code_sandbox_server_id()` in Rust:
 --   uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, b"code-sandbox.ziee.internal")
---   = 5d3a4b18-9c01-5b5d-9bcd-bf6f0db9c14a (deterministic)
+--   = b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd (deterministic; asserted in
+--     tier-1 unit test code_sandbox_server_id_is_stable)
 --
 -- This migration is idempotent at the row level: each user's row gets
 -- the sandbox entry only if it isn't already present; if the entry
@@ -28,7 +29,7 @@
 
 DO $$
 DECLARE
-    sandbox_id CONSTANT TEXT := '5d3a4b18-9c01-5b5d-9bcd-bf6f0db9c14a';
+    sandbox_id CONSTANT TEXT := 'b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd';
     read_only_tools CONSTANT JSONB := '["read_file", "list_files", "get_resource_link"]'::jsonb;
     rec RECORD;
     updated JSONB;
