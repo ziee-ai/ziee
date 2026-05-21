@@ -45,51 +45,60 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bubblewrap squashfuse squashfs-tools
+            bubblewrap squashfuse squashfs-tools libseccomp-dev
 
       - name: install cosign
         uses: sigstore/cosign-installer@v3
-
-      - name: fetch latest published rootfs (minimal flavor)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Find the latest sandbox-rootfs tag.
-          tag=$(gh release list --limit 50 \
-            --json tagName,createdAt \
-            --jq '.[] | select(.tagName | startswith("sandbox-rootfs-v")) | .tagName' \
-            | head -1)
-          if [ -z "$tag" ]; then
-            echo "no sandbox-rootfs-* tag found yet; bootstrapping is incomplete — skipping nightly"
-            exit 0
-          fi
-          mkdir -p .ziee-cache/sandbox-rootfs
-          gh release download "$tag" \
-            --pattern "*minimal*.squashfs" \
-            --pattern "*minimal*.squashfs.sha256" \
-            --pattern "*minimal*.squashfs.cosign.bundle" \
-            --dir .ziee-cache/sandbox-rootfs
-
-      - name: verify sha256 + cosign
-        run: |
-          set -euo pipefail
-          sqfs=$(ls .ziee-cache/sandbox-rootfs/*minimal*.squashfs)
-          (cd "$(dirname "$sqfs")" && sha256sum -c "$(basename "$sqfs").sha256")
-          cosign verify-blob "$sqfs" \
-            --bundle "${sqfs}.cosign.bundle" \
-            --certificate-identity-regexp '^https://github.com/phibya/ziee-chat/' \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com
-
-      - name: mount via squashfuse
-        run: |
-          sqfs=$(ls .ziee-cache/sandbox-rootfs/*minimal*.squashfs)
-          mkdir -p /tmp/rootfs-nightly
-          squashfuse "$sqfs" /tmp/rootfs-nightly
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-app/server
+
+      - name: build server (so fetch-sandbox-rootfs has the binary)
+        working-directory: src-app/server
+        run: cargo build --release --bin ziee-chat --features code_sandbox_seccomp
+
+      # Use the SAME verification path Dockerfile.prod and operators
+      # use: the binary's `fetch-sandbox-rootfs` subcommand verifies
+      # against the embedded known_revisions.toml (Option B), and
+      # cosign-verifies against the anchored identity regex
+      # (sandbox-rootfs-release.yml@refs/tags/*) when the entry has
+      # `signed = true` (hybrid C). Earlier versions of this workflow
+      # used `gh release download` + `sha256sum -c <fetched.sha256>`,
+      # which is TOFU (Option A) — a compromised release would have
+      # been accepted because both the squashfs and its sha256
+      # come from the same source. Switched to the embedded-pin
+      # path so the nightly catches the same regression classes
+      # operators would.
+      - name: fetch + verify latest published rootfs (Option B)
+        working-directory: src-app/server
+        run: |
+          set -euo pipefail
+          # Verify a tag exists before invoking the binary, so we can
+          # exit 0 cleanly if no release has been bootstrapped yet.
+          if ! gh release list --limit 200 --json tagName \
+              --jq '.[] | select(.tagName | startswith("sandbox-rootfs-v"))' \
+              | grep -q .; then
+            echo "no sandbox-rootfs-* tag found yet; bootstrapping is incomplete — skipping nightly"
+            exit 0
+          fi
+          # `fetch-sandbox-rootfs --version=latest` resolves the
+          # highest non-yanked entry in known_revisions.toml,
+          # downloads from GitHub Releases (or
+          # CODE_SANDBOX_ROOTFS_MIRROR), sha256-verifies, cosign-
+          # verifies if signed=true, and atomic-installs.
+          target/release/ziee-chat fetch-sandbox-rootfs \
+              --version=latest --flavor=minimal
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: mount via squashfuse
+        working-directory: src-app/server
+        run: |
+          sqfs=$(ls .ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-*.squashfs | head -1)
+          mkdir -p /tmp/rootfs-nightly
+          squashfuse "$sqfs" /tmp/rootfs-nightly
 
       - name: run bwrap-dependent integration tests (Tier 4 + Tier 6)
         working-directory: src-app/server
