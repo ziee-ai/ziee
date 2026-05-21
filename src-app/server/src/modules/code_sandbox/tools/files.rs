@@ -160,11 +160,30 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
 // write_file
 // ------------------------------------------------------------------
 
+/// Cap on the size of content writable through the `write_file` tool.
+/// Without this, an LLM (or a prompt-injection) could fill the host
+/// disk: the in-sandbox `--fsize` rlimit only constrains writes from
+/// INSIDE bwrap, and we apply `DefaultBodyLimit::disable()` globally,
+/// so the axum json extractor accepts an arbitrarily large body. 32
+/// MiB is generous for a code file but still bounded.
+pub const WRITE_FILE_MAX_BYTES: usize = 32 * 1024 * 1024;
+
 pub async fn write_file(
     ctx: &SandboxContext,
     filename: &str,
     content: &str,
 ) -> Result<serde_json::Value, AppError> {
+    if content.len() > WRITE_FILE_MAX_BYTES {
+        return Err(AppError::new(
+            StatusCode::BAD_REQUEST,
+            "CONTENT_TOO_LARGE",
+            format!(
+                "content {} bytes exceeds maximum {} bytes",
+                content.len(),
+                WRITE_FILE_MAX_BYTES
+            ),
+        ));
+    }
     let path = canonicalize_in_workspace(&ctx.workspace, filename)?;
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
@@ -591,5 +610,34 @@ mod tests {
             .expect_err("inverted");
         let msg = format!("{err:?}");
         assert!(msg.contains("end_line"), "msg: {msg}");
+    }
+
+    // ─── write_file size cap (DoS defense) ──────────────────────────
+
+    #[tokio::test]
+    async fn write_file_rejects_oversized_content() {
+        // SECURITY regression test: DefaultBodyLimit is disabled
+        // server-wide and the in-sandbox --fsize rlimit doesn't cover
+        // server-side writes. Without this cap, an LLM could fill the
+        // host disk via a single write_file call.
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        let oversized = "x".repeat(WRITE_FILE_MAX_BYTES + 1);
+        let err = write_file(&ctx, "huge.bin", &oversized)
+            .await
+            .expect_err("must reject oversized content");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("CONTENT_TOO_LARGE"), "msg: {msg}");
+    }
+
+    #[tokio::test]
+    async fn write_file_accepts_content_at_cap() {
+        let tmp = workspace();
+        let ctx = ctx_for(&tmp);
+        let at_cap = "x".repeat(WRITE_FILE_MAX_BYTES);
+        let res = write_file(&ctx, "ok.bin", &at_cap)
+            .await
+            .expect("at-cap must be accepted");
+        assert_eq!(res["bytes_written"].as_u64().unwrap() as usize, WRITE_FILE_MAX_BYTES);
     }
 }

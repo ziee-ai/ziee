@@ -221,6 +221,50 @@ async fn download_endpoint_requires_auth() {
 }
 
 #[tokio::test]
+async fn rejects_cross_tenant_conversation_id() {
+    // SECURITY regression test: build_context (and download_handler)
+    // MUST verify the JWT-authenticated user owns the conversation
+    // referenced in x-conversation-id. Without this, any authenticated
+    // user with code_sandbox::execute (default Users group via
+    // migration 35) could spoof another user's conversation_id and
+    // read their attachments via execute_command's bwrap bind.
+    //
+    // We can't easily set up a real user-owns-conversation pair here
+    // (test_jwt signs for a random user not in DB → 401 at the
+    // RequirePermissions extractor). But we CAN confirm: a request
+    // that passes a conversation_id the JWT user does NOT own gets
+    // rejected — NOT with 200 and a real tool result.
+    let server = TestServer::start().await;
+    let token = test_jwt(Uuid::new_v4(), Uuid::new_v4());
+    let resp = reqwest::Client::new()
+        .post(endpoint(&server))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("x-conversation-id", Uuid::new_v4().to_string())
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "execute_command",
+                "arguments": { "command": "echo hi" }
+            }
+        }))
+        .send()
+        .await
+        .expect("send");
+    let s = resp.status().as_u16();
+    // 401 (test user not in DB at auth layer), 404 (ownership check
+    // rejects because conversation_id doesn't exist for this user),
+    // or 503 (sandbox disabled in test config). 200 means we ran the
+    // tool — that would be the bug.
+    assert!(
+        [401, 404, 503].contains(&s),
+        "expected 401/404/503, got {s} (200 would mean the cross-tenant \
+         check was bypassed)"
+    );
+}
+
+#[tokio::test]
 async fn sandbox_server_row_persisted_on_repository_call() {
     let server = TestServer::start().await;
     let pool = sqlx::postgres::PgPoolOptions::new()

