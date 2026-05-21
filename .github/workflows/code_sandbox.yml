@@ -1,0 +1,241 @@
+name: code sandbox release
+
+# Single-purpose workflow: build + sign + publish the sandbox rootfs
+# on tag push. Tests are NOT run in CI — run them locally before
+# tagging (see `just check` recipes in the root justfile).
+#
+# The only thing this workflow does that you can't do locally is
+# cosign keyless signing, which requires the real GitHub Actions
+# OIDC issuer. Everything else (building the rootfs, testing
+# against bwrap, running the full test suite) is faster to do on
+# your own machine.
+
+on:
+  push:
+    tags: ['sandbox-rootfs-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. sandbox-rootfs-v1.r3-x86_64). MUST already exist as a git tag.'
+        required: true
+
+# Do NOT cancel in-flight publishes — they upload artifacts and a
+# half-completed cancellation leaves a partial release.
+concurrency:
+  group: code-sandbox-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 1: build minimal + full flavors, sign, publish.
+  # Each flavor exports its sha256 as an output for the auto-PR job.
+  # ─────────────────────────────────────────────────────────────────
+  release:
+    name: build + sign + publish (${{ matrix.flavor }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write   # gh release upload
+      id-token: write   # cosign keyless OIDC
+    strategy:
+      # Build flavors in parallel; one failing doesn't block the other.
+      fail-fast: false
+      matrix:
+        flavor: [minimal, full]
+    outputs:
+      minimal_sha: ${{ steps.sha.outputs.minimal_sha }}
+      full_sha:    ${{ steps.sha.outputs.full_sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: validate tag shape
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          if [ -z "$tag" ] || [ "$tag" = "main" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          fi
+          if ! echo "$tag" | grep -Eq '^sandbox-rootfs-v[0-9]+\.r[0-9]+-(x86_64|aarch64)$'; then
+            echo "ERROR: tag '$tag' must match sandbox-rootfs-vN.rM-arch" >&2
+            exit 1
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+
+      - name: install host deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bubblewrap squashfuse squashfs-tools zsync \
+            mmdebstrap systemd-container
+
+      - name: install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.0'
+
+      - name: build rootfs (flavor=${{ matrix.flavor }})
+        run: src-app/sandbox-rootfs/build.sh --flavor ${{ matrix.flavor }}
+
+      - name: reproducibility check
+        # Build twice, assert identical sha256. Catches non-determinism
+        # in mmdebstrap output (e.g., a pin update that introduced a
+        # package with build-time-dependent state).
+        run: |
+          set -euo pipefail
+          first=$(ls -t .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs | head -1)
+          sha1=$(sha256sum "$first" | cut -d' ' -f1)
+          rm "$first"
+          src-app/sandbox-rootfs/build.sh --flavor ${{ matrix.flavor }}
+          second=$(ls -t .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs | head -1)
+          sha2=$(sha256sum "$second" | cut -d' ' -f1)
+          echo "first  sha256: $sha1"
+          echo "second sha256: $sha2"
+          test "$sha1" = "$sha2" || (
+            echo "REPRODUCIBILITY FAILURE: two builds produced different bytes" >&2
+            exit 1
+          )
+
+      - name: size sanity check
+        run: |
+          set -euo pipefail
+          sqfs=$(ls -t .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs | head -1)
+          size=$(stat -c%s "$sqfs")
+          # GitHub Releases per-asset cap = 2 GiB.
+          if [ "$size" -gt $((2 * 1024 * 1024 * 1024)) ]; then
+            echo "FAIL: $sqfs is $size bytes; exceeds GitHub Releases 2 GiB cap" >&2
+            exit 1
+          fi
+          if [ "${{ matrix.flavor }}" = "minimal" ] && [ "$size" -lt $((50 * 1024 * 1024)) ]; then
+            echo "FAIL: minimal flavor suspiciously small ($size)" >&2; exit 1
+          fi
+          if [ "${{ matrix.flavor }}" = "full" ] && [ "$size" -lt $((500 * 1024 * 1024)) ]; then
+            echo "FAIL: full flavor suspiciously small ($size); likely missing packages" >&2; exit 1
+          fi
+
+      - name: generate sha256 + zsync sidecars
+        id: sha
+        run: |
+          set -euo pipefail
+          sqfs=$(ls -t .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs | head -1)
+          sha256sum "$sqfs" > "${sqfs}.sha256"
+          zsyncmake -o "${sqfs}.zsync" "$sqfs"
+          hex=$(awk '{print $1}' "${sqfs}.sha256")
+          # Export for the auto-PR job (matrix outputs).
+          echo "${{ matrix.flavor }}_sha=$hex" >> "$GITHUB_OUTPUT"
+
+      - name: cosign sign (keyless GitHub OIDC)
+        # Keyless cosign binds the signature to THIS workflow file's
+        # OIDC identity. Operators verify via:
+        #   --certificate-identity-regexp \
+        #     '^https://github\.com/phibya/ziee-chat/\.github/workflows/code_sandbox\.yml@refs/tags/sandbox-rootfs-v.+$'
+        #   --certificate-oidc-issuer \
+        #     https://token.actions.githubusercontent.com
+        run: |
+          set -euo pipefail
+          sqfs=$(ls -t .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs | head -1)
+          cosign sign-blob --yes --bundle "${sqfs}.cosign.bundle" "$sqfs"
+
+      - name: publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs \
+            .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs.sha256 \
+            .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs.zsync \
+            .ziee-cache/sandbox-rootfs/*-${{ matrix.flavor }}.squashfs.cosign.bundle \
+            --clobber
+
+  # ─────────────────────────────────────────────────────────────────
+  # JOB 2: auto-PR an update to known_revisions.toml so that
+  # `ziee-chat fetch-sandbox-rootfs --version=latest` can resolve the
+  # newly-published tag. Without this, the embedded toml stays stale
+  # and every operator has to fetch by exact pinned version forever.
+  # ─────────────────────────────────────────────────────────────────
+  update-known-revisions:
+    needs: release
+    name: auto-PR known_revisions.toml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need git history to push a new branch.
+          fetch-depth: 0
+
+      - name: parse tag → schema/revision/arch
+        id: parse
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          if [ -z "$tag" ] || [ "$tag" = "main" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          fi
+          if ! echo "$tag" | grep -Eq '^sandbox-rootfs-v[0-9]+\.r[0-9]+-(x86_64|aarch64)$'; then
+            echo "ERROR: tag '$tag' must match sandbox-rootfs-vN.rM-arch" >&2
+            exit 1
+          fi
+          schema=$(echo "$tag" | sed -E 's/^sandbox-rootfs-v([0-9]+)\..+$/\1/')
+          revision=$(echo "$tag" | sed -E 's/^sandbox-rootfs-v[0-9]+\.(r[0-9]+)-.+$/\1/')
+          arch=$(echo "$tag" | sed -E 's/^sandbox-rootfs-v[0-9]+\.r[0-9]+-(.+)$/\1/')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "schema=$schema" >> "$GITHUB_OUTPUT"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "arch=$arch" >> "$GITHUB_OUTPUT"
+
+      - name: append entries to known_revisions.toml
+        run: |
+          set -euo pipefail
+          schema="${{ steps.parse.outputs.schema }}"
+          revision="${{ steps.parse.outputs.revision }}"
+          arch="${{ steps.parse.outputs.arch }}"
+          minimal_sha="${{ needs.release.outputs.minimal_sha }}"
+          full_sha="${{ needs.release.outputs.full_sha }}"
+          file="src-app/server/src/modules/code_sandbox/known_revisions.toml"
+          {
+            echo ""
+            for flavor in minimal full; do
+              if [ "$flavor" = "minimal" ]; then sha="$minimal_sha"; else sha="$full_sha"; fi
+              if ! echo "$sha" | grep -Eq '^[0-9a-f]{64}$'; then
+                echo "ERROR: sha for $flavor is not 64-hex: '$sha'" >&2
+                exit 1
+              fi
+              echo "[[revision]]"
+              echo "schema = $schema"
+              echo "revision = \"$revision\""
+              echo "arch = \"$arch\""
+              echo "flavor = \"$flavor\""
+              echo "sha256 = \"$sha\""
+              echo "signed = true"
+              echo "yanked = false"
+              echo ""
+            done
+          } >> "$file"
+
+      - name: open PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(code_sandbox): register ${{ steps.parse.outputs.tag }}'
+          title: 'chore(code_sandbox): register ${{ steps.parse.outputs.tag }}'
+          body: |
+            Auto-generated by the code-sandbox release workflow.
+
+            Tag: `${{ steps.parse.outputs.tag }}`
+
+            New entries (minimal + full flavors). Verify the sha256
+            values against the published release assets before merging.
+
+            After merge, operators can:
+            ```
+            ziee-chat fetch-sandbox-rootfs --version=latest --flavor=full
+            ```
+          branch: chore/register-${{ steps.parse.outputs.tag }}
+          delete-branch: true

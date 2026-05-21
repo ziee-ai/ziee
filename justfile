@@ -51,6 +51,84 @@ sandbox-test:
     cd src-app/server && \
         cargo test --test integration_tests -- --test-threads=1 --ignored code_sandbox::
 
+# ─── Pre-push checks ────────────────────────────────────────────────
+# CI is build-and-publish-only. The maintainer's responsibility is to
+# run these BEFORE pushing or tagging. `just check` is the equivalent
+# of what a PR-time CI job WOULD run if we had one.
+
+# Run everything before pushing changes that touch the sandbox.
+# Skips bwrap tests if no rootfs is mounted (prints a hint).
+check: check-schema-sync check-sandbox-unit
+    @echo "✓ pre-push checks passed (cheap layer)"
+    @echo
+    @echo "Run \`just check-sandbox\` next if you've mounted a rootfs"
+    @echo "(builds + runs Tier 4 + 6 — takes ~1 min)."
+
+# Catches the case where `compat.toml::current_schema` and
+# `SANDBOX_ROOTFS_SCHEMA_VERSION` in mod.rs drift apart. A mismatch
+# breaks every operator's boot probe — cheap to check, expensive to
+# debug after the fact.
+check-schema-sync:
+    @bash -c 'set -eu; \
+        toml=$(grep -E "^current_schema" src-app/sandbox-rootfs/compat.toml | grep -oE "[0-9]+"); \
+        src=$(grep "pub const SANDBOX_ROOTFS_SCHEMA_VERSION" src-app/server/src/modules/code_sandbox/mod.rs | grep -oE "[0-9]+"); \
+        if [ "$toml" != "$src" ]; then \
+            echo "FAIL: compat.toml current_schema=$toml but mod.rs SANDBOX_ROOTFS_SCHEMA_VERSION=$src" >&2; \
+            echo "      Bump both or neither." >&2; \
+            exit 1; \
+        fi; \
+        echo "✓ schema version sync: $toml"'
+
+# Tier 1 + 2 + 3 — no rootfs needed (~30 s).
+check-sandbox-unit:
+    cd src-app/server && cargo test --lib code_sandbox::
+    cd src-app/server && \
+        cargo test --test integration_tests -- --test-threads=1 code_sandbox::
+
+# Tier 4 + 6 — needs `just sandbox-mount` first (~1 min).
+check-sandbox:
+    @bash -c 'set -eu; \
+        if [ ! -d .ziee-cache/sandbox-rootfs/current/usr ]; then \
+            echo "no rootfs mounted. Run \`just sandbox-mount\` first." >&2; \
+            exit 1; \
+        fi'
+    cd src-app/server && \
+        ZIEE_SANDBOX_ROOTFS=$(pwd)/../../.ziee-cache/sandbox-rootfs/current \
+        cargo test --test integration_tests -- --test-threads=1 --ignored \
+            code_sandbox::tier4_ code_sandbox::tier6_
+
+# Tier 5 — real LLM via Anthropic. Costs ~$0.30 per run. Sources
+# the API key from tests/.env.test.
+check-sandbox-llm:
+    cd src-app/server && \
+        bash -c 'source tests/.env.test && \
+        ZIEE_SANDBOX_ROOTFS=$(pwd)/../../.ziee-cache/sandbox-rootfs/current \
+        cargo test --test integration_tests -- --test-threads=1 --ignored \
+            chat::sandbox_real_llm'
+
+# Run-everything before tagging a sandbox-rootfs-v* release. Includes
+# the rootfs build + reproducibility check. Takes ~15 min.
+check-release-ready: check check-rootfs-reproducibility
+    @echo "✓ release-ready"
+
+check-rootfs-reproducibility:
+    @bash -c 'set -eu; \
+        echo "==> Building rootfs twice and comparing sha256"; \
+        src-app/sandbox-rootfs/build.sh --flavor minimal; \
+        sqfs1=$(ls -t .ziee-cache/sandbox-rootfs/*minimal*.squashfs | head -1); \
+        sha1=$(sha256sum "$sqfs1" | cut -d" " -f1); \
+        rm "$sqfs1"; \
+        src-app/sandbox-rootfs/build.sh --flavor minimal; \
+        sqfs2=$(ls -t .ziee-cache/sandbox-rootfs/*minimal*.squashfs | head -1); \
+        sha2=$(sha256sum "$sqfs2" | cut -d" " -f1); \
+        if [ "$sha1" != "$sha2" ]; then \
+            echo "FAIL: reproducibility check failed" >&2; \
+            echo "  first:  $sha1" >&2; \
+            echo "  second: $sha2" >&2; \
+            exit 1; \
+        fi; \
+        echo "✓ reproducible build: $sha1"'
+
 # ─── Server ──────────────────────────────────────────────────────────
 
 # Run the backend server (dev config).

@@ -2,12 +2,12 @@
 # Bootstrap the FIRST sandbox rootfs release tag on GitHub.
 #
 # After this runs:
-#   - sandbox-integration-nightly.yml CI workflow has artifacts to fetch
 #   - `ziee-chat fetch-sandbox-rootfs --version=latest` can resolve
 #   - operators have a known-good rootfs to install via a single command
 #
 # Subsequent releases happen automatically when you push a tag matching
-# `sandbox-rootfs-v*` — see .github/workflows/sandbox-rootfs-release.yml.
+# `sandbox-rootfs-v*` — see the `release` + `update-known-revisions`
+# jobs in .github/workflows/code_sandbox.yml.
 #
 # Prerequisites:
 #   - gh CLI authenticated against the repo
@@ -108,16 +108,15 @@ for flavor in minimal full; do
     # operators will check. Catches: wrong gh account active on the
     # workstation, cosign minted a cert under an attacker identity,
     # signing flow mis-configured. Bail before publishing if so.
-    if ! cosign verify-blob \
-        --bundle "$cosign" \
-        --certificate-identity-regexp "^https://github\\.com/.+/ziee-chat/\\.github/workflows/sandbox-rootfs-release\\.yml@.*\$|^https://github\\.com/.+@.+\$" \
-        --certificate-oidc-issuer "https://accounts.google.com|https://github.com/login/oauth" \
-        "$sqfs" 2>/dev/null; then
-      echo "    NOTE: signature minted but didn't match the production identity regex." >&2
-      echo "          This is normal when bootstrapping from a developer laptop —" >&2
-      echo "          the signature will work for ops only if your local gh/oidc" >&2
-      echo "          identity matches what operators verify against." >&2
-    fi
+    # We deliberately skip verifying the freshly-minted signature here.
+    # The bootstrap path runs on a developer laptop, so the OIDC identity
+    # in the cert (your interactive Google/GitHub login) will NEVER match
+    # the production identity operators check (the GitHub Actions workflow
+    # OIDC issuer at .github/workflows/code_sandbox.yml). Verifying with a
+    # broad regex hides genuine misconfigs at release time. Operators
+    # producing the second-and-onward releases via CI will get
+    # workflow-OIDC-signed bundles that DO match the production regex
+    # documented in code_sandbox.yml's "cosign sign" step.
   else
     echo "    WARN: cosign not installed — release will lack signature bundle"
     cosign=""
@@ -244,6 +243,6 @@ if (( DRY_RUN == 0 )); then
   echo
   echo "Next steps:"
   echo "  1. Commit the updated known_revisions.toml"
-  echo "  2. Confirm sandbox-integration-nightly.yml is enabled"
-  echo "  3. Manual test: ziee-chat fetch-sandbox-rootfs --version=latest"
+  echo "  2. Manual test: ziee-chat fetch-sandbox-rootfs --version=latest"
+  echo "  3. For future bumps, just push a sandbox-rootfs-v* tag — CI takes over."
 fi

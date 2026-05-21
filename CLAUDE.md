@@ -163,22 +163,125 @@ sudo chown -R <server-uid>:<server-gid> /sys/fs/cgroup/ziee-sandbox.slice
 ```
 
 Expected startup hardening line (look in server logs):
-- Bare-metal Linux: `pid_ns: on, cgroup_v2: on (delegated), seccomp: on`
-- Privileged docker: `pid_ns: off-fallback-dev-bind, cgroup_v2: on (delegated), seccomp: on`
+- Bare-metal Linux, built with `--features code_sandbox_seccomp`:
+  `pid_ns: on, cgroup_v2: on (delegated), seccomp: on`
+- Bare-metal Linux, **stock build** (no feature flag): `pid_ns: on,
+  cgroup_v2: on (delegated), seccomp: off-feature-not-linked`. The
+  rest of the hardening (rlimits via prlimit, PID-ns, cgroup, --clearenv,
+  --die-with-parent, output cap, wall-clock timeout) is unaffected.
+- Privileged docker, built with seccomp feature:
+  `pid_ns: off-fallback-dev-bind, cgroup_v2: on (delegated), seccomp: on`
 - Stripped docker: `pid_ns: DISABLED` → sandbox refuses to register
+- Rootfs schema mismatch: `code_sandbox: rootfs schema version
+  mismatch; sandbox will NOT be registered` → run
+  `ziee-chat fetch-sandbox-rootfs --version=latest` to install a
+  compatible rootfs.
+
+**Enabling seccomp:**
+```bash
+# Install libseccomp dev headers per your distro (see above).
+cargo build --release --features code_sandbox_seccomp
+```
+The `code_sandbox_seccomp` cargo feature is opt-in because the
+libseccomp dynamic library must be present at link time on the build
+host. Without the feature, the sandbox runs with all other hardening
+in place and seccomp logged as `off-feature-not-linked`.
 
 ### Tests
 
+The sandbox test suite is organized into 6 tiers:
+
+| Tier | Count | Needs | Speed | Run via |
+|---|---|---|---|---|
+| 1 — in-source unit | ~75 | nothing | <100 ms | `just check-sandbox-unit` |
+| 2 — DB integration | ~17 | Postgres | ~30 s | `just check-sandbox-unit` |
+| 3 — HTTP handler | ~11 | TestServer | ~15 s | `just check-sandbox-unit` |
+| 4 — bwrap-direct | ~14 | rootfs mounted | ~20 s | `just check-sandbox` |
+| 5 — real-LLM chat | 3 | ANTHROPIC_API_KEY + rootfs | ~2 min | `just check-sandbox-llm` |
+| 6 — HTTP-E2E | ~22 | rootfs mounted | ~45 s | `just check-sandbox` |
+
+**CI runs zero tests** — `.github/workflows/code_sandbox.yml` is
+build-and-publish-only (triggered on `sandbox-rootfs-v*` tags, signs
+artifacts with keyless cosign, publishes to GitHub Releases, auto-PRs
+an update to `known_revisions.toml`). Cosign keyless signing is the
+one thing that genuinely requires GitHub Actions (the OIDC issuer is
+only valid for real Actions runs); everything else is faster locally.
+
+Maintainer's responsibility before pushing:
+
 ```bash
-# Tier 1 unit tests (no bwrap, no DB):
-cd src-app/server && cargo test --lib code_sandbox::    # 33 tests
-
-# Tier 2 + 3 (DB + HTTP; no bwrap):
-just test                                                # full integration suite
-
-# Tier 4 (bwrap-required; needs rootfs mounted):
-just sandbox-test
+just check                  # schema sync + Tier 1/2/3 (~30 s)
+just check-sandbox          # adds Tier 4 + 6 (needs rootfs mounted)
+just check-release-ready    # adds reproducibility check (~15 min, pre-tag)
 ```
+
+Or run cargo directly:
+
+```bash
+# Tier 1 (unit, no external deps):
+cd src-app/server && cargo test --lib code_sandbox::
+
+# Tier 2 + 3 (DB + HTTP; sandbox disabled):
+cargo test --test integration_tests -- --test-threads=1 code_sandbox::
+
+# Tier 4 (bwrap-direct, needs rootfs mounted):
+ZIEE_SANDBOX_ROOTFS=.ziee-cache/sandbox-rootfs/current \
+    cargo test --test integration_tests -- --test-threads=1 \
+    --ignored code_sandbox::tier4_
+
+# Tier 6 (HTTP-E2E, the only tier exercising the FULL production path):
+ZIEE_SANDBOX_ROOTFS=.ziee-cache/sandbox-rootfs/current \
+    cargo test --test integration_tests -- --test-threads=1 \
+    --ignored code_sandbox::tier6_
+
+# Tier 5 (real LLM, costs ~$0.30 in API tokens):
+ANTHROPIC_API_KEY=sk-ant-... \
+    ZIEE_SANDBOX_ROOTFS=.ziee-cache/sandbox-rootfs/current \
+    cargo test --test integration_tests -- --ignored chat::sandbox_real_llm
+
+# Everything bwrap-needing in one shot (Tiers 4+5+6):
+ZIEE_SANDBOX_ROOTFS=.ziee-cache/sandbox-rootfs/current \
+    cargo test --test integration_tests -- --test-threads=1 \
+    --ignored code_sandbox::tier4_ code_sandbox::tier6_
+```
+
+**Tier 6 is the layer that exercises the full production code path**
+(real HTTP → real handler → real bwrap → real command → real response).
+The lower tiers exercise individual layers but Tier 6 is what proves
+the integration works end-to-end. Add new Tier-6 tests when shipping
+new tool behaviors.
+
+### Production deployment
+
+Deployment is operator-managed for now (no pre-baked Docker image
+shipped). On a Linux host with bubblewrap + squashfuse installed:
+
+1. Fetch the rootfs: `ziee-chat fetch-sandbox-rootfs --version=latest`
+   (downloads + sha256-verifies against the binary's embedded
+   `known_revisions.toml` + cosign-verifies if `signed=true`)
+2. Mount it: `ziee-chat mount-sandbox-rootfs`
+3. Set `code_sandbox.enabled: true` in config
+4. Boot the server; confirm the startup log shows
+   `code_sandbox: hardening = { ... pid_ns: ..., cgroup_v2: ..., seccomp: ... }`
+
+For cgroup v2 enforcement (recommended), give the server uid a
+delegated slice on the host:
+
+```bash
+sudo mkdir -p /sys/fs/cgroup/ziee-sandbox.slice
+echo "+memory +pids +cpu" | sudo tee \
+    /sys/fs/cgroup/ziee-sandbox.slice/cgroup.subtree_control
+sudo chown -R <server-uid>:<server-gid> /sys/fs/cgroup/ziee-sandbox.slice
+```
+
+A pre-baked Docker image (`ziee/server-with-sandbox`) is a follow-up
+deliverable; see the audit-archives if you want the prior design.
+
+### Rootfs release process
+
+See [`src-app/sandbox-rootfs/RELEASE-RUNBOOK.md`](./src-app/sandbox-rootfs/RELEASE-RUNBOOK.md)
+for the bootstrap script (`scripts/bootstrap-first-rootfs-release.sh`)
+and the ongoing release workflow.
 
 ---
 

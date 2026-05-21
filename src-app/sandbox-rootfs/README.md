@@ -56,12 +56,12 @@ server's `v0.x.y` tags so the rootfs can ship out-of-band.
 ```
 src-app/sandbox-rootfs/
 ├── README.md              # this file
+├── RELEASE-RUNBOOK.md     # bootstrap + ongoing release flow
 ├── Dockerfile             # build recipe (full + minimal flavors)
-├── build.sh               # docker-based builder; outputs .squashfs
+├── build.sh               # mmdebstrap / docker builder; outputs .squashfs
 ├── compat.toml            # schema ↔ server-version matrix (server include_str!s)
 ├── yanks.toml             # yanked revisions (PEP 592 pattern)
-├── pins/                  # exact dependency pins for reproducibility
-└── ci/                    # CI workflow bodies + smoke / reproducibility checks
+└── pins/                  # exact dependency pins for reproducibility
 ```
 
 ## Bootstrap (one-time, before any release exists)
@@ -94,11 +94,7 @@ bwrap flag set.
 
 - [`RELEASE-RUNBOOK.md`](./RELEASE-RUNBOOK.md) — bootstrap script +
   ongoing release flow, schema bumps, yanks, troubleshooting.
-- [`../server/DEPLOYMENT.md`](../server/DEPLOYMENT.md) — production
-  deployment patterns: baked-in Docker image
-  (`src-app/server/Dockerfile.prod`), volume-mount
-  (`src-app/docker-compose.prod.yaml`), self-fetch via init container.
 - [`../../CLAUDE.md`](../../CLAUDE.md) — test tier overview, dev
-  workflow cheat sheet.
+  workflow cheat sheet, operator deployment notes.
 - [`../../scripts/bootstrap-first-rootfs-release.sh`](../../scripts/bootstrap-first-rootfs-release.sh)
   — one-time bootstrap of the first GitHub release tag.

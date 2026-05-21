@@ -1,8 +1,9 @@
 # Sandbox rootfs release runbook
 
 This runbook covers (a) the **bootstrap** — cutting the first release tag
-so the nightly CI workflow has artifacts to fetch — and (b) the **ongoing
-release flow** for revision bumps and schema changes.
+manually — and (b) the **ongoing release flow** for revision bumps and
+schema changes. After the bootstrap, every release is a single
+`git push origin sandbox-rootfs-vN.rM-arch` away.
 
 ## Bootstrap (one-time)
 
@@ -40,29 +41,35 @@ release or modifying `known_revisions.toml`.
 
 ## Ongoing releases
 
-Subsequent releases are automated. The flow:
+CI is build-and-publish-only. All CI lives in the single
+`.github/workflows/code_sandbox.yml` workflow (two jobs:
+`release` + `update-known-revisions`). The release flow:
 
 1. **Patch:** Pin updates / security backports stay on the same schema
    but bump the revision (e.g. `v1.r0` → `v1.r1`). Edit
    `src-app/sandbox-rootfs/pins/apt-snapshot` (or pip/R/npm pins) and
-   commit. The `sandbox-rootfs-pr.yml` workflow builds + tests the
-   change.
+   open a PR. Run `just check-release-ready` locally — it builds the
+   rootfs twice and asserts byte-for-byte reproducibility (the same
+   check CI runs). Get the PR reviewed + merged on the strength of
+   the local run.
 2. **Tag:** When ready to publish, push a tag matching
-   `sandbox-rootfs-v*`:
+   `sandbox-rootfs-v{schema}.{revision}-{arch}`:
    ```bash
    git tag sandbox-rootfs-v1.r1-x86_64
    git push origin sandbox-rootfs-v1.r1-x86_64
    ```
-3. **CI publishes:** `sandbox-rootfs-release.yml` builds the rootfs,
-   reproducibility-checks it (build twice, diff sha256), cosign-signs,
-   and uploads to the GitHub release.
-4. **Auto-PR:** The same workflow opens a PR against `main` updating
-   `known_revisions.toml` with the new (schema, revision, sha256)
-   tuple. Reviewer merges to make the new revision available to
-   `fetch-sandbox-rootfs`.
-5. **Nightly:** The next `sandbox-integration-nightly.yml` run fetches
-   the new version and runs the full Tier-4 + Tier-6 suite against
-   the main-branch server, opening a `sandbox-drift` issue on failure.
+3. **CI publishes:** The `release` job (matrix: minimal + full) builds
+   both flavors, reproducibility-checks (build twice, diff sha256),
+   size-sanity-checks, cosign-signs (keyless GitHub OIDC), and uploads
+   `.squashfs` + `.sha256` + `.zsync` + `.cosign.bundle` to the GitHub
+   Release.
+4. **Auto-PR:** The follow-on `update-known-revisions` job parses the
+   tag, takes the sha256 outputs from the matrix release job, and
+   opens a PR against `main` appending the new (schema, revision,
+   sha256, signed=true) tuples to
+   `src-app/server/src/modules/code_sandbox/known_revisions.toml`.
+   Reviewer merges to make the new revision resolvable by
+   `ziee-chat fetch-sandbox-rootfs --version=latest`.
 
 ## Schema bumps
 
