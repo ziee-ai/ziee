@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Streamdown } from 'streamdown'
 import type { MessageContent } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import { useStreamdownComponents } from '@/modules/chat/core/utils/useStreamdownComponents'
 
 interface TextContentProps {
   content: MessageContent
@@ -15,6 +16,8 @@ export const TextContent = memo(function TextContent({
   const textData = content.content as { text?: string }
   const { isStreaming } = Stores.Chat
 
+  const components = useStreamdownComponents(content.id)
+
   if (!textData.text) {
     return null
   }
@@ -26,10 +29,11 @@ export const TextContent = memo(function TextContent({
 
   // Assistant messages: streaming markdown
   return (
-    <div className="w-full overflow-hidden pt-2 pl-2">
+    <div className="w-full overflow-x-auto pt-2">
       <Streamdown
         isAnimating={isStreaming}
         shikiTheme={['github-light', 'github-dark']}
+        components={components}
       >
         {textData.text}
       </Streamdown>

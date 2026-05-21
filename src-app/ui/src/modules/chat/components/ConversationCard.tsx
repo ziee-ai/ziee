@@ -1,4 +1,5 @@
-import { App, Button, Card, Checkbox, Divider, Popconfirm, theme, Tooltip, Typography } from 'antd'
+import { useState } from 'react'
+import { App, Button, Card, Checkbox, Divider, Popconfirm, theme, Typography } from 'antd'
 import { DeleteOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
@@ -32,6 +33,7 @@ export function ConversationCard({
   const { message } = App.useApp()
   const navigate = useNavigate()
   const { token } = theme.useToken()
+  const [popconfirmOpen, setPopconfirmOpen] = useState(false)
 
   const handleCardClick = () => {
     if (isInSelectionMode && onSelect) {
@@ -111,27 +113,38 @@ export function ConversationCard({
 
       {/* Delete button - positioned in top right */}
       {!isInSelectionMode && (
-        <Popconfirm
-          title="Delete conversation?"
-          description="This will permanently delete the conversation and all its messages."
-          onConfirm={handleDeleteConversation}
-          okText="Yes"
-          cancelText="No"
-          okButtonProps={{ loading: false }}
+        <div
+          className="absolute top-2 right-2"
+          onClick={e => e.stopPropagation()}
         >
-          <Tooltip title="Delete">
+          <Popconfirm
+            title="Delete conversation?"
+            description="This will permanently delete the conversation and all its messages."
+            open={popconfirmOpen}
+            onConfirm={async () => {
+              await handleDeleteConversation()
+              setPopconfirmOpen(false)
+            }}
+            onCancel={() => setPopconfirmOpen(false)}
+            okText="Yes"
+            cancelText="No"
+            okButtonProps={{ loading: false }}
+          >
             <Button
-              className="!absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+              className={`transition-opacity ${
+                popconfirmOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
               type="text"
               size="small"
               icon={<DeleteOutlined />}
-              style={{
-                backgroundColor: token.colorBgContainer,
+              style={{ backgroundColor: token.colorBgContainer }}
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                setPopconfirmOpen(true)
               }}
-              onClick={(e: React.MouseEvent) => e.stopPropagation()}
             />
-          </Tooltip>
-        </Popconfirm>
+          </Popconfirm>
+        </div>
       )}
     </Card>
   )

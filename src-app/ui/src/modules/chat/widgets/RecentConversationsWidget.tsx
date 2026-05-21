@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Typography, Button, Popconfirm, Empty, Spin } from 'antd'
-import { MessageOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Typography, Button, Popconfirm, Empty, Spin, Divider } from 'antd'
+import { MessageOutlined, DeleteOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { ConversationResponse } from '@/api-client/types'
+import { DivScrollY } from '@/components/common/DivScrollY'
 
 const { Text } = Typography
 
@@ -63,7 +64,7 @@ export function RecentConversationsWidget() {
   }
 
   return (
-    <div className="flex flex-col">
+    <DivScrollY className="flex-col h-full">
       {recentConversations.map((conversation: ConversationResponse) => (
         <div
           key={conversation.id}
@@ -115,6 +116,18 @@ export function RecentConversationsWidget() {
           </div>
         </div>
       ))}
-    </div>
+
+      <Divider className="!my-1" />
+      <div className="px-2 pb-2">
+        <Button
+          type="text"
+          icon={<UnorderedListOutlined />}
+          block
+          onClick={() => navigate('/chats')}
+        >
+          All conversations
+        </Button>
+      </div>
+    </DivScrollY>
   )
 }

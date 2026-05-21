@@ -149,6 +149,19 @@ pub struct ModelFromHubResponse {
     pub hub_tracking: HubEntity,
 }
 
+/// A local LLM provider available as download target
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HubLocalProvider {
+    pub id: Uuid,
+    pub name: String,
+}
+
+/// Response listing local providers available for hub model downloads
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HubLocalProvidersResponse {
+    pub providers: Vec<HubLocalProvider>,
+}
+
 fn default_true() -> bool {
     true
 }

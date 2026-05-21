@@ -18,31 +18,31 @@ export type SSEEventData<T, K extends SSEEventKey<T>> = K extends '__init'
 // Generic SSE event handler with proper type narrowing
 // Export the handlers type for explicit use
 export type SSEHandlers<T extends Record<string, any>> = {
-  [K in keyof T]: (data: T[K]) => void
+  [K in keyof T]: (data: T[K]) => void | Promise<void>
 } & {
-  __init?: (data: { abortController: AbortController }) => void
-  default?: (event: string, data: any) => void
+  __init?: (data: { abortController: AbortController }) => void | Promise<void>
+  default?: (event: string, data: any) => void | Promise<void>
 }
 
 // Unified SSE callback type that supports both function and object formats
 export type SSECallback<T> =
-  | (<E extends SSEEventKey<T>>(event: E, data: SSEEventData<T, E>) => void)
-  | ((event: string, data: any) => void)
+  | (<E extends SSEEventKey<T>>(event: E, data: SSEEventData<T, E>) => void | Promise<void>)
+  | ((event: string, data: any) => void | Promise<void>)
   | (T extends Record<string, any> ? Partial<SSEHandlers<T>> : never)
 
 export function createSSEHandler<T extends Record<string, any>>(
   handlers: SSEHandlers<T>,
 ) {
-  return (event: SSEEventKey<T>, data: any) => {
+  return (event: SSEEventKey<T>, data: any): void | Promise<void> => {
     if (event === '__init' && handlers.__init) {
-      handlers.__init(data as { abortController: AbortController })
+      return handlers.__init(data as { abortController: AbortController })
     } else if (event in handlers && event !== '__init') {
       const handler = handlers[event as keyof T]
       if (handler) {
-        handler(data)
+        return handler(data) as void | Promise<void>
       }
     } else if (handlers.default) {
-      handlers.default(event as string, data)
+      return handlers.default(event as string, data)
     }
   }
 }

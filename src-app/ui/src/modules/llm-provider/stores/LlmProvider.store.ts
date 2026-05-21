@@ -353,20 +353,11 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       },
 
       llmProviderHasCredentials: (
-        provider: BaseLlmProvider | LlmProviderWithModels,
+        _provider: BaseLlmProvider | LlmProviderWithModels,
       ) => {
-        // Local providers don't need credentials
-        if (provider.provider_type === 'local') {
-          return true
-        }
-
-        // Custom providers might not require API keys
-        if (provider.provider_type === 'custom') {
-          return true
-        }
-
-        // Check if API key exists and is not empty
-        return !!(provider.api_key && provider.api_key.trim())
+        // API key is no longer required to enable a provider.
+        // Users can supply their own keys via their profile settings.
+        return true
       },
 
       // LLM Model actions

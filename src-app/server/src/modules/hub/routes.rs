@@ -59,4 +59,8 @@ pub fn hub_router() -> ApiRouter {
             "/hub/models/download",
             post_with(create_model_from_hub, create_model_from_hub_docs),
         )
+        .api_route(
+            "/hub/models/local-providers",
+            get_with(get_hub_local_providers, get_hub_local_providers_docs),
+        )
 }
