@@ -126,9 +126,14 @@ async fn load_file_content(ctx: &SandboxContext, filename: &str) -> Result<Strin
                 .iter()
                 .find(|f| f.filename == filename && f.user_id == ctx.user_id)
             {
-                let ext = filename
-                    .rsplit('.')
-                    .next()
+                // Match the storage manager's "no extension → bin"
+                // convention used in handlers::stage_attachments.
+                // Naïve `rsplit('.').next()` returns the whole name for
+                // files without a dot ("Makefile" → "Makefile"), so use
+                // Path::extension which returns None in that case.
+                let ext = std::path::Path::new(filename)
+                    .extension()
+                    .and_then(|s| s.to_str())
                     .unwrap_or("bin");
                 let storage = crate::modules::file::storage::manager::get_file_storage();
                 let bytes = storage

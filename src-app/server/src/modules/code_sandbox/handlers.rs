@@ -427,12 +427,88 @@ async fn build_context(
         .await?;
     let _ = code_sandbox_server_id(); // keep symbol live for tests
 
+    // Stage attachments to the host paths that `build_bwrap_argv` will
+    // bind into the sandbox at `/home/sandboxuser/<filename>`. Without
+    // this, `--ro-bind-try` silently no-ops on every attachment and the
+    // shell inside `execute_command` cannot see them — even though the
+    // tool description tells the LLM "Conversation attachments are
+    // available in the working directory by their original filename."
+    //
+    // The stage dir lives OUTSIDE the per-conversation workspace bind
+    // mount, so sandboxed code cannot mutate the originals via the
+    // workspace path — the file is only reachable via the explicit
+    // `--ro-bind` at the friendly name.
+    //
+    // Staging is idempotent: file bytes don't change once uploaded, so
+    // we only write on first miss. Per-file failures are logged and
+    // skipped — the LLM falls back to the `read_file` tool (which
+    // reads via the storage trait directly) if a bind fails.
+    stage_attachments(state, &files).await;
+
     Ok(SandboxContext {
         conversation_id,
         user_id,
         workspace,
         files: Arc::new(files),
     })
+}
+
+async fn stage_attachments(
+    state: &CodeSandboxState,
+    files: &[crate::modules::code_sandbox::models::ConversationFile],
+) {
+    if files.is_empty() {
+        return;
+    }
+    let stage_dir = state.workspace_root.join("attachments");
+    if let Err(e) = tokio::fs::create_dir_all(&stage_dir).await {
+        tracing::warn!(
+            error = %e,
+            "code_sandbox: failed to create attachments stage dir; \
+             shell-side attachment access will be unavailable"
+        );
+        return;
+    }
+    let storage = crate::modules::file::storage::manager::get_file_storage();
+    for f in files {
+        let stage_path = stage_dir.join(f.file_id.to_string());
+        // Idempotent: file_id is content-addressed in practice and the
+        // bytes don't change once uploaded.
+        if tokio::fs::try_exists(&stage_path).await.unwrap_or(false) {
+            continue;
+        }
+        let ext = attachment_extension(&f.filename);
+        match storage.load_original(f.user_id, f.file_id, ext).await {
+            Ok(bytes) => {
+                if let Err(e) = tokio::fs::write(&stage_path, &bytes).await {
+                    tracing::warn!(
+                        file_id = %f.file_id,
+                        filename = %f.filename,
+                        error = %e,
+                        "code_sandbox: stage attachment write failed"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    file_id = %f.file_id,
+                    filename = %f.filename,
+                    error = ?e,
+                    "code_sandbox: stage attachment load failed"
+                );
+            }
+        }
+    }
+}
+
+/// Extract the extension a `FileStorage::load_original` call expects
+/// for the given filename. Returns `"bin"` for files without an
+/// extension (storage manager's fallback convention).
+fn attachment_extension(filename: &str) -> &str {
+    std::path::Path::new(filename)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("bin")
 }
 
 fn workspace_for(state: &CodeSandboxState, conversation_id: Uuid) -> std::path::PathBuf {
@@ -755,5 +831,33 @@ mod tests {
         let raw = "sub/dir/foo.txt";
         let out = super::disposition_filename(raw);
         assert_eq!(out, "foo.txt");
+    }
+
+    // ─── attachment_extension ───────────────────────────────────────
+
+    #[test]
+    fn attachment_extension_extracts_simple() {
+        assert_eq!(super::attachment_extension("data.csv"), "csv");
+        assert_eq!(super::attachment_extension("foo.tar.gz"), "gz");
+        assert_eq!(super::attachment_extension("IMG.PNG"), "PNG");
+    }
+
+    #[test]
+    fn attachment_extension_falls_back_to_bin_for_no_extension() {
+        // Must NOT return the whole filename (the naive
+        // `rsplit('.').next().unwrap_or("bin")` pattern gets this wrong
+        // — it returns "Makefile" for "Makefile" instead of "bin").
+        assert_eq!(super::attachment_extension("Makefile"), "bin");
+        assert_eq!(super::attachment_extension("README"), "bin");
+        assert_eq!(super::attachment_extension(""), "bin");
+    }
+
+    #[test]
+    fn attachment_extension_handles_dotfiles() {
+        // ".bashrc" has no real extension — Path::extension returns
+        // None for files whose name starts with a single dot.
+        assert_eq!(super::attachment_extension(".bashrc"), "bin");
+        // ".config.json" has extension "json".
+        assert_eq!(super::attachment_extension(".config.json"), "json");
     }
 }
