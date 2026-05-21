@@ -20,8 +20,11 @@ use uuid::Uuid;
 use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 
 pub mod cgroup;
+pub mod cli;
 pub mod config;
 pub mod handlers;
+pub mod runtime_fetch;
+pub mod runtime_mount;
 pub mod models;
 pub mod permissions;
 pub mod probes;
@@ -289,59 +292,26 @@ impl AppModule for CodeSandboxModule {
             return Ok(());
         }
 
-        // ---- Boot probes (run ONCE; cached in CodeSandboxState.caps) ----
-        let caps = probes::probe_all(&cfg);
-
-        // Refuse to enable if no working PID-ns mode (rootfs missing,
-        // bwrap missing, or both probes failed).
-        if matches!(caps.pid_namespace, types::PidNsMode::Disabled) {
-            tracing::error!(
-                "code_sandbox: enabled in config but boot probes failed; \
-                 the sandbox MCP row will NOT be registered. Install bwrap + \
-                 mount the rootfs at {}, then restart.",
-                cfg.rootfs_path
-            );
-            return Ok(());
-        }
-
-        // ---- Rootfs schema-version probe ----
-        // Refuse to enable on schema mismatch. The rootfs ships a
-        // sentinel file at `<rootfs>/.ziee-sandbox-rootfs-schema`
-        // containing the integer schema it was built against (see
-        // `src-app/sandbox-rootfs/build.sh` and `Dockerfile`). If the
-        // sentinel's value diverges from this server binary's
-        // `SANDBOX_ROOTFS_SCHEMA_VERSION`, ABI-breaking changes (Python
-        // major bump, binary path moves, layout changes) may have
-        // happened on either side and running the mismatched pair
-        // would yield confusing failures inside bwrap. Document the
-        // upgrade command in the error log so operators know what to do.
-        match probe_rootfs_schema(&cfg.rootfs_path) {
-            Ok(found) if found != SANDBOX_ROOTFS_SCHEMA_VERSION => {
+        // ---- Boot probes: HOST-only (cheap; no rootfs dependence) ----
+        // Rootfs-dependent probes (PID-ns, schema sentinel) are deferred
+        // until the first `execute_command` call via
+        // `runtime_mount::ensure_rootfs_ready`. This means users who
+        // never invoke code execution pay zero FUSE-process cost and
+        // zero squashfuse latency at boot.
+        //
+        // The one thing we still fail-loud on at boot is missing bwrap:
+        // it's not something the operator can fix at runtime, and
+        // surfacing it as a per-call MCP error would surprise users.
+        let host_caps = match probes::probe_host_only(&cfg) {
+            Some(h) => h,
+            None => {
                 tracing::error!(
-                    rootfs_schema = found,
-                    server_schema = SANDBOX_ROOTFS_SCHEMA_VERSION,
-                    rootfs_path = %cfg.rootfs_path,
-                    "code_sandbox: rootfs schema version mismatch; sandbox \
-                     will NOT be registered. Run `ziee-chat \
-                     fetch-sandbox-rootfs --version=latest` to install a \
-                     compatible rootfs."
+                    "code_sandbox: bwrap not found on PATH; sandbox MCP row \
+                     will NOT be registered. Install bubblewrap and restart."
                 );
                 return Ok(());
             }
-            Err(e) => {
-                tracing::error!(
-                    rootfs_path = %cfg.rootfs_path,
-                    error = %e,
-                    "code_sandbox: cannot read rootfs schema sentinel; \
-                     sandbox will NOT be registered. Either the rootfs \
-                     is not mounted, or it was built without the schema \
-                     file. Run `ziee-chat mount-sandbox-rootfs` and \
-                     ensure the rootfs was built with build.sh >= v1."
-                );
-                return Ok(());
-            }
-            Ok(_) => {} // schema matches — proceed
-        }
+        };
 
         // ---- Workspace root + per-conversation reaper (Phase 8) ----
         let app_data_dir = crate::core::get_app_data_dir();
@@ -366,7 +336,7 @@ impl AppModule for CodeSandboxModule {
             config: cfg.clone(),
             loopback_url: loopback_url.clone(),
             workspace_root: workspace_root.clone(),
-            caps,
+            host_caps,
         };
         let _state_arc = config::init_state(state);
 
@@ -391,6 +361,9 @@ impl AppModule for CodeSandboxModule {
             workspace_reaper(reaper_root).await;
         });
 
+        tracing::info!(
+            "code_sandbox: registered (rootfs will mount on first execute_command)"
+        );
         Ok(())
     }
 

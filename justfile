@@ -16,11 +16,28 @@ default:
 sandbox-build flavor="full":
     cd src-app/server && cargo run -q --bin ziee-chat -- build-sandbox-rootfs --flavor {{flavor}}
 
-# Mount a built squashfs and flip the `current` symlink atomically.
-# Idempotent: re-running with the same version is a no-op.
-sandbox-mount rootfs="":
-    cd src-app/server && cargo run -q --bin ziee-chat -- mount-sandbox-rootfs \
-        {{ if rootfs == "" { "" } else { "--rootfs=" + rootfs } }}
+# Mount a built squashfs for the TEST HARNESS only.
+#
+# Production servers auto-mount the rootfs lazily on the first
+# `execute_command` call (see modules/code_sandbox/runtime_mount.rs)
+# — there is no `ziee-chat mount-sandbox-rootfs` CLI command. But
+# `just check-sandbox` runs Tier-4/6 tests that exercise bwrap
+# directly against a mounted rootfs, bypassing the server. This
+# recipe is for that case.
+#
+# Idempotent: re-running against the same squashfs is a no-op.
+sandbox-mount:
+    @bash -euo pipefail -c '\
+        sqfs=$(ls -t .ziee-cache/sandbox-rootfs/*.squashfs 2>/dev/null | head -1); \
+        if [ -z "$sqfs" ]; then \
+            echo "no squashfs found; run \`just sandbox-build\` first" >&2; \
+            exit 1; \
+        fi; \
+        mnt="${sqfs%.squashfs}"; \
+        mkdir -p "$mnt"; \
+        mountpoint -q "$mnt" || squashfuse "$sqfs" "$mnt"; \
+        ln -sfn "$(basename "$mnt")" .ziee-cache/sandbox-rootfs/current; \
+        echo "mounted: $mnt"'
 
 # Tear down dev sandbox state (unmount + rm). Safe to run anytime.
 sandbox-clean:
@@ -110,6 +127,15 @@ check-sandbox-llm:
 # the rootfs build + reproducibility check. Takes ~15 min.
 check-release-ready: check check-rootfs-reproducibility
     @echo "✓ release-ready"
+
+# Stand up a local http "registry" + run the full fetch+verify+install
+# path against it. Validates the operator install flow WITHOUT cutting
+# a real release tag. Sets signed=false so cosign is skipped; real
+# keyless cosign needs an actual GitHub Actions run.
+#
+# Requires: bwrap, squashfuse, python3.
+dev-release flavor="minimal" port="8765":
+    scripts/dev-release.sh {{flavor}} {{port}}
 
 check-rootfs-reproducibility:
     @bash -c 'set -eu; \

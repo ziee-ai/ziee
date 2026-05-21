@@ -238,10 +238,15 @@ async fn invoke_tool(
             #[derive(Deserialize)]
             struct A {
                 command: String,
+                #[serde(default = "default_flavor")]
+                flavor: String,
+            }
+            fn default_flavor() -> String {
+                "minimal".to_string()
             }
             let a: A = serde_json::from_value(args.clone())
                 .map_err(invalid_tool_args)?;
-            tools::execute::execute_command(ctx, &a.command).await
+            tools::execute::execute_command(ctx, &a.command, &a.flavor).await
         }
         "read_file" => {
             #[derive(Deserialize)]
@@ -280,6 +285,7 @@ async fn invoke_tool(
                 .await
         }
         "list_files" => tools::files::list_files(ctx).await,
+        "list_sandbox_environments" => list_sandbox_environments(ctx).await,
         "get_resource_link" => {
             #[derive(Deserialize)]
             struct A {
@@ -305,6 +311,54 @@ fn invalid_tool_args(e: serde_json::Error) -> crate::common::AppError {
         "INVALID_TOOL_ARGS",
         format!("invalid tool arguments: {e}"),
     )
+}
+
+/// Handler for the `list_sandbox_environments` MCP tool. Reports
+/// every flavor advertised by `KNOWN_FLAVORS` along with a `cached`
+/// boolean indicating whether picking that flavor will trigger an
+/// auto-fetch on first use.
+async fn list_sandbox_environments(
+    _ctx: &SandboxContext,
+) -> Result<Value, crate::common::AppError> {
+    use crate::modules::code_sandbox::types::KNOWN_FLAVORS;
+
+    let state = config::get_state();
+    let cache_dir = state
+        .as_ref()
+        .map(|s| {
+            std::path::PathBuf::from(&s.config.rootfs_path)
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+        })
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    let available: Vec<Value> = KNOWN_FLAVORS
+        .iter()
+        .map(|m| {
+            let cached = flavor_has_cached_squashfs(&cache_dir, m.flavor);
+            json!({
+                "flavor": m.flavor,
+                "description": m.description,
+                "approximate_size_mb": m.approximate_size_mb,
+                "cached": cached,
+            })
+        })
+        .collect();
+    Ok(json!({ "available": available }))
+}
+
+fn flavor_has_cached_squashfs(cache_dir: &std::path::Path, flavor: &str) -> bool {
+    let suffix = format!("-{flavor}.squashfs");
+    std::fs::read_dir(cache_dir)
+        .map(|rd| {
+            rd.flatten().any(|e| {
+                e.file_name()
+                    .to_str()
+                    .is_some_and(|n| n.ends_with(&suffix))
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// Build the MCP `content[]` array for a tool result.
@@ -719,7 +773,15 @@ pub(crate) fn tool_definitions() -> Value {
             "name": "execute_command",
             "description": "Execute a shell command in the sandbox.\n\
                 \n\
-                RUNTIMES: Python 3, R, Node.js 22 (TypeScript / ts-node globally installed).\n\
+                ENVIRONMENTS (pick via `flavor` param; defaults to 'minimal' if omitted):\n\
+                - 'minimal' (~57 MB): bash + coreutils + curl + jq + git + python3 (interpreter only).\n\
+                  Sufficient for shell pipelines, simple Python scripts, file munging.\n\
+                - 'full' (~850 MB): minimal + numpy, pandas, torch, R 4.4 + tidyverse, Node 22, \
+                  TypeScript / ts-node. Switch to this when the task needs ML libraries or R.\n\
+                \n\
+                Uncached environments auto-download on first use (~10-30 s for minimal, \
+                ~2-5 min for full); the chat UI surfaces a system note when this happens. \
+                Use `list_sandbox_environments` to inspect what's installed in each flavor.\n\
                 \n\
                 BEFORE INSTALLING A PACKAGE: Always check if it is already installed first.\n\
                 - Python: python3 -c \"import <pkg>\" 2>/dev/null && echo installed || echo missing\n\
@@ -740,6 +802,12 @@ pub(crate) fn tool_definitions() -> Value {
                     "command": {
                         "type": "string",
                         "description": "Shell command to execute (runs via /bin/bash -lc)"
+                    },
+                    "flavor": {
+                        "type": "string",
+                        "enum": ["minimal", "full"],
+                        "default": "minimal",
+                        "description": "Sandbox environment. 'minimal' (~57 MB) for shell + Python interpreter. 'full' (~850 MB) for numpy/torch/R/Node. Uncached flavors auto-fetch on first use."
                     }
                 }
             }
@@ -864,6 +932,16 @@ pub(crate) fn tool_definitions() -> Value {
                     }
                 }
             }
+        },
+        {
+            "name": "list_sandbox_environments",
+            "description": "Return the rootfs environments available for `execute_command`'s \
+                `flavor` parameter. Each entry includes a human-readable description of what's \
+                installed and the approximate download size. Use this to decide which flavor to \
+                pass to execute_command — pick the smallest flavor that has the tools the task \
+                needs. The `cached` field tells you whether picking that flavor will trigger a \
+                download (false → ~10 s to ~5 min latency on the first execute_command).",
+            "inputSchema": { "type": "object", "properties": {} }
         }
     ])
 }
@@ -877,14 +955,14 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
-    /// Snapshot: the 6 tools' names + their required-arg sets. Bumping
-    /// this is a deliberate signal that the public sandbox surface
-    /// changed — schema bump territory.
+    /// Snapshot: the 7 tools' names + their required-arg sets.
+    /// Bumping this is a deliberate signal that the public sandbox
+    /// surface changed — schema bump territory.
     #[test]
     fn tool_definitions_snapshot() {
         let tools: Value = super::tool_definitions();
         let arr = tools.as_array().expect("tools is an array");
-        assert_eq!(arr.len(), 6, "expected exactly 6 tools");
+        assert_eq!(arr.len(), 7, "expected exactly 7 tools");
 
         let mut shape: Vec<(String, Vec<String>)> = arr
             .iter()
@@ -908,6 +986,7 @@ mod tests {
             ("execute_command".into(), vec!["command".into()]),
             ("get_resource_link".into(), vec!["filename".into()]),
             ("list_files".into(), vec![]),
+            ("list_sandbox_environments".into(), vec![]),
             ("read_file".into(), vec!["filename".into()]),
             ("write_file".into(), vec!["filename".into(), "content".into()]),
         ];
@@ -1057,7 +1136,7 @@ mod tests {
     use crate::core::config::CodeSandboxConfig;
     use crate::modules::code_sandbox::models::ConversationFile;
     use crate::modules::code_sandbox::types::{
-        CgroupMode, CodeSandboxState, HardeningCapabilities, PidNsMode, SeccompMode,
+        CgroupMode, CodeSandboxState, HostCapabilities, SeccompMode,
     };
     use crate::modules::file::storage::filesystem::FilesystemStorage;
     use std::path::PathBuf;
@@ -1071,9 +1150,8 @@ mod tests {
             },
             loopback_url: "http://127.0.0.1:8080/api/code-sandbox".to_string(),
             workspace_root,
-            caps: HardeningCapabilities {
+            host_caps: HostCapabilities {
                 bwrap_path: PathBuf::from("/usr/bin/bwrap"),
-                pid_namespace: PidNsMode::Strict,
                 cgroup: CgroupMode::None,
                 seccomp: SeccompMode::NotLinked,
             },

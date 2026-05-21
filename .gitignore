@@ -1,3 +1,4 @@
 # Repo-local sandbox rootfs cache (squashfs files + squashfuse mountpoints).
 # Created by `just sandbox-fetch` / `just sandbox-build`; never committed.
 .ziee-cache/
+check-sandbox-*.log

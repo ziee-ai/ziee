@@ -1,11 +1,45 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use dashmap::DashMap;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::core::config::CodeSandboxConfig;
 use crate::modules::code_sandbox::models::ConversationFile;
+
+/// Per-conversation flavor lock. Populated by the FIRST
+/// `execute_command` call in a conversation; subsequent calls in the
+/// same conversation default to that flavor unless the LLM
+/// explicitly requests a different one. A switch within a
+/// conversation is logged (so it's auditable) but allowed — it just
+/// triggers a fresh mount for the new flavor (both stay live).
+pub static CONVERSATION_FLAVOR: Lazy<DashMap<Uuid, String>> = Lazy::new(DashMap::new);
+
+/// Flavor metadata surfaced via the `list_sandbox_environments` MCP
+/// tool (Phase 5). The list lives in code rather than the rootfs
+/// because the binary needs to advertise flavors BEFORE any rootfs
+/// is mounted; future iteration may move human-readable descriptions
+/// into a `<rootfs>/.ziee-sandbox-rootfs-flavor.json` sentinel.
+pub struct FlavorMetadata {
+    pub flavor: &'static str,
+    pub description: &'static str,
+    pub approximate_size_mb: u64,
+}
+
+pub const KNOWN_FLAVORS: &[FlavorMetadata] = &[
+    FlavorMetadata {
+        flavor: "minimal",
+        description: "Shell + coreutils + curl + jq + git + python3 (interpreter only).",
+        approximate_size_mb: 57,
+    },
+    FlavorMetadata {
+        flavor: "full",
+        description: "minimal + numpy + pandas + torch + R 4.4 + tidyverse + Node 22 + ts-node.",
+        approximate_size_mb: 853,
+    },
+];
 
 /// JSON-RPC 2.0 request envelope. The sandbox handler accepts only a
 /// minimal subset: `initialize`, `tools/list`, `tools/call`.
@@ -80,9 +114,23 @@ pub struct SandboxContext {
     pub files: Arc<Vec<ConversationFile>>,
 }
 
-/// Cached, process-lifetime hardening capabilities. Populated once at
-/// `code_sandbox::init()`; every per-call code path reads from here so
-/// we never re-probe the environment per request.
+/// Host-level capabilities — known at server boot. These don't depend
+/// on the sandbox rootfs being mounted, so they're probed unconditionally
+/// in `code_sandbox::init()` and stored in `CodeSandboxState.host_caps`.
+///
+/// `bwrap_path` is required (not `Option`) — if bwrap is missing,
+/// `init()` skips the MCP row entirely; this struct is never constructed.
+#[derive(Debug, Clone)]
+pub struct HostCapabilities {
+    pub bwrap_path: PathBuf,
+    pub cgroup: CgroupMode,
+    pub seccomp: SeccompMode,
+}
+
+/// Full hardening capabilities — only complete after the rootfs is
+/// lazily mounted on first `execute_command`. Built by merging
+/// `HostCapabilities` with the rootfs-dependent `pid_namespace` probe.
+/// Cached for the rest of the server's lifetime in `runtime_mount::READY`.
 #[derive(Debug, Clone)]
 pub struct HardeningCapabilities {
     pub bwrap_path: PathBuf,
@@ -132,7 +180,12 @@ pub struct CodeSandboxState {
     /// Workspace root: `<data_dir>/sandboxes/`. Per-conversation
     /// subdirs are created on demand under here.
     pub workspace_root: PathBuf,
-    pub caps: HardeningCapabilities,
+    /// Cheap, rootfs-independent capabilities probed at boot. The
+    /// rootfs-dependent `pid_namespace` field of `HardeningCapabilities`
+    /// is populated lazily on the first `execute_command` call and
+    /// cached in `runtime_mount::READY`; per-call code paths fetch
+    /// the full caps via `runtime_mount::ensure_rootfs_ready(state).await?`.
+    pub host_caps: HostCapabilities,
 }
 
 // =====================================================================

@@ -92,25 +92,45 @@ row is never registered.
 
 ### Host package install per distro
 
+**Runtime deps** (what operators consuming a binary release need):
+
 ```bash
 # Debian / Ubuntu
-sudo apt install bubblewrap squashfuse squashfs-tools
-sudo apt install libseccomp-dev    # optional, enables the seccomp filter
+sudo apt install bubblewrap squashfuse fuse3
 
-# Fedora
-sudo dnf install bubblewrap squashfuse squashfs-tools libseccomp-devel
-
-# RHEL / CentOS
-sudo dnf install epel-release && sudo dnf install bubblewrap squashfuse squashfs-tools libseccomp-devel
+# Fedora / RHEL / CentOS
+sudo dnf install bubblewrap squashfuse fuse3
 
 # Arch
-sudo pacman -S bubblewrap squashfuse squashfs-tools libseccomp
+sudo pacman -S bubblewrap squashfuse fuse3
 
 # openSUSE
-sudo zypper install bubblewrap squashfuse squashfs-tools libseccomp-devel
+sudo zypper install bubblewrap squashfuse fuse3
 
 # Alpine
-sudo apk add bubblewrap squashfuse fuse3 squashfs-tools libseccomp-dev
+sudo apk add bubblewrap squashfuse fuse3
+```
+
+That's it for runtime. **`cosign` is no longer required** — verification is done in-process via the `sigstore` Rust crate. **`libseccomp2` is no longer required at runtime** — it's statically linked into the binary at build time (via `.cargo/config.toml`'s `LIBSECCOMP_LINK_TYPE=static`).
+
+**Additional build-from-source deps** (only if compiling the server yourself with `--features code_sandbox_seccomp`):
+
+```bash
+# Debian / Ubuntu
+sudo apt install libseccomp-dev pkg-config
+
+# Fedora
+sudo dnf install libseccomp-static libseccomp-devel pkgconf-pkg-config
+
+# Arch
+sudo pacman -S libseccomp pkgconf
+```
+
+**Additional build-the-rootfs-locally deps** (only if running `just sandbox-build` instead of `fetch-sandbox-rootfs`):
+
+```bash
+# Debian / Ubuntu
+sudo apt install mmdebstrap squashfs-tools
 ```
 
 ### Rootfs setup
@@ -179,13 +199,17 @@ Expected startup hardening line (look in server logs):
 
 **Enabling seccomp:**
 ```bash
-# Install libseccomp dev headers per your distro (see above).
+# Install libseccomp dev + static archive per your distro (see the
+# "Additional build-from-source deps" section above).
 cargo build --release --features code_sandbox_seccomp
 ```
-The `code_sandbox_seccomp` cargo feature is opt-in because the
-libseccomp dynamic library must be present at link time on the build
-host. Without the feature, the sandbox runs with all other hardening
-in place and seccomp logged as `off-feature-not-linked`.
+The `code_sandbox_seccomp` cargo feature is opt-in because libseccomp
+must be present at link time on the build host. The resulting binary
+**static-links** libseccomp (via `.cargo/config.toml`'s
+`LIBSECCOMP_LINK_TYPE=static`), so operators don't need
+`libseccomp2` installed at runtime. Without the feature, the sandbox
+runs with all other hardening in place and seccomp is logged as
+`off-feature-not-linked`.
 
 ### Tests
 
@@ -251,18 +275,62 @@ The lower tiers exercise individual layers but Tier 6 is what proves
 the integration works end-to-end. Add new Tier-6 tests when shipping
 new tool behaviors.
 
+**Testing the auto-fetch path locally** (no GitHub release needed):
+
+```bash
+just dev-release minimal    # builds the rootfs + stages it in a local mirror
+# Then boot the server with code_sandbox.enabled: true and trigger
+# any execute_command MCP call — the server downloads from the local
+# mirror, sha256-verifies, mounts, and runs.
+```
+
+`dev-release.sh` stands up a loopback HTTP "registry" via
+`python3 -m http.server` and writes a dev-override
+`known_revisions.dev.toml` with the freshly-built sha256. The two
+env vars it sets (`CODE_SANDBOX_KNOWN_REVISIONS_OVERRIDE` and
+loopback `http://` in `CODE_SANDBOX_ROOTFS_MIRROR`) are physically
+compiled out of release builds via `cfg!(debug_assertions)`, so the
+mechanism can't be abused in production. Cosign signing is
+deliberately skipped (`signed = false` in the dev TOML); real
+keyless cosign verification needs a true GitHub Actions OIDC run.
+
 ### Production deployment
 
-Deployment is operator-managed for now (no pre-baked Docker image
-shipped). On a Linux host with bubblewrap + squashfuse installed:
+Operator workflow is **install host deps → boot**. The server handles
+everything else (download, sha256 + cosign verify, mount, unmount).
 
-1. Fetch the rootfs: `ziee-chat fetch-sandbox-rootfs --version=latest`
-   (downloads + sha256-verifies against the binary's embedded
-   `known_revisions.toml` + cosign-verifies if `signed=true`)
-2. Mount it: `ziee-chat mount-sandbox-rootfs`
-3. Set `code_sandbox.enabled: true` in config
-4. Boot the server; confirm the startup log shows
-   `code_sandbox: hardening = { ... pid_ns: ..., cgroup_v2: ..., seccomp: ... }`
+1. Install host deps on the Linux host:
+   ```bash
+   sudo apt install bubblewrap squashfuse fuse3   # Debian/Ubuntu
+   ```
+   (See the per-distro table above for Fedora/Arch/Alpine.)
+2. Set `code_sandbox.enabled: true` in config.
+3. Boot the server. The startup log shows
+   `code_sandbox: registered (rootfs will mount on first execute_command)`.
+
+Per-flavor lazy-fetch + lazy-mount: the FIRST `execute_command` MCP
+call for each flavor triggers download (sha256 + sigstore verify) and
+squashfuse mount. The chat UI surfaces a system note via
+`structuredContent.fetch_info` on calls that did a fetch ("Fetched
+'full' sandbox, 853 MB, 2m 14s"). Users who only invoke `minimal`
+never pay the `full` download cost; users who never invoke
+code execution at all never spawn squashfuse.
+
+The hardening line appears in the log at first lazy-init:
+`code_sandbox: hardening = { ... pid_ns: ..., cgroup_v2: ..., seccomp: ... }`.
+
+The server is the sole owner of every spawned squashfuse process. It
+spawns each with `PR_SET_PDEATHSIG=SIGTERM`, so FUSE daemons die with
+the server even on `kill -9` / OOM-kill. There is no
+`fetch-sandbox-rootfs` or `mount-sandbox-rootfs` CLI subcommand —
+the runtime handles both.
+
+**Air-gapped operators** that can't reach GitHub Releases can
+pre-stage a rootfs squashfs manually. Copy a built
+`ziee-sandbox-rootfs-v{schema}.{revision}-{arch}-{flavor}.squashfs`
+file into the cache directory (default
+`/var/lib/ziee/sandbox-rootfs/`); the runtime detects it on the
+first `execute_command`, skips the network, and mounts.
 
 For cgroup v2 enforcement (recommended), give the server uid a
 delegated slice on the host:

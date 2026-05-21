@@ -76,16 +76,18 @@ pub async fn run_in_sandbox(
     ctx: &SandboxContext,
     command: &str,
     timeout_secs: Option<u64>,
+    flavor: &str,
 ) -> Result<SandboxRunResult, AppError> {
-    use crate::modules::code_sandbox::cgroup;
+    use crate::modules::code_sandbox::{cgroup, runtime_mount};
 
-    if state.caps.pid_namespace == PidNsMode::Disabled {
-        return Err(AppError::new(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "SANDBOX_DISABLED",
-            "code_sandbox is disabled: boot probe failed to find a working bwrap PID-namespace mode",
-        ));
-    }
+    // Lazy-mount the rootfs for this FLAVOR (squashfuse) + run
+    // rootfs-dependent probes (pid_ns, schema). First call per flavor
+    // pays ~200-300 ms; subsequent calls for the same flavor return
+    // the cached HardeningCapabilities instantly. Per-flavor mounts
+    // coexist — minimal and full both stay live once first used.
+    let ensure = runtime_mount::ensure_rootfs_ready(state, flavor).await?;
+    let caps = ensure.caps.clone();
+    let rootfs_dir = ensure.mount_dir;
 
     let workspace = ctx.workspace.clone();
     // Identity files live OUTSIDE the per-conversation workspace bind
@@ -104,7 +106,7 @@ pub async fn run_in_sandbox(
     );
 
     // Per-call cgroup scope, if available.
-    let cgroup_scope = match &state.caps.cgroup {
+    let cgroup_scope = match &caps.cgroup {
         CgroupMode::Delegated(parent) => {
             Some(cgroup::CgroupScope::create(parent, ctx.conversation_id).map_err(|e| {
                 tracing::warn!("cgroup scope creation failed: {e}; continuing without cgroup");
@@ -116,15 +118,16 @@ pub async fn run_in_sandbox(
     };
 
     // Per-call seccomp pipe.
-    let seccomp_pipe = match &state.caps.seccomp {
+    let seccomp_pipe = match &caps.seccomp {
         SeccompMode::Loaded(bpf) => Some(SeccompPipe::install(bpf.clone())?),
         SeccompMode::NotLinked | SeccompMode::Disabled => None,
     };
 
     let argv = build_bwrap_argv(
-        &state.caps,
+        &caps,
         state,
         ctx,
+        &rootfs_dir,
         command,
         synthetic.passwd_path(),
         synthetic.group_path(),
@@ -132,7 +135,7 @@ pub async fn run_in_sandbox(
     );
 
     let started = Instant::now();
-    let mut cmd = Command::new(&state.caps.bwrap_path);
+    let mut cmd = Command::new(&caps.bwrap_path);
     cmd.args(&argv);
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
@@ -259,12 +262,13 @@ pub(crate) fn build_bwrap_argv(
     caps: &HardeningCapabilities,
     state: &CodeSandboxState,
     ctx: &SandboxContext,
+    rootfs_dir: &Path,
     user_cmd: &str,
     passwd_path: &Path,
     group_path: &Path,
     seccomp_fd: Option<RawFd>,
 ) -> Vec<String> {
-    let rootfs = state.config.rootfs_path.as_str();
+    let rootfs = rootfs_dir.to_str().unwrap_or_default();
     let workspace = ctx.workspace.to_string_lossy().to_string();
 
     let mut argv: Vec<String> = vec![
@@ -687,6 +691,14 @@ mod tests {
         }
     }
 
+    fn fake_host_caps() -> crate::modules::code_sandbox::types::HostCapabilities {
+        crate::modules::code_sandbox::types::HostCapabilities {
+            bwrap_path: PathBuf::from("/usr/bin/bwrap"),
+            cgroup: CgroupMode::None,
+            seccomp: SeccompMode::NotLinked,
+        }
+    }
+
     fn fake_state() -> CodeSandboxState {
         CodeSandboxState {
             config: CodeSandboxConfig {
@@ -696,7 +708,7 @@ mod tests {
             },
             loopback_url: "http://127.0.0.1:8080/api/code-sandbox".to_string(),
             workspace_root: PathBuf::from("/tmp/ziee-workspace"),
-            caps: fake_caps(),
+            host_caps: fake_host_caps(),
         }
     }
 
@@ -725,6 +737,7 @@ mod tests {
             &caps,
             &state,
             &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
             "echo hi",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
@@ -765,6 +778,7 @@ mod tests {
             &caps,
             &state,
             &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
             "echo hello",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
@@ -795,6 +809,7 @@ mod tests {
             &caps,
             &state,
             &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
@@ -824,6 +839,7 @@ mod tests {
             &caps,
             &state,
             &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
@@ -847,6 +863,7 @@ mod tests {
             &caps,
             &state,
             &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
             "echo hi",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
@@ -898,6 +915,7 @@ mod tests {
             &caps,
             &state,
             &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
@@ -909,6 +927,7 @@ mod tests {
             &caps,
             &state,
             &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
@@ -926,6 +945,7 @@ mod tests {
             &caps,
             &state,
             &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),

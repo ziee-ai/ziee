@@ -91,7 +91,7 @@ async fn e2e_initialize_returns_protocol_version_and_server_info() {
 
 #[tokio::test]
 #[ignore]
-async fn e2e_tools_list_returns_six_tools_via_real_server() {
+async fn e2e_tools_list_returns_seven_tools_via_real_server() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, _conv_id) = setup_user_and_conv(&server).await;
     let resp = post_jsonrpc(&server, &jwt, None, "tools/list", json!({})).await;
@@ -102,7 +102,7 @@ async fn e2e_tools_list_returns_six_tools_via_real_server() {
         .and_then(|r| r.get("tools"))
         .and_then(|t| t.as_array())
         .expect("result.tools array");
-    assert_eq!(tools.len(), 6, "expected exactly 6 tools, got {tools:?}");
+    assert_eq!(tools.len(), 7, "expected exactly 7 tools, got {tools:?}");
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(names.contains(&"execute_command"));
     assert!(names.contains(&"read_file"));
@@ -110,6 +110,7 @@ async fn e2e_tools_list_returns_six_tools_via_real_server() {
     assert!(names.contains(&"edit_file"));
     assert!(names.contains(&"list_files"));
     assert!(names.contains(&"get_resource_link"));
+    assert!(names.contains(&"list_sandbox_environments"));
 }
 
 #[tokio::test]

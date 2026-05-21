@@ -9,54 +9,101 @@ use std::process::Command as StdCommand;
 
 use crate::core::config::CodeSandboxConfig;
 use crate::modules::code_sandbox::types::{
-    CgroupMode, HardeningCapabilities, PidNsMode, SeccompMode,
+    CgroupMode, HardeningCapabilities, HostCapabilities, PidNsMode, SeccompMode,
 };
 
-/// Run all probes sequentially. Cost: ~50-100 ms one-time.
+/// Probe everything that does NOT require the sandbox rootfs to be
+/// mounted: bwrap on PATH, delegated cgroup, seccomp filter compile.
+/// Cost: <10 ms. Returns `None` if bwrap is missing (in which case
+/// `init()` skips MCP registration entirely).
+///
+/// Boot path. The rootfs-dependent half (`probe_pid_ns`) runs lazily
+/// on the first `execute_command` call via
+/// [`runtime_mount::ensure_rootfs_ready`].
+pub fn probe_host_only(config: &CodeSandboxConfig) -> Option<HostCapabilities> {
+    let bwrap_path = which_bwrap()?;
+    let cgroup = probe_cgroup(&config.cgroup_parent);
+    let seccomp = compile_seccomp_filter();
+    Some(HostCapabilities { bwrap_path, cgroup, seccomp })
+}
+
+/// Promote `HostCapabilities` to the full `HardeningCapabilities` by
+/// running the rootfs-dependent probes against the now-mounted rootfs.
+/// Called from `runtime_mount::ensure_rootfs_ready` after squashfuse
+/// has put the rootfs at `<rootfs_path>/usr`.
+///
+/// Returns `Err` if `probe_pid_ns` produces `Disabled` — that's the
+/// "the sandbox cannot run on this host" signal that surfaces to the
+/// caller as a structured MCP error.
+pub fn probe_rootfs_dependent(
+    config: &CodeSandboxConfig,
+    host: &HostCapabilities,
+) -> Result<HardeningCapabilities, String> {
+    let pid_namespace = probe_pid_ns(&host.bwrap_path, &config.rootfs_path);
+    if matches!(pid_namespace, PidNsMode::Disabled) {
+        return Err(format!(
+            "PID-namespace probe failed against rootfs at {}; bwrap \
+             cannot start a useful sandbox here. Check kernel config \
+             (CONFIG_USER_NS=y, unprivileged_userns_clone=1).",
+            config.rootfs_path
+        ));
+    }
+    let caps = HardeningCapabilities {
+        bwrap_path: host.bwrap_path.clone(),
+        pid_namespace,
+        cgroup: host.cgroup.clone(),
+        seccomp: host.seccomp.clone(),
+    };
+    log_hardening_summary(&caps);
+    Ok(caps)
+}
+
+/// Convenience: probe both host-only and rootfs-dependent halves in one
+/// call. Used by Tier-4 tests and the bootstrap script, NOT by the
+/// production boot path (which only calls `probe_host_only`).
 pub fn probe_all(config: &CodeSandboxConfig) -> HardeningCapabilities {
-    // If bwrap isn't on PATH, force Disabled mode rather than using a
-    // sentinel path. The earlier impl returned `PathBuf::from("bwrap")`
-    // and relied on `is_absolute()` checks downstream — fragile if any
-    // call site forgets to check.
-    let (bwrap_path, pid_namespace) = match which_bwrap() {
-        Some(p) => (p.clone(), probe_pid_ns(&p, &config.rootfs_path)),
+    let host = match probe_host_only(config) {
+        Some(h) => h,
         None => {
             tracing::error!(
                 "code_sandbox: bwrap not found on PATH; sandbox will refuse \
                  to register. Install bubblewrap (apt install bubblewrap)."
             );
-            (PathBuf::from("bwrap"), PidNsMode::Disabled)
+            return HardeningCapabilities {
+                bwrap_path: PathBuf::from("bwrap"),
+                pid_namespace: PidNsMode::Disabled,
+                cgroup: CgroupMode::None,
+                seccomp: SeccompMode::NotLinked,
+            };
         }
     };
-    let cgroup = probe_cgroup(&config.cgroup_parent);
-    let seccomp = compile_seccomp_filter();
+    probe_rootfs_dependent(config, &host).unwrap_or_else(|_| HardeningCapabilities {
+        bwrap_path: host.bwrap_path,
+        pid_namespace: PidNsMode::Disabled,
+        cgroup: host.cgroup,
+        seccomp: host.seccomp,
+    })
+}
 
+fn log_hardening_summary(caps: &HardeningCapabilities) {
     let summary = format!(
-        "code_sandbox: hardening = {{ rlimits: on, bwrap: {bwrap}, pid_ns: {pid_ns}, cgroup_v2: {cg}, seccomp: {sc} }}",
-        bwrap = if bwrap_path.is_absolute() { "on" } else { "MISSING" },
-        pid_ns = match pid_namespace {
+        "code_sandbox: hardening = {{ rlimits: on, bwrap: on, pid_ns: {pid_ns}, cgroup_v2: {cg}, seccomp: {sc} }}",
+        pid_ns = match caps.pid_namespace {
             PidNsMode::Strict => "on",
             PidNsMode::DevBindFallback => "off-fallback-dev-bind",
             PidNsMode::Disabled => "DISABLED",
         },
-        cg = match &cgroup {
+        cg = match &caps.cgroup {
             CgroupMode::Delegated(_) => "on (delegated)",
             CgroupMode::None => "off-needs-delegation",
         },
-        sc = match &seccomp {
+        sc = match &caps.seccomp {
             SeccompMode::Loaded(_) => "on",
             SeccompMode::NotLinked => "off-feature-not-linked",
             SeccompMode::Disabled => "off-libseccomp-failed",
         },
     );
     tracing::info!("{summary}");
-
-    HardeningCapabilities {
-        bwrap_path,
-        pid_namespace,
-        cgroup,
-        seccomp,
-    }
 }
 
 fn which_bwrap() -> Option<PathBuf> {
@@ -71,8 +118,9 @@ fn which_bwrap() -> Option<PathBuf> {
 
 /// Try strict mode (`--unshare-pid --proc /proc`) first; on failure
 /// retry with `--dev-bind /proc /proc`. If neither works, sandbox is
-/// disabled.
-fn probe_pid_ns(bwrap_path: &Path, rootfs: &str) -> PidNsMode {
+/// disabled. Public-in-crate so `runtime_mount` can call it from the
+/// lazy-init path against the just-mounted rootfs.
+pub(crate) fn probe_pid_ns(bwrap_path: &Path, rootfs: &str) -> PidNsMode {
     if !bwrap_path.is_absolute() {
         return PidNsMode::Disabled;
     }
@@ -282,15 +330,18 @@ fn sweep_stale_cgroup_scopes(parent: &std::path::Path) {
     }
 }
 
-/// Compile the seccomp filter once at boot. Gated on the
-/// `code_sandbox_seccomp` cargo feature; when off, returns
-/// `SeccompMode::NotLinked`.
+/// Compile the seccomp filter once at boot. Active only when BOTH
+/// the `code_sandbox_seccomp` cargo feature is enabled AND the build
+/// target is Linux. The feature is on by default; on Mac/Windows
+/// the target gate trips so the filter is a no-op and seccomp logs
+/// as `off-feature-not-linked` (the same surface as if the feature
+/// had been turned off explicitly).
 fn compile_seccomp_filter() -> SeccompMode {
-    #[cfg(not(feature = "code_sandbox_seccomp"))]
+    #[cfg(not(all(feature = "code_sandbox_seccomp", target_os = "linux")))]
     {
         SeccompMode::NotLinked
     }
-    #[cfg(feature = "code_sandbox_seccomp")]
+    #[cfg(all(feature = "code_sandbox_seccomp", target_os = "linux"))]
     {
         match seccomp_impl::build() {
             Ok(bytes) => SeccompMode::Loaded(std::sync::Arc::new(bytes)),
@@ -302,7 +353,7 @@ fn compile_seccomp_filter() -> SeccompMode {
     }
 }
 
-#[cfg(feature = "code_sandbox_seccomp")]
+#[cfg(all(feature = "code_sandbox_seccomp", target_os = "linux"))]
 mod seccomp_impl {
     use libseccomp::{ScmpAction, ScmpFilterContext, ScmpSyscall};
 
