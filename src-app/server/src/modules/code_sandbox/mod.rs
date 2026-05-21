@@ -70,6 +70,22 @@ pub fn loopback_host(server_host: &str) -> &str {
     }
 }
 
+/// Read the schema-version sentinel inside the mounted rootfs.
+/// The file lives at `<rootfs>/.ziee-sandbox-rootfs-schema` and
+/// contains a single decimal integer (e.g. `1`). Whitespace is
+/// trimmed.
+///
+/// Returns `Err` if the file is missing or unreadable, or if its
+/// content is not a base-10 u32.
+pub fn probe_rootfs_schema(rootfs_path: &str) -> Result<u32, String> {
+    let sentinel = std::path::Path::new(rootfs_path).join(".ziee-sandbox-rootfs-schema");
+    let raw = std::fs::read_to_string(&sentinel)
+        .map_err(|e| format!("read {}: {e}", sentinel.display()))?;
+    raw.trim()
+        .parse::<u32>()
+        .map_err(|e| format!("parse schema sentinel {:?}: {e}", raw.trim()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +116,42 @@ mod tests {
             code_sandbox_server_id().to_string(),
             "b4d4e17b-55eb-56ce-9bc5-cbc03fd597fd"
         );
+    }
+
+    // ─── rootfs schema-version probe ────────────────────────────────
+
+    #[test]
+    fn probe_rootfs_schema_reads_sentinel() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".ziee-sandbox-rootfs-schema"), "1\n").unwrap();
+        let got = probe_rootfs_schema(dir.path().to_str().unwrap()).expect("read");
+        assert_eq!(got, 1);
+    }
+
+    #[test]
+    fn probe_rootfs_schema_trims_whitespace() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".ziee-sandbox-rootfs-schema"), "  42  \n\n").unwrap();
+        let got = probe_rootfs_schema(dir.path().to_str().unwrap()).expect("read");
+        assert_eq!(got, 42);
+    }
+
+    #[test]
+    fn probe_rootfs_schema_errors_on_missing_sentinel() {
+        let dir = tempfile::tempdir().unwrap();
+        // No sentinel file written.
+        let err =
+            probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must error");
+        assert!(err.contains("read"), "err: {err}");
+    }
+
+    #[test]
+    fn probe_rootfs_schema_errors_on_malformed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".ziee-sandbox-rootfs-schema"), "not-a-number").unwrap();
+        let err =
+            probe_rootfs_schema(dir.path().to_str().unwrap()).expect_err("must error");
+        assert!(err.contains("parse"), "err: {err}");
     }
 }
 
@@ -161,6 +213,45 @@ impl AppModule for CodeSandboxModule {
                 cfg.rootfs_path
             );
             return Ok(());
+        }
+
+        // ---- Rootfs schema-version probe ----
+        // Refuse to enable on schema mismatch. The rootfs ships a
+        // sentinel file at `<rootfs>/.ziee-sandbox-rootfs-schema`
+        // containing the integer schema it was built against (see
+        // `src-app/sandbox-rootfs/build.sh` and `Dockerfile`). If the
+        // sentinel's value diverges from this server binary's
+        // `SANDBOX_ROOTFS_SCHEMA_VERSION`, ABI-breaking changes (Python
+        // major bump, binary path moves, layout changes) may have
+        // happened on either side and running the mismatched pair
+        // would yield confusing failures inside bwrap. Document the
+        // upgrade command in the error log so operators know what to do.
+        match probe_rootfs_schema(&cfg.rootfs_path) {
+            Ok(found) if found != SANDBOX_ROOTFS_SCHEMA_VERSION => {
+                tracing::error!(
+                    rootfs_schema = found,
+                    server_schema = SANDBOX_ROOTFS_SCHEMA_VERSION,
+                    rootfs_path = %cfg.rootfs_path,
+                    "code_sandbox: rootfs schema version mismatch; sandbox \
+                     will NOT be registered. Run `ziee-chat \
+                     fetch-sandbox-rootfs --version=latest` to install a \
+                     compatible rootfs."
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                tracing::error!(
+                    rootfs_path = %cfg.rootfs_path,
+                    error = %e,
+                    "code_sandbox: cannot read rootfs schema sentinel; \
+                     sandbox will NOT be registered. Either the rootfs \
+                     is not mounted, or it was built without the schema \
+                     file. Run `ziee-chat mount-sandbox-rootfs` and \
+                     ensure the rootfs was built with build.sh >= v1."
+                );
+                return Ok(());
+            }
+            Ok(_) => {} // schema matches — proceed
         }
 
         // ---- Workspace root + per-conversation reaper (Phase 8) ----

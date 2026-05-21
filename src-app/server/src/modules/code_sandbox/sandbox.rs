@@ -22,9 +22,16 @@ use crate::modules::code_sandbox::types::{
     CgroupMode, CodeSandboxState, HardeningCapabilities, PidNsMode, SandboxContext, SeccompMode,
 };
 
-/// Output of a single bwrap invocation. stdout/stderr are capped at
-/// [`OUTPUT_CAP_BYTES`] each; the parent stops reading once the cap
-/// is reached, then sends SIGKILL to bwrap.
+/// Output of a single bwrap invocation. stdout/stderr are each
+/// capped at [`OUTPUT_CAP_BYTES`]; bytes past the cap are drained
+/// from the pipe and discarded (a truncation marker is appended to
+/// the captured output, and `*_truncated: true` is set on the
+/// returned JSON). The child is NOT killed when the cap is reached —
+/// it can keep running and producing output until natural exit or the
+/// wall-clock [`DEFAULT_TIMEOUT_SECS`] expires, at which point a
+/// SIGKILL is sent. This keeps a noisy-but-correct workload from
+/// being aborted just because it logged a lot, while still bounding
+/// total CPU via the timeout.
 #[derive(Debug, Clone)]
 pub struct SandboxRunResult {
     pub exit_code: i32,
@@ -466,9 +473,21 @@ impl SeccompPipe {
         // Push the BPF bytes from a tokio task so we don't deadlock if
         // they're bigger than the kernel pipe buffer (unlikely at <1KB
         // but cheap insurance).
+        //
+        // SECURITY: write must succeed in full. A short write (or
+        // EINTR-interrupted partial write) would feed bwrap a
+        // truncated BPF program, which libseccomp rejects → bwrap
+        // exits non-zero. Worse: an undetected partial write at the
+        // boundary could conceivably load a smaller filter that
+        // blocks fewer syscalls than the planner intended. Loop on
+        // EINTR / EAGAIN; on any other error or unexpected EOF
+        // (write returned 0), log loudly so operators see the
+        // hardening claim was not delivered for that call.
+        let total = bpf.as_ref().len();
         tokio::spawn(async move {
             let bytes: &[u8] = bpf.as_ref();
             let mut offset = 0;
+            let mut last_err: Option<i32> = None;
             while offset < bytes.len() {
                 let n = unsafe {
                     libc::write(
@@ -477,13 +496,33 @@ impl SeccompPipe {
                         bytes.len() - offset,
                     )
                 };
-                if n <= 0 {
-                    break;
+                if n > 0 {
+                    offset += n as usize;
+                    continue;
                 }
-                offset += n as usize;
+                // n <= 0: either error or kernel said "no more room",
+                // which on a pipe write means the reader closed —
+                // unexpected for our use case.
+                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                if n < 0 && (errno == libc::EINTR || errno == libc::EAGAIN) {
+                    continue;
+                }
+                last_err = Some(errno);
+                break;
             }
             unsafe {
                 libc::close(write_fd);
+            }
+            if offset < total {
+                tracing::error!(
+                    written = offset,
+                    expected = total,
+                    errno = ?last_err,
+                    "code_sandbox: seccomp BPF write was truncated; \
+                     bwrap will reject the filter and the sandboxed \
+                     call WILL FAIL — hardening claim 'seccomp: on' \
+                     was not delivered for this call"
+                );
             }
         });
 
