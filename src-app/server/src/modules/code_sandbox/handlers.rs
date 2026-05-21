@@ -116,18 +116,42 @@ pub async fn jsonrpc_handler(
         }
     };
 
-    // Per-conversation serialization gate.
+    // SECURITY: ownership check BEFORE the per-conversation lock
+    // insertion. Otherwise an authenticated-but-not-the-owner caller
+    // (every user has `code_sandbox::execute` per migration 35) could
+    // spam unique UUIDs in x-conversation-id and grow the
+    // CONVERSATION_LOCKS DashMap unboundedly (~80B/entry × 100M = ~8GB).
+    // With the check first, the map only grows for conversations the
+    // caller actually owns.
+    if let Err(_e) = assert_owns_conversation(conversation_id, user_id).await {
+        // assert_owns_conversation already logged the rejection at
+        // warn level (handlers.rs:541); return the canonical 404 so
+        // we don't leak conversation existence across tenants.
+        return error_response(
+            id,
+            StatusCode::NOT_FOUND,
+            JsonRpcError::internal("CONVERSATION_NOT_FOUND".to_string()),
+        );
+    }
+
+    // Per-conversation serialization gate (held until end of dispatch).
     let lock = conv_lock(conversation_id);
     let _guard = lock.lock().await;
 
     // Build SandboxContext with the workspace + conversation files.
+    // build_context calls assert_owns_conversation again (cheap DB
+    // round-trip) as belt-and-suspenders, since other call sites
+    // (download_handler) also rely on it.
     let ctx = match build_context(&state, conversation_id, user_id).await {
         Ok(c) => c,
-        Err(e) => {
+        Err(_e) => {
+            // Details already logged inside build_context;
+            // return a generic error code to avoid leaking internal
+            // paths/error messages to the client.
             return error_response(
                 id,
                 StatusCode::INTERNAL_SERVER_ERROR,
-                JsonRpcError::internal(format!("build_context: {e:?}")),
+                JsonRpcError::internal("BUILD_CONTEXT_FAILED".to_string()),
             );
         }
     };
@@ -159,10 +183,16 @@ async fn dispatch(
             let result = invoke_tool(ctx, &p.name, &p.arguments)
                 .await
                 .map_err(|app_err| {
-                    JsonRpcError::internal(format!(
-                        "tool {} failed: {app_err:?}",
-                        p.name
-                    ))
+                    // Log the full error server-side; return a
+                    // generic envelope to the client to avoid
+                    // leaking host paths, DB error strings, or
+                    // internal field names via Debug formatting.
+                    tracing::warn!(
+                        tool = %p.name,
+                        error = ?app_err,
+                        "code_sandbox: tool invocation failed"
+                    );
+                    JsonRpcError::internal(format!("tool {} failed", p.name))
                 })?;
 
             // MCP spec: `content[]` is an array of typed content blocks
@@ -489,6 +519,22 @@ async fn build_context(
     })
 }
 
+/// Per-file size cap. Files larger than this are skipped (logged) so
+/// a single huge attachment cannot OOM the server during staging.
+/// The LLM's `read_file` tool also falls back to the storage layer
+/// directly for these — so the attachment is still reachable, just
+/// not bind-mounted into the shell.
+pub const ATTACHMENT_STAGE_MAX_BYTES_PER_FILE: u64 = 64 * 1024 * 1024;
+
+/// Per-call total cap. Stops staging once we've written this much in
+/// a single tools/call. Bounds memory + disk per request.
+pub const ATTACHMENT_STAGE_MAX_BYTES_PER_CALL: u64 = 256 * 1024 * 1024;
+
+/// Per-call file count cap. Bounds work + bwrap argv length (each
+/// staged file becomes 3 bwrap argv elements — `--ro-bind-try`,
+/// `<host>`, `<sandbox>`).
+pub const ATTACHMENT_STAGE_MAX_FILES_PER_CALL: usize = 256;
+
 async fn stage_attachments(
     state: &CodeSandboxState,
     files: &[crate::modules::code_sandbox::models::ConversationFile],
@@ -506,25 +552,31 @@ async fn stage_attachments(
         return;
     }
     let storage = crate::modules::file::storage::manager::get_file_storage();
+    let mut total_staged_bytes: u64 = 0;
+    let mut staged_count: usize = 0;
     for f in files {
+        if staged_count >= ATTACHMENT_STAGE_MAX_FILES_PER_CALL {
+            tracing::warn!(
+                limit = ATTACHMENT_STAGE_MAX_FILES_PER_CALL,
+                conversation_files = files.len(),
+                "code_sandbox: per-call file count cap reached; \
+                 remaining attachments are NOT bind-mounted into the \
+                 shell (read_file tool can still reach them)"
+            );
+            break;
+        }
         let stage_path = stage_dir.join(f.file_id.to_string());
         // Idempotent: file_id is content-addressed in practice and the
-        // bytes don't change once uploaded.
+        // bytes don't change once uploaded. We bound the staged_count
+        // here too because the cap is about bwrap argv length, not
+        // about today's IO cost.
         if tokio::fs::try_exists(&stage_path).await.unwrap_or(false) {
+            staged_count += 1;
             continue;
         }
         let ext = attachment_extension(&f.filename);
-        match storage.load_original(f.user_id, f.file_id, ext).await {
-            Ok(bytes) => {
-                if let Err(e) = tokio::fs::write(&stage_path, &bytes).await {
-                    tracing::warn!(
-                        file_id = %f.file_id,
-                        filename = %f.filename,
-                        error = %e,
-                        "code_sandbox: stage attachment write failed"
-                    );
-                }
-            }
+        let bytes = match storage.load_original(f.user_id, f.file_id, ext).await {
+            Ok(b) => b,
             Err(e) => {
                 tracing::warn!(
                     file_id = %f.file_id,
@@ -532,8 +584,60 @@ async fn stage_attachments(
                     error = ?e,
                     "code_sandbox: stage attachment load failed"
                 );
+                continue;
             }
+        };
+        if (bytes.len() as u64) > ATTACHMENT_STAGE_MAX_BYTES_PER_FILE {
+            tracing::warn!(
+                file_id = %f.file_id,
+                filename = %f.filename,
+                size = bytes.len(),
+                cap = ATTACHMENT_STAGE_MAX_BYTES_PER_FILE,
+                "code_sandbox: attachment exceeds per-file stage cap; skipped \
+                 (still reachable via read_file tool)"
+            );
+            continue;
         }
+        if total_staged_bytes.saturating_add(bytes.len() as u64)
+            > ATTACHMENT_STAGE_MAX_BYTES_PER_CALL
+        {
+            tracing::warn!(
+                already_staged = total_staged_bytes,
+                attempted = bytes.len(),
+                cap = ATTACHMENT_STAGE_MAX_BYTES_PER_CALL,
+                "code_sandbox: per-call total stage cap reached; \
+                 remaining attachments are NOT bind-mounted into the shell"
+            );
+            break;
+        }
+        // Atomic write: stage to a temp path then rename. Without
+        // this, a concurrent call that finds `try_exists == true`
+        // could observe partial bytes from a write that was
+        // interrupted by HTTP client disconnect (kill_on_drop +
+        // future cancellation).
+        let tmp_path = stage_dir.join(format!("{}.tmp.{}", f.file_id, std::process::id()));
+        if let Err(e) = tokio::fs::write(&tmp_path, &bytes).await {
+            tracing::warn!(
+                file_id = %f.file_id,
+                filename = %f.filename,
+                error = %e,
+                "code_sandbox: stage attachment tmp write failed"
+            );
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            continue;
+        }
+        if let Err(e) = tokio::fs::rename(&tmp_path, &stage_path).await {
+            tracing::warn!(
+                file_id = %f.file_id,
+                filename = %f.filename,
+                error = %e,
+                "code_sandbox: stage attachment rename failed"
+            );
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            continue;
+        }
+        total_staged_bytes = total_staged_bytes.saturating_add(bytes.len() as u64);
+        staged_count += 1;
     }
 }
 

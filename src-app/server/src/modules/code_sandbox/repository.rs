@@ -127,10 +127,29 @@ impl CodeSandboxRepository {
     /// Idempotent upsert of the built-in sandbox MCP server row.
     ///
     /// Critical contract (validated by `tests/code_sandbox/integration/mcp_built_in_protection_test.rs`):
-    /// the `ON CONFLICT DO UPDATE SET` clause must NOT include `enabled`,
-    /// so admin-driven disable via the UI survives process restart.
-    /// All other mutable fields (display_name, description, url,
-    /// transport-related columns) DO get refreshed on every boot.
+    /// the `ON CONFLICT DO UPDATE SET` clause must ONLY refresh fields
+    /// that are NOT admin-mutable. The admin UI lets operators tweak
+    /// `display_name`, `description`, `timeout_seconds`, `usage_mode`,
+    /// `max_concurrent_sessions`, and `enabled` via PATCH on the
+    /// system-servers endpoint (`mcp/repository.rs:update_system_mcp_server`).
+    /// Overwriting those on every boot would silently revert admin
+    /// changes with no log line — confusing and operationally fragile.
+    ///
+    /// What we refresh on conflict:
+    ///   - `is_system`, `is_built_in`: identity columns that cannot be
+    ///     changed via UI; safe to assert each boot.
+    ///   - `transport_type`, `url`: technically admin-editable but
+    ///     editing them would break the built-in (the URL is the
+    ///     loopback port; transport_type is always http). Refresh so
+    ///     a port change in `server.port` actually takes effect.
+    ///   - `supports_sampling`: capability flag, identity-shaped.
+    ///   - `updated_at`: just a timestamp.
+    ///
+    /// What we DELIBERATELY OMIT (preserve admin's value on conflict):
+    ///   - `enabled` — admin disable via UI must survive restart.
+    ///   - `display_name`, `description` — cosmetic, admin-tunable.
+    ///   - `timeout_seconds`, `usage_mode`, `max_concurrent_sessions` —
+    ///     operational tunables admin may have raised/lowered.
     pub async fn upsert_builtin_server(
         &self,
         server_id: Uuid,
@@ -155,18 +174,16 @@ impl CodeSandboxRepository {
                 NOW(), NOW()
             )
             ON CONFLICT (id) DO UPDATE SET
-                display_name = EXCLUDED.display_name,
-                description = EXCLUDED.description,
                 is_system = EXCLUDED.is_system,
                 is_built_in = EXCLUDED.is_built_in,
                 transport_type = EXCLUDED.transport_type,
                 url = EXCLUDED.url,
-                timeout_seconds = EXCLUDED.timeout_seconds,
                 supports_sampling = EXCLUDED.supports_sampling,
-                usage_mode = EXCLUDED.usage_mode,
-                max_concurrent_sessions = EXCLUDED.max_concurrent_sessions,
                 updated_at = NOW()
-                -- DELIBERATELY OMITTED: enabled. Admin disable persists across reboot.
+                -- DELIBERATELY OMITTED on conflict (admin-tunable):
+                --   enabled, display_name, description,
+                --   timeout_seconds, usage_mode, max_concurrent_sessions.
+                -- Each is preserved if an admin set it via UI.
             "#,
         )
         .bind(server_id)

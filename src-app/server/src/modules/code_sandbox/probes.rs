@@ -217,42 +217,119 @@ fn compile_seccomp_filter() -> SeccompMode {
 mod seccomp_impl {
     use libseccomp::{ScmpAction, ScmpFilterContext, ScmpSyscall};
 
-    /// Syscalls we deny (return EPERM). Matches Flatpak / Anthropic
-    /// Claude Code baseline; see plan Phase 3.
+    /// Syscalls we deny (return EPERM).
+    ///
+    /// The filter is a DENYLIST with a default-ALLOW action. This is
+    /// the same shape Flatpak / Anthropic Claude Code use. The list
+    /// MUST include every syscall family that could be combined with
+    /// our other isolation primitives to weaken them:
+    ///   - kernel modification (kexec, *_module, swap*, reboot)
+    ///   - tracing (ptrace, perf_event_open, process_vm_*)
+    ///   - new-namespace / mount-API escapes (mount/umount/umount2,
+    ///     setns, unshare, pivot_root, chroot, the full new-mount-API
+    ///     family — fsopen/fsconfig/fsmount/move_mount/open_tree/
+    ///     mount_setattr)
+    ///   - newer clone variants that bypass filters checking only
+    ///     `clone` (clone3 is the classic CVE-2022-23222 vector)
+    ///   - kernel keyring (keyctl, add_key, request_key)
+    ///   - direct I/O port access (iopl, ioperm)
+    ///   - quotactl, personality, userfaultfd, bpf, io_uring*
+    ///
+    /// Adding to this list is always safe (more restrictive). Removing
+    /// requires re-evaluating the threat model. If a workload legitimately
+    /// needs one of these (e.g. R packages calling perf), prefer an
+    /// allowlist filter at that point rather than weakening this one.
     const DENY: &[&str] = &[
+        // Tracing / cross-process introspection
         "ptrace",
-        "bpf",
         "perf_event_open",
+        "process_vm_readv",
+        "process_vm_writev",
+        "pidfd_send_signal",
+        "pidfd_getfd",
+        "pidfd_open",
+        // Kernel modification
+        "bpf",
         "userfaultfd",
         "kexec_load",
         "kexec_file_load",
         "init_module",
         "finit_module",
         "delete_module",
+        // Keyring
         "keyctl",
         "add_key",
         "request_key",
+        // Mount family — old API
         "mount",
+        "umount",
         "umount2",
         "pivot_root",
+        "chroot",
+        // Mount family — new API (Linux 5.2+); a denylist missing
+        // these would allow a sandboxee to construct mounts via the
+        // new API and bypass the read-only rootfs binds.
+        "fsopen",
+        "fsconfig",
+        "fsmount",
+        "move_mount",
+        "open_tree",
+        "mount_setattr",
+        // Namespace manipulation. We already invoke bwrap with
+        // --unshare-* ourselves; the sandboxed code must not be able
+        // to join other namespaces or create new ones to escape.
+        "setns",
+        "unshare",
+        // Newer clone — often the bypass when a filter only blocks
+        // `clone` (CVE-2022-23222 family).
+        "clone3",
+        // Swap / power
         "swapon",
         "swapoff",
         "reboot",
+        // I/O ring — recent escape vectors via io_uring SQE rewrites
         "io_uring_setup",
         "io_uring_enter",
         "io_uring_register",
-        "process_vm_readv",
-        "process_vm_writev",
+        // Direct hardware I/O ports
+        "iopl",
+        "ioperm",
+        // Quotas + execution-domain switching
+        "quotactl",
+        "personality",
     ];
 
     pub fn build() -> Result<Vec<u8>, String> {
         let mut ctx =
             ScmpFilterContext::new_filter(ScmpAction::Allow).map_err(|e| format!("ctx: {e}"))?;
+        // Best-effort per-syscall: if a name doesn't resolve on this
+        // host kernel (newer syscalls on old kernels, or vice versa),
+        // log it and continue with the rest. A failed lookup must NOT
+        // disable the WHOLE filter — that would be a catastrophic
+        // hardening regression for the sake of one missing entry.
+        let mut resolved = 0;
+        let mut unresolved: Vec<&str> = Vec::new();
         for name in DENY {
-            let sys = ScmpSyscall::from_name(name)
-                .map_err(|e| format!("resolve {name}: {e}"))?;
+            let sys = match ScmpSyscall::from_name(name) {
+                Ok(s) => s,
+                Err(_) => {
+                    unresolved.push(*name);
+                    continue;
+                }
+            };
             ctx.add_rule(ScmpAction::Errno(libc::EPERM), sys)
                 .map_err(|e| format!("add_rule {name}: {e}"))?;
+            resolved += 1;
+        }
+        if !unresolved.is_empty() {
+            tracing::warn!(
+                resolved,
+                total = DENY.len(),
+                unresolved = ?unresolved,
+                "code_sandbox: some seccomp DENY entries did not resolve \
+                 on this kernel; they are silently skipped. Verify kernel \
+                 version supports the listed syscalls (e.g. clone3 needs >=5.3)."
+            );
         }
         let mut buf: Vec<u8> = Vec::new();
         // export_bpf writes to an fd; use a memfd / pipe approach.

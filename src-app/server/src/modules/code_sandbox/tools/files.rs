@@ -27,7 +27,22 @@ use crate::modules::file::types::DownloadTokenClaims;
 ///   - Absolute paths (`/etc/passwd`)
 ///   - Paths containing `..` components (`../escape`, `a/../../b`)
 ///   - NUL bytes
-///   - Path-traversal after symlink resolution
+///   - **Any** symlink along the path, INCLUDING dangling ones.
+///
+/// The dangling-symlink rejection is the critical defense. The
+/// workspace is RW-bind-mounted into the sandbox at /home/sandboxuser,
+/// so a sandboxed shell can `ln -s /etc/cron.d/x foo` (where the
+/// target does not exist on the host). A naive `if candidate.exists()`
+/// check would return false (the LINK exists, but the TARGET does
+/// not), the canonical-path comparison would be skipped, and a
+/// subsequent `tokio::fs::write` would FOLLOW the symlink at write
+/// time and clobber the host file (cron job → host RCE). We defend
+/// by walking each component and rejecting any that is itself a
+/// symlink, regardless of whether its target resolves.
+///
+/// Returns the resolved (or assembled, if not-yet-existing) path so
+/// callers do all subsequent IO via the verified path — avoiding
+/// TOCTOU between this check and the file open.
 pub fn canonicalize_in_workspace(workspace: &Path, filename: &str) -> Result<PathBuf, AppError> {
     if filename.is_empty() {
         return Err(bad("filename is empty"));
@@ -47,26 +62,46 @@ pub fn canonicalize_in_workspace(workspace: &Path, filename: &str) -> Result<Pat
             }
         }
     }
-    let candidate = workspace.join(raw);
 
-    // Defense-in-depth: if the candidate exists, resolve symlinks and
-    // re-confirm we're still under workspace. (For not-yet-existing
-    // paths — like write_file targets — we resolve the parent.)
-    let resolve_target = if candidate.exists() {
-        candidate.clone()
-    } else {
-        candidate
-            .parent()
-            .unwrap_or(workspace)
-            .to_path_buf()
-    };
-    let resolved = std::fs::canonicalize(&resolve_target).unwrap_or(resolve_target);
-    let workspace_resolved = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
-    if !resolved.starts_with(&workspace_resolved) {
-        return Err(bad("resolved path escapes workspace"));
+    // Canonicalize the workspace root once. If it can't be
+    // canonicalized (e.g. workspace dir was just created and the
+    // filesystem hasn't propagated), fall back to the literal path —
+    // we still get correctness because every component check below
+    // compares against this base.
+    let workspace_resolved = std::fs::canonicalize(workspace)
+        .unwrap_or_else(|_| workspace.to_path_buf());
+
+    // Walk each user-supplied component starting from the canonical
+    // workspace. For each step:
+    //   1. If the component is a symlink, REJECT (this is the
+    //      dangling-symlink defense; symlinks at any depth could
+    //      smuggle the final write/read to a host path).
+    //   2. If the component doesn't exist yet, accept and keep
+    //      building (write_file may be creating it).
+    //   3. If it's a regular dir/file, descend.
+    // After the walk, re-verify the assembled path still starts with
+    // the canonical workspace (defense against any edge case we
+    // missed).
+    let mut cur = workspace_resolved.clone();
+    for c in raw.components() {
+        let Component::Normal(seg) = c else { continue };
+        cur.push(seg);
+        match std::fs::symlink_metadata(&cur) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(bad(format!(
+                    "symlink component not allowed: {}",
+                    seg.to_string_lossy()
+                )));
+            }
+            Ok(_) => {} // regular dir/file: keep walking
+            Err(_) => {} // doesn't exist yet — fine for write_file targets
+        }
+    }
+    if !cur.starts_with(&workspace_resolved) {
+        return Err(bad("assembled path escapes workspace"));
     }
 
-    Ok(workspace.join(raw))
+    Ok(cur)
 }
 
 fn bad(msg: impl Into<String>) -> AppError {
@@ -628,6 +663,80 @@ mod tests {
             .expect_err("must reject oversized content");
         let msg = format!("{err:?}");
         assert!(msg.contains("CONTENT_TOO_LARGE"), "msg: {msg}");
+    }
+
+    // ─── dangling-symlink defense (sandbox escape regression) ────────
+
+    #[test]
+    #[cfg(unix)]
+    fn canonicalize_rejects_dangling_symlink() {
+        // SECURITY regression test for the sandbox-escape vector
+        // documented in `canonicalize_in_workspace`. A sandboxed shell
+        // can create a symlink pointing at a host path that does NOT
+        // exist (e.g. /etc/cron.d/payload). Without this defense, a
+        // follow-up write_file would clobber the host file because
+        // tokio::fs::write follows symlinks.
+        let tmp = workspace();
+        // Plant a dangling symlink "innocent.txt" → "/etc/cron.d/imaginary"
+        std::os::unix::fs::symlink(
+            "/etc/cron.d/imaginary-payload-does-not-exist",
+            tmp.path().join("innocent.txt"),
+        )
+        .unwrap();
+
+        let err = canonicalize_in_workspace(tmp.path(), "innocent.txt")
+            .expect_err("dangling symlink MUST be rejected");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("symlink"), "msg: {msg}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn canonicalize_rejects_intermediate_symlink() {
+        // sandbox can plant a symlink at an INTERMEDIATE directory
+        // component (sub/foo.txt where `sub` is a symlink to /etc).
+        // tokio::fs::write follows intermediate symlinks just like the
+        // final component, so we reject any symlink along the path.
+        let tmp = workspace();
+        // Use a path that's almost certain to exist on every Linux
+        // (/etc); the test only needs the symlink to be NOT-a-symlink-
+        // at-the-target-side.
+        std::os::unix::fs::symlink("/etc", tmp.path().join("sub")).unwrap();
+
+        let err = canonicalize_in_workspace(tmp.path(), "sub/passwd")
+            .expect_err("intermediate symlink MUST be rejected");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("symlink"), "msg: {msg}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn canonicalize_rejects_symlink_to_existing_target() {
+        // The original "symlink → existing host file" attack — also
+        // rejected (now via the same symlink-component check rather
+        // than the canonicalization heuristic).
+        let tmp = workspace();
+        std::os::unix::fs::symlink("/etc/passwd", tmp.path().join("foo")).unwrap();
+        let err = canonicalize_in_workspace(tmp.path(), "foo")
+            .expect_err("symlink to existing host file MUST be rejected");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("symlink"), "msg: {msg}");
+    }
+
+    #[test]
+    fn canonicalize_returns_resolved_path() {
+        // Returned path should be inside the canonical workspace
+        // (defense against TOCTOU: callers use this path for IO, not
+        // the raw caller-supplied string).
+        let tmp = workspace();
+        let canon_workspace = std::fs::canonicalize(tmp.path()).unwrap();
+        let p = canonicalize_in_workspace(tmp.path(), "foo.txt").unwrap();
+        assert!(
+            p.starts_with(&canon_workspace),
+            "expected returned path {} to start with canonical workspace {}",
+            p.display(),
+            canon_workspace.display()
+        );
     }
 
     #[tokio::test]
