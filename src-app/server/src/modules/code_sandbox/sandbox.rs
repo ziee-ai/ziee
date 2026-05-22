@@ -177,6 +177,18 @@ pub async fn run_in_sandbox(
         }
     }
 
+    // NOTE: we deliberately do NOT layer Landlock here. Applying a Landlock
+    // ruleset to the bwrap process (it would persist across execve into the
+    // workload) is keyed to the *inodes* of the host paths used to build it;
+    // bwrap then creates a fresh tmpfs root + `--tmpfs /tmp` + `--dev /dev` +
+    // `--proc /proc` whose inodes are under no granted hierarchy, so Landlock
+    // would deny the workload's access to /tmp, /dev/null and / and break
+    // essentially every command. The only workable Landlock would be an
+    // in-rootfs helper applied AFTER bwrap's mounts — but that's a rootfs-
+    // release change and is redundant with the mount namespace (the workload
+    // already only sees the sandbox mounts; mount/remount syscalls are seccomp-
+    // blocked). Filesystem confinement here is bwrap's mount-ns, not Landlock.
+
     let mut child = cmd
         .spawn()
         .map_err(|e| AppError::new(
