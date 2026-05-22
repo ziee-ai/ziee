@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -29,7 +29,7 @@ use once_cell::sync::Lazy;
 use sandbox_vm_protocol::{encode, CgroupLimits, Decoder, ExecRequest, Frame};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 use super::SandboxBackend;
 use crate::common::AppError;
@@ -63,6 +63,14 @@ const VM_RAM_MIB: u32 = 2048;
 // Evict a flavor's VM after this long idle with nothing in flight (gap #6 —
 // VMs hold RAM). MAC-TODO: wire to config `vm_idle_evict_secs` (0 = never).
 const VM_IDLE_EVICT_SECS: u64 = 900;
+// Cap concurrent execs per VM so N parallel commands (each cgroup-capped at
+// ~512 MiB) can't sum past the VM's RAM ceiling and trigger a guest OOM
+// (Ga). ~VM_RAM_MIB / 512 with headroom. MAC-TODO: derive from §6 config.
+const MAX_CONCURRENT_EXECS_PER_VM: usize = 3;
+
+/// Monotonic request id (B4) — avoids the cgroup-path collisions a timestamp
+/// id risked under concurrency.
+static REQ_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// A booted, warm per-flavor VM.
 struct VmHandle {
@@ -72,6 +80,17 @@ struct VmHandle {
     /// In-flight exec count — the reaper never evicts a VM with a running
     /// command (a long command keeps the VM alive past the idle threshold).
     inflight: AtomicUsize,
+    /// Bounds concurrent execs in this VM (Ga) so they can't OOM the guest.
+    sem: Semaphore,
+}
+
+/// Decrements `inflight` on drop — so a cancelled `run()` future (aborted chat
+/// turn) doesn't leak the count and wedge the reaper (B2).
+struct InflightGuard(Arc<VmHandle>);
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        self.0.inflight.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// Background reaper: started once; evicts idle, not-in-use VMs.
@@ -115,6 +134,33 @@ fn ensure_reaper() {
 /// switch to a per-flavor OnceCell like `runtime_mount::READY`.
 static VMS: Lazy<Mutex<HashMap<String, Arc<VmHandle>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
+/// Per-flavor boot serialization (B3) — held only during a boot, NOT during
+/// warm reuse, so booting flavor A doesn't block running an already-warm flavor
+/// B (the global VMS lock is released across the ≤30 s boot).
+static BOOT_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+async fn boot_lock_for(flavor: &str) -> Arc<Mutex<()>> {
+    BOOT_LOCKS
+        .lock()
+        .await
+        .entry(flavor.to_string())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+/// Per-server-instance private runtime dir (mode 0700) for VM control sockets +
+/// launch configs. Replaces predictable, world-traversable /tmp paths (S1/S2):
+/// only the server's uid can reach the (unauthenticated) control socket, and an
+/// attacker can't pre-create a symlink at a guessable path.
+fn runtime_dir() -> std::io::Result<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("ziee-sandbox-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    Ok(dir)
+}
+
 pub struct MacVmBackend;
 
 impl MacVmBackend {
@@ -148,12 +194,21 @@ impl MacVmBackend {
         flavor: &str,
         sandbox_disk: &Path,
     ) -> Result<Arc<VmHandle>, AppError> {
-        let mut vms = VMS.lock().await;
-        if let Some(h) = vms.get(flavor) {
+        // Fast path: warm VM (don't hold the lock across a boot).
+        if let Some(h) = VMS.lock().await.get(flavor) {
+            return Ok(h.clone());
+        }
+        // Serialize boot for THIS flavor only (B3). The global VMS lock is NOT
+        // held across the ≤30 s boot, so other flavors stay responsive.
+        let boot_lock = boot_lock_for(flavor).await;
+        let _boot = boot_lock.lock().await;
+        // Re-check: another caller may have booted this flavor while we waited.
+        if let Some(h) = VMS.lock().await.get(flavor) {
             return Ok(h.clone());
         }
 
-        let socket_path = std::env::temp_dir().join(format!("ziee-vm-{flavor}.sock"));
+        let dir = runtime_dir().map_err(|e| AppError::internal_error(format!("runtime dir: {e}")))?;
+        let socket_path = dir.join(format!("vm-{flavor}.sock"));
         let _ = std::fs::remove_file(&socket_path);
 
         let cfg = serde_json::json!({
@@ -166,7 +221,7 @@ impl MacVmBackend {
             "vsock_port": GUEST_VSOCK_PORT,
             "agent_exec_path": GUEST_AGENT_PATH,
         });
-        let cfg_path = std::env::temp_dir().join(format!("ziee-vm-{flavor}.json"));
+        let cfg_path = dir.join(format!("vm-{flavor}.json"));
         std::fs::write(&cfg_path, serde_json::to_vec(&cfg).unwrap()).map_err(|e| {
             AppError::internal_error(format!("write VM launch config: {e}"))
         })?;
@@ -197,8 +252,9 @@ impl MacVmBackend {
             socket_path,
             last_used: Mutex::new(Instant::now()),
             inflight: AtomicUsize::new(0),
+            sem: Semaphore::new(MAX_CONCURRENT_EXECS_PER_VM),
         });
-        vms.insert(flavor.to_string(), handle.clone());
+        VMS.lock().await.insert(flavor.to_string(), handle.clone());
         ensure_reaper();
         Ok(handle)
     }
@@ -213,14 +269,11 @@ fn guest_workspace_path(state: &CodeSandboxState, host_ws: &Path) -> PathBuf {
 /// Send the bwrap argv to the guest agent over the bridged unix socket and
 /// collect the streamed output into a `SandboxRunResult`.
 async fn run_via_socket(
-    socket_path: &Path,
+    mut stream: UnixStream,
     req: ExecRequest,
     timeout_secs: u64,
 ) -> Result<SandboxRunResult, AppError> {
     let started = Instant::now();
-    let mut stream = UnixStream::connect(socket_path)
-        .await
-        .map_err(|e| AppError::internal_error(format!("connect VM socket: {e}")))?;
     stream
         .write_all(&encode(&Frame::Exec(req)))
         .await
@@ -353,12 +406,6 @@ impl SandboxBackend for MacVmBackend {
             .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
             .installed_path;
 
-        let vm = self.ensure_vm(state, flavor, &disk).await?;
-        // Mark in-flight so the idle reaper won't evict this VM mid-command,
-        // even for a long-running command that outlasts the idle threshold.
-        vm.inflight.fetch_add(1, Ordering::SeqCst);
-        *vm.last_used.lock().await = Instant::now();
-
         // Build the bwrap argv with GUEST paths so the agent can exec it
         // verbatim. The hardening flags are identical to the Linux backend.
         let guest_caps = HardeningCapabilities {
@@ -367,46 +414,70 @@ impl SandboxBackend for MacVmBackend {
             cgroup: CgroupMode::None,
             seccomp: SeccompMode::NotLinked,
         };
-        // Re-point the workspace at its guest virtio-fs location.
-        // MAC-TODO: conversation attachments — build_bwrap_argv derives their
-        // bind source from state.workspace_root (host path); for the guest
-        // those must map under GUEST_WORKSPACE_MOUNT too. Handle once
-        // attachments are exercised on macOS.
         let guest_ctx = SandboxContext {
             conversation_id: ctx.conversation_id,
             user_id: ctx.user_id,
             workspace: guest_workspace_path(state, &ctx.workspace),
             files: ctx.files.clone(),
         };
-        // The argv references the guest seccomp fd; the agent builds the same
-        // shared-policy BPF and pipes it to that fd in the bwrap child, so the
-        // guest applies the identical filter the Linux host does.
-        let argv = sandbox::build_bwrap_argv(
-            &guest_caps,
-            state,
-            &guest_ctx,
-            Path::new(GUEST_ROOTFS_MOUNT),
-            command,
-            Path::new(GUEST_PASSWD),
-            Path::new(GUEST_GROUP),
-            Some(GUEST_SECCOMP_FD),
-        );
-
         let secs = timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
+        // The argv references the guest seccomp fd; the agent builds the same
+        // shared-policy BPF and pipes it to that fd. Passing GUEST_WORKSPACE_MOUNT
+        // as the attachment root (Gb) makes attachment binds resolve to guest
+        // paths under /workspace, not the host workspace_root.
         let req = ExecRequest {
-            request_id: rand_request_id(),
+            request_id: REQ_COUNTER.fetch_add(1, Ordering::Relaxed),
             bwrap_path: GUEST_BWRAP_PATH.to_string(),
-            argv,
+            argv: sandbox::build_bwrap_argv(
+                &guest_caps,
+                Path::new(GUEST_WORKSPACE_MOUNT),
+                &guest_ctx,
+                Path::new(GUEST_ROOTFS_MOUNT),
+                command,
+                Path::new(GUEST_PASSWD),
+                Path::new(GUEST_GROUP),
+                Some(GUEST_SECCOMP_FD),
+            ),
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),
             // In-guest cgroup v2 limits (the agent applies them; prlimit in the
             // argv is the backstop). MAC-TODO: source from §6 config when it lands.
             cgroup: Some(CgroupLimits::default_policy()),
         };
-        let result = run_via_socket(&vm.socket_path, req, secs).await;
-        vm.inflight.fetch_sub(1, Ordering::SeqCst);
-        *vm.last_used.lock().await = Instant::now();
-        result
+
+        // Up to 2 attempts: a dead/unreachable VM (connect fails — the command
+        // never ran, so retry is safe) is evicted + re-booted once (B1). A
+        // failure AFTER connect is NOT retried (the command may have started).
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let vm = self.ensure_vm(state, flavor, &disk).await?;
+            // Bound concurrency per VM (Ga) and mark in-flight so the reaper
+            // won't evict mid-command (with a Drop guard so a cancelled future
+            // can't leak the count — B2).
+            let _permit = vm.sem.acquire().await.expect("VM semaphore never closed");
+            vm.inflight.fetch_add(1, Ordering::SeqCst);
+            let _guard = InflightGuard(vm.clone());
+            *vm.last_used.lock().await = Instant::now();
+
+            match UnixStream::connect(&vm.socket_path).await {
+                Ok(stream) => {
+                    let result = run_via_socket(stream, req.clone(), secs).await;
+                    *vm.last_used.lock().await = Instant::now();
+                    return result;
+                }
+                Err(e) if attempt < 2 => {
+                    tracing::warn!(flavor, "code_sandbox: VM unreachable ({e}); re-booting and retrying");
+                    drop(_guard);
+                    drop(_permit);
+                    evict_dead_vm(flavor, &vm).await;
+                    continue;
+                }
+                Err(e) => {
+                    return Err(AppError::internal_error(format!("connect VM socket: {e}")));
+                }
+            }
+        }
     }
 
     async fn shutdown(&self) {
@@ -448,8 +519,18 @@ impl SandboxBackend for MacVmBackend {
     }
 }
 
-/// Cheap non-crypto request id for log correlation.
-fn rand_request_id() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
+/// Remove a dead/unreachable VM from the registry (only if it's still the
+/// current handle for the flavor — don't clobber a concurrent fresh boot) and
+/// kill its launcher, so the next `ensure_vm` re-boots (B1). Idempotent.
+async fn evict_dead_vm(flavor: &str, dead: &Arc<VmHandle>) {
+    {
+        let mut vms = VMS.lock().await;
+        if vms.get(flavor).is_some_and(|h| Arc::ptr_eq(h, dead)) {
+            vms.remove(flavor);
+        }
+    }
+    let mut child = dead.child.lock().await;
+    let _ = child.start_kill();
+    let _ = child.wait().await;
+    let _ = std::fs::remove_file(&dead.socket_path);
 }

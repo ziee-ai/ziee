@@ -133,7 +133,7 @@ pub async fn run_in_sandbox(
 
     let argv = build_bwrap_argv(
         &caps,
-        state,
+        &state.workspace_root,
         ctx,
         &rootfs_dir,
         command,
@@ -280,7 +280,11 @@ pub async fn run_in_sandbox(
 /// 5823061 — the `--as-pid-1` gating bug).
 pub(crate) fn build_bwrap_argv(
     caps: &HardeningCapabilities,
-    state: &CodeSandboxState,
+    // Root under which conversation attachments are staged. The Linux backend
+    // passes the host workspace root; the macOS/Windows VM backends pass the
+    // *guest* mount (so attachment binds resolve to guest paths) — this is the
+    // only thing the argv builder needed from the old `state` param.
+    workspace_root: &Path,
     ctx: &SandboxContext,
     rootfs_dir: &Path,
     user_cmd: &str,
@@ -424,7 +428,7 @@ pub(crate) fn build_bwrap_argv(
         if f.filename.contains('/') || f.filename.contains('\0') {
             continue;
         }
-        let host_path = workspace_attachment_path(&state.workspace_root, f.file_id);
+        let host_path = workspace_attachment_path(workspace_root, f.file_id);
         argv.push("--ro-bind-try".into());
         argv.push(host_path.display().to_string());
         argv.push(format!("/home/sandboxuser/{}", f.filename));
@@ -783,7 +787,7 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "echo hi",
@@ -824,7 +828,7 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "echo hello",
@@ -855,7 +859,7 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
@@ -885,7 +889,7 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
@@ -911,7 +915,7 @@ mod tests {
             let ctx = fake_ctx();
             let argv = build_bwrap_argv(
                 &caps,
-                &state,
+                &state.workspace_root,
                 &ctx,
                 std::path::Path::new(&state.config.rootfs_path),
                 "x",
@@ -938,7 +942,7 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "echo hi",
@@ -990,7 +994,7 @@ mod tests {
         let ctx = fake_ctx();
         let argv_without = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
@@ -1002,7 +1006,7 @@ mod tests {
 
         let argv_with = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
@@ -1020,7 +1024,7 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",

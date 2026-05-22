@@ -263,16 +263,26 @@ async fn handle_conn(
     let out_task = tokio::spawn(pump(stdout, out_tx, true));
     let err_task = tokio::spawn(pump(stderr, err_tx, false));
 
-    // Wall-clock budget; on expiry SIGKILL the child (bwrap's --die-with-parent
-    // collapses the rest of the tree).
+    // Wait for the command, racing three things: normal exit, the wall-clock
+    // budget (→ SIGKILL; bwrap's --die-with-parent collapses the tree), and the
+    // host disconnecting (B5 — turn aborted). On host disconnect we kill the
+    // workload instead of letting it run to the full timeout.
     let budget = Duration::from_millis(req.timeout_ms.max(1));
-    let (code, timed_out) = match tokio::time::timeout(budget, child.wait()).await {
-        Ok(Ok(status)) => (status.code().unwrap_or(-1), false),
-        Ok(Err(_)) => (-1, false),
-        Err(_) => {
+    let (code, timed_out) = tokio::select! {
+        res = child.wait() => match res {
+            Ok(status) => (status.code().unwrap_or(-1), false),
+            Err(_) => (-1, false),
+        },
+        _ = tokio::time::sleep(budget) => {
             let _ = child.start_kill();
             let _ = child.wait().await;
             (-1, true)
+        }
+        _ = wait_host_eof(&mut rd) => {
+            tracing::info!(request_id = req.request_id, "agent: host disconnected; killing command");
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            (-1, false)
         }
     };
 
@@ -395,6 +405,19 @@ fn install_seccomp(cmd: &mut Command, target_fd: i32, bpf: Arc<Vec<u8>>) -> std:
         });
     }
     Ok(read_fd)
+}
+
+/// Resolve when the host closes the control connection (read half hits EOF) or
+/// errors — i.e. the turn was abandoned. The host sends only the `Exec` frame,
+/// so any further read is EOF on disconnect.
+async fn wait_host_eof<R: AsyncReadExt + Unpin>(rd: &mut R) {
+    let mut b = [0u8; 256];
+    loop {
+        match rd.read(&mut b).await {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {} // unexpected extra data from the host; ignore
+        }
+    }
 }
 
 /// Stream a child pipe into protocol frames.
