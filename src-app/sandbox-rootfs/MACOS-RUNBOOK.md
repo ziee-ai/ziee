@@ -101,3 +101,55 @@ Run with `code_sandbox.enabled: true` and trigger an `execute_command`; then ver
   `mod.rs`'s workspace reaper) to stop VMs idle past `vm_idle_evict_secs`.
 - **Single-flight boot**: currently the global `VMS` lock is held across boot;
   fine for rare boots, revisit if cross-flavor contention shows up.
+
+## Security gaps from prior-art audit (microsandbox / libkrun / Apple `container`)
+
+Audited 2026-05 against microsandbox, libkrun/krunvm/krunkit, and Apple's
+Containerization framework. What we already got right, and the gaps to close.
+
+**Aligned with prior art (keep):**
+- VM boot in a **separate launcher process** (not an in-server fork) — required
+  because `krun_start_enter` `exit()`s + seizes stdio.
+- **bwrap-in-VM, non-root (uid 1001), read-only squashfs as a block disk** —
+  matches the libkrun maintainers' "layer container-isolation inside the VM, run
+  as non-root" guidance (discussion #538). The squashfs is `/dev/vda` read-only.
+- **vsock `listen=true`** = host-dials / guest-listens — confirmed the correct
+  flag for our host-drives-the-agent model (still verify at first run).
+- **In-guest rlimits** (pids/as/fsize/nofile via the prlimit wrapper in
+  `build_bwrap_argv`) + a hard VM RAM ceiling — limits are enforced, not just
+  requested.
+- **Native aarch64 in the VM on Apple Silicon** (no Rosetta needed) — *ensure
+  the fetched squashfs flavor + guest bwrap/agent are aarch64*.
+
+**Gaps to close (ordered by relevance to our threat model — prompt-injection
+exfiltration, host-FS pollution):**
+1. **Workspace virtio-fs over-shares (cross-tenant).** We `krun_add_virtiofs`
+   the *entire* `workspace_root` into the per-flavor VM; bwrap binds only the
+   per-conversation subdir, but anything else in the guest (the agent, an
+   escaped process) can read every conversation's workspace — virtio-fs gives no
+   in-fs isolation (libkrun docs). The Linux backend binds only the per-conv
+   dir. Fix: share only the per-conversation dir (per-exec), or copy data
+   in/out, or a per-conversation VM.
+2. **Guest root via host-dir virtio-fs.** `krun_set_root` shares a host
+   directory as `/`; libkrun + Apple both recommend a **read-only EXT4/raw block
+   image** for an untrusted guest root (smaller escape surface, no qcow2
+   auto-open footgun). Ship the guest root as a block image instead.
+3. **TSI egress = guest reaches everything the VMM can.** With no net device,
+   libkrun enables Transparent Socket Impersonation: the guest shares the VMM
+   process's network context — it can reach **host-localhost services** (our own
+   API/DB), an SSRF/exfil surface beyond Linux's `--share-net`. Fix: run the
+   launcher with a restricted network, or switch to virtio-net + a filtering
+   proxy (microsandbox-style allow/deny + DNS + TLS policy is the mature model).
+4. **Launcher inherits the server's env (secrets in the VMM).** We spawn the
+   launcher without `env_clear()`, so the VMM process holds `DATABASE_URL`/JWT/
+   API keys. The guest workload itself is clean (`krun_set_exec` envp=[] +
+   bwrap `--clearenv`), but a VMM-escape would reach them. Fix: spawn the
+   launcher with a minimal/cleared env.
+5. **No orphan-on-crash teardown on macOS.** Linux uses `PR_SET_PDEATHSIG` so
+   FUSE/VMs die with the server even on SIGKILL; `kill_on_drop` only covers
+   graceful drop. macOS has no PDEATHSIG — have the launcher watch its parent
+   (poll `getppid()` or kqueue `EVFILT_PROC`/`NOTE_EXIT`) and exit if the server
+   dies, else a server crash leaks VMs.
+6. **No agent liveness / hung-guest detection.** microsandbox heartbeats at 1 Hz
+   so the host can enforce `idle_timeout`/`max_duration` and reap hung guests.
+   We track `last_used` but have no reaper and no heartbeat — wire both.
