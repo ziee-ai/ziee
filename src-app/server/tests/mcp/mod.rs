@@ -1211,6 +1211,7 @@ mod conformance_streaming_test;  // SSE streaming edge-case tests via mock
 mod conformance_extended_test;   // Deeper conformance tests against `server-everything`
 mod conformance_elicitation_test; // Elicitation roundtrip tests via mock SSE server
 mod conformance_phase1_test;      // Plan-3 Phase-1: version negotiation, string id, pagination
+mod conformance_resumability_test; // Plan-3 Phase-3 (I1): SSE resume via Last-Event-Id
 mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
 
 // ============================================================================

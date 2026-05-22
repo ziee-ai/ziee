@@ -39,6 +39,12 @@ pub enum MockResponse {
     /// Return an SSE stream with the given events (each gets `data: ` prefix +
     /// `\n\n` terminator). Useful for testing notification-before-response.
     SseStream(Vec<String>),
+    /// Emit a verbatim SSE body (the caller controls full framing — `id:`,
+    /// `event:`, `data:`, blank-line terminators). Used for resumability tests
+    /// where a stream must carry SSE event ids and may end after a priming
+    /// event WITHOUT a result (simulating a mid-call disconnect that the client
+    /// resumes via `Last-Event-Id`).
+    SseRaw(String),
     /// Return HTTP 202 Accepted with empty body (success for notifications).
     Accepted,
     /// Sleep then return JsonOk — for timeout/cancellation tests.
@@ -60,6 +66,10 @@ struct MockState {
     /// Whether to reject the next request with HTTP 404 (used for
     /// session-recovery tests).
     next_request_returns_404: Mutex<bool>,
+    /// Programmed responses for standalone GET requests (resumability /
+    /// GET-SSE). FIFO per the same semantics as `responses`. Empty → 405
+    /// (server doesn't offer a GET stream — the spec-conformant default).
+    get_responses: Mutex<Vec<MockResponse>>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +97,7 @@ impl MockMcpServer {
             session_id_to_assign: Mutex::new(Some("mock-session-1".to_string())),
             require_protocol_version_header: Mutex::new(false),
             next_request_returns_404: Mutex::new(false),
+            get_responses: Mutex::new(Vec::new()),
         });
 
         let app = Router::new()
@@ -119,6 +130,13 @@ impl MockMcpServer {
             .entry(method.to_string())
             .or_default()
             .push(response);
+    }
+
+    /// Queue a response for a standalone GET request (resumability resume
+    /// stream or GET-SSE). FIFO. With nothing queued the mock returns 405,
+    /// the spec-conformant "no GET stream offered" signal.
+    pub fn on_get(&self, response: MockResponse) {
+        self.state.get_responses.lock().unwrap().push(response);
     }
 
     /// Set the session ID the mock will return on initialize.
@@ -277,9 +295,44 @@ async fn handle_delete(State(state): State<Arc<MockState>>) -> StatusCode {
     StatusCode::OK
 }
 
-async fn handle_get() -> StatusCode {
-    // We don't implement server-initiated GET-SSE stream in the mock.
-    StatusCode::METHOD_NOT_ALLOWED
+async fn handle_get(State(state): State<Arc<MockState>>, headers: HeaderMap) -> Response {
+    // Record the GET (so tests can assert a resume carried `Last-Event-Id`).
+    let header_map: HashMap<String, String> = headers
+        .iter()
+        .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+    state.received.lock().unwrap().push(ReceivedRequest {
+        method: "__get_sse".to_string(),
+        id: None,
+        headers: header_map,
+        body: serde_json::Value::Null,
+    });
+
+    // Serve a programmed GET response if one is queued; otherwise 405
+    // ("server does not offer a GET stream" — the spec-conformant default
+    // the client must tolerate as a silent no-op).
+    let programmed = state
+        .get_responses
+        .lock()
+        .unwrap()
+        .pop_if_nonempty();
+    match programmed {
+        Some(r) => render(r, None, state.clone()),
+        None => Response::builder()
+            .status(StatusCode::METHOD_NOT_ALLOWED)
+            .body(Body::from(""))
+            .unwrap(),
+    }
+}
+
+/// Small helper: pop the front of a queue if non-empty.
+trait PopIfNonEmpty {
+    fn pop_if_nonempty(&mut self) -> Option<MockResponse>;
+}
+impl PopIfNonEmpty for Vec<MockResponse> {
+    fn pop_if_nonempty(&mut self) -> Option<MockResponse> {
+        if self.is_empty() { None } else { Some(self.remove(0)) }
+    }
 }
 
 fn render(response: MockResponse, id: Option<i64>, state: Arc<MockState>) -> Response {
@@ -328,6 +381,14 @@ fn render(response: MockResponse, id: Option<i64>, state: Arc<MockState>) -> Res
                 }
                 body.push('\n');
             }
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "text/event-stream")
+                .body(Body::from(body))
+                .unwrap()
+        }
+        MockResponse::SseRaw(body) => {
+            // Verbatim SSE body — caller controls `id:`/`event:`/`data:` framing.
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "text/event-stream")

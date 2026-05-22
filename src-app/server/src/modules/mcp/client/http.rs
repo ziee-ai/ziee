@@ -131,6 +131,90 @@ fn forward_progress_notification(
     let _ = tx.send(Ok(event));
 }
 
+// ─── SSE stream resumability (MCP spec § Transports / Resumability) ──────────
+//
+// When a tool-call SSE stream drops before delivering the JSON-RPC response, a
+// spec-conformant client reconnects via GET + `Last-Event-Id` and resumes,
+// rather than failing the whole call. The server signals resumability by
+// emitting SSE `id:` lines (a "priming event" — an `id:` with empty data — is
+// enough). These defaults mirror the MCP TypeScript SDK
+// (`client/streamableHttp.ts` DEFAULT_STREAMABLE_HTTP_RECONNECTION_OPTIONS).
+const SSE_RECONNECT_INITIAL_MS: u64 = 1_000;
+const SSE_RECONNECT_MAX_MS: u64 = 30_000;
+const SSE_RECONNECT_GROW_FACTOR: f64 = 1.5;
+const SSE_RECONNECT_MAX_RETRIES: u32 = 2;
+
+/// Exponential backoff for the Nth (0-based) reconnect attempt, capped.
+fn reconnect_delay_ms(attempt: u32) -> u64 {
+    let d = (SSE_RECONNECT_INITIAL_MS as f64) * SSE_RECONNECT_GROW_FACTOR.powi(attempt as i32);
+    (d as u64).min(SSE_RECONNECT_MAX_MS)
+}
+
+/// Extract the SSE `id:` field from an event block (last `id:` line wins per
+/// the SSE spec). Returns `None` if the block carries no id — i.e. the server
+/// isn't emitting resumable event ids, so we won't attempt a resume.
+fn sse_event_id(event_block: &str) -> Option<String> {
+    let mut id = None;
+    for line in event_block.lines() {
+        if let Some(rest) = line.strip_prefix("id:") {
+            id = Some(rest.trim().to_string());
+        }
+    }
+    id
+}
+
+/// Attempt to resume a dropped tool-call SSE stream via `GET` +
+/// `Last-Event-Id` (MCP resumability). Runs the bounded backoff retry loop
+/// internally; returns the fresh streaming response on success, or `None` if
+/// the stream isn't resumable (no event id was seen) or all retries are
+/// exhausted. Because both SSE read loops *return* on the first result/error,
+/// reaching a stream-EOF means the response has NOT arrived yet — so we never
+/// need the SDK's `receivedResponse` guard here; `last_event_id.is_some()` is
+/// exactly the SDK's `hasPrimingEvent`.
+async fn try_resume_sse(
+    stream_client: &Client,
+    url: &str,
+    session_id: Option<String>,
+    protocol_version: &Option<String>,
+    last_event_id: &Option<String>,
+    server_name: &str,
+) -> Option<reqwest::Response> {
+    let leid = last_event_id.as_ref()?;
+    let mut attempt = 0u32;
+    while attempt < SSE_RECONNECT_MAX_RETRIES {
+        tokio::time::sleep(Duration::from_millis(reconnect_delay_ms(attempt))).await;
+        attempt += 1;
+        let mut req = stream_client
+            .get(url)
+            .header("Accept", "text/event-stream")
+            .header("Last-Event-Id", leid.as_str());
+        if let Some(s) = &session_id {
+            req = req.header("mcp-session-id", s.as_str());
+        }
+        if let Some(ver) = protocol_version {
+            req = req.header("MCP-Protocol-Version", ver);
+        }
+        match req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!(
+                    "[mcp] resumed SSE stream from '{}' via Last-Event-Id={} (attempt {})",
+                    server_name, leid, attempt
+                );
+                return Some(resp);
+            }
+            Ok(resp) => tracing::warn!(
+                "[mcp] SSE resume attempt {} for '{}' returned HTTP {}",
+                attempt, server_name, resp.status()
+            ),
+            Err(e) => tracing::warn!(
+                "[mcp] SSE resume attempt {} for '{}' failed: {}",
+                attempt, server_name, e
+            ),
+        }
+    }
+    None
+}
+
 pub struct HttpMcpClient {
     /// Display name of the MCP server, used for logging
     server_name: String,
@@ -585,6 +669,9 @@ impl HttpMcpClient {
 
         let mut byte_stream = response.bytes_stream();
         let mut buffer = String::new();
+        // Track the last SSE event id so a dropped stream can resume via
+        // GET + Last-Event-Id (MCP resumability).
+        let mut last_event_id: Option<String> = None;
 
         tracing::info!("[sampling] Entering SSE byte-stream loop");
 
@@ -610,6 +697,11 @@ impl HttpMcpClient {
                         let event_block = buffer[..event_end].to_string();
                         buffer.drain(..event_end + 2);
 
+                        // Remember the SSE event id (resumability priming).
+                        if let Some(eid) = sse_event_id(&event_block) {
+                            last_event_id = Some(eid);
+                        }
+
                         // Extract data line from event block
                         let data_line = event_block.lines()
                             .find(|l| l.starts_with("data: "))
@@ -619,6 +711,8 @@ impl HttpMcpClient {
                             Some(d) => d,
                             None => continue,
                         };
+                        // Skip events with no data (priming / keep-alive).
+                        if data.is_empty() { continue; }
 
                         let json: Value = match serde_json::from_str(data) {
                             Ok(v) => v,
@@ -888,9 +982,27 @@ impl HttpMcpClient {
                     }
                 }
                 Some(Err(e)) => {
+                    // Network error mid-stream — try to resume via Last-Event-Id
+                    // before giving up (MCP resumability).
+                    if let Some(resp) = try_resume_sse(
+                        &stream_client, &url, get_sid(), &protocol_version, &last_event_id, &server_name,
+                    ).await {
+                        byte_stream = resp.bytes_stream();
+                        buffer.clear();
+                        continue;
+                    }
                     return Err(AppError::internal_error(format!("SSE stream error: {}", e)));
                 }
                 None => {
+                    // Stream ended before the tool result. If the server emitted
+                    // event ids (resumable), reconnect via GET + Last-Event-Id.
+                    if let Some(resp) = try_resume_sse(
+                        &stream_client, &url, get_sid(), &protocol_version, &last_event_id, &server_name,
+                    ).await {
+                        byte_stream = resp.bytes_stream();
+                        buffer.clear();
+                        continue;
+                    }
                     return Err(AppError::internal_error("SSE stream ended without tool result"));
                 }
             }
@@ -909,6 +1021,7 @@ impl HttpMcpClient {
         stream_client: Client,
         url: String,
         session_id_arc: Arc<RwLock<Option<String>>>,
+        protocol_version: Option<String>,
         server_name: String,
         message_id: Option<uuid::Uuid>,
         sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
@@ -932,6 +1045,8 @@ impl HttpMcpClient {
 
         let mut byte_stream = response.bytes_stream();
         let mut buffer = String::new();
+        // Track the last SSE event id for resume-via-Last-Event-Id.
+        let mut last_event_id: Option<String> = None;
 
         loop {
             match byte_stream.next().await {
@@ -951,6 +1066,11 @@ impl HttpMcpClient {
                         let event_block = buffer[..event_end].to_string();
                         buffer.drain(..event_end + sep.len());
 
+                        // Remember the SSE event id (resumability priming).
+                        if let Some(eid) = sse_event_id(&event_block) {
+                            last_event_id = Some(eid);
+                        }
+
                         let data_line = event_block.lines()
                             .find(|l| l.starts_with("data: "))
                             .map(|l| &l[6..]);
@@ -959,6 +1079,8 @@ impl HttpMcpClient {
                             Some(d) => d,
                             None => continue,
                         };
+                        // Skip events with no data (priming / keep-alive).
+                        if data.is_empty() { continue; }
 
                         let json: Value = match serde_json::from_str(data) {
                             Ok(v) => v,
@@ -1135,9 +1257,23 @@ impl HttpMcpClient {
                     }
                 }
                 Some(Err(e)) => {
+                    if let Some(resp) = try_resume_sse(
+                        &stream_client, &url, get_sid(), &protocol_version, &last_event_id, &server_name,
+                    ).await {
+                        byte_stream = resp.bytes_stream();
+                        buffer.clear();
+                        continue;
+                    }
                     return Err(AppError::internal_error(format!("SSE stream error: {}", e)));
                 }
                 None => {
+                    if let Some(resp) = try_resume_sse(
+                        &stream_client, &url, get_sid(), &protocol_version, &last_event_id, &server_name,
+                    ).await {
+                        byte_stream = resp.bytes_stream();
+                        buffer.clear();
+                        continue;
+                    }
                     return Err(AppError::internal_error("SSE stream ended without tool result"));
                 }
             }
@@ -1150,6 +1286,18 @@ impl McpClient for HttpMcpClient {
     async fn connect(&mut self) -> Result<(), AppError> {
         self.do_initialize().await?;
         self.connected = true;
+        // Note on the standalone GET-SSE stream (MCP spec § Transports):
+        // we deliberately do NOT open one. Sessions here are ephemeral —
+        // a fresh client connects and disconnects for every tool call (see
+        // `SessionManager::get_or_create_with_context`) — and nothing in this app
+        // produces or consumes *unsolicited* server→client messages: every
+        // elicitation / sampling / progress arrives interleaved on the POST
+        // tools/call stream, which we already handle. Auto-opening a GET
+        // stream per call would be pure overhead with no consumer. Servers
+        // signal "no standalone stream" by 405-ing GET, which our own
+        // built-in server does. Resumability of the POST stream (the part
+        // that has real value against flaky external servers) IS implemented
+        // — see `try_resume_sse`.
         Ok(())
     }
 
@@ -1381,6 +1529,7 @@ impl McpClient for HttpMcpClient {
                     stream_client,
                     url,
                     session_id_arc,
+                    pv_owned,
                     server_name,
                     message_id_owned,
                     sse_tx,
