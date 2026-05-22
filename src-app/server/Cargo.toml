@@ -114,17 +114,18 @@ name = "mock-sampling-server"
 path = "tests/mcp/examples/mock_sampling_server.rs"
 
 [features]
-# `code_sandbox_seccomp` is on by default. The `libseccomp` dep
-# itself is target-conditional (Linux-only — see `[target.…]` below),
-# so non-Linux builds resolve the feature to a no-op and the
-# `#[cfg(all(feature = "…", target_os = "linux"))]`-gated code path
-# simply isn't compiled. Operators get the syscall-level
-# defense-in-depth out of the box on Linux without flipping any
-# build flag; Mac/Windows builds compile cleanly with no manual
-# `--no-default-features` dance.
+# `code_sandbox_seccomp` is on by default. The `sandbox-seccomp` dep
+# (which links `libseccomp`) is target-conditional (Linux-only — see
+# `[target.…]` below), so non-Linux builds resolve the feature to a no-op
+# and the `#[cfg(all(feature = "…", target_os = "linux"))]`-gated code path
+# simply isn't compiled. Operators get the syscall-level defense-in-depth
+# out of the box on Linux without flipping any build flag; Mac/Windows
+# builds compile cleanly with no manual `--no-default-features` dance.
+# The seccomp policy itself lives in the shared `sandbox-seccomp` crate so
+# the in-VM guest agent applies an identical filter.
 default = ["gpu-detect", "code_sandbox_seccomp"]
 gpu-detect = ["nvml-wrapper", "opencl3", "ash", "wgpu-hal"]
-code_sandbox_seccomp = ["dep:libseccomp"]
+code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 
 # Linux-only deps. `libseccomp` is `optional = true` so the feature
 # machinery (`dep:libseccomp`) above can still reference it; on
@@ -132,7 +133,7 @@ code_sandbox_seccomp = ["dep:libseccomp"]
 # becomes inert (the seccomp module gates on `target_os = "linux"`
 # in addition to the feature).
 [target.'cfg(target_os = "linux")'.dependencies]
-libseccomp = { version = "0.3", optional = true }
+sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 
 # macOS code-sandbox backend (libkrun microVM) talks to the in-VM guest agent
 # over the shared vsock control protocol.

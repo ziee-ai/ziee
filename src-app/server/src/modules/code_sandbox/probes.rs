@@ -355,208 +355,23 @@ fn compile_seccomp_filter() -> SeccompMode {
 
 #[cfg(all(feature = "code_sandbox_seccomp", target_os = "linux"))]
 mod seccomp_impl {
-    use libseccomp::{ScmpAction, ScmpFilterContext, ScmpSyscall};
-
-    /// Syscalls we deny (return EPERM).
-    ///
-    /// The filter is a DENYLIST with a default-ALLOW action. This is
-    /// the same shape Flatpak uses. The list
-    /// MUST include every syscall family that could be combined with
-    /// our other isolation primitives to weaken them:
-    ///   - kernel modification (kexec, *_module, swap*, reboot)
-    ///   - tracing (ptrace, perf_event_open, process_vm_*)
-    ///   - new-namespace / mount-API escapes (mount/umount/umount2,
-    ///     setns, unshare, pivot_root, chroot, the full new-mount-API
-    ///     family — fsopen/fsconfig/fsmount/move_mount/open_tree/
-    ///     mount_setattr)
-    ///   - newer clone variants that bypass filters checking only
-    ///     `clone` (clone3 is the classic CVE-2022-23222 vector)
-    ///   - kernel keyring (keyctl, add_key, request_key)
-    ///   - direct I/O port access (iopl, ioperm)
-    ///   - quotactl, personality, userfaultfd, bpf, io_uring*
-    ///
-    /// Adding to this list is always safe (more restrictive). Removing
-    /// requires re-evaluating the threat model. If a workload legitimately
-    /// needs one of these (e.g. R packages calling perf), prefer an
-    /// allowlist filter at that point rather than weakening this one.
-    /// Denied with **EPERM** — the caller has no fallback path; a hard
-    /// "operation not permitted" is correct.
-    const DENY_EPERM: &[&str] = &[
-        // Tracing / cross-process introspection
-        "ptrace",
-        "perf_event_open",
-        "process_vm_readv",
-        "process_vm_writev",
-        "pidfd_send_signal",
-        "pidfd_getfd",
-        "pidfd_open",
-        "kcmp",
-        // Kernel modification
-        "bpf",
-        "userfaultfd",
-        "kexec_load",
-        "kexec_file_load",
-        "init_module",
-        "finit_module",
-        "delete_module",
-        // Legacy module API (pre-2.6 but still present on some kernels)
-        "create_module",
-        "query_module",
-        "get_kernel_syms",
-        // Keyring
-        "keyctl",
-        "add_key",
-        "request_key",
-        // Mount family — old API
-        "mount",
-        "umount",
-        "umount2",
-        "pivot_root",
-        "chroot",
-        // Namespace manipulation. We already invoke bwrap with
-        // --unshare-* ourselves; the sandboxed code must not be able
-        // to join other namespaces or create new ones to escape.
-        "setns",
-        "unshare",
-        // File-handle resolution — the "Shocker" container-breakout
-        // primitive: resolve a host inode by handle, bypassing the
-        // mount-namespace path view. (CAP_DAC_READ_SEARCH-gated, so the
-        // userns mostly blocks it already; deny anyway, defense-in-depth.)
-        "open_by_handle_at",
-        "name_to_handle_at",
-        // Time is NOT namespaced — block wall-clock tampering.
-        "clock_settime",
-        "clock_adjtime",
-        "settimeofday",
-        "stime",
-        // Kernel ring buffer — leaks KASLR pointers.
-        "syslog",
-        // Swap / power
-        "swapon",
-        "swapoff",
-        "reboot",
-        // I/O ring — recent escape vectors via io_uring SQE rewrites
-        "io_uring_setup",
-        "io_uring_enter",
-        "io_uring_register",
-        // Direct hardware I/O ports
-        "iopl",
-        "ioperm",
-        // Quotas + execution-domain switching + process accounting
-        "quotactl",
-        "personality",
-        "acct",
-        // NUMA memory-policy (best-effort in libs → EPERM tolerated)
-        "migrate_pages",
-        "mbind",
-        "get_mempolicy",
-        "set_mempolicy",
-        "move_pages",
-        // Misc obsolete / dangerous
-        "lookup_dcookie",
-        "nfsservctl",
-        "uselib",
-        "ustat",
-        "vm86",
-        "vm86old",
-        "modify_ldt",
-    ];
-
-    /// Denied with **ENOSYS** — callers (glibc, runtimes) *probe* these
-    /// and fall back to the legacy syscall only on `ENOSYS`. Returning
-    /// `EPERM` here would defeat the fallback and break threaded/forked
-    /// workloads (e.g. R `parallel::mclapply`, `data.table`, `torch` on
-    /// glibc ≥ 2.34). Matches Flatpak's handling.
-    const DENY_ENOSYS: &[&str] = &[
-        // Newer clone — the namespace-escape bypass when a filter only
-        // blocks `clone` (CVE-2022-23222 family). glibc probes clone3
-        // then falls back to clone on ENOSYS.
-        "clone3",
-        // Mount family — new API (Linux 5.2+); a denylist missing these
-        // would let a sandboxee construct mounts via the new API and
-        // bypass the read-only rootfs binds. Probe-and-fallback callers
-        // expect ENOSYS.
-        "fsopen",
-        "fsconfig",
-        "fsmount",
-        "move_mount",
-        "open_tree",
-        "mount_setattr",
-    ];
-
+    /// Compile the seccomp BPF from the shared policy crate. The DENY lists +
+    /// EPERM/ENOSYS classification live in `sandbox-seccomp` (single source of
+    /// truth — the in-VM guest agent uses the exact same crate, so the macOS/
+    /// Windows guests apply an identical filter and can't drift from the host).
     pub fn build() -> Result<Vec<u8>, String> {
-        let mut ctx =
-            ScmpFilterContext::new_filter(ScmpAction::Allow).map_err(|e| format!("ctx: {e}"))?;
-        // Best-effort per-syscall: if a name doesn't resolve on this
-        // host kernel (newer syscalls on old kernels, or vice versa),
-        // log it and continue with the rest. A failed lookup must NOT
-        // disable the WHOLE filter — that would be a catastrophic
-        // hardening regression for the sake of one missing entry.
-        let mut resolved = 0;
-        let mut unresolved: Vec<&str> = Vec::new();
-        for (action, names) in [
-            (ScmpAction::Errno(libc::EPERM), DENY_EPERM),
-            (ScmpAction::Errno(libc::ENOSYS), DENY_ENOSYS),
-        ] {
-            for name in names {
-                let sys = match ScmpSyscall::from_name(name) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        unresolved.push(*name);
-                        continue;
-                    }
-                };
-                ctx.add_rule(action, sys)
-                    .map_err(|e| format!("add_rule {name}: {e}"))?;
-                resolved += 1;
-            }
-        }
+        let (bpf, unresolved) = sandbox_seccomp::build_bpf()?;
         if !unresolved.is_empty() {
+            let total = sandbox_seccomp::DENY_EPERM.len() + sandbox_seccomp::DENY_ENOSYS.len();
             tracing::warn!(
-                resolved,
-                total = DENY_EPERM.len() + DENY_ENOSYS.len(),
+                resolved = total - unresolved.len(),
+                total,
                 unresolved = ?unresolved,
-                "code_sandbox: some seccomp DENY entries did not resolve \
-                 on this kernel; they are silently skipped. Verify kernel \
-                 version supports the listed syscalls (e.g. clone3 needs >=5.3)."
+                "code_sandbox: some seccomp DENY entries did not resolve on this \
+                 kernel; they are silently skipped. Verify the kernel supports them \
+                 (e.g. clone3 needs >=5.3)."
             );
         }
-        let mut buf: Vec<u8> = Vec::new();
-        // export_bpf writes to an fd; use a memfd / pipe approach.
-        // Simpler: use a tempfile then read it back.
-        let mut f = tempfile::tempfile().map_err(|e| format!("tempfile: {e}"))?;
-        ctx.export_bpf(&mut f).map_err(|e| format!("export_bpf: {e}"))?;
-        use std::io::{Read, Seek, SeekFrom};
-        f.seek(SeekFrom::Start(0)).map_err(|e| format!("seek: {e}"))?;
-        f.read_to_end(&mut buf).map_err(|e| format!("read: {e}"))?;
-        Ok(buf)
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn build_produces_nonempty_bpf() {
-            let bpf = build().expect("seccomp filter builds");
-            assert!(!bpf.is_empty(), "exported BPF must be non-empty");
-        }
-
-        #[test]
-        fn deny_lists_are_disjoint_and_classified_correctly() {
-            assert!(!DENY_EPERM.is_empty());
-            assert!(!DENY_ENOSYS.is_empty());
-            for n in DENY_ENOSYS {
-                assert!(!DENY_EPERM.contains(n), "{n} must not be in both lists");
-            }
-            // Probe-and-fallback syscalls MUST be ENOSYS so glibc falls back
-            // (else threaded/forked R breaks under seccomp).
-            for n in ["clone3", "fsopen", "fsconfig", "fsmount", "move_mount", "open_tree", "mount_setattr"] {
-                assert!(DENY_ENOSYS.contains(&n), "{n} must be in DENY_ENOSYS");
-            }
-            // High-value breakout primitive must be denied.
-            assert!(DENY_EPERM.contains(&"open_by_handle_at"));
-            assert!(DENY_EPERM.contains(&"name_to_handle_at"));
-        }
+        Ok(bpf)
     }
 }
