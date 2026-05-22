@@ -15,6 +15,7 @@ export const AuthPage: React.FC = () => {
   const { isAuthenticated } = Stores.Auth
 
   const handleSwitchToRegister = () => {
+    Stores.Auth.clearAuthenticationError()
     setMode('register')
   }
 
@@ -37,7 +38,7 @@ export const AuthPage: React.FC = () => {
             )}
 
             {mode === 'register' && (
-              <RegisterForm onSwitchToLogin={() => setMode('login')} />
+              <RegisterForm onSwitchToLogin={() => { Stores.Auth.clearAuthenticationError(); setMode('login') }} />
             )}
           </div>
         </Content>

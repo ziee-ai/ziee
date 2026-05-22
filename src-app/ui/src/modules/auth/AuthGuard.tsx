@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { AuthPage } from '@/modules/auth/AuthPage'
+import type { OnboardingSlot } from '@/modules/onboarding/types/OnboardingSlot'
 
 const { Content } = Layout
 
@@ -11,8 +12,9 @@ interface AuthGuardProps {
 }
 
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
-  const { isAuthenticated, isLoading } = Stores.Auth
+  const { isAuthenticated, isInitializing, user } = Stores.Auth
   const { needsSetup } = Stores.App
+  const guides = (Stores.ModuleSystem.slots.get('onboarding') as OnboardingSlot[]) || []
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -29,7 +31,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   }, [needsSetup, navigate, location.pathname])
 
   // Show loading spinner while checking auth status
-  if (isLoading || needsSetup === null) {
+  if (isInitializing || needsSetup === null) {
     return (
       <Layout className="min-h-screen">
         <Content className="flex items-center justify-center">
@@ -48,6 +50,16 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   // Show authentication page if not authenticated
   if (!isAuthenticated) {
     return <AuthPage />
+  }
+
+  // Redirect to incomplete guide if user hasn't finished it
+  const isOnGuideRoute = location.pathname.startsWith('/onboarding')
+  if (user && !isOnGuideRoute) {
+    const firstIncomplete = guides.find(g => !user.completed_onboarding_ids.includes(g.id))
+    if (firstIncomplete) {
+      navigate(`/onboarding?id=${firstIncomplete.id}`, { replace: true })
+      return null
+    }
   }
 
   // Show the protected content
