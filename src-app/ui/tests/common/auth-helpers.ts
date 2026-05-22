@@ -20,6 +20,36 @@ export const DEFAULT_ADMIN_CREDENTIALS: AdminCredentials = {
 }
 
 /**
+ * Mark an onboarding guide complete via the API so AuthGuard stops redirecting
+ * the user to /onboarding. Every authenticated user (admin included) with an
+ * incomplete guide is redirected, so login helpers call this to land users on
+ * the app like before. `baseURL` is the vite origin (which proxies /api).
+ */
+export async function completeOnboarding(
+  baseURL: string,
+  token: string,
+  guideId: string = 'getting-started'
+) {
+  const res = await fetch(`${baseURL}/api/onboarding/${guideId}/complete`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new Error(
+      `completeOnboarding failed: ${res.status} - ${await res.text()}`
+    )
+  }
+}
+
+/** Read the persisted auth token from the page's localStorage. */
+async function readAuthToken(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem('auth-storage')
+    return raw ? JSON.parse(raw).state?.token : null
+  })
+}
+
+/**
  * Login as admin user - creates admin if needed, otherwise logs in
  *
  * Used in: settings.spec.ts, hardware.spec.ts, llm.spec.ts
@@ -66,8 +96,7 @@ export async function loginAsAdmin(
     await page.fill('#setup-form_confirm_password', password)
     await page.click('button[type="submit"]')
 
-    // Wait for navigation to home
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // Navigation may redirect to /onboarding; the token wait below is the real signal.
 
     // CRITICAL: Wait for authentication token to be stored in localStorage
     await page.waitForFunction(
@@ -91,8 +120,7 @@ export async function loginAsAdmin(
     await page.fill('#login_password', password)
     await page.click('button:has-text("Sign In")')
 
-    // Wait for navigation to home
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // Navigation may redirect to /onboarding; the token wait below is the real signal.
 
     // Wait for token to be stored
     await page.waitForFunction(
@@ -109,6 +137,13 @@ export async function loginAsAdmin(
       { timeout: 10000 }
     )
   }
+
+  // Admins are subject to the onboarding redirect too. Complete the guide via
+  // the API and land on the app, restoring pre-onboarding login behavior.
+  const token = await readAuthToken(page)
+  await completeOnboarding(baseURL, token)
+  await page.goto(`${baseURL}/`)
+  await page.waitForLoadState('networkidle')
 }
 
 /**
@@ -128,7 +163,8 @@ export async function login(
   page: Page,
   baseURL: string,
   username: string,
-  password: string
+  password: string,
+  options: { completeOnboarding?: boolean } = {}
 ) {
   // Get token via the backend.
   const loginResponse = await fetch(`${baseURL}/api/auth/login`, {
@@ -144,6 +180,12 @@ export async function login(
   const { access_token } = await loginResponse.json()
   if (!access_token) {
     throw new Error('login: API response had no access_token')
+  }
+
+  // Unless the caller is specifically testing the wizard, mark onboarding done
+  // so AuthGuard lands the user on the app (chat) instead of /onboarding.
+  if (options.completeOnboarding !== false) {
+    await completeOnboarding(baseURL, access_token)
   }
 
   // Inject the token BEFORE any app JS runs — addInitScript runs on every
@@ -196,6 +238,47 @@ export async function login(
     },
     { timeout: 10000 }
   )
+}
+
+/**
+ * Log in a user who has NOT completed onboarding and wait for AuthGuard to
+ * land them on the wizard. Used by the onboarding wizard E2E.
+ */
+export async function loginExpectingOnboarding(
+  page: Page,
+  baseURL: string,
+  username: string,
+  password: string
+) {
+  const res = await fetch(`${baseURL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!res.ok) {
+    throw new Error(
+      `loginExpectingOnboarding: API returned ${res.status}: ${await res.text()}`
+    )
+  }
+  const { access_token } = await res.json()
+  if (!access_token) {
+    throw new Error('loginExpectingOnboarding: API response had no access_token')
+  }
+
+  await page.addInitScript((token) => {
+    try {
+      localStorage.setItem(
+        'auth-storage',
+        JSON.stringify({ state: { token }, version: 0 })
+      )
+    } catch {
+      /* ignore */
+    }
+  }, access_token)
+
+  await page.goto(`${baseURL}/`)
+  // AuthGuard redirects an authenticated user with an incomplete guide.
+  await page.waitForURL(/\/onboarding/, { timeout: 15000 })
 }
 
 /**

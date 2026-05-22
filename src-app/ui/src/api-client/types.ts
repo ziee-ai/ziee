@@ -1610,12 +1610,15 @@ export type UsageMode = 'auto' | 'always'
 
 export interface User {
   avatar_url?: string
+  completed_onboarding_ids: string[]
+  completed_onboarding_step_ids: string[]
   created_at: string
   display_name?: string
   email: string
   email_verified: boolean
   id: string
   is_active: boolean
+  is_admin: boolean
   last_login_at?: string
   permissions: string[]
   updated_at: string
@@ -1945,6 +1948,8 @@ export const ApiEndpoints = {
   'Message.get': 'GET /api/messages/{id}',
   'Message.getHistory': 'GET /api/conversations/{id}/messages',
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
+  'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
+  'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -2105,6 +2110,8 @@ export type ApiEndpointParameters = {
   'Message.get': { id: string }
   'Message.getHistory': { id: string }
   'Message.sendStream': { id: string } & SendMessageRequest
+  'Onboarding.complete': { guide_id: string }
+  'Onboarding.completeStep': { guide_id: string; step_id: string }
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -2265,6 +2272,8 @@ export type ApiEndpointResponses = {
   'Message.get': MessageWithContent
   'Message.getHistory': MessageWithContent[]
   'Message.sendStream': SSEChatStreamEvent
+  'Onboarding.complete': User
+  'Onboarding.completeStep': User
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionResponse

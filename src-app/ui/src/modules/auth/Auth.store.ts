@@ -6,7 +6,8 @@ import type {
   CreateUserRequest,
   User,
 } from '@/api-client/types'
-import type { StoreProxy } from '@/core/stores'
+import { Stores, type StoreProxy } from '@/core/stores'
+import '@/modules/onboarding/events/types'
 
 export interface AutoLoginResponse {
   user: User
@@ -21,7 +22,12 @@ interface AuthState {
   permissions?: string[]
   isAuthenticated: boolean
   isLoading: boolean
+  isInitializing: boolean
   error?: string | null
+
+  __init__: {
+    __store__: () => void
+  }
 
   // Actions
   authenticateUser: (credentials: LoginRequest) => Promise<void>
@@ -45,6 +51,7 @@ const defaultState = {
   permissions: [],
   isAuthenticated: false,
   isLoading: false,
+  isInitializing: true,
   error: null,
 }
 
@@ -118,7 +125,7 @@ export const useAuthStore = create<AuthState>()(
         registerNewUser: async (userData: CreateUserRequest) => {
           const state = get()
           if (state.isLoading) {
-            return
+            throw new Error('Request already in progress')
           }
           set({ isLoading: true, error: null })
           try {
@@ -155,12 +162,32 @@ export const useAuthStore = create<AuthState>()(
           })
         },
 
+        __init__: {
+          __store__: () => {
+            Stores.EventBus.on(
+              'onboarding.user_updated',
+              (event) => {
+                set(state => ({
+                  user: state.user
+                    ? {
+                        ...state.user,
+                        completed_onboarding_ids: event.data.user.completed_onboarding_ids,
+                        completed_onboarding_step_ids: event.data.user.completed_onboarding_step_ids,
+                      }
+                    : state.user,
+                }))
+              },
+              'AuthStore',
+            )
+          },
+        },
+
         initAuth: async () => {
           const state = get()
           if (state.isLoading) {
             return
           }
-          set({ isLoading: true, error: null })
+          set({ isLoading: true, isInitializing: true, error: null })
 
           try {
             const token = get().token
@@ -172,11 +199,13 @@ export const useAuthStore = create<AuthState>()(
                 permissions: response.permissions,
                 isAuthenticated: true,
                 isLoading: false,
+                isInitializing: false,
               })
             } else {
               set({
                 isAuthenticated: false,
                 isLoading: false,
+                isInitializing: false,
               })
             }
           } catch (error) {
@@ -186,6 +215,7 @@ export const useAuthStore = create<AuthState>()(
                   ? error.message
                   : 'Failed to fetch user information',
               isLoading: false,
+              isInitializing: false,
               isAuthenticated: false,
               token: null,
               user: null,

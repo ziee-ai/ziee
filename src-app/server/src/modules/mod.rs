@@ -15,6 +15,7 @@ pub mod llm_provider_files;
 pub mod llm_repository;
 pub mod mcp;
 pub mod permissions;
+pub mod onboarding;
 pub mod user;
 
 // Re-export modules
