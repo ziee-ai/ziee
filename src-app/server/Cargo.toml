@@ -134,6 +134,11 @@ code_sandbox_seccomp = ["dep:libseccomp"]
 [target.'cfg(target_os = "linux")'.dependencies]
 libseccomp = { version = "0.3", optional = true }
 
+# macOS code-sandbox backend (libkrun microVM) talks to the in-VM guest agent
+# over the shared vsock control protocol.
+[target.'cfg(target_os = "macos")'.dependencies]
+sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
+
 [build-dependencies]
 tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "migrate"] }
