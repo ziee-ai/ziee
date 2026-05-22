@@ -2,8 +2,8 @@
 # Bootstrap the FIRST sandbox rootfs release tag on GitHub.
 #
 # After this runs:
-#   - `ziee-chat fetch-sandbox-rootfs --version=latest` can resolve
-#   - operators have a known-good rootfs to install via a single command
+#   - the server's runtime auto-fetch can resolve the published rootfs
+#   - operators have a known-good rootfs; the server fetches it on first use
 #
 # Subsequent releases happen automatically when you push a tag matching
 # `sandbox-rootfs-v*` — see the `release` + `update-known-revisions`
@@ -83,9 +83,7 @@ for flavor in minimal full; do
     echo "==> $flavor already built: $out"
   else
     echo "==> Building $flavor flavor (~5-15 min)"
-    cd "$REPO_ROOT/src-app/server"
-    cargo run -q --bin ziee-chat -- build-sandbox-rootfs --flavor "$flavor"
-    cd "$REPO_ROOT"
+    "$REPO_ROOT/src-app/sandbox-rootfs/build.sh" --flavor "$flavor"
   fi
 done
 
@@ -139,9 +137,8 @@ First (bootstrap) release of the ziee-chat sandbox rootfs.
 - Flavors: minimal (~57 MB), full (~780 MB; includes Python ML stack,
   R tidyverse, Node + TypeScript)
 
-Install on a server with:
-    ziee-chat fetch-sandbox-rootfs --version=latest
-    ziee-chat mount-sandbox-rootfs
+Install on a server by enabling code_sandbox and booting — the server
+auto-fetches and mounts the matching rootfs on the first execute_command.
 
 Or manually:
     gh release download $TAG --pattern '*-${ARCH}-minimal.squashfs*' \\
@@ -172,7 +169,7 @@ else
 fi
 
 # Step 4: append to embedded known_revisions.toml so the server's
-# fetch-sandbox-rootfs v2 can verify against the just-released sha256.
+# runtime auto-fetch can verify against the just-released sha256.
 #
 # APPEND-only — if this script is rerun for a NEW revision (despite the
 # "first" in the name), we must NOT wipe prior entries. The file may
@@ -206,11 +203,11 @@ done
        || ! grep -q "[[revision]]" "$known_revisions" 2>/dev/null; then
     echo "# Auto-populated by scripts/bootstrap-first-rootfs-release.sh"
     echo "# Each entry maps (schema, revision, arch, flavor) → sha256 of"
-    echo "# the released squashfs. The server's fetch-sandbox-rootfs verifies"
+    echo "# the released squashfs. The server's runtime auto-fetch verifies"
     echo "# the downloaded blob against this map before mounting."
     echo "#"
     echo "# Table name MUST be [[revision]] (singular). The reader at"
-    echo "# main.rs::fetch_sandbox_rootfs uses .get(\"revision\")."
+    echo "# runtime_fetch.rs::fetch_flavor uses .get(\"revision\")."
     echo
   fi
   for flavor in minimal full; do
@@ -243,6 +240,6 @@ if (( DRY_RUN == 0 )); then
   echo
   echo "Next steps:"
   echo "  1. Commit the updated known_revisions.toml"
-  echo "  2. Manual test: ziee-chat fetch-sandbox-rootfs --version=latest"
+  echo "  2. Manual test: boot the server with code_sandbox.enabled and run an execute_command (auto-fetch)"
   echo "  3. For future bumps, just push a sandbox-rootfs-v* tag — CI takes over."
 fi

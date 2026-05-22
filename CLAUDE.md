@@ -126,7 +126,7 @@ sudo dnf install libseccomp-static libseccomp-devel pkgconf-pkg-config
 sudo pacman -S libseccomp pkgconf
 ```
 
-**Additional build-the-rootfs-locally deps** (only if running `just sandbox-build` instead of `fetch-sandbox-rootfs`):
+**Additional build-the-rootfs-locally deps** (only if running `just sandbox-build` instead of letting the server auto-fetch a published rootfs):
 
 ```bash
 # Debian / Ubuntu
@@ -156,46 +156,19 @@ mismatch with the binary's embedded `SANDBOX_ROOTFS_SCHEMA_VERSION`.
 See `src-app/sandbox-rootfs/README.md` for the bootstrap (first
 release) procedure.
 
-### Running ziee-server inside Docker (sandbox enabled)
-
-Stripped containers cannot run bwrap. To use the sandbox in docker:
-
-```yaml
-services:
-  ziee-server:
-    image: ziee/server:latest
-    privileged: true                  # easiest; tested config
-    # OR for least-privilege:
-    # cap_add: [SYS_ADMIN]
-    # security_opt:
-    #   - seccomp:unconfined          # docker's default blocks unshare(CLONE_NEWUSER)
-    #   - apparmor:unconfined
-    cgroup_parent: ziee-sandbox.slice  # required for cgroup OOM kills
-    volumes:
-      - /opt/ziee-sandbox-rootfs:/opt/ziee-sandbox-rootfs:ro
-```
-
-On the docker host:
-```bash
-sudo mkdir -p /sys/fs/cgroup/ziee-sandbox.slice
-echo "+memory +pids +cpu" | sudo tee /sys/fs/cgroup/ziee-sandbox.slice/cgroup.subtree_control
-sudo chown -R <server-uid>:<server-gid> /sys/fs/cgroup/ziee-sandbox.slice
-```
+### Startup hardening line
 
 Expected startup hardening line (look in server logs):
-- Bare-metal Linux, built with `--features code_sandbox_seccomp`:
+- Built with `--features code_sandbox_seccomp`:
   `pid_ns: on, cgroup_v2: on (delegated), seccomp: on`
-- Bare-metal Linux, **stock build** (no feature flag): `pid_ns: on,
+- **Stock build** (no feature flag): `pid_ns: on,
   cgroup_v2: on (delegated), seccomp: off-feature-not-linked`. The
   rest of the hardening (rlimits via prlimit, PID-ns, cgroup, --clearenv,
   --die-with-parent, output cap, wall-clock timeout) is unaffected.
-- Privileged docker, built with seccomp feature:
-  `pid_ns: off-fallback-dev-bind, cgroup_v2: on (delegated), seccomp: on`
-- Stripped docker: `pid_ns: DISABLED` → sandbox refuses to register
 - Rootfs schema mismatch: `code_sandbox: rootfs schema version
-  mismatch; sandbox will NOT be registered` → run
-  `ziee-chat fetch-sandbox-rootfs --version=latest` to install a
-  compatible rootfs.
+  mismatch; sandbox will NOT be registered` → install a compatible
+  rootfs; the server auto-fetches the matching schema on the next
+  `execute_command`.
 
 **Enabling seccomp:**
 ```bash
@@ -341,9 +314,6 @@ echo "+memory +pids +cpu" | sudo tee \
     /sys/fs/cgroup/ziee-sandbox.slice/cgroup.subtree_control
 sudo chown -R <server-uid>:<server-gid> /sys/fs/cgroup/ziee-sandbox.slice
 ```
-
-A pre-baked Docker image (`ziee/server-with-sandbox`) is a follow-up
-deliverable; see the audit-archives if you want the prior design.
 
 ### Rootfs release process
 

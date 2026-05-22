@@ -6,8 +6,8 @@ mod modules;
 mod openapi;
 mod utils;
 
-use clap::{CommandFactory, FromArgMatches, Parser};
-use module_api::{ModuleContext, CLI_ENTRIES};
+use clap::Parser;
+use module_api::ModuleContext;
 use tokio::signal;
 
 #[derive(Parser, Debug)]
@@ -26,39 +26,7 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
-    // Build the top-level clap Command from Cli derive, then extend
-    // with subcommands each module registered via
-    // `#[distributed_slice(CLI_ENTRIES)]`. Modules own their CLI
-    // surface end-to-end; main.rs just dispatches.
-    let mut cmd = Cli::command();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for entry in CLI_ENTRIES.iter() {
-        for sub in (entry.subcommands)() {
-            let name = sub.get_name().to_string();
-            if !seen.insert(name.clone()) {
-                panic!(
-                    "CLI subcommand name collision: {name:?} (registered by entry {})",
-                    entry.name
-                );
-            }
-            cmd = cmd.subcommand(sub);
-        }
-    }
-    let matches = cmd.get_matches();
-    let cli = Cli::from_arg_matches(&matches).expect("Cli derive must parse its own matches");
-
-    // Dispatch operational subcommands BEFORE any of the server boot
-    // sequence runs — these are short-lived; they don't need Config,
-    // DB, or module init.
-    if let Some((sub_name, _)) = matches.subcommand() {
-        for entry in CLI_ENTRIES.iter() {
-            if let Some(code) = (entry.dispatch)(&matches) {
-                std::process::exit(code);
-            }
-        }
-        eprintln!("ERROR: no module claimed subcommand {sub_name:?}");
-        std::process::exit(2);
-    }
+    let cli = Cli::parse();
 
     // Check for OpenAPI generation flag
     if cli.generate_openapi.is_some() {

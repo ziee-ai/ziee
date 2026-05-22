@@ -1,7 +1,7 @@
 //! code_sandbox — bwrap-isolated code execution exposed as a built-in
 //! MCP server.
 //!
-//! Architecture (see `.claude/plans/replicated-enchanting-allen.md`):
+//! Architecture:
 //! the sandbox registers as a regular row in `mcp_servers` with
 //! `is_built_in=true` + `transport_type='http'`, points at a loopback
 //! URL on the same axum app, and serves JSON-RPC at `/api/code-sandbox`.
@@ -20,7 +20,6 @@ use uuid::Uuid;
 use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 
 pub mod cgroup;
-pub mod cli;
 pub mod config;
 pub mod handlers;
 pub mod prefetch;

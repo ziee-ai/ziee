@@ -7,12 +7,10 @@
 //! the cache dir. Idempotent: if the target file is already cached
 //! with a matching sha256, returns immediately.
 //!
-//! The only public entry point is [`fetch_flavor`]. It's called from:
-//!   - `runtime_mount::ensure_rootfs_ready` (auto-fetch on first use
-//!     of a flavor)
-//!   - `cli/fetch.rs::run` (the `fetch-sandbox-rootfs` CLI subcommand;
-//!     scheduled for deletion once the runtime auto-fetch path is
-//!     wired up end-to-end)
+//! The only public entry point is [`fetch_flavor`], called from
+//! `runtime_mount::ensure_rootfs_ready` (auto-fetch on first use of a
+//! flavor). There is no CLI fetch command — the runtime owns fetching
+//! end-to-end.
 //!
 //! Internal blocking work (reqwest::blocking, sigstore::blocking) runs
 //! inside `tokio::task::spawn_blocking` so it doesn't panic dropping

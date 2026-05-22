@@ -301,4 +301,73 @@ test.describe('Sandbox Environments admin settings', () => {
       page.getByText("You don't have permission to view sandbox environments."),
     ).toBeVisible({ timeout: 10000 })
   })
+
+  test('evict removes a cached environment', async ({ page, testInfra }) => {
+    const { baseURL } = testInfra
+    await loginAsAdmin(page, baseURL)
+
+    let minimalCached = true
+    const envList = () => ({
+      available: [
+        {
+          flavor: 'minimal',
+          description: 'Shell + python3',
+          approximate_size_mb: 57,
+          cached: minimalCached,
+          cached_size_bytes: minimalCached ? 59_000_000 : null,
+          mounted: false,
+        },
+        {
+          flavor: 'full',
+          description: 'numpy + torch + R + Node',
+          approximate_size_mb: 853,
+          cached: false,
+          cached_size_bytes: null,
+          mounted: false,
+        },
+      ],
+    })
+
+    await page.route(/\/api\/code-sandbox\/environments$/, async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(envList()),
+      })
+    })
+    await mockPrefetchListAndStart(page)
+    // DELETE evict → flip minimal to not-cached + return the refreshed list.
+    await page.route(/\/api\/code-sandbox\/environments\/minimal$/, async route => {
+      if (route.request().method() === 'DELETE') {
+        minimalCached = false
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(envList()),
+        })
+      }
+      return route.fallback()
+    })
+
+    await gotoSandboxEnvironments(page, baseURL)
+
+    const minimalRow = page.locator('tr[data-flavor="minimal"]')
+    // Cached, with a real on-disk size + an Evict button.
+    await expect(minimalRow.getByText('Cached')).toBeVisible()
+    await expect(minimalRow.getByTestId('cached-size')).toBeVisible()
+    await minimalRow.getByTestId('evict-button').click()
+
+    // Confirm the Popconfirm (its OK button text is also "Evict" — scope to the popover).
+    await page
+      .locator('.ant-popover')
+      .filter({ hasText: 'Evict cached rootfs?' })
+      .getByRole('button', { name: 'Evict' })
+      .click()
+
+    // Row flips to Not fetched and the Fetch button returns.
+    await expect(minimalRow.getByText('Not fetched')).toBeVisible({ timeout: 10000 })
+    await expect(
+      minimalRow.getByRole('button', { name: 'Fetch' }),
+    ).toBeVisible()
+  })
 })

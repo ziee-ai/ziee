@@ -4,7 +4,6 @@ import {
   getAdminToken,
   createTestUser,
   loginExpectingOnboarding,
-  completeOnboarding,
 } from '../../common/auth-helpers'
 
 /**
@@ -18,7 +17,7 @@ import {
 
 const GUIDE = 'getting-started'
 
-async function freshUser(apiURL: string, baseURL: string, page: any, name: string) {
+async function freshUser(apiURL: string, name: string) {
   const adminToken = await getAdminToken(apiURL)
   const username = `${name}_${Date.now().toString(36)}`
   // profile::read lets the user mark onboarding steps/guides complete.
@@ -37,7 +36,7 @@ test.describe('Onboarding wizard', () => {
 
   test('fresh user is redirected into the wizard', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
-    const { username } = await freshUser(apiURL, baseURL, page, 'redir')
+    const { username } = await freshUser(apiURL, 'redir')
 
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 
@@ -49,7 +48,7 @@ test.describe('Onboarding wizard', () => {
 
   test('stepping through the wizard completes onboarding and lands on chat', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
-    const { username } = await freshUser(apiURL, baseURL, page, 'flow')
+    const { username } = await freshUser(apiURL, 'flow')
 
     await loginExpectingOnboarding(page, baseURL, username, 'password123')
 

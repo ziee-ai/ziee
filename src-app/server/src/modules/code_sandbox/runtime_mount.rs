@@ -451,3 +451,85 @@ pub async fn shutdown() {
         );
     }
 }
+
+/// Snapshot of flavors currently mounted (server-spawned squashfuse live).
+/// Empty if no flavor has been mounted yet.
+pub async fn mounted_set() -> std::collections::HashSet<String> {
+    match MOUNTED.get() {
+        Some(slot) => slot.lock().await.keys().cloned().collect(),
+        None => std::collections::HashSet::new(),
+    }
+}
+
+/// Result of evicting a flavor from the cache.
+#[derive(Debug, Clone, Copy)]
+pub struct EvictOutcome {
+    pub bytes_freed: u64,
+    pub was_cached: bool,
+}
+
+/// Evict a flavor from the cache: unmount its squashfuse (if mounted),
+/// drop its READY/MOUNTED registry entries, and delete its cached
+/// `*-{flavor}.squashfs` file(s) under `cache_dir` plus any mirror mount dir.
+/// Idempotent — returns `was_cached: false`, `bytes_freed: 0` when nothing is
+/// present. The next `ensure_rootfs_ready` for the flavor re-fetches + re-mounts.
+pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
+    // 1. Drop the READY cell so the next use re-initializes from scratch.
+    if let Some(map) = READY.get() {
+        map.remove(flavor);
+    }
+
+    // 2. Unmount the squashfuse we spawned (if any) — mirrors shutdown().
+    if let Some(slot) = MOUNTED.get() {
+        let taken = slot.lock().await.remove(flavor);
+        if let Some(MountedRootfs { mut child, mount_dir }) = taken {
+            if let Some(pid) = child.id() {
+                unsafe {
+                    libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                }
+                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+            }
+            let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
+            let _ = std::fs::remove_dir(&mount_dir);
+        }
+    }
+
+    // 3. Delete the cached squashfs file(s) for this flavor + mirror mount dir.
+    let suffix = format!("-{flavor}.squashfs");
+    let mut bytes_freed: u64 = 0;
+    let mut was_cached = false;
+    if let Ok(rd) = std::fs::read_dir(cache_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            let is_match = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(&suffix));
+            if !is_match {
+                continue;
+            }
+            was_cached = true;
+            if let Ok(meta) = std::fs::metadata(&p) {
+                bytes_freed += meta.len();
+            }
+            // Best-effort unmount + remove the mirror mount dir (the squashfs
+            // basename without its extension).
+            if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                let mnt = cache_dir.join(stem);
+                let _ = Command::new("fusermount").arg("-u").arg(&mnt).status().await;
+                let _ = std::fs::remove_dir_all(&mnt);
+            }
+            match std::fs::remove_file(&p) {
+                Ok(()) => tracing::info!(
+                    path = %p.display(), flavor, "code_sandbox: rootfs evicted from cache"
+                ),
+                Err(e) => tracing::warn!(
+                    path = %p.display(), error = %e,
+                    "code_sandbox: evict failed to remove squashfs"
+                ),
+            }
+        }
+    }
+
+    EvictOutcome { bytes_freed, was_cached }
+}

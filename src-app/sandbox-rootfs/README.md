@@ -25,13 +25,11 @@ just sandbox-mount
 just sandbox-test
 ```
 
-You need: `bubblewrap`, `squashfuse`, `squashfs-tools`, and `docker`
-on the host. apt-cacher-ng is optional but drops rebuild time from
-~15 min → ~3-5 min.
+You need `bubblewrap`, `squashfuse`, `squashfs-tools`, and `mmdebstrap`
+on the host:
 
 ```bash
-docker run -d --name=apt-cacher-ng -p 3142:3142 sameersbn/apt-cacher-ng
-just sandbox-build full  # auto-detects port 3142
+sudo apt install bubblewrap squashfuse squashfs-tools mmdebstrap
 ```
 
 ## Versioning
@@ -57,16 +55,22 @@ server's `v0.x.y` tags so the rootfs can ship out-of-band.
 src-app/sandbox-rootfs/
 ├── README.md              # this file
 ├── RELEASE-RUNBOOK.md     # bootstrap + ongoing release flow
-├── Dockerfile             # build recipe (full + minimal flavors)
-├── build.sh               # mmdebstrap / docker builder; outputs .squashfs
+├── build.sh               # generic mmdebstrap driver; outputs .squashfs
 ├── compat.toml            # schema ↔ server-version matrix (server include_str!s)
 ├── yanks.toml             # yanked revisions (PEP 592 pattern)
-└── pins/                  # exact dependency pins for reproducibility
+└── flavors/               # one self-contained recipe per flavor per schema
+    └── <flavor>/v<schema>/flavor.sh
 ```
+
+**Adding a flavor** = drop in `flavors/<name>/v<schema>/flavor.sh` (set
+`APT_SNAPSHOT`, `APT_PACKAGES`, and an optional `provision()` function for
+pip/R/npm/etc.); no `build.sh` edits. Note: making the new flavor *selectable*
+also needs it added to the CI matrix (`.github/workflows/code_sandbox.yml`) and
+to `KNOWN_FLAVORS` (`src-app/server/src/modules/code_sandbox/types.rs`).
 
 ## Bootstrap (one-time, before any release exists)
 
-Before `just sandbox-fetch` has anything to fetch:
+Before the server has any published release to auto-fetch:
 
 1. `just sandbox-build minimal` and `just sandbox-build full` locally.
 2. Create the GitHub Release manually:
@@ -77,7 +81,8 @@ Before `just sandbox-fetch` has anything to fetch:
      .ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v1.r0-x86_64-minimal.squashfs \
      .ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v1.r0-x86_64-full.squashfs
    ```
-3. From this point on, every dev / CI run uses `just sandbox-fetch`.
+3. From this point on, the server auto-fetches the matching rootfs from
+   GitHub Releases on the first `execute_command` (sha256 + sigstore verify).
 
 ## Threat model
 
@@ -86,15 +91,9 @@ accidental destructive commands, and host filesystem pollution. It
 does NOT protect against Linux kernel 0-days. For multi-tenant SaaS
 execution, escalate to gVisor or Firecracker.
 
-See `.claude/plans/replicated-enchanting-allen.md` (Phase 3) for the
-full threat model + the empirical validation table that justifies the
-bwrap flag set.
-
 ## Cross-references
 
 - [`RELEASE-RUNBOOK.md`](./RELEASE-RUNBOOK.md) — bootstrap script +
   ongoing release flow, schema bumps, yanks, troubleshooting.
-- [`../../CLAUDE.md`](../../CLAUDE.md) — test tier overview, dev
-  workflow cheat sheet, operator deployment notes.
 - [`../../scripts/bootstrap-first-rootfs-release.sh`](../../scripts/bootstrap-first-rootfs-release.sh)
   — one-time bootstrap of the first GitHub release tag.

@@ -4,7 +4,7 @@ import { Page, expect } from '@playwright/test'
  * Auth-specific form helpers
  * These are only used within the auth test suite
  *
- * Uses semantic selectors following CLAUDE.md best practices
+ * Uses semantic selectors following best practices
  */
 
 // =====================================================

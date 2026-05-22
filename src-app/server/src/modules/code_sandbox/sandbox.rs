@@ -1,9 +1,8 @@
 //! bwrap invocation + always-on hardening for the code sandbox.
 //!
-//! Design rationale and validated flag set lives in
-//! `.claude/plans/replicated-enchanting-allen.md` under "Phase 3:
-//! Sandbox runtime — bwrap + always-on hardening". Every flag here has
-//! a test row in the empirical-validation table.
+//! Design rationale and validated flag set for the bwrap + always-on
+//! hardening. Every flag here has a test row in the empirical-
+//! validation table.
 
 use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
 use std::os::unix::process::CommandExt;

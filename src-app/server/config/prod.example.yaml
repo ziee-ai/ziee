@@ -45,7 +45,7 @@ jwt:
   refresh_token_expiry_days: 30
 
 # Code sandbox (bwrap-isolated execution; built-in MCP server).
-# Production deployment requirements (see CLAUDE.md):
+# Production deployment requirements:
 #   - bubblewrap installed on the host
 #   - rootfs squashfs mounted via squashfuse at `rootfs_path`
 #   - delegated cgroup parent at `cgroup_parent` (owned by server uid)
