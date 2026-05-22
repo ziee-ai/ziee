@@ -143,3 +143,54 @@ async fn oauth_config_on_unknown_server_returns_404() {
         .unwrap();
     assert_eq!(resp.status(), 404, "OAuth config on a non-owned/unknown server must 404");
 }
+
+#[tokio::test]
+async fn oauth_config_survives_a_server_update() {
+    // Backend side of the UI's "leave the secret blank to keep it": editing the
+    // server row (without re-PUTing OAuth) must not disturb the stored config.
+    let server = TestServer::start().await;
+    let user = test_helpers::create_user_with_permissions(
+        &server,
+        "user",
+        &["mcp_servers::create", "mcp_servers::read", "mcp_servers::edit"],
+    )
+    .await;
+    let id = create_http_server(&server, &user.token).await;
+    let client = reqwest::Client::new();
+    let oauth_url = server.api_url(&format!("/mcp/servers/{id}/oauth"));
+
+    // Store an OAuth config (with a secret).
+    let resp = client
+        .put(&oauth_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "client_id": "mcp-client", "client_secret": "super-secret" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Update the server row (display name only) — OAuth lives in its own table
+    // and must be untouched.
+    let resp = client
+        .put(&server.api_url(&format!("/mcp/servers/{id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .json(&json!({ "display_name": "Renamed Server" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200, "server update should succeed");
+
+    // The OAuth config — and its stored secret — must still be there.
+    let resp = client
+        .get(&oauth_url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["client_id"], "mcp-client", "client id must survive the update");
+    assert_eq!(
+        body["has_client_secret"], true,
+        "the stored secret must survive a server-row update (leave-blank-keeps)"
+    );
+}
