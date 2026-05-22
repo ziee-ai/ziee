@@ -135,9 +135,9 @@ code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 [target.'cfg(target_os = "linux")'.dependencies]
 sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 
-# macOS code-sandbox backend (libkrun microVM) talks to the in-VM guest agent
-# over the shared vsock control protocol.
-[target.'cfg(target_os = "macos")'.dependencies]
+# The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
+# in-guest agent over the shared control protocol.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 
 [build-dependencies]

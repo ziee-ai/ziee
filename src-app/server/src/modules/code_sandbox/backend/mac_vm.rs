@@ -26,8 +26,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use sandbox_vm_protocol::{encode, CgroupLimits, Decoder, ExecRequest, Frame};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use sandbox_vm_protocol::{CgroupLimits, ExecRequest};
 use tokio::net::UnixStream;
 use tokio::sync::{Mutex, Semaphore};
 
@@ -35,9 +34,7 @@ use super::SandboxBackend;
 use crate::common::AppError;
 use crate::modules::code_sandbox::runtime_fetch;
 use crate::modules::code_sandbox::runtime_mount::{cache_dir, EnsureOutcome, EvictOutcome};
-use crate::modules::code_sandbox::sandbox::{
-    self, SandboxRunResult, DEFAULT_TIMEOUT_SECS, OUTPUT_CAP_BYTES,
-};
+use crate::modules::code_sandbox::sandbox::{self, SandboxRunResult, DEFAULT_TIMEOUT_SECS};
 use crate::modules::code_sandbox::types::{
     CgroupMode, CodeSandboxState, HardeningCapabilities, PidNsMode, SandboxContext, SeccompMode,
 };
@@ -266,98 +263,6 @@ fn guest_workspace_path(state: &CodeSandboxState, host_ws: &Path) -> PathBuf {
     Path::new(GUEST_WORKSPACE_MOUNT).join(rel)
 }
 
-/// Send the bwrap argv to the guest agent over the bridged unix socket and
-/// collect the streamed output into a `SandboxRunResult`.
-async fn run_via_socket(
-    mut stream: UnixStream,
-    req: ExecRequest,
-    timeout_secs: u64,
-) -> Result<SandboxRunResult, AppError> {
-    let started = Instant::now();
-    stream
-        .write_all(&encode(&Frame::Exec(req)))
-        .await
-        .map_err(|e| AppError::internal_error(format!("send exec to VM: {e}")))?;
-
-    let mut decoder = Decoder::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    let mut stdout: Vec<u8> = Vec::new();
-    let mut stderr: Vec<u8> = Vec::new();
-    let mut stdout_truncated = false;
-    let mut stderr_truncated = false;
-    let mut exit_code = -1;
-    let mut timed_out = false;
-
-    // Host-side hung-guest guard (gap #6): the agent enforces the per-exec
-    // timeout in-guest and should always send Exit, but if the agent itself
-    // wedges, bound the host wait at the exec budget + grace.
-    let read_budget = Duration::from_secs(timeout_secs + 30);
-    loop {
-        let n = match tokio::time::timeout(read_budget, stream.read(&mut buf)).await {
-            Ok(Ok(n)) => n,
-            Ok(Err(e)) => return Err(AppError::internal_error(format!("read VM stream: {e}"))),
-            Err(_) => {
-                timed_out = true;
-                break;
-            }
-        };
-        if n == 0 {
-            break; // socket closed
-        }
-        decoder.feed(&buf[..n]);
-        let mut done = false;
-        loop {
-            match decoder.next_frame() {
-                Ok(Some(Frame::Stdout(b))) => append_capped(&mut stdout, &b, &mut stdout_truncated),
-                Ok(Some(Frame::Stderr(b))) => append_capped(&mut stderr, &b, &mut stderr_truncated),
-                Ok(Some(Frame::Exit(s))) => {
-                    exit_code = s.code;
-                    timed_out = s.timed_out;
-                    done = true;
-                    break;
-                }
-                Ok(Some(Frame::Exec(_))) => {} // not expected from the guest
-                Ok(None) => break,
-                Err(e) => return Err(AppError::internal_error(format!("VM protocol error: {e}"))),
-            }
-        }
-        if done {
-            break;
-        }
-    }
-
-    Ok(SandboxRunResult {
-        exit_code,
-        stdout: lossy(stdout, stdout_truncated),
-        stderr: lossy(stderr, stderr_truncated),
-        stdout_truncated,
-        stderr_truncated,
-        duration_ms: started.elapsed().as_millis() as u64,
-        timed_out,
-    })
-}
-
-fn append_capped(buf: &mut Vec<u8>, chunk: &[u8], truncated: &mut bool) {
-    if *truncated {
-        return;
-    }
-    if buf.len() + chunk.len() > OUTPUT_CAP_BYTES {
-        let remain = OUTPUT_CAP_BYTES - buf.len();
-        buf.extend_from_slice(&chunk[..remain]);
-        *truncated = true;
-    } else {
-        buf.extend_from_slice(chunk);
-    }
-}
-
-fn lossy(buf: Vec<u8>, truncated: bool) -> String {
-    let mut s = String::from_utf8_lossy(&buf).into_owned();
-    if truncated {
-        s.push_str(&format!("\n[output truncated at {OUTPUT_CAP_BYTES} bytes]\n"));
-    }
-    s
-}
-
 #[async_trait]
 impl SandboxBackend for MacVmBackend {
     async fn ensure_rootfs_ready(
@@ -462,7 +367,7 @@ impl SandboxBackend for MacVmBackend {
 
             match UnixStream::connect(&vm.socket_path).await {
                 Ok(stream) => {
-                    let result = run_via_socket(stream, req.clone(), secs).await;
+                    let result = super::vm_client::run_on_stream(stream, req.clone(), secs).await;
                     *vm.last_used.lock().await = Instant::now();
                     return result;
                 }

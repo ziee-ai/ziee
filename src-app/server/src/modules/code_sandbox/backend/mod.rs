@@ -30,6 +30,10 @@ use crate::modules::code_sandbox::types::{CodeSandboxState, SandboxContext};
 
 #[cfg(target_os = "linux")]
 mod linux_bwrap;
+// Shared host-side client for the in-guest agent (vsock/unix on macOS, TCP on
+// Windows) — used by both VM backends.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod vm_client;
 #[cfg(target_os = "macos")]
 mod mac_vm;
 #[cfg(target_os = "windows")]
