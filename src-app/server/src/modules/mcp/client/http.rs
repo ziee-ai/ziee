@@ -271,7 +271,7 @@ impl HttpMcpClient {
         Self::new_internal(server, None, Some(oauth))
     }
 
-    fn new_internal(
+    pub(crate) fn new_internal(
         server: McpServer,
         sampling_handler: Option<Arc<dyn SamplingHandler>>,
         oauth: Option<OAuthClientConfig>,

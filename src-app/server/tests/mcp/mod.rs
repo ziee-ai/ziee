@@ -1213,6 +1213,7 @@ mod conformance_elicitation_test; // Elicitation roundtrip tests via mock SSE se
 mod conformance_phase1_test;      // Plan-3 Phase-1: version negotiation, string id, pagination
 mod conformance_resumability_test; // Plan-3 Phase-3 (I1): SSE resume via Last-Event-Id
 mod conformance_oauth_test;        // Plan-3 Phase-4 (Cos1): OAuth client_credentials
+mod oauth_config_route_test;       // Plan-3 Phase-4: per-server OAuth config endpoints
 mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
 
 // ============================================================================

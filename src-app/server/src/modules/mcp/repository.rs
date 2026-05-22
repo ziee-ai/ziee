@@ -7,7 +7,9 @@ use uuid::Uuid;
 
 use crate::common::AppError;
 
-use super::models::{McpServer, TransportType, UsageMode};
+use super::models::{
+    McpServer, McpServerOAuthConfig, SetMcpServerOAuthConfigRequest, TransportType, UsageMode,
+};
 use super::types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest};
 
 /// MCP Repository
@@ -77,6 +79,26 @@ impl McpRepository {
 
     pub async fn get_any_server(&self, id: Uuid) -> Result<Option<McpServer>, AppError> {
         get_any_mcp_server(&self.pool, id).await
+    }
+
+    // OAuth client_credentials config (external HTTP servers; Phase 4)
+    pub async fn get_oauth_config(
+        &self,
+        server_id: Uuid,
+    ) -> Result<Option<McpServerOAuthConfig>, AppError> {
+        get_mcp_server_oauth_config(&self.pool, server_id).await
+    }
+
+    pub async fn set_oauth_config(
+        &self,
+        server_id: Uuid,
+        request: SetMcpServerOAuthConfigRequest,
+    ) -> Result<McpServerOAuthConfig, AppError> {
+        set_mcp_server_oauth_config(&self.pool, server_id, request).await
+    }
+
+    pub async fn delete_oauth_config(&self, server_id: Uuid) -> Result<(), AppError> {
+        delete_mcp_server_oauth_config(&self.pool, server_id).await
     }
 
     pub async fn get_system_server(&self, id: Uuid) -> Result<Option<McpServer>, AppError> {
@@ -660,6 +682,97 @@ pub async fn create_system_mcp_server(
 }
 
 /// Get system MCP server by ID
+// ─── OAuth client_credentials config (Phase 4) ───────────────────────────────
+
+fn oauth_row_to_model(
+    server_id: Uuid,
+    client_id: String,
+    client_secret: String,
+    scopes: Option<String>,
+    resource: Option<String>,
+    created_at: time::OffsetDateTime,
+    updated_at: time::OffsetDateTime,
+) -> McpServerOAuthConfig {
+    McpServerOAuthConfig {
+        server_id,
+        client_id,
+        client_secret,
+        scopes,
+        resource,
+        created_at: DateTime::from_timestamp(created_at.unix_timestamp(), 0).unwrap(),
+        updated_at: DateTime::from_timestamp(updated_at.unix_timestamp(), 0).unwrap(),
+    }
+}
+
+pub async fn get_mcp_server_oauth_config(
+    pool: &PgPool,
+    server_id: Uuid,
+) -> Result<Option<McpServerOAuthConfig>, AppError> {
+    let row = sqlx::query!(
+        r#"
+        SELECT server_id, client_id, client_secret, scopes, resource, created_at, updated_at
+        FROM mcp_server_oauth_configs
+        WHERE server_id = $1
+        "#,
+        server_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|r| {
+        oauth_row_to_model(
+            r.server_id, r.client_id, r.client_secret, r.scopes, r.resource,
+            r.created_at, r.updated_at,
+        )
+    }))
+}
+
+pub async fn set_mcp_server_oauth_config(
+    pool: &PgPool,
+    server_id: Uuid,
+    request: SetMcpServerOAuthConfigRequest,
+) -> Result<McpServerOAuthConfig, AppError> {
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO mcp_server_oauth_configs
+            (server_id, client_id, client_secret, scopes, resource, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        ON CONFLICT (server_id) DO UPDATE SET
+            client_id = EXCLUDED.client_id,
+            client_secret = EXCLUDED.client_secret,
+            scopes = EXCLUDED.scopes,
+            resource = EXCLUDED.resource,
+            updated_at = NOW()
+        RETURNING server_id, client_id, client_secret, scopes, resource, created_at, updated_at
+        "#,
+        server_id,
+        request.client_id,
+        request.client_secret,
+        request.scopes,
+        request.resource,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(oauth_row_to_model(
+        row.server_id, row.client_id, row.client_secret, row.scopes, row.resource,
+        row.created_at, row.updated_at,
+    ))
+}
+
+pub async fn delete_mcp_server_oauth_config(
+    pool: &PgPool,
+    server_id: Uuid,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        "DELETE FROM mcp_server_oauth_configs WHERE server_id = $1",
+        server_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn get_any_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpServer>, AppError> {
     let row = sqlx::query!(
         r#"

@@ -19,7 +19,7 @@ use crate::{
 
 use super::super::{
     events::McpServerEvent,
-    models::McpServer,
+    models::{McpServer, McpServerOAuthConfigResponse, SetMcpServerOAuthConfigRequest},
     permissions::*,
     types::{CreateMcpServerRequest, McpServerListResponse, UpdateMcpServerRequest},
 };
@@ -159,6 +159,97 @@ pub fn delete_user_server_docs(op: TransformOperation) -> TransformOperation {
         .summary("Delete user MCP server")
         .description("Delete a user MCP server configuration")
         .response_with::<204, (), _>(|res| res.description("Server deleted successfully"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Server not found"))
+}
+
+// =====================================================
+// OAuth client_credentials config (Phase 4)
+// External HTTP servers may require OAuth; these endpoints manage the
+// per-server client_credentials config. The secret is write-only — it is
+// never returned in any response.
+// =====================================================
+
+/// Ensure the caller owns the server (404 otherwise), returning it.
+async fn owned_server(id: Uuid, user_id: Uuid) -> Result<McpServer, AppError> {
+    Repos
+        .mcp
+        .get_user_server(id, user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Server"))
+}
+
+/// Get a user server's OAuth config (secret omitted). `null` when unset.
+#[debug_handler]
+pub async fn get_server_oauth_config(
+    auth: RequirePermissions<(McpServersRead,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Option<McpServerOAuthConfigResponse>>> {
+    owned_server(id, auth.user.id).await?;
+    let cfg = Repos.mcp.get_oauth_config(id).await?.map(|c| c.to_response());
+    Ok((StatusCode::OK, Json(cfg)))
+}
+
+pub fn get_server_oauth_config_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(McpServersRead,)>(op)
+        .id("McpServer.getOAuthConfig")
+        .tag("MCP Servers")
+        .summary("Get MCP server OAuth config")
+        .description("Get a user MCP server's OAuth client_credentials config (the client secret is never returned)")
+        .response::<200, Json<Option<McpServerOAuthConfigResponse>>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Server not found"))
+}
+
+/// Set (create or replace) a user server's OAuth config.
+#[debug_handler]
+pub async fn set_server_oauth_config(
+    auth: RequirePermissions<(McpServersEdit,)>,
+    Path(id): Path<Uuid>,
+    Json(request): Json<SetMcpServerOAuthConfigRequest>,
+) -> ApiResult<Json<McpServerOAuthConfigResponse>> {
+    owned_server(id, auth.user.id).await?;
+    if request.client_id.trim().is_empty() || request.client_secret.is_empty() {
+        return Err(AppError::bad_request(
+            "invalid_oauth_config",
+            "client_id and client_secret are required",
+        )
+        .into());
+    }
+    let cfg = Repos.mcp.set_oauth_config(id, request).await?;
+    Ok((StatusCode::OK, Json(cfg.to_response())))
+}
+
+pub fn set_server_oauth_config_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(McpServersEdit,)>(op)
+        .id("McpServer.setOAuthConfig")
+        .tag("MCP Servers")
+        .summary("Set MCP server OAuth config")
+        .description("Create or replace a user MCP server's OAuth client_credentials config")
+        .response::<200, Json<McpServerOAuthConfigResponse>>()
+        .response_with::<400, (), _>(|res| res.description("Bad request - validation failed"))
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<404, (), _>(|res| res.description("Server not found"))
+}
+
+/// Delete a user server's OAuth config.
+#[debug_handler]
+pub async fn delete_server_oauth_config(
+    auth: RequirePermissions<(McpServersEdit,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    owned_server(id, auth.user.id).await?;
+    Repos.mcp.delete_oauth_config(id).await?;
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn delete_server_oauth_config_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(McpServersEdit,)>(op)
+        .id("McpServer.deleteOAuthConfig")
+        .tag("MCP Servers")
+        .summary("Delete MCP server OAuth config")
+        .description("Remove a user MCP server's OAuth client_credentials config")
+        .response_with::<204, (), _>(|res| res.description("OAuth config removed"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }

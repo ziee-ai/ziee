@@ -879,6 +879,16 @@ export interface McpServerListResponse {
   total_pages: number
 }
 
+export interface McpServerOAuthConfigResponse {
+  client_id: string
+  created_at: string
+  has_client_secret: boolean
+  resource?: string
+  scopes?: string
+  server_id: string
+  updated_at: string
+}
+
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
@@ -1414,6 +1424,13 @@ export interface ServerGroupsRequest {
   group_ids: string[]
 }
 
+export interface SetMcpServerOAuthConfigRequest {
+  client_id: string
+  client_secret: string
+  resource?: string
+  scopes?: string
+}
+
 export interface SetupAdminRequest {
   display_name?: string
   email: string
@@ -1937,8 +1954,11 @@ export const ApiEndpoints = {
   'Mcp.updateDefaults': 'PUT /api/mcp/defaults',
   'McpServer.create': 'POST /api/mcp/servers',
   'McpServer.delete': 'DELETE /api/mcp/servers/{id}',
+  'McpServer.deleteOAuthConfig': 'DELETE /api/mcp/servers/{id}/oauth',
   'McpServer.get': 'GET /api/mcp/servers/{id}',
+  'McpServer.getOAuthConfig': 'GET /api/mcp/servers/{id}/oauth',
   'McpServer.listAccessible': 'GET /api/mcp/servers',
+  'McpServer.setOAuthConfig': 'PUT /api/mcp/servers/{id}/oauth',
   'McpServer.update': 'PUT /api/mcp/servers/{id}',
   'McpServerRuntime.callTool': 'POST /api/mcp/servers/{id}/tools/{name}/call',
   'McpServerRuntime.disconnect': 'DELETE /api/mcp/servers/{id}/disconnect',
@@ -2100,8 +2120,11 @@ export type ApiEndpointParameters = {
   'Mcp.updateDefaults': UpsertUserMcpDefaultsRequest
   'McpServer.create': CreateMcpServerRequest
   'McpServer.delete': { id: string }
+  'McpServer.deleteOAuthConfig': { id: string }
   'McpServer.get': { id: string }
+  'McpServer.getOAuthConfig': { id: string }
   'McpServer.listAccessible': PaginationQuery
+  'McpServer.setOAuthConfig': { id: string } & SetMcpServerOAuthConfigRequest
   'McpServer.update': { id: string } & UpdateMcpServerRequest
   'McpServerRuntime.callTool': { id: string; name: string } & CallToolRequest
   'McpServerRuntime.disconnect': { id: string }
@@ -2263,8 +2286,11 @@ export type ApiEndpointResponses = {
   'Mcp.updateDefaults': UserMcpDefaultsResponse
   'McpServer.create': McpServer
   'McpServer.delete': void
+  'McpServer.deleteOAuthConfig': void
   'McpServer.get': McpServer
+  'McpServer.getOAuthConfig': McpServerOAuthConfigResponse | null
   'McpServer.listAccessible': McpServerListResponse
+  'McpServer.setOAuthConfig': McpServerOAuthConfigResponse
   'McpServer.update': McpServer
   'McpServerRuntime.callTool': CallToolResponse
   'McpServerRuntime.disconnect': any

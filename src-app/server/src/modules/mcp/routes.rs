@@ -34,6 +34,19 @@ pub fn user_routes() -> ApiRouter {
             "/mcp/servers/{id}",
             delete_with(delete_user_server, delete_user_server_docs),
         )
+        // OAuth client_credentials config (Phase 4)
+        .api_route(
+            "/mcp/servers/{id}/oauth",
+            get_with(get_server_oauth_config, get_server_oauth_config_docs),
+        )
+        .api_route(
+            "/mcp/servers/{id}/oauth",
+            put_with(set_server_oauth_config, set_server_oauth_config_docs),
+        )
+        .api_route(
+            "/mcp/servers/{id}/oauth",
+            delete_with(delete_server_oauth_config, delete_server_oauth_config_docs),
+        )
         // Runtime operations
         .api_route(
             "/mcp/servers/{id}/tools",
