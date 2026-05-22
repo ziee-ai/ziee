@@ -129,6 +129,29 @@ pub struct SSEChatStreamMcpElicitationRequiredData {
     pub server: String,
 }
 
+/// Event data for MCP tool progress (server sent a `notifications/progress`
+/// during a long-running tool call — e.g. a sandbox rootfs download).
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SSEChatStreamMcpToolProgressData {
+    /// ID of the assistant message whose tool call is reporting progress.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// Display name of the MCP server reporting progress.
+    pub server: String,
+    /// Opaque progress token the server echoed back (the client sets it on
+    /// the originating `tools/call`). Lets the UI correlate concurrent calls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress_token: Option<serde_json::Value>,
+    /// Current progress value (monotonically increasing per the MCP spec).
+    pub progress: f64,
+    /// Total expected units, if known (denominator for a progress bar).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<f64>,
+    /// Human-readable progress message ("Downloading…", "Verifying…").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 /// Event data for MCP tool approval required
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SSEChatStreamMcpApprovalRequiredData {
@@ -163,6 +186,8 @@ pub enum SSEChatStreamEventVariants {
     McpApprovalRequired(SSEChatStreamMcpApprovalRequiredData),
     /// MCP server requires structured human input (elicitation)
     McpElicitationRequired(SSEChatStreamMcpElicitationRequiredData),
+    /// MCP server reported progress on a long-running tool call
+    McpToolProgress(SSEChatStreamMcpToolProgressData),
     /// A tool created an artifact file (via MCP resource_link) that should be shown as a file card
     ArtifactCreated(SSEChatStreamArtifactCreatedData),
 }

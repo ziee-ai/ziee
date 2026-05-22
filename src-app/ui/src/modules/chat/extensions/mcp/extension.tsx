@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, Button, Card, Typography } from 'antd'
+import { Alert, Button, Card, Progress, Typography } from 'antd'
 import {
   ToolOutlined,
   CheckCircleOutlined,
@@ -80,6 +80,30 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           {isExpanded ? 'Hide' : 'Show'} details
         </Button>
       </div>
+
+      {toolCall.status === 'started' && toolCall.progress && (
+        <div className="mt-2">
+          {toolCall.progress.message && (
+            <Text type="secondary" className="text-xs">
+              {toolCall.progress.message}
+            </Text>
+          )}
+          <Progress
+            size="small"
+            status="active"
+            percent={
+              toolCall.progress.total && toolCall.progress.total > 0
+                ? Math.min(
+                    100,
+                    Math.round(
+                      (toolCall.progress.progress / toolCall.progress.total) * 100,
+                    ),
+                  )
+                : undefined
+            }
+          />
+        </div>
+      )}
 
       {isExpanded && (
         <div className="mt-2 text-xs">
@@ -353,6 +377,18 @@ const mcpExtension: ChatExtension = createExtension({
       }
 
       console.log('[MCP Extension] Tool started:', data.tool_name)
+    },
+
+    mcpToolProgress: async data => {
+      // A long-running tool call reported progress (e.g. a sandbox rootfs
+      // download). Attach it to the running tool call(s) for this server so
+      // the tool card can render a live progress bar.
+      const mcpStore = Stores.Chat.__state.McpStore
+      mcpStore.setToolCallProgress(data.server, {
+        progress: data.progress,
+        total: data.total ?? undefined,
+        message: data.message ?? undefined,
+      })
     },
 
     mcpApprovalRequired: async (data, get, set) => {

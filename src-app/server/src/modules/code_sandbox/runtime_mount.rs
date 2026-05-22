@@ -205,7 +205,7 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
                     "code_sandbox: no cached rootfs for flavor; auto-fetching"
                 );
                 let log_flavor = flavor.to_string();
-                let outcome = runtime_fetch::fetch_flavor(
+                let outcome = runtime_fetch::ensure_fetched(
                     &cache_dir,
                     flavor,
                     move |p| {
@@ -289,6 +289,20 @@ fn derive_cache_dir(state: &CodeSandboxState) -> PathBuf {
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Public accessor for the per-flavor cache dir (parent of the legacy
+/// `current` mount symlink). Used by the streaming consent/fetch path
+/// to drive `runtime_fetch::ensure_fetched` directly with progress.
+pub fn cache_dir(state: &CodeSandboxState) -> PathBuf {
+    derive_cache_dir(state)
+}
+
+/// `true` if a `.squashfs` for `flavor` is already in the cache dir, so
+/// picking that flavor will NOT trigger a download. Used by the
+/// download-consent path to decide whether to prompt the user.
+pub fn is_flavor_cached(state: &CodeSandboxState, flavor: &str) -> bool {
+    find_cached_squashfs_for_flavor(&derive_cache_dir(state), flavor).is_some()
 }
 
 /// Find the most-recently-modified `.squashfs` in `cache_dir` whose

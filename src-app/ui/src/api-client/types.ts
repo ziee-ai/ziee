@@ -1288,6 +1288,7 @@ export type SSEChatStreamEvent = {
   mcpToolComplete: SSEChatStreamMcpToolCompleteData
   mcpApprovalRequired: SSEChatStreamMcpApprovalRequiredData
   mcpElicitationRequired: SSEChatStreamMcpElicitationRequiredData
+  mcpToolProgress: SSEChatStreamMcpToolProgressData
   artifactCreated: SSEChatStreamArtifactCreatedData
   titleUpdated: SSEChatStreamTitleUpdatedData
 }
@@ -1314,6 +1315,15 @@ export interface SSEChatStreamMcpToolCompleteData {
   server: string
   tool_name: string
   tool_use_id: string
+}
+
+export interface SSEChatStreamMcpToolProgressData {
+  message?: string
+  message_id?: string
+  progress: number
+  progress_token?: any
+  server: string
+  total?: number
 }
 
 export interface SSEChatStreamMcpToolStartData {

@@ -17,7 +17,12 @@
 //! its internal runtimes from within the outer `#[tokio::main]` context.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use dashmap::DashMap;
+use once_cell::sync::Lazy;
+use tokio::sync::Mutex;
 
 use crate::core::config::CodeSandboxConfig;
 use crate::modules::code_sandbox::{
@@ -140,6 +145,61 @@ pub async fn fetch_flavor(
     })
     .await
     .unwrap_or_else(|e| Err(FetchError::Install(format!("blocking task panicked: {e}"))))
+}
+
+// =====================================================================
+// Single-flight fetch lock (Plan 2 §1)
+// =====================================================================
+//
+// Both the in-conversation auto-fetch path (`runtime_mount::do_first_init`)
+// and the admin prefetch path (`prefetch::run_fetch`) download via
+// `fetch_flavor`. Each path dedups against ITSELF (the per-flavor
+// `OnceCell` in runtime_mount; the `PREFETCH_TASKS` registry in prefetch)
+// but NOT against the other — so a prefetch + a first `execute_command`
+// for the same uncached flavor could both call `fetch_flavor`
+// concurrently and collide on the shared `<flavor>.squashfs.tmp`. This
+// per-flavor async lock serializes the two paths; combined with
+// `fetch_flavor`'s sha256-idempotent cache short-circuit, the second
+// holder no-ops ⇒ at most one download per flavor at any time,
+// regardless of trigger.
+//
+// A `Mutex` (not a sticky `OnceCell`) is deliberate: it only serializes
+// concurrent fetches, it does not latch "done", so an admin can still
+// force a re-fetch later.
+
+static FETCH_LOCKS: Lazy<DashMap<String, Arc<Mutex<()>>>> = Lazy::new(DashMap::new);
+
+fn fetch_lock_for(flavor: &str) -> Arc<Mutex<()>> {
+    FETCH_LOCKS
+        .entry(flavor.to_string())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+/// `true` if a download for `flavor` is currently in flight (the
+/// per-flavor fetch lock is held). Best-effort snapshot — used by the
+/// download-consent path to avoid re-prompting when another turn has
+/// already approved + started the same download.
+pub fn is_fetch_in_flight(flavor: &str) -> bool {
+    FETCH_LOCKS
+        .get(flavor)
+        .map(|m| m.value().try_lock().is_err())
+        .unwrap_or(false)
+}
+
+/// Single-flight wrapper around [`fetch_flavor`]: acquires the
+/// per-flavor fetch lock before downloading so the in-conversation and
+/// admin-prefetch paths never download the same flavor simultaneously.
+/// Both paths MUST go through this rather than calling `fetch_flavor`
+/// directly.
+pub async fn ensure_fetched(
+    cache_dir: &Path,
+    flavor: &str,
+    progress: impl Fn(FetchProgress) + Send + Sync + 'static,
+) -> Result<FetchOutcome, FetchError> {
+    let lock = fetch_lock_for(flavor);
+    let _guard = lock.lock().await;
+    fetch_flavor(cache_dir, flavor, progress).await
 }
 
 /// Enumerate flavors known to this binary for the current arch.
@@ -655,4 +715,73 @@ fn verify_cosign_bundle(
         .verify(blob, bundle, &policy, false)
         .map_err(|e| format!("signature verification: {e}"))?;
     Ok(())
+}
+
+// =====================================================================
+// Tier 1 — unit tests for the single-flight fetch lock (Plan 2 §1)
+// =====================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    #[test]
+    fn fetch_lock_is_per_flavor_and_stable() {
+        let a1 = fetch_lock_for("alpha");
+        let a2 = fetch_lock_for("alpha");
+        let b = fetch_lock_for("beta");
+        // Same flavor → same underlying Mutex; different flavor → different.
+        assert!(Arc::ptr_eq(&a1, &a2));
+        assert!(!Arc::ptr_eq(&a1, &b));
+    }
+
+    #[tokio::test]
+    async fn is_fetch_in_flight_reflects_lock_state() {
+        let flavor = "in-flight-probe";
+        assert!(!is_fetch_in_flight(flavor)); // never locked yet
+        let lock = fetch_lock_for(flavor);
+        let guard = lock.lock().await;
+        assert!(is_fetch_in_flight(flavor)); // held
+        drop(guard);
+        assert!(!is_fetch_in_flight(flavor)); // released
+    }
+
+    // The single-flight guarantee: concurrent acquirers of the same
+    // flavor's lock are serialized (max one holder at a time), which is
+    // exactly what makes `ensure_fetched` collapse N concurrent fetches
+    // for one flavor into a single download (the rest hit fetch_flavor's
+    // sha256-idempotent cache short-circuit). Different flavors proceed
+    // in parallel.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn same_flavor_serializes_distinct_flavors_parallel() {
+        let max_same = Arc::new(AtomicUsize::new(0));
+        let cur_same = Arc::new(AtomicUsize::new(0));
+
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let max_same = max_same.clone();
+            let cur_same = cur_same.clone();
+            handles.push(tokio::spawn(async move {
+                let lock = fetch_lock_for("serialize-me");
+                let _g = lock.lock().await;
+                let now = cur_same.fetch_add(1, Ordering::SeqCst) + 1;
+                max_same.fetch_max(now, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                cur_same.fetch_sub(1, Ordering::SeqCst);
+            }));
+        }
+        for h in handles {
+            h.await.unwrap();
+        }
+        // Never more than one holder of the same flavor's lock at once.
+        assert_eq!(max_same.load(Ordering::SeqCst), 1);
+
+        // Distinct flavors are independent locks → can be held together.
+        let la = fetch_lock_for("flav-a");
+        let lb = fetch_lock_for("flav-b");
+        let _ga = la.lock().await;
+        // Acquiring a different flavor's lock must not block.
+        assert!(lb.try_lock().is_ok());
+    }
 }

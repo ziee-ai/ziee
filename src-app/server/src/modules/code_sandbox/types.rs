@@ -76,9 +76,31 @@ pub struct JsonRpcError {
 }
 
 impl JsonRpcError {
+    /// JSON-RPC 2.0 standard codes (https://www.jsonrpc.org/specification#error_object).
+    pub const PARSE_ERROR: i32 = -32700;
+    pub const INVALID_REQUEST: i32 = -32600;
     pub const METHOD_NOT_FOUND: i32 = -32601;
     pub const INVALID_PARAMS: i32 = -32602;
     pub const INTERNAL: i32 = -32603;
+
+    /// Invalid JSON was received (the payload was not parseable). Per the
+    /// JSON-RPC spec this is `-32700`; the HTTP layer pairs it with 400.
+    pub fn parse_error(detail: impl Into<String>) -> Self {
+        Self {
+            code: Self::PARSE_ERROR,
+            message: format!("Parse error: {}", detail.into()),
+            data: None,
+        }
+    }
+
+    /// The JSON was valid but not a valid JSON-RPC request object (`-32600`).
+    pub fn invalid_request(detail: impl Into<String>) -> Self {
+        Self {
+            code: Self::INVALID_REQUEST,
+            message: format!("Invalid request: {}", detail.into()),
+            data: None,
+        }
+    }
 
     pub fn method_not_found(method: &str) -> Self {
         Self {

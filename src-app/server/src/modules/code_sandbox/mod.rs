@@ -31,6 +31,7 @@ pub mod probes;
 pub mod repository;
 pub mod routes;
 pub mod sandbox;
+pub mod streaming;
 pub mod tools;
 pub mod types;
 

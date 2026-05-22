@@ -704,6 +704,7 @@ mod tests {
                 enabled: true,
                 rootfs_path: "/opt/ziee-sandbox-rootfs/current".to_string(),
                 cgroup_parent: String::new(),
+                ..Default::default()
             },
             loopback_url: "http://127.0.0.1:8080/api/code-sandbox".to_string(),
             workspace_root: PathBuf::from("/tmp/ziee-workspace"),

@@ -352,4 +352,11 @@ impl McpClient for StdioMcpClient {
             Err(AppError::internal_error("Not connected"))
         }
     }
+
+    async fn cancel(&mut self, _request_id: i64, _reason: &str) -> Result<(), AppError> {
+        // The rmcp stdio wrapper doesn't expose a notification-send API for
+        // `notifications/cancelled`; dropping the child process is how stdio
+        // calls are abandoned. No-op here (best-effort per the trait contract).
+        Ok(())
+    }
 }

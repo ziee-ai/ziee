@@ -21,6 +21,28 @@ const MAX_SSE_EVENT_BYTES: usize = 50 * 1024 * 1024;
 /// whenever we audit + verify against a newer spec — current is 2025-11-25.
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 
+/// Protocol versions this client can interoperate with, newest first. The
+/// negotiated version returned by a server's `initialize` MUST be one of
+/// these or the client refuses the connection (spec § version negotiation).
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
+    &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
+
+/// Safety cap on `nextCursor` pagination loops (`list_tools` / `list_resources`
+/// / `list_prompts`) so a buggy server that never drops the cursor can't spin
+/// the client forever.
+const MAX_PAGINATION_PAGES: usize = 1000;
+
+/// Structural JSON-RPC id comparison. The spec allows ids to be a string or
+/// an integer; our outgoing ids are always integers, but a server may echo
+/// them back stringified — accept both so response correlation is robust.
+fn json_id_eq(id: &Value, expected: i64) -> bool {
+    match id {
+        Value::Number(n) => n.as_i64() == Some(expected),
+        Value::String(s) => s.parse::<i64>().ok() == Some(expected),
+        _ => false,
+    }
+}
+
 /// Parse a Server-Sent Events response body and return the JSON-RPC message
 /// whose `id` matches the requested id. Drops notifications and unrelated
 /// requests/responses (logs them at debug level). Per MCP spec § Transports:
@@ -55,10 +77,13 @@ fn extract_response_by_id(sse_body: &str, expected_id: i64) -> Result<Value, App
         };
 
         // If this message carries our id (either result or error response),
-        // it's the one we're waiting for.
-        let id_matches = json.get("id")
-            .and_then(|v| v.as_i64())
-            .map(|i| i == expected_id)
+        // it's the one we're waiting for. Match structurally: JSON-RPC ids
+        // may be a string OR a number (spec), and a legal-but-non-conformant
+        // server may echo our numeric id as a string — `as_i64` alone would
+        // miss that and we'd hang waiting for a response that already arrived.
+        let id_matches = json
+            .get("id")
+            .map(|v| json_id_eq(v, expected_id))
             .unwrap_or(false);
 
         if id_matches {
@@ -76,6 +101,34 @@ fn extract_response_by_id(sse_body: &str, expected_id: i64) -> Result<Value, App
     Err(AppError::internal_error(format!(
         "SSE stream ended without a response for request id={}", expected_id
     )))
+}
+
+/// Forward an MCP `notifications/progress` (received mid-call over the SSE
+/// stream) to the chat UI as a `mcpToolProgress` named SSE event — mirrors
+/// how `elicitation/create` is bridged to the browser. No-op when there is
+/// no browser SSE sender (e.g. the runtime tool-test endpoint).
+fn forward_progress_notification(
+    sse_tx: &Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+    message_id: Option<uuid::Uuid>,
+    server_name: &str,
+    params: &Value,
+) {
+    let tx = match sse_tx {
+        Some(t) => t,
+        None => return,
+    };
+    let event_data = serde_json::json!({
+        "message_id": message_id.map(|m| m.to_string()),
+        "server": server_name,
+        "progress_token": params.get("progressToken").cloned(),
+        "progress": params.get("progress").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        "total": params.get("total").and_then(|v| v.as_f64()),
+        "message": params.get("message").and_then(|v| v.as_str()),
+    });
+    let event = axum::response::sse::Event::default()
+        .event("mcpToolProgress")
+        .data(event_data.to_string());
+    let _ = tx.send(Ok(event));
 }
 
 pub struct HttpMcpClient {
@@ -387,13 +440,26 @@ impl HttpMcpClient {
 
         let init_result: Value = self.request_once("initialize", &init_params).await?;
 
-        // Per spec § version negotiation: server MUST respond with the same
-        // version, or another version it supports. Record whichever we got
-        // so subsequent requests send the right MCP-Protocol-Version header.
-        let negotiated = init_result.get("protocolVersion")
+        // Per spec § version negotiation: the server responds with the same
+        // version, or another version it supports. The client MUST validate
+        // it against the versions it understands and disconnect on mismatch
+        // (SDK client.ts:513-538) — we must NOT blindly trust + echo an
+        // unknown version on every subsequent MCP-Protocol-Version header.
+        let negotiated = init_result
+            .get("protocolVersion")
             .and_then(|v| v.as_str())
-            .unwrap_or(MCP_PROTOCOL_VERSION)
+            .ok_or_else(|| {
+                AppError::internal_error(
+                    "MCP initialize response is missing `protocolVersion`",
+                )
+            })?
             .to_string();
+        if !SUPPORTED_PROTOCOL_VERSIONS.contains(&negotiated.as_str()) {
+            return Err(AppError::internal_error(format!(
+                "MCP server negotiated unsupported protocol version {:?}; this client supports {:?}",
+                negotiated, SUPPORTED_PROTOCOL_VERSIONS
+            )));
+        }
         self.set_protocol_version(&negotiated);
 
         // MCP spec § Lifecycle: "After successful initialization, the client
@@ -460,7 +526,11 @@ impl HttpMcpClient {
             "method": "tools/call",
             "params": {
                 "name": name,
-                "arguments": arguments
+                "arguments": arguments,
+                // Opt in to MCP progress notifications (spec § Progress): the
+                // server MAY emit `notifications/progress` carrying this token
+                // during a long-running call. We forward them to the chat UI.
+                "_meta": { "progressToken": tool_call_id }
             }
         });
 
@@ -560,6 +630,15 @@ impl HttpMcpClient {
 
                         // Check if this is a server→client request (elicitation or sampling)
                         if let Some(method) = json.get("method").and_then(|m| m.as_str()) {
+                            // --- Progress (MCP spec § Progress) ---
+                            // A `notifications/progress` is a one-way notification
+                            // (no response expected); forward to the chat UI and
+                            // keep reading for the eventual tool result.
+                            if method == "notifications/progress" {
+                                let params = json.get("params").cloned().unwrap_or(Value::Null);
+                                forward_progress_notification(&sse_tx, message_id, &server_name, &params);
+                                continue;
+                            }
                             // --- Elicitation (MCP spec 2025-03-26+) ---
                             // The MCP server needs structured human input; pause the loop and wait.
                             if method == "elicitation/create" {
@@ -898,6 +977,12 @@ impl HttpMcpClient {
                         );
 
                         if let Some(method) = json.get("method").and_then(|m| m.as_str()) {
+                            // --- Progress (MCP spec § Progress) ---
+                            if method == "notifications/progress" {
+                                let params = json.get("params").cloned().unwrap_or(Value::Null);
+                                forward_progress_notification(&sse_tx, message_id, &server_name, &params);
+                                continue;
+                            }
                             // --- Elicitation (identical to call_tool_with_sampling) ---
                             if method == "elicitation/create" {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
@@ -1112,11 +1197,29 @@ impl McpClient for HttpMcpClient {
 
         #[derive(serde::Deserialize)]
         struct ListToolsResult {
+            #[serde(default)]
             tools: Vec<Tool>,
+            #[serde(default, rename = "nextCursor")]
+            next_cursor: Option<String>,
         }
 
-        let result: ListToolsResult = self.request("tools/list", serde_json::json!({})).await?;
-        Ok(result.tools)
+        // Follow `nextCursor` pagination (spec § Pagination) so servers with
+        // more than one page of tools aren't silently truncated.
+        let mut all = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGINATION_PAGES {
+            let params = match &cursor {
+                Some(c) => serde_json::json!({ "cursor": c }),
+                None => serde_json::json!({}),
+            };
+            let page: ListToolsResult = self.request("tools/list", params).await?;
+            all.extend(page.tools);
+            match page.next_cursor {
+                Some(c) if !c.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+        Ok(all)
     }
 
     async fn call_tool(
@@ -1222,7 +1325,10 @@ impl McpClient for HttpMcpClient {
                 "method": "tools/call",
                 "params": {
                     "name": name_owned,
-                    "arguments": arguments_owned
+                    "arguments": arguments_owned,
+                    // Opt in to MCP progress notifications (spec § Progress);
+                    // forwarded to the chat UI as `mcpToolProgress` events.
+                    "_meta": { "progressToken": tool_call_id }
                 }
             });
 
@@ -1345,11 +1451,27 @@ impl McpClient for HttpMcpClient {
 
         #[derive(serde::Deserialize)]
         struct ListResourcesResult {
+            #[serde(default)]
             resources: Vec<Resource>,
+            #[serde(default, rename = "nextCursor")]
+            next_cursor: Option<String>,
         }
 
-        let result: ListResourcesResult = self.request("resources/list", serde_json::json!({})).await?;
-        Ok(result.resources)
+        let mut all = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGINATION_PAGES {
+            let params = match &cursor {
+                Some(c) => serde_json::json!({ "cursor": c }),
+                None => serde_json::json!({}),
+            };
+            let page: ListResourcesResult = self.request("resources/list", params).await?;
+            all.extend(page.resources);
+            match page.next_cursor {
+                Some(c) if !c.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+        Ok(all)
     }
 
     async fn read_resource(&mut self, uri: &str) -> Result<Value, AppError> {
@@ -1373,16 +1495,36 @@ impl McpClient for HttpMcpClient {
         struct ListPromptsResult {
             #[serde(default)]
             prompts: Vec<Prompt>,
+            #[serde(default, rename = "nextCursor")]
+            next_cursor: Option<String>,
         }
 
-        // Servers that didn't advertise `prompts` capability may return
-        // error -32601 (Method not found). Map that to an empty list so
-        // callers don't have to special-case it.
-        match self.request::<ListPromptsResult>("prompts/list", serde_json::json!({})).await {
-            Ok(r) => Ok(r.prompts),
-            Err(e) if e.to_string().contains("-32601") => Ok(Vec::new()),
-            Err(e) => Err(e),
+        let mut all = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGINATION_PAGES {
+            let params = match &cursor {
+                Some(c) => serde_json::json!({ "cursor": c }),
+                None => serde_json::json!({}),
+            };
+            // Servers that didn't advertise `prompts` capability may return
+            // error -32601 (Method not found). Map that to an empty list so
+            // callers don't have to special-case it.
+            match self
+                .request::<ListPromptsResult>("prompts/list", params)
+                .await
+            {
+                Ok(page) => {
+                    all.extend(page.prompts);
+                    match page.next_cursor {
+                        Some(c) if !c.is_empty() => cursor = Some(c),
+                        _ => break,
+                    }
+                }
+                Err(e) if e.to_string().contains("-32601") => return Ok(Vec::new()),
+                Err(e) => return Err(e),
+            }
         }
+        Ok(all)
     }
 
     async fn get_prompt(
@@ -1410,6 +1552,15 @@ impl McpClient for HttpMcpClient {
         // an empty result. We don't care about the body.
         let _: Value = self.request("ping", serde_json::json!({})).await?;
         Ok(())
+    }
+
+    async fn cancel(&mut self, request_id: i64, reason: &str) -> Result<(), AppError> {
+        // Fire-and-forget `notifications/cancelled` (MCP spec § cancellation).
+        self.send_notification(
+            "notifications/cancelled",
+            serde_json::json!({ "requestId": request_id, "reason": reason }),
+        )
+        .await
     }
 }
 
