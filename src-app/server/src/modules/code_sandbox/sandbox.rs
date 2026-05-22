@@ -391,6 +391,19 @@ pub(crate) fn build_bwrap_argv(
         }
     }
 
+    // Mask dangerous /proc files (runc/Docker do the same). Later binds
+    // overlay whatever /proc the PID-ns branch set up. CRITICAL in
+    // DevBindFallback mode, where the host's real /proc is bound: without
+    // these, `/proc/sysrq-trigger` can panic the host and `/proc/kcore` /
+    // `/proc/kallsyms` leak kernel memory + defeat KASLR. Defense-in-depth
+    // in Strict mode too. These four files exist on every Linux kernel, so
+    // a plain `--ro-bind` (not `-try`) is safe.
+    for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
+        argv.push("--ro-bind".into());
+        argv.push("/dev/null".into());
+        argv.push(masked.into());
+    }
+
     // Read-only binds for each conversation attachment at its original
     // filename. Foreign-attachment guard happens upstream in tools.
     for f in ctx.files.iter() {
@@ -424,6 +437,12 @@ pub(crate) fn build_bwrap_argv(
     argv.push(format!("--fsize={}", 256u64 * 1024 * 1024));   // 256 MiB
     argv.push("--nofile=1024".into());
     argv.push("--core=0".into());
+    // CPU-seconds backstop (G4). Largely redundant — the wall-clock SIGKILL
+    // and cgroup cpu.max already bound runaway CPU — but cheap. Generous
+    // (2× the default wall-clock budget) so it never preempts a legitimate
+    // long command before the wall-clock timeout does. We deliberately do
+    // NOT set --stack: a low RLIMIT_STACK breaks legitimate deep-recursion R.
+    argv.push(format!("--cpu={}", DEFAULT_TIMEOUT_SECS * 2));
     argv.push("--".into());
     argv.push("/bin/bash".into());
     argv.push("-lc".into());
@@ -866,6 +885,35 @@ mod tests {
         assert!(argv.windows(2).any(|w| w == ["--proc", "/proc"]));
         // Strict mode IS allowed to use --as-pid-1 (and we do).
         assert!(argv.iter().any(|a| a == "--as-pid-1"));
+    }
+
+    #[test]
+    fn argv_masks_dangerous_proc_files() {
+        // G2: /proc/{sysrq-trigger,kcore,kallsyms,kmsg} must be masked over
+        // /dev/null in every mode (critical in DevBindFallback, defense in
+        // depth in Strict). Regression guard against silently dropping a mask.
+        for mode in [PidNsMode::Strict, PidNsMode::DevBindFallback] {
+            let mut caps = fake_caps();
+            caps.pid_namespace = mode;
+            let state = fake_state();
+            let ctx = fake_ctx();
+            let argv = build_bwrap_argv(
+                &caps,
+                &state,
+                &ctx,
+                std::path::Path::new(&state.config.rootfs_path),
+                "x",
+                std::path::Path::new("/tmp/.sandbox_passwd"),
+                std::path::Path::new("/tmp/.sandbox_group"),
+                None,
+            );
+            for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
+                assert!(
+                    argv.windows(3).any(|w| w == ["--ro-bind", "/dev/null", masked]),
+                    "mode {mode:?}: must mask {masked} with --ro-bind /dev/null; argv: {argv:?}"
+                );
+            }
+        }
     }
 
     /// Phase 3 regression test: every security-critical flag must
