@@ -7,9 +7,10 @@ use async_trait::async_trait;
 
 use super::SandboxBackend;
 use crate::common::AppError;
+use crate::core::config::CodeSandboxConfig;
 use crate::modules::code_sandbox::runtime_mount::{EnsureOutcome, EvictOutcome};
 use crate::modules::code_sandbox::sandbox::SandboxRunResult;
-use crate::modules::code_sandbox::types::{CodeSandboxState, SandboxContext};
+use crate::modules::code_sandbox::types::{CodeSandboxState, HostCapabilities, SandboxContext};
 
 pub struct UnsupportedBackend;
 
@@ -29,6 +30,15 @@ fn unsupported_err() -> AppError {
 
 #[async_trait]
 impl SandboxBackend for UnsupportedBackend {
+    fn probe_host(&self, _cfg: &CodeSandboxConfig) -> Option<HostCapabilities> {
+        tracing::warn!(
+            "code_sandbox: OS {} is not supported; sandbox MCP row will NOT be \
+             registered.",
+            std::env::consts::OS
+        );
+        None
+    }
+
     async fn ensure_rootfs_ready(
         &self,
         _state: &CodeSandboxState,

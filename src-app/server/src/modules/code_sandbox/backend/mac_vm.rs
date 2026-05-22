@@ -32,11 +32,13 @@ use tokio::sync::{Mutex, Semaphore};
 
 use super::SandboxBackend;
 use crate::common::AppError;
+use crate::core::config::CodeSandboxConfig;
 use crate::modules::code_sandbox::runtime_fetch;
 use crate::modules::code_sandbox::runtime_mount::{cache_dir, EnsureOutcome, EvictOutcome};
 use crate::modules::code_sandbox::sandbox::{self, SandboxRunResult, DEFAULT_TIMEOUT_SECS};
 use crate::modules::code_sandbox::types::{
-    CgroupMode, CodeSandboxState, HardeningCapabilities, PidNsMode, SandboxContext, SeccompMode,
+    CgroupMode, CodeSandboxState, HardeningCapabilities, HostCapabilities, PidNsMode,
+    SandboxContext, SeccompMode,
 };
 
 // ── Guest contract (must match sandbox-guest-agent constants) ────────────────
@@ -265,6 +267,40 @@ fn guest_workspace_path(state: &CodeSandboxState, host_ws: &Path) -> PathBuf {
 
 #[async_trait]
 impl SandboxBackend for MacVmBackend {
+    fn probe_host(&self, _cfg: &CodeSandboxConfig) -> Option<HostCapabilities> {
+        // libkrun (via Hypervisor.framework) ships only on Apple Silicon, so
+        // gate boot on aarch64 + a reachable launcher binary. The launcher
+        // itself dlopens libkrun + checks Hypervisor.framework at start; here
+        // we just keep init cheap (sub-10 ms, no dlopen, no fs scans).
+        if std::env::consts::ARCH != "aarch64" {
+            tracing::error!(
+                "code_sandbox: macOS backend requires Apple Silicon (aarch64); \
+                 host is {}. Sandbox MCP row will NOT be registered.",
+                std::env::consts::ARCH
+            );
+            return None;
+        }
+        let launcher = Self::launcher_path();
+        if !launcher.exists() {
+            tracing::error!(
+                "code_sandbox: macOS VM launcher not found at {} \
+                 (set ZIEE_SANDBOX_VM_LAUNCHER for dev). Sandbox MCP row will \
+                 NOT be registered.",
+                launcher.display()
+            );
+            return None;
+        }
+        // Placeholder caps: the VM run path rebuilds real *guest* caps in
+        // `ensure_rootfs_ready` + `run`; the only downstream consumer of this
+        // value on the Linux backend (`runtime_mount`'s PID-ns probe) isn't on
+        // the macOS code path.
+        Some(HostCapabilities {
+            bwrap_path: PathBuf::from(GUEST_BWRAP_PATH),
+            cgroup: CgroupMode::None,
+            seccomp: SeccompMode::NotLinked,
+        })
+    }
+
     async fn ensure_rootfs_ready(
         &self,
         state: &CodeSandboxState,

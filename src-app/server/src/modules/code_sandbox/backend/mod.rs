@@ -24,9 +24,10 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 
 use crate::common::AppError;
+use crate::core::config::CodeSandboxConfig;
 use crate::modules::code_sandbox::runtime_mount::{EnsureOutcome, EvictOutcome};
 use crate::modules::code_sandbox::sandbox::SandboxRunResult;
-use crate::modules::code_sandbox::types::{CodeSandboxState, SandboxContext};
+use crate::modules::code_sandbox::types::{CodeSandboxState, HostCapabilities, SandboxContext};
 
 #[cfg(target_os = "linux")]
 mod linux_bwrap;
@@ -45,6 +46,21 @@ mod unsupported;
 /// at process start via `cfg` and reached through [`active()`].
 #[async_trait]
 pub trait SandboxBackend: Send + Sync {
+    /// One-time boot probe. Cheap, host-only, sync (sub-10 ms). `None` means
+    /// "this host cannot run the sandbox" — `init()` then logs the reason and
+    /// skips MCP-row registration entirely (the rest of the server boots
+    /// fine). Per-backend prerequisites:
+    ///   - Linux: `bwrap` on PATH, cgroup probe, seccomp-filter compile.
+    ///   - macOS: launcher reachable + arch is aarch64 (libkrun is Apple-Silicon).
+    ///   - Windows: `wsl.exe` present + reports WSL v2 (v1-only refuses).
+    ///   - Unsupported OS: always `None`.
+    ///
+    /// The returned `HostCapabilities` is consumed by the Linux path
+    /// (`runtime_mount` re-uses `bwrap_path` for the lazy PID-ns probe); on the
+    /// VM backends it is an opaque placeholder — the real *guest* caps are
+    /// rebuilt per-call in `ensure_rootfs_ready` / `run`.
+    fn probe_host(&self, cfg: &CodeSandboxConfig) -> Option<HostCapabilities>;
+
     /// Make the requested flavor's rootfs available (fetch if missing, then
     /// mount in whatever way this backend mounts). The fetch half is shared
     /// (`runtime_fetch`); only the mount differs per backend.

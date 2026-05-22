@@ -10,9 +10,11 @@ use async_trait::async_trait;
 
 use super::SandboxBackend;
 use crate::common::AppError;
+use crate::core::config::CodeSandboxConfig;
+use crate::modules::code_sandbox::probes;
 use crate::modules::code_sandbox::runtime_mount::{self, EnsureOutcome, EvictOutcome};
 use crate::modules::code_sandbox::sandbox::{self, SandboxRunResult};
-use crate::modules::code_sandbox::types::{CodeSandboxState, SandboxContext};
+use crate::modules::code_sandbox::types::{CodeSandboxState, HostCapabilities, SandboxContext};
 
 pub struct LinuxBwrapBackend;
 
@@ -24,6 +26,11 @@ impl LinuxBwrapBackend {
 
 #[async_trait]
 impl SandboxBackend for LinuxBwrapBackend {
+    fn probe_host(&self, cfg: &CodeSandboxConfig) -> Option<HostCapabilities> {
+        // Today's behavior: bwrap on PATH + cgroup probe + seccomp-filter compile.
+        probes::probe_host_only(cfg)
+    }
+
     async fn ensure_rootfs_ready(
         &self,
         state: &CodeSandboxState,

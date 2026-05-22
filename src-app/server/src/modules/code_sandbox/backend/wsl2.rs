@@ -37,13 +37,15 @@ use tokio::sync::{Mutex, Semaphore};
 
 use super::SandboxBackend;
 use crate::common::AppError;
+use crate::core::config::CodeSandboxConfig;
 use crate::modules::code_sandbox::runtime_fetch::{self, RootfsFormat};
 use crate::modules::code_sandbox::runtime_mount::{cache_dir, EnsureOutcome, EvictOutcome};
 use crate::modules::code_sandbox::sandbox::{
     self, SandboxRunResult, DEFAULT_TIMEOUT_SECS, SYNTHETIC_GROUP, SYNTHETIC_PASSWD,
 };
 use crate::modules::code_sandbox::types::{
-    CgroupMode, CodeSandboxState, HardeningCapabilities, PidNsMode, SandboxContext, SeccompMode,
+    CgroupMode, CodeSandboxState, HardeningCapabilities, HostCapabilities, PidNsMode,
+    SandboxContext, SeccompMode,
 };
 use crate::modules::code_sandbox::SANDBOX_ROOTFS_SCHEMA_VERSION;
 
@@ -349,6 +351,41 @@ fn win_to_wsl_path(p: &Path) -> String {
 
 #[async_trait]
 impl SandboxBackend for Wsl2Backend {
+    fn probe_host(&self, _cfg: &CodeSandboxConfig) -> Option<HostCapabilities> {
+        // Cheap host-only probe (sub-10 ms): wsl.exe must be on PATH and the
+        // default version must be 2 — bwrap needs the WSL2 Linux kernel
+        // (cgroup v2, real namespaces); WSL1 is a syscall-emulation layer that
+        // has none of these and will never work. We deliberately do NOT import
+        // a distro / flip sysctls here — that's `ensure_rootfs_ready`'s job on
+        // first `execute_command`, lazy by design.
+        let out = match std::process::Command::new("wsl.exe").args(["--status"]).output() {
+            Ok(o) => o,
+            Err(e) => {
+                tracing::error!(
+                    "code_sandbox: wsl.exe not found ({e}); sandbox MCP row \
+                     will NOT be registered. Install WSL2: `wsl --install`."
+                );
+                return None;
+            }
+        };
+        let status_text = decode_wsl_output(&out.stdout);
+        if !status_text.contains('2') {
+            // `wsl --status` includes the default-version line ("Default Version: 2").
+            // If we can't confirm v2, refuse loudly — bwrap will never work on v1.
+            tracing::error!(
+                "code_sandbox: WSL2 not the default version on this host; \
+                 sandbox MCP row will NOT be registered. Set with \
+                 `wsl --set-default-version 2`. Probe output: {status_text:?}"
+            );
+            return None;
+        }
+        Some(HostCapabilities {
+            bwrap_path: PathBuf::from(GUEST_BWRAP_PATH),
+            cgroup: CgroupMode::None,
+            seccomp: SeccompMode::NotLinked,
+        })
+    }
+
     async fn ensure_rootfs_ready(
         &self,
         state: &CodeSandboxState,

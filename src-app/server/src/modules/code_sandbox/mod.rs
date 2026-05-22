@@ -304,15 +304,13 @@ impl AppModule for CodeSandboxModule {
         // The one thing we still fail-loud on at boot is missing bwrap:
         // it's not something the operator can fix at runtime, and
         // surfacing it as a per-call MCP error would surprise users.
-        let host_caps = match probes::probe_host_only(&cfg) {
+        // Boot probe routed through the cross-platform backend seam: Linux
+        // checks bwrap+cgroup+seccomp (today's behavior), macOS checks
+        // aarch64+launcher, Windows checks wsl.exe+v2-default. Each backend
+        // logs its own "skipping registration" reason on `None`.
+        let host_caps = match backend::active().probe_host(&cfg) {
             Some(h) => h,
-            None => {
-                tracing::error!(
-                    "code_sandbox: bwrap not found on PATH; sandbox MCP row \
-                     will NOT be registered. Install bubblewrap and restart."
-                );
-                return Ok(());
-            }
+            None => return Ok(()),
         };
 
         // ---- Workspace root + per-conversation reaper (Phase 8) ----
