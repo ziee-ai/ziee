@@ -197,8 +197,13 @@ pub async fn run_in_sandbox(
             format!("failed to spawn bwrap: {e}"),
         ))?;
 
-    // Attach the child pid to the cgroup scope (after fork, before
-    // exec inside bwrap actually starts the sandboxed binary).
+    // Attach the bwrap pid to the cgroup scope. (L2) This is post-spawn, so in
+    // principle there's a window before the workload is in the cgroup — but in
+    // practice bwrap's own setup (mount-ns construction, pivot, --proc/--dev)
+    // runs before it execs prlimit→bash→workload, and that latency far exceeds
+    // this attach, so the workload is in the cgroup before it starts. prlimit
+    // (applied to the workload itself, not bwrap) is the always-on backstop
+    // regardless. Not worth eliminating with unsafe pre_exec self-attach.
     if let Some(scope) = cgroup_scope.as_ref() {
         if let Some(pid) = child.id() {
             if let Err(e) = scope.attach_pid(pid) {

@@ -47,6 +47,14 @@ pub(crate) fn conv_lock(conversation_id: Uuid) -> Arc<Mutex<()>> {
         .clone()
 }
 
+/// Drop a conversation's lock entry (L3 — bounds `CONVERSATION_LOCKS` growth).
+/// Called by the workspace reaper when it reaps a stale conversation workspace,
+/// so the map tracks only live conversations instead of leaking one entry per
+/// conversation that ever ran a sandbox tool.
+pub(crate) fn prune_conversation_lock(conversation_id: Uuid) {
+    CONVERSATION_LOCKS.remove(&conversation_id);
+}
+
 // --------------------------------------------------------------------
 // JSON-RPC entry point: POST /api/code-sandbox
 // --------------------------------------------------------------------

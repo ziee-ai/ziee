@@ -187,7 +187,17 @@ pub async fn ensure_rootfs_ready(
         .await;
     match cached {
         Ok(outcome) => Ok(outcome.clone()),
-        Err(e) => Err(e.to_app_error()),
+        Err(e) => {
+            // L1: do NOT permanently cache a failed init. A transient failure
+            // (fetch network blip, mount timeout) would otherwise wedge the
+            // flavor until an admin evict. Drop the cell so the next call
+            // re-inits (recovers when the network/mount recovers; a persistent
+            // failure like a schema mismatch just re-fails cheaply — cache hit,
+            // mount skip, sentinel re-read). `remove_if` with identity guards
+            // against clobbering a fresh cell another caller just inserted.
+            ready_map.remove_if(flavor, |_, v| Arc::ptr_eq(v, &cell));
+            Err(e.to_app_error())
+        }
     }
 }
 

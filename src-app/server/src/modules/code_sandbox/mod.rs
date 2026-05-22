@@ -424,11 +424,22 @@ async fn workspace_reaper(root: std::path::PathBuf) {
                     .unwrap_or(Duration::ZERO);
                 if age > MAX_AGE {
                     match std::fs::remove_dir_all(&path) {
-                        Ok(()) => tracing::info!(
-                            "code_sandbox: reaped stale workspace {} (age={}d)",
-                            path.display(),
-                            age.as_secs() / 86_400
-                        ),
+                        Ok(()) => {
+                            // L3: bound CONVERSATION_LOCKS — drop the lock entry
+                            // for the reaped conversation (dir name = conv UUID).
+                            if let Some(cid) = path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .and_then(|n| uuid::Uuid::parse_str(n).ok())
+                            {
+                                handlers::prune_conversation_lock(cid);
+                            }
+                            tracing::info!(
+                                "code_sandbox: reaped stale workspace {} (age={}d)",
+                                path.display(),
+                                age.as_secs() / 86_400
+                            )
+                        }
                         Err(e) => tracing::warn!(
                             "code_sandbox: failed to reap {}: {e}",
                             path.display()
