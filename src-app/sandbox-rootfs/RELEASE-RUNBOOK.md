@@ -64,13 +64,22 @@ CI is build-and-publish-only. All CI lives in the single
    size-sanity-checks, cosign-signs (keyless GitHub OIDC), and uploads
    `.squashfs` + `.sha256` + `.zsync` + `.cosign.bundle` to the GitHub
    Release.
+   - **Windows tarball (Plan 1 §4):** the same job also runs
+     `build.sh --package tar` for each flavor (re-tars the *identical*
+     staged tree → `.tar.zst`; same schema, same contents, different
+     packaging for `wsl --import`), reproducibility-checks it, cosign-signs
+     it, and uploads `.tar.zst` + `.tar.zst.sha256` + `.tar.zst.cosign.bundle`
+     alongside the squashfs. The runtime's `runtime_fetch::RootfsFormat`
+     selects squashfs (Linux/macOS) vs tar.zst (Windows) by host OS; the
+     asset name + cosign identity are packaging-agnostic.
 4. **Auto-PR:** The follow-on `update-known-revisions` job parses the
    tag, takes the sha256 outputs from the matrix release job, and
    opens a PR against `main` appending the new (schema, revision,
    sha256, signed=true) tuples to
    `src-app/server/src/modules/code_sandbox/known_revisions.toml`.
-   Reviewer merges to make the new revision resolvable by the
-   server's runtime auto-fetch.
+   It also writes `sha256_tar_zst` (the `.tar.zst` digest) onto each
+   row so Windows hosts can verify+fetch the tarball. Reviewer merges
+   to make the new revision resolvable by the server's runtime auto-fetch.
 
 ## Schema bumps
 

@@ -6,7 +6,8 @@
 #   --schema $(cat src-app/sandbox-rootfs/compat.toml | <current_schema>)
 #   --revision r0
 #   --arch    x86_64  (from `uname -m` — only override for cross-build)
-#   --output  .ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v{schema}.r{rev}-{arch}-{flavor}.squashfs
+#   --package squashfs   (squashfs = Linux/macOS; tar = Windows wsl --import → .tar.zst)
+#   --output  .ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v{schema}.r{rev}-{arch}-{flavor}.{squashfs|tar.zst}
 #
 # Backend: mmdebstrap (reproducible-by-design, no daemon). Install it with
 #   apt install mmdebstrap squashfs-tools
@@ -26,6 +27,7 @@ SCHEMA=""
 REVISION="r0"
 ARCH="$(uname -m)"
 OUTPUT=""
+PACKAGE="squashfs"   # squashfs (Linux/macOS) | tar (Windows wsl --import)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +36,7 @@ while [[ $# -gt 0 ]]; do
     --revision)  REVISION="$2";  shift 2 ;;
     --arch)      ARCH="$2";      shift 2 ;;
     --output)    OUTPUT="$2";    shift 2 ;;
+    --package)   PACKAGE="$2";   shift 2 ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -41,6 +44,11 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+case "$PACKAGE" in
+  squashfs|tar) ;;
+  *) echo "build.sh: --package must be 'squashfs' or 'tar' (got '$PACKAGE')" >&2; exit 2 ;;
+esac
 
 if ! command -v mmdebstrap >/dev/null; then
   echo "build.sh: mmdebstrap not found in PATH" >&2
@@ -82,8 +90,10 @@ source "$RECIPE"
 : "${APT_SNAPSHOT:?recipe $RECIPE must set APT_SNAPSHOT}"
 : "${APT_PACKAGES:?recipe $RECIPE must set APT_PACKAGES}"
 
+if [[ "$PACKAGE" == "tar" ]]; then EXT="tar.zst"; else EXT="squashfs"; fi
+
 if [[ -z "$OUTPUT" ]]; then
-  OUTPUT="$REPO_ROOT/.ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v${SCHEMA}.${REVISION}-${ARCH}-${FLAVOR}.squashfs"
+  OUTPUT="$REPO_ROOT/.ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v${SCHEMA}.${REVISION}-${ARCH}-${FLAVOR}.${EXT}"
 fi
 
 mkdir -p "$(dirname "$OUTPUT")"
@@ -100,12 +110,19 @@ fi
 export SOURCE_DATE_EPOCH
 
 # --------------------------------------------------------------------
-# Common: mksquashfs check
+# Common: packaging-tool check
 # --------------------------------------------------------------------
 
-if ! command -v mksquashfs >/dev/null; then
-  echo "build.sh: mksquashfs not found in PATH; apt install squashfs-tools" >&2
-  exit 1
+if [[ "$PACKAGE" == "squashfs" ]]; then
+  if ! command -v mksquashfs >/dev/null; then
+    echo "build.sh: mksquashfs not found in PATH; apt install squashfs-tools" >&2
+    exit 1
+  fi
+else
+  if ! command -v zstd >/dev/null; then
+    echo "build.sh: zstd not found in PATH; apt install zstd" >&2
+    exit 1
+  fi
 fi
 
 STAGE_DIR="$(dirname "$OUTPUT")/.stage-v${SCHEMA}.${REVISION}-${FLAVOR}"
@@ -189,23 +206,64 @@ build_mmdebstrap() {
 # Build + finalize
 # --------------------------------------------------------------------
 
+# Run `$@` as root iff the stage dir is root-owned (mmdebstrap root mode)
+# and we aren't already root — so the packager can read every file and
+# preserve numeric ownership. Mirrors the cleanup_stage sudo logic.
+maybe_sudo() {
+  if [[ "$EUID" -ne 0 ]] \
+     && [[ "$(stat -c %u "$STAGE_DIR" 2>/dev/null || echo 0)" == "0" ]] \
+     && command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
+    sudo -E "$@"
+  else
+    "$@"
+  fi
+}
+
+package_squashfs() {
+  echo "==> mksquashfs ($OUTPUT)"
+  rm -f "$OUTPUT"
+  # squashfs-tools >=4.6 errors if BOTH the SOURCE_DATE_EPOCH env var AND
+  # the explicit -all-time/-mkfs-time flags are set. Unset the env var
+  # only for this invocation; we still pass the value via flags so the
+  # output is bit-reproducible.
+  local sde="$SOURCE_DATE_EPOCH"
+  env -u SOURCE_DATE_EPOCH \
+  mksquashfs "$STAGE_DIR" "$OUTPUT" \
+    -comp zstd -Xcompression-level 19 \
+    -no-xattrs \
+    -all-time "$sde" \
+    -mkfs-time "$sde" \
+    -noappend -no-progress \
+    -quiet
+}
+
+# Reproducible `.tar.zst` for Windows `wsl --import` (which can't consume a
+# squashfs). Built from the SAME staged tree as the squashfs — same schema,
+# same contents, different packaging (Plan 1 §4). Determinism: sorted names,
+# fixed mtime (SOURCE_DATE_EPOCH), GNU format (no per-file pax atime/ctime
+# headers), numeric ownership preserved. zstd is run single-threaded
+# (`-T0` would interleave nondeterministically) at the highest level.
+package_tar() {
+  echo "==> tar.zst ($OUTPUT)"
+  rm -f "$OUTPUT"
+  # Only the read side (tar) may need root; zstd writes OUTPUT into our
+  # own cache dir, so it stays unprivileged and the file is owned by us.
+  maybe_sudo tar \
+    --format=gnu \
+    --sort=name \
+    --numeric-owner \
+    --mtime="@$SOURCE_DATE_EPOCH" \
+    -C "$STAGE_DIR" -cf - . \
+    | zstd -q -19 -T1 -o "$OUTPUT"
+}
+
 build_mmdebstrap
 
-echo "==> mksquashfs ($OUTPUT)"
-rm -f "$OUTPUT"
-# squashfs-tools >=4.6 errors if BOTH the SOURCE_DATE_EPOCH env var AND
-# the explicit -all-time/-mkfs-time flags are set. Unset the env var
-# only for this invocation; we still pass the value via flags so the
-# output is bit-reproducible.
-sde="$SOURCE_DATE_EPOCH"
-env -u SOURCE_DATE_EPOCH \
-mksquashfs "$STAGE_DIR" "$OUTPUT" \
-  -comp zstd -Xcompression-level 19 \
-  -no-xattrs \
-  -all-time "$sde" \
-  -mkfs-time "$sde" \
-  -noappend -no-progress \
-  -quiet
+if [[ "$PACKAGE" == "tar" ]]; then
+  package_tar
+else
+  package_squashfs
+fi
 
 size_h="$(du -h "$OUTPUT" | cut -f1)"
 sha="$(sha256sum "$OUTPUT" | cut -d' ' -f1)"
