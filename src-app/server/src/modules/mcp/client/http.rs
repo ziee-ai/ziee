@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use super::auth::{self, OAuthClientConfig, StoredToken};
 use super::traits::{McpClient, Prompt, PromptResult, Resource, Tool, ToolResult};
 use crate::common::AppError;
 use crate::modules::mcp::models::{McpServer, TransportType};
@@ -176,6 +177,7 @@ async fn try_resume_sse(
     url: &str,
     session_id: Option<String>,
     protocol_version: &Option<String>,
+    authorization: &Option<String>,
     last_event_id: &Option<String>,
     server_name: &str,
 ) -> Option<reqwest::Response> {
@@ -193,6 +195,9 @@ async fn try_resume_sse(
         }
         if let Some(ver) = protocol_version {
             req = req.header("MCP-Protocol-Version", ver);
+        }
+        if let Some(bearer) = authorization {
+            req = req.header("Authorization", format!("Bearer {bearer}"));
         }
         match req.send().await {
             Ok(resp) if resp.status().is_success() => {
@@ -234,23 +239,42 @@ pub struct HttpMcpClient {
     /// `None` until initialize completes.
     negotiated_protocol_version: Arc<RwLock<Option<String>>>,
     sampling_handler: Option<Arc<dyn SamplingHandler>>,
+    /// OAuth 2.1 client_credentials config for an external server that requires
+    /// it. `None` → no OAuth (most servers; our built-in server uses a static
+    /// short-lived JWT instead). See `mcp/client/auth.rs`.
+    oauth: Option<Arc<OAuthClientConfig>>,
+    /// Cached bearer token (acquired lazily on the first 401) + the discovered
+    /// token endpoint (remembered for refresh). Shared into the spawned
+    /// tool-call tasks so they attach the same bearer.
+    oauth_token: Arc<RwLock<Option<StoredToken>>>,
+    oauth_token_endpoint: Arc<RwLock<Option<String>>>,
 }
 
 impl HttpMcpClient {
     pub fn new(server: McpServer) -> Result<Self, AppError> {
-        Self::new_internal(server, None)
+        Self::new_internal(server, None, None)
     }
 
     pub fn new_with_sampling(
         server: McpServer,
         handler: Arc<dyn SamplingHandler>,
     ) -> Result<Self, AppError> {
-        Self::new_internal(server, Some(handler))
+        Self::new_internal(server, Some(handler), None)
+    }
+
+    /// Construct a client that authenticates to an external server via the
+    /// OAuth 2.1 `client_credentials` grant (acquired lazily on the first 401).
+    pub fn new_with_oauth(
+        server: McpServer,
+        oauth: OAuthClientConfig,
+    ) -> Result<Self, AppError> {
+        Self::new_internal(server, None, Some(oauth))
     }
 
     fn new_internal(
         server: McpServer,
         sampling_handler: Option<Arc<dyn SamplingHandler>>,
+        oauth: Option<OAuthClientConfig>,
     ) -> Result<Self, AppError> {
         if server.transport_type != TransportType::Http {
             return Err(AppError::bad_request("INVALID_TRANSPORT", "Only HTTP transport supported"));
@@ -299,7 +323,44 @@ impl HttpMcpClient {
             next_request_id: Arc::new(AtomicI64::new(1)),
             negotiated_protocol_version: Arc::new(RwLock::new(None)),
             sampling_handler,
+            oauth: oauth.map(Arc::new),
+            oauth_token: Arc::new(RwLock::new(None)),
+            oauth_token_endpoint: Arc::new(RwLock::new(None)),
         })
+    }
+
+    /// Current cached bearer token, if configured and still valid.
+    fn current_bearer(&self) -> Option<String> {
+        let g = self.oauth_token.read().ok()?;
+        g.as_ref()
+            .filter(|t| t.is_valid())
+            .map(|t| t.access_token.clone())
+    }
+
+    /// Run the OAuth client_credentials flow in response to a 401 challenge,
+    /// caching the token + token endpoint. Returns the fresh access token.
+    async fn acquire_oauth_token(&self, www_authenticate: &str) -> Result<String, AppError> {
+        let config = self.oauth.as_ref().ok_or_else(|| {
+            AppError::internal_error("server returned 401 but no OAuth client is configured")
+        })?;
+        // If we already have a (possibly expired) token + endpoint, refresh;
+        // otherwise discover from the challenge.
+        let cached = self.oauth_token.read().ok().and_then(|g| g.clone());
+        let endpoint = self.oauth_token_endpoint.read().ok().and_then(|g| g.clone());
+        let (token, endpoint) = match (cached, endpoint) {
+            (Some(cur), Some(ep)) => {
+                (auth::refresh_token(&self.client, &ep, config, &cur).await?, ep)
+            }
+            _ => auth::obtain_token_from_challenge(&self.client, www_authenticate, config).await?,
+        };
+        let access = token.access_token.clone();
+        if let Ok(mut g) = self.oauth_token.write() {
+            *g = Some(token);
+        }
+        if let Ok(mut g) = self.oauth_token_endpoint.write() {
+            *g = Some(endpoint);
+        }
+        Ok(access)
     }
 
     /// Allocate the next monotonically increasing JSON-RPC request id.
@@ -355,6 +416,9 @@ impl HttpMcpClient {
         }
         if let Some(ver) = self.get_protocol_version() {
             req = req.header("MCP-Protocol-Version", ver);
+        }
+        if let Some(bearer) = self.current_bearer() {
+            req = req.header("Authorization", format!("Bearer {bearer}"));
         }
 
         let response = req.send().await
@@ -432,53 +496,83 @@ impl HttpMcpClient {
         method: &str,
         params: &Value,
     ) -> Result<T, AppError> {
-        let id = self.next_id();
-        let request_body = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params,
-        });
+        // At most one extra attempt: an OAuth-protected server's first request
+        // 401s, we acquire a token, and retry with `Authorization: Bearer`.
+        let mut oauth_retried = false;
+        let (status, content_type, response_text) = loop {
+            let id = self.next_id();
+            let request_body = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": method,
+                "params": params,
+            });
 
-        let mut request = self.client
-            .post(&self.base_url)
-            // Per spec § Transports: client MUST advertise both content types so
-            // the server can choose JSON or SSE.
-            .header("Accept", "application/json, text/event-stream")
-            .json(&request_body);
+            let mut request = self.client
+                .post(&self.base_url)
+                // Per spec § Transports: client MUST advertise both content types so
+                // the server can choose JSON or SSE.
+                .header("Accept", "application/json, text/event-stream")
+                .json(&request_body);
 
-        if let Some(session_id) = self.get_session_id() {
-            request = request.header("mcp-session-id", session_id);
-        }
-        // Per spec: MUST send MCP-Protocol-Version on all requests AFTER init.
-        if let Some(ver) = self.get_protocol_version() {
-            request = request.header("MCP-Protocol-Version", ver);
-        }
+            if let Some(session_id) = self.get_session_id() {
+                request = request.header("mcp-session-id", session_id);
+            }
+            // Per spec: MUST send MCP-Protocol-Version on all requests AFTER init.
+            if let Some(ver) = self.get_protocol_version() {
+                request = request.header("MCP-Protocol-Version", ver);
+            }
+            // Attach a cached OAuth bearer if we have a valid one.
+            if let Some(bearer) = self.current_bearer() {
+                request = request.header("Authorization", format!("Bearer {bearer}"));
+            }
 
-        let response = request.send().await
-            .map_err(|e| AppError::internal_error(format!("HTTP request failed: {}", e)))?;
+            let response = request.send().await
+                .map_err(|e| AppError::internal_error(format!("HTTP request failed: {}", e)))?;
 
-        let status = response.status();
+            let status = response.status();
 
-        if let Some(session_id) = response.headers().get("mcp-session-id") {
-            if let Ok(s) = session_id.to_str() { self.set_session_id(s); }
-        }
+            // OAuth 2.1: on 401 with a configured client, acquire a token from
+            // the `WWW-Authenticate` challenge and retry the request once.
+            if status.as_u16() == 401 && self.oauth.is_some() && !oauth_retried {
+                oauth_retried = true;
+                let www = response.headers()
+                    .get("www-authenticate")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                tracing::info!(
+                    "[mcp] server '{}' returned 401 for '{}'; running OAuth client_credentials flow",
+                    self.server_name, method
+                );
+                self.acquire_oauth_token(&www).await?;
+                continue;
+            }
 
-        let content_type = response.headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_string();
+            if let Some(session_id) = response.headers().get("mcp-session-id") {
+                if let Ok(s) = session_id.to_str() { self.set_session_id(s); }
+            }
 
-        let response_text = response.text().await
-            .map_err(|e| AppError::internal_error(format!("Failed to read response: {}", e)))?;
+            let content_type = response.headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
 
-        if !status.is_success() {
-            return Err(AppError::internal_error(format!(
-                "MCP server returned HTTP {}: {}",
-                status, response_text.chars().take(200).collect::<String>()
-            )));
-        }
+            let id_for_sse = id;
+            let response_text = response.text().await
+                .map_err(|e| AppError::internal_error(format!("Failed to read response: {}", e)))?;
+
+            if !status.is_success() {
+                return Err(AppError::internal_error(format!(
+                    "MCP server returned HTTP {}: {}",
+                    status, response_text.chars().take(200).collect::<String>()
+                )));
+            }
+            break (status, content_type, (id_for_sse, response_text));
+        };
+        let (id, response_text) = response_text;
+        let _ = status;
 
         // Two valid response shapes per spec § Transports:
         //  - Content-Type: application/json → single JSON-RPC response
@@ -565,6 +659,7 @@ impl HttpMcpClient {
         url: String,
         session_id_arc: Arc<RwLock<Option<String>>>,
         protocol_version: Option<String>,
+        bearer: Option<String>,
         tool_call_id: i64,
         server_name: String,
         name: String,
@@ -632,6 +727,9 @@ impl HttpMcpClient {
         // Per spec: MUST send MCP-Protocol-Version on subsequent requests.
         if let Some(ref ver) = protocol_version {
             req = req.header("MCP-Protocol-Version", ver);
+        }
+        if let Some(ref b) = bearer {
+            req = req.header("Authorization", format!("Bearer {b}"));
         }
 
         tracing::info!(
@@ -985,7 +1083,7 @@ impl HttpMcpClient {
                     // Network error mid-stream — try to resume via Last-Event-Id
                     // before giving up (MCP resumability).
                     if let Some(resp) = try_resume_sse(
-                        &stream_client, &url, get_sid(), &protocol_version, &last_event_id, &server_name,
+                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
                     ).await {
                         byte_stream = resp.bytes_stream();
                         buffer.clear();
@@ -997,7 +1095,7 @@ impl HttpMcpClient {
                     // Stream ended before the tool result. If the server emitted
                     // event ids (resumable), reconnect via GET + Last-Event-Id.
                     if let Some(resp) = try_resume_sse(
-                        &stream_client, &url, get_sid(), &protocol_version, &last_event_id, &server_name,
+                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
                     ).await {
                         byte_stream = resp.bytes_stream();
                         buffer.clear();
@@ -1022,6 +1120,7 @@ impl HttpMcpClient {
         url: String,
         session_id_arc: Arc<RwLock<Option<String>>>,
         protocol_version: Option<String>,
+        bearer: Option<String>,
         server_name: String,
         message_id: Option<uuid::Uuid>,
         sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
@@ -1258,7 +1357,7 @@ impl HttpMcpClient {
                 }
                 Some(Err(e)) => {
                     if let Some(resp) = try_resume_sse(
-                        &stream_client, &url, get_sid(), &protocol_version, &last_event_id, &server_name,
+                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
                     ).await {
                         byte_stream = resp.bytes_stream();
                         buffer.clear();
@@ -1268,7 +1367,7 @@ impl HttpMcpClient {
                 }
                 None => {
                     if let Some(resp) = try_resume_sse(
-                        &stream_client, &url, get_sid(), &protocol_version, &last_event_id, &server_name,
+                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
                     ).await {
                         byte_stream = resp.bytes_stream();
                         buffer.clear();
@@ -1310,6 +1409,9 @@ impl McpClient for HttpMcpClient {
                 .header("mcp-session-id", &sid);
             if let Some(ver) = self.get_protocol_version() {
                 req = req.header("MCP-Protocol-Version", ver);
+            }
+            if let Some(bearer) = self.current_bearer() {
+                req = req.header("Authorization", format!("Bearer {bearer}"));
             }
             match req.send().await {
                 Ok(r) => {
@@ -1385,6 +1487,8 @@ impl McpClient for HttpMcpClient {
         // Allocate a unique request id once, up front — used by both branches.
         let tool_call_id = self.next_id();
         let protocol_version = self.get_protocol_version();
+        // Cached OAuth bearer (acquired at connect/initialize for OAuth servers).
+        let bearer = self.current_bearer();
 
         // Use sampling-aware SSE streaming if a sampling handler is present.
         // Spawn in a completely independent task so that req.send().await inside
@@ -1398,6 +1502,7 @@ impl McpClient for HttpMcpClient {
             let name_owned     = name.to_string();
             let arguments_owned = arguments;
             let pv             = protocol_version.clone();
+            let bearer1        = bearer.clone();
 
             let (result_tx, result_rx) =
                 tokio::sync::oneshot::channel::<Result<ToolResult, AppError>>();
@@ -1409,6 +1514,7 @@ impl McpClient for HttpMcpClient {
                     url,
                     session_id_arc,
                     pv,
+                    bearer1,
                     tool_call_id,
                     server_name,
                     name_owned,
@@ -1440,6 +1546,7 @@ impl McpClient for HttpMcpClient {
         let message_id_owned     = message_id;
         let elicit_notify_owned  = elicit_notify_tx;
         let pv_owned             = protocol_version;
+        let bearer_owned         = bearer;
 
         let (result_tx, result_rx) =
             tokio::sync::oneshot::channel::<Result<ToolResult, AppError>>();
@@ -1493,6 +1600,9 @@ impl McpClient for HttpMcpClient {
             if let Some(ref ver) = pv_owned {
                 req = req.header("MCP-Protocol-Version", ver);
             }
+            if let Some(ref b) = bearer_owned {
+                req = req.header("Authorization", format!("Bearer {b}"));
+            }
 
             let response = match req.send().await {
                 Ok(r) => r,
@@ -1530,6 +1640,7 @@ impl McpClient for HttpMcpClient {
                     url,
                     session_id_arc,
                     pv_owned,
+                    bearer_owned,
                     server_name,
                     message_id_owned,
                     sse_tx,

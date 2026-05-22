@@ -1,6 +1,7 @@
 pub mod traits;
 pub mod stdio;
 pub mod http;
+pub mod auth;
 pub mod session;
 pub mod manager;
 
