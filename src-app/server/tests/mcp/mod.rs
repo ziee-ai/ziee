@@ -1214,6 +1214,7 @@ mod conformance_phase1_test;      // Plan-3 Phase-1: version negotiation, string
 mod conformance_resumability_test; // Plan-3 Phase-3 (I1): SSE resume via Last-Event-Id
 mod conformance_oauth_test;        // Plan-3 Phase-4 (Cos1): OAuth client_credentials
 mod oauth_config_route_test;       // Plan-3 Phase-4: per-server OAuth config endpoints
+mod conformance_cancellation_test; // Plan-3 Phase-2 (C3): client notifications/cancelled
 mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
 
 // ============================================================================
