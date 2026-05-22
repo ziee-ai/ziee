@@ -4,15 +4,23 @@
 //! hardening. Every flag here has a test row in the empirical-
 //! validation table.
 
+// Linux-only execution primitives — gated so the crate compiles on
+// macOS/Windows (where execution goes through the VM / WSL2 backend).
+#[cfg(target_os = "linux")]
 use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
+#[cfg(target_os = "linux")]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
 use std::process::Stdio;
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
+#[cfg(target_os = "linux")]
 use tokio::process::Command;
+#[cfg(target_os = "linux")]
 use tokio::time::timeout;
 use uuid::Uuid;
 
@@ -61,6 +69,7 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 600;
 ///   3. Optionally pipe the compiled seccomp filter bytes to a fd.
 ///   4. Spawn bwrap → wrap with tokio `timeout` → capture-with-cap.
 ///   5. Tear down cgroup scope on the way out.
+#[cfg(target_os = "linux")]
 #[tracing::instrument(
     name = "code_sandbox.exec",
     skip_all,
@@ -265,7 +274,10 @@ pub(crate) fn build_bwrap_argv(
     user_cmd: &str,
     passwd_path: &Path,
     group_path: &Path,
-    seccomp_fd: Option<RawFd>,
+    // Raw fd number bwrap reads the seccomp filter from. Plain `i32` (not
+    // `RawFd`) so this argv builder stays OS-independent and shared across
+    // backends; only the Linux backend actually wires up the fd.
+    seccomp_fd: Option<i32>,
 ) -> Vec<String> {
     let rootfs = rootfs_dir.to_str().unwrap_or_default();
     let workspace = ctx.workspace.to_string_lossy().to_string();
@@ -508,6 +520,7 @@ fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
 // shuttle them to a fd that bwrap reads via `--seccomp <fd>`.
 // --------------------------------------------------------------------
 
+#[cfg(target_os = "linux")]
 struct SeccompPipe {
     read_fd: RawFd,
     /// Stable fd number we dup2 the read end to inside the bwrap child
@@ -515,6 +528,7 @@ struct SeccompPipe {
     target_fd: i32,
 }
 
+#[cfg(target_os = "linux")]
 impl SeccompPipe {
     fn install(bpf: Arc<Vec<u8>>) -> Result<Self, AppError> {
         // pipe(2) via libc — nix would be cleaner but we avoid the dep
@@ -601,6 +615,7 @@ impl SeccompPipe {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for SeccompPipe {
     fn drop(&mut self) {
         unsafe {
@@ -656,10 +671,12 @@ fn preview(s: &str, n: usize) -> &str {
 }
 
 // Re-export so non-sandbox callers don't need to touch RawFd directly.
+#[cfg(target_os = "linux")]
 pub use std::os::fd::FromRawFd;
 
 // Trait imports used above but otherwise unused locally — keep the
 // imports honest in -Dwarnings builds.
+#[cfg(target_os = "linux")]
 #[allow(dead_code)]
 fn _force_fd_imports(f: std::fs::File) -> RawFd {
     let fd = f.as_raw_fd();

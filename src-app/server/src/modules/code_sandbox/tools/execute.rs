@@ -4,9 +4,9 @@ use axum::http::StatusCode;
 use serde_json::json;
 
 use crate::common::AppError;
+use crate::modules::code_sandbox::backend;
 use crate::modules::code_sandbox::config;
-use crate::modules::code_sandbox::runtime_mount;
-use crate::modules::code_sandbox::sandbox::{run_in_sandbox, DEFAULT_TIMEOUT_SECS};
+use crate::modules::code_sandbox::sandbox::DEFAULT_TIMEOUT_SECS;
 use crate::modules::code_sandbox::types::{SandboxContext, CONVERSATION_FLAVOR};
 
 pub async fn execute_command(
@@ -44,17 +44,12 @@ pub async fn execute_command(
     // the rootfs before run_in_sandbox so we can capture the fetch
     // outcome separately (run_in_sandbox internally calls
     // ensure_rootfs_ready again, but that's a cheap warm-path lookup).
-    let ensure = runtime_mount::ensure_rootfs_ready(&state, flavor).await?;
+    let ensure = backend::active().ensure_rootfs_ready(&state, flavor).await?;
     let fetch_info = ensure.fetch_info.clone();
 
-    let result = run_in_sandbox(
-        &state,
-        ctx,
-        command,
-        Some(DEFAULT_TIMEOUT_SECS),
-        flavor,
-    )
-    .await?;
+    let result = backend::active()
+        .run(&state, ctx, command, Some(DEFAULT_TIMEOUT_SECS), flavor)
+        .await?;
 
     let mut response = json!({
         "stdout": result.stdout,

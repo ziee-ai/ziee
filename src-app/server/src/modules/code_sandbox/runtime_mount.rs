@@ -38,6 +38,10 @@
 //!   squashfuse child. Each unmounts itself. No app cooperation.
 
 use std::collections::HashMap;
+// Linux-only: `pre_exec` (PDEATHSIG) on the squashfuse child. Gated so the
+// crate compiles on macOS/Windows, where mounting happens in the VM / WSL2
+// backend rather than via a host squashfuse process.
+#[cfg(target_os = "linux")]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -364,6 +368,9 @@ async fn mount_if_needed(
     // with the server even on SIGKILL/OOM-kill.
     let mut cmd = Command::new("squashfuse");
     cmd.arg("-f").arg(sqfs_path).arg(mount_dir);
+    // PR_SET_PDEATHSIG makes the FUSE daemon die with the server even on
+    // SIGKILL/OOM. Linux-only; macOS/Windows mount inside the VM/WSL2 guest.
+    #[cfg(target_os = "linux")]
     unsafe {
         cmd.pre_exec(|| {
             let r = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0);
@@ -446,9 +453,12 @@ pub async fn shutdown() {
         // cleanly. (tokio's Child::kill sends SIGKILL, which would
         // leave the mount table referencing a dead process.)
         if let Some(pid) = child.id() {
+            #[cfg(target_os = "linux")]
             unsafe {
                 libc::kill(pid as libc::pid_t, libc::SIGTERM);
             }
+            #[cfg(not(target_os = "linux"))]
+            let _ = pid;
             let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
         }
         // Defensive unmount in case squashfuse died without
@@ -498,9 +508,12 @@ pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
         let taken = slot.lock().await.remove(flavor);
         if let Some(MountedRootfs { mut child, mount_dir }) = taken {
             if let Some(pid) = child.id() {
+                #[cfg(target_os = "linux")]
                 unsafe {
                     libc::kill(pid as libc::pid_t, libc::SIGTERM);
                 }
+                #[cfg(not(target_os = "linux"))]
+                let _ = pid;
                 let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
             }
             let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;

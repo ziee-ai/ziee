@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 
+pub mod backend;
 pub mod cgroup;
 pub mod config;
 pub mod handlers;

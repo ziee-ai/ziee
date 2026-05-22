@@ -593,7 +593,7 @@ pub async fn evict_environment_handler(
     // Unmount (if mounted) + delete the cached squashfs. Idempotent: a
     // not-cached flavor is a 200 no-op. The next execute_command re-fetches.
     let outcome =
-        crate::modules::code_sandbox::runtime_mount::evict_flavor(&cache_dir, &flavor).await;
+        crate::modules::code_sandbox::backend::active().evict_flavor(&cache_dir, &flavor).await;
     tracing::info!(
         flavor,
         bytes_freed = outcome.bytes_freed,
