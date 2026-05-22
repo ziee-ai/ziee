@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use sandbox_vm_protocol::{encode, Decoder, ExecRequest, Frame};
+use sandbox_vm_protocol::{encode, CgroupLimits, Decoder, ExecRequest, Frame};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
@@ -323,7 +323,9 @@ impl SandboxBackend for MacVmBackend {
         let guest_caps = HardeningCapabilities {
             bwrap_path: PathBuf::from(GUEST_BWRAP_PATH),
             pid_namespace: PidNsMode::Strict,
-            cgroup: CgroupMode::None, // MAC-TODO: in-guest cgroup v2 delegation
+            // caps.cgroup drives the *host* CgroupScope, unused in the VM — the
+            // guest agent applies cgroup v2 from ExecRequest.cgroup. See run().
+            cgroup: CgroupMode::None,
             // The caps.seccomp field is unused for the --seccomp flag (that's
             // the build_bwrap_argv seccomp_fd arg). The guest agent builds +
             // applies the shared seccomp filter itself; see run().
@@ -397,6 +399,9 @@ impl SandboxBackend for MacVmBackend {
             argv,
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),
+            // In-guest cgroup v2 limits (the agent applies them; prlimit in the
+            // argv is the backstop). MAC-TODO: source from §6 config when it lands.
+            cgroup: Some(CgroupLimits::default_policy()),
         };
         let result = run_via_socket(&vm.socket_path, req, secs).await;
         vm.inflight.fetch_sub(1, Ordering::SeqCst);

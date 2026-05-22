@@ -104,7 +104,14 @@ Run with `code_sandbox.enabled: true` and trigger an `execute_command`; then ver
   `ExecRequest.seccomp_fd`), so the guest applies the identical policy as the
   Linux host. (The `guest_caps.seccomp` field stays `NotLinked` because that
   field isn't what drives `--seccomp` — the `seccomp_fd` arg is.)
-- **In-guest cgroup v2**: currently `CgroupMode::None` /
+- **In-guest cgroup v2**: DONE — the agent enables `+memory +pids +cpu` on the
+  guest cgroup root at startup and, per exec, creates a scope with the limits
+  from `ExecRequest.cgroup` (`CgroupLimits::default_policy()` = 512 MiB / no
+  swap / 256 PIDs / 1 CPU, matching the host) and attaches bwrap. Best-effort:
+  if the guest kernel lacks a controller, the prlimit backstop still applies.
+  Needs a guest kernel with CONFIG_MEMCG/CGROUP_PIDS/CFS_BANDWIDTH (validate
+  at Tier-4). MAC-TODO superseded:
+- ~~In-guest cgroup v2~~ (legacy note): was `CgroupMode::None` /
   `SeccompMode::NotLinked` for the guest caps (rlimits via prlimit still apply
   inside bwrap). Add guest cgroup delegation + a guest-compiled seccomp filter.
 - **VM sizing → §6**: `VM_VCPUS`/`VM_RAM_MIB` are constants; wire to the

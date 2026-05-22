@@ -40,6 +40,40 @@ pub struct ExecRequest {
     /// Linux host does.
     #[serde(default)]
     pub seccomp_fd: Option<i32>,
+    /// If set, the agent creates an in-guest cgroup v2 scope with these limits
+    /// and attaches the bwrap process to it (defense-in-depth; the in-argv
+    /// prlimit is the always-on backstop). `None` → rely on prlimit only. The
+    /// host owns the policy so it stays single-source (and config-driven later).
+    #[serde(default)]
+    pub cgroup: Option<CgroupLimits>,
+}
+
+/// cgroup v2 resource limits the guest agent applies per exec. Values mirror
+/// the Linux host's `cgroup::CgroupScope` defaults.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CgroupLimits {
+    /// `memory.max` (bytes).
+    pub memory_max_bytes: u64,
+    /// `memory.swap.max` (bytes; 0 disables swap).
+    pub memory_swap_max_bytes: u64,
+    /// `pids.max`.
+    pub pids_max: u64,
+    /// `cpu.max` ("<quota> <period>" in µs; "100000 100000" = 1 CPU).
+    pub cpu_max: String,
+}
+
+impl CgroupLimits {
+    /// The default policy — must match `cgroup::CgroupScope` on the Linux host
+    /// (512 MiB / no swap / 256 PIDs / 1 CPU). Will become config-driven with
+    /// Plan 1 §6 (runtime-configurable limits).
+    pub fn default_policy() -> Self {
+        Self {
+            memory_max_bytes: 512 * 1024 * 1024,
+            memory_swap_max_bytes: 0,
+            pids_max: 256,
+            cpu_max: "100000 100000".to_string(),
+        }
+    }
 }
 
 /// Terminal status of an `ExecRequest`.
@@ -171,6 +205,7 @@ mod tests {
             argv: vec!["--clearenv".into(), "--".into(), "/bin/bash".into(), "-lc".into(), "echo hi".into()],
             timeout_ms: 600_000,
             seccomp_fd: Some(10),
+            cgroup: Some(CgroupLimits::default_policy()),
         })
     }
 

@@ -25,7 +25,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sandbox_vm_protocol::{encode, Decoder, ExitStatus, Frame};
+use sandbox_vm_protocol::{encode, CgroupLimits, Decoder, ExitStatus, Frame};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -53,6 +53,7 @@ async fn main() {
         .init();
 
     init_mounts();
+    cgroup_init();
 
     let addr = VsockAddr::new(libc::VMADDR_CID_ANY, VSOCK_PORT);
     let listener = match VsockListener::bind(addr) {
@@ -238,6 +239,23 @@ async fn handle_conn(
         }
     };
 
+    // In-guest cgroup v2 (defense-in-depth; the prlimit wrapper in the argv is
+    // the always-on backstop). Held until the end of the fn so Drop removes the
+    // cgroup after the child exits.
+    let _cgroup = match (&req.cgroup, child.id()) {
+        (Some(limits), Some(pid)) => match GuestCgroup::create(req.request_id, limits) {
+            Ok(cg) => {
+                cg.attach(pid);
+                Some(cg)
+            }
+            Err(e) => {
+                tracing::warn!("agent: cgroup create failed: {e}; prlimit still applies");
+                None
+            }
+        },
+        _ => None,
+    };
+
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr = child.stderr.take().expect("stderr piped");
     let out_tx = tx.clone();
@@ -265,6 +283,57 @@ async fn handle_conn(
     drop(tx);
     let _ = writer.await;
     Ok(())
+}
+
+/// One-time cgroup v2 setup: ensure cgroup2 is mounted and enable the
+/// controllers child cgroups will use. Best-effort — if it fails, per-exec
+/// cgroup limits are simply unavailable and prlimit (in the bwrap argv) does
+/// the enforcement, exactly like the Linux host's `CgroupMode::None` path.
+fn cgroup_init() {
+    if !std::path::Path::new("/sys/fs/cgroup/cgroup.controllers").exists() {
+        let _ = std::fs::create_dir_all("/sys/fs/cgroup");
+        mount_fs("cgroup2", "/sys/fs/cgroup", "cgroup2", 0, None);
+    }
+    // The agent (in the root cgroup) is exempt from the no-internal-processes
+    // rule, so enabling subtree_control on the root is allowed.
+    if let Err(e) = std::fs::write("/sys/fs/cgroup/cgroup.subtree_control", "+memory +pids +cpu") {
+        tracing::warn!(
+            "agent: enabling cgroup controllers failed: {e}; per-exec cgroup \
+             limits unavailable (the prlimit backstop still applies)"
+        );
+    }
+}
+
+/// Per-exec cgroup v2 scope under the guest root, mirroring the host's
+/// `CgroupScope`. Drop removes it (empty cgroups rmdir cleanly).
+struct GuestCgroup {
+    path: std::path::PathBuf,
+}
+
+impl GuestCgroup {
+    fn create(request_id: u64, limits: &CgroupLimits) -> std::io::Result<Self> {
+        let path = std::path::PathBuf::from(format!("/sys/fs/cgroup/sb-{request_id}"));
+        std::fs::create_dir(&path)?;
+        // Per-controller writes are best-effort: a controller the guest kernel
+        // didn't build still leaves the others enforcing.
+        let _ = std::fs::write(path.join("memory.max"), limits.memory_max_bytes.to_string());
+        let _ = std::fs::write(path.join("memory.swap.max"), limits.memory_swap_max_bytes.to_string());
+        let _ = std::fs::write(path.join("pids.max"), limits.pids_max.to_string());
+        let _ = std::fs::write(path.join("cpu.max"), &limits.cpu_max);
+        Ok(Self { path })
+    }
+
+    fn attach(&self, pid: u32) {
+        if let Err(e) = std::fs::write(self.path.join("cgroup.procs"), pid.to_string()) {
+            tracing::warn!("agent: cgroup attach pid {pid} failed: {e}");
+        }
+    }
+}
+
+impl Drop for GuestCgroup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir(&self.path);
+    }
 }
 
 /// Pipe the seccomp BPF to a fd in the bwrap child, mirroring the Linux host's
