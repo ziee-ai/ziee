@@ -123,13 +123,18 @@ Containerization framework. What we already got right, and the gaps to close.
 
 **Gaps to close (ordered by relevance to our threat model — prompt-injection
 exfiltration, host-FS pollution):**
-1. **Workspace virtio-fs over-shares (cross-tenant).** We `krun_add_virtiofs`
-   the *entire* `workspace_root` into the per-flavor VM; bwrap binds only the
-   per-conversation subdir, but anything else in the guest (the agent, an
-   escaped process) can read every conversation's workspace — virtio-fs gives no
-   in-fs isolation (libkrun docs). The Linux backend binds only the per-conv
-   dir. Fix: share only the per-conversation dir (per-exec), or copy data
-   in/out, or a per-conversation VM.
+1. **Workspace virtio-fs shares the whole `workspace_root` — ACCEPTABLE, not a
+   regression** (re-assessed). bwrap inside the guest is the per-conversation
+   boundary: it `--bind`s only the per-conversation subdir into the sandbox
+   mount namespace, so the sandboxed command can't see `/workspace` or other
+   conversations regardless of what's shared. It only matters under a *bwrap
+   escape* — and then the exposed set (all of `workspace_root`) is identical to
+   the Linux backend (a bwrap escape there lands on the host with full
+   `workspace_root` access), except the VM keeps the attacker contained behind
+   libkrun too. So sharing the whole root is fine and avoids prohibitive
+   per-conversation copy-in/out. Residual (low): the generic virtio-fs→host-fs
+   escape surface — keep `workspace_root` on a dedicated mount/subvolume so a
+   virtio-fs traversal bug can't reach the wider host fs.
 2. **Guest root via host-dir virtio-fs.** `krun_set_root` shares a host
    directory as `/`; libkrun + Apple both recommend a **read-only EXT4/raw block
    image** for an untrusted guest root (smaller escape surface, no qcow2
