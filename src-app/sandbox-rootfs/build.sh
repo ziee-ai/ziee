@@ -8,10 +8,8 @@
 #   --arch    x86_64  (from `uname -m` — only override for cross-build)
 #   --output  .ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v{schema}.r{rev}-{arch}-{flavor}.squashfs
 #
-# Two backends, auto-detected:
-#   1. mmdebstrap (primary; reproducible-by-design, no daemon)
-#   2. docker  (fallback when mmdebstrap unavailable)
-#   Override with --backend={mmdebstrap|docker}.
+# Backend: mmdebstrap (reproducible-by-design, no daemon). Install it with
+#   apt install mmdebstrap squashfs-tools
 #
 # Reproducibility:
 #   SOURCE_DATE_EPOCH is exported (default: today's commit timestamp)
@@ -28,8 +26,6 @@ SCHEMA=""
 REVISION="r0"
 ARCH="$(uname -m)"
 OUTPUT=""
-APT_CACHE=""
-BACKEND="auto"   # auto | mmdebstrap | docker
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,9 +34,6 @@ while [[ $# -gt 0 ]]; do
     --revision)  REVISION="$2";  shift 2 ;;
     --arch)      ARCH="$2";      shift 2 ;;
     --output)    OUTPUT="$2";    shift 2 ;;
-    --apt-cache) APT_CACHE="$2"; shift 2 ;;
-    --backend)   BACKEND="$2";   shift 2 ;;
-    --no-docker) BACKEND="mmdebstrap"; shift ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -49,18 +42,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# --backend=auto: prefer mmdebstrap if installed, else docker.
-if [[ "$BACKEND" == "auto" ]]; then
-  if command -v mmdebstrap >/dev/null; then
-    BACKEND="mmdebstrap"
-  elif command -v docker >/dev/null; then
-    BACKEND="docker"
-  else
-    echo "build.sh: neither mmdebstrap nor docker found in PATH" >&2
-    echo "  apt install mmdebstrap   # primary, faster, reproducible-by-design" >&2
-    echo "  OR install docker         # fallback" >&2
-    exit 1
-  fi
+if ! command -v mmdebstrap >/dev/null; then
+  echo "build.sh: mmdebstrap not found in PATH" >&2
+  echo "  apt install mmdebstrap squashfs-tools" >&2
+  exit 1
 fi
 
 # --------------------------------------------------------------------
@@ -76,6 +61,26 @@ if [[ -z "$SCHEMA" ]]; then
   fi
   : "${SCHEMA:=1}"
 fi
+
+# --------------------------------------------------------------------
+# Resolve + source the flavor recipe: flavors/<flavor>/v<schema>/flavor.sh
+# Each recipe is self-contained: APT_SNAPSHOT, APT_PACKAGES, and an
+# optional provision() function. Adding a flavor = drop in a new dir.
+# --------------------------------------------------------------------
+
+RECIPE="$SCRIPT_DIR/flavors/$FLAVOR/v$SCHEMA/flavor.sh"
+if [[ ! -f "$RECIPE" ]]; then
+  echo "build.sh: no recipe at $RECIPE" >&2
+  echo "  available flavors for schema v$SCHEMA:" >&2
+  for f in "$SCRIPT_DIR"/flavors/*/v"$SCHEMA"/flavor.sh; do
+    [[ -f "$f" ]] && echo "    - $(basename "$(dirname "$(dirname "$f")")")" >&2
+  done
+  exit 1
+fi
+# shellcheck source=/dev/null
+source "$RECIPE"
+: "${APT_SNAPSHOT:?recipe $RECIPE must set APT_SNAPSHOT}"
+: "${APT_PACKAGES:?recipe $RECIPE must set APT_PACKAGES}"
 
 if [[ -z "$OUTPUT" ]]; then
   OUTPUT="$REPO_ROOT/.ziee-cache/sandbox-rootfs/ziee-sandbox-rootfs-v${SCHEMA}.${REVISION}-${ARCH}-${FLAVOR}.squashfs"
@@ -122,20 +127,15 @@ mkdir -p "$STAGE_DIR"
 trap cleanup_stage EXIT
 
 # --------------------------------------------------------------------
-# Backend: mmdebstrap (primary)
+# Build: mmdebstrap bootstrap → chroot installs
 # --------------------------------------------------------------------
 
 build_mmdebstrap() {
   echo "==> mmdebstrap (flavor=$FLAVOR schema=$SCHEMA rev=$REVISION arch=$ARCH)"
-  local apt_snapshot
-  apt_snapshot="$(cat "$SCRIPT_DIR/pins/apt-snapshot" 2>/dev/null | grep -v '^#' | head -1 | tr -d '[:space:]')"
-  apt_snapshot="${apt_snapshot:-current}"
-  local mirror="http://snapshot.ubuntu.com/ubuntu/${apt_snapshot}"
-
-  local pkgs="bash,coreutils,util-linux,ca-certificates,curl,wget,bzip2,xz-utils,unzip,locales,tzdata,python3,python3-pip,python3-venv"
-  if [[ "$FLAVOR" == "full" ]]; then
-    pkgs+=",build-essential,gfortran,git,git-lfs,libffi-dev,libssl-dev,zlib1g-dev,vim,jq,ripgrep,fd-find,tree,net-tools,dnsutils,iputils-ping,gnupg,lsb-release,apt-transport-https,r-base,r-base-dev"
-  fi
+  local mirror="http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT}"
+  # Collapse the recipe's whitespace/newline package list to a comma list.
+  local pkgs
+  pkgs="$(echo "$APT_PACKAGES" | tr -s '[:space:]' ',' | sed 's/^,//; s/,$//')"
 
   # mmdebstrap does the bootstrap directly into the staging dir.
   # Mode selection:
@@ -162,32 +162,19 @@ build_mmdebstrap() {
     "${mmd[@]}" 2>&1 | grep -vE "^I:" || true
   fi
 
-  # Layer 2: pip packages for full flavor (mmdebstrap can't reach
-  # PyPI directly; use chroot pip after bootstrap).
-  if [[ "$FLAVOR" == "full" ]]; then
-    echo "==> chroot pip install (full flavor Python stack)"
-    # Bind /etc/resolv.conf so pip can resolve pypi.
+  # Post-bootstrap provisioning, if the recipe defines it (pip/R/Node etc.
+  # — mmdebstrap can't reach PyPI/CRAN/npm directly). Runs inside the chroot
+  # via systemd-nspawn with /etc/resolv.conf bound. The recipe's `provision`
+  # function is shipped in verbatim via `declare -f` (no quoting-hell).
+  if declare -f provision >/dev/null; then
+    echo "==> chroot provision (recipe provision function)"
+    local prov="$STAGE_DIR/tmp/ziee-provision.sh"
+    { echo "set -euo pipefail"; declare -f provision; echo "provision"; } \
+      | sudo tee "$prov" >/dev/null
     sudo systemd-nspawn --quiet -D "$STAGE_DIR" \
       --bind-ro=/etc/resolv.conf \
-      /bin/bash -c "
-        pip3 install --no-cache-dir --break-system-packages \
-          numpy pandas matplotlib scipy scikit-learn \
-          seaborn plotly statsmodels sympy \
-          requests httpx beautifulsoup4 \
-          ipython jupyter pillow openpyxl xlrd pyarrow && \
-        pip3 install --no-cache-dir --break-system-packages \
-          torch torchvision --extra-index-url https://download.pytorch.org/whl/cpu
-      " 2>&1 | tail -20
-
-    echo "==> chroot R + Node install"
-    sudo systemd-nspawn --quiet -D "$STAGE_DIR" \
-      --bind-ro=/etc/resolv.conf \
-      /bin/bash -c "
-        Rscript -e \"install.packages(c('ggplot2','dplyr','tidyr','readr','stringr','lubridate','purrr','tibble','jsonlite','httr','data.table','caret','forecast'), repos='https://cloud.r-project.org', Ncpus=parallel::detectCores())\" && \
-        curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-        apt-get install -y --no-install-recommends nodejs && \
-        npm install -g typescript ts-node
-      " 2>&1 | tail -20
+      /bin/bash /tmp/ziee-provision.sh 2>&1 | tail -30
+    sudo rm -f "$prov"
   fi
 
   # Write the schema sentinel.
@@ -199,48 +186,10 @@ build_mmdebstrap() {
 }
 
 # --------------------------------------------------------------------
-# Backend: docker (fallback)
+# Build + finalize
 # --------------------------------------------------------------------
 
-build_docker() {
-  if ! command -v docker >/dev/null; then
-    echo "build.sh: docker not found; install docker or use mmdebstrap" >&2
-    exit 1
-  fi
-
-  local image_tag="ziee-sandbox-rootfs-v${SCHEMA}.${REVISION}-${FLAVOR}"
-  local stage_tar="$(dirname "$OUTPUT")/.stage-${image_tag}.tar"
-
-  echo "==> docker build (flavor=$FLAVOR schema=$SCHEMA rev=$REVISION arch=$ARCH)"
-  build_args=(
-    --build-arg "ZIEE_SANDBOX_FLAVOR=$FLAVOR"
-    --build-arg "ZIEE_SANDBOX_SCHEMA=$SCHEMA"
-  )
-  if [[ -n "$APT_CACHE" ]]; then
-    build_args+=(--build-arg "http_proxy=$APT_CACHE" --build-arg "HTTP_PROXY=$APT_CACHE")
-  fi
-  docker build -f "$SCRIPT_DIR/Dockerfile" "${build_args[@]}" -t "$image_tag" "$SCRIPT_DIR"
-
-  echo "==> docker export → tar"
-  local container_id
-  container_id="$(docker create "$image_tag")"
-  trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true; rm -rf "$STAGE_DIR"' EXIT
-  docker export "$container_id" -o "$stage_tar"
-
-  echo "==> extract tar → staging dir"
-  tar -xf "$stage_tar" -C "$STAGE_DIR" --xattrs --acls --numeric-owner
-  rm -f "$stage_tar"
-}
-
-# --------------------------------------------------------------------
-# Dispatch + finalize
-# --------------------------------------------------------------------
-
-case "$BACKEND" in
-  mmdebstrap) build_mmdebstrap ;;
-  docker)     build_docker ;;
-  *) echo "build.sh: unknown backend '$BACKEND' (want mmdebstrap|docker|auto)" >&2; exit 2 ;;
-esac
+build_mmdebstrap
 
 echo "==> mksquashfs ($OUTPUT)"
 rm -f "$OUTPUT"

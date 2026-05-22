@@ -14,7 +14,7 @@ schema changes. After the bootstrap, every release is a single
 What it does:
 
 1. Builds both `minimal` and `full` flavors via
-   `cargo run --bin ziee-chat -- build-sandbox-rootfs --flavor <flavor>`.
+   `src-app/sandbox-rootfs/build.sh --flavor <flavor>`.
 2. Computes sha256 for each artifact.
 3. Cosign-signs each artifact (skip with a warning if `cosign` isn't
    installed).
@@ -22,12 +22,12 @@ What it does:
    (defaults: `v1.r0-x86_64`).
 5. Updates `src-app/server/src/modules/code_sandbox/known_revisions.toml`
    with the (schema, revision, arch, flavor, sha256) tuples. The server
-   binary embeds this file via `include_str!`; `fetch-sandbox-rootfs`
-   verifies downloads against it before mounting.
+   binary embeds this file via `include_str!`; the server's runtime
+   auto-fetch verifies downloads against it before mounting.
 
 After the script finishes, **commit the updated `known_revisions.toml`**
-and push. The change is what lets `fetch-sandbox-rootfs --version=latest`
-work for end users.
+and push. The change is what lets the server's auto-fetch resolve the
+new revision for end users.
 
 ### Override defaults
 
@@ -46,8 +46,9 @@ CI is build-and-publish-only. All CI lives in the single
 `release` + `update-known-revisions`). The release flow:
 
 1. **Patch:** Pin updates / security backports stay on the same schema
-   but bump the revision (e.g. `v1.r0` → `v1.r1`). Edit
-   `src-app/sandbox-rootfs/pins/apt-snapshot` (or pip/R/npm pins) and
+   but bump the revision (e.g. `v1.r0` → `v1.r1`). Edit the flavor's recipe
+   `src-app/sandbox-rootfs/flavors/<flavor>/v<schema>/flavor.sh` (bump
+   `APT_SNAPSHOT` and/or the pip/R/npm versions in `provision`) and
    open a PR. Run `just check-release-ready` locally — it builds the
    rootfs twice and asserts byte-for-byte reproducibility (the same
    check CI runs). Get the PR reviewed + merged on the strength of
@@ -68,8 +69,8 @@ CI is build-and-publish-only. All CI lives in the single
    opens a PR against `main` appending the new (schema, revision,
    sha256, signed=true) tuples to
    `src-app/server/src/modules/code_sandbox/known_revisions.toml`.
-   Reviewer merges to make the new revision resolvable by
-   `ziee-chat fetch-sandbox-rootfs --version=latest`.
+   Reviewer merges to make the new revision resolvable by the
+   server's runtime auto-fetch.
 
 ## Schema bumps
 
@@ -82,9 +83,13 @@ version bump, layout change, binary path move). Schema bumps require:
    - `src-app/sandbox-rootfs/compat.toml`: `current_schema`
 2. Update `compat.toml`'s `[[schemas]]` table with the new entry's
    `ziee_server_min` / `ziee_server_max` range.
-3. Cut a new release with the new schema (`SCHEMA=2 REVISION=r0
+3. Add the new schema's recipes: `flavors/<flavor>/v<new-schema>/flavor.sh`
+   for each flavor (start by copying the previous schema's recipe). The old
+   `v<schema>/` recipes stay in-tree so still-supported old-schema revisions
+   remain rebuildable.
+4. Cut a new release with the new schema (`SCHEMA=2 REVISION=r0
    ./scripts/bootstrap-first-rootfs-release.sh`).
-4. Existing servers boot-probe their installed rootfs's
+5. Existing servers boot-probe their installed rootfs's
    `.ziee-sandbox-rootfs-schema` sentinel against the binary's
    `SANDBOX_ROOTFS_SCHEMA_VERSION`. A mismatch refuses to register the
    sandbox MCP row and logs the upgrade command.
@@ -93,7 +98,7 @@ version bump, layout change, binary path move). Schema bumps require:
 
 If a published revision turns out to be broken (security CVE, broken
 package), add it to `src-app/sandbox-rootfs/yanks.toml` and commit.
-`fetch-sandbox-rootfs --version=latest` then skips yanked revisions
+The server's auto-fetch then skips yanked revisions
 when resolving "latest". Operators who pinned an exact revision continue
 working — yanks don't delete artifacts.
 
@@ -139,7 +144,7 @@ sudo -n true && echo "sudo ok" || echo "configure passwordless sudo first"
 
 That's intentional — cosign is a nice-to-have, not a blocker. The
 release will exist but lack the `.cosign.bundle` file, which means
-`fetch-sandbox-rootfs` will fall back to sha256-only verification.
+the server's auto-fetch will fall back to sha256-only verification.
 Install cosign and re-run later to add signatures:
 
 ```bash
@@ -162,8 +167,8 @@ gh release download sandbox-rootfs-v1.r0-x86_64 \
     --dir /tmp/rootfs-verify
 ( cd /tmp/rootfs-verify && sha256sum -c *.sha256 )
 
-# Server path (after the auto-PR merge)
-ziee-chat fetch-sandbox-rootfs --version=latest --flavor=minimal
-ziee-chat mount-sandbox-rootfs
-# Boot the server; the hardening log should show pid_ns/cgroup/seccomp.
+# Server path (after the auto-PR merge): no CLI step — boot the server
+# with code_sandbox.enabled and trigger any execute_command. The runtime
+# auto-fetches (sha256 + sigstore verify) and mounts the matching rootfs;
+# the hardening log should show pid_ns/cgroup/seccomp.
 ```
