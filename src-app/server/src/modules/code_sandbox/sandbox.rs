@@ -489,9 +489,11 @@ struct SyntheticIdentity {
     group: PathBuf,
 }
 
-const SYNTHETIC_PASSWD: &str =
+// pub(crate) so the WSL2 backend can provision identical synthetic identity
+// files inside the imported distro (the macOS guest root bakes them in).
+pub(crate) const SYNTHETIC_PASSWD: &str =
     "sandboxuser:x:1001:1001:Sandbox User:/home/sandboxuser:/bin/bash\n";
-const SYNTHETIC_GROUP: &str = "sandboxuser:x:1001:\n";
+pub(crate) const SYNTHETIC_GROUP: &str = "sandboxuser:x:1001:\n";
 
 impl SyntheticIdentity {
     /// Lazily ensure the synthetic passwd/group files exist under

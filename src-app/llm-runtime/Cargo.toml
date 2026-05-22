@@ -75,6 +75,12 @@ zip = "0.6"
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.27", features = ["signal"] }
 
+# Windows: minimal Win32 access (OpenProcess + GetExitCodeProcess) so
+# `EngineProcess::is_running(&self)` can probe by PID without needing
+# `&mut Child::try_wait()` — keeping the trait signature unchanged.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Threading", "Win32_Foundation"] }
+
 # Development dependencies
 [dev-dependencies]
 tempfile = "3.0"
