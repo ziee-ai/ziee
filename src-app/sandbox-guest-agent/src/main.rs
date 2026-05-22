@@ -26,7 +26,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sandbox_vm_protocol::{encode, CgroupLimits, Decoder, ExitStatus, Frame};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::TcpListener;
 use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio_vsock::{VsockAddr, VsockListener};
@@ -55,16 +56,6 @@ async fn main() {
     init_mounts();
     cgroup_init();
 
-    let addr = VsockAddr::new(libc::VMADDR_CID_ANY, VSOCK_PORT);
-    let listener = match VsockListener::bind(addr) {
-        Ok(l) => l,
-        Err(e) => {
-            tracing::error!("agent: failed to bind vsock port {VSOCK_PORT}: {e}");
-            std::process::exit(1);
-        }
-    };
-    tracing::info!("ziee-sandbox-agent: listening on vsock port {VSOCK_PORT}");
-
     // Build the seccomp BPF once from the shared policy crate (identical to the
     // Linux host). Per-exec we pipe these bytes to bwrap's --seccomp fd. If the
     // build fails (a broken guest image), execs that request seccomp fail
@@ -82,23 +73,92 @@ async fn main() {
         }
     };
 
+    // The control transport differs per backend (the agent is the single guest
+    // executor for both): libkrun (macOS) bridges a vsock port to a host unix
+    // socket; WSL2 (Windows) reaches the agent over localhost TCP (WSL2
+    // auto-forwards). Default to vsock:1024 so the macOS launcher needs no arg.
+    match parse_listen() {
+        Listen::Vsock(port) => serve_vsock(port, bpf).await,
+        Listen::Tcp(addr) => serve_tcp(&addr, bpf).await,
+    }
+}
+
+/// Which control transport to listen on.
+enum Listen {
+    Vsock(u32),
+    Tcp(String),
+}
+
+/// Parse `--listen vsock:<port>` / `--listen tcp:<addr>` from argv; default
+/// `vsock:1024` (macOS/libkrun back-compat).
+fn parse_listen() -> Listen {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--listen" {
+            if let Some(spec) = args.next() {
+                if let Some(port) = spec.strip_prefix("vsock:") {
+                    return Listen::Vsock(port.parse().unwrap_or(VSOCK_PORT));
+                }
+                if let Some(addr) = spec.strip_prefix("tcp:") {
+                    return Listen::Tcp(addr.to_string());
+                }
+            }
+        }
+    }
+    Listen::Vsock(VSOCK_PORT)
+}
+
+async fn serve_vsock(port: u32, bpf: Option<Arc<Vec<u8>>>) {
+    let listener = match VsockListener::bind(VsockAddr::new(libc::VMADDR_CID_ANY, port)) {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("agent: failed to bind vsock port {port}: {e}");
+            std::process::exit(1);
+        }
+    };
+    tracing::info!("ziee-sandbox-agent: listening on vsock port {port}");
     loop {
         match listener.accept().await {
-            Ok((stream, peer)) => {
-                tracing::info!("agent: connection from {peer:?}");
-                let bpf = bpf.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = handle_conn(stream, bpf).await {
-                        tracing::warn!("agent: connection handler error: {e}");
-                    }
-                });
-            }
+            Ok((stream, peer)) => spawn_conn(stream, &bpf, format!("{peer:?}")),
             Err(e) => {
-                tracing::warn!("agent: accept failed: {e}");
+                tracing::warn!("agent: vsock accept failed: {e}");
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
     }
+}
+
+async fn serve_tcp(addr: &str, bpf: Option<Arc<Vec<u8>>>) {
+    let listener = match TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("agent: failed to bind tcp {addr}: {e}");
+            std::process::exit(1);
+        }
+    };
+    tracing::info!("ziee-sandbox-agent: listening on tcp {addr}");
+    loop {
+        match listener.accept().await {
+            Ok((stream, peer)) => spawn_conn(stream, &bpf, format!("{peer}")),
+            Err(e) => {
+                tracing::warn!("agent: tcp accept failed: {e}");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
+}
+
+fn spawn_conn<S>(stream: S, bpf: &Option<Arc<Vec<u8>>>, peer: String)
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    tracing::info!("agent: connection from {peer}");
+    let bpf = bpf.clone();
+    tokio::spawn(async move {
+        if let Err(e) = handle_conn(stream, bpf).await {
+            tracing::warn!("agent: connection handler error: {e}");
+        }
+    });
 }
 
 /// Best-effort mounts. Failures are logged, not fatal: an `execute_command`
@@ -139,10 +199,10 @@ fn mount_fs(src: &str, target: &str, fstype: &str, flags: libc::c_ulong, data: O
 
 /// Handle one control connection: read a single `Exec` frame, run bwrap, stream
 /// output, send `Exit`.
-async fn handle_conn(
-    stream: tokio_vsock::VsockStream,
-    bpf: Option<Arc<Vec<u8>>>,
-) -> std::io::Result<()> {
+async fn handle_conn<S>(stream: S, bpf: Option<Arc<Vec<u8>>>) -> std::io::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let (mut rd, wr) = tokio::io::split(stream);
 
     // Read frames until we get the Exec request.
