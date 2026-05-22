@@ -28,10 +28,18 @@ pub struct ExecRequest {
     pub request_id: u64,
     /// Absolute path to `bwrap` inside the guest.
     pub bwrap_path: String,
-    /// Full bwrap argv (the output of `build_bwrap_argv`, guest paths).
+    /// Full bwrap argv (the output of `build_bwrap_argv`, guest paths). When
+    /// `seccomp_fd` is set, the argv already contains `--seccomp <that fd>`.
     pub argv: Vec<String>,
     /// Wall-clock budget; the agent SIGKILLs the bwrap process group on expiry.
     pub timeout_ms: u64,
+    /// If set, the agent builds the shared seccomp BPF and pipes it to this fd
+    /// in the bwrap child (the argv references it via `--seccomp <fd>`). `None`
+    /// → no seccomp (e.g. a host that can't build the guest-arch filter). The
+    /// macOS/Windows backends set this so the guest applies the same filter the
+    /// Linux host does.
+    #[serde(default)]
+    pub seccomp_fd: Option<i32>,
 }
 
 /// Terminal status of an `ExecRequest`.
@@ -162,6 +170,7 @@ mod tests {
             bwrap_path: "/usr/bin/bwrap".to_string(),
             argv: vec!["--clearenv".into(), "--".into(), "/bin/bash".into(), "-lc".into(), "echo hi".into()],
             timeout_ms: 600_000,
+            seccomp_fd: Some(10),
         })
     }
 

@@ -22,6 +22,7 @@
 //!  - virtio-fs tag [`WORKSPACE_TAG`] — mounted at [`WORKSPACE_MOUNT`]; the
 //!    host points the workspace bind in the argv at a path under it.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use sandbox_vm_protocol::{encode, Decoder, ExitStatus, Frame};
@@ -63,12 +64,30 @@ async fn main() {
     };
     tracing::info!("ziee-sandbox-agent: listening on vsock port {VSOCK_PORT}");
 
+    // Build the seccomp BPF once from the shared policy crate (identical to the
+    // Linux host). Per-exec we pipe these bytes to bwrap's --seccomp fd. If the
+    // build fails (a broken guest image), execs that request seccomp fail
+    // closed rather than running unfiltered.
+    let bpf: Option<Arc<Vec<u8>>> = match sandbox_seccomp::build_bpf() {
+        Ok((bytes, unresolved)) => {
+            if !unresolved.is_empty() {
+                tracing::warn!(?unresolved, "agent: some seccomp DENY entries unresolved on this kernel");
+            }
+            Some(Arc::new(bytes))
+        }
+        Err(e) => {
+            tracing::error!("agent: seccomp filter build FAILED: {e} — seccomp'd execs will fail closed");
+            None
+        }
+    };
+
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
                 tracing::info!("agent: connection from {peer:?}");
+                let bpf = bpf.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_conn(stream).await {
+                    if let Err(e) = handle_conn(stream, bpf).await {
                         tracing::warn!("agent: connection handler error: {e}");
                     }
                 });
@@ -119,7 +138,10 @@ fn mount_fs(src: &str, target: &str, fstype: &str, flags: libc::c_ulong, data: O
 
 /// Handle one control connection: read a single `Exec` frame, run bwrap, stream
 /// output, send `Exit`.
-async fn handle_conn(stream: tokio_vsock::VsockStream) -> std::io::Result<()> {
+async fn handle_conn(
+    stream: tokio_vsock::VsockStream,
+    bpf: Option<Arc<Vec<u8>>>,
+) -> std::io::Result<()> {
     let (mut rd, wr) = tokio::io::split(stream);
 
     // Read frames until we get the Exec request.
@@ -164,14 +186,48 @@ async fn handle_conn(stream: tokio_vsock::VsockStream) -> std::io::Result<()> {
         let _ = wr.flush().await;
     });
 
-    let mut child = match Command::new(&req.bwrap_path)
-        .args(&req.argv)
+    // Seccomp: if the host put `--seccomp <fd>` in the argv, pipe the shared
+    // BPF to that fd in the bwrap child (mirrors the Linux host's SeccompPipe).
+    if req.seccomp_fd.is_some() && bpf.is_none() {
+        let _ = tx.send(Frame::Stderr(
+            b"agent: seccomp requested but the guest filter failed to build\n".to_vec(),
+        ));
+        let _ = tx.send(Frame::Exit(ExitStatus { code: -1, timed_out: false }));
+        drop(tx);
+        let _ = writer.await;
+        return Ok(());
+    }
+
+    let mut cmd = Command::new(&req.bwrap_path);
+    cmd.args(&req.argv)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-    {
+        .kill_on_drop(true);
+
+    // Install the seccomp pipe (read end dup2'd to the host-specified fd in the
+    // bwrap child). Keep the read fd to close after spawn.
+    let seccomp_read_fd = match (req.seccomp_fd, bpf.as_ref()) {
+        (Some(fd), Some(bytes)) => match install_seccomp(&mut cmd, fd, bytes.clone()) {
+            Ok(rfd) => Some(rfd),
+            Err(e) => {
+                let _ = tx.send(Frame::Stderr(format!("agent: seccomp setup failed: {e}\n").into_bytes()));
+                let _ = tx.send(Frame::Exit(ExitStatus { code: -1, timed_out: false }));
+                drop(tx);
+                let _ = writer.await;
+                return Ok(());
+            }
+        },
+        _ => None,
+    };
+
+    let spawned = cmd.spawn();
+    // The child holds its own dup of the read fd; close ours so the writer's
+    // EOF is observed once it finishes.
+    if let Some(rfd) = seccomp_read_fd {
+        unsafe { libc::close(rfd) };
+    }
+    let mut child = match spawned {
         Ok(c) => c,
         Err(e) => {
             let _ = tx.send(Frame::Stderr(format!("agent: failed to spawn bwrap: {e}\n").into_bytes()));
@@ -209,6 +265,67 @@ async fn handle_conn(stream: tokio_vsock::VsockStream) -> std::io::Result<()> {
     drop(tx);
     let _ = writer.await;
     Ok(())
+}
+
+/// Pipe the seccomp BPF to a fd in the bwrap child, mirroring the Linux host's
+/// `SeccompPipe`: create a pipe, write the bytes from a task, and `dup2` the
+/// read end to `target_fd` (clearing `FD_CLOEXEC` so it survives execve into
+/// bwrap, which reads it via `--seccomp <target_fd>`). Returns the parent's
+/// read fd so the caller can close it after spawn.
+fn install_seccomp(cmd: &mut Command, target_fd: i32, bpf: Arc<Vec<u8>>) -> std::io::Result<i32> {
+    let mut fds: [libc::c_int; 2] = [0; 2];
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let read_fd = fds[0];
+    let write_fd = fds[1];
+
+    // Write the BPF from a task (it may exceed the pipe buffer). Must complete
+    // in full or bwrap rejects a truncated filter.
+    tokio::spawn(async move {
+        let bytes: &[u8] = bpf.as_ref();
+        let mut off = 0;
+        while off < bytes.len() {
+            let n = unsafe {
+                libc::write(
+                    write_fd,
+                    bytes[off..].as_ptr() as *const libc::c_void,
+                    bytes.len() - off,
+                )
+            };
+            if n > 0 {
+                off += n as usize;
+                continue;
+            }
+            let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if n < 0 && (errno == libc::EINTR || errno == libc::EAGAIN) {
+                continue;
+            }
+            break;
+        }
+        unsafe { libc::close(write_fd) };
+        if off < bytes.len() {
+            tracing::error!(written = off, expected = bytes.len(), "agent: seccomp BPF write truncated");
+        }
+    });
+
+    // SAFETY: dup2/fcntl are async-signal-safe; `read_fd` is valid through spawn.
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::dup2(read_fd, target_fd) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let flags = libc::fcntl(target_fd, libc::F_GETFD);
+            if flags < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if libc::fcntl(target_fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    Ok(read_fd)
 }
 
 /// Stream a child pipe into protocol frames.

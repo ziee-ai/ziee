@@ -43,6 +43,13 @@ cd src-app/sandbox-guest-agent
 cargo build --release --target aarch64-unknown-linux-musl   # static musl = no guest libc deps
 ```
 
+The agent depends on `sandbox-seccomp` (it builds + applies the **same**
+seccomp filter the Linux host uses), so this cross-build needs **libseccomp
+for the guest arch, statically linked** — install `libseccomp-dev` for
+aarch64 and set `LIBSECCOMP_LINK_TYPE=static` (+ `LIBSECCOMP_LIB_PATH`) the way
+the server build does. Without seccomp the agent fails closed on execs that
+request it.
+
 ## 4. Assemble the guest root  (NEW artifact — extends §4 rootfs release)
 
 A minimal Linux root mounted by libkrun as the guest `/`. Must contain:
@@ -92,7 +99,12 @@ Run with `code_sandbox.enabled: true` and trigger an `execute_command`; then ver
 - **Conversation attachments**: `build_bwrap_argv` derives attachment bind
   sources from the host `workspace_root`; for the guest these must map under
   `/workspace`. Handle once attachments are exercised on macOS.
-- **In-guest cgroup v2 + seccomp**: currently `CgroupMode::None` /
+- **In-guest seccomp**: DONE — the agent builds the shared `sandbox-seccomp`
+  filter and pipes it to bwrap's `--seccomp` fd (the host sets
+  `ExecRequest.seccomp_fd`), so the guest applies the identical policy as the
+  Linux host. (The `guest_caps.seccomp` field stays `NotLinked` because that
+  field isn't what drives `--seccomp` — the `seccomp_fd` arg is.)
+- **In-guest cgroup v2**: currently `CgroupMode::None` /
   `SeccompMode::NotLinked` for the guest caps (rlimits via prlimit still apply
   inside bwrap). Add guest cgroup delegation + a guest-compiled seccomp filter.
 - **VM sizing → §6**: `VM_VCPUS`/`VM_RAM_MIB` are constants; wire to the

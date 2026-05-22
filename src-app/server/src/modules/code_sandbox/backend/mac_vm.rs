@@ -48,6 +48,9 @@ const GUEST_ROOTFS_MOUNT: &str = "/sandbox-rootfs";
 const GUEST_WORKSPACE_MOUNT: &str = "/workspace";
 const GUEST_BWRAP_PATH: &str = "/usr/bin/bwrap";
 const GUEST_AGENT_PATH: &str = "/usr/bin/ziee-sandbox-agent";
+// Fixed fd the agent dup2's the seccomp BPF pipe to in the bwrap child; the
+// argv built here references it via `--seccomp <fd>`. Out of the stdio range.
+const GUEST_SECCOMP_FD: i32 = 10;
 // Guest synthetic identity files — baked into the guest root image (MAC-TODO:
 // ensure the guest root ships these; build_bwrap_argv binds them over
 // /etc/passwd + /etc/group).
@@ -321,7 +324,10 @@ impl SandboxBackend for MacVmBackend {
             bwrap_path: PathBuf::from(GUEST_BWRAP_PATH),
             pid_namespace: PidNsMode::Strict,
             cgroup: CgroupMode::None, // MAC-TODO: in-guest cgroup v2 delegation
-            seccomp: SeccompMode::NotLinked, // MAC-TODO: compile seccomp for guest
+            // The caps.seccomp field is unused for the --seccomp flag (that's
+            // the build_bwrap_argv seccomp_fd arg). The guest agent builds +
+            // applies the shared seccomp filter itself; see run().
+            seccomp: SeccompMode::NotLinked,
         };
         Ok(EnsureOutcome {
             caps: Arc::new(guest_caps),
@@ -370,6 +376,9 @@ impl SandboxBackend for MacVmBackend {
             workspace: guest_workspace_path(state, &ctx.workspace),
             files: ctx.files.clone(),
         };
+        // The argv references the guest seccomp fd; the agent builds the same
+        // shared-policy BPF and pipes it to that fd in the bwrap child, so the
+        // guest applies the identical filter the Linux host does.
         let argv = sandbox::build_bwrap_argv(
             &guest_caps,
             state,
@@ -378,7 +387,7 @@ impl SandboxBackend for MacVmBackend {
             command,
             Path::new(GUEST_PASSWD),
             Path::new(GUEST_GROUP),
-            None,
+            Some(GUEST_SECCOMP_FD),
         );
 
         let secs = timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
@@ -387,6 +396,7 @@ impl SandboxBackend for MacVmBackend {
             bwrap_path: GUEST_BWRAP_PATH.to_string(),
             argv,
             timeout_ms: secs * 1000,
+            seccomp_fd: Some(GUEST_SECCOMP_FD),
         };
         let result = run_via_socket(&vm.socket_path, req, secs).await;
         vm.inflight.fetch_sub(1, Ordering::SeqCst);
