@@ -233,9 +233,14 @@ pub fn execute_command_stream(
     INFLIGHT.insert(key, join.abort_handle());
 
     let stream = async_stream::stream! {
+        // Monotonic SSE event ids (spec § Transports — resumability). A
+        // resumable client can record these and resume via `Last-Event-Id`;
+        // clients that don't care simply ignore them.
+        let mut seq: u64 = 0;
         while let Some(msg) = rx.recv().await {
             let (frame, is_final) = msg.render();
-            yield Ok(Event::default().data(frame.to_string()));
+            seq += 1;
+            yield Ok(Event::default().id(seq.to_string()).data(frame.to_string()));
             if is_final {
                 break;
             }
