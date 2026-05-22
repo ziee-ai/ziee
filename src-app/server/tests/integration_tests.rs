@@ -15,4 +15,5 @@ mod llm_provider;
 mod llm_provider_files;
 mod llm_repository;
 mod mcp;
+mod onboarding;
 mod user;
