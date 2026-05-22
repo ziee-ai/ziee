@@ -20,6 +20,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -56,12 +57,53 @@ const GUEST_GROUP: &str = "/etc/ziee-sandbox-group";
 // Default VM sizing. MAC-TODO: wire to the §6 runtime-configurable limits.
 const VM_VCPUS: u8 = 2;
 const VM_RAM_MIB: u32 = 2048;
+// Evict a flavor's VM after this long idle with nothing in flight (gap #6 —
+// VMs hold RAM). MAC-TODO: wire to config `vm_idle_evict_secs` (0 = never).
+const VM_IDLE_EVICT_SECS: u64 = 900;
 
 /// A booted, warm per-flavor VM.
 struct VmHandle {
     child: Mutex<tokio::process::Child>,
     socket_path: PathBuf,
     last_used: Mutex<Instant>,
+    /// In-flight exec count — the reaper never evicts a VM with a running
+    /// command (a long command keeps the VM alive past the idle threshold).
+    inflight: AtomicUsize,
+}
+
+/// Background reaper: started once; evicts idle, not-in-use VMs.
+static REAPER_STARTED: AtomicBool = AtomicBool::new(false);
+
+fn ensure_reaper() {
+    if REAPER_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    tokio::spawn(async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            if VM_IDLE_EVICT_SECS == 0 {
+                continue;
+            }
+            let mut vms = VMS.lock().await;
+            let mut evict = Vec::new();
+            for (flavor, h) in vms.iter() {
+                if h.inflight.load(Ordering::SeqCst) == 0
+                    && h.last_used.lock().await.elapsed().as_secs() >= VM_IDLE_EVICT_SECS
+                {
+                    evict.push(flavor.clone());
+                }
+            }
+            for flavor in evict {
+                if let Some(h) = vms.remove(&flavor) {
+                    let mut child = h.child.lock().await;
+                    let _ = child.start_kill();
+                    let _ = child.wait().await;
+                    let _ = std::fs::remove_file(&h.socket_path);
+                    tracing::info!(flavor, "code_sandbox: macOS VM evicted (idle)");
+                }
+            }
+        }
+    });
 }
 
 /// Per-flavor warm VMs. Boot is serialized by holding this lock across the
@@ -126,8 +168,12 @@ impl MacVmBackend {
             AppError::internal_error(format!("write VM launch config: {e}"))
         })?;
 
+        // Gap #4: clear the env so the VMM process does not inherit the
+        // server's secrets (DATABASE_URL/JWT/API keys). The launcher needs no
+        // env — its config is the JSON file arg and libkrun is found via rpath.
         let child = tokio::process::Command::new(Self::launcher_path())
             .arg(&cfg_path)
+            .env_clear()
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| AppError::internal_error(format!("spawn VM launcher: {e}")))?;
@@ -147,8 +193,10 @@ impl MacVmBackend {
             child: Mutex::new(child),
             socket_path,
             last_used: Mutex::new(Instant::now()),
+            inflight: AtomicUsize::new(0),
         });
         vms.insert(flavor.to_string(), handle.clone());
+        ensure_reaper();
         Ok(handle)
     }
 }
@@ -184,11 +232,19 @@ async fn run_via_socket(
     let mut exit_code = -1;
     let mut timed_out = false;
 
+    // Host-side hung-guest guard (gap #6): the agent enforces the per-exec
+    // timeout in-guest and should always send Exit, but if the agent itself
+    // wedges, bound the host wait at the exec budget + grace.
+    let read_budget = Duration::from_secs(timeout_secs + 30);
     loop {
-        let n = stream
-            .read(&mut buf)
-            .await
-            .map_err(|e| AppError::internal_error(format!("read VM stream: {e}")))?;
+        let n = match tokio::time::timeout(read_budget, stream.read(&mut buf)).await {
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => return Err(AppError::internal_error(format!("read VM stream: {e}"))),
+            Err(_) => {
+                timed_out = true;
+                break;
+            }
+        };
         if n == 0 {
             break; // socket closed
         }
@@ -214,7 +270,6 @@ async fn run_via_socket(
         }
     }
 
-    let _ = timeout_secs; // the agent enforces the timeout; kept for symmetry
     Ok(SandboxRunResult {
         exit_code,
         stdout: lossy(stdout, stdout_truncated),
@@ -291,6 +346,9 @@ impl SandboxBackend for MacVmBackend {
             .installed_path;
 
         let vm = self.ensure_vm(state, flavor, &disk).await?;
+        // Mark in-flight so the idle reaper won't evict this VM mid-command,
+        // even for a long-running command that outlasts the idle threshold.
+        vm.inflight.fetch_add(1, Ordering::SeqCst);
         *vm.last_used.lock().await = Instant::now();
 
         // Build the bwrap argv with GUEST paths so the agent can exec it
@@ -323,14 +381,17 @@ impl SandboxBackend for MacVmBackend {
             None,
         );
 
-        let timeout_ms = timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS) * 1000;
+        let secs = timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
         let req = ExecRequest {
             request_id: rand_request_id(),
             bwrap_path: GUEST_BWRAP_PATH.to_string(),
             argv,
-            timeout_ms,
+            timeout_ms: secs * 1000,
         };
-        run_via_socket(&vm.socket_path, req, timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS)).await
+        let result = run_via_socket(&vm.socket_path, req, secs).await;
+        vm.inflight.fetch_sub(1, Ordering::SeqCst);
+        *vm.last_used.lock().await = Instant::now();
+        result
     }
 
     async fn shutdown(&self) {

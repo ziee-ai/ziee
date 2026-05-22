@@ -69,7 +69,16 @@ fn run(cfg: VmLaunchConfig) -> ! {
     extern "C" {
         fn krun_create_ctx() -> i32;
         fn krun_set_vm_config(ctx_id: u32, num_vcpus: u8, ram_mib: u32) -> i32;
-        fn krun_set_root(ctx_id: u32, root_path: *const c_char) -> i32;
+        // virtio-fs root with a read_only flag (gap #2): the guest root (agent +
+        // bwrap) is mounted read-only so an escaped guest can't tamper it or
+        // persist into the shared host dir for future VMs. Uses KRUN_FS_ROOT_TAG.
+        fn krun_add_virtiofs3(
+            ctx_id: u32,
+            c_tag: *const c_char,
+            c_path: *const c_char,
+            shm_size: u64,
+            read_only: bool,
+        ) -> i32;
         fn krun_add_disk(
             ctx_id: u32,
             block_id: *const c_char,
@@ -102,6 +111,25 @@ fn run(cfg: VmLaunchConfig) -> ! {
         }
     }
 
+    // libkrun's KRUN_FS_ROOT_TAG (the magic virtio-fs tag that becomes `/`).
+    const KRUN_FS_ROOT_TAG: &str = "/dev/root";
+
+    // Gap #5: macOS has no PR_SET_PDEATHSIG. Watch the parent (the server);
+    // if it dies, exit so the VM is reclaimed instead of orphaned. Started
+    // BEFORE krun_start_enter (which takes over this thread + never returns).
+    {
+        let initial_ppid = unsafe { libc::getppid() };
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let ppid = unsafe { libc::getppid() };
+            // Reparented (parent died → adopted by launchd, pid 1).
+            if ppid != initial_ppid || ppid == 1 {
+                eprintln!("launcher: parent (server) exited; tearing down VM");
+                std::process::exit(0);
+            }
+        });
+    }
+
     unsafe {
         let ctx = krun_create_ctx();
         check("krun_create_ctx", ctx);
@@ -109,8 +137,16 @@ fn run(cfg: VmLaunchConfig) -> ! {
 
         check("krun_set_vm_config", krun_set_vm_config(ctx, cfg.num_vcpus, cfg.ram_mib));
 
+        // Read-only guest root via virtio-fs (gap #2). shm_size=0 disables the
+        // DAX window (simpler; tune later if needed). The guest root image must
+        // pre-create the mount points /proc, /sandbox-rootfs, /workspace since
+        // the root is read-only.
         let root = cstr(&cfg.root_path);
-        check("krun_set_root", krun_set_root(ctx, root.as_ptr()));
+        let root_tag = cstr(KRUN_FS_ROOT_TAG);
+        check(
+            "krun_add_virtiofs3(root, ro)",
+            krun_add_virtiofs3(ctx, root_tag.as_ptr(), root.as_ptr(), 0, true),
+        );
 
         // Sandbox squashfs as a read-only virtio-blk disk → /dev/vda in guest.
         let block_id = cstr("sandbox");

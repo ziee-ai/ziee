@@ -97,8 +97,8 @@ Run with `code_sandbox.enabled: true` and trigger an `execute_command`; then ver
   inside bwrap). Add guest cgroup delegation + a guest-compiled seccomp filter.
 - **VM sizing → §6**: `VM_VCPUS`/`VM_RAM_MIB` are constants; wire to the
   runtime-configurable resource limits.
-- **Lazy kill-on-idle**: `VmHandle.last_used` is tracked; wire a reaper (mirror
-  `mod.rs`'s workspace reaper) to stop VMs idle past `vm_idle_evict_secs`.
+- **Lazy kill-on-idle**: DONE — see the reaper in `mac_vm.rs` (gap #6 below).
+  Still uses a `VM_IDLE_EVICT_SECS` const; wire to config `vm_idle_evict_secs`.
 - **Single-flight boot**: currently the global `VMS` lock is held across boot;
   fine for rare boots, revisit if cross-flavor contention shows up.
 
@@ -135,26 +135,36 @@ exfiltration, host-FS pollution):**
    per-conversation copy-in/out. Residual (low): the generic virtio-fs→host-fs
    escape surface — keep `workspace_root` on a dedicated mount/subvolume so a
    virtio-fs traversal bug can't reach the wider host fs.
-2. **Guest root via host-dir virtio-fs.** `krun_set_root` shares a host
-   directory as `/`; libkrun + Apple both recommend a **read-only EXT4/raw block
-   image** for an untrusted guest root (smaller escape surface, no qcow2
-   auto-open footgun). Ship the guest root as a block image instead.
-3. **TSI egress = guest reaches everything the VMM can.** With no net device,
-   libkrun enables Transparent Socket Impersonation: the guest shares the VMM
-   process's network context — it can reach **host-localhost services** (our own
-   API/DB), an SSRF/exfil surface beyond Linux's `--share-net`. Fix: run the
-   launcher with a restricted network, or switch to virtio-net + a filtering
-   proxy (microsandbox-style allow/deny + DNS + TLS policy is the mature model).
-4. **Launcher inherits the server's env (secrets in the VMM).** We spawn the
-   launcher without `env_clear()`, so the VMM process holds `DATABASE_URL`/JWT/
-   API keys. The guest workload itself is clean (`krun_set_exec` envp=[] +
-   bwrap `--clearenv`), but a VMM-escape would reach them. Fix: spawn the
-   launcher with a minimal/cleared env.
-5. **No orphan-on-crash teardown on macOS.** Linux uses `PR_SET_PDEATHSIG` so
-   FUSE/VMs die with the server even on SIGKILL; `kill_on_drop` only covers
-   graceful drop. macOS has no PDEATHSIG — have the launcher watch its parent
-   (poll `getppid()` or kqueue `EVFILT_PROC`/`NOTE_EXIT`) and exit if the server
-   dies, else a server crash leaks VMs.
-6. **No agent liveness / hung-guest detection.** microsandbox heartbeats at 1 Hz
-   so the host can enforce `idle_timeout`/`max_duration` and reap hung guests.
-   We track `last_used` but have no reaper and no heartbeat — wire both.
+2. **Guest root via virtio-fs — ADDRESSED (read-only).** The launcher now
+   mounts the guest root with `krun_add_virtiofs3(KRUN_FS_ROOT_TAG, ..,
+   read_only=true)` instead of `krun_set_root`, so an escaped guest can't tamper
+   the root or persist into the shared host dir for future VMs. **Requires the
+   guest root image to pre-create the mount points** `/proc`, `/sandbox-rootfs`,
+   `/workspace` (the agent's `create_dir_all` is best-effort and will no-op on a
+   read-only root). Further hardening (a read-only EXT4/raw *block* image, à la
+   Apple, for an even smaller escape surface) remains a follow-up.
+3. **TSI egress — egress parity with Linux, one mac-specific residual.** With no
+   net device libkrun enables TSI; the guest gets outbound+inbound network. This
+   **matches the Linux backend's `--share-net`** (full egress incl. host
+   localhost) — an accepted posture, not a regression; the exfil protection is
+   `--clearenv` + workspace isolation, not an egress block. The genuinely
+   mac-specific residual: TSI also proxies **AF_UNIX**, so the guest *might* be
+   able to reach host unix sockets (DB/docker) that the Linux mount-ns sandbox
+   can't. **Verify on first run** (try connecting to a known host unix socket
+   from inside the sandbox); if reachable, disable TSI by switching to
+   virtio-net + passt/gvproxy (and layer the microsandbox-style allow/deny + DNS
+   + TLS policy if/when egress filtering becomes a cross-platform feature).
+4. **Launcher env — ADDRESSED.** `mac_vm.rs` spawns the launcher with
+   `.env_clear()`, so the VMM process no longer holds the server's secrets. (The
+   guest workload was already clean: empty `krun_set_exec` env + bwrap
+   `--clearenv`.)
+5. **Orphan-on-crash teardown — ADDRESSED.** The launcher starts a watcher
+   thread before `krun_start_enter` that polls `getppid()`; if the server dies
+   (reparent to launchd/pid 1) it `exit()`s, reclaiming the VM. Covers the
+   SIGKILL/crash path that `kill_on_drop` misses (macOS has no PDEATHSIG).
+6. **Idle/hung VM reaper — ADDRESSED.** A background reaper evicts VMs idle past
+   `VM_IDLE_EVICT_SECS` (default 900s) with nothing in flight (an `inflight`
+   counter keeps a long-running command from being reaped). The host read on the
+   control socket is bounded at the exec budget + 30s grace, so a wedged agent
+   can't hang the turn. (A 1 Hz in-guest heartbeat à la microsandbox would add
+   finer hung-detection but isn't needed given the host read-timeout.)
