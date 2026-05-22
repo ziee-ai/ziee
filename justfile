@@ -1,9 +1,7 @@
 # ziee-chat dev workflows.
 #
-# Most sandbox targets are thin wrappers around the equivalent
-# `ziee-chat <subcommand>` CLI in src-app/server/src/main.rs. Run the
-# CLI directly if you prefer (e.g. `cargo run --bin ziee-chat --
-# build-sandbox-rootfs --flavor minimal`).
+# Sandbox rootfs is built by src-app/sandbox-rootfs/build.sh (maintainer/CI
+# task). Rootfs cache management (list / evict) is in the admin UI, not a CLI.
 
 # default: list targets
 default:
@@ -14,7 +12,7 @@ default:
 # Build the sandbox rootfs locally (10-15 min first time).
 # Flavors: minimal | full
 sandbox-build flavor="full":
-    cd src-app/server && cargo run -q --bin ziee-chat -- build-sandbox-rootfs --flavor {{flavor}}
+    src-app/sandbox-rootfs/build.sh --flavor {{flavor}}
 
 # Mount a built squashfs for the TEST HARNESS only.
 #
@@ -52,15 +50,12 @@ sandbox-clean:
             echo "cleaned $CACHE"; \
         fi'
 
-# Fetch a published rootfs from GitHub Releases (v1 stub: prints
-# instructions; v2 will perform real sha256 + cosign verification).
-sandbox-fetch version="latest" flavor="minimal":
-    cd src-app/server && cargo run -q --bin ziee-chat -- fetch-sandbox-rootfs \
-        --version={{version}} --flavor={{flavor}}
+# NOTE: there is no manual "fetch" recipe — the server auto-fetches the
+# matching rootfs from GitHub Releases (sha256 + sigstore verify) on the
+# first `execute_command`. Just boot the server with code_sandbox.enabled.
 
-# Remove cached rootfs versions, keeping the N most recent.
-sandbox-gc keep="2":
-    cd src-app/server && cargo run -q --bin ziee-chat -- gc-sandbox-rootfs --keep={{keep}}
+# Cache management (list / evict cached rootfs) is in the admin UI:
+# Settings → Sandbox Environments. There is no gc CLI.
 
 # Run the bwrap-dependent integration tests.
 # Requires: bwrap + rootfs mounted at .ziee-cache/sandbox-rootfs/current.

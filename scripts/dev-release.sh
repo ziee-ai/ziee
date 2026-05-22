@@ -73,8 +73,7 @@ if [[ -f "$SQFS" ]]; then
   echo "==> Using cached $ASSET"
 else
   echo "==> Building $FLAVOR rootfs (5-15 min first time)"
-  ( cd "$REPO_ROOT/src-app/server" && \
-    cargo run -q --bin ziee-chat -- build-sandbox-rootfs --flavor "$FLAVOR" )
+  "$REPO_ROOT/src-app/sandbox-rootfs/build.sh" --flavor "$FLAVOR"
 fi
 
 # Step 2: sha256.
@@ -82,7 +81,7 @@ SHA=$(sha256sum "$SQFS" | cut -d' ' -f1)
 echo "==> sha256: $SHA"
 
 # Step 3: dev-only known_revisions toml. signed=false so cosign is
-# skipped (opportunistic verification path in fetch_sandbox_rootfs).
+# skipped (opportunistic verification path in runtime_fetch::fetch_flavor).
 mkdir -p "$DEV_ROOT"
 DEV_TOML="$DEV_ROOT/known_revisions.dev.toml"
 cat > "$DEV_TOML" <<EOF
