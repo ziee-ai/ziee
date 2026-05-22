@@ -25,6 +25,8 @@ interface SandboxEnvironmentsStore {
   loading: boolean
   error: string | null
   progress: Record<string, FlavorProgress>
+  /** Per-flavor in-flight evict flag (drives the Evict button's loading state). */
+  evicting: Record<string, boolean>
 
   __init__: {
     environments?: () => Promise<void>
@@ -34,6 +36,7 @@ interface SandboxEnvironmentsStore {
   resumeRunningTasks: () => Promise<void>
   startPrefetch: (flavor: string) => Promise<void>
   subscribeToEvents: (flavor: string) => Promise<void>
+  evictEnvironment: (flavor: string) => Promise<void>
 }
 
 // Per-flavor abort controllers for SSE cleanup. Module-scoped (not in
@@ -53,6 +56,7 @@ export const useSandboxEnvironmentsStore = create<SandboxEnvironmentsStore>()(
       loading: false,
       error: null,
       progress: {},
+      evicting: {},
 
       __init__: {
         // On first access: load the flavor list AND reconcile with any
@@ -158,6 +162,29 @@ export const useSandboxEnvironmentsStore = create<SandboxEnvironmentsStore>()(
             },
           } as any,
         )
+      },
+
+      evictEnvironment: async (flavor: string) => {
+        set(s => {
+          s.evicting[flavor] = true
+          s.error = null
+        })
+        try {
+          // The endpoint returns the refreshed environments list (cached flips
+          // false). Also clear any stale progress so the row resets cleanly.
+          const res = await ApiClient.CodeSandbox.evictEnvironment({ flavor })
+          cleanupSse(flavor)
+          set(s => {
+            s.environments = res.available
+            delete s.progress[flavor]
+            delete s.evicting[flavor]
+          })
+        } catch (e: any) {
+          set(s => {
+            s.error = e?.message ?? 'Failed to evict environment'
+            delete s.evicting[flavor]
+          })
+        }
       },
     })),
   ),

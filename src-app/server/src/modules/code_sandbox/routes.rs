@@ -19,7 +19,7 @@
 //! `ApiRouter` accepts both `.route()` (untyped) and `.api_route()`
 //! (typed) in the same router — they coexist cleanly.
 
-use aide::axum::routing::{get_with, post_with};
+use aide::axum::routing::{delete_with, get_with, post_with};
 use aide::axum::ApiRouter;
 use axum::routing::{get, post};
 
@@ -39,6 +39,13 @@ pub fn code_sandbox_router() -> ApiRouter {
             get_with(
                 handlers::list_environments_handler,
                 handlers::list_environments_docs,
+            ),
+        )
+        .api_route(
+            "/code-sandbox/environments/{flavor}",
+            delete_with(
+                handlers::evict_environment_handler,
+                handlers::evict_environment_docs,
             ),
         )
         .api_route(

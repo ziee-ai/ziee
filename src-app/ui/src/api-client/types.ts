@@ -398,7 +398,9 @@ export interface EnvironmentInfo {
   description: string
   approximate_size_mb: number
   cached: boolean
+  cached_size_bytes?: number
   flavor: string
+  mounted: boolean
 }
 
 export interface EnvironmentsResponse {
@@ -1838,6 +1840,7 @@ export const ApiEndpoints = {
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'CodeSandbox.evictEnvironment': 'DELETE /api/code-sandbox/environments/{flavor}',
   'CodeSandbox.listEnvironments': 'GET /api/code-sandbox/environments',
   'CodeSandbox.listPrefetchTasks': 'GET /api/code-sandbox/prefetch',
   'CodeSandbox.startPrefetch': 'POST /api/code-sandbox/prefetch',
@@ -2000,6 +2003,7 @@ export type ApiEndpointParameters = {
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
+  'CodeSandbox.evictEnvironment': { flavor: string }
   'CodeSandbox.listEnvironments': void
   'CodeSandbox.listPrefetchTasks': void
   'CodeSandbox.startPrefetch': StartPrefetchBody
@@ -2162,6 +2166,7 @@ export type ApiEndpointResponses = {
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
+  'CodeSandbox.evictEnvironment': EnvironmentsResponse
   'CodeSandbox.listEnvironments': EnvironmentsResponse
   'CodeSandbox.listPrefetchTasks': ListPrefetchTasksResponse
   'CodeSandbox.startPrefetch': StartPrefetchResponse

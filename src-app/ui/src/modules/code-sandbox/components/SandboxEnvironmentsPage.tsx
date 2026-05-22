@@ -1,7 +1,12 @@
-import { Alert, Button, Progress, Spin, Table, Tag, Tooltip } from 'antd'
-import { CheckCircleTwoTone, CloudDownloadOutlined } from '@ant-design/icons'
+import { Alert, Button, Popconfirm, Progress, Spin, Table, Tag, Tooltip } from 'antd'
+import {
+  CheckCircleTwoTone,
+  CloudDownloadOutlined,
+  DeleteOutlined,
+} from '@ant-design/icons'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
+import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import type { EnvironmentInfo, FetchPhase } from '@/api-client/types'
 
 const MANAGE_PERM = 'code_sandbox::environments::manage'
@@ -39,7 +44,8 @@ function phasePercent(phase?: FetchPhase): number {
 }
 
 export function SandboxEnvironmentsPage() {
-  const { environments, loading, error, progress } = Stores.SandboxEnvironments
+  const { environments, loading, error, progress, evicting } =
+    Stores.SandboxEnvironments
   const { permissions } = Stores.Auth
   const perms = permissions ?? []
   const canManage = hasPermission(perms, MANAGE_PERM)
@@ -74,6 +80,23 @@ export function SandboxEnvironmentsPage() {
       dataIndex: 'approximate_size_mb',
       key: 'size',
       render: (mb: number) => `~${mb} MB`,
+    },
+    {
+      title: 'Cached size',
+      key: 'cached_size',
+      render: (_: unknown, row: EnvironmentInfo) => {
+        if (!row.cached || row.cached_size_bytes == null) return '—'
+        return (
+          <span data-testid="cached-size">
+            {formatBytes(row.cached_size_bytes)}
+            {row.mounted && (
+              <Tag color="blue" className="!ml-2">
+                Mounted
+              </Tag>
+            )}
+          </span>
+        )
+      },
     },
     {
       title: 'Status',
@@ -114,8 +137,44 @@ export function SandboxEnvironmentsPage() {
       render: (_: unknown, row: EnvironmentInfo) => {
         const p = progress[row.flavor]
         const busy = p?.status === 'running'
-        // Hide the button when cached + not in a failed state.
-        if (row.cached && p?.status !== 'failed') return null
+
+        // Cached (and not mid-fetch-failure): offer Evict.
+        if (row.cached && p?.status !== 'failed') {
+          const evictBtn = (
+            <Popconfirm
+              title="Evict cached rootfs?"
+              description={
+                row.mounted
+                  ? 'This flavor is mounted; evicting unmounts it. An in-flight execution may fail and the next one re-downloads.'
+                  : 'Frees disk; the next code execution for this flavor re-downloads it.'
+              }
+              okText="Evict"
+              okButtonProps={{ danger: true }}
+              onConfirm={() =>
+                Stores.SandboxEnvironments.evictEnvironment(row.flavor)
+              }
+            >
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                loading={!!evicting[row.flavor]}
+                disabled={!canManage}
+                data-testid="evict-button"
+              >
+                Evict
+              </Button>
+            </Popconfirm>
+          )
+          return canManage ? (
+            evictBtn
+          ) : (
+            <Tooltip title="Requires code_sandbox::environments::manage">
+              {evictBtn}
+            </Tooltip>
+          )
+        }
+
+        // Not cached (or a failed fetch): offer Fetch.
         const btn = (
           <Button
             type="primary"

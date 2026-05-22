@@ -343,27 +343,42 @@ pub(crate) fn build_environments_response() -> EnvironmentsResponse {
 
     let available: Vec<EnvironmentInfo> = KNOWN_FLAVORS
         .iter()
-        .map(|m| EnvironmentInfo {
-            flavor: m.flavor.to_string(),
-            description: m.description.to_string(),
-            approximate_size_mb: m.approximate_size_mb,
-            cached: flavor_has_cached_squashfs(&cache_dir, m.flavor),
+        .map(|m| {
+            let cached_size_bytes = flavor_cached_size_bytes(&cache_dir, m.flavor);
+            EnvironmentInfo {
+                flavor: m.flavor.to_string(),
+                description: m.description.to_string(),
+                approximate_size_mb: m.approximate_size_mb,
+                cached: cached_size_bytes.is_some(),
+                cached_size_bytes,
+                // Overlaid by the HTTP handler (which can await the mount
+                // registry); defaults false for the sync MCP-tool path.
+                mounted: false,
+            }
         })
         .collect();
     EnvironmentsResponse { available }
 }
 
-fn flavor_has_cached_squashfs(cache_dir: &std::path::Path, flavor: &str) -> bool {
+/// Sum the on-disk size of every `*-{flavor}.squashfs` in the cache dir.
+/// `None` when no such file exists (the flavor is not cached).
+fn flavor_cached_size_bytes(cache_dir: &std::path::Path, flavor: &str) -> Option<u64> {
     let suffix = format!("-{flavor}.squashfs");
-    std::fs::read_dir(cache_dir)
-        .map(|rd| {
-            rd.flatten().any(|e| {
-                e.file_name()
-                    .to_str()
-                    .is_some_and(|n| n.ends_with(&suffix))
-            })
-        })
-        .unwrap_or(false)
+    let mut total: u64 = 0;
+    let mut found = false;
+    for entry in std::fs::read_dir(cache_dir).ok()?.flatten() {
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.ends_with(&suffix))
+        {
+            found = true;
+            if let Ok(meta) = entry.metadata() {
+                total += meta.len();
+            }
+        }
+    }
+    found.then_some(total)
 }
 
 // =====================================================================
@@ -389,6 +404,12 @@ pub struct EnvironmentInfo {
     pub description: String,
     pub approximate_size_mb: u64,
     pub cached: bool,
+    /// Actual on-disk size of the flavor's cached squashfs file(s). `None`
+    /// when the flavor is not cached.
+    pub cached_size_bytes: Option<u64>,
+    /// Whether the flavor is currently mounted (a server-spawned squashfuse
+    /// is live, i.e. it may be in use by an in-flight execute_command).
+    pub mounted: bool,
 }
 
 #[derive(Debug, serde::Serialize, schemars::JsonSchema)]
@@ -433,7 +454,18 @@ pub struct ListPrefetchTasksResponse {
 pub async fn list_environments_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsRead,)>,
 ) -> crate::common::ApiResult<Json<EnvironmentsResponse>> {
-    Ok((StatusCode::OK, Json(build_environments_response())))
+    Ok((StatusCode::OK, Json(environments_with_mounted().await)))
+}
+
+/// `build_environments_response()` plus the `mounted` overlay, which needs to
+/// await the mount registry. Used by the list + evict HTTP handlers.
+async fn environments_with_mounted() -> EnvironmentsResponse {
+    let mut resp = build_environments_response();
+    let mounted = crate::modules::code_sandbox::runtime_mount::mounted_set().await;
+    for e in &mut resp.available {
+        e.mounted = mounted.contains(&e.flavor);
+    }
+    resp
 }
 
 pub fn list_environments_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
@@ -450,6 +482,70 @@ pub fn list_environments_docs(op: aide::transform::TransformOperation) -> aide::
         .response::<200, Json<EnvironmentsResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<403, (), _>(|res| res.description("Missing CodeSandboxEnvironmentsRead"))
+}
+
+// ─── DELETE /code-sandbox/environments/{flavor} ───
+pub async fn evict_environment_handler(
+    _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
+    axum::extract::Path(flavor): axum::extract::Path<String>,
+) -> crate::common::ApiResult<Json<EnvironmentsResponse>> {
+    use crate::modules::code_sandbox::types::KNOWN_FLAVORS;
+
+    // Unknown flavor → 404.
+    if !KNOWN_FLAVORS.iter().any(|m| m.flavor == flavor) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            crate::common::AppError::new(
+                StatusCode::NOT_FOUND,
+                "UNKNOWN_FLAVOR",
+                format!("unknown sandbox flavor {flavor:?}"),
+            ),
+        ));
+    }
+
+    // Cache dir = the configured rootfs_path's parent (same convention as
+    // list_environments / start_prefetch; falls back to cwd when disabled).
+    let cache_dir = config::get_state()
+        .as_ref()
+        .map(|s| {
+            std::path::PathBuf::from(&s.config.rootfs_path)
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+        })
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    // Unmount (if mounted) + delete the cached squashfs. Idempotent: a
+    // not-cached flavor is a 200 no-op. The next execute_command re-fetches.
+    let outcome =
+        crate::modules::code_sandbox::runtime_mount::evict_flavor(&cache_dir, &flavor).await;
+    tracing::info!(
+        flavor,
+        bytes_freed = outcome.bytes_freed,
+        was_cached = outcome.was_cached,
+        "code_sandbox: evict endpoint"
+    );
+
+    // Return the refreshed environments list so the UI updates in one call.
+    Ok((StatusCode::OK, Json(environments_with_mounted().await)))
+}
+
+pub fn evict_environment_docs(op: aide::transform::TransformOperation) -> aide::transform::TransformOperation {
+    with_permission::<(CodeSandboxEnvironmentsManage,)>(op)
+        .id("CodeSandbox.evictEnvironment")
+        .tag("Code Sandbox")
+        .summary("Evict a flavor's cached rootfs")
+        .description(
+            "Unmounts the flavor's squashfuse (if mounted) and deletes its cached \
+             squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. \
+             The next `execute_command` for the flavor re-fetches automatically. \
+             Returns the refreshed environments list (the flavor's `cached` flips \
+             to false)."
+        )
+        .response::<200, Json<EnvironmentsResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
+        .response_with::<403, (), _>(|res| res.description("Missing CodeSandboxEnvironmentsManage"))
+        .response_with::<404, (), _>(|res| res.description("Unknown flavor"))
 }
 
 // ─── GET /code-sandbox/prefetch ───
