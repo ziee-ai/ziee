@@ -1210,6 +1210,11 @@ mod conformance_errors_test;     // Error-path tests against in-process mock ser
 mod conformance_streaming_test;  // SSE streaming edge-case tests via mock
 mod conformance_extended_test;   // Deeper conformance tests against `server-everything`
 mod conformance_elicitation_test; // Elicitation roundtrip tests via mock SSE server
+mod conformance_phase1_test;      // Plan-3 Phase-1: version negotiation, string id, pagination
+mod conformance_resumability_test; // Plan-3 Phase-3 (I1): SSE resume via Last-Event-Id
+mod conformance_oauth_test;        // Plan-3 Phase-4 (Cos1): OAuth client_credentials
+mod oauth_config_route_test;       // Plan-3 Phase-4: per-server OAuth config endpoints
+mod conformance_cancellation_test; // Plan-3 Phase-2 (C3): client notifications/cancelled
 mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
 
 // ============================================================================

@@ -31,12 +31,31 @@ pub struct McpSession {
 }
 
 impl McpSession {
+    /// Build an HTTP client, attaching the server's stored OAuth
+    /// client_credentials config when one exists. Built-in servers skip the
+    /// lookup (they authenticate with a short-lived internal JWT).
+    async fn build_http_client(
+        server: &McpServer,
+        handler: Option<Arc<dyn SamplingHandler>>,
+    ) -> Result<HttpMcpClient, AppError> {
+        let oauth = if server.is_built_in {
+            None
+        } else {
+            crate::core::Repos
+                .mcp
+                .get_oauth_config(server.id)
+                .await?
+                .map(|c| c.into_client_config())
+        };
+        HttpMcpClient::new_internal(server.clone(), handler, oauth)
+    }
+
     pub async fn new(server: McpServer) -> Result<Self, AppError> {
         // Create appropriate client based on transport type.
         // SSE is intentionally rejected — see sse_deprecated_error doc.
         let mut client: Box<dyn McpClient> = match server.transport_type {
             TransportType::Stdio => Box::new(StdioMcpClient::new(server.clone())?),
-            TransportType::Http => Box::new(HttpMcpClient::new(server.clone())?),
+            TransportType::Http => Box::new(Self::build_http_client(&server, None).await?),
             TransportType::Sse => return Err(sse_deprecated_error()),
         };
 
@@ -58,7 +77,7 @@ impl McpSession {
         handler: Arc<dyn SamplingHandler>,
     ) -> Result<Self, AppError> {
         let mut client: Box<dyn McpClient> = match server.transport_type {
-            TransportType::Http => Box::new(HttpMcpClient::new_with_sampling(server.clone(), handler)?),
+            TransportType::Http => Box::new(Self::build_http_client(&server, Some(handler)).await?),
             TransportType::Stdio => {
                 tracing::warn!(
                     "Sampling is only supported for HTTP transport; server '{}' uses stdio. Falling back to non-sampling session.",

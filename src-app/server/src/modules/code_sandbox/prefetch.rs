@@ -244,7 +244,11 @@ async fn run_fetch(task: Arc<PrefetchTask>, cache_dir: std::path::PathBuf) {
         let _ = task_for_cb.events.send(ev);
     };
 
-    let result = runtime_fetch::fetch_flavor(&cache_dir, &flavor, progress_cb).await;
+    // Route through the single-flight `ensure_fetched` so a prefetch and
+    // a concurrent in-conversation auto-fetch for the same flavor never
+    // download simultaneously (they'd otherwise collide on the shared
+    // `<flavor>.squashfs.tmp`). See runtime_fetch::ensure_fetched.
+    let result = runtime_fetch::ensure_fetched(&cache_dir, &flavor, progress_cb).await;
 
     let mut guard = task.state.lock().await;
     match result {

@@ -164,3 +164,68 @@ pub struct McpServer {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+/// Stored OAuth 2.1 `client_credentials` configuration for an external HTTP MCP
+/// server (one row per server; built-in servers never use this). The secret is
+/// plaintext at rest, mirroring the `llm_providers.api_key` precedent.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct McpServerOAuthConfig {
+    pub server_id: Uuid,
+    pub client_id: String,
+    pub client_secret: String,
+    /// Space-separated OAuth scopes; `None` when the server requires none.
+    pub scopes: Option<String>,
+    /// RFC 8707 resource indicator (usually the server URL); `None` = omit.
+    pub resource: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl McpServerOAuthConfig {
+    /// Convert to the transport-layer client config used by `HttpMcpClient`.
+    pub fn into_client_config(self) -> crate::modules::mcp::client::auth::OAuthClientConfig {
+        crate::modules::mcp::client::auth::OAuthClientConfig {
+            client_id: self.client_id,
+            client_secret: self.client_secret,
+            scopes: self.scopes,
+            resource: self.resource,
+        }
+    }
+
+    /// Convert to the API response shape — deliberately omits the secret value.
+    pub fn to_response(&self) -> McpServerOAuthConfigResponse {
+        McpServerOAuthConfigResponse {
+            server_id: self.server_id,
+            client_id: self.client_id.clone(),
+            has_client_secret: !self.client_secret.is_empty(),
+            scopes: self.scopes.clone(),
+            resource: self.resource.clone(),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
+}
+
+/// Request to set (create or replace) a server's OAuth config.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SetMcpServerOAuthConfigRequest {
+    pub client_id: String,
+    pub client_secret: String,
+    #[serde(default)]
+    pub scopes: Option<String>,
+    #[serde(default)]
+    pub resource: Option<String>,
+}
+
+/// API view of a server's OAuth config — **never** includes the secret value.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct McpServerOAuthConfigResponse {
+    pub server_id: Uuid,
+    pub client_id: String,
+    /// Whether a client secret is stored (the value itself is never returned).
+    pub has_client_secret: bool,
+    pub scopes: Option<String>,
+    pub resource: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

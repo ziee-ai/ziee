@@ -16,6 +16,19 @@ export interface ElicitationRequestState extends SSEChatStreamMcpElicitationRequ
 }
 
 /**
+ * Live progress for a long-running tool call (from MCP
+ * `notifications/progress` — e.g. a sandbox rootfs download).
+ */
+export interface McpToolProgressState {
+  /** Current progress value (monotonically increasing). */
+  progress: number
+  /** Total expected units, if known (denominator for a progress bar). */
+  total?: number | null
+  /** Human-readable phase message ("Downloading…", "Verifying…"). */
+  message?: string | null
+}
+
+/**
  * MCP tool call state
  */
 export interface McpToolCall {
@@ -29,6 +42,8 @@ export interface McpToolCall {
   input?: unknown
   result?: unknown
   error?: string
+  /** Latest progress notification, while the call is running. */
+  progress?: McpToolProgressState
 }
 
 /**
@@ -90,6 +105,10 @@ interface McpStore {
   addToolCall: (toolCall: McpToolCall) => void
   /** Update an existing tool call */
   updateToolCall: (toolUseId: string, updates: Partial<McpToolCall>) => void
+  /** Attach progress to the running tool call(s) for a server (progress
+   * notifications carry server but not tool_use_id, so we correlate by
+   * the in-flight 'started' call from that server). */
+  setToolCallProgress: (server: string, progress: McpToolProgressState) => void
   /** Get a tool call by ID */
   getToolCall: (toolUseId: string) => McpToolCall | undefined
   /** Get all active tool calls (started or pending approval) */
@@ -221,6 +240,22 @@ export const createMcpStore = () =>
             ...existing,
             ...updates,
           })
+        }
+      })
+    },
+
+    /**
+     * Attach progress to the running ('started') tool call(s) for a server.
+     * `notifications/progress` carry server + message_id but not tool_use_id,
+     * so we correlate to the in-flight call(s) from that server (typically
+     * the single running execute_command download).
+     */
+    setToolCallProgress: (server: string, progress: McpToolProgressState) => {
+      set(state => {
+        for (const [id, call] of state.toolCalls) {
+          if (call.server === server && call.status === 'started') {
+            state.toolCalls.set(id, { ...call, progress })
+          }
         }
       })
     },

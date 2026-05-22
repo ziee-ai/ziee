@@ -113,4 +113,12 @@ pub trait McpClient: Send + Sync {
     /// Liveness check (MCP spec § utilities/ping). Returns Ok if the server
     /// responds within the underlying transport's timeout.
     async fn ping(&mut self) -> Result<(), AppError>;
+
+    /// Notify the server that a previously-issued request is being abandoned
+    /// (MCP spec § utilities/cancellation — `notifications/cancelled`). This is
+    /// a fire-and-forget notification; the server SHOULD stop work tied to
+    /// `request_id`. Transports that can't deliver it (stdio's rmcp wrapper)
+    /// no-op. `request_id` is the JSON-RPC id the client assigned to the
+    /// in-flight request.
+    async fn cancel(&mut self, request_id: i64, reason: &str) -> Result<(), AppError>;
 }

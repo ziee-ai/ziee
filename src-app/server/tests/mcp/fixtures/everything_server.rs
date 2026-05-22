@@ -120,12 +120,26 @@ impl EverythingServer {
     /// Best-effort start. Returns `None` (with a printed reason) when the
     /// fixture can't run — caller should `return;` from the test to skip.
     /// Used so CI without node can still pass.
+    ///
+    /// **Loud mode:** set `MCP_REQUIRE_EVERYTHING=1` to turn an inability to
+    /// start the reference server into a hard panic instead of a silent skip.
+    /// Because libtest captures a passing test's output, a skip would otherwise
+    /// be invisible and the reference-server coverage could be quietly lost —
+    /// set this in CI (or locally) to guarantee these tests actually ran.
     pub async fn try_start_or_skip(test_name: &str) -> Option<Self> {
         match Self::start().await {
             Ok(s) => Some(s),
             Err(e) => {
+                if std::env::var("MCP_REQUIRE_EVERYTHING").as_deref() == Ok("1") {
+                    panic!(
+                        "[{}] MCP_REQUIRE_EVERYTHING=1 but could not start \
+                         @modelcontextprotocol/server-everything: {}",
+                        test_name, e
+                    );
+                }
                 eprintln!(
-                    "[{}] SKIPPED — could not start @modelcontextprotocol/server-everything: {}",
+                    "[{}] SKIPPED — could not start @modelcontextprotocol/server-everything: {} \
+                     (set MCP_REQUIRE_EVERYTHING=1 to fail instead of skip)",
                     test_name, e
                 );
                 None

@@ -31,6 +31,18 @@ pub struct CodeSandboxConfig {
     /// (no per-call cgroup scope; rlimits still enforce memory + procs).
     #[serde(default)]
     pub cgroup_parent: String,
+    /// When true (default), the FIRST `execute_command` for a flavor
+    /// whose rootfs isn't cached yet prompts the user for consent (via
+    /// an MCP elicitation) before starting the multi-hundred-MB
+    /// download. Set false to always auto-download silently.
+    #[serde(default = "default_require_download_consent")]
+    pub require_download_consent: bool,
+    /// Flavors whose advertised size is below this threshold (MiB) skip
+    /// the consent prompt and download silently — so the small
+    /// `minimal` rootfs stays frictionless while a large `full` rootfs
+    /// always asks. Only consulted when `require_download_consent` is true.
+    #[serde(default = "default_auto_download_under_mb")]
+    pub auto_download_under_mb: u64,
 }
 
 impl Default for CodeSandboxConfig {
@@ -39,12 +51,22 @@ impl Default for CodeSandboxConfig {
             enabled: false,
             rootfs_path: default_rootfs_path(),
             cgroup_parent: String::new(),
+            require_download_consent: default_require_download_consent(),
+            auto_download_under_mb: default_auto_download_under_mb(),
         }
     }
 }
 
 fn default_rootfs_path() -> String {
     "/var/lib/ziee/sandbox-rootfs/current".to_string()
+}
+
+fn default_require_download_consent() -> bool {
+    true
+}
+
+fn default_auto_download_under_mb() -> u64 {
+    100
 }
 
 #[derive(Debug, Deserialize, Clone)]

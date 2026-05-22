@@ -26,7 +26,7 @@ use crate::modules::code_sandbox::types::{
     CodeSandboxState, ConversationIdHeader, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
     SandboxContext,
 };
-use crate::modules::code_sandbox::{code_sandbox_server_id, tools};
+use crate::modules::code_sandbox::{code_sandbox_server_id, streaming, tools};
 use crate::modules::permissions::extractors::RequirePermissions;
 
 /// Per-conversation mutex map. Two parallel tool calls in the same
@@ -40,7 +40,7 @@ use crate::modules::permissions::extractors::RequirePermissions;
 /// practice each Arc<Mutex<()>> is tiny (~16 B).
 static CONVERSATION_LOCKS: Lazy<DashMap<Uuid, Arc<Mutex<()>>>> = Lazy::new(DashMap::new);
 
-fn conv_lock(conversation_id: Uuid) -> Arc<Mutex<()>> {
+pub(crate) fn conv_lock(conversation_id: Uuid) -> Arc<Mutex<()>> {
     CONVERSATION_LOCKS
         .entry(conversation_id)
         .or_insert_with(|| Arc::new(Mutex::new(())))
@@ -58,8 +58,53 @@ pub async fn jsonrpc_handler(
     // is last so a body-parse failure can never leak past auth.
     auth: RequirePermissions<(CodeSandboxExecute,)>,
     ConversationIdHeader(conversation_id): ConversationIdHeader,
-    Json(req): Json<JsonRpcRequest>,
-) -> (StatusCode, Json<JsonRpcResponse>) {
+    body: axum::body::Bytes,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    // Parse the raw body ourselves (not via the `Json` extractor) so a
+    // genuinely malformed payload returns JSON-RPC `-32700` Parse error +
+    // HTTP 400 (per spec) rather than Axum's default plaintext 400.
+    let raw: Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(e) => {
+            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::parse_error(e.to_string()));
+        }
+    };
+
+    // Streamable-HTTP: the client POSTs the result of a server-initiated
+    // `elicitation/create` (download consent) back to this same endpoint
+    // as `{jsonrpc, id, result}`. Classify + route it to the awaiting
+    // execute stream BEFORE any conversation lock, so it can never
+    // deadlock against the streaming task that holds that lock while
+    // awaiting this very response. A JSON-RPC response carries no return
+    // value → ack with a bodiless 202.
+    if streaming::try_resolve_elicitation(&raw) {
+        return StatusCode::ACCEPTED.into_response();
+    }
+
+    // Server-handled notifications that must run BEFORE the conv lock (no
+    // `id`, so they expect no response). `notifications/cancelled` aborts an
+    // in-flight streamed call (Phase 2); classify it here.
+    if raw.get("method").and_then(|m| m.as_str()) == Some("notifications/cancelled") {
+        streaming::handle_cancelled(&raw);
+        return StatusCode::ACCEPTED.into_response();
+    }
+
+    let req: JsonRpcRequest = match serde_json::from_value(raw) {
+        Ok(r) => r,
+        Err(e) => {
+            // Valid JSON, but not a valid JSON-RPC request object → -32600.
+            return error_response(None, StatusCode::BAD_REQUEST, JsonRpcError::invalid_request(e.to_string()));
+        }
+    };
+
+    // Any other notification (no `id`) expects no response → bodiless 202
+    // (e.g. `notifications/initialized` the client sends after connect).
+    if req.id.is_none() {
+        return StatusCode::ACCEPTED.into_response();
+    }
+
     let state = match config::get_state() {
         Some(s) => s,
         None => {
@@ -97,6 +142,10 @@ pub async fn jsonrpc_handler(
         "tools/list" => {
             return ok_response(id, json!({ "tools": tool_definitions() }));
         }
+        "ping" => {
+            // MCP/JSON-RPC ping → empty result. Both roles must answer ping.
+            return ok_response(id, json!({}));
+        }
         _ => {}
     }
 
@@ -116,17 +165,11 @@ pub async fn jsonrpc_handler(
         }
     };
 
-    // SECURITY: ownership check BEFORE the per-conversation lock
-    // insertion. Otherwise an authenticated-but-not-the-owner caller
-    // (every user has `code_sandbox::execute` per migration 35) could
-    // spam unique UUIDs in x-conversation-id and grow the
-    // CONVERSATION_LOCKS DashMap unboundedly (~80B/entry × 100M = ~8GB).
-    // With the check first, the map only grows for conversations the
-    // caller actually owns.
+    // SECURITY: ownership check BEFORE any per-conversation lock insertion.
+    // Otherwise an authenticated-but-not-the-owner caller (every user has
+    // `code_sandbox::execute` per migration 35) could spam unique UUIDs in
+    // x-conversation-id and grow the CONVERSATION_LOCKS DashMap unboundedly.
     if let Err(_e) = assert_owns_conversation(conversation_id, user_id).await {
-        // assert_owns_conversation already logged the rejection at
-        // warn level (handlers.rs:541); return the canonical 404 so
-        // we don't leak conversation existence across tenants.
         return error_response(
             id,
             StatusCode::NOT_FOUND,
@@ -134,20 +177,12 @@ pub async fn jsonrpc_handler(
         );
     }
 
-    // Per-conversation serialization gate (held until end of dispatch).
-    let lock = conv_lock(conversation_id);
-    let _guard = lock.lock().await;
-
-    // Build SandboxContext with the workspace + conversation files.
-    // build_context calls assert_owns_conversation again (cheap DB
-    // round-trip) as belt-and-suspenders, since other call sites
-    // (download_handler) also rely on it.
+    // Build SandboxContext with the workspace + conversation files. Done
+    // before the per-conversation lock (it's read-only DB work) so it can
+    // be reused by both the streaming and single-shot branches.
     let ctx = match build_context(&state, conversation_id, user_id).await {
         Ok(c) => c,
         Err(_e) => {
-            // Details already logged inside build_context;
-            // return a generic error code to avoid leaking internal
-            // paths/error messages to the client.
             return error_response(
                 id,
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -155,6 +190,44 @@ pub async fn jsonrpc_handler(
             );
         }
     };
+
+    // `execute_command` is the one tool that can block on a large rootfs
+    // download → it responds with an SSE stream (Streamable-HTTP) so it can
+    // ask for download consent + stream progress. The per-conversation lock
+    // is acquired INSIDE the streaming task (held for its whole duration).
+    if req.method == "tools/call"
+        && req.params.get("name").and_then(|v| v.as_str()) == Some("execute_command")
+    {
+        let args = req.params.get("arguments");
+        let command = args
+            .and_then(|a| a.get("command"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let flavor = args
+            .and_then(|a| a.get("flavor"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("minimal")
+            .to_string();
+        let progress_token = req
+            .params
+            .get("_meta")
+            .and_then(|m| m.get("progressToken"))
+            .cloned();
+        return streaming::execute_command_stream(
+            ctx,
+            id.unwrap_or(Value::Null),
+            command,
+            flavor,
+            progress_token,
+        )
+        .into_response();
+    }
+
+    // All other (fast, single-shot) tools/calls: serialize per conversation
+    // and dispatch to a JSON response.
+    let lock = conv_lock(conversation_id);
+    let _guard = lock.lock().await;
 
     match dispatch(&ctx, &req).await {
         Ok(value) => ok_response(id, value),
@@ -216,7 +289,8 @@ async fn dispatch(
     }
 }
 
-fn ok_response(id: Option<Value>, result: Value) -> (StatusCode, Json<JsonRpcResponse>) {
+fn ok_response(id: Option<Value>, result: Value) -> axum::response::Response {
+    use axum::response::IntoResponse;
     (
         StatusCode::OK,
         Json(JsonRpcResponse {
@@ -226,6 +300,7 @@ fn ok_response(id: Option<Value>, result: Value) -> (StatusCode, Json<JsonRpcRes
             error: None,
         }),
     )
+        .into_response()
 }
 
 async fn invoke_tool(
@@ -767,7 +842,7 @@ pub fn subscribe_prefetch_events_docs(op: aide::transform::TransformOperation) -
 /// array of typed blocks. Wrapping a resource_link inside a text
 /// block would silently break clients that walk
 /// `content[].type == "resource_link"` to find downloadable URIs.
-fn mcp_content_blocks(result: &Value) -> Vec<Value> {
+pub(crate) fn mcp_content_blocks(result: &Value) -> Vec<Value> {
     const KNOWN_CONTENT_TYPES: &[&str] = &[
         "text",
         "image",
@@ -896,7 +971,8 @@ fn error_response(
     id: Option<Value>,
     status: StatusCode,
     err: JsonRpcError,
-) -> (StatusCode, Json<JsonRpcResponse>) {
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
     (
         status,
         Json(JsonRpcResponse {
@@ -906,6 +982,7 @@ fn error_response(
             error: Some(err),
         }),
     )
+        .into_response()
 }
 
 async fn build_context(
@@ -1542,6 +1619,7 @@ mod tests {
                 enabled: true,
                 rootfs_path: String::new(),
                 cgroup_parent: String::new(),
+                ..Default::default()
             },
             loopback_url: "http://127.0.0.1:8080/api/code-sandbox".to_string(),
             workspace_root,

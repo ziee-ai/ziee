@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use super::auth::{self, OAuthClientConfig, StoredToken};
 use super::traits::{McpClient, Prompt, PromptResult, Resource, Tool, ToolResult};
 use crate::common::AppError;
 use crate::modules::mcp::models::{McpServer, TransportType};
@@ -20,6 +21,28 @@ const MAX_SSE_EVENT_BYTES: usize = 50 * 1024 * 1024;
 /// every subsequent request via the `MCP-Protocol-Version` header. Bumped
 /// whenever we audit + verify against a newer spec — current is 2025-11-25.
 const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
+
+/// Protocol versions this client can interoperate with, newest first. The
+/// negotiated version returned by a server's `initialize` MUST be one of
+/// these or the client refuses the connection (spec § version negotiation).
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
+    &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
+
+/// Safety cap on `nextCursor` pagination loops (`list_tools` / `list_resources`
+/// / `list_prompts`) so a buggy server that never drops the cursor can't spin
+/// the client forever.
+const MAX_PAGINATION_PAGES: usize = 1000;
+
+/// Structural JSON-RPC id comparison. The spec allows ids to be a string or
+/// an integer; our outgoing ids are always integers, but a server may echo
+/// them back stringified — accept both so response correlation is robust.
+fn json_id_eq(id: &Value, expected: i64) -> bool {
+    match id {
+        Value::Number(n) => n.as_i64() == Some(expected),
+        Value::String(s) => s.parse::<i64>().ok() == Some(expected),
+        _ => false,
+    }
+}
 
 /// Parse a Server-Sent Events response body and return the JSON-RPC message
 /// whose `id` matches the requested id. Drops notifications and unrelated
@@ -55,10 +78,13 @@ fn extract_response_by_id(sse_body: &str, expected_id: i64) -> Result<Value, App
         };
 
         // If this message carries our id (either result or error response),
-        // it's the one we're waiting for.
-        let id_matches = json.get("id")
-            .and_then(|v| v.as_i64())
-            .map(|i| i == expected_id)
+        // it's the one we're waiting for. Match structurally: JSON-RPC ids
+        // may be a string OR a number (spec), and a legal-but-non-conformant
+        // server may echo our numeric id as a string — `as_i64` alone would
+        // miss that and we'd hang waiting for a response that already arrived.
+        let id_matches = json
+            .get("id")
+            .map(|v| json_id_eq(v, expected_id))
             .unwrap_or(false);
 
         if id_matches {
@@ -76,6 +102,122 @@ fn extract_response_by_id(sse_body: &str, expected_id: i64) -> Result<Value, App
     Err(AppError::internal_error(format!(
         "SSE stream ended without a response for request id={}", expected_id
     )))
+}
+
+/// Forward an MCP `notifications/progress` (received mid-call over the SSE
+/// stream) to the chat UI as a `mcpToolProgress` named SSE event — mirrors
+/// how `elicitation/create` is bridged to the browser. No-op when there is
+/// no browser SSE sender (e.g. the runtime tool-test endpoint).
+fn forward_progress_notification(
+    sse_tx: &Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
+    message_id: Option<uuid::Uuid>,
+    server_name: &str,
+    params: &Value,
+) {
+    let tx = match sse_tx {
+        Some(t) => t,
+        None => return,
+    };
+    let event_data = serde_json::json!({
+        "message_id": message_id.map(|m| m.to_string()),
+        "server": server_name,
+        "progress_token": params.get("progressToken").cloned(),
+        "progress": params.get("progress").and_then(|v| v.as_f64()).unwrap_or(0.0),
+        "total": params.get("total").and_then(|v| v.as_f64()),
+        "message": params.get("message").and_then(|v| v.as_str()),
+    });
+    let event = axum::response::sse::Event::default()
+        .event("mcpToolProgress")
+        .data(event_data.to_string());
+    let _ = tx.send(Ok(event));
+}
+
+// ─── SSE stream resumability (MCP spec § Transports / Resumability) ──────────
+//
+// When a tool-call SSE stream drops before delivering the JSON-RPC response, a
+// spec-conformant client reconnects via GET + `Last-Event-Id` and resumes,
+// rather than failing the whole call. The server signals resumability by
+// emitting SSE `id:` lines (a "priming event" — an `id:` with empty data — is
+// enough). These defaults mirror the MCP TypeScript SDK
+// (`client/streamableHttp.ts` DEFAULT_STREAMABLE_HTTP_RECONNECTION_OPTIONS).
+const SSE_RECONNECT_INITIAL_MS: u64 = 1_000;
+const SSE_RECONNECT_MAX_MS: u64 = 30_000;
+const SSE_RECONNECT_GROW_FACTOR: f64 = 1.5;
+const SSE_RECONNECT_MAX_RETRIES: u32 = 2;
+
+/// Exponential backoff for the Nth (0-based) reconnect attempt, capped.
+fn reconnect_delay_ms(attempt: u32) -> u64 {
+    let d = (SSE_RECONNECT_INITIAL_MS as f64) * SSE_RECONNECT_GROW_FACTOR.powi(attempt as i32);
+    (d as u64).min(SSE_RECONNECT_MAX_MS)
+}
+
+/// Extract the SSE `id:` field from an event block (last `id:` line wins per
+/// the SSE spec). Returns `None` if the block carries no id — i.e. the server
+/// isn't emitting resumable event ids, so we won't attempt a resume.
+fn sse_event_id(event_block: &str) -> Option<String> {
+    let mut id = None;
+    for line in event_block.lines() {
+        if let Some(rest) = line.strip_prefix("id:") {
+            id = Some(rest.trim().to_string());
+        }
+    }
+    id
+}
+
+/// Attempt to resume a dropped tool-call SSE stream via `GET` +
+/// `Last-Event-Id` (MCP resumability). Runs the bounded backoff retry loop
+/// internally; returns the fresh streaming response on success, or `None` if
+/// the stream isn't resumable (no event id was seen) or all retries are
+/// exhausted. Because both SSE read loops *return* on the first result/error,
+/// reaching a stream-EOF means the response has NOT arrived yet — so we never
+/// need the SDK's `receivedResponse` guard here; `last_event_id.is_some()` is
+/// exactly the SDK's `hasPrimingEvent`.
+async fn try_resume_sse(
+    stream_client: &Client,
+    url: &str,
+    session_id: Option<String>,
+    protocol_version: &Option<String>,
+    authorization: &Option<String>,
+    last_event_id: &Option<String>,
+    server_name: &str,
+) -> Option<reqwest::Response> {
+    let leid = last_event_id.as_ref()?;
+    let mut attempt = 0u32;
+    while attempt < SSE_RECONNECT_MAX_RETRIES {
+        tokio::time::sleep(Duration::from_millis(reconnect_delay_ms(attempt))).await;
+        attempt += 1;
+        let mut req = stream_client
+            .get(url)
+            .header("Accept", "text/event-stream")
+            .header("Last-Event-Id", leid.as_str());
+        if let Some(s) = &session_id {
+            req = req.header("mcp-session-id", s.as_str());
+        }
+        if let Some(ver) = protocol_version {
+            req = req.header("MCP-Protocol-Version", ver);
+        }
+        if let Some(bearer) = authorization {
+            req = req.header("Authorization", format!("Bearer {bearer}"));
+        }
+        match req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!(
+                    "[mcp] resumed SSE stream from '{}' via Last-Event-Id={} (attempt {})",
+                    server_name, leid, attempt
+                );
+                return Some(resp);
+            }
+            Ok(resp) => tracing::warn!(
+                "[mcp] SSE resume attempt {} for '{}' returned HTTP {}",
+                attempt, server_name, resp.status()
+            ),
+            Err(e) => tracing::warn!(
+                "[mcp] SSE resume attempt {} for '{}' failed: {}",
+                attempt, server_name, e
+            ),
+        }
+    }
+    None
 }
 
 pub struct HttpMcpClient {
@@ -97,23 +239,42 @@ pub struct HttpMcpClient {
     /// `None` until initialize completes.
     negotiated_protocol_version: Arc<RwLock<Option<String>>>,
     sampling_handler: Option<Arc<dyn SamplingHandler>>,
+    /// OAuth 2.1 client_credentials config for an external server that requires
+    /// it. `None` → no OAuth (most servers; our built-in server uses a static
+    /// short-lived JWT instead). See `mcp/client/auth.rs`.
+    oauth: Option<Arc<OAuthClientConfig>>,
+    /// Cached bearer token (acquired lazily on the first 401) + the discovered
+    /// token endpoint (remembered for refresh). Shared into the spawned
+    /// tool-call tasks so they attach the same bearer.
+    oauth_token: Arc<RwLock<Option<StoredToken>>>,
+    oauth_token_endpoint: Arc<RwLock<Option<String>>>,
 }
 
 impl HttpMcpClient {
     pub fn new(server: McpServer) -> Result<Self, AppError> {
-        Self::new_internal(server, None)
+        Self::new_internal(server, None, None)
     }
 
     pub fn new_with_sampling(
         server: McpServer,
         handler: Arc<dyn SamplingHandler>,
     ) -> Result<Self, AppError> {
-        Self::new_internal(server, Some(handler))
+        Self::new_internal(server, Some(handler), None)
     }
 
-    fn new_internal(
+    /// Construct a client that authenticates to an external server via the
+    /// OAuth 2.1 `client_credentials` grant (acquired lazily on the first 401).
+    pub fn new_with_oauth(
+        server: McpServer,
+        oauth: OAuthClientConfig,
+    ) -> Result<Self, AppError> {
+        Self::new_internal(server, None, Some(oauth))
+    }
+
+    pub(crate) fn new_internal(
         server: McpServer,
         sampling_handler: Option<Arc<dyn SamplingHandler>>,
+        oauth: Option<OAuthClientConfig>,
     ) -> Result<Self, AppError> {
         if server.transport_type != TransportType::Http {
             return Err(AppError::bad_request("INVALID_TRANSPORT", "Only HTTP transport supported"));
@@ -162,7 +323,44 @@ impl HttpMcpClient {
             next_request_id: Arc::new(AtomicI64::new(1)),
             negotiated_protocol_version: Arc::new(RwLock::new(None)),
             sampling_handler,
+            oauth: oauth.map(Arc::new),
+            oauth_token: Arc::new(RwLock::new(None)),
+            oauth_token_endpoint: Arc::new(RwLock::new(None)),
         })
+    }
+
+    /// Current cached bearer token, if configured and still valid.
+    fn current_bearer(&self) -> Option<String> {
+        let g = self.oauth_token.read().ok()?;
+        g.as_ref()
+            .filter(|t| t.is_valid())
+            .map(|t| t.access_token.clone())
+    }
+
+    /// Run the OAuth client_credentials flow in response to a 401 challenge,
+    /// caching the token + token endpoint. Returns the fresh access token.
+    async fn acquire_oauth_token(&self, www_authenticate: &str) -> Result<String, AppError> {
+        let config = self.oauth.as_ref().ok_or_else(|| {
+            AppError::internal_error("server returned 401 but no OAuth client is configured")
+        })?;
+        // If we already have a (possibly expired) token + endpoint, refresh;
+        // otherwise discover from the challenge.
+        let cached = self.oauth_token.read().ok().and_then(|g| g.clone());
+        let endpoint = self.oauth_token_endpoint.read().ok().and_then(|g| g.clone());
+        let (token, endpoint) = match (cached, endpoint) {
+            (Some(cur), Some(ep)) => {
+                (auth::refresh_token(&self.client, &ep, config, &cur).await?, ep)
+            }
+            _ => auth::obtain_token_from_challenge(&self.client, www_authenticate, config).await?,
+        };
+        let access = token.access_token.clone();
+        if let Ok(mut g) = self.oauth_token.write() {
+            *g = Some(token);
+        }
+        if let Ok(mut g) = self.oauth_token_endpoint.write() {
+            *g = Some(endpoint);
+        }
+        Ok(access)
     }
 
     /// Allocate the next monotonically increasing JSON-RPC request id.
@@ -218,6 +416,9 @@ impl HttpMcpClient {
         }
         if let Some(ver) = self.get_protocol_version() {
             req = req.header("MCP-Protocol-Version", ver);
+        }
+        if let Some(bearer) = self.current_bearer() {
+            req = req.header("Authorization", format!("Bearer {bearer}"));
         }
 
         let response = req.send().await
@@ -295,53 +496,83 @@ impl HttpMcpClient {
         method: &str,
         params: &Value,
     ) -> Result<T, AppError> {
-        let id = self.next_id();
-        let request_body = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params,
-        });
+        // At most one extra attempt: an OAuth-protected server's first request
+        // 401s, we acquire a token, and retry with `Authorization: Bearer`.
+        let mut oauth_retried = false;
+        let (status, content_type, response_text) = loop {
+            let id = self.next_id();
+            let request_body = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": method,
+                "params": params,
+            });
 
-        let mut request = self.client
-            .post(&self.base_url)
-            // Per spec § Transports: client MUST advertise both content types so
-            // the server can choose JSON or SSE.
-            .header("Accept", "application/json, text/event-stream")
-            .json(&request_body);
+            let mut request = self.client
+                .post(&self.base_url)
+                // Per spec § Transports: client MUST advertise both content types so
+                // the server can choose JSON or SSE.
+                .header("Accept", "application/json, text/event-stream")
+                .json(&request_body);
 
-        if let Some(session_id) = self.get_session_id() {
-            request = request.header("mcp-session-id", session_id);
-        }
-        // Per spec: MUST send MCP-Protocol-Version on all requests AFTER init.
-        if let Some(ver) = self.get_protocol_version() {
-            request = request.header("MCP-Protocol-Version", ver);
-        }
+            if let Some(session_id) = self.get_session_id() {
+                request = request.header("mcp-session-id", session_id);
+            }
+            // Per spec: MUST send MCP-Protocol-Version on all requests AFTER init.
+            if let Some(ver) = self.get_protocol_version() {
+                request = request.header("MCP-Protocol-Version", ver);
+            }
+            // Attach a cached OAuth bearer if we have a valid one.
+            if let Some(bearer) = self.current_bearer() {
+                request = request.header("Authorization", format!("Bearer {bearer}"));
+            }
 
-        let response = request.send().await
-            .map_err(|e| AppError::internal_error(format!("HTTP request failed: {}", e)))?;
+            let response = request.send().await
+                .map_err(|e| AppError::internal_error(format!("HTTP request failed: {}", e)))?;
 
-        let status = response.status();
+            let status = response.status();
 
-        if let Some(session_id) = response.headers().get("mcp-session-id") {
-            if let Ok(s) = session_id.to_str() { self.set_session_id(s); }
-        }
+            // OAuth 2.1: on 401 with a configured client, acquire a token from
+            // the `WWW-Authenticate` challenge and retry the request once.
+            if status.as_u16() == 401 && self.oauth.is_some() && !oauth_retried {
+                oauth_retried = true;
+                let www = response.headers()
+                    .get("www-authenticate")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                tracing::info!(
+                    "[mcp] server '{}' returned 401 for '{}'; running OAuth client_credentials flow",
+                    self.server_name, method
+                );
+                self.acquire_oauth_token(&www).await?;
+                continue;
+            }
 
-        let content_type = response.headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_string();
+            if let Some(session_id) = response.headers().get("mcp-session-id") {
+                if let Ok(s) = session_id.to_str() { self.set_session_id(s); }
+            }
 
-        let response_text = response.text().await
-            .map_err(|e| AppError::internal_error(format!("Failed to read response: {}", e)))?;
+            let content_type = response.headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
 
-        if !status.is_success() {
-            return Err(AppError::internal_error(format!(
-                "MCP server returned HTTP {}: {}",
-                status, response_text.chars().take(200).collect::<String>()
-            )));
-        }
+            let id_for_sse = id;
+            let response_text = response.text().await
+                .map_err(|e| AppError::internal_error(format!("Failed to read response: {}", e)))?;
+
+            if !status.is_success() {
+                return Err(AppError::internal_error(format!(
+                    "MCP server returned HTTP {}: {}",
+                    status, response_text.chars().take(200).collect::<String>()
+                )));
+            }
+            break (status, content_type, (id_for_sse, response_text));
+        };
+        let (id, response_text) = response_text;
+        let _ = status;
 
         // Two valid response shapes per spec § Transports:
         //  - Content-Type: application/json → single JSON-RPC response
@@ -387,13 +618,26 @@ impl HttpMcpClient {
 
         let init_result: Value = self.request_once("initialize", &init_params).await?;
 
-        // Per spec § version negotiation: server MUST respond with the same
-        // version, or another version it supports. Record whichever we got
-        // so subsequent requests send the right MCP-Protocol-Version header.
-        let negotiated = init_result.get("protocolVersion")
+        // Per spec § version negotiation: the server responds with the same
+        // version, or another version it supports. The client MUST validate
+        // it against the versions it understands and disconnect on mismatch
+        // (SDK client.ts:513-538) — we must NOT blindly trust + echo an
+        // unknown version on every subsequent MCP-Protocol-Version header.
+        let negotiated = init_result
+            .get("protocolVersion")
             .and_then(|v| v.as_str())
-            .unwrap_or(MCP_PROTOCOL_VERSION)
+            .ok_or_else(|| {
+                AppError::internal_error(
+                    "MCP initialize response is missing `protocolVersion`",
+                )
+            })?
             .to_string();
+        if !SUPPORTED_PROTOCOL_VERSIONS.contains(&negotiated.as_str()) {
+            return Err(AppError::internal_error(format!(
+                "MCP server negotiated unsupported protocol version {:?}; this client supports {:?}",
+                negotiated, SUPPORTED_PROTOCOL_VERSIONS
+            )));
+        }
         self.set_protocol_version(&negotiated);
 
         // MCP spec § Lifecycle: "After successful initialization, the client
@@ -415,6 +659,7 @@ impl HttpMcpClient {
         url: String,
         session_id_arc: Arc<RwLock<Option<String>>>,
         protocol_version: Option<String>,
+        bearer: Option<String>,
         tool_call_id: i64,
         server_name: String,
         name: String,
@@ -460,7 +705,11 @@ impl HttpMcpClient {
             "method": "tools/call",
             "params": {
                 "name": name,
-                "arguments": arguments
+                "arguments": arguments,
+                // Opt in to MCP progress notifications (spec § Progress): the
+                // server MAY emit `notifications/progress` carrying this token
+                // during a long-running call. We forward them to the chat UI.
+                "_meta": { "progressToken": tool_call_id }
             }
         });
 
@@ -478,6 +727,9 @@ impl HttpMcpClient {
         // Per spec: MUST send MCP-Protocol-Version on subsequent requests.
         if let Some(ref ver) = protocol_version {
             req = req.header("MCP-Protocol-Version", ver);
+        }
+        if let Some(ref b) = bearer {
+            req = req.header("Authorization", format!("Bearer {b}"));
         }
 
         tracing::info!(
@@ -515,6 +767,9 @@ impl HttpMcpClient {
 
         let mut byte_stream = response.bytes_stream();
         let mut buffer = String::new();
+        // Track the last SSE event id so a dropped stream can resume via
+        // GET + Last-Event-Id (MCP resumability).
+        let mut last_event_id: Option<String> = None;
 
         tracing::info!("[sampling] Entering SSE byte-stream loop");
 
@@ -540,6 +795,11 @@ impl HttpMcpClient {
                         let event_block = buffer[..event_end].to_string();
                         buffer.drain(..event_end + 2);
 
+                        // Remember the SSE event id (resumability priming).
+                        if let Some(eid) = sse_event_id(&event_block) {
+                            last_event_id = Some(eid);
+                        }
+
                         // Extract data line from event block
                         let data_line = event_block.lines()
                             .find(|l| l.starts_with("data: "))
@@ -549,6 +809,8 @@ impl HttpMcpClient {
                             Some(d) => d,
                             None => continue,
                         };
+                        // Skip events with no data (priming / keep-alive).
+                        if data.is_empty() { continue; }
 
                         let json: Value = match serde_json::from_str(data) {
                             Ok(v) => v,
@@ -560,6 +822,15 @@ impl HttpMcpClient {
 
                         // Check if this is a server→client request (elicitation or sampling)
                         if let Some(method) = json.get("method").and_then(|m| m.as_str()) {
+                            // --- Progress (MCP spec § Progress) ---
+                            // A `notifications/progress` is a one-way notification
+                            // (no response expected); forward to the chat UI and
+                            // keep reading for the eventual tool result.
+                            if method == "notifications/progress" {
+                                let params = json.get("params").cloned().unwrap_or(Value::Null);
+                                forward_progress_notification(&sse_tx, message_id, &server_name, &params);
+                                continue;
+                            }
                             // --- Elicitation (MCP spec 2025-03-26+) ---
                             // The MCP server needs structured human input; pause the loop and wait.
                             if method == "elicitation/create" {
@@ -809,9 +1080,27 @@ impl HttpMcpClient {
                     }
                 }
                 Some(Err(e)) => {
+                    // Network error mid-stream — try to resume via Last-Event-Id
+                    // before giving up (MCP resumability).
+                    if let Some(resp) = try_resume_sse(
+                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
+                    ).await {
+                        byte_stream = resp.bytes_stream();
+                        buffer.clear();
+                        continue;
+                    }
                     return Err(AppError::internal_error(format!("SSE stream error: {}", e)));
                 }
                 None => {
+                    // Stream ended before the tool result. If the server emitted
+                    // event ids (resumable), reconnect via GET + Last-Event-Id.
+                    if let Some(resp) = try_resume_sse(
+                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
+                    ).await {
+                        byte_stream = resp.bytes_stream();
+                        buffer.clear();
+                        continue;
+                    }
                     return Err(AppError::internal_error("SSE stream ended without tool result"));
                 }
             }
@@ -830,6 +1119,8 @@ impl HttpMcpClient {
         stream_client: Client,
         url: String,
         session_id_arc: Arc<RwLock<Option<String>>>,
+        protocol_version: Option<String>,
+        bearer: Option<String>,
         server_name: String,
         message_id: Option<uuid::Uuid>,
         sse_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
@@ -853,6 +1144,8 @@ impl HttpMcpClient {
 
         let mut byte_stream = response.bytes_stream();
         let mut buffer = String::new();
+        // Track the last SSE event id for resume-via-Last-Event-Id.
+        let mut last_event_id: Option<String> = None;
 
         loop {
             match byte_stream.next().await {
@@ -872,6 +1165,11 @@ impl HttpMcpClient {
                         let event_block = buffer[..event_end].to_string();
                         buffer.drain(..event_end + sep.len());
 
+                        // Remember the SSE event id (resumability priming).
+                        if let Some(eid) = sse_event_id(&event_block) {
+                            last_event_id = Some(eid);
+                        }
+
                         let data_line = event_block.lines()
                             .find(|l| l.starts_with("data: "))
                             .map(|l| &l[6..]);
@@ -880,6 +1178,8 @@ impl HttpMcpClient {
                             Some(d) => d,
                             None => continue,
                         };
+                        // Skip events with no data (priming / keep-alive).
+                        if data.is_empty() { continue; }
 
                         let json: Value = match serde_json::from_str(data) {
                             Ok(v) => v,
@@ -898,6 +1198,12 @@ impl HttpMcpClient {
                         );
 
                         if let Some(method) = json.get("method").and_then(|m| m.as_str()) {
+                            // --- Progress (MCP spec § Progress) ---
+                            if method == "notifications/progress" {
+                                let params = json.get("params").cloned().unwrap_or(Value::Null);
+                                forward_progress_notification(&sse_tx, message_id, &server_name, &params);
+                                continue;
+                            }
                             // --- Elicitation (identical to call_tool_with_sampling) ---
                             if method == "elicitation/create" {
                                 let req_id = json.get("id").cloned().unwrap_or(Value::Null);
@@ -1050,9 +1356,23 @@ impl HttpMcpClient {
                     }
                 }
                 Some(Err(e)) => {
+                    if let Some(resp) = try_resume_sse(
+                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
+                    ).await {
+                        byte_stream = resp.bytes_stream();
+                        buffer.clear();
+                        continue;
+                    }
                     return Err(AppError::internal_error(format!("SSE stream error: {}", e)));
                 }
                 None => {
+                    if let Some(resp) = try_resume_sse(
+                        &stream_client, &url, get_sid(), &protocol_version, &bearer, &last_event_id, &server_name,
+                    ).await {
+                        byte_stream = resp.bytes_stream();
+                        buffer.clear();
+                        continue;
+                    }
                     return Err(AppError::internal_error("SSE stream ended without tool result"));
                 }
             }
@@ -1065,6 +1385,18 @@ impl McpClient for HttpMcpClient {
     async fn connect(&mut self) -> Result<(), AppError> {
         self.do_initialize().await?;
         self.connected = true;
+        // Note on the standalone GET-SSE stream (MCP spec § Transports):
+        // we deliberately do NOT open one. Sessions here are ephemeral —
+        // a fresh client connects and disconnects for every tool call (see
+        // `SessionManager::get_or_create_with_context`) — and nothing in this app
+        // produces or consumes *unsolicited* server→client messages: every
+        // elicitation / sampling / progress arrives interleaved on the POST
+        // tools/call stream, which we already handle. Auto-opening a GET
+        // stream per call would be pure overhead with no consumer. Servers
+        // signal "no standalone stream" by 405-ing GET, which our own
+        // built-in server does. Resumability of the POST stream (the part
+        // that has real value against flaky external servers) IS implemented
+        // — see `try_resume_sse`.
         Ok(())
     }
 
@@ -1077,6 +1409,9 @@ impl McpClient for HttpMcpClient {
                 .header("mcp-session-id", &sid);
             if let Some(ver) = self.get_protocol_version() {
                 req = req.header("MCP-Protocol-Version", ver);
+            }
+            if let Some(bearer) = self.current_bearer() {
+                req = req.header("Authorization", format!("Bearer {bearer}"));
             }
             match req.send().await {
                 Ok(r) => {
@@ -1112,11 +1447,29 @@ impl McpClient for HttpMcpClient {
 
         #[derive(serde::Deserialize)]
         struct ListToolsResult {
+            #[serde(default)]
             tools: Vec<Tool>,
+            #[serde(default, rename = "nextCursor")]
+            next_cursor: Option<String>,
         }
 
-        let result: ListToolsResult = self.request("tools/list", serde_json::json!({})).await?;
-        Ok(result.tools)
+        // Follow `nextCursor` pagination (spec § Pagination) so servers with
+        // more than one page of tools aren't silently truncated.
+        let mut all = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGINATION_PAGES {
+            let params = match &cursor {
+                Some(c) => serde_json::json!({ "cursor": c }),
+                None => serde_json::json!({}),
+            };
+            let page: ListToolsResult = self.request("tools/list", params).await?;
+            all.extend(page.tools);
+            match page.next_cursor {
+                Some(c) if !c.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+        Ok(all)
     }
 
     async fn call_tool(
@@ -1134,6 +1487,8 @@ impl McpClient for HttpMcpClient {
         // Allocate a unique request id once, up front — used by both branches.
         let tool_call_id = self.next_id();
         let protocol_version = self.get_protocol_version();
+        // Cached OAuth bearer (acquired at connect/initialize for OAuth servers).
+        let bearer = self.current_bearer();
 
         // Use sampling-aware SSE streaming if a sampling handler is present.
         // Spawn in a completely independent task so that req.send().await inside
@@ -1147,6 +1502,7 @@ impl McpClient for HttpMcpClient {
             let name_owned     = name.to_string();
             let arguments_owned = arguments;
             let pv             = protocol_version.clone();
+            let bearer1        = bearer.clone();
 
             let (result_tx, result_rx) =
                 tokio::sync::oneshot::channel::<Result<ToolResult, AppError>>();
@@ -1158,6 +1514,7 @@ impl McpClient for HttpMcpClient {
                     url,
                     session_id_arc,
                     pv,
+                    bearer1,
                     tool_call_id,
                     server_name,
                     name_owned,
@@ -1189,6 +1546,7 @@ impl McpClient for HttpMcpClient {
         let message_id_owned     = message_id;
         let elicit_notify_owned  = elicit_notify_tx;
         let pv_owned             = protocol_version;
+        let bearer_owned         = bearer;
 
         let (result_tx, result_rx) =
             tokio::sync::oneshot::channel::<Result<ToolResult, AppError>>();
@@ -1222,7 +1580,10 @@ impl McpClient for HttpMcpClient {
                 "method": "tools/call",
                 "params": {
                     "name": name_owned,
-                    "arguments": arguments_owned
+                    "arguments": arguments_owned,
+                    // Opt in to MCP progress notifications (spec § Progress);
+                    // forwarded to the chat UI as `mcpToolProgress` events.
+                    "_meta": { "progressToken": tool_call_id }
                 }
             });
 
@@ -1238,6 +1599,9 @@ impl McpClient for HttpMcpClient {
             }
             if let Some(ref ver) = pv_owned {
                 req = req.header("MCP-Protocol-Version", ver);
+            }
+            if let Some(ref b) = bearer_owned {
+                req = req.header("Authorization", format!("Bearer {b}"));
             }
 
             let response = match req.send().await {
@@ -1275,6 +1639,8 @@ impl McpClient for HttpMcpClient {
                     stream_client,
                     url,
                     session_id_arc,
+                    pv_owned,
+                    bearer_owned,
                     server_name,
                     message_id_owned,
                     sse_tx,
@@ -1345,11 +1711,27 @@ impl McpClient for HttpMcpClient {
 
         #[derive(serde::Deserialize)]
         struct ListResourcesResult {
+            #[serde(default)]
             resources: Vec<Resource>,
+            #[serde(default, rename = "nextCursor")]
+            next_cursor: Option<String>,
         }
 
-        let result: ListResourcesResult = self.request("resources/list", serde_json::json!({})).await?;
-        Ok(result.resources)
+        let mut all = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGINATION_PAGES {
+            let params = match &cursor {
+                Some(c) => serde_json::json!({ "cursor": c }),
+                None => serde_json::json!({}),
+            };
+            let page: ListResourcesResult = self.request("resources/list", params).await?;
+            all.extend(page.resources);
+            match page.next_cursor {
+                Some(c) if !c.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+        Ok(all)
     }
 
     async fn read_resource(&mut self, uri: &str) -> Result<Value, AppError> {
@@ -1373,16 +1755,36 @@ impl McpClient for HttpMcpClient {
         struct ListPromptsResult {
             #[serde(default)]
             prompts: Vec<Prompt>,
+            #[serde(default, rename = "nextCursor")]
+            next_cursor: Option<String>,
         }
 
-        // Servers that didn't advertise `prompts` capability may return
-        // error -32601 (Method not found). Map that to an empty list so
-        // callers don't have to special-case it.
-        match self.request::<ListPromptsResult>("prompts/list", serde_json::json!({})).await {
-            Ok(r) => Ok(r.prompts),
-            Err(e) if e.to_string().contains("-32601") => Ok(Vec::new()),
-            Err(e) => Err(e),
+        let mut all = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_PAGINATION_PAGES {
+            let params = match &cursor {
+                Some(c) => serde_json::json!({ "cursor": c }),
+                None => serde_json::json!({}),
+            };
+            // Servers that didn't advertise `prompts` capability may return
+            // error -32601 (Method not found). Map that to an empty list so
+            // callers don't have to special-case it.
+            match self
+                .request::<ListPromptsResult>("prompts/list", params)
+                .await
+            {
+                Ok(page) => {
+                    all.extend(page.prompts);
+                    match page.next_cursor {
+                        Some(c) if !c.is_empty() => cursor = Some(c),
+                        _ => break,
+                    }
+                }
+                Err(e) if e.to_string().contains("-32601") => return Ok(Vec::new()),
+                Err(e) => return Err(e),
+            }
         }
+        Ok(all)
     }
 
     async fn get_prompt(
@@ -1410,6 +1812,15 @@ impl McpClient for HttpMcpClient {
         // an empty result. We don't care about the body.
         let _: Value = self.request("ping", serde_json::json!({})).await?;
         Ok(())
+    }
+
+    async fn cancel(&mut self, request_id: i64, reason: &str) -> Result<(), AppError> {
+        // Fire-and-forget `notifications/cancelled` (MCP spec § cancellation).
+        self.send_notification(
+            "notifications/cancelled",
+            serde_json::json!({ "requestId": request_id, "reason": reason }),
+        )
+        .await
     }
 }
 

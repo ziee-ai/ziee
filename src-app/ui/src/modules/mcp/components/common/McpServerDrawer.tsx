@@ -1,7 +1,8 @@
 import { Button, Form, Input, InputNumber, Select, Switch, App, Divider } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
+import { ApiClient } from '@/api-client'
 import { useMcpServerDrawerStore } from '@/modules/mcp/stores'
 import type {
   CreateMcpServerRequest,
@@ -34,6 +35,44 @@ export function McpServerDrawer() {
   const { message } = App.useApp()
 
   const { open, loading, mode, editingServer } = useMcpServerDrawerStore()
+
+  // Whether the server being edited already has a stored OAuth config — used to
+  // decide between keep/replace/remove on save and to label the secret field.
+  const [hasExistingOAuth, setHasExistingOAuth] = useState(false)
+
+  // OAuth is configurable only for user-owned HTTP servers (the endpoints are
+  // owner-scoped). Built-in/system servers authenticate differently.
+  const isUserMode = mode === 'create' || mode === 'edit'
+
+  // Load any existing OAuth config when editing a user HTTP server.
+  useEffect(() => {
+    let cancelled = false
+    if (
+      mode === 'edit' &&
+      editingServer &&
+      open &&
+      editingServer.transport_type === 'http'
+    ) {
+      ApiClient.McpServer.getOAuthConfig({ id: editingServer.id })
+        .then(cfg => {
+          if (cancelled) return
+          setHasExistingOAuth(!!cfg)
+          form.setFieldsValue({
+            oauth_client_id: cfg?.client_id ?? '',
+            oauth_client_secret: '',
+            oauth_scopes: cfg?.scopes ?? '',
+          })
+        })
+        .catch(() => {
+          if (!cancelled) setHasExistingOAuth(false)
+        })
+    } else {
+      setHasExistingOAuth(false)
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [editingServer, open, mode, form])
 
   // Populate form when editing server changes
   useEffect(() => {
@@ -152,10 +191,12 @@ export function McpServerDrawer() {
         timeout_seconds: values.timeout_seconds ?? 30,
       }
 
+      let savedServerId: string | undefined
       if (mode === 'create') {
-        await Stores.McpServer.createMcpServer(
+        const created = await Stores.McpServer.createMcpServer(
           serverData as CreateMcpServerRequest,
         )
+        savedServerId = created.id
         message.success('MCP server created successfully')
       } else if (mode === 'edit' && editingServer) {
         const updateData: UpdateMcpServerRequest = {
@@ -173,6 +214,7 @@ export function McpServerDrawer() {
           timeout_seconds: values.timeout_seconds ?? 30,
         }
         await Stores.McpServer.updateMcpServer(editingServer.id, updateData)
+        savedServerId = editingServer.id
         message.success('MCP server updated successfully')
       } else if (mode === 'create-system') {
         await Stores.SystemMcpServer.createSystemServer(
@@ -199,6 +241,29 @@ export function McpServerDrawer() {
           updateData,
         )
         message.success('System MCP server updated successfully')
+      }
+
+      // Persist OAuth config for user-owned HTTP servers.
+      if (savedServerId && isUserMode && values.transport_type === 'http') {
+        const clientId = (values.oauth_client_id ?? '').trim()
+        const clientSecret = values.oauth_client_secret ?? ''
+        const scopes = (values.oauth_scopes ?? '').trim() || null
+        if (clientId && clientSecret) {
+          await ApiClient.McpServer.setOAuthConfig({
+            id: savedServerId,
+            client_id: clientId,
+            client_secret: clientSecret,
+            scopes,
+          })
+        } else if (clientId && !clientSecret && !hasExistingOAuth) {
+          message.error('Enter the OAuth client secret to enable OAuth')
+          Stores.McpServerDrawer.setMcpServerDrawerLoading(false)
+          return
+        } else if (!clientId && hasExistingOAuth) {
+          // Cleared the client id → remove the stored config.
+          await ApiClient.McpServer.deleteOAuthConfig({ id: savedServerId })
+        }
+        // (clientId set, secret blank, config exists → keep the current secret)
       }
 
       Stores.McpServerDrawer.closeMcpServerDrawer()
@@ -368,6 +433,42 @@ export function McpServerDrawer() {
                   className="font-mono text-xs"
                 />
               </Form.Item>
+
+              {transportType === 'http' && isUserMode && (
+                <>
+                  <Divider orientationMargin={0} className="text-sm text-gray-400">
+                    OAuth 2.1
+                  </Divider>
+                  <Form.Item
+                    label="OAuth Client ID"
+                    name="oauth_client_id"
+                    help="For servers requiring OAuth 2.1 (client_credentials). Leave blank for none; clear to remove."
+                  >
+                    <Input placeholder="client id" autoComplete="off" />
+                  </Form.Item>
+                  <Form.Item
+                    label="OAuth Client Secret"
+                    name="oauth_client_secret"
+                    help={
+                      hasExistingOAuth
+                        ? 'A secret is stored. Leave blank to keep it; enter a value to replace it.'
+                        : 'Stored securely and never shown again.'
+                    }
+                  >
+                    <Input.Password
+                      placeholder={hasExistingOAuth ? '•••••••• (unchanged)' : 'client secret'}
+                      autoComplete="new-password"
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    label="OAuth Scopes"
+                    name="oauth_scopes"
+                    help="Optional, space-separated (e.g. 'mcp read')."
+                  >
+                    <Input placeholder="mcp" autoComplete="off" />
+                  </Form.Item>
+                </>
+              )}
             </>
           )}
 
