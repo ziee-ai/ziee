@@ -10,7 +10,7 @@ const { Text } = Typography
  * Reads the current message from MessageContext (provided by ChatMessage).
  *
  * Shows a compact < X/N > branch navigator directly below a message bubble
- * when multiple branches diverge at that message, mirroring the Claude.ai UX.
+ * when multiple branches diverge at that message.
  *
  * - On the parent branch: rendered below the message that is the fork origin.
  * - On a child branch: rendered below the first new message on that branch.

@@ -117,7 +117,7 @@ pub fn needs_cgroup_delegation() -> bool {
         Err(_) => {
             eprintln!(
                 "test skipped: cgroup parent {parent} not writable by test runner; \
-                 see CLAUDE.md for the systemd Slice / docker cgroup_parent setup"
+                 the systemd Slice / docker cgroup_parent must be configured for this test"
             );
             false
         }

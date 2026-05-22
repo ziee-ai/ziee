@@ -3,7 +3,7 @@ import { Page, expect } from '@playwright/test'
 /**
  * Navigation helpers for assistants pages
  *
- * Uses semantic selectors following CLAUDE.md best practices
+ * Uses semantic selectors following best practices
  */
 
 export async function goToUserAssistantsPage(page: Page, baseURL: string) {

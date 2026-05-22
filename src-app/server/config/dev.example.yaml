@@ -86,7 +86,7 @@ jwt:
 
 # Code sandbox (bwrap-isolated code execution exposed as a built-in MCP server).
 # Disabled by default; flip `enabled: true` after installing bubblewrap +
-# squashfuse and mounting a rootfs to `rootfs_path`. See CLAUDE.md.
+# squashfuse and mounting a rootfs to `rootfs_path`.
 code_sandbox:
   enabled: false
   rootfs_path: "./.ziee-cache/sandbox-rootfs/current"

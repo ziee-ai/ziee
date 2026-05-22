@@ -4,7 +4,7 @@ import { clearAuthState } from '../../../common/auth-helpers'
 /**
  * Auth-specific navigation helpers
  *
- * Uses semantic selectors following CLAUDE.md best practices
+ * Uses semantic selectors following best practices
  */
 
 export async function goToAuthPage(page: Page, baseURL: string) {

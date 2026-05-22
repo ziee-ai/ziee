@@ -360,7 +360,7 @@ mod seccomp_impl {
     /// Syscalls we deny (return EPERM).
     ///
     /// The filter is a DENYLIST with a default-ALLOW action. This is
-    /// the same shape Flatpak / Anthropic Claude Code use. The list
+    /// the same shape Flatpak uses. The list
     /// MUST include every syscall family that could be combined with
     /// our other isolation primitives to weaken them:
     ///   - kernel modification (kexec, *_module, swap*, reboot)
