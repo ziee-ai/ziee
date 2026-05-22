@@ -7972,6 +7972,59 @@
         ]
       }
     },
+    "/api/hub/models/local-providers": {
+      "get": {
+        "tags": [
+          "Hub"
+        ],
+        "summary": "List local providers available for hub model downloads",
+        "description": "\n\n**Required Permission:** `hub::models::download`\n\nDownload models from hub",
+        "operationId": "Hub.getLocalProviders",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Download models from hub",
+                        "name": "HubModelsCreate",
+                        "value": "hub::models::download"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hub::models::download",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Response listing local providers available for hub model downloads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubLocalProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/code-sandbox/environments": {
       "get": {
         "tags": [
@@ -10879,6 +10932,38 @@
           "created_at"
         ]
       },
+      "HubLocalProvider": {
+        "description": "A local LLM provider available as download target",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "HubLocalProvidersResponse": {
+        "description": "Response listing local providers available for hub model downloads",
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HubLocalProvider"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ]
+      },
       "HubMCPServer": {
         "description": "Hub MCP server entry",
         "type": "object",
@@ -11019,6 +11104,13 @@
             ]
           },
           "requires_desktop": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "supports_sampling": {
+            "description": "Whether this MCP server uses MCP sampling (sends sampling/createMessage requests back to the platform)",
             "type": [
               "boolean",
               "null"

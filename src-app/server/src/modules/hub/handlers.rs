@@ -334,6 +334,7 @@ pub async fn create_mcp_server_from_hub(
         .and_then(|t| match t.as_str() {
             "stdio" => Some(crate::modules::mcp::TransportType::Stdio),
             "sse" => Some(crate::modules::mcp::TransportType::Sse),
+            "http" => Some(crate::modules::mcp::TransportType::Http),
             _ => None,
         })
         .unwrap_or(crate::modules::mcp::TransportType::Stdio);
@@ -358,8 +359,8 @@ pub async fn create_mcp_server_from_hub(
             .headers
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok()),
-        timeout_seconds: Some(30),
-        supports_sampling: None,
+        timeout_seconds: Some(if hub_server.supports_sampling == Some(true) { 300 } else { 30 }),
+        supports_sampling: hub_server.supports_sampling,
         usage_mode: None,
         max_concurrent_sessions: None,
     };
@@ -656,4 +657,40 @@ pub fn create_model_from_hub_docs(op: TransformOperation) -> TransformOperation 
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
         .response_with::<404, (), _>(|res| res.description("Hub model not found"))
         .response_with::<501, (), _>(|res| res.description("Not yet implemented"))
+}
+
+// =====================================================
+// LOCAL PROVIDERS FOR HUB DOWNLOADS
+// =====================================================
+
+/// List enabled local providers available as download targets for hub models
+#[debug_handler]
+pub async fn get_hub_local_providers(
+    _auth: RequirePermissions<(HubModelsCreate,)>,
+) -> ApiResult<Json<HubLocalProvidersResponse>> {
+    let providers = Repos.llm_provider.list_local_providers().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(&format!("Database error: {}", e)),
+        )
+    })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(HubLocalProvidersResponse {
+            providers: providers
+                .into_iter()
+                .map(|p| HubLocalProvider { id: p.id, name: p.name })
+                .collect(),
+        }),
+    ))
+}
+
+pub fn get_hub_local_providers_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(HubModelsCreate,)>(op)
+        .id("Hub.getLocalProviders")
+        .tag("Hub")
+        .summary("List local providers available for hub model downloads")
+        .response::<200, Json<HubLocalProvidersResponse>>()
+        .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }

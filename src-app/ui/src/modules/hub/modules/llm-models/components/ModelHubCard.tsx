@@ -11,12 +11,12 @@ import {
   ToolOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
-import type { HubModel, HubModelQuantizationOption } from '@/api-client/types'
+import type { HubLocalProvider, HubModel, HubModelQuantizationOption } from '@/api-client/types'
 import { useState } from 'react'
 import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
 import { Stores } from '@/core/stores'
 
-const { Text, Paragraph } = Typography
+const { Text } = Typography
 
 interface ModelHubCardProps {
   model: HubModel
@@ -26,8 +26,7 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
   const { message, modal } = App.useApp()
   const [showDetails, setShowDetails] = useState(false)
 
-  const { repositories } = Stores.LlmRepository
-  const { providers } = Stores.LlmProvider
+  const { localProviders } = Stores.HubModels
   const { downloads } = Stores.LlmModelDownload
 
   // Find active download for this model
@@ -39,76 +38,18 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
 
   const isModelBeingDownloaded = !!activeDownload
 
-  // Check if this hub model has been downloaded locally
-  const isModelDownloaded = providers
-    .filter(provider => provider.provider_type === 'local')
-    .some(provider =>
-      provider.llm_models?.some(
-        (localModel: any) =>
-          localModel.source?.type === 'hub' &&
-          localModel.source?.id === model.id,
-      ),
-    )
+  // Check if this hub model has been downloaded (system-wide tracking via hub)
+  const isModelDownloaded = (model.created_ids?.length ?? 0) > 0
 
   const handleDownload = async () => {
-    // Find repository by checking if model's repository_url starts with the repo URL
-    const repo = repositories.find(r => model.repository_url.startsWith(r.url))
-
-    if (!repo) {
-      message.error(
-        `Repository not found for model ${model.display_name}. The model is from ${model.repository_url}. Please configure a matching repository in settings.`,
-      )
-      return
-    }
-
-    if (!repo.enabled) {
-      message.error(
-        `Repository "${repo.name}" is disabled. Please enable it in settings first.`,
-      )
-      return
-    }
-
-    // Check if model requires authentication
-    if (model.auth_required) {
-      const hasCredentials =
-        Stores.LlmRepository.llmRepositoryHasCredentials(repo)
-
-      if (!hasCredentials || repo.auth_type === 'none') {
-        // Show modal prompting user to configure authentication
-        modal.confirm({
-          title: 'Authentication Required',
-          content: (
-            <div>
-              <Paragraph>
-                The model <strong>{model.display_name}</strong> requires
-                authentication to download from <strong>{repo.name}</strong>.
-              </Paragraph>
-              <Paragraph>
-                Please configure authentication credentials for this repository.
-              </Paragraph>
-            </div>
-          ),
-          okText: 'Configure Authentication',
-          cancelText: 'Cancel',
-          onOk: () => {
-            Stores.LlmRepositoryDrawer.openDrawer(repo)
-          },
-        })
-        return
-      }
-    }
-
-    const localProviders = providers.filter(p => p.provider_type === 'local')
-
     if (localProviders.length === 0) {
       message.error(
-        `No local provider found. Please configure a local provider first.`,
+        `No local provider found. Please ask an administrator to configure a local provider.`,
       )
       return
     }
 
-    let provider = localProviders[0]
-    let selectedFilename = model.main_filename
+    let provider: HubLocalProvider = localProviders[0]
     let selectedQuantization: HubModelQuantizationOption | undefined = undefined
 
     // Handle quantization options selection
@@ -182,14 +123,11 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
       if (!selectedQuantization) {
         return
       }
-
-      selectedFilename = selectedQuantization.main_filename
     } else if (
       model.quantization_options &&
       model.quantization_options.length === 1
     ) {
       selectedQuantization = model.quantization_options[0]
-      selectedFilename = model.quantization_options[0].main_filename
     }
 
     if (localProviders.length > 1) {
@@ -251,37 +189,15 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
     }
 
     try {
-      const modelName = `${model.display_name
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')}-${Date.now().toString(36)}`
-
       const display_name = selectedQuantization
         ? `${model.display_name} (${selectedQuantization.name.toUpperCase()})`
         : model.display_name
 
-      const downloadRequest = {
-        provider_id: provider.id,
-        repository_id: repo.id,
-        repository_path: model.repository_path,
-        main_filename: selectedFilename,
-        repository_branch: 'main',
-        name: modelName,
-        display_name: display_name,
-        description:
-          model.description || `Downloaded from ${model.repository_url}`,
-        file_format: model.file_format as any,
-        capabilities: model.capabilities || {},
-        parameters: model.recommended_parameters || {},
-        settings: {},
-        source: {
-          type: 'hub' as const,
-          id: model.id,
-        },
-      }
-
-      await Stores.LlmModelDownload.downloadLlmModelFromRepository(
-        downloadRequest,
+      await Stores.HubModels.downloadModelFromHub(
+        model.id,
+        provider.id,
+        display_name,
+        selectedQuantization?.name,
       )
 
       message.success(

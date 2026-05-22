@@ -564,6 +564,15 @@ export interface HubEntity {
   id: string
 }
 
+export interface HubLocalProvider {
+  id: string
+  name: string
+}
+
+export interface HubLocalProvidersResponse {
+  providers: HubLocalProvider[]
+}
+
 export interface HubMCPServer {
   description?: string
   args?: string[]
@@ -589,6 +598,7 @@ export interface HubMCPServer {
   rating?: number
   repository_url?: string
   requires_desktop?: boolean
+  supports_sampling?: boolean
   tags?: string[]
   tool_categories?: string[]
   tool_count?: number
@@ -1858,6 +1868,7 @@ export const ApiEndpoints = {
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
+  'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
   'Hub.getModels': 'GET /api/hub/models',
@@ -2017,6 +2028,7 @@ export type ApiEndpointParameters = {
   'Hub.createModelFromHub': CreateModelFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
+  'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
   'Hub.getModels': { lang?: string }
@@ -2176,6 +2188,7 @@ export type ApiEndpointResponses = {
   'Hub.createModelFromHub': ModelFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
+  'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
   'Hub.getModels': HubModel[]

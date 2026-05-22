@@ -1,11 +1,10 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { Button, Typography } from 'antd'
-import { MessageOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { MessageOutlined, PlusOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { ConversationList } from '@/modules/chat/components/ConversationList'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
-import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { DivScrollY } from '@/components/common/DivScrollY'
 
 const { Title, Text } = Typography
@@ -17,8 +16,6 @@ const { Title, Text } = Typography
 export default function ChatHistoryPage() {
   const navigate = useNavigate()
   const searchBoxContainerRef = useRef<HTMLDivElement>(null)
-  const pageMinSize = useMainContentMinSize()
-  const [isSearchBoxVisible, setIsSearchBoxVisible] = useState(false)
 
   // Chat history store for empty state detection
   const { conversations, loading } = Stores.ChatHistory
@@ -31,33 +28,18 @@ export default function ChatHistoryPage() {
           <Typography.Title level={4} className="!m-0 !leading-tight">
             Chat History
           </Typography.Title>
-          <div className="h-full flex items-center justify-between">
-            {pageMinSize.xs ? (
-              <Button
-                type={isSearchBoxVisible ? 'primary' : 'text'}
-                icon={<SearchOutlined />}
-                style={{ fontSize: '18px' }}
-                onClick={() => setIsSearchBoxVisible(!isSearchBoxVisible)}
-              />
-            ) : (
-              <div ref={searchBoxContainerRef} />
-            )}
-          </div>
         </div>
       </HeaderBarContainer>
 
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden items-center">
-        {/* Mobile search box */}
-        {pageMinSize.xs && isSearchBoxVisible && (
-          <div className="w-full max-w-96 px-3 pt-3">
-            <div ref={searchBoxContainerRef} />
-          </div>
-        )}
-
         {/* Show ConversationList if there are conversations or loading */}
         {(conversations.length > 0 || loading) && (
           <div className="flex flex-1 flex-col w-full justify-center overflow-hidden">
+            {/* Search box — always visible above the scrollable list */}
+            <div className="w-full max-w-4xl self-center px-3 pt-3">
+              <div ref={searchBoxContainerRef} />
+            </div>
             <DivScrollY className="h-full flex flex-col">
               <ConversationList
                 getSearchBoxContainer={() => searchBoxContainerRef.current}

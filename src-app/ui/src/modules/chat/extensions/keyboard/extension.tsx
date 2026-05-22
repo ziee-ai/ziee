@@ -3,6 +3,7 @@ import {
   createExtension,
   type ChatExtension,
 } from '@/modules/chat/core/extensions'
+import { useMainContentMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 /**
  * Keyboard shortcut configuration
@@ -97,6 +98,9 @@ function createKeyboardHandler(
  * Keyboard shortcuts help component
  */
 function KeyboardShortcutsHelp() {
+  const mainContentMinSize = useMainContentMinSize()
+  if (mainContentMinSize.xs) return null
+
   return (
     <div className="text-xs text-gray-500">
       <span>Tips: Ctrl+Enter to send, Ctrl+K to focus, Esc to clear</span>

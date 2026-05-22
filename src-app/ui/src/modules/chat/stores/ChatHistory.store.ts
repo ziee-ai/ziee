@@ -349,6 +349,26 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
             },
             'ChatHistory',
           )
+
+          // Subscribe to conversation.messageCountChanged event
+          Stores.EventBus.on(
+            'conversation.messageCountChanged',
+            async event => {
+              const { conversationId, messageCount } = event.data
+              set(draft => {
+                const update = (conv: ConversationResponse) => {
+                  if (conv.id === conversationId) {
+                    conv.message_count = messageCount
+                  }
+                }
+                draft.conversations.forEach(update)
+                draft.recentConversations.forEach(update)
+                draft.filteredConversations.forEach(update)
+              })
+              console.log('[ChatHistory] Updated message count for:', conversationId, messageCount)
+            },
+            'ChatHistory',
+          )
         },
       },
 

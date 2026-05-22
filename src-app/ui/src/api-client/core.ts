@@ -363,7 +363,8 @@ export const callAsync = async <U extends ApiEndpointUrl>(
                 //do nothing, keep as string
               }
 
-              sseFunction?.(currentEvent as any, parsed as any)
+              const result = sseFunction?.(currentEvent as any, parsed as any)
+              if ((result as unknown) instanceof Promise) await result
             }
           }
         }

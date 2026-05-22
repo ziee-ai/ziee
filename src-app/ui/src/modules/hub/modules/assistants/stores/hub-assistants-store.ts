@@ -7,6 +7,7 @@ import type {
   Assistant,
   CreateAssistantFromHubRequest,
 } from '@/api-client/types'
+import { Stores } from '@/core/stores'
 
 interface HubAssistantsState {
   assistants: HubAssistant[]
@@ -23,6 +24,7 @@ interface HubAssistantsState {
   // Lazy initialization
   __init__: {
     assistants: () => Promise<void>
+    __store__?: () => void
   }
 }
 
@@ -115,6 +117,24 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
         },
 
         __init__: {
+          __store__: () => {
+            Stores.EventBus.on(
+              'assistant.deleted',
+              event => {
+                const { assistantId } = event.data
+                set(state => {
+                  for (const assistant of state.assistants) {
+                    if (assistant.created_ids) {
+                      assistant.created_ids = assistant.created_ids.filter(
+                        id => id !== assistantId,
+                      )
+                    }
+                  }
+                })
+              },
+              'HubAssistantsStore',
+            )
+          },
           assistants: () => get().loadAssistants(),
         },
       }),

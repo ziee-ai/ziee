@@ -920,6 +920,7 @@ async fn test_hub_endpoints_require_authentication() {
     let endpoints = vec![
         "/hub/models?lang=en",
         "/hub/models/version",
+        "/hub/models/local-providers",
         "/hub/assistants?lang=en",
         "/hub/assistants/version",
         "/hub/mcp-servers?lang=en",
@@ -2445,5 +2446,208 @@ async fn test_duplicate_download_prevention() {
         created_ids[0].as_str().unwrap(),
         download_id1,
         "Should contain the original download ID"
+    );
+}
+
+// ============================================================================
+// Hub Local Providers Tests (GET /hub/models/local-providers)
+// ============================================================================
+
+/// Create an enabled local LLM provider via the API and return its JSON.
+/// The migration-seeded built-in `Local` provider is `enabled = false`, so
+/// `list_local_providers` (which filters `enabled = true`) ignores it — tests
+/// must create their own enabled provider to get a non-empty result.
+async fn create_enabled_provider(
+    server: &crate::common::TestServer,
+    token: &str,
+    name: &str,
+    provider_type: &str,
+) -> serde_json::Value {
+    let response = reqwest::Client::new()
+        .post(&server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&serde_json::json!({
+            "name": name,
+            "provider_type": provider_type,
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .expect("Request failed");
+
+    let status = response.status();
+    if status != 201 {
+        let body = response.text().await.unwrap_or_default();
+        panic!("Failed to create provider {name}. Status: {status}, Body: {body}");
+    }
+    response.json().await.expect("Failed to parse provider JSON")
+}
+
+/// Remove all group memberships for a user, leaving them with zero effective
+/// permissions. Registration auto-assigns the default `Users` group; stripping
+/// memberships guarantees the 403 path regardless of what that group grants.
+async fn strip_all_permissions(server: &crate::common::TestServer, user_id: &str) {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+    let uuid = uuid::Uuid::parse_str(user_id).expect("Invalid user ID");
+    sqlx::query("DELETE FROM user_groups WHERE user_id = $1")
+        .bind(uuid)
+        .execute(&pool)
+        .await
+        .expect("Failed to strip user group memberships");
+}
+
+#[tokio::test]
+async fn test_get_hub_local_providers_requires_permission() {
+    let server = crate::common::TestServer::start().await;
+
+    // The endpoint is gated on HubModelsCreate, whose permission string is
+    // `hub::models::download`. Migration 37 removed it from the default Users
+    // group, so a user must be granted it explicitly to gain access.
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_localprov_user",
+        &["hub::models::download"],
+    )
+    .await;
+    let no_perm_user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_localprov_noperm",
+        &[],
+    )
+    .await;
+    // Strip the default group so this user genuinely lacks the permission.
+    strip_all_permissions(&server, &no_perm_user.user_id).await;
+
+    let url = server.api_url("/hub/models/local-providers");
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        response.status(),
+        200,
+        "User with the default hub::models::download permission should list local providers"
+    );
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", no_perm_user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(
+        response.status(),
+        403,
+        "User stripped of all permissions should be forbidden"
+    );
+}
+
+#[tokio::test]
+async fn test_get_hub_local_providers_response_structure() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_localprov_struct",
+        &["hub::models::download", "llm_providers::create"],
+    )
+    .await;
+
+    let created = create_enabled_provider(&server, &user.token, "E2E Local Alpha", "local").await;
+    let created_id = created
+        .get("id")
+        .and_then(|v| v.as_str())
+        .expect("created provider should have id");
+
+    let url = server.api_url("/hub/models/local-providers");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(response.status(), 200);
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let providers = body
+        .get("providers")
+        .and_then(|v| v.as_array())
+        .expect("Response should have a `providers` array");
+
+    let entry = providers
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(created_id))
+        .expect("Created enabled local provider should appear in the list");
+    assert_eq!(
+        entry.get("name").and_then(|v| v.as_str()),
+        Some("E2E Local Alpha"),
+        "Provider entry should carry its name"
+    );
+    // Response items expose only id + name.
+    assert!(
+        entry.get("id").and_then(|v| v.as_str()).is_some(),
+        "Provider entry should have an id"
+    );
+}
+
+#[tokio::test]
+async fn test_get_hub_local_providers_excludes_non_local_and_disabled() {
+    let server = crate::common::TestServer::start().await;
+
+    let user = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "hub_localprov_excl",
+        &["hub::models::download", "llm_providers::create"],
+    )
+    .await;
+
+    // Enabled local — must appear.
+    let local =
+        create_enabled_provider(&server, &user.token, "E2E Local Included", "local").await;
+    let local_id = local.get("id").and_then(|v| v.as_str()).unwrap();
+
+    // Enabled non-local (custom is exempt from the api_key requirement) — must NOT appear.
+    create_enabled_provider(&server, &user.token, "E2E Custom Excluded", "custom").await;
+
+    let url = server.api_url("/hub/models/local-providers");
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .expect("Request failed");
+    assert_eq!(response.status(), 200);
+
+    let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
+    let providers = body
+        .get("providers")
+        .and_then(|v| v.as_array())
+        .expect("Response should have a `providers` array");
+
+    let names: Vec<&str> = providers
+        .iter()
+        .filter_map(|p| p.get("name").and_then(|v| v.as_str()))
+        .collect();
+
+    assert!(
+        providers
+            .iter()
+            .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(local_id)),
+        "Enabled local provider should be included"
+    );
+    assert!(
+        !names.contains(&"E2E Custom Excluded"),
+        "Non-local (custom) provider should be excluded, got: {names:?}"
+    );
+    assert!(
+        !names.contains(&"Local"),
+        "Disabled built-in 'Local' provider should be excluded, got: {names:?}"
     );
 }

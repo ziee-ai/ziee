@@ -77,12 +77,10 @@ impl HubManager {
     fn copy_embedded_dir(&self, embedded_dir: &Dir, target_dir: PathBuf) -> Result<(), AppError> {
         for file in embedded_dir.files() {
             let file_path = target_dir.join(file.path());
-            if !file_path.exists() {
-                fs::write(&file_path, file.contents()).map_err(|e| {
-                    AppError::internal_error(format!("Failed to write file {:?}: {}", file_path, e))
-                })?;
-                tracing::debug!("Copied embedded file: {:?}", file_path);
-            }
+            fs::write(&file_path, file.contents()).map_err(|e| {
+                AppError::internal_error(format!("Failed to write file {:?}: {}", file_path, e))
+            })?;
+            tracing::debug!("Copied embedded file: {:?}", file_path);
         }
         Ok(())
     }
