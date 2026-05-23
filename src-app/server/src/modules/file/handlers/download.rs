@@ -132,7 +132,40 @@ pub async fn download_with_token(
     let user_id = Uuid::parse_str(&claims.user_id)
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    // Get file
+    // SECURITY: re-check current state at download time. The audit's
+    // 05-file F-06 (High) noted the original handler only validated the
+    // token + file ownership — it did NOT re-check that the user is
+    // still active and still holds files::download. So a download token
+    // issued at time T1 (when the user had access) keeps working at
+    // T2 even after admin disabled the account or revoked the
+    // permission.
+    let user = Repos
+        .user
+        .get_by_id(user_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    if !user.is_active {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    // Re-verify FilesDownload via the same checker the extractor uses,
+    // pulling in the user's current group permissions.
+    let groups = Repos
+        .user
+        .get_user_groups(user.id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !user.is_admin
+        && !crate::modules::permissions::checker::check_permission_union(
+            &user,
+            &groups,
+            "files::download",
+        )
+    {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Get file (this query already filters by user ownership).
     let file = Repos.file
         .get_by_id_and_user(file_id, user_id)
         .await
