@@ -1427,6 +1427,75 @@ pub(crate) fn tool_definitions() -> Value {
 }
 
 // =====================================================================
+// Resource-limits admin REST surface (Plan 1 §6)
+// =====================================================================
+
+use crate::modules::code_sandbox::permissions::{
+    CodeSandboxResourceLimitsManage, CodeSandboxResourceLimitsRead,
+};
+use crate::modules::code_sandbox::resource_limits::{
+    CodeSandboxResourceLimits, UpdateCodeSandboxResourceLimits,
+};
+
+/// GET /code-sandbox/resource-limits
+pub async fn get_resource_limits_handler(
+    _auth: RequirePermissions<(CodeSandboxResourceLimitsRead,)>,
+) -> crate::common::ApiResult<Json<CodeSandboxResourceLimits>> {
+    let row = Repos.code_sandbox.get_resource_limits().await?;
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn get_resource_limits_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(CodeSandboxResourceLimitsRead,)>(op)
+        .id("CodeSandbox.getResourceLimits")
+        .tag("Code Sandbox")
+        .summary("Read the singleton sandbox resource-limits configuration")
+        .description(
+            "Returns the current memory / CPU / PID / prlimit / timeout caps that \
+             the sandbox runtime applies on every `execute_command`. Admin-only.",
+        )
+        .response::<200, Json<CodeSandboxResourceLimits>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Missing code_sandbox::resource_limits::read"))
+}
+
+/// PUT /code-sandbox/resource-limits
+pub async fn update_resource_limits_handler(
+    _auth: RequirePermissions<(CodeSandboxResourceLimitsManage,)>,
+    Json(patch): Json<UpdateCodeSandboxResourceLimits>,
+) -> crate::common::ApiResult<Json<CodeSandboxResourceLimits>> {
+    patch.validate()?;
+    let row = Repos.code_sandbox.update_resource_limits(&patch).await?;
+    // Invalidate the cached snapshot the hot path reads from so the new
+    // limits take effect on the very next `execute_command`. The cache lives
+    // on `CodeSandboxState` (§6.3 wires it up); we look it up via the
+    // module-private accessor rather than threading state through every
+    // handler signature.
+    crate::modules::code_sandbox::resource_limits_cache::invalidate(&row);
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn update_resource_limits_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(CodeSandboxResourceLimitsManage,)>(op)
+        .id("CodeSandbox.updateResourceLimits")
+        .tag("Code Sandbox")
+        .summary("Update the singleton sandbox resource-limits configuration")
+        .description(
+            "PATCH semantics: any field omitted from the body preserves its \
+             existing value. Validation rejects out-of-range values with 422; \
+             the new limits take effect on the very next `execute_command`.",
+        )
+        .response::<200, Json<CodeSandboxResourceLimits>>()
+        .response_with::<401, (), _>(|r| r.description("Unauthorized"))
+        .response_with::<403, (), _>(|r| r.description("Missing code_sandbox::resource_limits::manage"))
+        .response_with::<422, (), _>(|r| r.description("Value out of range"))
+}
+
+// =====================================================================
 // Tier 1 unit tests — tool catalog snapshot + JWT helper
 // =====================================================================
 

@@ -33,9 +33,10 @@ use tokio::sync::{Mutex, Semaphore};
 use super::SandboxBackend;
 use crate::common::AppError;
 use crate::core::config::CodeSandboxConfig;
+use crate::modules::code_sandbox::resource_limits_cache;
 use crate::modules::code_sandbox::runtime_fetch;
 use crate::modules::code_sandbox::runtime_mount::{cache_dir, EnsureOutcome, EvictOutcome};
-use crate::modules::code_sandbox::sandbox::{self, SandboxRunResult, DEFAULT_TIMEOUT_SECS};
+use crate::modules::code_sandbox::sandbox::{self, SandboxRunResult};
 use crate::modules::code_sandbox::types::{
     CgroupMode, CodeSandboxState, HardeningCapabilities, HostCapabilities, PidNsMode,
     SandboxContext, SeccompMode,
@@ -59,9 +60,6 @@ const GUEST_GROUP: &str = "/etc/ziee-sandbox-group";
 // Default VM sizing. MAC-TODO: wire to the §6 runtime-configurable limits.
 const VM_VCPUS: u8 = 2;
 const VM_RAM_MIB: u32 = 2048;
-// Evict a flavor's VM after this long idle with nothing in flight (gap #6 —
-// VMs hold RAM). MAC-TODO: wire to config `vm_idle_evict_secs` (0 = never).
-const VM_IDLE_EVICT_SECS: u64 = 900;
 // Cap concurrent execs per VM so N parallel commands (each cgroup-capped at
 // ~512 MiB) can't sum past the VM's RAM ceiling and trigger a guest OOM
 // (Ga). ~VM_RAM_MIB / 512 with headroom. MAC-TODO: derive from §6 config.
@@ -102,14 +100,19 @@ fn ensure_reaper() {
     tokio::spawn(async {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            if VM_IDLE_EVICT_SECS == 0 {
+            // Resolve the configured idle-evict threshold on every tick so
+            // an admin's PUT takes effect within ~1 minute. `0` = never evict.
+            let idle_evict_secs = resource_limits_cache::snapshot_or_defaults()
+                .vm_idle_evict_secs
+                .max(0) as u64;
+            if idle_evict_secs == 0 {
                 continue;
             }
             let mut vms = VMS.lock().await;
             let mut evict = Vec::new();
             for (flavor, h) in vms.iter() {
                 if h.inflight.load(Ordering::SeqCst) == 0
-                    && h.last_used.lock().await.elapsed().as_secs() >= VM_IDLE_EVICT_SECS
+                    && h.last_used.lock().await.elapsed().as_secs() >= idle_evict_secs
                 {
                     evict.push(flavor.clone());
                 }
@@ -347,6 +350,11 @@ impl SandboxBackend for MacVmBackend {
             .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
             .installed_path;
 
+        // Runtime-configurable resource caps (Plan 1 §6). Snapshot once per
+        // exec — both the host argv (prlimit) and the guest cgroup (via
+        // ExecRequest.cgroup) read from the same row, so they stay coherent.
+        let limits = resource_limits_cache::get().await?;
+
         // Build the bwrap argv with GUEST paths so the agent can exec it
         // verbatim. The hardening flags are identical to the Linux backend.
         let guest_caps = HardeningCapabilities {
@@ -361,7 +369,7 @@ impl SandboxBackend for MacVmBackend {
             workspace: guest_workspace_path(state, &ctx.workspace),
             files: ctx.files.clone(),
         };
-        let secs = timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
+        let secs = timeout_secs.unwrap_or(limits.timeout_secs.max(1) as u64);
         // The argv references the guest seccomp fd; the agent builds the same
         // shared-policy BPF and pipes it to that fd. Passing GUEST_WORKSPACE_MOUNT
         // as the attachment root (Gb) makes attachment binds resolve to guest
@@ -379,12 +387,19 @@ impl SandboxBackend for MacVmBackend {
                 Path::new(GUEST_PASSWD),
                 Path::new(GUEST_GROUP),
                 Some(GUEST_SECCOMP_FD),
+                &limits,
             ),
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),
-            // In-guest cgroup v2 limits (the agent applies them; prlimit in the
-            // argv is the backstop). MAC-TODO: source from §6 config when it lands.
-            cgroup: Some(CgroupLimits::default_policy()),
+            // In-guest cgroup v2 limits (the agent applies them; prlimit in
+            // the argv is the backstop). Source from §6 config: memory /
+            // pids / cpu mirror the host argv literals on the same row.
+            cgroup: Some(CgroupLimits {
+                memory_max_bytes: limits.memory_max_bytes as u64,
+                memory_swap_max_bytes: limits.memory_swap_max_bytes as u64,
+                pids_max: limits.pids_max as u64,
+                cpu_max: limits.cpu_max.clone(),
+            }),
         };
 
         // Up to 2 attempts: a dead/unreachable VM (connect fails — the command

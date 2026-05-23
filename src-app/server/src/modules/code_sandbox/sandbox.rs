@@ -97,6 +97,13 @@ pub async fn run_in_sandbox(
     let caps = ensure.caps.clone();
     let rootfs_dir = ensure.mount_dir;
 
+    // Runtime-configurable resource caps (Plan 1 §6). Async fetch from the
+    // singleton; first call after process start loads from DB, every later
+    // call hits the in-process RwLock. Snapshot is an Arc so we drop the
+    // lock before doing any work.
+    let limits =
+        crate::modules::code_sandbox::resource_limits_cache::get().await?;
+
     let workspace = ctx.workspace.clone();
     // Identity files live OUTSIDE the per-conversation workspace bind
     // (under `<workspace_root>/identity/`) so the sandboxed shell
@@ -116,11 +123,17 @@ pub async fn run_in_sandbox(
     // Per-call cgroup scope, if available.
     let cgroup_scope = match &caps.cgroup {
         CgroupMode::Delegated(parent) => {
-            Some(cgroup::CgroupScope::create(parent, ctx.conversation_id).map_err(|e| {
-                tracing::warn!("cgroup scope creation failed: {e}; continuing without cgroup");
-                e
-            }).ok())
-                .flatten()
+            Some(
+                cgroup::CgroupScope::create(parent, ctx.conversation_id, &limits)
+                    .map_err(|e| {
+                        tracing::warn!(
+                            "cgroup scope creation failed: {e}; continuing without cgroup"
+                        );
+                        e
+                    })
+                    .ok(),
+            )
+            .flatten()
         }
         CgroupMode::None => None,
     };
@@ -140,6 +153,7 @@ pub async fn run_in_sandbox(
         synthetic.passwd_path(),
         synthetic.group_path(),
         seccomp_pipe.as_ref().map(|p| p.target_fd()),
+        &limits,
     );
 
     let started = Instant::now();
@@ -218,8 +232,10 @@ pub async fn run_in_sandbox(
     let stdout_handle = tokio::spawn(read_capped_owned(stdout));
     let stderr_handle = tokio::spawn(read_capped_owned(stderr));
 
-    // Hard wall-clock timeout. timeout=0 keeps the default.
-    let budget = Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS));
+    // Hard wall-clock timeout. timeout=0 keeps the configured default.
+    let budget = Duration::from_secs(
+        timeout_secs.unwrap_or(limits.timeout_secs.max(1) as u64),
+    );
     let wait_result = timeout(budget, child.wait()).await;
 
     let (timed_out, status) = match wait_result {
@@ -299,6 +315,12 @@ pub(crate) fn build_bwrap_argv(
     // `RawFd`) so this argv builder stays OS-independent and shared across
     // backends; only the Linux backend actually wires up the fd.
     seccomp_fd: Option<i32>,
+    // Runtime-configurable resource caps (Plan 1 §6). Drives the prlimit
+    // literals at the bottom; cgroup-side caps (memory.max / pids.max /
+    // cpu.max) are applied by the cgroup module (Linux host) or by the
+    // guest agent reading `ExecRequest.cgroup` (macOS / WSL2). The caller
+    // resolves this via `resource_limits_cache::snapshot_or_defaults()`.
+    limits: &crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits,
 ) -> Vec<String> {
     let rootfs = rootfs_dir.to_str().unwrap_or_default();
     let workspace = ctx.workspace.to_string_lossy().to_string();
@@ -464,20 +486,23 @@ pub(crate) fn build_bwrap_argv(
     argv.push("--".into());
 
     // Wrap user code in `prlimit` so per-call rlimits apply to the
-    // workload, not to bwrap's own helper forks (validated:
-    // setting rlimits on bwrap itself starves bwrap).
+    // workload, not to bwrap's own helper forks (validated: setting rlimits
+    // on bwrap itself starves bwrap). Values are runtime-configurable via
+    // the `code_sandbox_settings` singleton (Plan 1 §6); the caller resolves
+    // the snapshot via `resource_limits_cache`.
     argv.push("/usr/bin/prlimit".into());
-    argv.push("--nproc=256".into());
-    argv.push(format!("--as={}", 4u64 * 1024 * 1024 * 1024)); // 4 GiB
-    argv.push(format!("--fsize={}", 256u64 * 1024 * 1024));   // 256 MiB
-    argv.push("--nofile=1024".into());
+    argv.push(format!("--nproc={}", limits.nproc_max));
+    argv.push(format!("--as={}", limits.address_space_bytes));
+    argv.push(format!("--fsize={}", limits.fsize_bytes));
+    argv.push(format!("--nofile={}", limits.nofile_max));
     argv.push("--core=0".into());
     // CPU-seconds backstop (G4). Largely redundant — the wall-clock SIGKILL
-    // and cgroup cpu.max already bound runaway CPU — but cheap. Generous
-    // (2× the default wall-clock budget) so it never preempts a legitimate
-    // long command before the wall-clock timeout does. We deliberately do
-    // NOT set --stack: a low RLIMIT_STACK breaks legitimate deep-recursion R.
-    argv.push(format!("--cpu={}", DEFAULT_TIMEOUT_SECS * 2));
+    // and cgroup cpu.max already bound runaway CPU — but cheap. Defaults
+    // generous (2× the default wall-clock budget) so it never preempts a
+    // legitimate long command before the wall-clock timeout does. We
+    // deliberately do NOT set --stack: a low RLIMIT_STACK breaks legitimate
+    // deep-recursion R.
+    argv.push(format!("--cpu={}", limits.cpu_secs_max));
     argv.push("--".into());
     argv.push("/bin/bash".into());
     argv.push("-lc".into());
@@ -815,6 +840,29 @@ mod tests {
         }
     }
 
+    /// SQL-default-matching `CodeSandboxResourceLimits` for Tier-1 argv tests.
+    /// Mirrors the migration-41 defaults so the prlimit assertions assert the
+    /// same numbers the production server starts with on a fresh install.
+    fn fake_limits() -> crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits {
+        use crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits;
+        let now = chrono::Utc::now();
+        CodeSandboxResourceLimits {
+            memory_max_bytes: 512 * 1024 * 1024,
+            memory_swap_max_bytes: 0,
+            pids_max: 256,
+            cpu_max: "100000 100000".to_string(),
+            address_space_bytes: 4 * 1024 * 1024 * 1024,
+            fsize_bytes: 256 * 1024 * 1024,
+            nproc_max: 256,
+            nofile_max: 1024,
+            cpu_secs_max: 1240,
+            timeout_secs: 620,
+            vm_idle_evict_secs: 900,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
     #[test]
     fn argv_clears_env_before_setenv() {
         // SECURITY regression test: --clearenv MUST appear before any
@@ -836,6 +884,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
 
         let clearenv = argv
@@ -877,6 +926,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         // There should be at least one `--` before the prlimit wrapper.
         let prlimit_idx = argv
@@ -908,6 +958,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         // Must use --dev-bind /proc /proc, NOT --proc /proc.
         assert!(argv.windows(3).any(|w| w == ["--dev-bind", "/proc", "/proc"]));
@@ -938,6 +989,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         assert!(argv.iter().any(|a| a == "--unshare-pid"));
         assert!(argv.windows(2).any(|w| w == ["--proc", "/proc"]));
@@ -964,6 +1016,7 @@ mod tests {
                 std::path::Path::new("/tmp/.sandbox_passwd"),
                 std::path::Path::new("/tmp/.sandbox_group"),
                 None,
+                &fake_limits(),
             );
             for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
                 assert!(
@@ -993,6 +1046,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         for dotfile in DANGEROUS_DOTFILES {
             let expected = format!("/home/sandboxuser/{dotfile}");
@@ -1020,6 +1074,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
 
         let must_have = [
@@ -1072,6 +1127,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         assert!(!argv_without.iter().any(|a| a == "--seccomp"));
 
@@ -1084,6 +1140,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             Some(7),
+            &fake_limits(),
         );
         assert!(argv_with.windows(2).any(|w| w == ["--seccomp", "7"]));
     }
@@ -1102,6 +1159,7 @@ mod tests {
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         let s = argv.join(" ");
         assert!(s.contains("/usr/bin/prlimit"));

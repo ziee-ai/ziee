@@ -66,4 +66,16 @@ pub fn code_sandbox_router() -> ApiRouter {
                 handlers::subscribe_prefetch_events_docs,
             ),
         )
+        // ──────── Resource limits (Plan 1 §6) ────────
+        .api_route(
+            "/code-sandbox/resource-limits",
+            get_with(
+                handlers::get_resource_limits_handler,
+                handlers::get_resource_limits_docs,
+            )
+            .put_with(
+                handlers::update_resource_limits_handler,
+                handlers::update_resource_limits_docs,
+            ),
+        )
 }

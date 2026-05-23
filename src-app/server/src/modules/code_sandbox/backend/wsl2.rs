@@ -69,10 +69,11 @@ use super::hvsocket;
 use super::SandboxBackend;
 use crate::common::AppError;
 use crate::core::config::CodeSandboxConfig;
+use crate::modules::code_sandbox::resource_limits_cache;
 use crate::modules::code_sandbox::runtime_fetch::{self, RootfsFormat};
 use crate::modules::code_sandbox::runtime_mount::{cache_dir, EnsureOutcome, EvictOutcome};
 use crate::modules::code_sandbox::sandbox::{
-    self, SandboxRunResult, DEFAULT_TIMEOUT_SECS, SYNTHETIC_GROUP, SYNTHETIC_PASSWD,
+    self, SandboxRunResult, SYNTHETIC_GROUP, SYNTHETIC_PASSWD,
 };
 use crate::modules::code_sandbox::types::{
     CgroupMode, CodeSandboxState, HardeningCapabilities, HostCapabilities, PidNsMode,
@@ -145,9 +146,6 @@ kernel.unprivileged_userns_clone=1\n";
 const WSL_MIN_VERSION_25: (u32, u32, u32) = (2, 5, 10);
 const WSL_MIN_VERSION_26: (u32, u32, u32) = (2, 6, 1);
 
-// Evict a flavor's distro after this long idle with nothing in flight.
-// WIN-TODO: wire to config `vm_idle_evict_secs` (0 = never) alongside macOS.
-const IDLE_EVICT_SECS: u64 = 900;
 // Cap concurrent execs per distro so N parallel commands (each cgroup-capped)
 // can't sum past the WSL2 VM's RAM. Mirrors the macOS `MAX_CONCURRENT_EXECS_PER_VM`.
 const MAX_CONCURRENT_EXECS: usize = 3;
@@ -203,14 +201,20 @@ fn ensure_reaper() {
     tokio::spawn(async {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            if IDLE_EVICT_SECS == 0 {
+            // Idle-evict threshold is runtime-configurable (Plan 1 §6);
+            // resolve on every tick so an admin's PUT takes effect within
+            // ~1 minute. `0` = never evict.
+            let idle_evict_secs = resource_limits_cache::snapshot_or_defaults()
+                .vm_idle_evict_secs
+                .max(0) as u64;
+            if idle_evict_secs == 0 {
                 continue;
             }
             let mut distros = DISTROS.lock().await;
             let mut evict = Vec::new();
             for (flavor, h) in distros.iter() {
                 if h.inflight.load(Ordering::SeqCst) == 0
-                    && h.last_used.lock().await.elapsed().as_secs() >= IDLE_EVICT_SECS
+                    && h.last_used.lock().await.elapsed().as_secs() >= idle_evict_secs
                 {
                     evict.push(flavor.clone());
                 }
@@ -697,6 +701,11 @@ impl SandboxBackend for Wsl2Backend {
                 .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
                 .installed_path;
 
+        // Runtime-configurable resource caps (Plan 1 §6). Snapshot once per
+        // exec so the host argv (prlimit) and the guest cgroup (via
+        // ExecRequest.cgroup) read the same row.
+        let limits = resource_limits_cache::get().await?;
+
         // Build the bwrap argv with GUEST paths so the agent execs it verbatim —
         // identical hardening to the Linux/macOS backends.
         let guest_caps = HardeningCapabilities {
@@ -712,7 +721,7 @@ impl SandboxBackend for Wsl2Backend {
             workspace: PathBuf::from(win_to_wsl_path(&ctx.workspace)),
             files: ctx.files.clone(),
         };
-        let secs = timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
+        let secs = timeout_secs.unwrap_or(limits.timeout_secs.max(1) as u64);
         let req = ExecRequest {
             protocol_version: PROTOCOL_VERSION,
             request_id: REQ_COUNTER.fetch_add(1, Ordering::Relaxed),
@@ -726,13 +735,19 @@ impl SandboxBackend for Wsl2Backend {
                 Path::new(GUEST_PASSWD),
                 Path::new(GUEST_GROUP),
                 Some(GUEST_SECCOMP_FD),
+                &limits,
             ),
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),
             // In-guest cgroup v2 (the agent applies it; prlimit is the backstop).
             // WIN-TODO: if the WSL2 kernel lacks delegated cgroup v2 the agent
-            // should degrade gracefully to rlimits-only. Source from §6 config.
-            cgroup: Some(CgroupLimits::default_policy()),
+            // should degrade gracefully to rlimits-only.
+            cgroup: Some(CgroupLimits {
+                memory_max_bytes: limits.memory_max_bytes as u64,
+                memory_swap_max_bytes: limits.memory_swap_max_bytes as u64,
+                pids_max: limits.pids_max as u64,
+                cpu_max: limits.cpu_max.clone(),
+            }),
         };
 
         // Up to 2 attempts: a dead/unreachable distro (connect fails — the

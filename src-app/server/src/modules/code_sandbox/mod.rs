@@ -30,6 +30,8 @@ pub mod models;
 pub mod permissions;
 pub mod probes;
 pub mod repository;
+pub mod resource_limits;
+pub mod resource_limits_cache;
 pub mod routes;
 pub mod sandbox;
 pub mod streaming;
