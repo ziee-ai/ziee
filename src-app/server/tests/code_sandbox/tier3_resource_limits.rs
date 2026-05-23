@@ -86,6 +86,10 @@ async fn get_returns_migration_defaults_on_fresh_server() {
     assert_eq!(body["pids_max"].as_i64(), Some(256));
     assert_eq!(body["cpu_max"].as_str(), Some("100000 100000"));
     assert_eq!(body["timeout_secs"].as_i64(), Some(620));
+    // Migration 42 — VM-sizing knobs (MAC-TODO closure).
+    assert_eq!(body["mac_vm_vcpus"].as_i64(), Some(2));
+    assert_eq!(body["mac_vm_ram_mib"].as_i64(), Some(2048));
+    assert_eq!(body["vm_max_concurrent_execs"].as_i64(), Some(3));
 }
 
 #[tokio::test]

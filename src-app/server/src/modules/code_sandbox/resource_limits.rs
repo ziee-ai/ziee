@@ -54,6 +54,13 @@ pub struct CodeSandboxResourceLimits {
     /// VM idle eviction (macOS libkrun + WSL2 distro). `0` = never.
     pub vm_idle_evict_secs: i32,
 
+    /// macOS libkrun microVM vCPU count (`krun_set_vm_config`).
+    pub mac_vm_vcpus: i32,
+    /// macOS libkrun microVM RAM ceiling in MiB.
+    pub mac_vm_ram_mib: i32,
+    /// Per-VM concurrent `execute_command` cap (macOS + WSL2).
+    pub vm_max_concurrent_execs: i32,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -75,6 +82,9 @@ pub struct UpdateCodeSandboxResourceLimits {
 
     pub timeout_secs: Option<i32>,
     pub vm_idle_evict_secs: Option<i32>,
+    pub mac_vm_vcpus: Option<i32>,
+    pub mac_vm_ram_mib: Option<i32>,
+    pub vm_max_concurrent_execs: Option<i32>,
 }
 
 impl UpdateCodeSandboxResourceLimits {
@@ -165,6 +175,21 @@ impl UpdateCodeSandboxResourceLimits {
                 ));
             }
         }
+        if let Some(v) = self.mac_vm_vcpus {
+            if !(1..=128).contains(&v) {
+                return Err(bad("mac_vm_vcpus", "must be in 1..=128"));
+            }
+        }
+        if let Some(v) = self.mac_vm_ram_mib {
+            if !(256..=262_144).contains(&v) {
+                return Err(bad("mac_vm_ram_mib", "must be in 256..=262144 (MiB)"));
+            }
+        }
+        if let Some(v) = self.vm_max_concurrent_execs {
+            if !(1..=1000).contains(&v) {
+                return Err(bad("vm_max_concurrent_execs", "must be in 1..=1000"));
+            }
+        }
         Ok(())
     }
 }
@@ -181,6 +206,7 @@ impl CodeSandboxRepository {
             SELECT memory_max_bytes, memory_swap_max_bytes, pids_max, cpu_max,
                    address_space_bytes, fsize_bytes, nproc_max, nofile_max, cpu_secs_max,
                    timeout_secs, vm_idle_evict_secs,
+                   mac_vm_vcpus, mac_vm_ram_mib, vm_max_concurrent_execs,
                    created_at, updated_at
             FROM code_sandbox_settings
             WHERE id = TRUE
@@ -216,22 +242,26 @@ impl CodeSandboxRepository {
         let row: Option<CodeSandboxResourceLimits> = sqlx::query_as(
             r#"
             UPDATE code_sandbox_settings SET
-                memory_max_bytes      = COALESCE($1, memory_max_bytes),
-                memory_swap_max_bytes = COALESCE($2, memory_swap_max_bytes),
-                pids_max              = COALESCE($3, pids_max),
-                cpu_max               = COALESCE($4, cpu_max),
-                address_space_bytes   = COALESCE($5, address_space_bytes),
-                fsize_bytes           = COALESCE($6, fsize_bytes),
-                nproc_max             = COALESCE($7, nproc_max),
-                nofile_max            = COALESCE($8, nofile_max),
-                cpu_secs_max          = COALESCE($9, cpu_secs_max),
-                timeout_secs          = COALESCE($10, timeout_secs),
-                vm_idle_evict_secs    = COALESCE($11, vm_idle_evict_secs),
-                updated_at            = NOW()
+                memory_max_bytes        = COALESCE($1, memory_max_bytes),
+                memory_swap_max_bytes   = COALESCE($2, memory_swap_max_bytes),
+                pids_max                = COALESCE($3, pids_max),
+                cpu_max                 = COALESCE($4, cpu_max),
+                address_space_bytes     = COALESCE($5, address_space_bytes),
+                fsize_bytes             = COALESCE($6, fsize_bytes),
+                nproc_max               = COALESCE($7, nproc_max),
+                nofile_max              = COALESCE($8, nofile_max),
+                cpu_secs_max            = COALESCE($9, cpu_secs_max),
+                timeout_secs            = COALESCE($10, timeout_secs),
+                vm_idle_evict_secs      = COALESCE($11, vm_idle_evict_secs),
+                mac_vm_vcpus            = COALESCE($12, mac_vm_vcpus),
+                mac_vm_ram_mib          = COALESCE($13, mac_vm_ram_mib),
+                vm_max_concurrent_execs = COALESCE($14, vm_max_concurrent_execs),
+                updated_at              = NOW()
             WHERE id = TRUE
             RETURNING memory_max_bytes, memory_swap_max_bytes, pids_max, cpu_max,
                       address_space_bytes, fsize_bytes, nproc_max, nofile_max, cpu_secs_max,
                       timeout_secs, vm_idle_evict_secs,
+                      mac_vm_vcpus, mac_vm_ram_mib, vm_max_concurrent_execs,
                       created_at, updated_at
             "#,
         )
@@ -246,6 +276,9 @@ impl CodeSandboxRepository {
         .bind(patch.cpu_secs_max)
         .bind(patch.timeout_secs)
         .bind(patch.vm_idle_evict_secs)
+        .bind(patch.mac_vm_vcpus)
+        .bind(patch.mac_vm_ram_mib)
+        .bind(patch.vm_max_concurrent_execs)
         .fetch_optional(self.pool())
         .await
         .map_err(|e| {

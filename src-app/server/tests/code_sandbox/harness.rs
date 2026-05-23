@@ -390,10 +390,62 @@ pub async fn tool_call(
     )
     .await;
     let status = resp.status();
+    // Capture content-type BEFORE consuming the body — `execute_command`
+    // returns `text/event-stream` (since the Plan 2 download-consent +
+    // progress work; see `streaming::execute_command_stream`), while every
+    // other tool returns `application/json`. Parse accordingly.
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
     let body = resp.text().await.expect("read body");
     assert!(
         status.is_success(),
         "tool/call {tool} returned {status}: {body}"
     );
-    serde_json::from_str(&body).expect("parse jsonrpc body")
+    if content_type.contains("text/event-stream") {
+        parse_jsonrpc_from_sse(tool, &body)
+    } else {
+        serde_json::from_str(&body)
+            .unwrap_or_else(|e| panic!("parse jsonrpc body for {tool}: {e}; body={body}"))
+    }
+}
+
+/// Walk an SSE response body, find the LAST `data:` payload that decodes as
+/// a JSON-RPC envelope with a `result` or `error` field, and return that.
+/// Intermediate frames (progress notifications, elicitation requests) are
+/// skipped because the Tier-6 callers care only about the terminal result.
+fn parse_jsonrpc_from_sse(tool: &str, body: &str) -> serde_json::Value {
+    // SSE event blocks are separated by blank lines; per-line `data:` payloads
+    // within a block are concatenated. Normalize CRLF→LF before splitting so
+    // a stray `\r\n` separator doesn't merge blocks.
+    let normalized = body.replace("\r\n", "\n").replace('\r', "\n");
+    let mut final_envelope: Option<serde_json::Value> = None;
+    for block in normalized.split("\n\n") {
+        let data: String = block
+            .lines()
+            .filter_map(|l| l.strip_prefix("data:").or_else(|| l.strip_prefix("data: ")))
+            .map(str::trim_start)
+            .collect::<Vec<_>>()
+            .join("\n");
+        if data.is_empty() {
+            continue;
+        }
+        let v: serde_json::Value = match serde_json::from_str(&data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        // A JSON-RPC result/error envelope has an `id` and either `result` or
+        // `error`. Progress notifications have a `method` field instead.
+        if v.get("id").is_some() && (v.get("result").is_some() || v.get("error").is_some()) {
+            final_envelope = Some(v);
+        }
+    }
+    final_envelope.unwrap_or_else(|| {
+        panic!(
+            "tool/call {tool} returned SSE with no JSON-RPC result/error envelope; body={body}"
+        )
+    })
 }

@@ -270,10 +270,18 @@ async fn e2e_configured_memory_limit_enforced_via_http() {
         ],
     )
     .await;
+    // Set BOTH the cgroup memory cap AND the prlimit `--as` cap. The Tier-6
+    // harness boots without cgroup delegation (sandbox_cgroup_parent=""), so
+    // the cgroup memory.max is silently inert here; the only enforcement that
+    // bites is `prlimit --as`. Setting both proves the §6 PATCH-→-cache-→-
+    // next-exec pipeline works regardless of which mode the host supports.
     let put = reqwest::Client::new()
         .put(format!("{}/api/code-sandbox/resource-limits", server.base_url))
         .header("Authorization", format!("Bearer {}", admin.token))
-        .json(&json!({ "memory_max_bytes": 64 * 1024 * 1024_i64 }))
+        .json(&json!({
+            "memory_max_bytes": 64 * 1024 * 1024_i64,
+            "address_space_bytes": 64 * 1024 * 1024_i64,
+        }))
         .send()
         .await
         .expect("PUT");

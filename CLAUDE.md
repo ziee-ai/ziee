@@ -94,11 +94,44 @@ needs egress *blocking*, the future options are bwrap `--unshare-net`
 (no network at all), Landlock-NET (ABI v4, per-port TCP allowlist), or an
 egress-filtering proxy — none enabled today.
 
-### Linux-only
+### Cross-platform
 
-bwrap is Linux-only. Other platforms keep `code_sandbox.enabled:
-false` (the default); the server boots normally and the sandbox MCP
-row is never registered.
+The sandbox runs on all three host OSes via the `SandboxBackend` seam
+in `src-app/server/src/modules/code_sandbox/backend/`:
+
+- **Linux** — `linux_bwrap` runs bwrap directly on the host. The
+  reference path; every hardening primitive is native here.
+- **macOS** — `mac_vm` boots a libkrun microVM (Apple Silicon only)
+  bundling a Linux kernel + the `sandbox-guest-agent`; bwrap runs
+  inside that. Host requires `libkrun.dylib` bundled at
+  `Contents/Frameworks/`.
+- **Windows** — `wsl2` imports a per-flavor WSL2 distro
+  (`ziee-sandbox-<flavor>-v<schema>`), provisions it (narrow AppArmor
+  profile, sysctls re-applied on every VM boot, rsync + bwrap
+  installed), and reaches the in-distro agent over **AF_VSOCK** (NOT
+  loopback TCP — that was reachable across distros; see HIGH-1 in
+  `.sec-audits/wsl2-sandbox-prior-art-2026-05-22.md`). Host requires
+  WSL ≥ 2.5.10 / 2.6.1 (CVE-2025-53788 gate enforced by `probe_host`).
+
+`build_bwrap_argv` is shared across all three backends — same argv,
+same `--clearenv`/`--unshare-user`/seccomp/cgroup. They differ only in
+**where** bwrap runs and how the workspace is plumbed in.
+
+### Admin UI
+
+One settings page at **`/settings/sandbox`** ("Code Sandbox" in the
+admin sidebar) with two card sections:
+
+- **Rootfs environments** — list cached flavors, pre-fetch with live
+  SSE progress, evict.
+- **Resource limits** — the singleton `code_sandbox_settings` row:
+  memory / pids / cpu / prlimit caps + wall-clock timeout + VM
+  idle-evict. Changes invalidate the in-process cache so the next
+  `execute_command` reads the new caps.
+
+Permissions: `code_sandbox::environments::{read,manage}` +
+`code_sandbox::resource_limits::{read,manage}`. Administrators have
+all four via the `*` wildcard.
 
 ### Host package install per distro
 
@@ -282,11 +315,17 @@ keyless cosign verification needs a true GitHub Actions OIDC run.
 Operator workflow is **install host deps → boot**. The server handles
 everything else (download, sha256 + cosign verify, mount, unmount).
 
-1. Install host deps on the Linux host:
-   ```bash
-   sudo apt install bubblewrap squashfuse fuse3   # Debian/Ubuntu
-   ```
-   (See the per-distro table above for Fedora/Arch/Alpine.)
+1. Install host deps:
+   - **Linux:** `sudo apt install bubblewrap squashfuse fuse3` (Debian /
+     Ubuntu; per-distro table above for Fedora / Arch / Alpine).
+   - **macOS:** ensure the app bundle ships `libkrun.dylib` under
+     `Contents/Frameworks/` (the `Cross-platform` section above).
+     Apple Silicon required.
+   - **Windows:** `wsl --update` to ≥ 2.5.10 / 2.6.1 (`probe_host`
+     enforces this; older runtimes are refused with a clear log). The
+     server imports the per-flavor distro + provisions it on first
+     `execute_command` (bubblewrap + rsync from inside the distro);
+     no further host setup needed.
 2. Set `code_sandbox.enabled: true` in config.
 3. Boot the server. The startup log shows
    `code_sandbox: registered (rootfs will mount on first execute_command)`.

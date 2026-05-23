@@ -39,12 +39,15 @@
 //!     (Postgres, the Ziee server itself, …) are reachable from inside the
 //!     sandbox because of `--share-net`. `probe_host` warn-logs when this
 //!     mode is detected in `%USERPROFILE%\.wslconfig`.
-//!   - **9p `/mnt/<drive>` workspace bind:** the WSL2 kernel's plan9 client
-//!     is an attack surface from inside the sandbox (see [McAfee Labs WSL
-//!     Plan 9 BSOD research] + [CVE-2026-43053]). MED-1 follow-up moves the
-//!     workspace into the distro's ext4 and ferries file content over the
-//!     control plane; out-of-scope for the first cut, documented at
-//!     `win_to_wsl_path`.
+//!   - **9p workspace bind (MED-1, closed):** previously bwrap bound
+//!     `/mnt/<drive>/…/<conv>` 9p, exposing the WSL2 kernel's plan9 client
+//!     to any file op the sandboxed code made (see [McAfee Labs WSL Plan 9
+//!     BSOD research] + [CVE-2026-43053]). Closed by hosting the workspace
+//!     in the distro's ext4 at `/var/lib/ziee/workspace/<conv>/` and
+//!     syncing host↔distro via in-distro `rsync` at exec boundaries only.
+//!     Sandboxed code now sees pure ext4. The residual 9p exposure is the
+//!     two `rsync` invocations per `execute_command` — trusted, root-run,
+//!     bounded, and at the boundary of the sandbox, never inside it.
 //!
 //! ⚠️ **Validation status:** this file cannot be compiled or run on Linux (it is
 //! `cfg(target_os = "windows")`). It is grounded in the documented WSL2 + agent
@@ -92,16 +95,36 @@ const GUEST_AGENT_PATH: &str = "/usr/local/bin/ziee-sandbox-agent";
 const GUEST_SECCOMP_FD: i32 = 10;
 const GUEST_PASSWD: &str = "/etc/ziee-sandbox-passwd";
 const GUEST_GROUP: &str = "/etc/ziee-sandbox-group";
+/// Empty regular file provisioned in the distro for the
+/// `DANGEROUS_DOTFILES` masks. MUST be a normal file — see
+/// `build_bwrap_argv::mask_path` doc for why `/dev/null` doesn't work
+/// (bwrap's `--ro-bind` inherits `nodev`).
+const GUEST_EMPTY: &str = "/etc/ziee-sandbox-empty";
 // Marker written at the end of a successful provision so re-boots skip it.
-// Bumped to v2 when the provisioning surface changed (narrow AppArmor profile +
-// /etc/wsl.conf [boot] command, replacing the global apparmor_restrict_*=0
-// sysctl). Older distros that have the v1 sentinel will be re-provisioned on
-// the next boot — the v1 state is otherwise indistinguishable.
-const PROVISION_SENTINEL: &str = "/etc/ziee-sandbox-provisioned-v2";
+// Bumped to v3 when the provisioning surface changed:
+//   v1 → original baseline.
+//   v2 → narrow AppArmor profile + /etc/wsl.conf [boot] command (replaced
+//        global apparmor_restrict_*=0 sysctl).
+//   v3 → rsync + /var/lib/ziee/workspace root (MED-1 9p-workspace fix —
+//        sandboxed code no longer touches /mnt 9p).
+// Older distros with a lower-version sentinel get re-provisioned on the next
+// boot — earlier state is otherwise indistinguishable, and re-running
+// provisioning is idempotent.
+const PROVISION_SENTINEL: &str = "/etc/ziee-sandbox-provisioned-v4";
 
 const GUEST_APPARMOR_PROFILE: &str = "/etc/apparmor.d/bwrap";
 const GUEST_SYSCTL_CONF: &str = "/etc/sysctl.d/99-ziee-sandbox.conf";
 const GUEST_WSL_CONF: &str = "/etc/wsl.conf";
+
+/// Root of the in-distro per-conversation workspaces (Plan 1 §3 MED-1 fix).
+/// Each `execute_command` rsyncs from the Windows-host workspace into a
+/// `<this>/<conversation_id>/` subdir of this root before bwrap fires + back
+/// after the command exits. bwrap then binds the in-distro ext4 path (NOT
+/// `/mnt/<drive>/…`), so the sandboxed code never touches 9p — the rsync at
+/// exec boundaries does, but that's trusted in-distro root code, not the
+/// LLM-generated workload. Closes the 9p / `p9rdr.sys` kernel-bug attack
+/// surface the audit flagged.
+const GUEST_WORKSPACE_ROOT: &str = "/var/lib/ziee/workspace";
 
 /// Narrow AppArmor profile (Claude-Code-documented recipe, verified in code
 /// during the prior-art deep read). Grants `userns` ONLY to `/usr/bin/bwrap`,
@@ -146,9 +169,11 @@ kernel.unprivileged_userns_clone=1\n";
 const WSL_MIN_VERSION_25: (u32, u32, u32) = (2, 5, 10);
 const WSL_MIN_VERSION_26: (u32, u32, u32) = (2, 6, 1);
 
-// Cap concurrent execs per distro so N parallel commands (each cgroup-capped)
-// can't sum past the WSL2 VM's RAM. Mirrors the macOS `MAX_CONCURRENT_EXECS_PER_VM`.
-const MAX_CONCURRENT_EXECS: usize = 3;
+// Per-distro concurrent-exec cap now lives in the runtime-tunable
+// `code_sandbox_settings.vm_max_concurrent_execs` row (Plan 1 §6). Same
+// knob the macOS backend reads (the contention shape is identical:
+// N parallel cgroup-capped execs must not sum past the VM RAM ceiling).
+// Defaults match the prior const (3) via the SQL DEFAULT in migration 42.
 
 /// Monotonic request id (matches the macOS B4 fix — avoids cgroup-path
 /// collisions a timestamp id risked under concurrency).
@@ -385,6 +410,12 @@ impl Wsl2Backend {
             tokio::time::sleep(Duration::from_millis(150)).await;
         }
 
+        // Per-distro concurrent-exec cap from the §6 config; resolved at
+        // boot time (subsequent admin tunes apply on next cold boot of this
+        // flavor). `max(1)` guards a degenerate config value.
+        let max_concurrent = resource_limits_cache::snapshot_or_defaults()
+            .vm_max_concurrent_execs
+            .max(1) as usize;
         let handle = Arc::new(DistroHandle {
             agent: Mutex::new(agent),
             distro,
@@ -392,7 +423,7 @@ impl Wsl2Backend {
             vm_id,
             last_used: Mutex::new(Instant::now()),
             inflight: AtomicUsize::new(0),
-            sem: Semaphore::new(MAX_CONCURRENT_EXECS),
+            sem: Semaphore::new(max_concurrent),
         });
         DISTROS.lock().await.insert(flavor.to_string(), handle.clone());
         ensure_reaper();
@@ -442,6 +473,9 @@ impl Wsl2Backend {
         //    closes that footgun.
         write_file_into_distro(distro, GUEST_PASSWD, SYNTHETIC_PASSWD, 0o644).await?;
         write_file_into_distro(distro, GUEST_GROUP, SYNTHETIC_GROUP, 0o644).await?;
+        // Empty regular file used as the bind source for the DANGEROUS_DOTFILES
+        // masks. See GUEST_EMPTY doc + build_bwrap_argv::mask_path.
+        write_file_into_distro(distro, GUEST_EMPTY, "", 0o644).await?;
 
         // 3 + 4. AppArmor profile + sysctl.d + wsl.conf (re-apply on boot).
         run_in_distro(distro, "mkdir -p /etc/apparmor.d /etc/sysctl.d").await?;
@@ -449,13 +483,30 @@ impl Wsl2Backend {
         write_file_into_distro(distro, GUEST_SYSCTL_CONF, SYSCTL_CONF_CONTENT, 0o644).await?;
         write_file_into_distro(distro, GUEST_WSL_CONF, WSL_CONF_CONTENT, 0o644).await?;
 
-        // 5. Install bwrap (only step that needs network + can be slow).
-        //    WIN-TODO: prefer baking `bubblewrap` into the flavor recipe's
-        //    APT_PACKAGES so this step disappears in v3 of the rootfs schema.
+        // 5. Install bwrap + rsync (only step that needs network + can be
+        //    slow). rsync is the MED-1 workspace-sync tool — copies the host
+        //    workspace into the in-distro ext4 workspace before bwrap fires
+        //    + back after exec, so the sandboxed code never touches 9p.
+        //    WIN-TODO: prefer baking `bubblewrap` + `rsync` into the flavor
+        //    recipe's APT_PACKAGES so this step disappears in v3 of the
+        //    rootfs schema.
         run_in_distro(
             distro,
-            "command -v bwrap >/dev/null 2>&1 || \
-             { apt-get update -qq && apt-get install -y -qq bubblewrap; }",
+            "missing=''; \
+             command -v bwrap >/dev/null 2>&1 || missing=\"$missing bubblewrap\"; \
+             command -v rsync >/dev/null 2>&1 || missing=\"$missing rsync\"; \
+             if [ -n \"$missing\" ]; then \
+               apt-get update -qq && apt-get install -y -qq $missing; \
+             fi",
+        )
+        .await?;
+
+        // 5b. Workspace root: per-conversation subdirs live under here. The
+        //     reaper periodically prunes stale ones (see `run` below); for
+        //     now we just ensure the parent exists.
+        run_in_distro(
+            distro,
+            &format!("mkdir -p '{GUEST_WORKSPACE_ROOT}' && chmod 0755 '{GUEST_WORKSPACE_ROOT}'"),
         )
         .await?;
 
@@ -474,6 +525,65 @@ impl Wsl2Backend {
         run_in_distro(distro, &format!("touch '{PROVISION_SENTINEL}'")).await?;
         Ok(())
     }
+}
+
+/// Copy the Windows-host conversation workspace INTO the in-distro ext4
+/// workspace via in-distro `rsync` (Plan 1 §3 MED-1 fix). Called before
+/// every `bwrap` exec so the sandboxed code only ever touches in-distro
+/// ext4 — the 9p attack surface (`p9rdr.sys` + WSL2 kernel 9p client) is
+/// only ever exercised by this trusted, root-run, exec-boundary-only
+/// rsync invocation, never by the LLM-generated workload.
+///
+/// The host workspace at `<workspace_root>/<conv-id>` (Windows path) maps
+/// to `/mnt/<drive>/…/<conv-id>` from inside the distro. We `mkdir -p` the
+/// host path first so the very first `execute_command` of a fresh
+/// conversation doesn't trip over a missing source dir.
+async fn sync_workspace_in(
+    distro: &str,
+    host_workspace: &Path,
+    conv_id: uuid::Uuid,
+) -> Result<(), AppError> {
+    // Make the host-side path exist (chat-side file tools usually create
+    // it, but first-call-with-no-prior-tool-writes would race otherwise).
+    let _ = std::fs::create_dir_all(host_workspace);
+
+    let host_mnt = win_to_wsl_path(host_workspace);
+    let dest = format!("{GUEST_WORKSPACE_ROOT}/{conv_id}");
+    // `rsync -a --delete`: archive + propagate deletes (so files removed on
+    // the host side are removed in-distro). Trailing slashes are deliberate
+    // and load-bearing per rsync semantics — `<src>/` copies the contents
+    // OF src into dst, not src itself.
+    let script = format!(
+        "mkdir -p '{dest}' && rsync -a --delete '{src}/' '{dest}/'",
+        dest = dest,
+        src = host_mnt,
+    );
+    run_in_distro(distro, &script).await.map_err(|e| {
+        AppError::internal_error(format!("workspace sync-in failed: {e}"))
+    })
+}
+
+/// Reverse of `sync_workspace_in`: copy the in-distro workspace back to the
+/// Windows host after `bwrap` exits, so chat-side `tools/files.rs` reads
+/// see whatever the exec wrote. Best-effort at the caller; this function
+/// surfaces rsync exit-failures to the caller for logging.
+async fn sync_workspace_out(
+    distro: &str,
+    host_workspace: &Path,
+    conv_id: uuid::Uuid,
+) -> Result<(), AppError> {
+    let host_mnt = win_to_wsl_path(host_workspace);
+    let src = format!("{GUEST_WORKSPACE_ROOT}/{conv_id}");
+    // If the source dir wasn't created (exec aborted before bwrap), nothing
+    // to sync — succeed quietly. `-e` on the test reports "not exist".
+    let script = format!(
+        "[ -d '{src}' ] || exit 0; mkdir -p '{dst}' && rsync -a --delete '{src}/' '{dst}/'",
+        src = src,
+        dst = host_mnt,
+    );
+    run_in_distro(distro, &script).await.map_err(|e| {
+        AppError::internal_error(format!("workspace sync-out failed: {e}"))
+    })
 }
 
 /// Run a single bash command inside `distro` as root, erroring on non-zero exit.
@@ -539,32 +649,16 @@ async fn write_file_into_distro(
     Ok(())
 }
 
-/// Translate a Windows host workspace path to its in-distro `/mnt/<drive>` path
+/// Translate a Windows host path to its in-distro `/mnt/<drive>` path
 /// (e.g. `C:\Users\me\ws\<conv>` → `/mnt/c/Users/me/ws/<conv>`).
 ///
-/// ⚠️ **MED-1 follow-up** (see `.sec-audits/wsl2-sandbox-prior-art-2026-05-22.md`):
-/// `/mnt/<drive>` is served over **9p / plan9** by the WSL2 kernel's client,
-/// brokered by the Windows kernel-mode `p9rdr.sys` redirector. Binding this
-/// path into bwrap exposes the sandboxed code to two attack surfaces the
-/// Linux / macOS backends don't have:
-///
-///   1. **Performance** — 9p is slow for many small files (the R/pip
-///      workload). Documented by VS Code Dev Containers + Cursor + Codex.
-///   2. **Security** — bugs in the WSL2 kernel's 9p client OR `p9rdr.sys`
-///      are reachable from inside the sandbox via normal file ops on
-///      `/home/sandboxuser`. McAfee Labs demonstrated guest→host BSODs
-///      against this exact stack; CVE-2026-43053 identified 9p as the
-///      documented VM-escape pathway. Materially worse than the Linux
-///      backend (no 9p) and macOS (virtio-fs, separate codebase).
-///
-/// The proper fix moves the workspace onto the distro's **ext4** and ferries
-/// file content over the existing control plane (the agent gains file-op RPCs,
-/// `tools/files.rs` calls into the WSL2 backend the same way it does for
-/// macOS). That is out of scope for the cross-platform launch — it requires
-/// a workspace-sync subsystem (initial copy-in + per-file change tracking +
-/// copy-out on completion or run-time relay) that's a meaningful design.
-/// Tracked separately; for now we ship the 9p bind with this caveat
-/// surfaced to readers.
+/// Used ONLY by the workspace sync helpers (`sync_workspace_in` /
+/// `sync_workspace_out`) — the trusted, root-run, exec-boundary rsync that
+/// moves files between the Windows-host workspace and the in-distro ext4
+/// workspace. The sandboxed code (the bwrap-wrapped LLM workload) never
+/// sees this path; it binds the in-distro `/var/lib/ziee/workspace/<conv>`
+/// directly, never `/mnt`. See the file-top threat-model header for the
+/// MED-1 audit-closure note.
 fn win_to_wsl_path(p: &Path) -> String {
     let s = p.to_string_lossy().replace('\\', "/");
     let bytes = s.as_bytes();
@@ -714,11 +808,19 @@ impl SandboxBackend for Wsl2Backend {
             cgroup: CgroupMode::None,
             seccomp: SeccompMode::NotLinked,
         };
+        // MED-1 — workspace path inside the distro's ext4. The Windows-host
+        // workspace is the source of truth (chat-side `tools/files.rs` writes
+        // there); the sync helpers below copy it into / out of the in-distro
+        // workspace on each exec. bwrap then binds the in-distro path so
+        // sandboxed code only ever touches ext4, never 9p.
+        let conv_dir = format!(
+            "{GUEST_WORKSPACE_ROOT}/{}",
+            ctx.conversation_id
+        );
         let guest_ctx = SandboxContext {
             conversation_id: ctx.conversation_id,
             user_id: ctx.user_id,
-            // The workspace lives on the Windows host; bind its /mnt path in-distro.
-            workspace: PathBuf::from(win_to_wsl_path(&ctx.workspace)),
+            workspace: PathBuf::from(&conv_dir),
             files: ctx.files.clone(),
         };
         let secs = timeout_secs.unwrap_or(limits.timeout_secs.max(1) as u64);
@@ -734,6 +836,7 @@ impl SandboxBackend for Wsl2Backend {
                 command,
                 Path::new(GUEST_PASSWD),
                 Path::new(GUEST_GROUP),
+                Path::new(GUEST_EMPTY),
                 Some(GUEST_SECCOMP_FD),
                 &limits,
             ),
@@ -762,12 +865,17 @@ impl SandboxBackend for Wsl2Backend {
             let _guard = InflightGuard(h.clone());
             *h.last_used.lock().await = Instant::now();
 
+            // MED-1 sync-in: copy the host workspace into the in-distro ext4
+            // workspace before bwrap binds it. Sandbox never sees /mnt 9p;
+            // only trusted in-distro root rsync does, scoped to this exec.
+            sync_workspace_in(&h.distro, &ctx.workspace, ctx.conversation_id).await?;
+
             let vm_id = self.vm_id()?;
-            match hvsocket::connect(vm_id, h.vsock_port).await {
+            let result = match hvsocket::connect(vm_id, h.vsock_port).await {
                 Ok(stream) => {
-                    let result = super::vm_client::run_on_stream(stream, req.clone(), secs).await;
+                    let r = super::vm_client::run_on_stream(stream, req.clone(), secs).await;
                     *h.last_used.lock().await = Instant::now();
-                    return result;
+                    r
                 }
                 Err(e) if attempt < 2 => {
                     tracing::warn!(
@@ -780,7 +888,24 @@ impl SandboxBackend for Wsl2Backend {
                     continue;
                 }
                 Err(e) => return Err(e),
+            };
+
+            // MED-1 sync-out: copy in-distro workspace BACK to the host so
+            // chat-side `tools/files.rs` reads see the writes the exec made.
+            // Best-effort: if rsync-back fails, we still return the exec
+            // result — failing the whole call on a sync-back error would lose
+            // the exec output that the LLM may already be waiting on. The
+            // failure surfaces in tracing for operator inspection.
+            if let Err(e) =
+                sync_workspace_out(&h.distro, &ctx.workspace, ctx.conversation_id).await
+            {
+                tracing::warn!(
+                    distro = %h.distro,
+                    conv = %ctx.conversation_id,
+                    "code_sandbox: workspace sync-out failed: {e}"
+                );
             }
+            return result;
         }
     }
 
