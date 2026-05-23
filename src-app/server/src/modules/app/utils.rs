@@ -23,11 +23,16 @@ pub fn validate_setup_request(req: &SetupAdminRequest) -> Result<(), (StatusCode
         ));
     }
 
-    // Password strength validation
-    if !is_strong_password(&req.password) {
+    // Password strength validation.
+    // Uses the shared validate_password_strength helper (auth::password)
+    // so the setup-admin flow enforces the same min/max length + NUL-byte
+    // checks as registration. Closes 13-misc H-1 (bcrypt 72-byte silent
+    // truncation hazard).
+    if let Err(msg) = crate::modules::auth::password::validate_password_strength(&req.password)
+    {
         return Err((
             StatusCode::BAD_REQUEST,
-            AppError::bad_request("WEAK_PASSWORD", "Password must be at least 8 characters"),
+            AppError::bad_request("WEAK_PASSWORD", msg),
         ));
     }
 

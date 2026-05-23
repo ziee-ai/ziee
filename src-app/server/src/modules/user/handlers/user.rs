@@ -142,6 +142,14 @@ pub async fn create_user(
         return Err(AppError::conflict("Email").into());
     }
 
+    // Validate password strength (min 8 / max 72 bytes / no NUL).
+    // Closes 03-user F-05 (Medium).
+    if let Err(msg) =
+        crate::modules::auth::password::validate_password_strength(&request.password)
+    {
+        return Err(AppError::bad_request("WEAK_PASSWORD", msg).into());
+    }
+
     // Hash password
     let password_hash = bcrypt::hash(&request.password, bcrypt::DEFAULT_COST)
         .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))?;
@@ -342,6 +350,13 @@ pub async fn reset_user_password(
     // Check if user exists
     if Repos.user.get_by_id(request.user_id).await?.is_none() {
         return Err(AppError::not_found("User").into());
+    }
+
+    // Validate new password strength. Closes 03-user F-05 (Medium).
+    if let Err(msg) =
+        crate::modules::auth::password::validate_password_strength(&request.new_password)
+    {
+        return Err(AppError::bad_request("WEAK_PASSWORD", msg).into());
     }
 
     // Hash new password

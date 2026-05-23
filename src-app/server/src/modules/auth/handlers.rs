@@ -49,10 +49,10 @@ pub async fn register(
             AppError::bad_request("INVALID_EMAIL", "Email cannot be empty"),
         ));
     }
-    if req.password.is_empty() {
+    if let Err(msg) = password::validate_password_strength(&req.password) {
         return Err((
             StatusCode::BAD_REQUEST,
-            AppError::bad_request("INVALID_PASSWORD", "Password cannot be empty"),
+            AppError::bad_request("INVALID_PASSWORD", msg),
         ));
     }
 
