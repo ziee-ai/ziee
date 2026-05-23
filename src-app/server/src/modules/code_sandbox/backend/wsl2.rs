@@ -538,10 +538,29 @@ async fn write_file_into_distro(
 /// Translate a Windows host workspace path to its in-distro `/mnt/<drive>` path
 /// (e.g. `C:\Users\me\ws\<conv>` → `/mnt/c/Users/me/ws/<conv>`).
 ///
-/// WIN-TODO (perf): `/mnt/<drive>` is 9p (slow for many small files — the R/pip
-/// workload). The Plan §3 follow-up is to relocate the workspace onto the
-/// distro's ext4 and relay file contents via `tools/files.rs`; for the first
-/// cut we bind the 9p path, which is correct if slower.
+/// ⚠️ **MED-1 follow-up** (see `.sec-audits/wsl2-sandbox-prior-art-2026-05-22.md`):
+/// `/mnt/<drive>` is served over **9p / plan9** by the WSL2 kernel's client,
+/// brokered by the Windows kernel-mode `p9rdr.sys` redirector. Binding this
+/// path into bwrap exposes the sandboxed code to two attack surfaces the
+/// Linux / macOS backends don't have:
+///
+///   1. **Performance** — 9p is slow for many small files (the R/pip
+///      workload). Documented by VS Code Dev Containers + Cursor + Codex.
+///   2. **Security** — bugs in the WSL2 kernel's 9p client OR `p9rdr.sys`
+///      are reachable from inside the sandbox via normal file ops on
+///      `/home/sandboxuser`. McAfee Labs demonstrated guest→host BSODs
+///      against this exact stack; CVE-2026-43053 identified 9p as the
+///      documented VM-escape pathway. Materially worse than the Linux
+///      backend (no 9p) and macOS (virtio-fs, separate codebase).
+///
+/// The proper fix moves the workspace onto the distro's **ext4** and ferries
+/// file content over the existing control plane (the agent gains file-op RPCs,
+/// `tools/files.rs` calls into the WSL2 backend the same way it does for
+/// macOS). That is out of scope for the cross-platform launch — it requires
+/// a workspace-sync subsystem (initial copy-in + per-file change tracking +
+/// copy-out on completion or run-time relay) that's a meaningful design.
+/// Tracked separately; for now we ship the 9p bind with this caveat
+/// surfaced to readers.
 fn win_to_wsl_path(p: &Path) -> String {
     let s = p.to_string_lossy().replace('\\', "/");
     let bytes = s.as_bytes();
