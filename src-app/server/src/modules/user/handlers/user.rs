@@ -350,8 +350,21 @@ pub async fn delete_user(
     Path(user_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    if Repos.user.get_by_id(user_id).await?.is_none() {
-        return Err(AppError::not_found("User").into());
+    let user = Repos
+        .user
+        .get_by_id(user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("User"))?;
+
+    // Prevent deleting admin users (symmetric with toggle_user_active and
+    // update_user). Without this guard, a users::delete grant lets a
+    // sub-admin delete the root admin and brick the deployment — the
+    // unique_root_admin partial index then prevents re-creation.
+    // Closes 03-user F-02 (Critical).
+    if user.is_admin {
+        return Err(
+            AppError::bad_request("CANNOT_DELETE_ADMIN", "Cannot delete admin users").into(),
+        );
     }
 
     // Delete user

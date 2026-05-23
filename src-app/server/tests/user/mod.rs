@@ -1040,7 +1040,7 @@ async fn test_delete_user_refuses_to_delete_admin() {
     let login = client
         .post(&server.api_url("/auth/login"))
         .json(&serde_json::json!({
-            "username_or_email": "delete_admin_target",
+            "username": "delete_admin_target",
             "password": "SecurePass123!",
         }))
         .send()
