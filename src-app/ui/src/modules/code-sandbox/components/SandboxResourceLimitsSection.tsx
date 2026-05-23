@@ -13,7 +13,6 @@ import {
   Typography,
   message,
 } from 'antd'
-import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
 import type {
   CodeSandboxResourceLimits,
@@ -86,7 +85,14 @@ function formToPatch(v: FormValues): UpdateCodeSandboxResourceLimits {
   }
 }
 
-export function SandboxResourceLimitsPage() {
+/**
+ * Resource-limits admin section. Rendered as a sequence of `<Card>` groups
+ * inside the parent `SandboxSettingsPage`. Owns the singleton-row Form +
+ * Save/Reset controls. Permission-aware: when the viewer lacks
+ * `code_sandbox::resource_limits::manage`, the form goes read-only and Save
+ * is disabled (read access is implicit via the surrounding container).
+ */
+export function SandboxResourceLimitsSection() {
   const { limits, loading, saving, error } = Stores.SandboxResourceLimits
   const { permissions } = Stores.Auth
   const perms = permissions ?? []
@@ -120,10 +126,7 @@ export function SandboxResourceLimitsPage() {
   }
 
   return (
-    <SettingsPageContainer
-      title="Sandbox resource limits"
-      subtitle="cgroup + prlimit caps applied to every code_sandbox execute_command. Changes take effect immediately — the server invalidates its in-process cache on save."
-    >
+    <>
       {error && (
         <Alert
           type="error"
@@ -137,6 +140,7 @@ export function SandboxResourceLimitsPage() {
       {loading && !limits ? (
         <Spin tip="Loading resource limits…" />
       ) : (
+        <Card title="Resource limits" style={{ marginBottom: 16 }}>
         <Form
           form={form}
           layout="vertical"
@@ -374,8 +378,9 @@ export function SandboxResourceLimitsPage() {
             in-process cache on save.
           </Typography.Paragraph>
         </Form>
+        </Card>
       )}
-    </SettingsPageContainer>
+    </>
   )
 }
 

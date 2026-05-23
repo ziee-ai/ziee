@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { CloudDownloadOutlined, ControlOutlined } from '@ant-design/icons'
+import { CloudDownloadOutlined } from '@ant-design/icons'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
@@ -7,15 +7,9 @@ import { useSandboxEnvironmentsStore } from './stores/SandboxEnvironments.store'
 import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
 import './types' // CRITICAL: enable store type declaration merging
 
-const SandboxEnvironmentsPage = lazyWithPreload(() =>
-  import('./components/SandboxEnvironmentsPage').then(m => ({
-    default: m.SandboxEnvironmentsPage,
-  })),
-)
-
-const SandboxResourceLimitsPage = lazyWithPreload(() =>
-  import('./components/SandboxResourceLimitsPage').then(m => ({
-    default: m.SandboxResourceLimitsPage,
+const SandboxSettingsPage = lazyWithPreload(() =>
+  import('./components/SandboxSettingsPage').then(m => ({
+    default: m.SandboxSettingsPage,
   })),
 )
 
@@ -23,19 +17,13 @@ export default createModule({
   metadata: {
     name: 'code-sandbox',
     version: '1.0.0',
-    description: 'Code sandbox rootfs environment management',
+    description: 'Code sandbox rootfs environment management + resource limits',
   },
   dependencies: ['router'],
   routes: [
     {
-      path: '/settings/sandbox-environments',
-      element: SandboxEnvironmentsPage,
-      requiresAuth: true,
-      layout: SettingsLayoutDef,
-    },
-    {
-      path: '/settings/sandbox-resource-limits',
-      element: SandboxResourceLimitsPage,
+      path: '/settings/sandbox',
+      element: SandboxSettingsPage,
       requiresAuth: true,
       layout: SettingsLayoutDef,
     },
@@ -53,18 +41,11 @@ export default createModule({
   slots: {
     settingsAdminPages: [
       {
-        id: 'sandbox-environments',
+        id: 'code-sandbox',
         icon: <CloudDownloadOutlined />,
-        label: 'Sandbox Environments',
-        path: 'sandbox-environments',
+        label: 'Code Sandbox',
+        path: 'sandbox',
         order: 26,
-      },
-      {
-        id: 'sandbox-resource-limits',
-        icon: <ControlOutlined />,
-        label: 'Sandbox Resource Limits',
-        path: 'sandbox-resource-limits',
-        order: 27,
       },
     ],
   },

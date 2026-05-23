@@ -82,10 +82,11 @@ async function gotoResourceLimits(page: Page, baseURL: string) {
   // Same retry-on-Vite-504 pattern as sandbox-environments-admin.
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await page.goto(`${baseURL}/settings/sandbox-resource-limits`)
-      const heading = page.getByRole('heading', {
-        name: 'Sandbox resource limits',
-      })
+      // Merged single-page route (was /settings/sandbox-resource-limits).
+      await page.goto(`${baseURL}/settings/sandbox`)
+      // Page heading is now the combined "Code Sandbox" container; the
+      // limits surface lives in the "Resource limits" Card section.
+      const heading = page.getByRole('heading', { name: 'Code Sandbox' })
       await expect(heading).toBeVisible({ timeout: 10000 })
       return
     } catch (e) {
