@@ -98,8 +98,27 @@ impl FileStorage for FilesystemStorage {
         file_id: Uuid,
         extension: &str,
     ) -> PathBuf {
+        // SECURITY: the extension flows from user input on upload. Without
+        // sanitization, a value like 'x/../../<victim_uuid>/y.pdf' lets
+        // create_dir_all + fs::write escape the per-user originals
+        // directory and overwrite (or shadow) another user's file. Same
+        // primitive on the read path. Closes 05-file F-03 (High).
+        //
+        // Allow only ASCII alphanumeric extensions (matches every legit
+        // mime-type-derived extension). Anything else is replaced with
+        // 'bin', which keeps the file storable but isolated.
+        let safe_ext: String = if extension
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric())
+            && !extension.is_empty()
+            && extension.len() <= 16
+        {
+            extension.to_ascii_lowercase()
+        } else {
+            "bin".to_string()
+        };
         self.get_user_path(user_id, "originals")
-            .join(format!("{}.{}", file_id, extension))
+            .join(format!("{}.{}", file_id, safe_ext))
     }
 
     fn get_text_path(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> PathBuf {
