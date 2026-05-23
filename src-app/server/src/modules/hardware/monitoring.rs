@@ -1,7 +1,14 @@
 use super::detection::get_gpu_usage_data;
 use super::types::{CPUUsage, HardwareUsageUpdate, MemoryUsage};
 use axum::response::sse::Event;
-use std::{collections::HashMap, sync::Mutex, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    time::Duration,
+};
 use sysinfo::System;
 use tokio::time::interval;
 use uuid::Uuid;
@@ -23,8 +30,14 @@ const MAX_SSE_CLIENTS: usize = 256;
 lazy_static::lazy_static! {
     static ref SSE_CLIENTS: Mutex<HashMap<ClientId, tokio::sync::mpsc::UnboundedSender<Result<Event, axum::Error>>>>
         = Mutex::new(HashMap::new());
-    static ref MONITORING_ACTIVE: Mutex<bool> = Mutex::new(false);
 }
+
+/// Active-monitoring flag. AtomicBool with compare_exchange so the
+/// "spawn iff not already running" check is genuinely atomic, closing
+/// the TOCTOU window the audit flagged in 12-hardware F-04 (Medium)
+/// (the Mutex<bool> variant left a sliver between unlock and spawn
+/// where two threads could double-spawn).
+static MONITORING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Result returned by `add_client`: either a fresh receiver, or `None`
 /// when the cap has been reached. Callers must convert `None` into an
@@ -66,14 +79,15 @@ pub fn remove_client(client_id: ClientId) {
 
 /// Start hardware monitoring service
 pub async fn start_hardware_monitoring() {
-    let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
-    if *monitoring_active {
+    // Atomic claim — only one task ever wins. Closes 12-hardware F-04.
+    if MONITORING_ACTIVE
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return; // Already running
     }
-    *monitoring_active = true;
-    drop(monitoring_active);
 
-    println!("Starting hardware monitoring service");
+    tracing::info!("Starting hardware monitoring service");
 
     tokio::spawn(async {
         let mut interval = interval(Duration::from_secs(2)); // Update every 2 seconds
@@ -89,10 +103,24 @@ pub async fn start_hardware_monitoring() {
             };
 
             if client_count == 0 {
-                // No clients connected, stop monitoring
-                println!("No clients connected, stopping hardware monitoring");
-                let mut monitoring_active = MONITORING_ACTIVE.lock().unwrap();
-                *monitoring_active = false;
+                // No clients connected, stop monitoring.
+                tracing::info!("No clients connected, stopping hardware monitoring");
+                MONITORING_ACTIVE.store(false, Ordering::SeqCst);
+                // Re-check under the relaxed flag: if a client connected
+                // during the tiny window between client_count check and
+                // the store above, they would have seen the flag still
+                // set (and skipped restart). Resurrect ourselves if so.
+                let recheck = SSE_CLIENTS.lock().unwrap().len();
+                if recheck > 0
+                    && MONITORING_ACTIVE
+                        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                {
+                    tracing::info!(
+                        "Hardware monitoring resurrecting — clients reconnected during shutdown window"
+                    );
+                    continue;
+                }
                 break;
             }
 
