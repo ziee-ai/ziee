@@ -900,3 +900,75 @@ async fn test_body_limit_rejects_oversized_post_to_register() {
         res.status()
     );
 }
+
+// =====================================================
+// Privilege-escalation regression test — close 03-user F-01
+// =====================================================
+//
+// The previous UpdateUserRequest.permissions: Option<Vec<String>> let any
+// holder of the `users::edit` permission rewrite the permissions array
+// of any user (including themselves) via PUT /api/users/{id}. With
+// permissions: ["*"] this was near-root escalation from a single
+// sub-admin grant. Closes 03-user F-01 (Critical).
+//
+// The fix removes the permissions field from UpdateUserRequest entirely.
+// Permission management is handled separately by group assignment +
+// future dedicated set_permissions endpoint (A4).
+
+#[tokio::test]
+async fn test_users_edit_cannot_grant_wildcard_via_update() {
+    let server = crate::common::TestServer::start().await;
+
+    // Caller has users::edit but is NOT a wildcard / admin.
+    let attacker = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "attacker",
+        &["users::edit", "users::read"],
+    )
+    .await;
+
+    // Victim is the attacker themselves — try to escalate.
+    let target_user_id = attacker.user_id;
+
+    let res = reqwest::Client::new()
+        .post(&server.api_url(&format!("/users/{}", target_user_id)))
+        .header("Authorization", format!("Bearer {}", attacker.token))
+        .json(&serde_json::json!({
+            "permissions": ["*"]
+        }))
+        .send()
+        .await
+        .expect("request failed");
+
+    // After the fix, the request body's unknown `permissions` field is
+    // silently dropped by serde (the DTO no longer has it). The update
+    // proceeds with no changes, so we expect 200 — BUT the user's
+    // actual permissions in the DB must NOT contain '*'.
+    assert!(
+        res.status().is_success() || res.status() == 400,
+        "expected 200 or 400, got {}",
+        res.status()
+    );
+
+    // Verify in the DB by fetching the user (via /me which returns
+    // current user's full record including permissions).
+    let me = reqwest::Client::new()
+        .get(&server.api_url("/auth/me"))
+        .header("Authorization", format!("Bearer {}", attacker.token))
+        .send()
+        .await
+        .expect("me fetch failed")
+        .json::<serde_json::Value>()
+        .await
+        .expect("me parse failed");
+
+    let perms = me
+        .get("permissions")
+        .and_then(|v| v.as_array())
+        .expect("user must have permissions array");
+    assert!(
+        !perms.iter().any(|p| p.as_str() == Some("*")),
+        "attacker successfully escalated to wildcard '*' — F-01 NOT fixed; got perms: {:?}",
+        perms
+    );
+}
