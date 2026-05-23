@@ -204,10 +204,24 @@ async fn setup_server(
     // SECURITY: matches the middleware stack in main.rs::main —
     // 16 MB body limit, 60s timeout, security headers, CORS.
     // Closes 14-core F-01 + 05-file F-09 generalization + A3 headers.
+    // Rate limiter — see main.rs for rationale. 5 req/s per peer IP, burst 60.
+    let governor_conf = std::sync::Arc::new(
+        tower_governor::governor::GovernorConfigBuilder::default()
+            .per_second(5)
+            .burst_size(60)
+            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
+            .finish()
+            .expect("Failed to build governor config"),
+    );
+    let governor_layer = tower_governor::GovernorLayer {
+        config: governor_conf,
+    };
+
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
         .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
+        .layer(governor_layer)
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
             axum::http::HeaderValue::from_static("nosniff"),
@@ -257,7 +271,13 @@ async fn run_server(
     );
 
     tokio::spawn(async move {
-        axum::serve(listener, app.into_make_service())
+        // into_make_service_with_connect_info surfaces the TCP peer
+        // address for tower_governor's PeerIpKeyExtractor — same fix
+        // as main.rs. Without it, rate-limited requests return 500.
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
             .await
             .expect("Failed to run server");
     });
