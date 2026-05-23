@@ -300,11 +300,17 @@ async fn test_update_user() {
         test_helpers::create_test_user(&server, &admin.token, "updateuser", "password123").await;
     let user_id = user["id"].as_str().expect("Should have user ID");
 
-    // Update user
+    // Update user.
+    //
+    // Note: the email field used to be writable here, but was removed
+    // from UpdateUserRequest as part of closing 03-user F-03 (silent
+    // email rewrite → OAuth account takeover). The test still sends an
+    // email key in the body to exercise the silent-drop path, and
+    // asserts the email did NOT change.
     let url = server.api_url(&format!("/users/{}", user_id));
     let payload = json!({
         "username": "updateduser",
-        "email": "updated@example.com",
+        "email": "attacker@evil.com",
         "display_name": "Updated Name"
     });
 
@@ -320,8 +326,14 @@ async fn test_update_user() {
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(body["username"], "updateduser");
-    assert_eq!(body["email"], "updated@example.com");
     assert_eq!(body["display_name"], "Updated Name");
+    // The previous behavior accepted email here and we'd assert it equaled
+    // the new value — now we assert email is UNCHANGED, proving the
+    // F-03 fix is in place.
+    assert_ne!(
+        body["email"], "attacker@evil.com",
+        "email field must NOT be writable through update_user — see 03-user F-03"
+    );
 }
 
 #[tokio::test]
@@ -834,11 +846,15 @@ async fn test_can_update_admin_user_other_fields() {
 
     pool.close().await;
 
-    // Update admin user's other fields (should succeed)
+    // Update admin user's other fields (should succeed). Note: the
+    // email field used to be writable, but was removed from
+    // UpdateUserRequest as part of closing 03-user F-03 (silent email
+    // rewrite → OAuth account takeover). We still send it to exercise
+    // the silent-drop path.
     let url = server.api_url(&format!("/users/{}", user_id));
     let payload = json!({
         "display_name": "Updated Admin Display Name",
-        "email": "updatedemail@example.com"
+        "email": "attacker@evil.com"
     });
 
     let response = reqwest::Client::new()
@@ -857,7 +873,10 @@ async fn test_can_update_admin_user_other_fields() {
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(body["display_name"], "Updated Admin Display Name");
-    assert_eq!(body["email"], "updatedemail@example.com");
+    assert_ne!(
+        body["email"], "attacker@evil.com",
+        "email must NOT be writable through update_user — see 03-user F-03"
+    );
     assert_eq!(body["is_active"], true, "Admin user should remain active");
 }
 

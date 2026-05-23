@@ -224,28 +224,19 @@ pub async fn update_user(
         }
     }
 
-    // Check if new email already exists
-    if let Some(ref email) = request.email {
-        if let Some(existing) = Repos.user.get_by_email(email).await? {
-            if existing.id != user_id {
-                return Err(AppError::conflict("Email").into());
-            }
-        }
-    }
-
     // Update user.
     //
-    // permissions is intentionally None here — see note on UpdateUserRequest
-    // in modules/user/types.rs. Removing the field from the DTO at the
-    // serde layer closes 03-user F-01 (Critical priv-esc); passing None
-    // through keeps the repository signature stable for the
-    // future dedicated set_permissions endpoint.
+    // Both `email` and `permissions` are intentionally None here. The
+    // DTO (modules/user/types.rs::UpdateUserRequest) no longer carries
+    // either field — closes 03-user F-01 (Critical: permissions priv-esc)
+    // and 03-user F-03 (High: silent email rewrite → OAuth takeover).
+    // Email and permissions are managed via dedicated future endpoints.
     Repos
         .user
         .update(
             user_id,
             request.username,
-            request.email,
+            None,
             request.display_name,
             None,
         )
