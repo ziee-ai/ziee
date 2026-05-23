@@ -72,9 +72,30 @@ macro_rules! declare_repositories {
         // ============================================
         static FACTORY: OnceCell<RepositoryFactory> = OnceCell::new();
 
-        /// Initialize the global repository factory
+        /// Initialize the global repository factory.
+        ///
+        /// SECURITY: warns loudly via tracing on double-initialization.
+        /// The previous implementation used `set(...).ok()` which silently
+        /// swallowed the error — leaving the original pool in place
+        /// while the caller assumed the new one had been swapped in.
+        /// If the second init carried a different connection string,
+        /// the assumed-new behavior would silently revert to the old
+        /// pool's behavior, including its credentials. Closes 14-core
+        /// F-10 (Medium).
+        ///
+        /// Test note: the integration test binary calls this once per
+        /// TestServer::start (potentially hundreds of times per process),
+        /// so we cannot panic on re-init. The first call wins; subsequent
+        /// calls log a warning that surfaces the issue in observability
+        /// without breaking test isolation.
         pub fn init_repositories(pool: PgPool) {
-            FACTORY.set(RepositoryFactory::new(pool)).ok();
+            if FACTORY.set(RepositoryFactory::new(pool)).is_err() {
+                tracing::warn!(
+                    "init_repositories called more than once in this process; \
+                     subsequent call ignored. In production this signals a \
+                     second bootstrap path — investigate."
+                );
+            }
         }
 
         fn get_factory() -> &'static RepositoryFactory {
