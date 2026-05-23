@@ -7706,6 +7706,84 @@
         ]
       }
     },
+    "/api/code-sandbox/resource-limits": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Read the singleton sandbox resource-limits configuration",
+        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
+        "operationId": "CodeSandbox.getResourceLimits",
+        "responses": {
+          "403": {
+            "description": "Missing code_sandbox::resource_limits::read"
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Update the singleton sandbox resource-limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
+        "operationId": "CodeSandbox.updateResourceLimits",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Missing code_sandbox::resource_limits::manage"
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -9113,6 +9191,89 @@
             ]
           }
         }
+      },
+      "CodeSandboxResourceLimits": {
+        "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+        "type": "object",
+        "properties": {
+          "address_space_bytes": {
+            "description": "`prlimit --as` (virtual address space).",
+            "type": "integer",
+            "format": "int64"
+          },
+          "cpu_max": {
+            "description": "cgroup v2 `cpu.max`. `\"<quota> <period>\"` in microseconds.",
+            "type": "string"
+          },
+          "cpu_secs_max": {
+            "description": "`prlimit --cpu` (CPU-seconds backstop).",
+            "type": "integer",
+            "format": "int32"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fsize_bytes": {
+            "description": "`prlimit --fsize` (single-file max size).",
+            "type": "integer",
+            "format": "int64"
+          },
+          "memory_max_bytes": {
+            "description": "cgroup v2 `memory.max`.",
+            "type": "integer",
+            "format": "int64"
+          },
+          "memory_swap_max_bytes": {
+            "description": "cgroup v2 `memory.swap.max`. `0` disables swap.",
+            "type": "integer",
+            "format": "int64"
+          },
+          "nofile_max": {
+            "description": "`prlimit --nofile`.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "nproc_max": {
+            "description": "`prlimit --nproc`.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "pids_max": {
+            "description": "cgroup v2 `pids.max`.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "timeout_secs": {
+            "description": "Wall-clock per-`execute_command` budget.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "vm_idle_evict_secs": {
+            "description": "VM idle eviction (macOS libkrun + WSL2 distro). `0` = never.",
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "memory_max_bytes",
+          "memory_swap_max_bytes",
+          "pids_max",
+          "cpu_max",
+          "address_space_bytes",
+          "fsize_bytes",
+          "nproc_max",
+          "nofile_max",
+          "cpu_secs_max",
+          "timeout_secs",
+          "vm_idle_evict_secs",
+          "created_at",
+          "updated_at"
+        ]
       },
       "ContentBlockDelta": {
         "description": "Content block delta - Base types (extensions CAN add more variants)\n\n EXTENSIONS MAY extend this enum with new variants using the\n compose_content_block_delta_variants macro. For example, the MCP extension\n adds ToolUseDelta and ToolResultDelta variants.\n\n Extension variants are automatically added by the compose_content_block_delta_variants macro.",
@@ -15826,6 +15987,88 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "UpdateCodeSandboxResourceLimits": {
+        "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+        "type": "object",
+        "properties": {
+          "address_space_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "cpu_max": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cpu_secs_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "fsize_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "memory_max_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "memory_swap_max_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "nofile_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "nproc_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "pids_max": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "vm_idle_evict_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           }
         }
       },
