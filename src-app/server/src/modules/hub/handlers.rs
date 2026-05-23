@@ -6,7 +6,7 @@ use crate::{
     common::{ApiResult, AppError},
     core::events::EventBus,
     modules::{
-        llm_model::ModelParameters,
+        llm_model::{ModelParameters, permissions::LlmModelsCreate},
         permissions::{RequirePermissions, with_permission},
     },
 };
@@ -402,10 +402,18 @@ pub async fn create_mcp_server_from_hub(
 // MODEL FROM HUB
 // =====================================================
 
-/// Create model download from hub catalog
+/// Create model download from hub catalog.
+///
+/// SECURITY: requires BOTH hub::models::create AND llm_models::create.
+/// The handler routes to `initiate_repository_download_internal` which
+/// bypasses the llm_models::create permission check that the
+/// equivalent /llm-models/download endpoint applies — so without the
+/// added LlmModelsCreate requirement here, anyone with just
+/// hub::models::create could create models via this back-door. Closes
+/// 11-hub F-05 (Medium).
 #[debug_handler]
 pub async fn create_model_from_hub(
-    _auth: RequirePermissions<(HubModelsCreate,)>,
+    _auth: RequirePermissions<(HubModelsCreate, LlmModelsCreate)>,
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateModelFromHubRequest>,
 ) -> ApiResult<Json<ModelFromHubResponse>> {
@@ -649,7 +657,7 @@ pub fn create_mcp_server_from_hub_docs(op: TransformOperation) -> TransformOpera
 }
 
 pub fn create_model_from_hub_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(HubModelsCreate,)>(op)
+    with_permission::<(HubModelsCreate, LlmModelsCreate)>(op)
         .id("Hub.createModelFromHub")
         .tag("Hub")
         .summary("Download model from hub catalog")
