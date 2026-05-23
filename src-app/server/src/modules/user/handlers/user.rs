@@ -88,7 +88,7 @@ pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
 /// Create a new user (requires users::create permission)
 #[debug_handler]
 pub async fn create_user(
-    _auth: RequirePermissions<(UsersCreate,)>,
+    auth: RequirePermissions<(UsersCreate,)>,
 
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateUserRequest>,
@@ -99,6 +99,32 @@ pub async fn create_user(
     }
     if request.email.is_empty() {
         return Err(AppError::bad_request("VALIDATION_ERROR", "Email cannot be empty").into());
+    }
+
+    // Prevent self-escalation via the permissions field: every permission
+    // the caller is trying to grant must be one the caller themselves
+    // holds (via user perms OR group union). Admins (is_admin=true)
+    // bypass. Without this, any users::create holder can mint a wildcard
+    // root by posting {"permissions": ["*"]} — 03-user F-04 (High).
+    if let Some(ref requested_perms) = request.permissions {
+        if !auth.user.is_admin {
+            for perm in requested_perms {
+                if !crate::modules::permissions::checker::check_permission_union(
+                    &auth.user,
+                    &auth.groups,
+                    perm,
+                ) {
+                    return Err(AppError::forbidden(
+                        "CANNOT_GRANT_PERMISSION",
+                        format!(
+                            "Cannot grant permission '{}' that you do not hold yourself",
+                            perm
+                        ),
+                    )
+                    .into());
+                }
+            }
+        }
     }
 
     // Check if username already exists

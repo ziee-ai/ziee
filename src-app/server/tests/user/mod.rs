@@ -1103,7 +1103,8 @@ async fn test_create_user_refuses_granting_perms_caller_lacks() {
 async fn test_create_user_refuses_granting_unrelated_perm() {
     let server = crate::common::TestServer::start().await;
 
-    // Caller has users::create but NOT files::delete.
+    // Caller has users::create but NOT users::delete (an admin-only
+    // perm not granted by the default group).
     let creator = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "creator2",
@@ -1115,10 +1116,10 @@ async fn test_create_user_refuses_granting_unrelated_perm() {
         .post(&server.api_url("/users"))
         .header("Authorization", format!("Bearer {}", creator.token))
         .json(&serde_json::json!({
-            "username": "files_owner",
-            "email": "files_owner@example.com",
+            "username": "minted_deleter",
+            "email": "minted_deleter@example.com",
             "password": "SecurePass123!",
-            "permissions": ["files::delete"],
+            "permissions": ["users::delete"],
         }))
         .send()
         .await
@@ -1126,7 +1127,7 @@ async fn test_create_user_refuses_granting_unrelated_perm() {
 
     assert!(
         res.status() == 403 || res.status() == 400,
-        "caller without files::delete should not be able to grant files::delete; got {}",
+        "caller without users::delete should not be able to grant users::delete; got {}",
         res.status()
     );
 }
