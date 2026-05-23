@@ -241,8 +241,14 @@ impl BinaryManager {
             _ => return Err(format!("Unknown engine: {}", engine).into()),
         };
 
-        // Query GitHub API for releases
-        let client = reqwest::Client::new();
+        // Query GitHub API for releases. Bound the client with explicit
+        // timeouts so a slow/hung response can't tie up the worker
+        // forever. Closes a piece of 08-llm-local-runtime F-09 (Medium).
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .https_only(true)
+            .build()?;
         let url = format!("https://api.github.com/repos/{}/releases", repo);
 
         let response = client
