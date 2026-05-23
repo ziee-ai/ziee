@@ -27,14 +27,24 @@ pub fn validate_provider_type(provider_type: &str) -> Result<(), AppError> {
     }
 }
 
-/// Validate base URL format if provided
+/// Validate base URL format if provided.
+///
+/// SSRF-safe: rejects non-HTTP schemes (file://, ftp://, git://, gopher://,
+/// data:), rejects private/loopback/link-local IPs (RFC 1918 + 127/8 +
+/// 169.254/16 — AWS IMDS), and rejects URLs embedding credentials. The
+/// previous implementation only checked Url::parse succeeded — that
+/// admitted every SSRF the audit flagged in 06-llm-provider F-03.
+///
+/// PUBLIC_HTTP_OR_HTTPS allows both http and https since self-hosted
+/// OpenAI-compatible providers may not yet have TLS.
 pub fn validate_base_url(base_url: &Option<String>) -> Result<(), AppError> {
     if let Some(url) = base_url {
-        if !url.is_empty() && reqwest::Url::parse(url).is_err() {
-            return Err(AppError::bad_request(
-                "VALIDATION_ERROR",
-                "Invalid base URL format",
-            ));
+        if !url.is_empty() {
+            crate::utils::url_validator::validate_outbound_url(
+                url,
+                &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+            )
+            .map_err(|e| AppError::bad_request("INVALID_BASE_URL", e.to_string()))?;
         }
     }
     Ok(())
