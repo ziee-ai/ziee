@@ -874,3 +874,130 @@ async fn test_delete_requires_permission() {
         Some("INSUFFICIENT_PERMISSIONS")
     );
 }
+
+// =====================================================
+// SSRF regression tests — close 09-llm-repository F-01
+// =====================================================
+//
+// The original validate_url accepted any URL that reqwest::Url::parse
+// succeeds on. That admitted file://, ftp://, gopher://, data:, http://
+// to private IPs (RFC 1918, 169.254/16 — AWS IMDS) — every kind of SSRF
+// the audit flagged as Critical. These tests pin the post-fix behavior:
+// repositories with such URLs are rejected at the create-time validation
+// layer with a 400.
+
+async fn create_repo_request(
+    server: &crate::common::TestServer,
+    admin_token: &str,
+    bad_url: &str,
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(&server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .json(&json!({
+            "name": format!("ssrf-test-{}", uuid::Uuid::new_v4()),
+            "url": bad_url,
+            "auth_type": "none",
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .expect("request failed")
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_aws_imds_ip() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(
+        &server,
+        &admin.token,
+        "http://169.254.169.254/latest/meta-data/",
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        400,
+        "AWS IMDS link-local IP must be rejected at create-time"
+    );
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_loopback_ip() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "http://127.0.0.1/").await;
+    assert_eq!(res.status(), 400, "loopback IP must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_rfc1918_ip() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "http://10.0.0.1/").await;
+    assert_eq!(res.status(), 400, "RFC 1918 IP must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_file_scheme() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "file:///etc/passwd").await;
+    assert_eq!(res.status(), 400, "file:// scheme must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_ftp_scheme() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "ftp://example.com/").await;
+    assert_eq!(res.status(), 400, "ftp:// scheme must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_url_with_credentials() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "https://user:pass@example.com/").await;
+    assert_eq!(
+        res.status(),
+        400,
+        "URL embedding credentials must be rejected"
+    );
+}
