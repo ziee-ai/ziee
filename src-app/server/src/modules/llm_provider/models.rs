@@ -16,7 +16,14 @@ pub struct ProxySettings {
     pub url: String,
     #[serde(default)]
     pub username: String,
-    #[serde(default)]
+    /// Proxy password — write-only.
+    ///
+    /// Accepted from request bodies (Deserialize) so admins can set the
+    /// value, but NEVER serialized into a response. Without this guard
+    /// the field round-tripped verbatim on every GET /llm-providers/{id}
+    /// and /llm-providers, exposing the proxy credential. Closes
+    /// 06-llm-provider F-05 (Medium).
+    #[serde(default, skip_serializing)]
     pub password: String,
     #[serde(default)]
     pub no_proxy: String,
