@@ -8,6 +8,122 @@ use sqlx::PgPool;
 
 use super::{AuthError, AuthProvider, AuthProviderTrait, AuthResult, UserAttributes};
 
+/// Escape a string for safe inclusion in an LDAP search filter, per
+/// RFC 4515 § 3 (Search Filter String Representation).
+///
+/// LDAP filter parsers treat `*`, `(`, `)`, `\`, and NUL as syntax.
+/// Without escaping, a username like `admin)(uid=*` slips past
+/// `(uid={username})` and turns the filter into `(uid=admin)(uid=*)`
+/// — every user in the directory matches. Closes 01-auth F-04 (High).
+pub fn escape_ldap_filter(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for b in input.bytes() {
+        match b {
+            b'\\' => out.push_str("\\5c"),
+            b'*' => out.push_str("\\2a"),
+            b'(' => out.push_str("\\28"),
+            b')' => out.push_str("\\29"),
+            0 => out.push_str("\\00"),
+            // ASCII printable (per RFC 4515 — only the 5 above need escape).
+            // Multibyte UTF-8 is passed through; LDAP filter syntax
+            // requires the directory's encoding to handle it.
+            _ => out.push(b as char),
+        }
+    }
+    out
+}
+
+/// Escape a string for safe inclusion in an LDAP DN attribute value,
+/// per RFC 4514 § 2.4 (Converting an AttributeValue from ASN.1 to a
+/// String).
+///
+/// DN parsers treat `,`, `+`, `"`, `\`, `<`, `>`, `;` as RDN separators
+/// or special syntax; leading space / `#` and trailing space also need
+/// escaping. Without this, a username like `admin,ou=admins,dc=corp`
+/// in `uid={username},ou=users,dc=corp` becomes a different RDN entirely.
+/// Closes 01-auth F-04 (High).
+pub fn escape_ldap_dn(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let chars: Vec<char> = input.chars().collect();
+    for (i, c) in chars.iter().enumerate() {
+        let is_first = i == 0;
+        let is_last = i == chars.len() - 1;
+        match c {
+            ',' | '+' | '"' | '\\' | '<' | '>' | ';' | '=' => {
+                out.push('\\');
+                out.push(*c);
+            }
+            ' ' if is_first || is_last => out.push_str("\\20"),
+            '#' if is_first => out.push_str("\\23"),
+            '\0' => out.push_str("\\00"),
+            _ => out.push(*c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_escape_blocks_classic_bypass() {
+        // The classic LDAP injection that bypasses a username filter.
+        let attacker = "admin)(uid=*";
+        let safe = escape_ldap_filter(attacker);
+        assert!(!safe.contains('('), "unescaped '(' would close the filter");
+        assert!(!safe.contains(')'), "unescaped ')' would inject syntax");
+        assert!(!safe.contains('*'), "unescaped '*' would wildcard-match");
+        assert_eq!(safe, "admin\\29\\28uid=\\2a");
+    }
+
+    #[test]
+    fn filter_escape_blocks_null_byte_truncation() {
+        let attacker = "admin\0and_extra";
+        let safe = escape_ldap_filter(attacker);
+        assert_eq!(safe, "admin\\00and_extra");
+    }
+
+    #[test]
+    fn filter_escape_passes_through_safe_input() {
+        assert_eq!(escape_ldap_filter("alice"), "alice");
+        assert_eq!(escape_ldap_filter("user.name+tag"), "user.name+tag");
+    }
+
+    #[test]
+    fn dn_escape_blocks_rdn_injection() {
+        // Attacker tries to break out of uid={username},ou=users,dc=corp
+        // and land in ou=admins,dc=corp instead. The fix prefixes every
+        // `,` and `=` with `\` so the LDAP DN parser keeps them as data,
+        // not as RDN syntax.
+        let attacker = "admin,ou=admins,dc=corp";
+        let safe = escape_ldap_dn(attacker);
+        assert_eq!(safe, "admin\\,ou\\=admins\\,dc\\=corp");
+        // Verify no unescaped comma remains (every `,` must be preceded by `\`).
+        let bytes = safe.as_bytes();
+        for (i, b) in bytes.iter().enumerate() {
+            if *b == b',' {
+                assert!(
+                    i > 0 && bytes[i - 1] == b'\\',
+                    "unescaped comma at index {i} in {safe:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn dn_escape_handles_leading_space_and_hash() {
+        assert_eq!(escape_ldap_dn(" admin"), "\\20admin");
+        assert_eq!(escape_ldap_dn("#admin"), "\\23admin");
+        assert_eq!(escape_ldap_dn("admin "), "admin\\20");
+    }
+
+    #[test]
+    fn dn_escape_passes_through_safe_input() {
+        assert_eq!(escape_ldap_dn("alice"), "alice");
+    }
+}
+
 /// LDAP provider configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LdapConfig {
@@ -86,8 +202,12 @@ impl LdapAuthProvider {
                 .map_err(|e| AuthError::ConfigurationError(format!("Admin bind failed: {}", e)))?;
         }
 
-        // Search for user
-        let filter = self.config.search_filter.replace("{username}", username);
+        // Search for user. RFC 4515 escape on the username so an
+        // attacker can't break out of the filter — closes 01-auth F-04.
+        let filter = self
+            .config
+            .search_filter
+            .replace("{username}", &escape_ldap_filter(username));
         let (rs, _res) = ldap
             .search(&self.config.base_dn, Scope::Subtree, &filter, vec!["*"])
             .await
@@ -115,8 +235,10 @@ impl AuthProviderTrait for LdapAuthProvider {
     async fn authenticate(&self, username: &str, password: &str) -> Result<AuthResult, AuthError> {
         // Determine bind DN
         let bind_dn = if let Some(template) = &self.config.bind_dn_template {
-            // Direct bind with template
-            template.replace("{username}", username)
+            // Direct bind with template. RFC 4514 escape on the username
+            // so an attacker can't break out of the RDN — closes
+            // 01-auth F-04.
+            template.replace("{username}", &escape_ldap_dn(username))
         } else {
             // Search-then-bind flow
             let user_entry = self.search_user(username).await?.ok_or_else(|| {
