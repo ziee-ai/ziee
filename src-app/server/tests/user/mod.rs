@@ -972,3 +972,85 @@ async fn test_users_edit_cannot_grant_wildcard_via_update() {
         perms
     );
 }
+
+// =====================================================
+// delete_user is_admin-guard regression — close 03-user F-02
+// =====================================================
+//
+// toggle_user_active and update_user already refuse to act on admin
+// users; delete_user has no such guard. A user with `users::delete` can
+// DELETE the root admin and brick the deployment (unique_root_admin
+// partial index prevents re-creation). Audit 03-user F-02 (Critical).
+
+#[tokio::test]
+async fn test_delete_user_refuses_to_delete_admin() {
+    let server = crate::common::TestServer::start().await;
+
+    // The TestServer harness sets up a setup-flow admin during startup;
+    // we need to find that admin's user_id. Easiest path: register a
+    // non-admin user with `users::read`, list users, find one with
+    // is_admin: true.
+    let client = reqwest::Client::new();
+
+    // Create the root admin via the setup flow (TestServer starts with no admin).
+    let setup_resp: serde_json::Value = client
+        .post(&server.api_url("/app/setup/admin"))
+        .json(&serde_json::json!({
+            "username": "delete_admin_target",
+            "email": "delete_admin@example.com",
+            "password": "SecurePass123!",
+        }))
+        .send()
+        .await
+        .expect("setup admin request failed")
+        .json()
+        .await
+        .expect("setup admin parse failed");
+
+    let admin_id = setup_resp
+        .get("user")
+        .and_then(|u| u.get("id"))
+        .and_then(|id| id.as_str())
+        .expect("setup response must have user.id")
+        .to_string();
+
+    // Now mint a user with users::delete and try to delete the admin.
+    let attacker = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "attacker",
+        &["users::delete"],
+    )
+    .await;
+
+    let res = client
+        .delete(&server.api_url(&format!("/users/{}", admin_id)))
+        .header("Authorization", format!("Bearer {}", attacker.token))
+        .send()
+        .await
+        .expect("delete request failed");
+
+    assert!(
+        res.status() == 400 || res.status() == 403,
+        "DELETE /users/{} (admin) must be rejected with 400 or 403, got {}",
+        admin_id,
+        res.status()
+    );
+
+    // Verify admin still exists by trying to log in as them.
+    let login = client
+        .post(&server.api_url("/auth/login"))
+        .json(&serde_json::json!({
+            "username_or_email": "delete_admin_target",
+            "password": "SecurePass123!",
+        }))
+        .send()
+        .await
+        .expect("login failed");
+
+    assert!(
+        login.status().is_success(),
+        "admin {} was deleted — login now {}; deployment would be bricked",
+        admin_id,
+        login.status()
+    );
+}
