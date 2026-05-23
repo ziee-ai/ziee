@@ -31,12 +31,15 @@ use crate::modules::code_sandbox::types::{CodeSandboxState, HostCapabilities, Sa
 
 #[cfg(target_os = "linux")]
 mod linux_bwrap;
-// Shared host-side client for the in-guest agent (vsock/unix on macOS, TCP on
-// Windows) — used by both VM backends.
+// Shared host-side client for the in-guest agent (vsock/unix on macOS,
+// AF_HYPERV vsock on Windows) — used by both VM backends.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod vm_client;
 #[cfg(target_os = "macos")]
 mod mac_vm;
+// AF_HYPERV (Hyper-V vsock) FFI + WSL utility-VM resolution (HIGH-1 fix).
+#[cfg(target_os = "windows")]
+mod hvsocket;
 #[cfg(target_os = "windows")]
 mod wsl2;
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]

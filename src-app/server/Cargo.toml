@@ -140,6 +140,15 @@ sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 
+# Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
+# in-distro agent over the Hyper-V vsock instead of `127.0.0.1` — closing the
+# cross-distro reachability gap (HIGH-1 of .sec-audits/wsl2-source-deep-read-).
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinSock",
+] }
+
 [build-dependencies]
 tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "migrate"] }

@@ -15,22 +15,25 @@
 //!     everything else. The profile + sysctls are re-applied on every VM boot
 //!     via `/etc/wsl.conf` `[boot] command =` (WSL has no systemd by default;
 //!     [microsoft/WSL#4232]).
-//!   - The agent is started inside the distro listening on **127.0.0.1:<port>**;
-//!     WSL2's localhost-forwarding makes that reachable from Windows. Per
-//!     `execute_command` this backend connects a `TcpStream` and sends the
-//!     bwrap argv (guest paths) — the agent applies the shared seccomp + cgroup
+//!   - The agent is started inside the distro listening on an **AF_VSOCK**
+//!     port. The Windows host dials it via Hyper-V vsock
+//!     (`AF_HYPERV`/`HV_PROTOCOL_RAW`) — point-to-point, host ⟷ this-guest,
+//!     so no other distro in the shared utility VM can reach the agent. The
+//!     Windows-side hvsocket is additionally DACL'd per-user by HCS
+//!     (`HcsVirtualMachine.cpp:245-254`: `D:P(A;;FA;;;SY)(A;;FA;;;<user-sid>)`).
+//!     Per `execute_command` this backend dials vsock + sends the bwrap argv
+//!     (guest paths) — the agent applies the shared seccomp + cgroup
 //!     in-guest, identical to macOS.
 //!
 //! ## Threat model (cross-platform delta with the Linux backend)
 //!
-//!   - **Cross-distro reachability on the TCP transport (HIGH-1, tracked):**
-//!     WSL2 distros share **one network namespace** in the utility VM
-//!     ([microsoft/WSL#4304], `init/main.cpp:2283` — no `CLONE_NEWNET`). Until
-//!     the planned AF_VSOCK switch, every other WSL2 distro the user has
-//!     installed (their personal Ubuntu, Docker Desktop's distros, …) can
-//!     reach our agent on `127.0.0.1:<port>` and submit an arbitrary bwrap
-//!     argv. The TCP listener binds `127.0.0.1` (not `0.0.0.0`), so LAN-side
-//!     attack is blocked; the gap is intra-VM only.
+//!   - **Cross-distro reachability (HIGH-1, closed):** WSL2 distros share
+//!     **one network namespace** in the utility VM ([microsoft/WSL#4304],
+//!     `init/main.cpp:2283` — no `CLONE_NEWNET`), so an earlier
+//!     `127.0.0.1:<port>` listener was reachable from every other distro the
+//!     user had installed. We switched the agent transport to **AF_VSOCK**;
+//!     vsock is point-to-point so cross-distro reachability is now
+//!     structurally impossible.
 //!   - **`networkingMode = mirrored` collapses host↔guest loopback:** in
 //!     mirrored mode (Win11 22H2+) the Windows host's `127.0.0.1` services
 //!     (Postgres, the Ziee server itself, …) are reachable from inside the
@@ -51,15 +54,17 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use sandbox_vm_protocol::{CgroupLimits, ExecRequest, PROTOCOL_VERSION};
-use tokio::net::TcpStream;
 use tokio::sync::{Mutex, Semaphore};
+use windows_sys::core::GUID;
+
+use super::hvsocket;
 
 use super::SandboxBackend;
 use crate::common::AppError;
@@ -151,15 +156,28 @@ const MAX_CONCURRENT_EXECS: usize = 3;
 /// collisions a timestamp id risked under concurrency).
 static REQ_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+/// Vsock ports we assign to per-flavor agents. Monotonic from 10001 so we
+/// stay clear of any well-known low-numbered services. Vsock ports collide
+/// only within the same utility VM; other WSL2 distros don't bind these.
+static NEXT_VSOCK_PORT: AtomicU32 = AtomicU32::new(10001);
+
 /// A booted, warm per-flavor distro: the imported WSL2 distro plus the agent
-/// process listening on a localhost TCP port.
+/// process listening on an AF_VSOCK port inside the utility VM.
 struct DistroHandle {
-    /// The `wsl.exe -d <distro> -- agent …` relay child. Killing it stops the
-    /// agent (WIN-TODO: confirm the in-distro agent dies when this relay is
-    /// killed; if WSL keeps it alive, fall back to `wsl --terminate <distro>`).
+    /// The `wsl.exe -d <distro> -- agent …` relay child. Killing it terminates
+    /// the wsl.exe relay (necessary to free the Windows-side child slot) but
+    /// does NOT, on its own, stop the in-distro agent — `Frame::Shutdown` does
+    /// (sent from `stop_agent` before the relay-kill backstop). See HIGH-3 in
+    /// `.sec-audits/`.
     agent: Mutex<tokio::process::Child>,
     distro: String,
-    tcp_port: u16,
+    /// The AF_VSOCK port the agent listens on inside the utility VM.
+    vsock_port: u32,
+    /// The utility VM's VmId, copied from `Wsl2Backend::wsl_vm_id` so free
+    /// functions (`stop_agent`, `evict_dead_distro`, the reaper) can reach it
+    /// without holding a backend reference. All distros share one VmId on a
+    /// given session.
+    vm_id: GUID,
     last_used: Mutex<Instant>,
     /// In-flight exec count — the reaper never evicts a distro mid-command.
     inflight: AtomicUsize,
@@ -235,11 +253,31 @@ async fn boot_lock_for(flavor: &str) -> Arc<Mutex<()>> {
         .clone()
 }
 
-pub struct Wsl2Backend;
+pub struct Wsl2Backend {
+    /// WSL2 uses a SHARED utility VM for every distro per session, so all
+    /// flavors connect to the same VmId. Resolved once via
+    /// `hvsocket::wsl_utility_vm_id()` (env override, else `hcsdiag list`),
+    /// then cached for the lifetime of the server.
+    wsl_vm_id: OnceLock<GUID>,
+}
 
 impl Wsl2Backend {
     pub fn new() -> Self {
-        Self
+        Self { wsl_vm_id: OnceLock::new() }
+    }
+
+    /// Resolve + cache the WSL2 utility VM's VmId. First call may shell out
+    /// to `hcsdiag list` (sub-second). Returns the cached GUID on every call
+    /// after that. Errors propagate (we can't connect without the VmId).
+    fn vm_id(&self) -> Result<GUID, AppError> {
+        if let Some(g) = self.wsl_vm_id.get() {
+            return Ok(*g);
+        }
+        let g = hvsocket::wsl_utility_vm_id()?;
+        // Race-tolerant: another caller may have set it concurrently; we just
+        // get our own copy back. set() only fails if already set.
+        let _ = self.wsl_vm_id.set(g);
+        Ok(*self.wsl_vm_id.get().expect("just set"))
     }
 
     /// The bundled Linux `ziee-sandbox-agent` binary (Windows-side path),
@@ -301,15 +339,15 @@ impl Wsl2Backend {
             .map_err(|e| AppError::internal_error(format!("wsl --import {distro}: {e}")))?;
         }
 
-        // 2. Provision once (bwrap, agent, identity, userns sysctls).
+        // 2. Provision once (bwrap, agent, identity, AppArmor profile, wsl.conf).
         self.provision_distro(&distro).await?;
 
-        // 3. Start the agent on a localhost TCP port.
-        let port = portpicker::pick_unused_port()
-            .ok_or_else(|| AppError::internal_error("no free TCP port for WSL2 agent"))?;
-        // The server env does NOT cross into the distro (only WSLENV-listed vars
-        // do, and our secrets aren't listed), and bwrap `--clearenv` is the real
-        // env defense regardless — so no env_clear dance is needed here.
+        // 3. Start the agent on an AF_VSOCK port inside the utility VM. This is
+        //    the HIGH-1 fix: vsock is point-to-point (host ↔ this-guest), so
+        //    no other distro in the shared utility VM can reach the agent the
+        //    way `127.0.0.1:<port>` previously was reachable.
+        let vsock_port = NEXT_VSOCK_PORT.fetch_add(1, Ordering::Relaxed);
+        let vm_id = self.vm_id()?;
         let agent = tokio::process::Command::new("wsl.exe")
             .args([
                 "-d",
@@ -321,22 +359,24 @@ impl Wsl2Backend {
                 "--",
                 GUEST_AGENT_PATH,
                 "--listen",
-                &format!("tcp:127.0.0.1:{port}"),
+                &format!("vsock:{vsock_port}"),
             ])
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| AppError::internal_error(format!("spawn WSL2 agent: {e}")))?;
 
-        // Wait for the agent to accept connections (localhost-forwarded).
+        // Wait for the agent's vsock listener to accept. Probe via the same
+        // hvsocket API the hot path uses, so a failure here surfaces the exact
+        // problem the hot path would hit.
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            if TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
+            if hvsocket::connect(vm_id, vsock_port).await.is_ok() {
                 break;
             }
             if Instant::now() > deadline {
-                return Err(AppError::internal_error(
-                    "WSL2 agent did not start listening within 30s",
-                ));
+                return Err(AppError::internal_error(format!(
+                    "WSL2 agent did not start listening on vsock:{vsock_port} within 30s"
+                )));
             }
             tokio::time::sleep(Duration::from_millis(150)).await;
         }
@@ -344,7 +384,8 @@ impl Wsl2Backend {
         let handle = Arc::new(DistroHandle {
             agent: Mutex::new(agent),
             distro,
-            tcp_port: port,
+            vsock_port,
+            vm_id,
             last_used: Mutex::new(Instant::now()),
             inflight: AtomicUsize::new(0),
             sem: Semaphore::new(MAX_CONCURRENT_EXECS),
@@ -687,7 +728,8 @@ impl SandboxBackend for Wsl2Backend {
             let _guard = InflightGuard(h.clone());
             *h.last_used.lock().await = Instant::now();
 
-            match TcpStream::connect(("127.0.0.1", h.tcp_port)).await {
+            let vm_id = self.vm_id()?;
+            match hvsocket::connect(vm_id, h.vsock_port).await {
                 Ok(stream) => {
                     let result = super::vm_client::run_on_stream(stream, req.clone(), secs).await;
                     *h.last_used.lock().await = Instant::now();
@@ -696,18 +738,14 @@ impl SandboxBackend for Wsl2Backend {
                 Err(e) if attempt < 2 => {
                     tracing::warn!(
                         flavor,
-                        "code_sandbox: WSL2 agent unreachable ({e}); re-booting and retrying"
+                        "code_sandbox: WSL2 agent unreachable on vsock ({e}); re-booting and retrying"
                     );
                     drop(_guard);
                     drop(_permit);
                     evict_dead_distro(flavor, &h).await;
                     continue;
                 }
-                Err(e) => {
-                    return Err(AppError::internal_error(format!(
-                        "connect WSL2 agent: {e}"
-                    )));
-                }
+                Err(e) => return Err(e),
             }
         }
     }
@@ -773,14 +811,17 @@ impl SandboxBackend for Wsl2Backend {
 /// `start_kill` is then a backstop in case the Shutdown round-trip times
 /// out (agent already wedged, network broken, …).
 async fn stop_agent(h: &DistroHandle) {
-    // Best-effort clean shutdown over the existing transport. Tight timeout —
-    // we'd rather fall through to the relay kill than block the reaper.
+    // Best-effort clean shutdown over the existing vsock transport. Tight
+    // timeout — we'd rather fall through to the relay kill than block the
+    // reaper.
     let shutdown = tokio::time::timeout(Duration::from_secs(2), async {
-        let mut stream = TcpStream::connect(("127.0.0.1", h.tcp_port)).await.ok()?;
+        let mut stream = hvsocket::connect(h.vm_id, h.vsock_port).await.ok()?;
         use tokio::io::AsyncWriteExt;
-        let _ = stream.write_all(&sandbox_vm_protocol::encode(
-            &sandbox_vm_protocol::Frame::Shutdown,
-        )).await;
+        let _ = stream
+            .write_all(&sandbox_vm_protocol::encode(
+                &sandbox_vm_protocol::Frame::Shutdown,
+            ))
+            .await;
         let _ = stream.shutdown().await; // half-close write side; agent reads EOF
         Some(())
     })
