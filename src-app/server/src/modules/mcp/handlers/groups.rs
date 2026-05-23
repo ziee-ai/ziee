@@ -120,7 +120,7 @@ pub async fn get_group_system_servers(
         .get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
-            eprintln!("Failed to get system servers for group {}: {}", group_id, e);
+            tracing::error!("Failed to get system servers for group {}: {}", group_id, e);
             crate::common::AppError::internal_error("Database operation failed")
         })?;
 
@@ -154,7 +154,7 @@ pub async fn update_group_system_servers(
         .get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
-            eprintln!(
+            tracing::error!(
                 "Failed to get current servers for group {}: {}",
                 group_id, e
             );
@@ -180,7 +180,7 @@ pub async fn update_group_system_servers(
             .remove_from_group(group_id, server_id)
             .await
             .map_err(|e| {
-                eprintln!(
+                tracing::error!(
                     "Failed to remove server {} from group {}: {}",
                     server_id, group_id, e
                 );
@@ -194,7 +194,7 @@ pub async fn update_group_system_servers(
             .assign_to_group(group_id, server_id)
             .await
             .map_err(|e| {
-                eprintln!(
+                tracing::error!(
                     "Failed to assign server {} to group {}: {}",
                     server_id, group_id, e
                 );
@@ -213,7 +213,7 @@ pub async fn update_group_system_servers(
         .get_system_servers_for_group(group_id)
         .await
         .map_err(|e| {
-            eprintln!(
+            tracing::error!(
                 "Failed to get updated servers for group {}: {}",
                 group_id, e
             );

@@ -206,7 +206,7 @@ impl GitService {
                 callbacks.transfer_progress(move |progress| {
                     // Check for cancellation using atomic flag
                     if cancelled_flag_callback.load(std::sync::atomic::Ordering::Relaxed) {
-                        println!("Git fetch cancelled by user");
+                        tracing::info!("Git fetch cancelled by user");
                         return false;
                     }
 
@@ -381,7 +381,7 @@ impl GitService {
                 callbacks.transfer_progress(move |progress| {
                     // Check for cancellation using atomic flag
                     if cancelled_flag_callback.load(std::sync::atomic::Ordering::Relaxed) {
-                        println!("Git clone cancelled by user");
+                        tracing::info!("Git clone cancelled by user");
                         return false; // Cancel the operation
                     }
 
@@ -575,7 +575,7 @@ impl GitService {
         // Create a channel to receive LFS progress updates
         let (lfs_progress_tx, mut lfs_progress_rx) = mpsc::unbounded_channel::<LfsProgress>();
 
-        println!(
+        tracing::info!(
             "Pulling LFS files from repository: {} with paths: {:?}",
             repo_path.display(),
             file_paths

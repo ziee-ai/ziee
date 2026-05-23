@@ -204,7 +204,7 @@ pub async fn test_repository_connectivity(
     // Build the request with authentication
     let mut req_builder = client.get(test_url);
 
-    println!("Testing connection to: {}", test_url);
+    tracing::info!("Testing connection to: {}", test_url);
 
     if let Some(auth_config) = &request.auth_config {
         match request.auth_type.as_str() {

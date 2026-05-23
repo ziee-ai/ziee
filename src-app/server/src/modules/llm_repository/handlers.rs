@@ -40,7 +40,7 @@ pub async fn list_repositories(
 ) -> ApiResult<Json<LlmRepositoryListResponse>> {
     // Get all repositories
     let all_repositories = Repos.llm_repository.list().await.map_err(|e| {
-        eprintln!("Failed to get repositories: {}", e);
+        tracing::error!("Failed to get repositories: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
 
@@ -86,7 +86,7 @@ pub async fn get_repository(
         .get_by_id(repository_id)
         .await
         .map_err(|e| {
-            eprintln!("Failed to get repository {}: {}", repository_id, e);
+            tracing::error!("Failed to get repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
@@ -124,7 +124,7 @@ pub async fn create_repository(
 
     // Create repository
     let repository = Repos.llm_repository.create(request).await.map_err(|e| {
-        eprintln!("Failed to create repository: {}", e);
+        tracing::error!("Failed to create repository: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
 
@@ -169,7 +169,7 @@ pub async fn update_repository(
         .get_by_id(repository_id)
         .await
         .map_err(|e| {
-            eprintln!("Failed to get repository {}: {}", repository_id, e);
+            tracing::error!("Failed to get repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
@@ -182,7 +182,7 @@ pub async fn update_repository(
         .update(repository_id, request)
         .await
         .map_err(|e| {
-            eprintln!("Failed to update repository {}: {}", repository_id, e);
+            tracing::error!("Failed to update repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
@@ -231,7 +231,7 @@ pub async fn delete_repository(
         }
         Ok(Ok(false)) => Err(AppError::not_found("Repository").into()),
         Ok(Err(error_message)) => {
-            eprintln!(
+            tracing::error!(
                 "Cannot delete repository {}: {}",
                 repository_id, error_message
             );
@@ -241,7 +241,7 @@ pub async fn delete_repository(
             )
         }
         Err(e) => {
-            eprintln!("Failed to delete repository {}: {}", repository_id, e);
+            tracing::error!("Failed to delete repository {}: {}", repository_id, e);
             Err(AppError::internal_error("Database operation failed").into())
         }
     }

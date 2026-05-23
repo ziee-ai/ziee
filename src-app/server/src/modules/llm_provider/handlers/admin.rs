@@ -40,7 +40,7 @@ pub async fn list_providers(
 ) -> ApiResult<Json<LlmProviderListResponse>> {
     // Get all providers
     let all_providers = Repos.llm_provider.list().await.map_err(|e| {
-        eprintln!("Failed to get providers: {}", e);
+        tracing::error!("Failed to get providers: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
 
@@ -87,7 +87,7 @@ pub async fn get_provider(
         .get_by_id(provider_id)
         .await
         .map_err(|e| {
-            eprintln!("Failed to get provider {}: {}", provider_id, e);
+            tracing::error!("Failed to get provider {}: {}", provider_id, e);
             AppError::internal_error("Database operation failed")
         })?
         .ok_or_else(|| AppError::not_found("Provider"))?;
@@ -119,7 +119,7 @@ pub async fn create_provider(
 
     // Create provider
     let provider = Repos.llm_provider.create(request).await.map_err(|e| {
-        eprintln!("Failed to create provider: {}", e);
+        tracing::error!("Failed to create provider: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
 
@@ -157,7 +157,7 @@ pub async fn update_provider(
         .update(provider_id, request)
         .await
         .map_err(|e| {
-            eprintln!("Failed to update provider {}: {}", provider_id, e);
+            tracing::error!("Failed to update provider {}: {}", provider_id, e);
             AppError::internal_error("Database operation failed")
         })?
         .ok_or_else(|| AppError::not_found("Provider"))?;
@@ -190,7 +190,7 @@ pub async fn delete_provider(
 ) -> ApiResult<StatusCode> {
     // Get provider info before deleting (for event emission)
     let provider = Repos.llm_provider.get_by_id(provider_id).await.map_err(|e| {
-        eprintln!("Failed to get provider {}: {}", provider_id, e);
+        tracing::error!("Failed to get provider {}: {}", provider_id, e);
         AppError::internal_error("Database operation failed")
     })?;
 
@@ -205,7 +205,7 @@ pub async fn delete_provider(
         Ok(Ok(false)) => Err(AppError::not_found("Provider").into()),
         Ok(Err(msg)) => Err(AppError::bad_request("DELETE_ERROR", &msg).into()),
         Err(e) => {
-            eprintln!("Failed to delete provider {}: {}", provider_id, e);
+            tracing::error!("Failed to delete provider {}: {}", provider_id, e);
             Err(AppError::internal_error("Database operation failed").into())
         }
     }
@@ -236,7 +236,7 @@ pub async fn get_provider_groups(
     Path(provider_id): Path<Uuid>,
 ) -> ApiResult<Json<Vec<Group>>> {
     let groups = Repos.llm_provider.get_provider_groups(provider_id).await.map_err(|e| {
-        eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
+        tracing::error!("Failed to get groups for provider {}: {}", provider_id, e);
         AppError::internal_error("Database operation failed")
     })?;
 
@@ -265,7 +265,7 @@ pub async fn assign_provider_to_group(
     Repos.llm_provider.assign_to_group(provider_id, request.group_id)
         .await
         .map_err(|e| {
-            eprintln!(
+            tracing::error!(
                 "Failed to assign provider {} to group {}: {}",
                 provider_id, request.group_id, e
             );
@@ -274,7 +274,7 @@ pub async fn assign_provider_to_group(
 
     // Get updated group list for event
     let groups = Repos.llm_provider.get_provider_groups(provider_id).await.map_err(|e| {
-        eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
+        tracing::error!("Failed to get groups for provider {}: {}", provider_id, e);
         AppError::internal_error("Database operation failed")
     })?;
     let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
@@ -309,7 +309,7 @@ pub async fn remove_provider_from_group(
         .remove_from_group(group_id, provider_id)
         .await
         .map_err(|e| {
-            eprintln!(
+            tracing::error!(
                 "Failed to remove provider {} from group {}: {}",
                 provider_id, group_id, e
             );
@@ -319,7 +319,7 @@ pub async fn remove_provider_from_group(
     if removed {
         // Get updated group list for event
         let groups = Repos.llm_provider.get_provider_groups(provider_id).await.map_err(|e| {
-            eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
+            tracing::error!("Failed to get groups for provider {}: {}", provider_id, e);
             AppError::internal_error("Database operation failed")
         })?;
         let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
@@ -360,7 +360,7 @@ pub async fn get_group_providers(
     Path(group_id): Path<Uuid>,
 ) -> ApiResult<Json<GroupProvidersResponse>> {
     let providers = Repos.llm_provider.get_for_group(group_id).await.map_err(|e| {
-        eprintln!("Failed to get providers for group {}: {}", group_id, e);
+        tracing::error!("Failed to get providers for group {}: {}", group_id, e);
         AppError::internal_error("Database operation failed")
     })?;
 
@@ -391,7 +391,7 @@ pub async fn update_group_providers(
 
     // Get current assignments
     let current = Repos.llm_provider.get_for_group(group_id).await.map_err(|e| {
-        eprintln!(
+        tracing::error!(
             "Failed to get current providers for group {}: {}",
             group_id, e
         );
@@ -413,7 +413,7 @@ pub async fn update_group_providers(
         Repos.llm_provider.remove_from_group(group_id, provider_id)
             .await
             .map_err(|e| {
-                eprintln!(
+                tracing::error!(
                     "Failed to remove provider {} from group {}: {}",
                     provider_id, group_id, e
                 );
@@ -426,7 +426,7 @@ pub async fn update_group_providers(
         Repos.llm_provider.assign_to_group(provider_id, group_id)
             .await
             .map_err(|e| {
-                eprintln!(
+                tracing::error!(
                     "Failed to assign provider {} to group {}: {}",
                     provider_id, group_id, e
                 );
@@ -438,7 +438,7 @@ pub async fn update_group_providers(
     // Emit events for all affected providers
     for provider_id in affected_provider_ids {
         let groups = Repos.llm_provider.get_provider_groups(provider_id).await.map_err(|e| {
-            eprintln!("Failed to get groups for provider {}: {}", provider_id, e);
+            tracing::error!("Failed to get groups for provider {}: {}", provider_id, e);
             AppError::internal_error("Database operation failed")
         })?;
         let group_ids: Vec<Uuid> = groups.iter().map(|g| g.id).collect();
@@ -448,7 +448,7 @@ pub async fn update_group_providers(
 
     // Return updated list
     let providers = Repos.llm_provider.get_for_group(group_id).await.map_err(|e| {
-        eprintln!(
+        tracing::error!(
             "Failed to get updated providers for group {}: {}",
             group_id, e
         );
