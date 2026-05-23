@@ -793,9 +793,27 @@ pub async fn upload_multiple_files_and_commit(
     for (filename, file_data) in uploaded_files {
         total_size += file_data.len() as u64;
 
-        // Check and validate files
+        // Validate file content; refuse the upload if any check fails.
+        // The previous implementation collected the issues into
+        // _validation_issues and threw them away — the model would be
+        // accepted regardless of whether it actually looked like a valid
+        // GGUF / safetensors / pytorch file. Closes 07-llm-model F-09
+        // (Medium).
         let _file_type = determine_model_file_type(&filename);
-        let _validation_issues = validate_file_content(&filename, &file_data);
+        let validation_issues = validate_file_content(&filename, &file_data);
+        if !validation_issues.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "INVALID_MODEL_FILE",
+                    format!(
+                        "File '{}' failed validation: {}",
+                        filename,
+                        validation_issues.join("; ")
+                    ),
+                ),
+            ));
+        }
 
         // Save files to temporary storage
         let temp_file_id = Uuid::new_v4();
