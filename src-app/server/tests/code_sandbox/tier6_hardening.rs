@@ -243,3 +243,84 @@ async fn e2e_sandbox_uid_is_1001() {
     assert!(stdout.contains("1001"), "expected uid 1001: {stdout}");
     assert!(stdout.contains("sandboxuser"), "expected name sandboxuser: {stdout}");
 }
+
+/// Plan 1 §6.6: a memory cap set via PUT /code-sandbox/resource-limits
+/// kicks in on the NEXT execute_command — proves the cache invalidation
+/// path works AND the new limit is actually applied (not just stored).
+///
+/// We tighten memory.max from the 512 MiB default to 64 MiB, then ask
+/// python3 to allocate 256 MiB. The kernel OOM-killer triggers on the
+/// in-sandbox cgroup; we observe either a non-zero exit + the
+/// 'BOUNDED' echo (the workload survived and reported it couldn't
+/// allocate) OR a SIGKILL/exit-code-137 (the cgroup OOM-killed it).
+/// Either outcome proves the cap is wired.
+#[tokio::test]
+#[ignore]
+async fn e2e_configured_memory_limit_enforced_via_http() {
+    let Some(server) = enabled_test_server().await else { return };
+    let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
+
+    // PUT a tight memory cap. Use a token with manage permission.
+    let admin = test_helpers::create_user_with_permissions(
+        &server,
+        "tier6h_limits_admin",
+        &[
+            "code_sandbox::resource_limits::read",
+            "code_sandbox::resource_limits::manage",
+        ],
+    )
+    .await;
+    let put = reqwest::Client::new()
+        .put(format!("{}/api/code-sandbox/resource-limits", server.base_url))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "memory_max_bytes": 64 * 1024 * 1024_i64 }))
+        .send()
+        .await
+        .expect("PUT");
+    assert_eq!(put.status().as_u16(), 200, "PUT status: {:?}", put.text().await);
+
+    // Positive control: python3 actually present.
+    let probe = tool_call(
+        &server,
+        &jwt,
+        conv_id,
+        "execute_command",
+        json!({ "command": "command -v python3 && echo PYTHON_OK" }),
+    )
+    .await;
+    let probe_stdout = probe["result"]["structuredContent"]["stdout"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        probe_stdout.contains("PYTHON_OK"),
+        "rootfs lacks python3 — cannot validate configured-memory cap. stdout={probe_stdout:?}"
+    );
+
+    // Allocate 256 MiB — must fail or be killed within the 64 MiB cap.
+    let body = tool_call(
+        &server,
+        &jwt,
+        conv_id,
+        "execute_command",
+        json!({ "command": "python3 -c 'x=bytearray(256*1024*1024)' || echo BOUNDED" }),
+    )
+    .await;
+    let structured = &body["result"]["structuredContent"];
+    let stdout = structured["stdout"].as_str().unwrap_or("");
+    let stderr = structured["stderr"].as_str().unwrap_or("");
+    let exit_code = structured["exit_code"].as_i64().unwrap_or(0);
+    let combined = format!("{stdout} {stderr}");
+    // Cgroup OOM-kill manifests as SIGKILL → bash reports exit 137 OR
+    // we never reach the echo BOUNDED. Or the kernel returns ENOMEM and
+    // python raises MemoryError, in which case BOUNDED appears + exit 0.
+    let bounded = combined.contains("BOUNDED")
+        || combined.contains("MemoryError")
+        || combined.contains("Killed")
+        || exit_code == 137
+        || exit_code == -1;
+    assert!(
+        bounded,
+        "expected 64 MiB cap to bound a 256 MiB alloc, got \
+         exit_code={exit_code} stdout={stdout:?} stderr={stderr:?}"
+    );
+}
