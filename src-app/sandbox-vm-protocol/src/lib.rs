@@ -108,12 +108,20 @@ pub enum Frame {
     Stderr(Vec<u8>),
     /// guest → host: the command finished.
     Exit(ExitStatus),
+    /// host → guest: clean-shutdown request. The agent acknowledges by exiting
+    /// its own process; any in-flight bwrap children then die via the argv's
+    /// `--die-with-parent`. Used by the WSL2 backend so a `wsl --terminate`
+    /// can be preceded by a clean in-distro stop (without it, the agent can
+    /// outlive the Windows-side `wsl.exe` relay because there is no
+    /// `PR_SET_PDEATHSIG` across the WSL boundary; [microsoft/WSL#1037]).
+    Shutdown,
 }
 
 const TAG_EXEC: u8 = 1;
 const TAG_STDOUT: u8 = 2;
 const TAG_STDERR: u8 = 3;
 const TAG_EXIT: u8 = 4;
+const TAG_SHUTDOWN: u8 = 5;
 
 /// Header bytes (tag + u32 length) before each payload.
 const HEADER_LEN: usize = 1 + 4;
@@ -148,6 +156,7 @@ pub fn encode(frame: &Frame) -> Vec<u8> {
         Frame::Stdout(b) => (TAG_STDOUT, b.clone()),
         Frame::Stderr(b) => (TAG_STDERR, b.clone()),
         Frame::Exit(s) => (TAG_EXIT, serde_json::to_vec(s).expect("ExitStatus serializes")),
+        Frame::Shutdown => (TAG_SHUTDOWN, Vec::new()),
     };
     let mut out = Vec::with_capacity(HEADER_LEN + payload.len());
     out.push(tag);
@@ -200,6 +209,7 @@ impl Decoder {
             TAG_EXIT => {
                 Frame::Exit(serde_json::from_slice(&payload).map_err(|_| ProtocolError::BadJson)?)
             }
+            TAG_SHUTDOWN => Frame::Shutdown,
             other => return Err(ProtocolError::UnknownTag(other)),
         };
         Ok(Some(frame))
@@ -230,6 +240,7 @@ mod tests {
             Frame::Stderr(vec![0, 1, 2, 255, 254]),
             Frame::Exit(ExitStatus { code: 0, timed_out: false }),
             Frame::Exit(ExitStatus { code: -1, timed_out: true }),
+            Frame::Shutdown,
         ] {
             let mut d = Decoder::new();
             d.feed(&encode(&frame));

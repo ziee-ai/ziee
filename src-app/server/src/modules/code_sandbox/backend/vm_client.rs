@@ -66,6 +66,7 @@ where
                     break;
                 }
                 Ok(Some(Frame::Exec(_))) => {} // not expected from the guest
+                Ok(Some(Frame::Shutdown)) => {} // host-only frame; ignore if echoed
                 Ok(None) => break,
                 Err(e) => return Err(AppError::internal_error(format!("guest protocol error: {e}"))),
             }

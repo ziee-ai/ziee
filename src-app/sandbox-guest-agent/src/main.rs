@@ -205,12 +205,21 @@ where
 {
     let (mut rd, wr) = tokio::io::split(stream);
 
-    // Read frames until we get the Exec request.
+    // Read frames until we get the Exec request — or a Shutdown.
     let mut decoder = Decoder::new();
     let mut buf = [0u8; READ_CHUNK];
     let req = loop {
         match decoder.next_frame() {
             Ok(Some(Frame::Exec(req))) => break req,
+            Ok(Some(Frame::Shutdown)) => {
+                // Clean stop requested by the host (WSL2 backend on
+                // distro-evict; macOS could use it too). Exiting this
+                // process triggers bwrap's `--die-with-parent` for any
+                // in-flight children that other connections were running.
+                // Status 0 is the explicit "clean shutdown" signal.
+                tracing::info!("agent: shutdown requested by host; exiting");
+                std::process::exit(0);
+            }
             Ok(Some(other)) => {
                 tracing::warn!("agent: ignoring unexpected pre-exec frame: {other:?}");
                 continue;

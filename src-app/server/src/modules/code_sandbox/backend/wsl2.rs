@@ -760,8 +760,39 @@ impl SandboxBackend for Wsl2Backend {
     }
 }
 
-/// Kill the agent relay child for a handle.
+/// Stop the in-distro agent cleanly + kill the Windows-side relay.
+///
+/// There is no `PR_SET_PDEATHSIG` across the WSL boundary
+/// ([microsoft/WSL#1037]): killing the Windows `wsl.exe` relay does NOT, by
+/// itself, terminate the agent process inside the distro — the agent is
+/// reachable on a separate TCP socket and can outlive the relay. Without
+/// in-distro cooperation that's an orphan-process leak (HIGH-3 audit
+/// finding). The clean fix is a 2-frame handshake: send `Frame::Shutdown`,
+/// the agent receives it + `process::exit(0)`s, which makes bwrap's argv
+/// `--die-with-parent` take care of any in-flight children. The relay
+/// `start_kill` is then a backstop in case the Shutdown round-trip times
+/// out (agent already wedged, network broken, …).
 async fn stop_agent(h: &DistroHandle) {
+    // Best-effort clean shutdown over the existing transport. Tight timeout —
+    // we'd rather fall through to the relay kill than block the reaper.
+    let shutdown = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut stream = TcpStream::connect(("127.0.0.1", h.tcp_port)).await.ok()?;
+        use tokio::io::AsyncWriteExt;
+        let _ = stream.write_all(&sandbox_vm_protocol::encode(
+            &sandbox_vm_protocol::Frame::Shutdown,
+        )).await;
+        let _ = stream.shutdown().await; // half-close write side; agent reads EOF
+        Some(())
+    })
+    .await;
+    if shutdown.is_err() {
+        tracing::warn!(
+            distro = %h.distro,
+            "code_sandbox: WSL2 agent did not accept Shutdown within 2s; \
+             falling back to relay kill"
+        );
+    }
+
     let mut agent = h.agent.lock().await;
     let _ = agent.start_kill();
     let _ = agent.wait().await;
