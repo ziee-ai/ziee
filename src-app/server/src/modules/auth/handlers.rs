@@ -470,10 +470,16 @@ pub async fn oauth_authorize(
         )
     })?;
 
-    // Build callback URL (should be a full URL in production)
-    let redirect_uri = query
-        .redirect_uri
-        .unwrap_or_else(|| format!("/api/auth/oauth/{}/callback", provider_name));
+    // SECURITY: ignore the user-supplied redirect_uri query parameter
+    // and always use the server's canonical OAuth callback path. The
+    // original implementation let `?redirect_uri=https://evil.com/` flow
+    // through to the OAuth authorize call; well-configured providers
+    // would reject the mismatch against their registered URI, but
+    // misconfigured ones (which are common with self-hosted IdP setups)
+    // would happily redirect the victim's browser to evil.com WITH the
+    // OAuth `code` in the query string — evil.com can then exchange
+    // the code for the access + ID token. Closes 01-auth F-07 (High).
+    let redirect_uri = format!("/api/auth/oauth/{}/callback", provider_name);
 
     // Initialize OAuth flow
     let oauth_result = provider.init_oauth_flow(&redirect_uri).await.map_err(|e| {
