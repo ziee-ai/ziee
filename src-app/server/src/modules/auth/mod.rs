@@ -6,6 +6,7 @@ pub mod jwt;
 pub mod jwt_extractor;
 pub mod password;
 pub mod providers;
+pub mod refresh_tokens;
 mod repository;
 pub mod routes;
 pub mod types;

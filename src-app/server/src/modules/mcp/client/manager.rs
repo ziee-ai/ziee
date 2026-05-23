@@ -135,6 +135,7 @@ impl McpSessionManager {
             username: String::new(),
             email: String::new(),
             is_admin: false,
+            jti: None,
         };
         encode(
             &Header::default(),
