@@ -113,6 +113,18 @@ impl AppError {
             format!("Database error: {}", err),
         )
     }
+
+    /// STUB (test-first): redacted internal error path. The body intentionally
+    /// matches the historical leaky behavior so the regression tests in this
+    /// commit FAIL as expected; the next commit replaces this with the proper
+    /// trace_id + tracing::error! implementation.
+    pub fn internal_with_id<E: std::fmt::Display>(err: E) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "SYSTEM_INTERNAL_ERROR",
+            format!("Internal error: {}", err),
+        )
+    }
 }
 
 impl fmt::Display for AppError {
@@ -197,5 +209,124 @@ impl Default for PaginationQuery {
             page: 1,
             per_page: 20,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    /// Regression test for the 2026-05 audit cross-cutting finding:
+    /// `AppError::database_error` MUST NOT include the inner error's Display
+    /// (or Debug) text in the response body — that text often contains SQL
+    /// constraint names, table names, columns, or even bound parameter values
+    /// from `sqlx` and similar libraries. The real error stays in the server
+    /// log via `tracing::error!`; the client gets only a correlation id.
+    #[test]
+    fn database_error_does_not_leak_inner_error_display() {
+        let inner = io::Error::new(
+            io::ErrorKind::Other,
+            "secret_constraint_uq_users_email_AT_user_a@example.com",
+        );
+        let err = AppError::database_error(&inner);
+        let body = serde_json::to_string(&err).expect("serialize AppError");
+        assert!(
+            !body.contains("secret_constraint_uq_users_email"),
+            "AppError::database_error leaked inner error to response body: {}",
+            body
+        );
+        assert!(
+            !body.contains("user_a@example.com"),
+            "AppError::database_error leaked sensitive value to response body: {}",
+            body
+        );
+    }
+
+    /// `internal_with_id` (the redacted boxed-error path) must not leak its
+    /// inner error to the response body either.
+    #[test]
+    fn internal_with_id_does_not_leak_inner_error_display() {
+        let inner: Box<dyn std::error::Error + Send + Sync> =
+            "leaked_sentinel_internal_error_text".into();
+        let err = AppError::internal_with_id(&*inner);
+        let body = serde_json::to_string(&err).expect("serialize AppError");
+        assert!(
+            !body.contains("leaked_sentinel_internal_error_text"),
+            "AppError::internal_with_id leaked inner error to response body: {}",
+            body
+        );
+    }
+
+    /// `From<sqlx::Error>` is invoked implicitly via `?` across the codebase.
+    /// It MUST route through `database_error` so the inner SQL details never
+    /// reach the client. Use `Encode` so we get a deterministic Display that
+    /// would obviously be a leak.
+    #[test]
+    fn from_sqlx_error_does_not_leak_inner_error_display() {
+        let inner = sqlx::Error::Configuration(
+            "sentinel_pgpassword=hunter2_LEAKED".into(),
+        );
+        let err: AppError = inner.into();
+        let body = serde_json::to_string(&err).expect("serialize AppError");
+        assert!(
+            !body.contains("hunter2_LEAKED"),
+            "From<sqlx::Error> leaked inner to response body: {}",
+            body
+        );
+        assert!(
+            !body.contains("sentinel_pgpassword"),
+            "From<sqlx::Error> leaked inner to response body: {}",
+            body
+        );
+    }
+
+    /// `From<Box<dyn Error>>` must also not leak — historically it called
+    /// `internal_error(err.to_string())` which embedded the chain verbatim.
+    #[test]
+    fn from_boxed_error_does_not_leak_inner_error_display() {
+        let inner: Box<dyn std::error::Error + Send + Sync> =
+            "boxed_sentinel_LEAKED_secret_path=/etc/shadow".into();
+        let err: AppError = inner.into();
+        let body = serde_json::to_string(&err).expect("serialize AppError");
+        assert!(
+            !body.contains("boxed_sentinel_LEAKED"),
+            "From<Box<dyn Error>> leaked inner to response body: {}",
+            body
+        );
+    }
+
+    /// Redacted errors should include a trace_id in `details` so support can
+    /// grep the server log for the matching tracing event.
+    #[test]
+    fn database_error_includes_trace_id_for_correlation() {
+        let inner = io::Error::new(io::ErrorKind::Other, "x");
+        let err = AppError::database_error(&inner);
+        let body = serde_json::to_value(&err).expect("serialize AppError");
+        let trace_id = body
+            .get("details")
+            .and_then(|d| d.get("trace_id"))
+            .and_then(|t| t.as_str())
+            .expect("AppError::database_error must embed trace_id in details");
+        assert_eq!(
+            trace_id.len(),
+            36,
+            "trace_id should be a UUID v4 ({} chars), got: {}",
+            36,
+            trace_id
+        );
+    }
+
+    /// The static-message convenience constructors (`not_found`, `forbidden`,
+    /// etc.) are explicitly safe — keep behavior so callers don't have to
+    /// switch to a different API.
+    #[test]
+    fn not_found_does_not_route_through_redaction() {
+        let err = AppError::not_found("Conversation");
+        let body = serde_json::to_value(&err).expect("serialize AppError");
+        assert_eq!(body["error_code"], "RESOURCE_NOT_FOUND");
+        // No trace_id for safe constructors — they aren't logging anything
+        // sensitive that a developer would need to correlate.
+        assert!(body.get("details").is_none() || body["details"].is_null());
     }
 }
