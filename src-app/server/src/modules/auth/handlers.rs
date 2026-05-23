@@ -19,6 +19,7 @@ use super::jwt::{JwtService, TokenPair};
 use super::jwt_extractor::JwtAuth;
 use super::password;
 use super::providers::{create_provider, repository as provider_repo};
+use super::refresh_tokens;
 use super::types::{
     AuthResponse, LoginRequest, MeResponse, OAuthAuthorizeQuery, OAuthCallbackQuery,
     RefreshTokenRequest, RegisterRequest,
@@ -330,7 +331,7 @@ pub async fn refresh(
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Json(req): Json<RefreshTokenRequest>,
 ) -> ApiResult<Json<TokenPair>> {
-    // Validate refresh token
+    // Validate refresh token (signature + exp + iss + aud)
     let claims = jwt_service
         .validate_refresh_token(&req.refresh_token)
         .map_err(|e| (StatusCode::UNAUTHORIZED, e))?;
@@ -342,6 +343,42 @@ pub async fn refresh(
             AppError::internal_error(format!("Invalid user ID in token: {}", e)),
         )
     })?;
+
+    // SECURITY: check the refresh token's jti against the whitelist
+    // (refresh_tokens table). Closes 01-auth F-03 (refresh didn't rotate
+    // the presented token — the old one kept minting access tokens for
+    // up to 30 days).
+    //
+    // Tokens minted BEFORE this commit don't carry a jti claim; we let
+    // those through unconditionally so existing sessions don't break on
+    // the upgrade. Within ~30 days every active session is naturally
+    // re-issued through the new code path and gets a jti, after which
+    // unchecked legacy tokens can no longer exist.
+    if let Some(jti_str) = claims.jti.as_deref() {
+        let jti = uuid::Uuid::parse_str(jti_str).map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                AppError::unauthorized("INVALID_TOKEN", "Invalid refresh token jti"),
+            )
+        })?;
+        let active = refresh_tokens::is_active(Repos.pool(), jti)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        if !active {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                AppError::unauthorized(
+                    "REFRESH_TOKEN_REVOKED",
+                    "Refresh token has been revoked or already used",
+                ),
+            ));
+        }
+        // Revoke the presented refresh token NOW so it can't be used a
+        // second time even if the new pair fails to land at the client.
+        refresh_tokens::revoke(Repos.pool(), jti)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    }
 
     // Get user from database
     let user = Repos
@@ -364,12 +401,21 @@ pub async fn refresh(
         ));
     }
 
-    // Generate new tokens
-    let tokens = jwt_service
-        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+    // Generate new tokens with jti and register the new refresh token
+    // in the whitelist before returning it.
+    let token_pair_with_jti = jwt_service
+        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    refresh_tokens::register(
+        Repos.pool(),
+        token_pair_with_jti.refresh_jti,
+        user.id,
+        token_pair_with_jti.refresh_expires_at,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    Ok((StatusCode::OK, Json(tokens)))
+    Ok((StatusCode::OK, Json(token_pair_with_jti.pair)))
 }
 
 /// Documentation for refresh endpoint
@@ -381,12 +427,26 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// POST /api/auth/logout
-/// Logout current user (JWT is stateless, so this is just a placeholder)
-/// Client should discard the token
+/// Logout current user. Revokes all of the user's active refresh tokens
+/// so subsequent calls to /auth/refresh fail with REFRESH_TOKEN_REVOKED.
+/// Closes 01-auth F-02 (logout was a no-op).
+///
+/// The access token itself remains valid for the remainder of its TTL
+/// (typically 24h). Clients must drop it from storage on logout. Server-
+/// side access-token revocation would require either short TTLs (already
+/// the design intent) or a per-request revocation check (deferred — adds
+/// a DB hit to every authenticated request).
 #[debug_handler]
-pub async fn logout(_auth: JwtAuth) -> ApiResult<()> {
-    // JWT is stateless, logout is handled client-side by discarding the token
-    // This endpoint exists for API consistency
+pub async fn logout(auth: JwtAuth) -> ApiResult<()> {
+    let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(format!("Invalid user ID in token: {}", e)),
+        )
+    })?;
+    refresh_tokens::revoke_all_for_user(Repos.pool(), user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok((StatusCode::NO_CONTENT, ()))
 }
 

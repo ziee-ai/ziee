@@ -70,10 +70,12 @@ impl JwtService {
 
     /// Generate access and refresh tokens for a user (legacy form).
     ///
-    /// Kept for backward compatibility with existing callers that don't
-    /// yet wire refresh-token whitelisting. New code should use
-    /// `generate_tokens_with_jti` and register the returned jti in the
-    /// `refresh_tokens` table.
+    /// Refresh token does NOT carry a jti, so it bypasses the whitelist
+    /// check in the refresh handler (no jti → no whitelist gate). Kept
+    /// for callers that don't yet wire refresh-token registration. New
+    /// code should use `generate_tokens_with_jti` and register the
+    /// returned jti in the `refresh_tokens` table — that's the path
+    /// that closes 01-auth F-02 + F-03.
     pub fn generate_tokens(
         &self,
         user_id: Uuid,
@@ -81,8 +83,37 @@ impl JwtService {
         email: &str,
         is_admin: bool,
     ) -> Result<TokenPair, AppError> {
-        let result = self.generate_tokens_with_jti(user_id, username, email, is_admin)?;
-        Ok(result.pair)
+        let access_token = self.generate_access_token(user_id, username, email, is_admin)?;
+        let refresh_token = self.generate_legacy_refresh_token(user_id)?;
+        Ok(TokenPair {
+            access_token,
+            refresh_token,
+            token_type: "Bearer".to_string(),
+            expires_in: self.config.access_token_expiry_hours * 3600,
+        })
+    }
+
+    /// Legacy refresh token without a jti — used by callers that
+    /// haven't yet wired the whitelist.
+    fn generate_legacy_refresh_token(&self, user_id: Uuid) -> Result<String, AppError> {
+        let now = Utc::now();
+        let exp = now + Duration::days(self.config.refresh_token_expiry_days);
+
+        let claims = Claims {
+            sub: user_id.to_string(),
+            exp: exp.timestamp(),
+            iat: now.timestamp(),
+            iss: self.config.issuer.clone(),
+            aud: format!("{}-refresh", self.config.audience),
+            username: String::new(),
+            email: String::new(),
+            is_admin: false,
+            jti: None,
+        };
+
+        encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
+            AppError::internal_error(format!("Failed to generate refresh token: {}", e))
+        })
     }
 
     /// Generate access and refresh tokens for a user.
