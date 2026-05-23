@@ -25,7 +25,9 @@ pub use async_trait::async_trait;
 
 // Re-export MCP client types for integration tests
 pub use modules::mcp::client::http::HttpMcpClient;
-pub use modules::mcp::client::auth::OAuthClientConfig;
+pub use modules::mcp::client::auth::{
+    OAuthClientConfig, StoredToken, refresh_token as oauth_refresh_token,
+};
 pub use modules::mcp::client::traits::McpClient;
 pub use modules::mcp::{McpServer, TransportType, UsageMode};
 pub use modules::mcp::sampling::handler::{ChatSamplingHandler, SamplingHandler};
