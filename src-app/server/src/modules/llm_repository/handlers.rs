@@ -174,6 +174,27 @@ pub async fn update_repository(
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
 
+    // SECURITY: refuse to mutate built-in repositories' URL or
+    // auth_type / auth_config / name. The delete handler already
+    // blocked this for built-in repos, but the update handler didn't
+    // — so any holder of llm_repositories::edit could swap the
+    // Hugging Face URL to an attacker-controlled domain, then watch
+    // tokens flow there on the next model download. Closes
+    // 09-llm-repository F-16.
+    if current_repository.built_in {
+        let touches_sensitive = request.url.is_some()
+            || request.auth_type.is_some()
+            || request.auth_config.is_some()
+            || request.name.is_some();
+        if touches_sensitive {
+            return Err(AppError::bad_request(
+                "BUILT_IN_REPOSITORY",
+                "Cannot modify name / URL / auth on built-in repositories",
+            )
+            .into());
+        }
+    }
+
     // Validate auth fields based on auth type (use current or new values)
     utils::validate_auth_config_for_update(&current_repository, &request)?;
 
