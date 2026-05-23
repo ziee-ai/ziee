@@ -279,10 +279,14 @@ async fn test_refresh_hub_models_requires_permission() {
         .await
         .expect("Request failed");
 
-    // Could be 200 (success) or 500 (GitHub fetch failed), both acceptable
+    // Refresh against the placeholder GITHUB_HUB_REPO is now blocked
+    // pre-network with 400 HUB_NOT_CONFIGURED (closes 11-hub F-01).
+    // 200 (success) and 500 (network failure against a real URL) remain
+    // acceptable for configured deployments.
     assert!(
-        response.status() == 200 || response.status() == 500,
-        "Should return 200 or 500 for refresh attempt"
+        response.status() == 200 || response.status() == 400 || response.status() == 500,
+        "Should return 200 / 400 / 500 for refresh attempt, got {}",
+        response.status()
     );
 
     // User without permission should get 403
@@ -694,9 +698,12 @@ async fn test_refresh_hub_assistants_requires_permission() {
         .await
         .expect("Request failed");
 
+    // Refresh against the placeholder GITHUB_HUB_REPO is blocked
+    // pre-network with 400 HUB_NOT_CONFIGURED (closes 11-hub F-01).
     assert!(
-        response.status() == 200 || response.status() == 500,
-        "Should return 200 or 500 for refresh attempt"
+        response.status() == 200 || response.status() == 400 || response.status() == 500,
+        "Should return 200 / 400 / 500 for refresh attempt, got {}",
+        response.status()
     );
 
     // User without permission should get 403
@@ -889,9 +896,12 @@ async fn test_refresh_hub_mcp_servers_requires_permission() {
         .await
         .expect("Request failed");
 
+    // Refresh against the placeholder GITHUB_HUB_REPO is blocked
+    // pre-network with 400 HUB_NOT_CONFIGURED (closes 11-hub F-01).
     assert!(
-        response.status() == 200 || response.status() == 500,
-        "Should return 200 or 500 for refresh attempt"
+        response.status() == 200 || response.status() == 400 || response.status() == 500,
+        "Should return 200 / 400 / 500 for refresh attempt, got {}",
+        response.status()
     );
 
     // User without permission should get 403

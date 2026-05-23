@@ -344,6 +344,21 @@ impl HubManager {
 
     /// Refresh hub data for a specific category from GitHub
     pub async fn refresh_hub_category(&self, category: &str) -> Result<(), AppError> {
+        // SECURITY: refuse to refresh while the source URL is the
+        // placeholder. The placeholder GITHUB_HUB_REPO points at a
+        // 'YOUR_ORG' org that doesn't yet exist; if an attacker registers
+        // that org, every admin who hits Refresh downloads attacker-
+        // controlled JSON which then becomes MCP server configs / model
+        // entries / assistant prompts on disk. Closes 11-hub F-01
+        // (Medium).
+        if GITHUB_HUB_REPO.contains("YOUR_ORG") {
+            return Err(AppError::bad_request(
+                "HUB_NOT_CONFIGURED",
+                "Hub refresh is disabled because GITHUB_HUB_REPO is still the placeholder URL ('YOUR_ORG'). Configure a real hub repository before refreshing — until then the placeholder URL is squattable and the refresh would download attacker-controlled content.",
+            )
+            .into());
+        }
+
         tracing::info!("Refreshing hub category '{}' from GitHub", category);
 
         // Download latest version info for this category
