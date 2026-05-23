@@ -126,11 +126,15 @@ async fn test_create_llm_repository() {
         "Created repository should not be built-in"
     );
 
-    // Verify auth_config is present
+    // Verify auth_config is present but api_key is write-only.
+    // Post-09-llm-repository-F-02 fix: api_key / password / token are
+    // serde(skip_serializing). Inverting the original assertion.
     let auth_config = body.get("auth_config").expect("Should have auth_config");
-    assert_eq!(
-        auth_config.get("api_key").and_then(|v| v.as_str()),
-        Some("test-api-key-12345")
+    assert!(
+        auth_config.get("api_key").is_none()
+            || auth_config["api_key"].is_null(),
+        "api_key must not be returned in response (09-llm-repository F-02); got {:?}",
+        auth_config.get("api_key")
     );
 }
 
@@ -165,9 +169,12 @@ async fn test_create_llm_repository_validation() {
     assert_eq!(response.status(), 400, "Should reject invalid URL format");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert_eq!(
-        body.get("error_code").and_then(|v| v.as_str()),
-        Some("VALIDATION_ERROR")
+    // Either error code is acceptable; 'INVALID_URL' is the post-F-01-fix shape.
+    let code = body.get("error_code").and_then(|v| v.as_str());
+    assert!(
+        code == Some("VALIDATION_ERROR") || code == Some("INVALID_URL"),
+        "expected VALIDATION_ERROR or INVALID_URL, got {:?}",
+        code
     );
 
     // Test 2: Invalid auth type
