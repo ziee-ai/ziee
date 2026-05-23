@@ -130,6 +130,67 @@ async fn connect_fails_when_client_credentials_are_wrong() {
     );
 }
 
+// ─── Refresh-on-expiry: a stored refresh_token drives a refresh_token grant ──
+
+/// Phase-4 spec: `auth::refresh_token` MUST attempt `grant_type=refresh_token`
+/// before falling back to `client_credentials`. Driven directly at the
+/// auth-module entry point (`http.rs::acquire_oauth_token` selects this branch
+/// when both a cached token AND a cached endpoint exist).
+#[tokio::test]
+async fn refresh_token_grant_is_used_when_a_refresh_token_is_stored() {
+    let mock = MockMcpServer::start().await;
+    mock.enable_oauth("mcp-client", "mcp-secret", "mock-access-token");
+
+    let cfg = oauth("mcp-client", "mcp-secret");
+    let token_endpoint = format!("{}token", mock.base_url());
+
+    // Stored token with a `refresh_token`: this is the only state needed to
+    // exercise the refresh-grant branch without orchestrating a clock advance.
+    let stored = ziee_chat::StoredToken {
+        access_token: "stale-access".into(),
+        refresh_token: Some("rt-from-an-earlier-issuance".into()),
+        expires_at: None,
+    };
+
+    let http = reqwest::Client::builder()
+        .build()
+        .expect("reqwest client");
+
+    let fresh = ziee_chat::oauth_refresh_token(&http, &token_endpoint, &cfg, &stored)
+        .await
+        .expect("refresh_token grant should succeed against the mock");
+    assert_eq!(
+        fresh.access_token, "mock-access-token",
+        "the mock returns a fixed access_token on every successful exchange"
+    );
+
+    // The mock saw EXACTLY ONE token request, and it carried the
+    // `refresh_token` grant + the stored refresh_token value + HTTP Basic.
+    let token_reqs: Vec<_> = mock
+        .received()
+        .into_iter()
+        .filter(|r| r.method == "__token")
+        .collect();
+    assert_eq!(token_reqs.len(), 1, "exactly one token endpoint call expected");
+    let body = token_reqs[0].body.as_str().unwrap_or("");
+    assert!(
+        body.contains("grant_type=refresh_token"),
+        "refresh path MUST use the refresh_token grant; body={body}"
+    );
+    assert!(
+        body.contains("refresh_token=rt-from-an-earlier-issuance"),
+        "refresh path MUST include the stored refresh_token; body={body}"
+    );
+    assert!(
+        token_reqs[0]
+            .headers
+            .get("authorization")
+            .map(|v| v.starts_with("Basic "))
+            .unwrap_or(false),
+        "refresh path MUST carry HTTP Basic client authentication"
+    );
+}
+
 // ─── No OAuth configured + 401 → surfaces the 401, no token attempt ───────────
 
 #[tokio::test]

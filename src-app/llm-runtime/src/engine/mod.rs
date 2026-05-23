@@ -104,10 +104,24 @@ impl EngineProcess {
 
         #[cfg(windows)]
         {
-            // On Windows, try_wait will return Ok(None) if process is still running
-            match self.child.try_wait() {
-                Ok(None) => true,
-                _ => false,
+            // OpenProcess + GetExitCodeProcess: probe existence by PID without
+            // mutating `Child` (keeps `is_running(&self)` and so the `Engine`
+            // trait signature `health_check(&self, &EngineProcess)` intact).
+            // STILL_ACTIVE (259) is returned for a live process; any other code
+            // means the process exited with that status.
+            use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+            use windows_sys::Win32::System::Threading::{
+                GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+            };
+            unsafe {
+                let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, self.pid);
+                if handle.is_null() {
+                    return false;
+                }
+                let mut code: u32 = 0;
+                let ok = GetExitCodeProcess(handle, &mut code) != 0;
+                CloseHandle(handle);
+                ok && code == STILL_ACTIVE as u32
             }
         }
     }

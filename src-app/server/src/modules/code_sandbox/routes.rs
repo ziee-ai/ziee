@@ -28,6 +28,17 @@ use crate::modules::code_sandbox::handlers;
 pub fn code_sandbox_router() -> ApiRouter {
     ApiRouter::new()
         // ──────── Untyped legacy ────────
+        // Note (Plan-3 Phase-3 / I2): the route is registered POST-only on
+        // purpose. The MCP spec § Transports lets a server offer an
+        // additional standalone GET-SSE for unsolicited server→client
+        // messages (progress notifications, server-initiated sampling).
+        // Our built-in code_sandbox server has no out-of-band producers —
+        // every elicitation / progress / streamed output rides the POST
+        // response — so we don't run a GET stream. axum's `MethodRouter`
+        // turns a GET against this path into `405 Method Not Allowed`,
+        // which is exactly the "no standalone stream" signal the spec
+        // requires. The client (`mcp/client/http.rs::spawn_standalone_get_sse`)
+        // tolerates 405 silently.
         .route("/code-sandbox", post(handlers::jsonrpc_handler))
         .route(
             "/code-sandbox/file/download",
@@ -64,6 +75,18 @@ pub fn code_sandbox_router() -> ApiRouter {
             get_with(
                 handlers::subscribe_prefetch_events_handler,
                 handlers::subscribe_prefetch_events_docs,
+            ),
+        )
+        // ──────── Resource limits (Plan 1 §6) ────────
+        .api_route(
+            "/code-sandbox/resource-limits",
+            get_with(
+                handlers::get_resource_limits_handler,
+                handlers::get_resource_limits_docs,
+            )
+            .put_with(
+                handlers::update_resource_limits_handler,
+                handlers::update_resource_limits_docs,
             ),
         )
 }

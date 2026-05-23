@@ -84,6 +84,16 @@ Does **NOT** protect against: Linux kernel 0-days. Not suitable for
 hostile multi-tenant execution without an outer microVM (gVisor or
 Firecracker).
 
+**Network egress is intentionally open** (bwrap runs with `--share-net`, so
+the sandbox shares the host network and can reach the internet *and* host
+localhost). The "exfiltration" protection is therefore NOT an egress block —
+it's that there is nothing sensitive to exfiltrate: `--clearenv` wipes the
+server's entire environment (no `DATABASE_URL`/JWT/`*_API_KEY` reach the
+sandbox), and each conversation only sees its own workspace. If a deployment
+needs egress *blocking*, the future options are bwrap `--unshare-net`
+(no network at all), Landlock-NET (ABI v4, per-port TCP allowlist), or an
+egress-filtering proxy — none enabled today.
+
 ### Linux-only
 
 bwrap is Linux-only. Other platforms keep `code_sandbox.enabled:

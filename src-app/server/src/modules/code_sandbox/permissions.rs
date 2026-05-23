@@ -51,3 +51,29 @@ impl PermissionCheck for CodeSandboxEnvironmentsManage {
         "Trigger pre-fetch + cache management of sandbox rootfs environments.";
     const MODULE: &'static str = "code_sandbox";
 }
+
+/// Read the runtime-configured resource-limits singleton (Plan 1 §6). Admin
+/// surface; not granted to regular Users (their requests already run within
+/// whatever the operator configured).
+pub struct CodeSandboxResourceLimitsRead;
+
+impl PermissionCheck for CodeSandboxResourceLimitsRead {
+    const NAME: &'static str = "CodeSandboxResourceLimitsRead";
+    const PERMISSION: &'static str = "code_sandbox::resource_limits::read";
+    const DESCRIPTION: &'static str =
+        "Read the sandbox resource limits configuration.";
+    const MODULE: &'static str = "code_sandbox";
+}
+
+/// Mutate the runtime-configured resource-limits singleton. Admin-only;
+/// Administrators have it implicitly via the `*` wildcard (no explicit grant
+/// migration needed).
+pub struct CodeSandboxResourceLimitsManage;
+
+impl PermissionCheck for CodeSandboxResourceLimitsManage {
+    const NAME: &'static str = "CodeSandboxResourceLimitsManage";
+    const PERMISSION: &'static str = "code_sandbox::resource_limits::manage";
+    const DESCRIPTION: &'static str =
+        "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.";
+    const MODULE: &'static str = "code_sandbox";
+}

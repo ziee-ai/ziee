@@ -15,7 +15,13 @@
 #   revision = "r0"
 #   arch = "x86_64"
 #   flavor = "minimal"        # or "full"
-#   sha256 = "abc123..."       # lowercase 64-hex; case-normalized at read
+#   sha256 = "abc123..."       # squashfs digest (Linux/macOS); lowercase
+#                              # 64-hex, case-normalized at read
+#   sha256_tar_zst = "def..."  # OPTIONAL: .tar.zst digest for Windows
+#                              # `wsl --import`. Same staged tree, different
+#                              # packaging (Plan 1 §4). Omit on revisions
+#                              # that predate the tarball; the WSL2 backend
+#                              # errors clearly if it requests a row without it.
 #   signed = true              # if absent or false → cosign skip on miss
 #                              # if true → REQUIRE cosign + bundle (fail closed)
 #   yanked = false             # if true → excluded from `--version=latest`

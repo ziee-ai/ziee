@@ -235,5 +235,5 @@ async fn shutdown_signal() {
     // lazily spawned by code_sandbox). No-op if sandbox is disabled
     // or no execute_command ever ran. PDEATHSIG handles SIGKILL paths
     // where this hook can't run.
-    modules::code_sandbox::runtime_mount::shutdown().await;
+    modules::code_sandbox::backend::active().shutdown().await;
 }

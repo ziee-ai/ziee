@@ -63,6 +63,28 @@ pub struct FetchOutcome {
     pub cosign_verified: bool,
 }
 
+/// Which packaged form of a flavor's rootfs to fetch. The squashfs is the
+/// universal artifact (Linux squashfuse + macOS in-guest mount); the
+/// `.tar.zst` tarball exists only for Windows `wsl --import` (which can't
+/// consume a squashfs). Both are produced from the identical staged tree at
+/// release time (Plan 1 §4) — same schema, same contents, different packaging
+/// — so each carries its own sha256 in `known_revisions.toml`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootfsFormat {
+    Squashfs,
+    TarZst,
+}
+
+impl RootfsFormat {
+    /// File-name extension (no leading dot) for this packaging.
+    pub fn ext(self) -> &'static str {
+        match self {
+            RootfsFormat::Squashfs => "squashfs",
+            RootfsFormat::TarZst => "tar.zst",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum FetchError {
     EmptyKnownRevisions,
@@ -138,10 +160,21 @@ pub async fn fetch_flavor(
     flavor: &str,
     progress: impl Fn(FetchProgress) + Send + Sync + 'static,
 ) -> Result<FetchOutcome, FetchError> {
+    fetch_flavor_format(cache_dir, flavor, RootfsFormat::Squashfs, progress).await
+}
+
+/// Like [`fetch_flavor`] but for a specific packaging. The Windows WSL2 backend
+/// fetches [`RootfsFormat::TarZst`]; everything else uses the squashfs default.
+pub async fn fetch_flavor_format(
+    cache_dir: &Path,
+    flavor: &str,
+    format: RootfsFormat,
+    progress: impl Fn(FetchProgress) + Send + Sync + 'static,
+) -> Result<FetchOutcome, FetchError> {
     let cache_dir = cache_dir.to_path_buf();
     let flavor = flavor.to_string();
     tokio::task::spawn_blocking(move || {
-        fetch_blocking(&cache_dir, "latest", &flavor, std::env::consts::ARCH, &progress)
+        fetch_blocking(&cache_dir, "latest", &flavor, std::env::consts::ARCH, format, &progress)
     })
     .await
     .unwrap_or_else(|e| Err(FetchError::Install(format!("blocking task panicked: {e}"))))
@@ -197,9 +230,23 @@ pub async fn ensure_fetched(
     flavor: &str,
     progress: impl Fn(FetchProgress) + Send + Sync + 'static,
 ) -> Result<FetchOutcome, FetchError> {
+    ensure_fetched_format(cache_dir, flavor, RootfsFormat::Squashfs, progress).await
+}
+
+/// Single-flight fetch of a specific packaging. The per-flavor lock is keyed on
+/// flavor alone (not format) — a given host only ever fetches one packaging
+/// (Linux/macOS → squashfs, Windows → tar.zst), so the two formats never
+/// contend on one host. The Windows WSL2 backend calls this with
+/// [`RootfsFormat::TarZst`].
+pub async fn ensure_fetched_format(
+    cache_dir: &Path,
+    flavor: &str,
+    format: RootfsFormat,
+    progress: impl Fn(FetchProgress) + Send + Sync + 'static,
+) -> Result<FetchOutcome, FetchError> {
     let lock = fetch_lock_for(flavor);
     let _guard = lock.lock().await;
-    fetch_flavor(cache_dir, flavor, progress).await
+    fetch_flavor_format(cache_dir, flavor, format, progress).await
 }
 
 /// Enumerate flavors known to this binary for the current arch.
@@ -240,23 +287,24 @@ fn fetch_blocking(
     version: &str,
     flavor: &str,
     arch: &str,
+    format: RootfsFormat,
     progress: &(dyn Fn(FetchProgress) + Send + Sync),
 ) -> Result<FetchOutcome, FetchError> {
     let started = Instant::now();
 
     progress(FetchProgress {
         phase: FetchPhase::Resolving,
-        message: format!("resolving {version} flavor={flavor} arch={arch}"),
+        message: format!("resolving {version} flavor={flavor} arch={arch} ({})", format.ext()),
     });
 
     let resolved = resolve_revision(version, flavor, arch)?;
     let (tag, asset, expected_sha, signed_required) = (
         format!("sandbox-rootfs-v{}.{}-{}", resolved.schema, resolved.revision, arch),
         format!(
-            "ziee-sandbox-rootfs-v{}.{}-{}-{}.squashfs",
-            resolved.schema, resolved.revision, arch, flavor
+            "ziee-sandbox-rootfs-v{}.{}-{}-{}.{}",
+            resolved.schema, resolved.revision, arch, flavor, format.ext()
         ),
-        resolved.sha256.clone(),
+        resolved.sha256_for(format)?,
         resolved.signed,
     );
 
@@ -264,7 +312,9 @@ fn fetch_blocking(
         FetchError::Install(format!("create cache dir {}: {e}", cache_dir.display()))
     })?;
     let out_path = cache_dir.join(&asset);
-    let tmp_path = out_path.with_extension("squashfs.tmp");
+    // `with_extension` only replaces the final component, which mangles
+    // `.tar.zst`; append `.tmp`/`.cosign.bundle` to the full asset name instead.
+    let tmp_path = cache_dir.join(format!("{asset}.tmp"));
 
     // Idempotency: if the final file is already there and its sha
     // matches, short-circuit. Lets the runtime auto-fetch path no-op
@@ -373,7 +423,12 @@ fn verify_cosign_step(
     progress: &(dyn Fn(FetchProgress) + Send + Sync),
 ) -> Result<bool, FetchError> {
     let bundle_url = format!("{asset_url}.cosign.bundle");
-    let bundle_path = out_path.with_extension("squashfs.cosign.bundle");
+    // Append (don't `with_extension`, which would mangle `.tar.zst`).
+    let bundle_path = {
+        let mut name = out_path.file_name().unwrap_or_default().to_os_string();
+        name.push(".cosign.bundle");
+        out_path.with_file_name(name)
+    };
 
     progress(FetchProgress {
         phase: FetchPhase::VerifyingCosign,
@@ -432,8 +487,27 @@ fn verify_cosign_step(
 struct Resolved {
     schema: i64,
     revision: String,
+    /// sha256 of the squashfs artifact (the universal/default form).
     sha256: String,
+    /// sha256 of the `.tar.zst` artifact, when published. Optional because a
+    /// revision row may predate the Windows tarball (Plan 1 §4); fetching
+    /// `RootfsFormat::TarZst` against a row that lacks it is a hard error.
+    sha256_tar_zst: Option<String>,
     signed: bool,
+}
+
+impl Resolved {
+    /// The expected sha256 for the requested packaging.
+    fn sha256_for(&self, format: RootfsFormat) -> Result<String, FetchError> {
+        match format {
+            RootfsFormat::Squashfs => Ok(self.sha256.clone()),
+            RootfsFormat::TarZst => self.sha256_tar_zst.clone().ok_or_else(|| {
+                FetchError::MalformedSha256(
+                    "no sha256_tar_zst published for this revision".to_string(),
+                )
+            }),
+        }
+    }
 }
 
 fn parse_known_revisions_toml() -> Result<toml::Value, FetchError> {
@@ -547,12 +621,22 @@ fn resolve_revision(version: &str, flavor: &str, arch: &str) -> Result<Resolved,
     if sha.len() != 64 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(FetchError::MalformedSha256(sha));
     }
+    let sha256_tar_zst = match resolved_tbl.get("sha256_tar_zst").and_then(|v| v.as_str()) {
+        Some(s) => {
+            let s = s.trim().to_lowercase();
+            if s.len() != 64 || !s.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(FetchError::MalformedSha256(s));
+            }
+            Some(s)
+        }
+        None => None,
+    };
     let signed = resolved_tbl
         .get("signed")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    Ok(Resolved { schema, revision, sha256: sha, signed })
+    Ok(Resolved { schema, revision, sha256: sha, sha256_tar_zst, signed })
 }
 
 fn enumerate_flavors_for_schema_arch(

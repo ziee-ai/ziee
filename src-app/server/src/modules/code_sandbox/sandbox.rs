@@ -4,15 +4,23 @@
 //! hardening. Every flag here has a test row in the empirical-
 //! validation table.
 
+// Linux-only execution primitives — gated so the crate compiles on
+// macOS/Windows (where execution goes through the VM / WSL2 backend).
+#[cfg(target_os = "linux")]
 use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
+#[cfg(target_os = "linux")]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
 use std::process::Stdio;
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
+#[cfg(target_os = "linux")]
 use tokio::process::Command;
+#[cfg(target_os = "linux")]
 use tokio::time::timeout;
 use uuid::Uuid;
 
@@ -61,6 +69,7 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 600;
 ///   3. Optionally pipe the compiled seccomp filter bytes to a fd.
 ///   4. Spawn bwrap → wrap with tokio `timeout` → capture-with-cap.
 ///   5. Tear down cgroup scope on the way out.
+#[cfg(target_os = "linux")]
 #[tracing::instrument(
     name = "code_sandbox.exec",
     skip_all,
@@ -88,6 +97,13 @@ pub async fn run_in_sandbox(
     let caps = ensure.caps.clone();
     let rootfs_dir = ensure.mount_dir;
 
+    // Runtime-configurable resource caps (Plan 1 §6). Async fetch from the
+    // singleton; first call after process start loads from DB, every later
+    // call hits the in-process RwLock. Snapshot is an Arc so we drop the
+    // lock before doing any work.
+    let limits =
+        crate::modules::code_sandbox::resource_limits_cache::get().await?;
+
     let workspace = ctx.workspace.clone();
     // Identity files live OUTSIDE the per-conversation workspace bind
     // (under `<workspace_root>/identity/`) so the sandboxed shell
@@ -107,11 +123,17 @@ pub async fn run_in_sandbox(
     // Per-call cgroup scope, if available.
     let cgroup_scope = match &caps.cgroup {
         CgroupMode::Delegated(parent) => {
-            Some(cgroup::CgroupScope::create(parent, ctx.conversation_id).map_err(|e| {
-                tracing::warn!("cgroup scope creation failed: {e}; continuing without cgroup");
-                e
-            }).ok())
-                .flatten()
+            Some(
+                cgroup::CgroupScope::create(parent, ctx.conversation_id, &limits)
+                    .map_err(|e| {
+                        tracing::warn!(
+                            "cgroup scope creation failed: {e}; continuing without cgroup"
+                        );
+                        e
+                    })
+                    .ok(),
+            )
+            .flatten()
         }
         CgroupMode::None => None,
     };
@@ -124,13 +146,14 @@ pub async fn run_in_sandbox(
 
     let argv = build_bwrap_argv(
         &caps,
-        state,
+        &state.workspace_root,
         ctx,
         &rootfs_dir,
         command,
         synthetic.passwd_path(),
         synthetic.group_path(),
         seccomp_pipe.as_ref().map(|p| p.target_fd()),
+        &limits,
     );
 
     let started = Instant::now();
@@ -168,6 +191,18 @@ pub async fn run_in_sandbox(
         }
     }
 
+    // NOTE: we deliberately do NOT layer Landlock here. Applying a Landlock
+    // ruleset to the bwrap process (it would persist across execve into the
+    // workload) is keyed to the *inodes* of the host paths used to build it;
+    // bwrap then creates a fresh tmpfs root + `--tmpfs /tmp` + `--dev /dev` +
+    // `--proc /proc` whose inodes are under no granted hierarchy, so Landlock
+    // would deny the workload's access to /tmp, /dev/null and / and break
+    // essentially every command. The only workable Landlock would be an
+    // in-rootfs helper applied AFTER bwrap's mounts — but that's a rootfs-
+    // release change and is redundant with the mount namespace (the workload
+    // already only sees the sandbox mounts; mount/remount syscalls are seccomp-
+    // blocked). Filesystem confinement here is bwrap's mount-ns, not Landlock.
+
     let mut child = cmd
         .spawn()
         .map_err(|e| AppError::new(
@@ -176,8 +211,13 @@ pub async fn run_in_sandbox(
             format!("failed to spawn bwrap: {e}"),
         ))?;
 
-    // Attach the child pid to the cgroup scope (after fork, before
-    // exec inside bwrap actually starts the sandboxed binary).
+    // Attach the bwrap pid to the cgroup scope. (L2) This is post-spawn, so in
+    // principle there's a window before the workload is in the cgroup — but in
+    // practice bwrap's own setup (mount-ns construction, pivot, --proc/--dev)
+    // runs before it execs prlimit→bash→workload, and that latency far exceeds
+    // this attach, so the workload is in the cgroup before it starts. prlimit
+    // (applied to the workload itself, not bwrap) is the always-on backstop
+    // regardless. Not worth eliminating with unsafe pre_exec self-attach.
     if let Some(scope) = cgroup_scope.as_ref() {
         if let Some(pid) = child.id() {
             if let Err(e) = scope.attach_pid(pid) {
@@ -192,8 +232,10 @@ pub async fn run_in_sandbox(
     let stdout_handle = tokio::spawn(read_capped_owned(stdout));
     let stderr_handle = tokio::spawn(read_capped_owned(stderr));
 
-    // Hard wall-clock timeout. timeout=0 keeps the default.
-    let budget = Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS));
+    // Hard wall-clock timeout. timeout=0 keeps the configured default.
+    let budget = Duration::from_secs(
+        timeout_secs.unwrap_or(limits.timeout_secs.max(1) as u64),
+    );
     let wait_result = timeout(budget, child.wait()).await;
 
     let (timed_out, status) = match wait_result {
@@ -259,13 +301,26 @@ pub async fn run_in_sandbox(
 /// 5823061 — the `--as-pid-1` gating bug).
 pub(crate) fn build_bwrap_argv(
     caps: &HardeningCapabilities,
-    state: &CodeSandboxState,
+    // Root under which conversation attachments are staged. The Linux backend
+    // passes the host workspace root; the macOS/Windows VM backends pass the
+    // *guest* mount (so attachment binds resolve to guest paths) — this is the
+    // only thing the argv builder needed from the old `state` param.
+    workspace_root: &Path,
     ctx: &SandboxContext,
     rootfs_dir: &Path,
     user_cmd: &str,
     passwd_path: &Path,
     group_path: &Path,
-    seccomp_fd: Option<RawFd>,
+    // Raw fd number bwrap reads the seccomp filter from. Plain `i32` (not
+    // `RawFd`) so this argv builder stays OS-independent and shared across
+    // backends; only the Linux backend actually wires up the fd.
+    seccomp_fd: Option<i32>,
+    // Runtime-configurable resource caps (Plan 1 §6). Drives the prlimit
+    // literals at the bottom; cgroup-side caps (memory.max / pids.max /
+    // cpu.max) are applied by the cgroup module (Linux host) or by the
+    // guest agent reading `ExecRequest.cgroup` (macOS / WSL2). The caller
+    // resolves this via `resource_limits_cache::snapshot_or_defaults()`.
+    limits: &crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits,
 ) -> Vec<String> {
     let rootfs = rootfs_dir.to_str().unwrap_or_default();
     let workspace = ctx.workspace.to_string_lossy().to_string();
@@ -355,6 +410,20 @@ pub(crate) fn build_bwrap_argv(
         "dumb".into(),
     ];
 
+    // Mandatory deny: mask shell/runtime config dotfiles at the workspace root
+    // so an LLM-driven command can neither read them nor create/overwrite them
+    // to plant a hook for the host shell or other tools (Anthropic
+    // sandbox-runtime pattern; see DANGEROUS_DOTFILES doc). MUST come after the
+    // workspace --bind (above) so the masks layer on top of it; per bwrap
+    // semantics later binds override earlier ones. `--ro-bind /dev/null <path>`
+    // works whether <path> exists or not — bwrap creates it as a regular file
+    // pointing at /dev/null on the way in, so reads see empty + writes fail.
+    for dotfile in DANGEROUS_DOTFILES {
+        argv.push("--ro-bind".into());
+        argv.push("/dev/null".into());
+        argv.push(format!("/home/sandboxuser/{dotfile}"));
+    }
+
     // PID namespace + /proc handling per cached mode.
     // bwrap rejects `--as-pid-1` unless `--unshare-pid` is also set —
     // so the pid-1 alias is gated on Strict mode here.
@@ -379,6 +448,19 @@ pub(crate) fn build_bwrap_argv(
         }
     }
 
+    // Mask dangerous /proc files (runc/Docker do the same). Later binds
+    // overlay whatever /proc the PID-ns branch set up. CRITICAL in
+    // DevBindFallback mode, where the host's real /proc is bound: without
+    // these, `/proc/sysrq-trigger` can panic the host and `/proc/kcore` /
+    // `/proc/kallsyms` leak kernel memory + defeat KASLR. Defense-in-depth
+    // in Strict mode too. These four files exist on every Linux kernel, so
+    // a plain `--ro-bind` (not `-try`) is safe.
+    for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
+        argv.push("--ro-bind".into());
+        argv.push("/dev/null".into());
+        argv.push(masked.into());
+    }
+
     // Read-only binds for each conversation attachment at its original
     // filename. Foreign-attachment guard happens upstream in tools.
     for f in ctx.files.iter() {
@@ -387,7 +469,7 @@ pub(crate) fn build_bwrap_argv(
         if f.filename.contains('/') || f.filename.contains('\0') {
             continue;
         }
-        let host_path = workspace_attachment_path(&state.workspace_root, f.file_id);
+        let host_path = workspace_attachment_path(workspace_root, f.file_id);
         argv.push("--ro-bind-try".into());
         argv.push(host_path.display().to_string());
         argv.push(format!("/home/sandboxuser/{}", f.filename));
@@ -404,14 +486,23 @@ pub(crate) fn build_bwrap_argv(
     argv.push("--".into());
 
     // Wrap user code in `prlimit` so per-call rlimits apply to the
-    // workload, not to bwrap's own helper forks (validated:
-    // setting rlimits on bwrap itself starves bwrap).
+    // workload, not to bwrap's own helper forks (validated: setting rlimits
+    // on bwrap itself starves bwrap). Values are runtime-configurable via
+    // the `code_sandbox_settings` singleton (Plan 1 §6); the caller resolves
+    // the snapshot via `resource_limits_cache`.
     argv.push("/usr/bin/prlimit".into());
-    argv.push("--nproc=256".into());
-    argv.push(format!("--as={}", 4u64 * 1024 * 1024 * 1024)); // 4 GiB
-    argv.push(format!("--fsize={}", 256u64 * 1024 * 1024));   // 256 MiB
-    argv.push("--nofile=1024".into());
+    argv.push(format!("--nproc={}", limits.nproc_max));
+    argv.push(format!("--as={}", limits.address_space_bytes));
+    argv.push(format!("--fsize={}", limits.fsize_bytes));
+    argv.push(format!("--nofile={}", limits.nofile_max));
     argv.push("--core=0".into());
+    // CPU-seconds backstop (G4). Largely redundant — the wall-clock SIGKILL
+    // and cgroup cpu.max already bound runaway CPU — but cheap. Defaults
+    // generous (2× the default wall-clock budget) so it never preempts a
+    // legitimate long command before the wall-clock timeout does. We
+    // deliberately do NOT set --stack: a low RLIMIT_STACK breaks legitimate
+    // deep-recursion R.
+    argv.push(format!("--cpu={}", limits.cpu_secs_max));
     argv.push("--".into());
     argv.push("/bin/bash".into());
     argv.push("-lc".into());
@@ -437,9 +528,32 @@ struct SyntheticIdentity {
     group: PathBuf,
 }
 
-const SYNTHETIC_PASSWD: &str =
+// pub(crate) so the WSL2 backend can provision identical synthetic identity
+// files inside the imported distro (the macOS guest root bakes them in).
+pub(crate) const SYNTHETIC_PASSWD: &str =
     "sandboxuser:x:1001:1001:Sandbox User:/home/sandboxuser:/bin/bash\n";
-const SYNTHETIC_GROUP: &str = "sandboxuser:x:1001:\n";
+pub(crate) const SYNTHETIC_GROUP: &str = "sandboxuser:x:1001:\n";
+
+/// Shell / runtime config files at the workspace root that an LLM-driven sandbox
+/// command must NOT be able to read or write. Mirrors Anthropic sandbox-runtime's
+/// `DANGEROUS_FILES` list (`src/sandbox/sandbox-utils.ts:11-22`). Each one is
+/// either a shell-startup file (`.bashrc`, `.zshrc`, `.profile`, …) that the
+/// host shell could source on next login, or a tool-config file (`.gitconfig`,
+/// `.mcp.json`, …) that the LLM could subvert to alter outside-sandbox behavior
+/// (e.g. credential helpers, MCP server URLs). Masking with `--ro-bind /dev/null`
+/// makes every read appear empty AND every write fail with EROFS, regardless of
+/// whether the file already exists in the workspace.
+const DANGEROUS_DOTFILES: &[&str] = &[
+    ".gitconfig",
+    ".gitmodules",
+    ".bashrc",
+    ".bash_profile",
+    ".zshrc",
+    ".zprofile",
+    ".profile",
+    ".ripgreprc",
+    ".mcp.json",
+];
 
 impl SyntheticIdentity {
     /// Lazily ensure the synthetic passwd/group files exist under
@@ -508,6 +622,7 @@ fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
 // shuttle them to a fd that bwrap reads via `--seccomp <fd>`.
 // --------------------------------------------------------------------
 
+#[cfg(target_os = "linux")]
 struct SeccompPipe {
     read_fd: RawFd,
     /// Stable fd number we dup2 the read end to inside the bwrap child
@@ -515,6 +630,7 @@ struct SeccompPipe {
     target_fd: i32,
 }
 
+#[cfg(target_os = "linux")]
 impl SeccompPipe {
     fn install(bpf: Arc<Vec<u8>>) -> Result<Self, AppError> {
         // pipe(2) via libc — nix would be cleaner but we avoid the dep
@@ -601,6 +717,7 @@ impl SeccompPipe {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for SeccompPipe {
     fn drop(&mut self) {
         unsafe {
@@ -656,10 +773,12 @@ fn preview(s: &str, n: usize) -> &str {
 }
 
 // Re-export so non-sandbox callers don't need to touch RawFd directly.
+#[cfg(target_os = "linux")]
 pub use std::os::fd::FromRawFd;
 
 // Trait imports used above but otherwise unused locally — keep the
 // imports honest in -Dwarnings builds.
+#[cfg(target_os = "linux")]
 #[allow(dead_code)]
 fn _force_fd_imports(f: std::fs::File) -> RawFd {
     let fd = f.as_raw_fd();
@@ -721,6 +840,29 @@ mod tests {
         }
     }
 
+    /// SQL-default-matching `CodeSandboxResourceLimits` for Tier-1 argv tests.
+    /// Mirrors the migration-41 defaults so the prlimit assertions assert the
+    /// same numbers the production server starts with on a fresh install.
+    fn fake_limits() -> crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits {
+        use crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits;
+        let now = chrono::Utc::now();
+        CodeSandboxResourceLimits {
+            memory_max_bytes: 512 * 1024 * 1024,
+            memory_swap_max_bytes: 0,
+            pids_max: 256,
+            cpu_max: "100000 100000".to_string(),
+            address_space_bytes: 4 * 1024 * 1024 * 1024,
+            fsize_bytes: 256 * 1024 * 1024,
+            nproc_max: 256,
+            nofile_max: 1024,
+            cpu_secs_max: 1240,
+            timeout_secs: 620,
+            vm_idle_evict_secs: 900,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
     #[test]
     fn argv_clears_env_before_setenv() {
         // SECURITY regression test: --clearenv MUST appear before any
@@ -735,13 +877,14 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "echo hi",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
 
         let clearenv = argv
@@ -776,13 +919,14 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "echo hello",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         // There should be at least one `--` before the prlimit wrapper.
         let prlimit_idx = argv
@@ -807,13 +951,14 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         // Must use --dev-bind /proc /proc, NOT --proc /proc.
         assert!(argv.windows(3).any(|w| w == ["--dev-bind", "/proc", "/proc"]));
@@ -837,18 +982,79 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         assert!(argv.iter().any(|a| a == "--unshare-pid"));
         assert!(argv.windows(2).any(|w| w == ["--proc", "/proc"]));
         // Strict mode IS allowed to use --as-pid-1 (and we do).
         assert!(argv.iter().any(|a| a == "--as-pid-1"));
+    }
+
+    #[test]
+    fn argv_masks_dangerous_proc_files() {
+        // G2: /proc/{sysrq-trigger,kcore,kallsyms,kmsg} must be masked over
+        // /dev/null in every mode (critical in DevBindFallback, defense in
+        // depth in Strict). Regression guard against silently dropping a mask.
+        for mode in [PidNsMode::Strict, PidNsMode::DevBindFallback] {
+            let mut caps = fake_caps();
+            caps.pid_namespace = mode;
+            let state = fake_state();
+            let ctx = fake_ctx();
+            let argv = build_bwrap_argv(
+                &caps,
+                &state.workspace_root,
+                &ctx,
+                std::path::Path::new(&state.config.rootfs_path),
+                "x",
+                std::path::Path::new("/tmp/.sandbox_passwd"),
+                std::path::Path::new("/tmp/.sandbox_group"),
+                None,
+                &fake_limits(),
+            );
+            for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
+                assert!(
+                    argv.windows(3).any(|w| w == ["--ro-bind", "/dev/null", masked]),
+                    "mode {mode:?}: must mask {masked} with --ro-bind /dev/null; argv: {argv:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn argv_masks_dangerous_dotfiles_at_workspace_root() {
+        // Mirrors Anthropic sandbox-runtime's DANGEROUS_FILES protection
+        // (sandbox-utils.ts:11-22). Every entry in DANGEROUS_DOTFILES must
+        // appear as `--ro-bind /dev/null /home/sandboxuser/<name>` in the argv
+        // so an LLM-driven command can neither read the file (sees empty) nor
+        // create / overwrite it (EROFS).
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state.workspace_root,
+            &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+            &fake_limits(),
+        );
+        for dotfile in DANGEROUS_DOTFILES {
+            let expected = format!("/home/sandboxuser/{dotfile}");
+            assert!(
+                argv.windows(3).any(|w| w == ["--ro-bind", "/dev/null", expected.as_str()]),
+                "must mask {dotfile} with --ro-bind /dev/null; argv: {argv:?}"
+            );
+        }
     }
 
     /// Phase 3 regression test: every security-critical flag must
@@ -861,13 +1067,14 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "echo hi",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
 
         let must_have = [
@@ -913,25 +1120,27 @@ mod tests {
         let ctx = fake_ctx();
         let argv_without = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         assert!(!argv_without.iter().any(|a| a == "--seccomp"));
 
         let argv_with = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             Some(7),
+            &fake_limits(),
         );
         assert!(argv_with.windows(2).any(|w| w == ["--seccomp", "7"]));
     }
@@ -943,13 +1152,14 @@ mod tests {
         let ctx = fake_ctx();
         let argv = build_bwrap_argv(
             &caps,
-            &state,
+            &state.workspace_root,
             &ctx,
             std::path::Path::new(&state.config.rootfs_path),
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
             None,
+            &fake_limits(),
         );
         let s = argv.join(" ");
         assert!(s.contains("/usr/bin/prlimit"));

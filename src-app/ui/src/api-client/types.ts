@@ -106,6 +106,22 @@ export interface ChatStreamChunk {
   usage?: Usage
 }
 
+export interface CodeSandboxResourceLimits {
+  address_space_bytes: number
+  cpu_max: string
+  cpu_secs_max: number
+  created_at: string
+  fsize_bytes: number
+  memory_max_bytes: number
+  memory_swap_max_bytes: number
+  nofile_max: number
+  nproc_max: number
+  pids_max: number
+  timeout_secs: number
+  updated_at: string
+  vm_idle_evict_secs: number
+}
+
 export type ContentBlockDelta = {
   type: 'text_delta'
   delta: string
@@ -1544,6 +1560,20 @@ export interface UpdateAssistantRequest {
   parameters?: ModelParameters
 }
 
+export interface UpdateCodeSandboxResourceLimits {
+  address_space_bytes?: number
+  cpu_max?: string
+  cpu_secs_max?: number
+  fsize_bytes?: number
+  memory_max_bytes?: number
+  memory_swap_max_bytes?: number
+  nofile_max?: number
+  nproc_max?: number
+  pids_max?: number
+  timeout_secs?: number
+  vm_idle_evict_secs?: number
+}
+
 export interface UpdateConversationRequest {
   title?: string
 }
@@ -1868,10 +1898,12 @@ export const ApiEndpoints = {
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
   'CodeSandbox.evictEnvironment': 'DELETE /api/code-sandbox/environments/{flavor}',
+  'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
   'CodeSandbox.listEnvironments': 'GET /api/code-sandbox/environments',
   'CodeSandbox.listPrefetchTasks': 'GET /api/code-sandbox/prefetch',
   'CodeSandbox.startPrefetch': 'POST /api/code-sandbox/prefetch',
   'CodeSandbox.subscribePrefetchEvents': 'GET /api/code-sandbox/prefetch/{flavor}/events',
+  'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
   'Conversation.get': 'GET /api/conversations/{id}',
@@ -2034,10 +2066,12 @@ export type ApiEndpointParameters = {
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
   'CodeSandbox.evictEnvironment': { flavor: string }
+  'CodeSandbox.getResourceLimits': void
   'CodeSandbox.listEnvironments': void
   'CodeSandbox.listPrefetchTasks': void
   'CodeSandbox.startPrefetch': StartPrefetchBody
   'CodeSandbox.subscribePrefetchEvents': { flavor: string }
+  'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
@@ -2200,10 +2234,12 @@ export type ApiEndpointResponses = {
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
   'CodeSandbox.evictEnvironment': EnvironmentsResponse
+  'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
   'CodeSandbox.listEnvironments': EnvironmentsResponse
   'CodeSandbox.listPrefetchTasks': ListPrefetchTasksResponse
   'CodeSandbox.startPrefetch': StartPrefetchResponse
   'CodeSandbox.subscribePrefetchEvents': SSEPrefetchEvent
+  'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
   'Conversation.create': Conversation
   'Conversation.delete': void
   'Conversation.get': Conversation

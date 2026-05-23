@@ -13,6 +13,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use crate::common::AppError;
+use crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits;
 
 /// Per-call cgroup scope. Cleans up on Drop (best-effort; an already-
 /// OOM-killed cgroup auto-cleans when empty so rmdir is harmless).
@@ -21,7 +22,19 @@ pub struct CgroupScope {
 }
 
 impl CgroupScope {
-    pub fn create(parent: &Path, conversation_id: Uuid) -> Result<Self, AppError> {
+    /// Create a fresh per-call cgroup scope under `parent` and write the
+    /// configured caps (Plan 1 §6). Each `write_controller` MAY fail if the
+    /// parent slice didn't delegate that controller (`cgroup.subtree_control`
+    /// missing `+memory` / `+pids` / `+cpu`); the scope still works for
+    /// whatever IS delegated. We log loudly so operators see the silent
+    /// quota degradation — without that log, the sandbox would advertise
+    /// "configured caps" while a missing controller silently meant
+    /// "unlimited within the cgroup" for that resource.
+    pub fn create(
+        parent: &Path,
+        conversation_id: Uuid,
+        limits: &CodeSandboxResourceLimits,
+    ) -> Result<Self, AppError> {
         let nanos = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -36,22 +49,14 @@ impl CgroupScope {
             )
         })?;
 
-        // Defaults matched to the rlimits we set via prlimit inside
-        // the sandbox. cgroup is defense-in-depth; rlimits do the
-        // heavy lifting when cgroup is unavailable.
-        //
-        // Each write CAN legitimately fail if the parent slice didn't
-        // delegate that specific controller (e.g. `cgroup.subtree_control`
-        // contains `+memory +pids` but not `+cpu`). The scope still
-        // works — it just doesn't enforce the missing controller. We
-        // log loudly so operators see the silent quota degradation
-        // (without it, the sandbox advertises "512 MiB / 256 PIDs /
-        // 1 CPU" while a single missing controller silently means
-        // "unlimited within the cgroup" for that resource).
-        write_controller(&path, "memory.max", "536870912"); // 512 MiB
-        write_controller(&path, "memory.swap.max", "0");
-        write_controller(&path, "pids.max", "256");
-        write_controller(&path, "cpu.max", "100000 100000"); // 1 CPU
+        write_controller(&path, "memory.max", &limits.memory_max_bytes.to_string());
+        write_controller(
+            &path,
+            "memory.swap.max",
+            &limits.memory_swap_max_bytes.to_string(),
+        );
+        write_controller(&path, "pids.max", &limits.pids_max.to_string());
+        write_controller(&path, "cpu.max", &limits.cpu_max);
 
         Ok(Self { path })
     }

@@ -122,9 +122,14 @@ async function gotoSandboxEnvironments(page: Page, baseURL: string) {
   // when it re-optimizes deps mid-navigation (common on cold-cache
   // parallel test startup). The only recovery is a reload, so retry the
   // navigation up to 3 times until the page heading renders.
-  const heading = page.getByRole('heading', { name: 'Sandbox Environments' })
+  //
+  // The sandbox admin surface is now a single merged page at
+  // `/settings/sandbox`; the environments table lives in the
+  // "Rootfs environments" Card section. Assert the page-level heading
+  // ("Code Sandbox") so the page-level container has finished mounting.
+  const heading = page.getByRole('heading', { name: 'Code Sandbox' })
   for (let attempt = 1; attempt <= 3; attempt++) {
-    await page.goto(`${baseURL}/settings/sandbox-environments`)
+    await page.goto(`${baseURL}/settings/sandbox`)
     await page.waitForLoadState('networkidle').catch(() => {})
     try {
       await expect(heading).toBeVisible({ timeout: 10000 })

@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 
+pub mod backend;
 pub mod cgroup;
 pub mod config;
 pub mod handlers;
@@ -29,6 +30,8 @@ pub mod models;
 pub mod permissions;
 pub mod probes;
 pub mod repository;
+pub mod resource_limits;
+pub mod resource_limits_cache;
 pub mod routes;
 pub mod sandbox;
 pub mod streaming;
@@ -303,15 +306,13 @@ impl AppModule for CodeSandboxModule {
         // The one thing we still fail-loud on at boot is missing bwrap:
         // it's not something the operator can fix at runtime, and
         // surfacing it as a per-call MCP error would surprise users.
-        let host_caps = match probes::probe_host_only(&cfg) {
+        // Boot probe routed through the cross-platform backend seam: Linux
+        // checks bwrap+cgroup+seccomp (today's behavior), macOS checks
+        // aarch64+launcher, Windows checks wsl.exe+v2-default. Each backend
+        // logs its own "skipping registration" reason on `None`.
+        let host_caps = match backend::active().probe_host(&cfg) {
             Some(h) => h,
-            None => {
-                tracing::error!(
-                    "code_sandbox: bwrap not found on PATH; sandbox MCP row \
-                     will NOT be registered. Install bubblewrap and restart."
-                );
-                return Ok(());
-            }
+            None => return Ok(()),
         };
 
         // ---- Workspace root + per-conversation reaper (Phase 8) ----
@@ -423,11 +424,22 @@ async fn workspace_reaper(root: std::path::PathBuf) {
                     .unwrap_or(Duration::ZERO);
                 if age > MAX_AGE {
                     match std::fs::remove_dir_all(&path) {
-                        Ok(()) => tracing::info!(
-                            "code_sandbox: reaped stale workspace {} (age={}d)",
-                            path.display(),
-                            age.as_secs() / 86_400
-                        ),
+                        Ok(()) => {
+                            // L3: bound CONVERSATION_LOCKS — drop the lock entry
+                            // for the reaped conversation (dir name = conv UUID).
+                            if let Some(cid) = path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .and_then(|n| uuid::Uuid::parse_str(n).ok())
+                            {
+                                handlers::prune_conversation_lock(cid);
+                            }
+                            tracing::info!(
+                                "code_sandbox: reaped stale workspace {} (age={}d)",
+                                path.display(),
+                                age.as_secs() / 86_400
+                            )
+                        }
                         Err(e) => tracing::warn!(
                             "code_sandbox: failed to reap {}: {e}",
                             path.display()

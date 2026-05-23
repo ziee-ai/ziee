@@ -114,17 +114,18 @@ name = "mock-sampling-server"
 path = "tests/mcp/examples/mock_sampling_server.rs"
 
 [features]
-# `code_sandbox_seccomp` is on by default. The `libseccomp` dep
-# itself is target-conditional (Linux-only — see `[target.…]` below),
-# so non-Linux builds resolve the feature to a no-op and the
-# `#[cfg(all(feature = "…", target_os = "linux"))]`-gated code path
-# simply isn't compiled. Operators get the syscall-level
-# defense-in-depth out of the box on Linux without flipping any
-# build flag; Mac/Windows builds compile cleanly with no manual
-# `--no-default-features` dance.
+# `code_sandbox_seccomp` is on by default. The `sandbox-seccomp` dep
+# (which links `libseccomp`) is target-conditional (Linux-only — see
+# `[target.…]` below), so non-Linux builds resolve the feature to a no-op
+# and the `#[cfg(all(feature = "…", target_os = "linux"))]`-gated code path
+# simply isn't compiled. Operators get the syscall-level defense-in-depth
+# out of the box on Linux without flipping any build flag; Mac/Windows
+# builds compile cleanly with no manual `--no-default-features` dance.
+# The seccomp policy itself lives in the shared `sandbox-seccomp` crate so
+# the in-VM guest agent applies an identical filter.
 default = ["gpu-detect", "code_sandbox_seccomp"]
 gpu-detect = ["nvml-wrapper", "opencl3", "ash", "wgpu-hal"]
-code_sandbox_seccomp = ["dep:libseccomp"]
+code_sandbox_seccomp = ["dep:sandbox-seccomp"]
 
 # Linux-only deps. `libseccomp` is `optional = true` so the feature
 # machinery (`dep:libseccomp`) above can still reference it; on
@@ -132,7 +133,21 @@ code_sandbox_seccomp = ["dep:libseccomp"]
 # becomes inert (the seccomp module gates on `target_os = "linux"`
 # in addition to the feature).
 [target.'cfg(target_os = "linux")'.dependencies]
-libseccomp = { version = "0.3", optional = true }
+sandbox-seccomp = { path = "../sandbox-seccomp", optional = true }
+
+# The microVM code-sandbox backends (macOS libkrun, Windows WSL2) talk to the
+# in-guest agent over the shared control protocol.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
+
+# Windows: AF_HYPERV / SOCKADDR_HV bindings so the WSL2 backend can dial the
+# in-distro agent over the Hyper-V vsock instead of `127.0.0.1` — closing the
+# cross-distro reachability gap (HIGH-1 of .sec-audits/wsl2-source-deep-read-).
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinSock",
+] }
 
 [build-dependencies]
 tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros"] }

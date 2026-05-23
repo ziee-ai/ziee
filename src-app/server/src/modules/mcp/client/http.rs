@@ -3,7 +3,7 @@ use futures_util::StreamExt;
 use reqwest::Client;
 use serde_json::Value;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use super::auth::{self, OAuthClientConfig, StoredToken};
@@ -164,6 +164,212 @@ fn sse_event_id(event_block: &str) -> Option<String> {
     id
 }
 
+/// Drain a single open SSE response on the standalone GET stream. Updates
+/// `last_event_id` from each `id:` line and overrides `backoff_initial_ms`
+/// when the server sends a `retry:` field. Resets `reconnect_attempt` to 0
+/// on the first event of a successful open (per SDK semantics: a stream
+/// that's working gets full reconnect budget back). Returns when the
+/// stream closes or errors — the caller decides whether to reconnect.
+async fn drain_standalone_sse(
+    resp: reqwest::Response,
+    server_name: &str,
+    last_event_id: &mut Option<String>,
+    backoff_initial_ms: &mut u64,
+    reconnect_attempt: &mut u32,
+) {
+    let mut buf = String::new();
+    let mut stream = resp.bytes_stream();
+    let mut delivered_any_in_this_open = false;
+    while let Some(chunk) = stream.next().await {
+        let bytes = match chunk {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::info!(
+                    "[mcp] '{server_name}' standalone GET-SSE read error: {e}"
+                );
+                return;
+            }
+        };
+        let text = String::from_utf8_lossy(&bytes);
+        // Normalize CRLF before the buffer ever holds it. Real servers
+        // (Go/Java) emit `\r\n\r\n` event separators; a strict `\n\n`
+        // parser would buffer forever.
+        if text.contains('\r') {
+            buf.push_str(&text.replace("\r\n", "\n").replace('\r', "\n"));
+        } else {
+            buf.push_str(&text);
+        }
+        while let Some(end) = buf.find("\n\n") {
+            let event_block = buf[..end].to_string();
+            buf.drain(..end + 2);
+            if event_block.trim().is_empty() {
+                continue;
+            }
+            if !delivered_any_in_this_open {
+                // First event of a healthy connection — the SDK resets its
+                // reconnect budget here. Our budget is consecutive
+                // failures, so this restores it to full.
+                *reconnect_attempt = 0;
+                delivered_any_in_this_open = true;
+            }
+            if let Some(eid) = sse_event_id(&event_block) {
+                *last_event_id = Some(eid);
+            }
+            if let Some(retry_ms) = sse_event_retry_ms(&event_block) {
+                tracing::debug!(
+                    "[mcp] '{server_name}' standalone GET-SSE server set retry={retry_ms}ms"
+                );
+                *backoff_initial_ms = retry_ms;
+            }
+            route_unsolicited_event(server_name, &event_block);
+        }
+    }
+    tracing::debug!(
+        "[mcp] '{server_name}' standalone GET-SSE closed (last_event_id={:?})",
+        last_event_id
+    );
+}
+
+/// Common reconnect tick: log the reason, check budget, sleep the backoff
+/// delay, bump the counter. Returns `false` if the budget is exhausted (the
+/// caller should `return` to exit the task) or `true` if the caller should
+/// `continue` the reconnect loop.
+async fn backoff_and_retry(
+    server_name: &str,
+    kind: &str,
+    reason: &str,
+    reconnect_attempt: &mut u32,
+    backoff_initial_ms: u64,
+) -> bool {
+    if *reconnect_attempt >= SSE_RECONNECT_MAX_RETRIES {
+        tracing::info!(
+            "[mcp] '{server_name}' standalone GET-SSE giving up after {reconnect_attempt} \
+             reconnect attempts ({kind}: {reason})"
+        );
+        return false;
+    }
+    let delay = backoff_delay_ms(backoff_initial_ms, *reconnect_attempt);
+    *reconnect_attempt += 1;
+    tracing::info!(
+        "[mcp] '{server_name}' standalone GET-SSE {kind} ({reason}); \
+         reconnecting in {delay}ms (attempt {reconnect_attempt})"
+    );
+    tokio::time::sleep(Duration::from_millis(delay)).await;
+    true
+}
+
+/// Like `reconnect_delay_ms` but accepts a runtime-mutable initial — the
+/// server's `retry:` field overrides the constant default.
+fn backoff_delay_ms(initial_ms: u64, attempt: u32) -> u64 {
+    let d = (initial_ms as f64) * SSE_RECONNECT_GROW_FACTOR.powi(attempt as i32);
+    (d as u64).min(SSE_RECONNECT_MAX_MS)
+}
+
+/// Extract the SSE `retry:` field from an event block in milliseconds.
+/// Returns `None` if the field is absent or malformed. Per the EventSource
+/// spec, a server sends `retry:` to instruct clients to use that initial
+/// delay before reconnecting.
+fn sse_event_retry_ms(event_block: &str) -> Option<u64> {
+    for line in event_block.lines() {
+        if let Some(rest) = line.strip_prefix("retry:") {
+            if let Ok(n) = rest.trim().parse::<u64>() {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
+/// Concatenate the `data:` lines of an SSE event block. Each `data:` line
+/// contributes its content (sans the leading `data:` and optional single
+/// space), and multiple `data:` lines in the same block are joined with `\n`
+/// per the EventSource spec.
+fn sse_event_data(event_block: &str) -> String {
+    event_block
+        .lines()
+        .filter_map(|l| l.strip_prefix("data:").or_else(|| l.strip_prefix("data: ")))
+        .map(str::trim_start)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Dispatch an unsolicited SSE event received on the standalone GET stream.
+/// Today: parse the JSON-RPC envelope + log by method shape. Tomorrow: route
+/// `sampling/createMessage` to the registered SamplingHandler,
+/// `elicitation/create` to the elicitation channel, `notifications/progress`
+/// to the progress consumer for the matching token, `notifications/cancelled`
+/// into the in-flight cancel set — all those consumer channels are currently
+/// per-call (set on `tools/call`), so there is no live consumer for an
+/// unsolicited arrival outside a POST flow. The skeleton stays here so the
+/// future wiring is mechanical, AND so production logs name the method
+/// instead of dumping the raw JSON.
+fn route_unsolicited_event(server_name: &str, event_block: &str) {
+    let data = sse_event_data(event_block);
+    if data.is_empty() {
+        // Spec's "priming event" — `id:` with empty `data:` — used for
+        // Last-Event-Id seeding (GET-resume support is a Phase-3 follow-up).
+        return;
+    }
+    let parsed: Value = match serde_json::from_str(&data) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                "[mcp] standalone GET-SSE for '{server_name}' got non-JSON payload: {e}; data={}",
+                data.chars().take(200).collect::<String>()
+            );
+            return;
+        }
+    };
+    let method = parsed.get("method").and_then(|m| m.as_str());
+    let has_id = parsed.get("id").is_some();
+    match (method, has_id) {
+        (Some("notifications/progress"), _) => {
+            let pt = parsed
+                .get("params")
+                .and_then(|p| p.get("progressToken"))
+                .map(|t| t.to_string())
+                .unwrap_or_default();
+            tracing::info!(
+                "[mcp] '{server_name}' GET-SSE notifications/progress (token={pt}) — no consumer attached"
+            );
+        }
+        (Some("notifications/cancelled"), _) => {
+            tracing::info!(
+                "[mcp] '{server_name}' GET-SSE notifications/cancelled — no consumer attached"
+            );
+        }
+        (Some("notifications/message"), _) => {
+            tracing::debug!("[mcp] '{server_name}' GET-SSE notifications/message");
+        }
+        (Some(m), _) if m.ends_with("/list_changed") => {
+            tracing::debug!("[mcp] '{server_name}' GET-SSE {m}");
+        }
+        (Some("sampling/createMessage"), true) => {
+            tracing::warn!(
+                "[mcp] '{server_name}' GET-SSE sampling/createMessage received but no \
+                 consumer is attached to the standalone stream — request will time out on \
+                 the server side. Follow-up: wire SamplingHandler into the GET path."
+            );
+        }
+        (Some("elicitation/create"), true) => {
+            tracing::warn!(
+                "[mcp] '{server_name}' GET-SSE elicitation/create received but no \
+                 consumer is attached to the standalone stream — request will time out. \
+                 Follow-up: wire elicitation channel into the GET path."
+            );
+        }
+        (Some(m), _) => {
+            tracing::debug!("[mcp] '{server_name}' GET-SSE {m} (no router branch)");
+        }
+        (None, _) => {
+            tracing::debug!(
+                "[mcp] '{server_name}' GET-SSE non-method JSON: {}",
+                data.chars().take(200).collect::<String>()
+            );
+        }
+    }
+}
+
 /// Attempt to resume a dropped tool-call SSE stream via `GET` +
 /// `Last-Event-Id` (MCP resumability). Runs the bounded backoff retry loop
 /// internally; returns the fresh streaming response on success, or `None` if
@@ -248,6 +454,13 @@ pub struct HttpMcpClient {
     /// tool-call tasks so they attach the same bearer.
     oauth_token: Arc<RwLock<Option<StoredToken>>>,
     oauth_token_endpoint: Arc<RwLock<Option<String>>>,
+    /// Plan-3 Phase-3 (I2) — standalone GET-SSE consumer. After `initialized`
+    /// the client opens a `GET` with `Accept: text/event-stream` to receive
+    /// unsolicited server→client messages (notifications/progress beyond the
+    /// active POST stream, server-initiated sampling, …). The task is aborted
+    /// on `disconnect`; a 405 from the server is the documented "no standalone
+    /// stream" signal and the task exits silently.
+    get_sse_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl HttpMcpClient {
@@ -326,6 +539,7 @@ impl HttpMcpClient {
             oauth: oauth.map(Arc::new),
             oauth_token: Arc::new(RwLock::new(None)),
             oauth_token_endpoint: Arc::new(RwLock::new(None)),
+            get_sse_task: Mutex::new(None),
         })
     }
 
@@ -361,6 +575,254 @@ impl HttpMcpClient {
             *g = Some(endpoint);
         }
         Ok(access)
+    }
+
+    // (Module-private helpers `route_unsolicited_event` + `sse_event_data`
+    // live at module scope below — they don't capture `self`.)
+
+    /// Plan-3 Phase-3 (I2) — open the standalone GET-SSE stream.
+    ///
+    /// After `initialized` the spec lets the server push unsolicited messages
+    /// (notifications/progress on long-running work, server-initiated
+    /// sampling, server→client requests) over a `GET` with `Accept:
+    /// text/event-stream`. We spawn a background task that drains it; the
+    /// task is owned by the client (`get_sse_task: Mutex<Option<JoinHandle>>`)
+    /// and aborted by [`Self::abort_standalone_get_sse`] on disconnect.
+    ///
+    /// Conformance corners the task handles (mirrors the MCP TypeScript SDK
+    /// `_startOrAuthSse` + `_handleSseStream` reconnect loop — see
+    /// `.sec-audits/mcp-phase3-i2-get-sse-audit-2026-05-22.md`):
+    ///
+    ///   - **405 Method Not Allowed** → server doesn't offer the stream;
+    ///     exit silently. Our built-in `/code-sandbox` does this (POST-only).
+    ///   - **401** → if OAuth is configured, refresh the token (cached
+    ///     endpoint → `auth::refresh_token` fast path, else discover via the
+    ///     `WWW-Authenticate` challenge) and loop without counting it as a
+    ///     reconnect attempt. Otherwise log + exit.
+    ///   - **Other non-2xx / network error** → log + backoff + retry, up to
+    ///     [`SSE_RECONNECT_MAX_RETRIES`] consecutive failures.
+    ///   - **200 + text/event-stream** → drain events with CRLF
+    ///     normalization (Go/Java servers emit `\r\n\r\n`), tracking
+    ///     `Last-Event-Id` from `id:` lines and overriding the backoff
+    ///     initial on a server `retry:` field. The reconnect counter resets
+    ///     to 0 on the first delivered event of a connection so a working
+    ///     stream that occasionally hiccups keeps its budget.
+    ///   - **Stream end** → if still within retry budget, reconnect using
+    ///     the cached `Last-Event-Id` (server can replay anything emitted
+    ///     since); else exit.
+    ///   - **Per-event router** → [`route_unsolicited_event`] parses the
+    ///     JSON-RPC envelope + logs by method. Full consumer wiring
+    ///     (sampling/elicitation/progress) is deferred behind the
+    ///     no-current-consumer reality of this codebase, documented in the
+    ///     audit doc + at the call sites in the POST-stream loops.
+    fn spawn_standalone_get_sse(&self) {
+        let url = self.base_url.clone();
+        let server_name = self.server_name.clone();
+        let stream_client = self.stream_client.clone();
+        // Regular (timeout'd) client for the OAuth refresh round-trip — the
+        // streaming client has no overall timeout and would never bail on a
+        // wedged token endpoint.
+        let client = self.client.clone();
+        let session_id = self.session_id.clone();
+        let protocol_version = self.negotiated_protocol_version.clone();
+        let oauth = self.oauth.clone();
+        let oauth_token = self.oauth_token.clone();
+        let oauth_token_endpoint = self.oauth_token_endpoint.clone();
+
+        let handle = tokio::spawn(async move {
+            // Persistent across reconnects.
+            let mut last_event_id: Option<String> = None;
+            // SDK-default backoff curve; a server `retry:` field overrides the
+            // initial. The grow-factor + cap are constants.
+            let mut backoff_initial_ms: u64 = SSE_RECONNECT_INITIAL_MS;
+            // Counts consecutive failures. Reset to 0 on first event of an
+            // open stream — a long-lived stream that hiccups occasionally
+            // gets fresh budget after each successful re-establish.
+            let mut reconnect_attempt: u32 = 0;
+
+            loop {
+                // Re-snapshot the bearer on every iteration so an OAuth
+                // refresh that happened on the POST flow (or that we just
+                // ran on a 401 below) is picked up on the next connect.
+                let bearer = oauth_token
+                    .read()
+                    .ok()
+                    .and_then(|g| g.clone())
+                    .filter(|t| t.is_valid())
+                    .map(|t| t.access_token);
+
+                let mut req = stream_client
+                    .get(&url)
+                    .header("Accept", "text/event-stream");
+                if let Some(sid) = session_id.read().ok().and_then(|g| g.clone()) {
+                    req = req.header("mcp-session-id", sid);
+                }
+                if let Some(pv) = protocol_version.read().ok().and_then(|g| g.clone()) {
+                    req = req.header("MCP-Protocol-Version", pv);
+                }
+                if let Some(b) = &bearer {
+                    req = req.header("Authorization", format!("Bearer {b}"));
+                }
+                if let Some(leid) = &last_event_id {
+                    // Resume from the last delivered event. The server, if it
+                    // kept a replay buffer, will deliver everything since.
+                    req = req.header("Last-Event-Id", leid.as_str());
+                }
+
+                let resp = match req.send().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        if !backoff_and_retry(
+                            &server_name,
+                            "send error",
+                            &format!("{e}"),
+                            &mut reconnect_attempt,
+                            backoff_initial_ms,
+                        )
+                        .await
+                        {
+                            return;
+                        }
+                        continue;
+                    }
+                };
+                let status = resp.status();
+
+                // 405 → server doesn't offer the stream; exit silently.
+                if status.as_u16() == 405 {
+                    tracing::debug!(
+                        "[mcp] standalone GET-SSE for '{server_name}': 405 (no standalone stream)"
+                    );
+                    return;
+                }
+
+                // 401 → if OAuth is configured, refresh the token and loop.
+                // We do NOT count this as a reconnect attempt: token refresh
+                // is a known recovery path, not a transport failure.
+                if status.as_u16() == 401 {
+                    if let Some(oauth_cfg) = &oauth {
+                        let www = resp
+                            .headers()
+                            .get("www-authenticate")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("")
+                            .to_string();
+                        tracing::info!(
+                            "[mcp] '{server_name}' standalone GET-SSE returned 401; \
+                             running OAuth refresh"
+                        );
+                        let cached =
+                            oauth_token.read().ok().and_then(|g| g.clone());
+                        let endpoint = oauth_token_endpoint
+                            .read()
+                            .ok()
+                            .and_then(|g| g.clone());
+                        let result = match (cached, endpoint) {
+                            (Some(cur), Some(ep)) => {
+                                auth::refresh_token(&client, &ep, oauth_cfg, &cur)
+                                    .await
+                                    .map(|t| (t, ep))
+                            }
+                            _ => {
+                                auth::obtain_token_from_challenge(
+                                    &client, &www, oauth_cfg,
+                                )
+                                .await
+                            }
+                        };
+                        match result {
+                            Ok((token, endpoint)) => {
+                                if let Ok(mut g) = oauth_token.write() {
+                                    *g = Some(token);
+                                }
+                                if let Ok(mut g) = oauth_token_endpoint.write() {
+                                    *g = Some(endpoint);
+                                }
+                                continue;
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "[mcp] '{server_name}' standalone GET-SSE OAuth \
+                                     refresh failed: {e}; exiting"
+                                );
+                                return;
+                            }
+                        }
+                    }
+                    tracing::warn!(
+                        "[mcp] standalone GET-SSE for '{server_name}' returned 401 \
+                         with no OAuth configured; exiting"
+                    );
+                    return;
+                }
+
+                // Other non-2xx → backoff + retry.
+                if !status.is_success() {
+                    if !backoff_and_retry(
+                        &server_name,
+                        "non-success",
+                        &format!("HTTP {status}"),
+                        &mut reconnect_attempt,
+                        backoff_initial_ms,
+                    )
+                    .await
+                    {
+                        return;
+                    }
+                    continue;
+                }
+
+                // 200 + SSE — drain. The helper updates last_event_id from
+                // `id:` lines + backoff_initial_ms from `retry:` fields, and
+                // returns when the stream ends.
+                drain_standalone_sse(
+                    resp,
+                    &server_name,
+                    &mut last_event_id,
+                    &mut backoff_initial_ms,
+                    &mut reconnect_attempt,
+                )
+                .await;
+
+                // Stream ended (server close or read error). If we have
+                // budget AND we have a Last-Event-Id (i.e. the stream
+                // delivered at least one event with an id at SOME point —
+                // server is resumable), reconnect.
+                if reconnect_attempt >= SSE_RECONNECT_MAX_RETRIES {
+                    tracing::debug!(
+                        "[mcp] '{server_name}' standalone GET-SSE exhausted \
+                         reconnect budget ({reconnect_attempt} consecutive failures)"
+                    );
+                    return;
+                }
+                let delay = backoff_delay_ms(backoff_initial_ms, reconnect_attempt);
+                reconnect_attempt += 1;
+                tracing::debug!(
+                    "[mcp] '{server_name}' standalone GET-SSE reconnecting in {delay}ms \
+                     (attempt {reconnect_attempt}, Last-Event-Id={:?})",
+                    last_event_id
+                );
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
+        });
+
+        if let Ok(mut g) = self.get_sse_task.lock() {
+            // If a previous task is still around (reconnect), abort it first.
+            if let Some(old) = g.take() {
+                old.abort();
+            }
+            *g = Some(handle);
+        }
+    }
+
+    /// Abort the standalone GET-SSE task if running. Called from
+    /// [`Self::disconnect`]; safe to call when no task is running.
+    fn abort_standalone_get_sse(&self) {
+        if let Ok(mut g) = self.get_sse_task.lock() {
+            if let Some(h) = g.take() {
+                h.abort();
+            }
+        }
     }
 
     /// Allocate the next monotonically increasing JSON-RPC request id.
@@ -1385,22 +1847,23 @@ impl McpClient for HttpMcpClient {
     async fn connect(&mut self) -> Result<(), AppError> {
         self.do_initialize().await?;
         self.connected = true;
-        // Note on the standalone GET-SSE stream (MCP spec § Transports):
-        // we deliberately do NOT open one. Sessions here are ephemeral —
-        // a fresh client connects and disconnects for every tool call (see
-        // `SessionManager::get_or_create_with_context`) — and nothing in this app
-        // produces or consumes *unsolicited* server→client messages: every
-        // elicitation / sampling / progress arrives interleaved on the POST
-        // tools/call stream, which we already handle. Auto-opening a GET
-        // stream per call would be pure overhead with no consumer. Servers
-        // signal "no standalone stream" by 405-ing GET, which our own
-        // built-in server does. Resumability of the POST stream (the part
-        // that has real value against flaky external servers) IS implemented
-        // — see `try_resume_sse`.
+        // Plan-3 Phase-3 (I2) — open the standalone GET-SSE per MCP spec
+        // § Transports. The stream carries unsolicited server→client messages
+        // (progress notifications for in-flight work, server-initiated
+        // sampling, etc.). Servers that don't offer it 405; our built-in
+        // /code-sandbox does (POST-only route — axum returns 405 on GET) and
+        // the task exits silently. The task is owned by the client and
+        // aborted on `disconnect`.
+        self.spawn_standalone_get_sse();
         Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<(), AppError> {
+        // Plan-3 Phase-3 (I2): the standalone GET-SSE task is tied to this
+        // session. Abort it FIRST so the in-flight HTTP read doesn't keep
+        // the connection alive while we send the DELETE.
+        self.abort_standalone_get_sse();
+
         // Per MCP spec § Session Management: "Clients that no longer need a
         // particular session SHOULD send an HTTP DELETE to the MCP endpoint
         // with the MCP-Session-Id header, to explicitly terminate the session."

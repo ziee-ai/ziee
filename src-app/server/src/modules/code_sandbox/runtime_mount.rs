@@ -38,6 +38,10 @@
 //!   squashfuse child. Each unmounts itself. No app cooperation.
 
 use std::collections::HashMap;
+// Linux-only: `pre_exec` (PDEATHSIG) on the squashfuse child. Gated so the
+// crate compiles on macOS/Windows, where mounting happens in the VM / WSL2
+// backend rather than via a host squashfuse process.
+#[cfg(target_os = "linux")]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -104,6 +108,22 @@ pub enum ReadyError {
     SchemaMismatch { found: u32, expected: u32 },
     SchemaReadFailed { reason: String },
     PidNsDisabled { reason: String },
+    // ── VM-backend lazy-init failures (Plan 1 §5) ──
+    // Cross-platform but currently only constructed on macOS/Windows; kept on
+    // all builds so a stray `match` is total.
+    /// `wsl.exe` is absent from PATH (no WSL installed).
+    Wsl2NotPresent,
+    /// Only WSL v1 distros are available; bwrap needs WSL v2's Linux kernel.
+    Wsl1Refused,
+    /// The provisioned WSL distro can't enable unprivileged user namespaces —
+    /// even after writing the sysctls, the kernel/AppArmor profile blocks them.
+    UsernsDisabledInWsl,
+    /// A libkrun (macOS) / wsl.exe (Windows) microVM failed to boot within the
+    /// deadline (`reason` carries the specific cause).
+    VmBootFailed { reason: String },
+    /// libkrun's dylib could not be loaded by the macOS launcher (the dep
+    /// wasn't bundled, or the runtime linker can't find it).
+    LibkrunMissing,
 }
 
 impl ReadyError {
@@ -161,6 +181,39 @@ impl ReadyError {
                 "SANDBOX_PIDNS_DISABLED",
                 format!("sandbox cannot start: {reason}"),
             ),
+            ReadyError::Wsl2NotPresent => AppError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SANDBOX_WSL2_NOT_PRESENT",
+                "sandbox cannot start: WSL is not installed on this Windows host. \
+                 Install it with `wsl --install`.",
+            ),
+            ReadyError::Wsl1Refused => AppError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SANDBOX_WSL1_REFUSED",
+                "sandbox cannot start: WSL v1 detected; bwrap needs the WSL v2 \
+                 Linux kernel. Run `wsl --set-default-version 2`.",
+            ),
+            ReadyError::UsernsDisabledInWsl => AppError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SANDBOX_USERNS_DISABLED_IN_WSL",
+                "sandbox cannot start: the WSL distro does not allow \
+                 unprivileged user namespaces (bwrap --unshare-user). Either \
+                 the kernel was built without CONFIG_USER_NS, or AppArmor is \
+                 blocking unprivileged userns and provisioning could not \
+                 disable it.",
+            ),
+            ReadyError::VmBootFailed { reason } => AppError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SANDBOX_VM_BOOT_FAILED",
+                format!("sandbox cannot start: VM boot failed: {reason}"),
+            ),
+            ReadyError::LibkrunMissing => AppError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "SANDBOX_LIBKRUN_MISSING",
+                "sandbox cannot start: libkrun dylib could not be loaded by \
+                 the macOS VM launcher. Verify the app bundle includes \
+                 libkrun.dylib in Contents/Frameworks.",
+            ),
         }
     }
 }
@@ -183,7 +236,17 @@ pub async fn ensure_rootfs_ready(
         .await;
     match cached {
         Ok(outcome) => Ok(outcome.clone()),
-        Err(e) => Err(e.to_app_error()),
+        Err(e) => {
+            // L1: do NOT permanently cache a failed init. A transient failure
+            // (fetch network blip, mount timeout) would otherwise wedge the
+            // flavor until an admin evict. Drop the cell so the next call
+            // re-inits (recovers when the network/mount recovers; a persistent
+            // failure like a schema mismatch just re-fails cheaply — cache hit,
+            // mount skip, sentinel re-read). `remove_if` with identity guards
+            // against clobbering a fresh cell another caller just inserted.
+            ready_map.remove_if(flavor, |_, v| Arc::ptr_eq(v, &cell));
+            Err(e.to_app_error())
+        }
     }
 }
 
@@ -364,6 +427,9 @@ async fn mount_if_needed(
     // with the server even on SIGKILL/OOM-kill.
     let mut cmd = Command::new("squashfuse");
     cmd.arg("-f").arg(sqfs_path).arg(mount_dir);
+    // PR_SET_PDEATHSIG makes the FUSE daemon die with the server even on
+    // SIGKILL/OOM. Linux-only; macOS/Windows mount inside the VM/WSL2 guest.
+    #[cfg(target_os = "linux")]
     unsafe {
         cmd.pre_exec(|| {
             let r = libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0);
@@ -446,9 +512,12 @@ pub async fn shutdown() {
         // cleanly. (tokio's Child::kill sends SIGKILL, which would
         // leave the mount table referencing a dead process.)
         if let Some(pid) = child.id() {
+            #[cfg(target_os = "linux")]
             unsafe {
                 libc::kill(pid as libc::pid_t, libc::SIGTERM);
             }
+            #[cfg(not(target_os = "linux"))]
+            let _ = pid;
             let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
         }
         // Defensive unmount in case squashfuse died without
@@ -498,9 +567,12 @@ pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
         let taken = slot.lock().await.remove(flavor);
         if let Some(MountedRootfs { mut child, mount_dir }) = taken {
             if let Some(pid) = child.id() {
+                #[cfg(target_os = "linux")]
                 unsafe {
                     libc::kill(pid as libc::pid_t, libc::SIGTERM);
                 }
+                #[cfg(not(target_os = "linux"))]
+                let _ = pid;
                 let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
             }
             let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;

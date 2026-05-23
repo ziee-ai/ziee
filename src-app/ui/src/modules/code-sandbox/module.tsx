@@ -4,11 +4,12 @@ import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useSandboxEnvironmentsStore } from './stores/SandboxEnvironments.store'
+import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
 import './types' // CRITICAL: enable store type declaration merging
 
-const SandboxEnvironmentsPage = lazyWithPreload(() =>
-  import('./components/SandboxEnvironmentsPage').then(m => ({
-    default: m.SandboxEnvironmentsPage,
+const SandboxSettingsPage = lazyWithPreload(() =>
+  import('./components/SandboxSettingsPage').then(m => ({
+    default: m.SandboxSettingsPage,
   })),
 )
 
@@ -16,13 +17,13 @@ export default createModule({
   metadata: {
     name: 'code-sandbox',
     version: '1.0.0',
-    description: 'Code sandbox rootfs environment management',
+    description: 'Code sandbox rootfs environment management + resource limits',
   },
   dependencies: ['router'],
   routes: [
     {
-      path: '/settings/sandbox-environments',
-      element: SandboxEnvironmentsPage,
+      path: '/settings/sandbox',
+      element: SandboxSettingsPage,
       requiresAuth: true,
       layout: SettingsLayoutDef,
     },
@@ -32,14 +33,18 @@ export default createModule({
       name: 'SandboxEnvironments',
       store: useSandboxEnvironmentsStore,
     },
+    {
+      name: 'SandboxResourceLimits',
+      store: useSandboxResourceLimitsStore,
+    },
   ],
   slots: {
     settingsAdminPages: [
       {
-        id: 'sandbox-environments',
+        id: 'code-sandbox',
         icon: <CloudDownloadOutlined />,
-        label: 'Sandbox Environments',
-        path: 'sandbox-environments',
+        label: 'Code Sandbox',
+        path: 'sandbox',
         order: 26,
       },
     ],

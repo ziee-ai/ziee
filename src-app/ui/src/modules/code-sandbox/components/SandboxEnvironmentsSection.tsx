@@ -1,10 +1,9 @@
-import { Alert, Button, Popconfirm, Progress, Spin, Table, Tag, Tooltip } from 'antd'
+import { Alert, Button, Card, Popconfirm, Progress, Spin, Table, Tag, Tooltip } from 'antd'
 import {
   CheckCircleTwoTone,
   CloudDownloadOutlined,
   DeleteOutlined,
 } from '@ant-design/icons'
-import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import type { EnvironmentInfo, FetchPhase } from '@/api-client/types'
@@ -43,7 +42,15 @@ function phasePercent(phase?: FetchPhase): number {
   }
 }
 
-export function SandboxEnvironmentsPage() {
+/**
+ * Rootfs environments admin section. Rendered as a `<Card>` inside the parent
+ * `SandboxSettingsPage`. Owns the flavor list, prefetch action (with live
+ * SSE progress), and evict action. The card body shows a permission-denied
+ * alert when the viewer lacks `code_sandbox::environments::read` (so the
+ * section just becomes a "you don't have access" stub rather than vanishing
+ * — matches how UsersSettings handles read-vs-manage).
+ */
+export function SandboxEnvironmentsSection() {
   const { environments, loading, error, progress, evicting } =
     Stores.SandboxEnvironments
   const { permissions } = Stores.Auth
@@ -53,13 +60,13 @@ export function SandboxEnvironmentsPage() {
 
   if (!canRead) {
     return (
-      <SettingsPageContainer title="Sandbox Environments">
+      <Card title="Rootfs environments" style={{ marginBottom: 16 }}>
         <Alert
           type="warning"
           showIcon
           message="You don't have permission to view sandbox environments."
         />
-      </SettingsPageContainer>
+      </Card>
     )
   }
 
@@ -198,11 +205,10 @@ export function SandboxEnvironmentsPage() {
   ]
 
   return (
-    <SettingsPageContainer
-      title="Sandbox Environments"
-      subtitle="Pre-fetch rootfs flavors so the first code execution doesn't pay download latency."
-    >
-      {error && <Alert type="error" showIcon message={error} />}
+    <Card title="Rootfs environments" style={{ marginBottom: 16 }}>
+      {error && (
+        <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />
+      )}
       {loading ? (
         <Spin />
       ) : (
@@ -214,6 +220,6 @@ export function SandboxEnvironmentsPage() {
           onRow={row => ({ 'data-flavor': row.flavor }) as any}
         />
       )}
-    </SettingsPageContainer>
+    </Card>
   )
 }
