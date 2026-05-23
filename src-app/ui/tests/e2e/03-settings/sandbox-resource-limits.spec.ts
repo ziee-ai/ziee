@@ -156,25 +156,33 @@ test.describe('Sandbox resource limits admin settings', () => {
     await expect(page.getByLabel('cgroup pids.max')).toHaveValue('128')
   })
 
-  test('rejects an out-of-range memory value before submit', async ({
+  test('rejects a malformed cpu_max before submit', async ({
     page,
     testInfra,
   }) => {
+    // cpu_max is a free-form text field (regex pattern validator), so
+    // AntD does NOT auto-clamp the input back into range the way the
+    // numeric InputNumbers do. That makes it the right field to exercise
+    // the "form validator blocks PUT" path end-to-end. Numeric clamping
+    // is itself part of the contract — covered separately by the unit
+    // tests in resource_limits.rs:validate() and the Tier-3 422-response
+    // tests in tier3_resource_limits.rs.
     const { baseURL } = testInfra
     const state = { current: defaults(), lastPatch: null as Partial<Row> | null }
     await loginAsAdmin(page, baseURL)
     await mockLimits(page, state)
     await gotoResourceLimits(page, baseURL)
 
-    // 8 MiB is below the 16 MiB floor.
-    await page.getByLabel('memory.max').fill('8')
+    // "abc 100000" violates the `^[0-9]+ [0-9]+$` pattern.
+    const cpu = page.getByLabel('cgroup cpu.max')
+    await cpu.fill('abc 100000')
     await page.getByRole('button', { name: 'Save' }).click()
 
-    // AntD form validators render the message inline. The server PUT
-    // should NOT have fired.
-    await expect(page.getByText('must be ≥ 16 MiB').first()).toBeVisible({
-      timeout: 5000,
-    })
+    // AntD Form.Item renders the validator error inline.
+    await expect(
+      page.getByText('shape: "<quota> <period>" (digits)').first(),
+    ).toBeVisible({ timeout: 5000 })
+    // And the server PUT must not have fired.
     expect(state.lastPatch).toBeNull()
   })
 })
