@@ -174,3 +174,34 @@ The "do now" group is ~30 lines of change. The "defer" group (H4+H5+M3+M4+M5) is
 - Against any server that *does* serve GET-SSE: we'll connect, drain events, log them, and silently ignore any `roots/list_changed` / `notifications/progress` / sampling / elicitation that arrives. This is **silent feature loss**, not a crash. Audit-known.
 - Against a CRLF-terminating server: parser will silently buffer forever (until disconnect). Fix M2 before testing externally.
 - Against an OAuth server with token TTL < session lifetime: standalone GET dies at first refresh boundary, no recovery. Fix H4+H5 before relying on OAuth in production.
+
+---
+
+## 2026-05-23 update — all deferred findings closed
+
+Implemented the cohesive follow-up the original audit deferred. Code in
+`spawn_standalone_get_sse` now matches the MCP TypeScript SDK
+`_startOrAuthSse` + `_handleSseStream` semantics. Tests in
+`conformance_resumability_test.rs` (now 7 cases, 3 new for these fixes).
+
+| Finding | Before | After | Test |
+|---|---|---|---|
+| **H3** — `Last-Event-Id` on standalone GET | not sent | tracked per iteration via `last_event_id: Option<String>`, attached on reconnect | `standalone_get_sse_reconnects_with_last_event_id_on_close` |
+| **H4** — reconnect loop with backoff + max retries | exit on stream end | full reconnect loop: `SSE_RECONNECT_INITIAL_MS` × 1.5 ^ attempt, cap 30s, max 2 consecutive failures, counter resets on first delivered event | covered by H3 + H5 tests |
+| **H5** — OAuth refresh on 401 | warn + exit | refresh via cached endpoint or PRM discovery; does NOT count toward retry budget | `standalone_get_sse_refreshes_oauth_on_401_and_retries` |
+| **M3** — `id:` tracking on GET | not tracked | yes, in `drain_standalone_sse` | (H3 test) |
+| **M4** — server `retry:` field honored | ignored | overrides `backoff_initial_ms` on each receipt | `standalone_get_sse_honors_server_retry_field_for_reconnect_delay` |
+| **M5** — bearer refresh mid-stream | snapshotted once at task spawn | re-snapshotted at each reconnect iteration; explicit refresh on 401 | (H5 test) |
+
+**H2** (open only on initialized 202) — verified our `spawn_standalone_get_sse`
+call already runs only after `do_initialize()` returns Ok, which is post-202.
+The "wasted round-trip against JSON-only servers" remains; cost is one 405 per
+connect and the SDK doesn't optimize this either.
+
+**H1** (header casing) — cosmetic; RFC 7230 says header field names are
+case-insensitive. No change.
+
+Mock fixture extension: `arm_401_on_next_get()` one-shot flag that forces the
+next GET to return 401 + `WWW-Authenticate`, used to drive the H5 test.
+
+Sweep: 7/7 resumability tests, 134/134 full MCP suite.

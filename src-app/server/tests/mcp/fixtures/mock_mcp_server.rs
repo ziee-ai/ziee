@@ -83,6 +83,11 @@ struct MockState {
     oauth_access_token: Mutex<String>,
     /// If set, `/token` validates the HTTP Basic `client_id:client_secret`.
     oauth_expected_client: Mutex<Option<(String, String)>>,
+    /// One-shot: force the very next GET-SSE request to return 401 + a
+    /// `WWW-Authenticate` challenge, then clear. Used to drive the client's
+    /// "refresh on 401 mid-stream" code path without inventing a way to
+    /// invalidate the cached bearer from the test side.
+    force_401_on_next_get: Mutex<bool>,
     /// Own base URL (e.g. `http://127.0.0.1:PORT/`) for building the absolute
     /// `resource_metadata` URL in the `WWW-Authenticate` challenge.
     base_url: String,
@@ -125,6 +130,7 @@ impl MockMcpServer {
             require_oauth: Mutex::new(false),
             oauth_access_token: Mutex::new("mock-access-token".to_string()),
             oauth_expected_client: Mutex::new(None),
+            force_401_on_next_get: Mutex::new(false),
             base_url: base_url.clone(),
         });
 
@@ -193,6 +199,14 @@ impl MockMcpServer {
     /// Set the session ID the mock will return on initialize.
     pub fn set_session_id(&self, id: Option<&str>) {
         *self.state.session_id_to_assign.lock().unwrap() = id.map(|s| s.to_string());
+    }
+
+    /// Force the next GET-SSE request to return 401 + a `WWW-Authenticate`
+    /// challenge (one-shot — flips back after firing). Used to drive the
+    /// client's "refresh OAuth on 401 mid-stream" code path without
+    /// inventing a way to invalidate the cached bearer from the test side.
+    pub fn arm_401_on_next_get(&self) {
+        *self.state.force_401_on_next_get.lock().unwrap() = true;
     }
 
     /// Make the next request fail with HTTP 404 (one-shot — flips back
@@ -380,6 +394,24 @@ async fn handle_get(State(state): State<Arc<MockState>>, headers: HeaderMap) -> 
         headers: header_map,
         body: serde_json::Value::Null,
     });
+
+    // One-shot 401 — armed by `arm_401_on_next_get` to drive the client's
+    // mid-stream OAuth-refresh path. Returns a spec-shaped challenge so the
+    // client's `auth::obtain_token_from_challenge` finds the PRM URL.
+    {
+        let mut g = state.force_401_on_next_get.lock().unwrap();
+        if *g {
+            *g = false;
+            let prm =
+                format!("{}.well-known/oauth-protected-resource", state.base_url);
+            let www = format!("Bearer resource_metadata=\"{prm}\"");
+            return Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .header("WWW-Authenticate", www)
+                .body(Body::from(""))
+                .unwrap();
+        }
+    }
 
     // Route by `Last-Event-Id` presence: a resume GET (with the header)
     // pulls from the resume queue; a standalone GET (no header) pulls from

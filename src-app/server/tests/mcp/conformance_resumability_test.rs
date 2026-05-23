@@ -12,7 +12,9 @@
 //! the result and (b) issued a GET carrying the correct `Last-Event-Id`.
 
 use super::fixtures::mock_mcp_server::{MockMcpServer, MockResponse};
-use ziee_chat::{HttpMcpClient, McpClient, McpServer, TransportType, UsageMode};
+use ziee_chat::{
+    HttpMcpClient, McpClient, McpServer, OAuthClientConfig, TransportType, UsageMode,
+};
 
 fn server_config(url: String) -> McpServer {
     McpServer {
@@ -89,6 +91,158 @@ data: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"resume
         .get("last-event-id")
         .expect("resume GET must carry a Last-Event-Id header");
     assert_eq!(leid, "s1_0", "resume must reference the last priming event id");
+
+    client.disconnect().await.ok();
+}
+
+// ─── Phase-3 audit follow-ups (H3 / H4 / H5 / M3 / M4 / M5) ──────────────────
+
+/// **H3 / M3**: the standalone GET-SSE reconnects after the server closes,
+/// carrying the last `id:` it observed in the `Last-Event-Id` header. This
+/// proves the per-iteration last-event-id tracking + the reconnect loop +
+/// the spec's "resume from where you left off" semantics.
+///
+/// Mock orchestration: queue a SHORT-RETRY event on the standalone GET (sets
+/// the backoff initial to 100ms so the test finishes fast), and queue the
+/// reconnect's payload on the resume queue (the second GET will carry a
+/// `Last-Event-Id` header, so per the mock's queue split it routes there).
+#[tokio::test]
+async fn standalone_get_sse_reconnects_with_last_event_id_on_close() {
+    let mock = MockMcpServer::start().await;
+    // First open: deliver one event with id=g_0 and `retry: 100` (cuts the
+    // 1000ms default reconnect delay to 100ms), then close.
+    mock.on_get_standalone(MockResponse::SseRaw(
+        "retry: 100\nevent: message\nid: g_0\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"level\":\"info\",\"data\":\"first\"}}\n\n".to_string(),
+    ));
+    // Reconnect: the second GET carries `Last-Event-Id: g_0` → pulls from the
+    // resume queue.
+    mock.on_get_resume(MockResponse::SseRaw(
+        "event: message\nid: g_1\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"level\":\"info\",\"data\":\"second\"}}\n\n".to_string(),
+    ));
+
+    let mut client = HttpMcpClient::new(server_config(mock.base_url())).unwrap();
+    client.connect().await.expect("connect");
+
+    // Wait up to ~3s for the second GET (the reconnect) to land at the mock.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    let resume_get_arrived = loop {
+        let received = mock.received();
+        let resume_get = received
+            .iter()
+            .find(|r| r.method == "__get_sse" && r.headers.contains_key("last-event-id"));
+        if resume_get.is_some() {
+            break resume_get.cloned();
+        }
+        if std::time::Instant::now() > deadline {
+            panic!(
+                "reconnect GET with Last-Event-Id never arrived; received: {:?}",
+                received
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    };
+    let resume_get = resume_get_arrived.expect("resume GET found");
+    assert_eq!(
+        resume_get.headers.get("last-event-id").map(String::as_str),
+        Some("g_0"),
+        "reconnect must carry the last delivered event id"
+    );
+
+    client.disconnect().await.ok();
+}
+
+/// **H4 / M4**: a server `retry:` field overrides the default 1000ms initial
+/// backoff. We measure the elapsed time between the first close and the
+/// second GET to confirm the reconnect happened well under the SDK default —
+/// proves the `retry:` honoring path runs (and rules out a "we just sleep
+/// 1000ms" regression).
+#[tokio::test]
+async fn standalone_get_sse_honors_server_retry_field_for_reconnect_delay() {
+    let mock = MockMcpServer::start().await;
+    // Event with `retry: 100` — slashes the reconnect delay 10x.
+    mock.on_get_standalone(MockResponse::SseRaw(
+        "retry: 100\nevent: message\nid: g_0\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{}}\n\n".to_string(),
+    ));
+    // Second GET — we don't care about its body, just that it arrived in time.
+    mock.on_get_resume(MockResponse::SseRaw(
+        "event: message\nid: g_1\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{}}\n\n".to_string(),
+    ));
+
+    let mut client = HttpMcpClient::new(server_config(mock.base_url())).unwrap();
+    let started = std::time::Instant::now();
+    client.connect().await.expect("connect");
+
+    // Wait for the resume GET; budget < the 1000ms SDK default so a
+    // regression that ignored `retry:` and used the default would fail.
+    let deadline = started + std::time::Duration::from_millis(700);
+    loop {
+        if mock
+            .received()
+            .iter()
+            .any(|r| r.method == "__get_sse" && r.headers.contains_key("last-event-id"))
+        {
+            break;
+        }
+        if std::time::Instant::now() > deadline {
+            panic!(
+                "reconnect GET did not arrive within 700ms — server `retry:` likely ignored"
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    client.disconnect().await.ok();
+}
+
+/// **H5 / M5**: when the standalone GET-SSE returns 401, the client runs the
+/// OAuth refresh flow and retries with the fresh bearer. Mock orchestration:
+///   1. `enable_oauth` so POST init triggers the initial token acquisition.
+///   2. `arm_401_on_next_get` to force the FIRST standalone GET to 401 with
+///      a `WWW-Authenticate` challenge.
+///   3. Queue a normal event for AFTER refresh (the second GET carries the
+///      same `Bearer` value — the mock's token endpoint returns the same
+///      access token; the assertion is that there WERE two GET attempts +
+///      an extra `/token` call between them).
+#[tokio::test]
+async fn standalone_get_sse_refreshes_oauth_on_401_and_retries() {
+    let mock = MockMcpServer::start().await;
+    mock.enable_oauth("cid", "sec", "tok-v1");
+    mock.arm_401_on_next_get();
+    // Successful event on the retry — bearer is now re-acquired and the
+    // mock just serves the next standalone queue entry.
+    mock.on_get_standalone(MockResponse::SseRaw(
+        "event: message\nid: g_0\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{}}\n\n".to_string(),
+    ));
+
+    let cfg = OAuthClientConfig {
+        client_id: "cid".to_string(),
+        client_secret: "sec".to_string(),
+        scopes: None,
+        resource: None,
+    };
+    let mut client =
+        HttpMcpClient::new_with_oauth(server_config(mock.base_url()), cfg).unwrap();
+    client.connect().await.expect("connect");
+
+    // Wait for the second GET (post-refresh) AND the extra /token round-trip.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        let received = mock.received();
+        let get_count = received.iter().filter(|r| r.method == "__get_sse").count();
+        let token_count = received.iter().filter(|r| r.method == "__token").count();
+        // First /token was the initial acquisition during connect's POST 401
+        // flow; the second is the refresh triggered by the GET 401.
+        if get_count >= 2 && token_count >= 2 {
+            break;
+        }
+        if std::time::Instant::now() > deadline {
+            panic!(
+                "expected ≥2 GET-SSE attempts + ≥2 /token calls (initial + refresh); \
+                 got GET={get_count}, token={token_count}"
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
 
     client.disconnect().await.ok();
 }
