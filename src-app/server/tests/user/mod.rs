@@ -1054,3 +1054,111 @@ async fn test_delete_user_refuses_to_delete_admin() {
         login.status()
     );
 }
+
+// =====================================================
+// create_user prevent-self-escalation — close 03-user F-04
+// =====================================================
+//
+// CreateUserRequest.permissions accepts any string the caller writes
+// including "*". A holder of users::create can mint a wildcard root by
+// POSTing {"permissions": ["*"]}. Audit 03-user F-04 (High).
+//
+// The fix verifies that every permission the caller is trying to grant
+// is one the caller themselves holds (via user perms or group union).
+// Admins (is_admin=true) bypass this check.
+
+#[tokio::test]
+async fn test_create_user_refuses_granting_perms_caller_lacks() {
+    let server = crate::common::TestServer::start().await;
+
+    // Caller has users::create and users::read but NOT '*' and is NOT admin.
+    let creator = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "creator",
+        &["users::create", "users::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .post(&server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", creator.token))
+        .json(&serde_json::json!({
+            "username": "minted_root",
+            "email": "minted_root@example.com",
+            "password": "SecurePass123!",
+            "permissions": ["*"],
+        }))
+        .send()
+        .await
+        .expect("create request failed");
+
+    assert!(
+        res.status() == 403 || res.status() == 400,
+        "create_user with permissions: ['*'] from non-admin caller must be rejected, got {}",
+        res.status()
+    );
+}
+
+#[tokio::test]
+async fn test_create_user_refuses_granting_unrelated_perm() {
+    let server = crate::common::TestServer::start().await;
+
+    // Caller has users::create but NOT files::delete.
+    let creator = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "creator2",
+        &["users::create", "users::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .post(&server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", creator.token))
+        .json(&serde_json::json!({
+            "username": "files_owner",
+            "email": "files_owner@example.com",
+            "password": "SecurePass123!",
+            "permissions": ["files::delete"],
+        }))
+        .send()
+        .await
+        .expect("create request failed");
+
+    assert!(
+        res.status() == 403 || res.status() == 400,
+        "caller without files::delete should not be able to grant files::delete; got {}",
+        res.status()
+    );
+}
+
+#[tokio::test]
+async fn test_create_user_allows_granting_perm_caller_holds() {
+    let server = crate::common::TestServer::start().await;
+
+    // Caller holds both users::create AND files::read → can grant files::read.
+    let creator = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "creator3",
+        &["users::create", "files::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .post(&server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", creator.token))
+        .json(&serde_json::json!({
+            "username": "files_reader_target",
+            "email": "files_reader@example.com",
+            "password": "SecurePass123!",
+            "permissions": ["files::read"],
+        }))
+        .send()
+        .await
+        .expect("create request failed");
+
+    assert!(
+        res.status().is_success(),
+        "caller with files::read should be able to grant files::read; got {}",
+        res.status()
+    );
+}
