@@ -8,7 +8,7 @@ use crate::{
     core::Repos,
     modules::{
         permissions::{RequirePermissions, with_permission},
-        user::{models::User, permissions::ProfileRead},
+        user::{models::User, permissions::ProfileEdit},
     },
 };
 
@@ -39,7 +39,7 @@ fn is_valid_onboarding_id(s: &str) -> bool {
 /// Mark a guide as completed for the current user
 #[debug_handler]
 pub async fn complete_guide(
-    auth: RequirePermissions<(ProfileRead,)>,
+    auth: RequirePermissions<(ProfileEdit,)>,
     Path(guide_id): Path<String>,
 ) -> ApiResult<Json<User>> {
     let guide_id = guide_id.trim().to_string();
@@ -69,7 +69,7 @@ pub async fn complete_guide(
 }
 
 pub fn complete_guide_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(ProfileRead,)>(op)
+    with_permission::<(ProfileEdit,)>(op)
         .id("Onboarding.complete")
         .tag("Onboarding")
         .summary("Mark a guide as completed")
@@ -81,7 +81,7 @@ pub fn complete_guide_docs(op: TransformOperation) -> TransformOperation {
 /// Mark a guide step as completed for the current user
 #[debug_handler]
 pub async fn complete_guide_step(
-    auth: RequirePermissions<(ProfileRead,)>,
+    auth: RequirePermissions<(ProfileEdit,)>,
     Path((guide_id, step_id)): Path<(String, String)>,
 ) -> ApiResult<Json<User>> {
     let gid = guide_id.trim().to_string();
@@ -116,7 +116,7 @@ pub async fn complete_guide_step(
 }
 
 pub fn complete_guide_step_docs(op: TransformOperation) -> TransformOperation {
-    with_permission::<(ProfileRead,)>(op)
+    with_permission::<(ProfileEdit,)>(op)
         .id("Onboarding.completeStep")
         .tag("Onboarding")
         .summary("Mark a guide step as completed")
