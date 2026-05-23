@@ -42,6 +42,31 @@ impl LocalDeployment {
             .ok_or_else(|| AppError::internal_error("No available ports"))
     }
 
+    /// Apply common security hardening to a spawned engine command:
+    ///   - env_clear + minimal whitelisted env (PATH, HOME, LANG, TZ)
+    ///   - stdin null (no inherited stdin)
+    ///   - stdout/stderr piped (so we can capture)
+    ///
+    /// Without env_clear, the spawned engine inherits the server's full
+    /// environment including DATABASE_URL, JWT_SECRET, upstream-provider
+    /// API keys, OAuth secrets, and the HuggingFace token. A compromised
+    /// engine binary OR an attacker who exfiltrates env via the engine's
+    /// own diagnostics endpoint can then read all of them. Closes
+    /// 08-llm-local-runtime F-03 (High).
+    fn apply_hardening(cmd: &mut Command) {
+        cmd.env_clear();
+        // Preserve only the variables the engine genuinely needs to find
+        // shared libraries and respect locale / timezone.
+        for var in &["PATH", "HOME", "LANG", "LC_ALL", "TZ", "CUDA_VISIBLE_DEVICES"] {
+            if let Ok(val) = std::env::var(var) {
+                cmd.env(var, val);
+            }
+        }
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+    }
+
     /// Build command for llama.cpp engine
     fn build_llamacpp_command(
         binary_path: &str,
@@ -64,8 +89,7 @@ impl LocalDeployment {
             cmd.arg("--n-gpu-layers").arg(n_gpu_layers.to_string());
         }
 
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
+        Self::apply_hardening(&mut cmd);
 
         cmd
     }
@@ -87,8 +111,7 @@ impl LocalDeployment {
             cmd.arg("--model-type").arg(model_type);
         }
 
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
+        Self::apply_hardening(&mut cmd);
 
         cmd
     }
