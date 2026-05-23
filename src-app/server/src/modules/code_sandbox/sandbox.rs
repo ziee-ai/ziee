@@ -152,6 +152,7 @@ pub async fn run_in_sandbox(
         command,
         synthetic.passwd_path(),
         synthetic.group_path(),
+        synthetic.mask_path(),
         seccomp_pipe.as_ref().map(|p| p.target_fd()),
         &limits,
     );
@@ -311,6 +312,14 @@ pub(crate) fn build_bwrap_argv(
     user_cmd: &str,
     passwd_path: &Path,
     group_path: &Path,
+    // Path to an empty regular file used as the bind source for the
+    // DANGEROUS_DOTFILES masks. MUST be a normal file (NOT /dev/null) —
+    // bwrap's `--ro-bind` inherits `nodev` and bash's `open()` of a char
+    // device on a `nodev` mount returns EACCES, breaking `bash -l` when it
+    // sources `.bash_profile`. Linux backend passes the synthetic-identity
+    // dir's `empty`; macOS/WSL2 backends pass a guest-baked path (provisioned
+    // alongside the synthetic passwd/group files).
+    mask_path: &Path,
     // Raw fd number bwrap reads the seccomp filter from. Plain `i32` (not
     // `RawFd`) so this argv builder stays OS-independent and shared across
     // backends; only the Linux backend actually wires up the fd.
@@ -415,12 +424,16 @@ pub(crate) fn build_bwrap_argv(
     // to plant a hook for the host shell or other tools (Anthropic
     // sandbox-runtime pattern; see DANGEROUS_DOTFILES doc). MUST come after the
     // workspace --bind (above) so the masks layer on top of it; per bwrap
-    // semantics later binds override earlier ones. `--ro-bind /dev/null <path>`
-    // works whether <path> exists or not — bwrap creates it as a regular file
-    // pointing at /dev/null on the way in, so reads see empty + writes fail.
+    // semantics later binds override earlier ones. The bind source is an
+    // empty REGULAR file (`mask_path`), NOT `/dev/null` — bwrap's `--ro-bind`
+    // passes through `nodev`, and bash's `open()` of a char device on a
+    // `nodev` mount returns EACCES, surfacing as "Permission denied" when
+    // `bash -l` sources `.bash_profile`. A 0-byte file reads cleanly and
+    // writes still fail with EROFS.
+    let mask_src = mask_path.display().to_string();
     for dotfile in DANGEROUS_DOTFILES {
         argv.push("--ro-bind".into());
-        argv.push("/dev/null".into());
+        argv.push(mask_src.clone());
         argv.push(format!("/home/sandboxuser/{dotfile}"));
     }
 
@@ -526,6 +539,13 @@ pub fn workspace_attachment_path(workspace_root: &Path, file_id: Uuid) -> PathBu
 struct SyntheticIdentity {
     passwd: PathBuf,
     group: PathBuf,
+    /// Empty regular file used as the bind source for the DANGEROUS_DOTFILES
+    /// masks. Must be a normal file, NOT `/dev/null` — bwrap's `--ro-bind`
+    /// passes through `nodev` and bash's `open()` of a character device on a
+    /// `nodev` mount returns EACCES, which bash surfaces as "Permission
+    /// denied" when sourcing `.bash_profile`. A 0-byte regular file reads
+    /// cleanly (zero bytes, EOF) and writes still fail with EROFS.
+    mask_path: PathBuf,
 }
 
 // pub(crate) so the WSL2 backend can provision identical synthetic identity
@@ -596,7 +616,15 @@ impl SyntheticIdentity {
                 format!("write synthetic group: {e}"),
             )
         })?;
-        Ok(Self { passwd, group })
+        let mask_path = identity_dir.join("empty");
+        write_if_changed(&mask_path, "").map_err(|e| {
+            AppError::new(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "WORKSPACE_WRITE_FAILED",
+                format!("write empty mask file: {e}"),
+            )
+        })?;
+        Ok(Self { passwd, group, mask_path })
     }
 
     fn passwd_path(&self) -> &Path {
@@ -604,6 +632,9 @@ impl SyntheticIdentity {
     }
     fn group_path(&self) -> &Path {
         &self.group
+    }
+    fn mask_path(&self) -> &Path {
+        &self.mask_path
     }
 }
 
@@ -886,6 +917,7 @@ mod tests {
             "echo hi",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
         );
@@ -928,6 +960,7 @@ mod tests {
             "echo hello",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
         );
@@ -960,6 +993,7 @@ mod tests {
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
         );
@@ -991,6 +1025,7 @@ mod tests {
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
         );
@@ -1018,6 +1053,7 @@ mod tests {
                 "x",
                 std::path::Path::new("/tmp/.sandbox_passwd"),
                 std::path::Path::new("/tmp/.sandbox_group"),
+                std::path::Path::new("/tmp/.sandbox_empty"),
                 None,
                 &fake_limits(),
             );
@@ -1048,14 +1084,19 @@ mod tests {
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
         );
+        // The bind source is the empty-regular-file passed in (NOT /dev/null —
+        // that's a char device on a `nodev` mount, which bash's `open()`
+        // refuses with EACCES; see `build_bwrap_argv::mask_path` doc).
         for dotfile in DANGEROUS_DOTFILES {
             let expected = format!("/home/sandboxuser/{dotfile}");
             assert!(
-                argv.windows(3).any(|w| w == ["--ro-bind", "/dev/null", expected.as_str()]),
-                "must mask {dotfile} with --ro-bind /dev/null; argv: {argv:?}"
+                argv.windows(3)
+                    .any(|w| w == ["--ro-bind", "/tmp/.sandbox_empty", expected.as_str()]),
+                "must mask {dotfile} with --ro-bind /tmp/.sandbox_empty; argv: {argv:?}"
             );
         }
     }
@@ -1076,6 +1117,7 @@ mod tests {
             "echo hi",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
         );
@@ -1129,6 +1171,7 @@ mod tests {
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
         );
@@ -1142,6 +1185,7 @@ mod tests {
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             Some(7),
             &fake_limits(),
         );
@@ -1161,6 +1205,7 @@ mod tests {
             "x",
             std::path::Path::new("/tmp/.sandbox_passwd"),
             std::path::Path::new("/tmp/.sandbox_group"),
+            std::path::Path::new("/tmp/.sandbox_empty"),
             None,
             &fake_limits(),
         );

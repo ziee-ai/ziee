@@ -95,6 +95,11 @@ const GUEST_AGENT_PATH: &str = "/usr/local/bin/ziee-sandbox-agent";
 const GUEST_SECCOMP_FD: i32 = 10;
 const GUEST_PASSWD: &str = "/etc/ziee-sandbox-passwd";
 const GUEST_GROUP: &str = "/etc/ziee-sandbox-group";
+/// Empty regular file provisioned in the distro for the
+/// `DANGEROUS_DOTFILES` masks. MUST be a normal file — see
+/// `build_bwrap_argv::mask_path` doc for why `/dev/null` doesn't work
+/// (bwrap's `--ro-bind` inherits `nodev`).
+const GUEST_EMPTY: &str = "/etc/ziee-sandbox-empty";
 // Marker written at the end of a successful provision so re-boots skip it.
 // Bumped to v3 when the provisioning surface changed:
 //   v1 → original baseline.
@@ -105,7 +110,7 @@ const GUEST_GROUP: &str = "/etc/ziee-sandbox-group";
 // Older distros with a lower-version sentinel get re-provisioned on the next
 // boot — earlier state is otherwise indistinguishable, and re-running
 // provisioning is idempotent.
-const PROVISION_SENTINEL: &str = "/etc/ziee-sandbox-provisioned-v3";
+const PROVISION_SENTINEL: &str = "/etc/ziee-sandbox-provisioned-v4";
 
 const GUEST_APPARMOR_PROFILE: &str = "/etc/apparmor.d/bwrap";
 const GUEST_SYSCTL_CONF: &str = "/etc/sysctl.d/99-ziee-sandbox.conf";
@@ -468,6 +473,9 @@ impl Wsl2Backend {
         //    closes that footgun.
         write_file_into_distro(distro, GUEST_PASSWD, SYNTHETIC_PASSWD, 0o644).await?;
         write_file_into_distro(distro, GUEST_GROUP, SYNTHETIC_GROUP, 0o644).await?;
+        // Empty regular file used as the bind source for the DANGEROUS_DOTFILES
+        // masks. See GUEST_EMPTY doc + build_bwrap_argv::mask_path.
+        write_file_into_distro(distro, GUEST_EMPTY, "", 0o644).await?;
 
         // 3 + 4. AppArmor profile + sysctl.d + wsl.conf (re-apply on boot).
         run_in_distro(distro, "mkdir -p /etc/apparmor.d /etc/sysctl.d").await?;
@@ -828,6 +836,7 @@ impl SandboxBackend for Wsl2Backend {
                 command,
                 Path::new(GUEST_PASSWD),
                 Path::new(GUEST_GROUP),
+                Path::new(GUEST_EMPTY),
                 Some(GUEST_SECCOMP_FD),
                 &limits,
             ),

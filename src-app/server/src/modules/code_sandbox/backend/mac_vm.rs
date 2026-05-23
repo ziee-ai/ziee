@@ -56,6 +56,10 @@ const GUEST_SECCOMP_FD: i32 = 10;
 // /etc/passwd + /etc/group).
 const GUEST_PASSWD: &str = "/etc/ziee-sandbox-passwd";
 const GUEST_GROUP: &str = "/etc/ziee-sandbox-group";
+/// Empty regular file baked into the guest root, used as the bind source
+/// for the `DANGEROUS_DOTFILES` masks. MUST be a normal file — see
+/// `build_bwrap_argv::mask_path` doc for why `/dev/null` doesn't work.
+const GUEST_EMPTY: &str = "/etc/ziee-sandbox-empty";
 
 // VM sizing + per-VM concurrency cap now live in the runtime-tunable
 // `code_sandbox_settings` row (Plan 1 §6). Defaults (mirroring the prior
@@ -390,6 +394,7 @@ impl SandboxBackend for MacVmBackend {
                 command,
                 Path::new(GUEST_PASSWD),
                 Path::new(GUEST_GROUP),
+                Path::new(GUEST_EMPTY),
                 Some(GUEST_SECCOMP_FD),
                 &limits,
             ),
