@@ -333,7 +333,12 @@ async fn test_create_provider_with_all_fields() {
     assert_eq!(response.status(), StatusCode::CREATED);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["name"], "Full Provider");
-    assert_eq!(body["api_key"], "sk-test123");
+    // api_key is write-only post-06-llm-provider-F-01 — must NOT be returned.
+    assert!(
+        body.get("api_key").is_none() || body["api_key"].is_null(),
+        "api_key must not be returned in response (06-llm-provider F-01); got {:?}",
+        body.get("api_key")
+    );
     assert_eq!(body["base_url"], "https://api.openai.com/v1");
     assert_eq!(body["proxy_settings"]["enabled"], true);
     assert_eq!(
@@ -414,7 +419,11 @@ async fn test_update_provider_enabled_and_api_key() {
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["enabled"], true);
-    assert_eq!(body["api_key"], "sk-newkey456");
+    // api_key is write-only post-06-llm-provider-F-01 — must NOT be returned.
+    assert!(
+        body.get("api_key").is_none() || body["api_key"].is_null(),
+        "api_key must not be returned in response (06-llm-provider F-01)"
+    );
 }
 
 #[tokio::test]
@@ -1314,7 +1323,11 @@ async fn test_update_built_in_provider() {
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["enabled"], true);
-    assert_eq!(body["api_key"], "sk-testkey");
+    // api_key is write-only post-06-llm-provider-F-01 — must NOT be returned.
+    assert!(
+        body.get("api_key").is_none() || body["api_key"].is_null(),
+        "api_key must not be returned in response (06-llm-provider F-01)"
+    );
     assert_eq!(body["built_in"], true);
 }
 
@@ -2248,7 +2261,15 @@ async fn test_ssrf_provider_rejects_aws_imds_base_url() {
 }
 
 #[tokio::test]
-async fn test_ssrf_provider_rejects_loopback_base_url() {
+async fn test_ssrf_provider_accepts_loopback_base_url() {
+    // INTENTIONAL: loopback URLs are ALLOWED on provider base_url
+    // because local LLM providers (llama.cpp, mistralrs at
+    // http://localhost:1234/v1) are a legitimate first-class use case.
+    // The validator uses OutboundUrlPolicy::DEV_LOCAL which lets
+    // localhost through but still blocks RFC 1918, link-local (AWS
+    // IMDS), ULA, CGNAT, and non-HTTP schemes. The provider-create
+    // endpoint is admin-only so the "admin probes localhost services"
+    // risk is gated by trust.
     let server = crate::common::TestServer::start().await;
     let admin = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -2257,7 +2278,11 @@ async fn test_ssrf_provider_rejects_loopback_base_url() {
     )
     .await;
     let res = create_provider_with_base_url(&server, &admin.token, "http://127.0.0.1:8000/v1").await;
-    assert_eq!(res.status(), 400, "loopback base_url must be rejected");
+    assert!(
+        res.status().is_success(),
+        "loopback base_url must be accepted (local providers); got {}",
+        res.status()
+    );
 }
 
 #[tokio::test]

@@ -30,19 +30,24 @@ pub fn validate_provider_type(provider_type: &str) -> Result<(), AppError> {
 /// Validate base URL format if provided.
 ///
 /// SSRF-safe: rejects non-HTTP schemes (file://, ftp://, git://, gopher://,
-/// data:), rejects private/loopback/link-local IPs (RFC 1918 + 127/8 +
-/// 169.254/16 — AWS IMDS), and rejects URLs embedding credentials. The
-/// previous implementation only checked Url::parse succeeded — that
-/// admitted every SSRF the audit flagged in 06-llm-provider F-03.
+/// data:) and rejects private / link-local IPs (RFC 1918, 169.254/16
+/// — AWS IMDS, ULA, CGNAT). The previous implementation only checked
+/// Url::parse succeeded — that admitted every SSRF the audit flagged in
+/// 06-llm-provider F-03.
 ///
-/// PUBLIC_HTTP_OR_HTTPS allows both http and https since self-hosted
-/// OpenAI-compatible providers may not yet have TLS.
+/// Uses DEV_LOCAL (allow_localhost=true, allow_private=false) instead of
+/// the stricter PUBLIC_HTTP_OR_HTTPS because local LLM providers
+/// (e.g., llama.cpp, mistralrs running on http://localhost:1234/v1) are
+/// a legitimate first-class use case for this product. Localhost
+/// providers are an admin-only feature anyway (requires
+/// `llm_providers::create`), so the admin-can-probe-localhost risk is
+/// already gated by trust.
 pub fn validate_base_url(base_url: &Option<String>) -> Result<(), AppError> {
     if let Some(url) = base_url {
         if !url.is_empty() {
             crate::utils::url_validator::validate_outbound_url(
                 url,
-                &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+                &crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL,
             )
             .map_err(|e| AppError::bad_request("INVALID_BASE_URL", e.to_string()))?;
         }
