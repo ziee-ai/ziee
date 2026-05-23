@@ -67,10 +67,15 @@ struct MockState {
     /// Whether to reject the next request with HTTP 404 (used for
     /// session-recovery tests).
     next_request_returns_404: Mutex<bool>,
-    /// Programmed responses for standalone GET requests (resumability /
-    /// GET-SSE). FIFO per the same semantics as `responses`. Empty → 405
-    /// (server doesn't offer a GET stream — the spec-conformant default).
-    get_responses: Mutex<Vec<MockResponse>>,
+    /// Programmed responses for a **resume** GET request (one that carries
+    /// `Last-Event-Id`, dropping the resume to the stored-event replay
+    /// semantics in MCP spec § Transports/Resumability). FIFO. Empty → 405.
+    get_responses_resume: Mutex<Vec<MockResponse>>,
+    /// Programmed responses for the **standalone** GET-SSE the client opens
+    /// after `initialized` (no `Last-Event-Id` header). Separated from the
+    /// resume queue so a test driving resumability can't have its replay
+    /// stolen by the connect-time standalone-stream pop. FIFO. Empty → 405.
+    get_responses_standalone: Mutex<Vec<MockResponse>>,
     /// OAuth (Phase 4): when true, JSON-RPC POSTs without a valid Bearer get
     /// 401 + `WWW-Authenticate`, driving the client's client_credentials flow.
     require_oauth: Mutex<bool>,
@@ -115,7 +120,8 @@ impl MockMcpServer {
             session_id_to_assign: Mutex::new(Some("mock-session-1".to_string())),
             require_protocol_version_header: Mutex::new(false),
             next_request_returns_404: Mutex::new(false),
-            get_responses: Mutex::new(Vec::new()),
+            get_responses_resume: Mutex::new(Vec::new()),
+            get_responses_standalone: Mutex::new(Vec::new()),
             require_oauth: Mutex::new(false),
             oauth_access_token: Mutex::new("mock-access-token".to_string()),
             oauth_expected_client: Mutex::new(None),
@@ -152,11 +158,25 @@ impl MockMcpServer {
             .push(response);
     }
 
-    /// Queue a response for a standalone GET request (resumability resume
-    /// stream or GET-SSE). FIFO. With nothing queued the mock returns 405,
-    /// the spec-conformant "no GET stream offered" signal.
+    /// Queue a response for a **resume** GET (one that carries
+    /// `Last-Event-Id`). Kept as a convenience alias for the legacy single-
+    /// queue API — every existing call site is a resume test.
     pub fn on_get(&self, response: MockResponse) {
-        self.state.get_responses.lock().unwrap().push(response);
+        self.on_get_resume(response);
+    }
+
+    /// Queue a response for a resume GET (carries `Last-Event-Id`). Stored in
+    /// a queue separate from the standalone-GET queue so the two flows can't
+    /// steal each other's responses. FIFO; empty → 405.
+    pub fn on_get_resume(&self, response: MockResponse) {
+        self.state.get_responses_resume.lock().unwrap().push(response);
+    }
+
+    /// Queue a response for a **standalone** GET-SSE (no `Last-Event-Id`).
+    /// FIFO; empty → 405 (the spec-conformant "no GET stream offered" signal,
+    /// which the client tolerates silently).
+    pub fn on_get_standalone(&self, response: MockResponse) {
+        self.state.get_responses_standalone.lock().unwrap().push(response);
     }
 
     /// Require OAuth: JSON-RPC POSTs without `Authorization: Bearer <token>`
@@ -361,14 +381,20 @@ async fn handle_get(State(state): State<Arc<MockState>>, headers: HeaderMap) -> 
         body: serde_json::Value::Null,
     });
 
-    // Serve a programmed GET response if one is queued; otherwise 405
-    // ("server does not offer a GET stream" — the spec-conformant default
-    // the client must tolerate as a silent no-op).
-    let programmed = state
-        .get_responses
-        .lock()
-        .unwrap()
-        .pop_if_nonempty();
+    // Route by `Last-Event-Id` presence: a resume GET (with the header)
+    // pulls from the resume queue; a standalone GET (no header) pulls from
+    // the standalone queue. Empty → 405 (the spec-conformant default the
+    // client must tolerate as a silent no-op).
+    let has_resume_header = headers.contains_key("last-event-id");
+    let programmed = if has_resume_header {
+        state.get_responses_resume.lock().unwrap().pop_if_nonempty()
+    } else {
+        state
+            .get_responses_standalone
+            .lock()
+            .unwrap()
+            .pop_if_nonempty()
+    };
     match programmed {
         Some(r) => render(r, None, state.clone()),
         None => Response::builder()
