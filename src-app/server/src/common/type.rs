@@ -208,12 +208,64 @@ impl AppError {
 // Common Types
 // =====================================================
 
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+/// Maximum page size accepted from the client. Larger values are clamped
+/// silently at deserialization to prevent DoS via unbounded result-set
+/// materialization (listing every user / file / message in one request).
+/// Closes 03-user F-06 (Medium).
+pub const PAGINATION_MAX_PER_PAGE: i32 = 100;
+
+/// Pagination query that clamps at deserialize time so every existing
+/// handler that consumes `params.page` and `params.per_page` is safe
+/// without touching its body.
+///
+/// - `page < 1` → 1 (prevents `(page-1)*per_page` underflow / negative offset)
+/// - `per_page < 1` → 1 (prevents divide-by-zero in callers like
+///   `total / per_page`)
+/// - `per_page > PAGINATION_MAX_PER_PAGE` → PAGINATION_MAX_PER_PAGE
+///   (prevents DoS)
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct PaginationQuery {
     #[serde(default = "default_page")]
     pub page: i32,
     #[serde(default = "default_per_page")]
     pub per_page: i32,
+}
+
+impl<'de> Deserialize<'de> for PaginationQuery {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(default = "default_page")]
+            page: i32,
+            #[serde(default = "default_per_page")]
+            per_page: i32,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        Ok(PaginationQuery {
+            page: if raw.page < 1 { 1 } else { raw.page },
+            per_page: if raw.per_page < 1 {
+                1
+            } else if raw.per_page > PAGINATION_MAX_PER_PAGE {
+                PAGINATION_MAX_PER_PAGE
+            } else {
+                raw.per_page
+            },
+        })
+    }
+}
+
+impl PaginationQuery {
+    /// `page` is already clamped on deserialize; this method is kept as
+    /// an explicit no-op for callers built before the deserializer change.
+    pub fn page_clamped(&self) -> i32 {
+        self.page
+    }
+
+    /// `per_page` is already clamped on deserialize; this method is kept
+    /// as an explicit no-op for callers built before the deserializer change.
+    pub fn per_page_clamped(&self) -> i32 {
+        self.per_page
+    }
 }
 
 fn default_page() -> i32 {
@@ -349,5 +401,47 @@ mod tests {
         // No trace_id for safe constructors — they aren't logging anything
         // sensitive that a developer would need to correlate.
         assert!(body.get("details").is_none() || body["details"].is_null());
+    }
+
+    // =====================================================
+    // PaginationQuery clamping — close 03-user F-06
+    // =====================================================
+
+    #[test]
+    fn pagination_clamps_per_page_zero_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":1,"per_page":0}"#).unwrap();
+        assert_eq!(q.per_page, 1, "per_page=0 must clamp to 1 to prevent /0");
+    }
+
+    #[test]
+    fn pagination_clamps_per_page_negative_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":1,"per_page":-5}"#).unwrap();
+        assert_eq!(q.per_page, 1);
+    }
+
+    #[test]
+    fn pagination_clamps_per_page_oversized_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":1,"per_page":10000}"#).unwrap();
+        assert_eq!(q.per_page, PAGINATION_MAX_PER_PAGE);
+    }
+
+    #[test]
+    fn pagination_clamps_page_negative_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":-1,"per_page":20}"#).unwrap();
+        assert_eq!(q.page, 1);
+    }
+
+    #[test]
+    fn pagination_passes_through_valid_values_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":5,"per_page":50}"#).unwrap();
+        assert_eq!(q.page, 5);
+        assert_eq!(q.per_page, 50);
+    }
+
+    #[test]
+    fn pagination_defaults_when_fields_missing() {
+        let q: PaginationQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(q.page, 1);
+        assert_eq!(q.per_page, 20);
     }
 }
