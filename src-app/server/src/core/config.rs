@@ -11,6 +11,26 @@ pub struct Config {
     pub app: Option<AppConfig>,
     #[serde(default)]
     pub code_sandbox: Option<CodeSandboxConfig>,
+    #[serde(default)]
+    pub secrets: Option<SecretsConfig>,
+}
+
+/// At-rest encryption configuration.
+///
+/// `storage_key` is a 32+ char passphrase used by pgcrypto's
+/// pgp_sym_encrypt / pgp_sym_decrypt to wrap secret columns
+/// (llm_providers.api_key_encrypted, user_llm_provider_api_keys.api_key_encrypted,
+/// llm_repositories.auth_config_encrypted). When unset, the application
+/// boots in compat mode — new writes stay in the plaintext columns and
+/// a tracing::warn is emitted at startup. Closes 06-llm-provider F-02
+/// (Critical) once configured.
+#[derive(Debug, Deserialize, Clone)]
+pub struct SecretsConfig {
+    /// Symmetric passphrase passed to pgp_sym_encrypt. Must be 32+ chars.
+    /// In production, set via env var; in dev / tests, the dev.yaml /
+    /// test config carries a fixed value so the round-trip works.
+    #[serde(default)]
+    pub storage_key: Option<String>,
 }
 
 /// Configuration for the code_sandbox built-in MCP server.
