@@ -9,19 +9,45 @@
 //!     distro filesystem **is** the flavor rootfs (R/torch/etc.).
 //!   - A one-time provision step (run as root in the distro) installs `bwrap`,
 //!     drops in the `ziee-sandbox-agent` binary, writes the synthetic
-//!     passwd/group, and — **critically** — flips the unprivileged-userns
-//!     sysctls bwrap's `--unshare-user` needs (OFF by default in WSL2; further
-//!     restricted by AppArmor on Ubuntu 24.04/noble, this rootfs's base).
+//!     passwd/group, and installs a **narrow AppArmor profile** that grants
+//!     `userns` only to `/usr/bin/bwrap` — leaving Ubuntu 24.04/noble's
+//!     `kernel.apparmor_restrict_unprivileged_userns` defense in place for
+//!     everything else. The profile + sysctls are re-applied on every VM boot
+//!     via `/etc/wsl.conf` `[boot] command =` (WSL has no systemd by default;
+//!     [microsoft/WSL#4232]).
 //!   - The agent is started inside the distro listening on **127.0.0.1:<port>**;
 //!     WSL2's localhost-forwarding makes that reachable from Windows. Per
 //!     `execute_command` this backend connects a `TcpStream` and sends the
 //!     bwrap argv (guest paths) — the agent applies the shared seccomp + cgroup
 //!     in-guest, identical to macOS.
 //!
+//! ## Threat model (cross-platform delta with the Linux backend)
+//!
+//!   - **Cross-distro reachability on the TCP transport (HIGH-1, tracked):**
+//!     WSL2 distros share **one network namespace** in the utility VM
+//!     ([microsoft/WSL#4304], `init/main.cpp:2283` — no `CLONE_NEWNET`). Until
+//!     the planned AF_VSOCK switch, every other WSL2 distro the user has
+//!     installed (their personal Ubuntu, Docker Desktop's distros, …) can
+//!     reach our agent on `127.0.0.1:<port>` and submit an arbitrary bwrap
+//!     argv. The TCP listener binds `127.0.0.1` (not `0.0.0.0`), so LAN-side
+//!     attack is blocked; the gap is intra-VM only.
+//!   - **`networkingMode = mirrored` collapses host↔guest loopback:** in
+//!     mirrored mode (Win11 22H2+) the Windows host's `127.0.0.1` services
+//!     (Postgres, the Ziee server itself, …) are reachable from inside the
+//!     sandbox because of `--share-net`. `probe_host` warn-logs when this
+//!     mode is detected in `%USERPROFILE%\.wslconfig`.
+//!   - **9p `/mnt/<drive>` workspace bind:** the WSL2 kernel's plan9 client
+//!     is an attack surface from inside the sandbox (see [McAfee Labs WSL
+//!     Plan 9 BSOD research] + [CVE-2026-43053]). MED-1 follow-up moves the
+//!     workspace into the distro's ext4 and ferries file content over the
+//!     control plane; out-of-scope for the first cut, documented at
+//!     `win_to_wsl_path`.
+//!
 //! ⚠️ **Validation status:** this file cannot be compiled or run on Linux (it is
 //! `cfg(target_os = "windows")`). It is grounded in the documented WSL2 + agent
-//! behavior but must be compiled + validated on Windows 11 + WSL2. Points
-//! flagged `WIN-TODO` need first-run attention.
+//! behavior + the prior-art deep read in `.sec-audits/`, but must be compiled
+//! and validated on Windows 11 + WSL2. Points flagged `WIN-TODO` need
+//! first-run attention.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -61,7 +87,58 @@ const GUEST_SECCOMP_FD: i32 = 10;
 const GUEST_PASSWD: &str = "/etc/ziee-sandbox-passwd";
 const GUEST_GROUP: &str = "/etc/ziee-sandbox-group";
 // Marker written at the end of a successful provision so re-boots skip it.
-const PROVISION_SENTINEL: &str = "/etc/ziee-sandbox-provisioned";
+// Bumped to v2 when the provisioning surface changed (narrow AppArmor profile +
+// /etc/wsl.conf [boot] command, replacing the global apparmor_restrict_*=0
+// sysctl). Older distros that have the v1 sentinel will be re-provisioned on
+// the next boot — the v1 state is otherwise indistinguishable.
+const PROVISION_SENTINEL: &str = "/etc/ziee-sandbox-provisioned-v2";
+
+const GUEST_APPARMOR_PROFILE: &str = "/etc/apparmor.d/bwrap";
+const GUEST_SYSCTL_CONF: &str = "/etc/sysctl.d/99-ziee-sandbox.conf";
+const GUEST_WSL_CONF: &str = "/etc/wsl.conf";
+
+/// Narrow AppArmor profile (Claude-Code-documented recipe, verified in code
+/// during the prior-art deep read). Grants `userns` ONLY to `/usr/bin/bwrap`,
+/// leaving Ubuntu 24.04/noble's `kernel.apparmor_restrict_unprivileged_userns`
+/// in force for every other binary. The earlier wsl2 implementation flipped
+/// that sysctl to `0` globally — that disables Ubuntu's documented mitigation
+/// against in-userns kernel exploits for the WHOLE distro, including any
+/// sandbox-escaped process. This profile keeps the kernel-level restriction
+/// and only carves out our explicit bwrap binary.
+const APPARMOR_BWRAP_PROFILE: &str = "abi <abi/4.0>,\n\
+include <tunables/global>\n\
+\n\
+profile bwrap /usr/bin/bwrap flags=(unconfined) {\n\
+  userns,\n\
+  include if exists <local/bwrap>\n\
+}\n";
+
+/// `/etc/wsl.conf` we install. WSL has no systemd by default, so the standard
+/// systemd-sysctl / apparmor.service paths don't run on boot — sysctls in
+/// `/etc/sysctl.d/` are NEVER re-applied ([microsoft/WSL#4232], open since
+/// 2019), and any AppArmor profile we wrote is unloaded on `wsl --shutdown`.
+/// `[boot] command` IS reliably run as root via `execl("/bin/sh", "sh", "-c",
+/// Command, …)` (`microsoft/WSL: src/linux/init/config.cpp:1002`) on every VM
+/// boot — that's where the re-apply lives.
+const WSL_CONF_CONTENT: &str = "# Managed by ziee-sandbox (Plan 1 §3) — DO NOT EDIT.\n\
+# Re-applies the narrow bwrap AppArmor profile + sysctls on every VM boot.\n\
+# WSL2 has no systemd by default, so /etc/sysctl.d/* and /etc/apparmor.d/* are\n\
+# otherwise NOT applied on boot (microsoft/WSL#4232).\n\
+[boot]\n\
+command = apparmor_parser -r /etc/apparmor.d/bwrap 2>/dev/null || apparmor_parser /etc/apparmor.d/bwrap 2>/dev/null || true; sysctl --system >/dev/null 2>&1 || true\n";
+
+const SYSCTL_CONF_CONTENT: &str = "# Managed by ziee-sandbox (Plan 1 §3) — DO NOT EDIT.\n\
+# The Ubuntu/Debian downstream sysctl that enables unprivileged user-namespace\n\
+# creation. May be a no-op on the Microsoft kernel build (which can have it\n\
+# always-on); the `2>/dev/null` in the wsl.conf reload makes that case silent.\n\
+kernel.unprivileged_userns_clone=1\n";
+
+/// Minimum WSL versions free of CVE-2025-53788 (TOCTOU LPE in the WSL2 kernel
+/// code, fixed in 2.5.10 on the 2.5 channel and 2.6.1 on the 2.6 channel).
+/// Anything older lets unprivileged code inside the sandbox race the kernel to
+/// SYSTEM on the Windows host — we refuse to register.
+const WSL_MIN_VERSION_25: (u32, u32, u32) = (2, 5, 10);
+const WSL_MIN_VERSION_26: (u32, u32, u32) = (2, 6, 1);
 
 // Evict a flavor's distro after this long idle with nothing in flight.
 // WIN-TODO: wire to config `vm_idle_evict_secs` (0 = never) alongside macOS.
@@ -123,8 +200,15 @@ fn ensure_reaper() {
             for flavor in evict {
                 if let Some(h) = distros.remove(&flavor) {
                     stop_agent(&h).await;
-                    // Terminate the distro too so its slice of the shared WSL2
-                    // VM's RAM is freed (the agent alone may not release it).
+                    // `wsl --terminate <distro>` stops THIS distro's in-VM init
+                    // but does NOT free the shared WSL2 utility VM's RAM — that
+                    // requires `wsl --shutdown` (which also kills every other
+                    // distro the user has running, so we don't do it here). The
+                    // value of `--terminate` is bounding the agent + tearing
+                    // down anything the distro side was holding open; cached
+                    // page memory in the utility VM only frees if the user
+                    // separately runs `wsl --shutdown`. See microsoft/WSL FAQ
+                    // + #13291.
                     let _ = run_wsl(&["--terminate", &h.distro]).await;
                     tracing::info!(flavor, distro = %h.distro, "code_sandbox: WSL2 distro evicted (idle)");
                 }
@@ -271,14 +355,28 @@ impl Wsl2Backend {
     }
 
     /// One-time, idempotent in-distro setup. Skips if the sentinel is present.
+    ///
+    /// Steps (each idempotent on its own — a partial provision rerunning is
+    /// safe):
+    ///   1. Install the `ziee-sandbox-agent` Linux binary at `GUEST_AGENT_PATH`.
+    ///   2. Write the synthetic passwd / group files (via stdin pipes — no
+    ///      `WSLENV`, no env crossing the boundary — MED-3).
+    ///   3. Write the narrow `/etc/apparmor.d/bwrap` profile (HIGH-2).
+    ///   4. Write `/etc/sysctl.d/99-ziee-sandbox.conf` + `/etc/wsl.conf`
+    ///      `[boot] command =` so the AppArmor profile + sysctl re-apply on
+    ///      every VM boot (HIGH-4 — fixes the [microsoft/WSL#4232] silent
+    ///      breakage where sysctls don't re-apply across `wsl --shutdown`).
+    ///   5. `apt-get install bubblewrap` if absent.
+    ///   6. Apply the AppArmor profile + sysctls LIVE in this boot too (the
+    ///      wsl.conf hook handles every SUBSEQUENT boot).
+    ///   7. Write the sentinel.
     async fn provision_distro(&self, distro: &str) -> Result<(), AppError> {
         if wsl_test_f(distro, PROVISION_SENTINEL).await {
             return Ok(());
         }
 
-        // Copy the bundled agent into the distro via its /mnt path. `wslpath`
-        // (run in-distro) does the Windows→/mnt translation robustly (handles
-        // spaces, drive case).
+        // 1. Agent binary. Copy via `wslpath` so quoting / drive-case / spaces
+        //    are handled inside the distro.
         let agent_host = Self::agent_host_path();
         if !agent_host.exists() {
             return Err(AppError::internal_error(format!(
@@ -287,49 +385,113 @@ impl Wsl2Backend {
             )));
         }
         let agent_mnt = wslpath(distro, &agent_host).await?;
+        run_in_distro(
+            distro,
+            &format!("install -m 0755 '{agent_mnt}' '{GUEST_AGENT_PATH}'"),
+        )
+        .await?;
 
-        // Heredoc-free single script (passed via `bash -c`) so quoting stays sane.
-        // WIN-TODO: prefer baking `bubblewrap` into the flavor recipe's
-        // APT_PACKAGES so the apt step (network-dependent, slow) disappears.
-        let script = format!(
-            r#"set -e
-command -v bwrap >/dev/null 2>&1 || {{ apt-get update -qq && apt-get install -y -qq bubblewrap; }}
-install -m 0755 '{agent_mnt}' '{agent}'
-printf '%s' "$ZIEE_PASSWD" > '{passwd}'
-printf '%s' "$ZIEE_GROUP"  > '{group}'
-# Unprivileged user namespaces — OFF by default in WSL2, AppArmor-restricted on
-# noble. bwrap --unshare-user needs them. Set live + persist for re-boots.
-sysctl -w kernel.unprivileged_userns_clone=1 2>/dev/null || true
-sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
-mkdir -p /etc/sysctl.d
-{{ echo 'kernel.unprivileged_userns_clone=1'; echo 'kernel.apparmor_restrict_unprivileged_userns=0'; }} > /etc/sysctl.d/99-ziee-sandbox.conf
-touch '{sentinel}'
-"#,
-            agent_mnt = agent_mnt,
-            agent = GUEST_AGENT_PATH,
-            passwd = GUEST_PASSWD,
-            group = GUEST_GROUP,
-            sentinel = PROVISION_SENTINEL,
-        );
+        // 2. Synthetic identity, content piped via stdin. Replaces the earlier
+        //    WSLENV approach — no env vars cross from Windows. A future
+        //    maintainer adding a `WSLENV=…` would silently leak; this design
+        //    closes that footgun.
+        write_file_into_distro(distro, GUEST_PASSWD, SYNTHETIC_PASSWD, 0o644).await?;
+        write_file_into_distro(distro, GUEST_GROUP, SYNTHETIC_GROUP, 0o644).await?;
 
-        // Pass the identity contents via env (translated into the distro through
-        // WSLENV) to avoid embedding them in the script's quoting.
-        let status = tokio::process::Command::new("wsl.exe")
-            .args(["-d", distro, "-u", "root", "--", "bash", "-c", &script])
-            .env("ZIEE_PASSWD", SYNTHETIC_PASSWD)
-            .env("ZIEE_GROUP", SYNTHETIC_GROUP)
-            .env("WSLENV", "ZIEE_PASSWD:ZIEE_GROUP")
-            .status()
-            .await
-            .map_err(|e| AppError::internal_error(format!("run WSL2 provision: {e}")))?;
-        if !status.success() {
-            return Err(AppError::internal_error(format!(
-                "WSL2 provision failed (exit {:?}) for {distro}",
-                status.code()
-            )));
-        }
+        // 3 + 4. AppArmor profile + sysctl.d + wsl.conf (re-apply on boot).
+        run_in_distro(distro, "mkdir -p /etc/apparmor.d /etc/sysctl.d").await?;
+        write_file_into_distro(distro, GUEST_APPARMOR_PROFILE, APPARMOR_BWRAP_PROFILE, 0o644).await?;
+        write_file_into_distro(distro, GUEST_SYSCTL_CONF, SYSCTL_CONF_CONTENT, 0o644).await?;
+        write_file_into_distro(distro, GUEST_WSL_CONF, WSL_CONF_CONTENT, 0o644).await?;
+
+        // 5. Install bwrap (only step that needs network + can be slow).
+        //    WIN-TODO: prefer baking `bubblewrap` into the flavor recipe's
+        //    APT_PACKAGES so this step disappears in v3 of the rootfs schema.
+        run_in_distro(
+            distro,
+            "command -v bwrap >/dev/null 2>&1 || \
+             { apt-get update -qq && apt-get install -y -qq bubblewrap; }",
+        )
+        .await?;
+
+        // 6. Apply LIVE for this boot too. `apparmor_parser -r` reloads if
+        //    already loaded; plain `apparmor_parser` adds a new profile.
+        //    Either-or-true keeps provision idempotent across both states.
+        run_in_distro(
+            distro,
+            "apparmor_parser -r /etc/apparmor.d/bwrap 2>/dev/null \
+             || apparmor_parser /etc/apparmor.d/bwrap 2>/dev/null || true; \
+             sysctl --system >/dev/null 2>&1 || true",
+        )
+        .await?;
+
+        // 7. Sentinel.
+        run_in_distro(distro, &format!("touch '{PROVISION_SENTINEL}'")).await?;
         Ok(())
     }
+}
+
+/// Run a single bash command inside `distro` as root, erroring on non-zero exit.
+async fn run_in_distro(distro: &str, script: &str) -> Result<(), AppError> {
+    let status = tokio::process::Command::new("wsl.exe")
+        .args(["-d", distro, "-u", "root", "--", "bash", "-c", script])
+        .status()
+        .await
+        .map_err(|e| AppError::internal_error(format!("wsl bash -c: {e}")))?;
+    if !status.success() {
+        return Err(AppError::internal_error(format!(
+            "in-distro command failed (exit {:?}): {}",
+            status.code(),
+            // Truncate so a multiline AppArmor profile / wsl.conf doesn't
+            // dominate the error.
+            script.chars().take(80).collect::<String>()
+        )));
+    }
+    Ok(())
+}
+
+/// Write `content` to `dest_path` inside `distro` via stdin (no env crossings,
+/// no temp files on the Windows host, no quoting issues with newlines / shell
+/// metacharacters). Replaces the earlier `WSLENV=ZIEE_PASSWD:ZIEE_GROUP`
+/// pattern that risked leaking any future credential added there.
+async fn write_file_into_distro(
+    distro: &str,
+    dest_path: &str,
+    content: &str,
+    mode: u32,
+) -> Result<(), AppError> {
+    use tokio::io::AsyncWriteExt;
+    use tokio::process::Command;
+    let script = format!(
+        "umask 077 && cat > '{dest_path}' && chmod {mode:o} '{dest_path}'"
+    );
+    let mut child = Command::new("wsl.exe")
+        .args(["-d", distro, "-u", "root", "--", "bash", "-c", &script])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| AppError::internal_error(format!("spawn wsl write {dest_path}: {e}")))?;
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| AppError::internal_error("wsl stdin missing"))?;
+        stdin
+            .write_all(content.as_bytes())
+            .await
+            .map_err(|e| AppError::internal_error(format!("pipe {dest_path}: {e}")))?;
+        // Drop closes stdin → cat sees EOF → exits → bash chmods → exits.
+    }
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| AppError::internal_error(format!("wait wsl write {dest_path}: {e}")))?;
+    if !status.success() {
+        return Err(AppError::internal_error(format!(
+            "wsl write {dest_path} failed (exit {:?})",
+            status.code()
+        )));
+    }
+    Ok(())
 }
 
 /// Translate a Windows host workspace path to its in-distro `/mnt/<drive>` path
@@ -352,12 +514,15 @@ fn win_to_wsl_path(p: &Path) -> String {
 #[async_trait]
 impl SandboxBackend for Wsl2Backend {
     fn probe_host(&self, _cfg: &CodeSandboxConfig) -> Option<HostCapabilities> {
-        // Cheap host-only probe (sub-10 ms): wsl.exe must be on PATH and the
-        // default version must be 2 — bwrap needs the WSL2 Linux kernel
-        // (cgroup v2, real namespaces); WSL1 is a syscall-emulation layer that
-        // has none of these and will never work. We deliberately do NOT import
-        // a distro / flip sysctls here — that's `ensure_rootfs_ready`'s job on
-        // first `execute_command`, lazy by design.
+        // Cheap host-only probe (sub-10 ms): wsl.exe must be on PATH, the
+        // default version must be 2 (bwrap needs the WSL2 Linux kernel; WSL1
+        // is syscall emulation with no namespaces and never works), AND the
+        // WSL runtime must be patched against CVE-2025-53788 (TOCTOU LPE in
+        // the WSL2 kernel code, ≥ 2.5.10 / 2.6.1). We deliberately do NOT
+        // import a distro / flip sysctls / load AppArmor here — that's
+        // `ensure_rootfs_ready`'s job on first `execute_command`, lazy by design.
+
+        // 1. v2-default check.
         let out = match std::process::Command::new("wsl.exe").args(["--status"]).output() {
             Ok(o) => o,
             Err(e) => {
@@ -370,8 +535,6 @@ impl SandboxBackend for Wsl2Backend {
         };
         let status_text = decode_wsl_output(&out.stdout);
         if !status_text.contains('2') {
-            // `wsl --status` includes the default-version line ("Default Version: 2").
-            // If we can't confirm v2, refuse loudly — bwrap will never work on v1.
             tracing::error!(
                 "code_sandbox: WSL2 not the default version on this host; \
                  sandbox MCP row will NOT be registered. Set with \
@@ -379,6 +542,48 @@ impl SandboxBackend for Wsl2Backend {
             );
             return None;
         }
+
+        // 2. CVE-2025-53788 version gate.
+        match probe_wsl_version() {
+            Ok(v) => {
+                if !wsl_version_is_patched(v) {
+                    tracing::error!(
+                        wsl_version = ?v,
+                        "code_sandbox: WSL runtime is older than the \
+                         CVE-2025-53788 fix (need {:?} on the 2.5 channel or \
+                         {:?} on the 2.6 channel). Run `wsl --update`. \
+                         Sandbox MCP row will NOT be registered.",
+                        WSL_MIN_VERSION_25, WSL_MIN_VERSION_26
+                    );
+                    return None;
+                }
+            }
+            Err(e) => {
+                // Old WSL releases don't support `wsl --version` at all. Treat
+                // as unpatched and refuse.
+                tracing::error!(
+                    "code_sandbox: could not determine WSL version ({e}); \
+                     `wsl --version` may be missing on pre-2.0 WSL. Run \
+                     `wsl --update`. Sandbox MCP row will NOT be registered."
+                );
+                return None;
+            }
+        }
+
+        // 3. LOW-3: warn-log on mirrored networking mode. `--share-net` already
+        //    bridges egress; mirrored mode additionally collapses the Windows
+        //    host's `127.0.0.1` services (Postgres, the Ziee server itself, …)
+        //    into the sandbox's reach. Operators should know.
+        if user_wslconfig_uses_mirrored_mode() {
+            tracing::warn!(
+                "code_sandbox: WSL2 mirrored networking mode is enabled in \
+                 .wslconfig. Sandboxed commands can reach the Windows host's \
+                 127.0.0.1 services (Postgres, the Ziee server, …) via \
+                 `--share-net`. Consider switching back to NAT mode or \
+                 firewalling sensitive host services."
+            );
+        }
+
         Some(HostCapabilities {
             bwrap_path: PathBuf::from(GUEST_BWRAP_PATH),
             cgroup: CgroupMode::None,
@@ -633,6 +838,110 @@ async fn run_wsl(args: &[&str]) -> Result<(), AppError> {
         )));
     }
     Ok(())
+}
+
+/// Parse the first non-blank line of `wsl --version` for a (major, minor,
+/// patch) triple. The Windows binary prints e.g.:
+///   `WSL version: 2.6.1.0`
+///   `Kernel version: 6.6.87.2-1`
+/// The fourth component (`.0` build) is ignored. Old WSL versions don't
+/// implement `--version` and exit non-zero — that case bubbles up as Err.
+fn probe_wsl_version() -> Result<(u32, u32, u32), String> {
+    let out = std::process::Command::new("wsl.exe")
+        .args(["--version"])
+        .output()
+        .map_err(|e| format!("wsl --version: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "wsl --version failed: {}",
+            decode_wsl_output(&out.stderr).trim()
+        ));
+    }
+    let text = decode_wsl_output(&out.stdout);
+    for line in text.lines() {
+        let line = line.trim();
+        // Match the version line robustly across localized prefixes ("WSL
+        // version:", "Versión de WSL:", …) by scanning each line for a
+        // dotted-integer triple.
+        if let Some(v) = extract_version_triple(line) {
+            return Ok(v);
+        }
+    }
+    Err(format!("no version triple found in: {text:?}"))
+}
+
+fn extract_version_triple(line: &str) -> Option<(u32, u32, u32)> {
+    // Find a substring that looks like `<u32>.<u32>.<u32>` (allow trailing
+    // `.<build>` which we ignore).
+    let mut chars = line.char_indices().peekable();
+    while let Some((start, c)) = chars.next() {
+        if !c.is_ascii_digit() {
+            continue;
+        }
+        let mut end = start;
+        for (i, ch) in line[start..].char_indices() {
+            if ch.is_ascii_digit() || ch == '.' {
+                end = start + i + ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+        let candidate = &line[start..end];
+        let mut parts = candidate.split('.');
+        if let (Some(a), Some(b), Some(c), _) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        {
+            if let (Ok(major), Ok(minor), Ok(patch)) = (a.parse(), b.parse(), c.parse()) {
+                return Some((major, minor, patch));
+            }
+        }
+    }
+    None
+}
+
+/// CVE-2025-53788 patched-version gate. Fix landed on two release channels:
+/// 2.5.10 (the older one) and 2.6.1. Anything on either channel at or above
+/// its fix is acceptable; anything below either is rejected.
+fn wsl_version_is_patched((major, minor, patch): (u32, u32, u32)) -> bool {
+    if major != 2 {
+        // 1.x / 3+: out of scope; we already rejected by the v2 check.
+        return major > 2;
+    }
+    match minor {
+        // ≥ 2.6 series: 2.6.1+.
+        m if m >= WSL_MIN_VERSION_26.1 => {
+            (minor, patch) >= (WSL_MIN_VERSION_26.1, WSL_MIN_VERSION_26.2)
+        }
+        // 2.5 series: 2.5.10+.
+        m if m == WSL_MIN_VERSION_25.1 => patch >= WSL_MIN_VERSION_25.2,
+        // < 2.5: not patched.
+        _ => false,
+    }
+}
+
+/// `true` if `%USERPROFILE%\.wslconfig` has `networkingMode = mirrored` in
+/// some form. Best-effort tokenizer (no full INI parser needed for one knob).
+fn user_wslconfig_uses_mirrored_mode() -> bool {
+    let userprofile = match std::env::var("USERPROFILE") {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let path = std::path::Path::new(&userprofile).join(".wslconfig");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('#') || line.starts_with(';') || line.is_empty() {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("networkingmode") && lower.contains("mirrored") {
+            return true;
+        }
+    }
+    false
 }
 
 /// WSL's top-level commands (`-l`, `--status`) emit UTF-16LE; in-distro command
