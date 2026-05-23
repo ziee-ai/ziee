@@ -12,14 +12,20 @@ use crate::common::AppError;
 
 /// Validate URL format using reqwest URL parser
 pub fn validate_url(url: &str) -> Result<(), AppError> {
-    if reqwest::Url::parse(url).is_ok() {
-        Ok(())
-    } else {
-        Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "Invalid URL format",
-        ))
-    }
+    // SSRF-safe validation: reject non-allowlisted schemes (file://, ftp://,
+    // git://, gopher://, data:), reject private/loopback/link-local IPs
+    // (RFC 1918 + 127/8 + 169.254/16 — AWS IMDS), reject URLs embedding
+    // credentials. The previous implementation only checked Url::parse
+    // succeeded — that admitted every SSRF flagged by 09-llm-repository
+    // F-01 + F-03. PUBLIC_HTTP_OR_HTTPS allows both http and https since
+    // self-hosted upstreams may not yet have TLS, but blocks all private
+    // address space.
+    crate::utils::url_validator::validate_outbound_url(
+        url,
+        &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+    )
+    .map(|_| ())
+    .map_err(|e| AppError::bad_request("INVALID_URL", e.to_string()))
 }
 
 /// Validate auth type is one of the allowed types
