@@ -2205,3 +2205,83 @@ async fn test_resolve_api_key_is_isolated_between_users() {
         "B has no personal key — resolution must fall through to system key"
     );
 }
+
+// =====================================================
+// SSRF regression tests — close 06-llm-provider F-03
+// =====================================================
+
+async fn create_provider_with_base_url(
+    server: &crate::common::TestServer,
+    admin_token: &str,
+    bad_url: &str,
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(&server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .json(&json!({
+            "name": format!("ssrf-test-{}", Uuid::new_v4()),
+            "provider_type": "openai",
+            "base_url": bad_url,
+            "enabled": false,
+        }))
+        .send()
+        .await
+        .expect("request failed")
+}
+
+#[tokio::test]
+async fn test_ssrf_provider_rejects_aws_imds_base_url() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let res = create_provider_with_base_url(
+        &server,
+        &admin.token,
+        "http://169.254.169.254/v1",
+    )
+    .await;
+    assert_eq!(res.status(), 400, "AWS IMDS base_url must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_provider_rejects_loopback_base_url() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let res = create_provider_with_base_url(&server, &admin.token, "http://127.0.0.1:8000/v1").await;
+    assert_eq!(res.status(), 400, "loopback base_url must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_provider_rejects_file_scheme_base_url() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let res = create_provider_with_base_url(&server, &admin.token, "file:///etc/passwd").await;
+    assert_eq!(res.status(), 400, "file:// base_url must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_provider_rejects_rfc1918_base_url() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let res = create_provider_with_base_url(&server, &admin.token, "http://192.168.1.1/v1").await;
+    assert_eq!(res.status(), 400, "RFC 1918 base_url must be rejected");
+}
