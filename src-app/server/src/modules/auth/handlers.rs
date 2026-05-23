@@ -568,9 +568,21 @@ pub async fn oauth_callback(
             .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-        // Redirect to success page with token (in a real app, use a more secure method)
+        // SECURITY: return the token in the URL FRAGMENT (#) rather than
+        // the query (?). The fragment is not transmitted to the server,
+        // not written to server access logs, not sent as the Referer on
+        // subsequent navigations, and not indexed by search engines that
+        // crawl the redirect chain. The frontend reads
+        // window.location.hash on landing and immediately calls
+        // history.replaceState to scrub it from browser history.
+        //
+        // Closes 01-auth F-01 (Critical): the previous '/?token=...'
+        // form wrote the bearer token to browser history, Referer
+        // headers, and every reverse-proxy access log on the path —
+        // full account takeover blast radius from a single Referer leak
+        // or shared browser session.
         Ok(Redirect::temporary(&format!(
-            "/?token={}",
+            "/#token={}",
             tokens.access_token
         )))
     } else {
