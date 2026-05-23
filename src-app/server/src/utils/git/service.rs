@@ -191,8 +191,31 @@ impl GitService {
                 // Set up callbacks for fetch operation
                 let mut callbacks = RemoteCallbacks::new();
 
-                // Set up authentication
-                callbacks.credentials(|_url, username_from_url, _allowed_types| {
+                // SECURITY: only return credentials when libgit2 calls
+                // the callback for the ORIGINAL repository host. Without
+                // this pin, a server-controlled redirect or hostname
+                // alias would receive the auth token. Closes
+                // 09-llm-repository F-12 (Medium).
+                let original_host =
+                    reqwest::Url::parse(&repository_url).ok().and_then(|u| {
+                        u.host_str().map(|h| h.to_lowercase())
+                    });
+                callbacks.credentials(move |url, username_from_url, _allowed_types| {
+                    // Compare the callback's URL host to the original;
+                    // refuse credentials on mismatch.
+                    let cb_host = reqwest::Url::parse(url)
+                        .ok()
+                        .and_then(|u| u.host_str().map(|h| h.to_lowercase()));
+                    if original_host.is_some() && cb_host != original_host {
+                        tracing::warn!(
+                            original = ?original_host,
+                            callback = ?cb_host,
+                            "git credential callback fired for a different host; refusing token"
+                        );
+                        return Err(git2::Error::from_str(
+                            "credentials refused: callback host doesn't match original",
+                        ));
+                    }
                     if let Some(token) = auth_token.as_deref() {
                         Cred::userpass_plaintext(username_from_url.unwrap_or(""), token)
                     } else {
@@ -364,8 +387,26 @@ impl GitService {
                 // Repository doesn't exist, perform initial clone
                 let mut callbacks = RemoteCallbacks::new();
 
-                // Set up authentication
-                callbacks.credentials(|_url, username_from_url, _allowed_types| {
+                // SECURITY: pin credentials to the original repository
+                // host — see fetch path above. Closes 09-llm-repository F-12.
+                let original_host_clone =
+                    reqwest::Url::parse(&repository_url).ok().and_then(|u| {
+                        u.host_str().map(|h| h.to_lowercase())
+                    });
+                callbacks.credentials(move |url, username_from_url, _allowed_types| {
+                    let cb_host = reqwest::Url::parse(url)
+                        .ok()
+                        .and_then(|u| u.host_str().map(|h| h.to_lowercase()));
+                    if original_host_clone.is_some() && cb_host != original_host_clone {
+                        tracing::warn!(
+                            original = ?original_host_clone,
+                            callback = ?cb_host,
+                            "git credential callback fired for a different host; refusing token"
+                        );
+                        return Err(git2::Error::from_str(
+                            "credentials refused: callback host doesn't match original",
+                        ));
+                    }
                     if let Some(token) = auth_token.as_deref() {
                         // For GitHub and similar, use token as password with empty username
                         Cred::userpass_plaintext(username_from_url.unwrap_or(""), token)
