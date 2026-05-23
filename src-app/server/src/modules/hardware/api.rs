@@ -82,7 +82,14 @@ pub async fn subscribe_hardware_usage(
     _auth: RequirePermissions<(HardwareMonitor,)>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
     let client_id = Uuid::new_v4();
-    let mut rx = add_client(client_id);
+    // Capped registry — closes 12-hardware F-01.
+    let mut rx = add_client(client_id).ok_or_else(|| {
+        crate::common::AppError::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "TOO_MANY_CLIENTS",
+            "Hardware-monitoring stream pool is at capacity; try again later",
+        )
+    })?;
 
     // Start monitoring if not already active
     start_hardware_monitoring().await;

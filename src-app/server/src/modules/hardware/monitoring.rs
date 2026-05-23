@@ -12,25 +12,49 @@ use uuid::Uuid;
 
 type ClientId = Uuid;
 
+/// Cap the total number of concurrent SSE clients on this endpoint.
+/// Without a cap the in-memory client map grows unboundedly — combined
+/// with the per-client unbounded mpsc channel, an authenticated user
+/// can mint thousands of streams (each backed by their own channel that
+/// queues every 2-second broadcast) and OOM the server via channel-
+/// backlog growth. Closes 12-hardware F-01 (High).
+const MAX_SSE_CLIENTS: usize = 256;
+
 lazy_static::lazy_static! {
     static ref SSE_CLIENTS: Mutex<HashMap<ClientId, tokio::sync::mpsc::UnboundedSender<Result<Event, axum::Error>>>>
         = Mutex::new(HashMap::new());
     static ref MONITORING_ACTIVE: Mutex<bool> = Mutex::new(false);
 }
 
-/// Add a new SSE client to the connection pool
+/// Result returned by `add_client`: either a fresh receiver, or `None`
+/// when the cap has been reached. Callers must convert `None` into an
+/// HTTP 429 / 503 response.
+pub struct AddClientResult {
+    pub receiver: tokio::sync::mpsc::UnboundedReceiver<Result<Event, axum::Error>>,
+}
+
+/// Add a new SSE client to the connection pool. Returns None when the
+/// global cap (MAX_SSE_CLIENTS) is already at capacity — the caller
+/// must surface that as a 429 / 503 to the client.
 pub fn add_client(
     client_id: ClientId,
-) -> tokio::sync::mpsc::UnboundedReceiver<Result<Event, axum::Error>> {
+) -> Option<tokio::sync::mpsc::UnboundedReceiver<Result<Event, axum::Error>>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
     {
         let mut clients = SSE_CLIENTS.lock().unwrap();
+        if clients.len() >= MAX_SSE_CLIENTS {
+            tracing::warn!(
+                client_count = clients.len(),
+                "Hardware-monitoring SSE registry full; refusing new client"
+            );
+            return None;
+        }
         clients.insert(client_id, tx);
     }
 
-    println!("Added hardware monitoring client: {}", client_id);
-    rx
+    tracing::info!(%client_id, "Added hardware monitoring client");
+    Some(rx)
 }
 
 /// Remove client from connection pool
