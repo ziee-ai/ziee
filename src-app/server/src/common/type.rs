@@ -6,6 +6,7 @@ use axum::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use uuid::Uuid;
 
 // =====================================================
 // API Result Type
@@ -106,24 +107,44 @@ impl AppError {
         )
     }
 
-    pub fn database_error(err: impl std::error::Error) -> Self {
+    /// Convert a database error into a client-safe AppError.
+    ///
+    /// The inner error's Display (and Debug) text — which frequently contains
+    /// SQL constraint names, column values, or bound parameters from sqlx —
+    /// is NEVER returned to the client. The full error is logged server-side
+    /// via `tracing::error!` with a UUID trace_id; the same trace_id is
+    /// embedded in the response's `details.trace_id` so support can grep the
+    /// log to find the original error.
+    pub fn database_error(err: impl std::fmt::Display) -> Self {
+        let trace_id = Uuid::new_v4();
+        tracing::error!(%trace_id, error = %err, "Database error");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "SYSTEM_DATABASE_ERROR",
-            format!("Database error: {}", err),
+            "An internal database error occurred",
         )
+        .with_details(serde_json::json!({ "trace_id": trace_id.to_string() }))
     }
 
-    /// STUB (test-first): redacted internal error path. The body intentionally
-    /// matches the historical leaky behavior so the regression tests in this
-    /// commit FAIL as expected; the next commit replaces this with the proper
-    /// trace_id + tracing::error! implementation.
+    /// Convert a non-database error into a client-safe AppError.
+    ///
+    /// Use this for any error chain you DON'T want surfaced to the client
+    /// (filesystem errors, third-party library errors, deserialization
+    /// internals). The inner error is logged with a UUID trace_id; the
+    /// client sees only a generic message + the trace_id for correlation.
+    ///
+    /// For developer-curated safe messages (\"resource not ready\",
+    /// \"feature not enabled\"), use [`AppError::internal_error`] instead —
+    /// it does no logging and embeds the supplied string verbatim.
     pub fn internal_with_id<E: std::fmt::Display>(err: E) -> Self {
+        let trace_id = Uuid::new_v4();
+        tracing::error!(%trace_id, error = %err, "Internal server error");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "SYSTEM_INTERNAL_ERROR",
-            format!("Internal error: {}", err),
+            "An internal error occurred",
         )
+        .with_details(serde_json::json!({ "trace_id": trace_id.to_string() }))
     }
 }
 
@@ -161,7 +182,7 @@ impl From<sqlx::Error> for AppError {
 
 impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
     fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
-        AppError::internal_error(err.to_string())
+        AppError::internal_with_id(err)
     }
 }
 
