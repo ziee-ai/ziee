@@ -289,6 +289,20 @@ impl LfsService {
             "No action received from LFS server",
         ))?;
 
+        // SECURITY: validate the action.download.href against the SSRF
+        // policy before fetching. The href is server-controlled by the
+        // LFS server we just talked to; a malicious or compromised repo
+        // could return an action pointing at AWS IMDS / RFC 1918 / a
+        // file:// path, and we'd happily fetch it WITH the auth token
+        // attached. Closes 07-llm-model F-01 (Critical) LFS-side.
+        if let Err(e) = crate::utils::url_validator::validate_outbound_url(
+            &action.download.href,
+            &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        ) {
+            return Err(LfsError::InvalidFormat(Box::leak(
+                format!("LFS download URL rejected by SSRF policy: {}", e).into_boxed_str(),
+            )));
+        }
         let url = Self::url_with_auth(&action.download.href, access_token)?;
         let headers: http::HeaderMap = (&action.download.header).try_into()?;
         let download_request_builder = client.get(url).headers(headers);

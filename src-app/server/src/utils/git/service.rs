@@ -34,6 +34,8 @@ pub enum GitError {
     Io(#[from] std::io::Error),
     #[error("Operation was cancelled")]
     Cancelled,
+    #[error("Invalid repository URL: {0}")]
+    InvalidUrl(String),
 }
 
 pub struct GitService {
@@ -102,6 +104,24 @@ impl GitService {
         progress_tx: mpsc::UnboundedSender<GitProgress>,
         cancellation_token: Option<CancellationToken>,
     ) -> Result<std::path::PathBuf, GitError> {
+        // SECURITY: validate the repository URL against the SSRF policy
+        // BEFORE any DNS / network activity. The URL flows from admin
+        // input (llm_repository or hub config); the upstream validate_url
+        // in modules/llm_repository/utils.rs already screens this at
+        // insert time, but this is the defense-in-depth check at the
+        // git-level entry point so any future caller path (e.g., direct
+        // git clone calls bypassing the repository module) is also
+        // covered. Closes 07-llm-model F-01 (Critical) clone-side.
+        if let Err(e) = crate::utils::url_validator::validate_outbound_url(
+            repository_url,
+            &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        ) {
+            return Err(GitError::InvalidUrl(format!(
+                "repository URL rejected by SSRF policy: {}",
+                e
+            )));
+        }
+
         // Check for cancellation before starting
         if let Some(ref token) = cancellation_token {
             if token.is_cancelled().await {
