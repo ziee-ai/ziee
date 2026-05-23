@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use sandbox_vm_protocol::{CgroupLimits, ExecRequest};
+use sandbox_vm_protocol::{CgroupLimits, ExecRequest, PROTOCOL_VERSION};
 use tokio::net::UnixStream;
 use tokio::sync::{Mutex, Semaphore};
 
@@ -367,6 +367,7 @@ impl SandboxBackend for MacVmBackend {
         // as the attachment root (Gb) makes attachment binds resolve to guest
         // paths under /workspace, not the host workspace_root.
         let req = ExecRequest {
+            protocol_version: PROTOCOL_VERSION,
             request_id: REQ_COUNTER.fetch_add(1, Ordering::Relaxed),
             bwrap_path: GUEST_BWRAP_PATH.to_string(),
             argv: sandbox::build_bwrap_argv(

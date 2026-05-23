@@ -18,11 +18,23 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Wire-protocol version. Bumped any time the on-wire shape of `Frame` or
+/// `ExecRequest` changes in a way that would break an older peer. Host + agent
+/// ship together from the same release, so a mismatch always indicates an
+/// operator running a stale agent binary against a fresh server (or vice
+/// versa). Defense-in-depth — surfaces the mismatch loudly instead of running
+/// against undefined semantics.
+pub const PROTOCOL_VERSION: u32 = 1;
+
 /// Request to run one command in the sandbox. `argv` is the complete bwrap
 /// argv produced by the host (already pointing at *guest* paths for the rootfs
 /// mount + workspace); the agent execs `bwrap_path` with it verbatim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecRequest {
+    /// Must equal [`PROTOCOL_VERSION`] of the agent that receives it. Older
+    /// peers send no field → serde defaults to `0` → mismatch → agent rejects.
+    #[serde(default)]
+    pub protocol_version: u32,
     /// Correlates the response frames with this request (the agent handles
     /// concurrent requests on separate connections, so this is mostly for logs).
     pub request_id: u64,
@@ -200,6 +212,7 @@ mod tests {
 
     fn sample_exec() -> Frame {
         Frame::Exec(ExecRequest {
+            protocol_version: PROTOCOL_VERSION,
             request_id: 42,
             bwrap_path: "/usr/bin/bwrap".to_string(),
             argv: vec!["--clearenv".into(), "--".into(), "/bin/bash".into(), "-lc".into(), "echo hi".into()],
@@ -269,5 +282,29 @@ mod tests {
         let mut d = Decoder::new();
         d.feed(&bytes);
         assert_eq!(d.next_frame(), Err(ProtocolError::UnknownTag(99)));
+    }
+
+    #[test]
+    fn legacy_exec_request_decodes_with_version_zero() {
+        // A peer that predates PROTOCOL_VERSION sends an ExecRequest with no
+        // `protocol_version` field. With `#[serde(default)]` this deserializes
+        // to 0 (≠ PROTOCOL_VERSION) so the agent can reject it loudly.
+        let legacy_json = serde_json::json!({
+            "request_id": 1,
+            "bwrap_path": "/usr/bin/bwrap",
+            "argv": [],
+            "timeout_ms": 0,
+        });
+        let payload = serde_json::to_vec(&legacy_json).unwrap();
+        let mut bytes = vec![TAG_EXEC];
+        bytes.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(&payload);
+        let mut d = Decoder::new();
+        d.feed(&bytes);
+        let frame = d.next_frame().unwrap().expect("legacy ExecRequest decodes");
+        match frame {
+            Frame::Exec(req) => assert_eq!(req.protocol_version, 0),
+            _ => panic!("expected Exec"),
+        }
     }
 }

@@ -388,6 +388,20 @@ pub(crate) fn build_bwrap_argv(
         "dumb".into(),
     ];
 
+    // Mandatory deny: mask shell/runtime config dotfiles at the workspace root
+    // so an LLM-driven command can neither read them nor create/overwrite them
+    // to plant a hook for the host shell or other tools (Anthropic
+    // sandbox-runtime pattern; see DANGEROUS_DOTFILES doc). MUST come after the
+    // workspace --bind (above) so the masks layer on top of it; per bwrap
+    // semantics later binds override earlier ones. `--ro-bind /dev/null <path>`
+    // works whether <path> exists or not — bwrap creates it as a regular file
+    // pointing at /dev/null on the way in, so reads see empty + writes fail.
+    for dotfile in DANGEROUS_DOTFILES {
+        argv.push("--ro-bind".into());
+        argv.push("/dev/null".into());
+        argv.push(format!("/home/sandboxuser/{dotfile}"));
+    }
+
     // PID namespace + /proc handling per cached mode.
     // bwrap rejects `--as-pid-1` unless `--unshare-pid` is also set —
     // so the pid-1 alias is gated on Strict mode here.
@@ -494,6 +508,27 @@ struct SyntheticIdentity {
 pub(crate) const SYNTHETIC_PASSWD: &str =
     "sandboxuser:x:1001:1001:Sandbox User:/home/sandboxuser:/bin/bash\n";
 pub(crate) const SYNTHETIC_GROUP: &str = "sandboxuser:x:1001:\n";
+
+/// Shell / runtime config files at the workspace root that an LLM-driven sandbox
+/// command must NOT be able to read or write. Mirrors Anthropic sandbox-runtime's
+/// `DANGEROUS_FILES` list (`src/sandbox/sandbox-utils.ts:11-22`). Each one is
+/// either a shell-startup file (`.bashrc`, `.zshrc`, `.profile`, …) that the
+/// host shell could source on next login, or a tool-config file (`.gitconfig`,
+/// `.mcp.json`, …) that the LLM could subvert to alter outside-sandbox behavior
+/// (e.g. credential helpers, MCP server URLs). Masking with `--ro-bind /dev/null`
+/// makes every read appear empty AND every write fail with EROFS, regardless of
+/// whether the file already exists in the workspace.
+const DANGEROUS_DOTFILES: &[&str] = &[
+    ".gitconfig",
+    ".gitmodules",
+    ".bashrc",
+    ".bash_profile",
+    ".zshrc",
+    ".zprofile",
+    ".profile",
+    ".ripgreprc",
+    ".mcp.json",
+];
 
 impl SyntheticIdentity {
     /// Lazily ensure the synthetic passwd/group files exist under
@@ -936,6 +971,35 @@ mod tests {
                     "mode {mode:?}: must mask {masked} with --ro-bind /dev/null; argv: {argv:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn argv_masks_dangerous_dotfiles_at_workspace_root() {
+        // Mirrors Anthropic sandbox-runtime's DANGEROUS_FILES protection
+        // (sandbox-utils.ts:11-22). Every entry in DANGEROUS_DOTFILES must
+        // appear as `--ro-bind /dev/null /home/sandboxuser/<name>` in the argv
+        // so an LLM-driven command can neither read the file (sees empty) nor
+        // create / overwrite it (EROFS).
+        let caps = fake_caps();
+        let state = fake_state();
+        let ctx = fake_ctx();
+        let argv = build_bwrap_argv(
+            &caps,
+            &state.workspace_root,
+            &ctx,
+            std::path::Path::new(&state.config.rootfs_path),
+            "x",
+            std::path::Path::new("/tmp/.sandbox_passwd"),
+            std::path::Path::new("/tmp/.sandbox_group"),
+            None,
+        );
+        for dotfile in DANGEROUS_DOTFILES {
+            let expected = format!("/home/sandboxuser/{dotfile}");
+            assert!(
+                argv.windows(3).any(|w| w == ["--ro-bind", "/dev/null", expected.as_str()]),
+                "must mask {dotfile} with --ro-bind /dev/null; argv: {argv:?}"
+            );
         }
     }
 

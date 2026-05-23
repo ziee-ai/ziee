@@ -25,7 +25,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sandbox_vm_protocol::{encode, CgroupLimits, Decoder, ExitStatus, Frame};
+use sandbox_vm_protocol::{encode, CgroupLimits, Decoder, ExitStatus, Frame, PROTOCOL_VERSION};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::process::Command;
@@ -227,6 +227,20 @@ where
         }
         decoder.feed(&buf[..n]);
     };
+
+    // Reject mismatched protocol versions loudly — defends against operators
+    // running a stale agent binary against a fresh server (or vice versa).
+    // `#[serde(default)]` on `protocol_version` means peers that predate the
+    // field send `0`, which never matches the current PROTOCOL_VERSION.
+    if req.protocol_version != PROTOCOL_VERSION {
+        tracing::error!(
+            request_id = req.request_id,
+            peer_version = req.protocol_version,
+            agent_version = PROTOCOL_VERSION,
+            "agent: protocol version mismatch; rejecting"
+        );
+        return Ok(());
+    }
 
     tracing::info!(
         request_id = req.request_id,
