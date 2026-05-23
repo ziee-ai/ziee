@@ -567,6 +567,22 @@ impl AuthProviderTrait for OAuth2Provider {
             (access_token, user_info)
         };
 
+        // SECURITY: require email_verified to be true (or absent — some
+        // providers don't include the claim but only return verified
+        // emails) before treating the email as authoritative for user
+        // matching. If a provider explicitly returns email_verified=false,
+        // the email belongs to someone who hasn't yet proven control of
+        // it; matching on it would let an attacker take over an account
+        // by signing up with someone else's email at a provider that
+        // doesn't verify. Closes 01-auth F-09 (High).
+        if let Some(verified) = user_info.get("email_verified").and_then(|v| v.as_bool()) {
+            if !verified {
+                return Err(AuthError::InvalidCredentials(
+                    "OAuth provider returned email_verified=false; refusing to provision".to_string(),
+                ));
+            }
+        }
+
         // Extract user attributes
         let attributes = self.extract_user_attributes(&user_info)?;
 
