@@ -21,6 +21,16 @@ use crate::{
 // Branch Handlers
 // =====================================================
 
+/// Cap on the number of branches a single conversation can have.
+///
+/// Closes 04-chat F-08 (Medium): without this cap, a user with
+/// `branches::create` permission can spam create_branch in a tight loop,
+/// growing the `branches` row count and `branch_messages` association
+/// table without bound. Even modest abuse (10 calls per second) hits
+/// 100K rows / hour. 256 is large enough for any reasonable
+/// edit/regenerate workflow.
+const MAX_BRANCHES_PER_CONVERSATION: i64 = 256;
+
 /// Create a new branch (for edit/regenerate functionality)
 #[debug_handler]
 pub async fn create_branch(
@@ -41,6 +51,18 @@ pub async fn create_branch(
             "Conversation must have an active branch to create a new branch from",
         )
     })?;
+
+    // SECURITY: enforce a per-conversation branch cap (04-chat F-08).
+    let existing = Repos.chat.core
+        .list_branches(conversation_id)
+        .await?;
+    if existing.len() as i64 >= MAX_BRANCHES_PER_CONVERSATION {
+        return Err(AppError::bad_request(
+            "BRANCH_LIMIT",
+            "Maximum number of branches per conversation reached",
+        )
+        .into());
+    }
 
     // Create new branch with message cloning (handled in repository)
     let branch = Repos.chat.core
