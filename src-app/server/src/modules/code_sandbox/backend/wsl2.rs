@@ -164,9 +164,11 @@ kernel.unprivileged_userns_clone=1\n";
 const WSL_MIN_VERSION_25: (u32, u32, u32) = (2, 5, 10);
 const WSL_MIN_VERSION_26: (u32, u32, u32) = (2, 6, 1);
 
-// Cap concurrent execs per distro so N parallel commands (each cgroup-capped)
-// can't sum past the WSL2 VM's RAM. Mirrors the macOS `MAX_CONCURRENT_EXECS_PER_VM`.
-const MAX_CONCURRENT_EXECS: usize = 3;
+// Per-distro concurrent-exec cap now lives in the runtime-tunable
+// `code_sandbox_settings.vm_max_concurrent_execs` row (Plan 1 §6). Same
+// knob the macOS backend reads (the contention shape is identical:
+// N parallel cgroup-capped execs must not sum past the VM RAM ceiling).
+// Defaults match the prior const (3) via the SQL DEFAULT in migration 42.
 
 /// Monotonic request id (matches the macOS B4 fix — avoids cgroup-path
 /// collisions a timestamp id risked under concurrency).
@@ -403,6 +405,12 @@ impl Wsl2Backend {
             tokio::time::sleep(Duration::from_millis(150)).await;
         }
 
+        // Per-distro concurrent-exec cap from the §6 config; resolved at
+        // boot time (subsequent admin tunes apply on next cold boot of this
+        // flavor). `max(1)` guards a degenerate config value.
+        let max_concurrent = resource_limits_cache::snapshot_or_defaults()
+            .vm_max_concurrent_execs
+            .max(1) as usize;
         let handle = Arc::new(DistroHandle {
             agent: Mutex::new(agent),
             distro,
@@ -410,7 +418,7 @@ impl Wsl2Backend {
             vm_id,
             last_used: Mutex::new(Instant::now()),
             inflight: AtomicUsize::new(0),
-            sem: Semaphore::new(MAX_CONCURRENT_EXECS),
+            sem: Semaphore::new(max_concurrent),
         });
         DISTROS.lock().await.insert(flavor.to_string(), handle.clone());
         ensure_reaper();

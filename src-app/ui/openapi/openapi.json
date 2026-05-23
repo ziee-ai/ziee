@@ -9219,6 +9219,16 @@
             "type": "integer",
             "format": "int64"
           },
+          "mac_vm_ram_mib": {
+            "description": "macOS libkrun microVM RAM ceiling in MiB.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "mac_vm_vcpus": {
+            "description": "macOS libkrun microVM vCPU count (`krun_set_vm_config`).",
+            "type": "integer",
+            "format": "int32"
+          },
           "memory_max_bytes": {
             "description": "cgroup v2 `memory.max`.",
             "type": "integer",
@@ -9257,6 +9267,11 @@
             "description": "VM idle eviction (macOS libkrun + WSL2 distro). `0` = never.",
             "type": "integer",
             "format": "int32"
+          },
+          "vm_max_concurrent_execs": {
+            "description": "Per-VM concurrent `execute_command` cap (macOS + WSL2).",
+            "type": "integer",
+            "format": "int32"
           }
         },
         "required": [
@@ -9271,6 +9286,9 @@
           "cpu_secs_max",
           "timeout_secs",
           "vm_idle_evict_secs",
+          "mac_vm_vcpus",
+          "mac_vm_ram_mib",
+          "vm_max_concurrent_execs",
           "created_at",
           "updated_at"
         ]
@@ -16021,6 +16039,20 @@
             ],
             "format": "int64"
           },
+          "mac_vm_ram_mib": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "mac_vm_vcpus": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "memory_max_bytes": {
             "type": [
               "integer",
@@ -16064,6 +16096,13 @@
             "format": "int32"
           },
           "vm_idle_evict_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "vm_max_concurrent_execs": {
             "type": [
               "integer",
               "null"

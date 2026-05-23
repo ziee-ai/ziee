@@ -57,13 +57,12 @@ const GUEST_SECCOMP_FD: i32 = 10;
 const GUEST_PASSWD: &str = "/etc/ziee-sandbox-passwd";
 const GUEST_GROUP: &str = "/etc/ziee-sandbox-group";
 
-// Default VM sizing. MAC-TODO: wire to the §6 runtime-configurable limits.
-const VM_VCPUS: u8 = 2;
-const VM_RAM_MIB: u32 = 2048;
-// Cap concurrent execs per VM so N parallel commands (each cgroup-capped at
-// ~512 MiB) can't sum past the VM's RAM ceiling and trigger a guest OOM
-// (Ga). ~VM_RAM_MIB / 512 with headroom. MAC-TODO: derive from §6 config.
-const MAX_CONCURRENT_EXECS_PER_VM: usize = 3;
+// VM sizing + per-VM concurrency cap now live in the runtime-tunable
+// `code_sandbox_settings` row (Plan 1 §6). Defaults (mirroring the prior
+// consts: 2 vCPU, 2048 MiB, 3 concurrent execs) come from the SQL DEFAULTs
+// in migration 42 + `resource_limits_cache::defaults`. `ensure_vm` reads
+// the snapshot when booting a new VM; existing warm VMs keep the sizing
+// they were booted with (admin tunes apply to the NEXT cold boot).
 
 /// Monotonic request id (B4) — avoids the cgroup-path collisions a timestamp
 /// id risked under concurrency.
@@ -213,9 +212,14 @@ impl MacVmBackend {
         let socket_path = dir.join(format!("vm-{flavor}.sock"));
         let _ = std::fs::remove_file(&socket_path);
 
+        // Read runtime-tunable VM sizing + concurrency cap (§6). Boot-time
+        // snapshot — once the VM is up, an admin's PUT applies to the NEXT
+        // cold boot of THIS flavor, not the warm one.
+        let limits = resource_limits_cache::get().await?;
+
         let cfg = serde_json::json!({
-            "num_vcpus": VM_VCPUS,
-            "ram_mib": VM_RAM_MIB,
+            "num_vcpus": limits.mac_vm_vcpus.max(1) as u32,
+            "ram_mib": limits.mac_vm_ram_mib.max(256) as u32,
             "root_path": Self::guest_root_path().to_string_lossy(),
             "sandbox_disk_path": sandbox_disk.to_string_lossy(),
             "workspace_host_path": state.workspace_root.to_string_lossy(),
@@ -254,7 +258,7 @@ impl MacVmBackend {
             socket_path,
             last_used: Mutex::new(Instant::now()),
             inflight: AtomicUsize::new(0),
-            sem: Semaphore::new(MAX_CONCURRENT_EXECS_PER_VM),
+            sem: Semaphore::new(limits.vm_max_concurrent_execs.max(1) as usize),
         });
         VMS.lock().await.insert(flavor.to_string(), handle.clone());
         ensure_reaper();

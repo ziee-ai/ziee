@@ -858,6 +858,9 @@ mod tests {
             cpu_secs_max: 1240,
             timeout_secs: 620,
             vm_idle_evict_secs: 900,
+            mac_vm_vcpus: 2,
+            mac_vm_ram_mib: 2048,
+            vm_max_concurrent_execs: 3,
             created_at: now,
             updated_at: now,
         }

@@ -112,6 +112,8 @@ export interface CodeSandboxResourceLimits {
   cpu_secs_max: number
   created_at: string
   fsize_bytes: number
+  mac_vm_ram_mib: number
+  mac_vm_vcpus: number
   memory_max_bytes: number
   memory_swap_max_bytes: number
   nofile_max: number
@@ -120,6 +122,7 @@ export interface CodeSandboxResourceLimits {
   timeout_secs: number
   updated_at: string
   vm_idle_evict_secs: number
+  vm_max_concurrent_execs: number
 }
 
 export type ContentBlockDelta = {
@@ -1565,6 +1568,8 @@ export interface UpdateCodeSandboxResourceLimits {
   cpu_max?: string
   cpu_secs_max?: number
   fsize_bytes?: number
+  mac_vm_ram_mib?: number
+  mac_vm_vcpus?: number
   memory_max_bytes?: number
   memory_swap_max_bytes?: number
   nofile_max?: number
@@ -1572,6 +1577,7 @@ export interface UpdateCodeSandboxResourceLimits {
   pids_max?: number
   timeout_secs?: number
   vm_idle_evict_secs?: number
+  vm_max_concurrent_execs?: number
 }
 
 export interface UpdateConversationRequest {

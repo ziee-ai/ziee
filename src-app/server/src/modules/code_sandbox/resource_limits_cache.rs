@@ -94,6 +94,9 @@ fn defaults() -> CodeSandboxResourceLimits {
         cpu_secs_max: 1240,
         timeout_secs: 620,
         vm_idle_evict_secs: 900,
+        mac_vm_vcpus: 2,
+        mac_vm_ram_mib: 2048,
+        vm_max_concurrent_execs: 3,
         created_at: now,
         updated_at: now,
     }
@@ -119,6 +122,9 @@ mod tests {
         assert_eq!(d.nofile_max, 1024);
         assert_eq!(d.timeout_secs, 620);
         assert_eq!(d.vm_idle_evict_secs, 900);
+        assert_eq!(d.mac_vm_vcpus, 2);
+        assert_eq!(d.mac_vm_ram_mib, 2048);
+        assert_eq!(d.vm_max_concurrent_execs, 3);
     }
 
     /// On platforms where `sandbox-vm-protocol` is in scope (macOS / Windows),
