@@ -372,14 +372,47 @@ fn register_cleanup_handlers() {
         return;
     }
 
-    // Register cleanup on panic
+    // Register cleanup on panic.
+    //
+    // SECURITY/CORRECTNESS: 14-core F-09 (Medium). The previous
+    // implementation called `tokio::runtime::Runtime::new().unwrap()`
+    // from inside the panic hook, but the hook commonly fires while a
+    // tokio runtime is already on the stack (any handler panic). Tokio
+    // refuses to start a new runtime nested inside an existing one
+    // ('Cannot start a runtime from within a runtime'), so the cleanup
+    // hook double-faulted and left the embedded PostgreSQL data dir
+    // unstopped. Same bug in the Drop impl below.
+    //
+    // The fix uses `tokio::runtime::Handle::try_current()` to detect
+    // whether we're already on a tokio runtime; if so, schedule the
+    // cleanup on that runtime via `block_in_place` + `block_on`; if not,
+    // spin up a fresh runtime (the original behavior, now only on the
+    // path where it's safe).
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        println!("Panic detected, cleaning up database...");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(cleanup_database());
+        tracing::error!("Panic detected, cleaning up database");
+        run_cleanup_blocking();
         orig_hook(panic_info);
     }));
+}
+
+/// Run `cleanup_database` synchronously from a context that may or may
+/// not be on a tokio runtime. Detects the runtime via Handle::try_current
+/// and uses block_in_place to avoid the 'Cannot start a runtime from
+/// within a runtime' double-fault when called from the panic hook
+/// during an async-handler panic. 14-core F-09 (Medium).
+fn run_cleanup_blocking() {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            tokio::task::block_in_place(|| handle.block_on(cleanup_database()));
+        }
+        Err(_) => match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt.block_on(cleanup_database()),
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to create runtime for cleanup");
+            }
+        },
+    }
 }
 
 // Drop implementation for graceful shutdown
@@ -387,9 +420,8 @@ struct DatabaseCleanup;
 
 impl Drop for DatabaseCleanup {
     fn drop(&mut self) {
-        println!("DatabaseCleanup Drop called, cleaning up database...");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(cleanup_database());
+        tracing::info!("DatabaseCleanup Drop called, cleaning up database");
+        run_cleanup_blocking();
     }
 }
 
