@@ -97,12 +97,15 @@ impl FileExtension {
             _ => &ai_providers::OpenAIProvider,
         };
 
-        // Upload to provider or get cached file ID
+        // Upload to provider or get cached file ID. user_id is threaded
+        // through for the user-scoped JOIN in get_provider_file_mapping
+        // — closes 06-llm-provider F-04.
         let provider_file_id = llm_provider_files::service::get_or_upload_provider_file(
             &self.pool,
             file_repo,
             &file_storage,
             file_id,
+            _user_id,
             &provider,
             ai_provider,
         )
