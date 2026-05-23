@@ -201,12 +201,33 @@ async fn setup_server(
 
     // Convert ApiRouter to Router and add layers.
     //
-    // SECURITY: global body limit 16 MB; upload routes set their own
-    // per-route limit. See note in main.rs for the rationale.
-    // Closes 14-core-infrastructure F-01.
+    // SECURITY: matches the middleware stack in main.rs::main —
+    // 16 MB body limit, 60s timeout, security headers, CORS.
+    // Closes 14-core F-01 + 05-file F-09 generalization + A3 headers.
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-content-type-options"),
+            axum::http::HeaderValue::from_static("nosniff"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-frame-options"),
+            axum::http::HeaderValue::from_static("DENY"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("referrer-policy"),
+            axum::http::HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("permissions-policy"),
+            axum::http::HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("strict-transport-security"),
+            axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service.clone()))
         .layer(cors);

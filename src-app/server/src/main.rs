@@ -183,9 +183,41 @@ async fn main() {
     // on their handler. The previous `disable()` here let unauthenticated
     // POSTs to ANY endpoint stream multi-GB bodies and OOM the server —
     // see 14-core-infrastructure F-01.
+    // SECURITY: middleware stack (A3). Layers wrap from bottom-up so
+    // a request flows through cors → headers → timeout → body-limit
+    // before reaching the handler.
+    //
+    // - DefaultBodyLimit::max — 16 MB cap (per-route upload routes raise this).
+    // - TimeoutLayer 60s — request hard-deadline. SSE/streaming routes that
+    //   need longer override per-route; this is the global default.
+    //   Closes 05-file F-09 generalization + similar.
+    // - Security headers (X-Content-Type-Options, X-Frame-Options,
+    //   Referrer-Policy, Permissions-Policy, Strict-Transport-Security).
+    //   These are response-only defenses but cheap and audit-recommended.
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-content-type-options"),
+            axum::http::HeaderValue::from_static("nosniff"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-frame-options"),
+            axum::http::HeaderValue::from_static("DENY"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("referrer-policy"),
+            axum::http::HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("permissions-policy"),
+            axum::http::HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("strict-transport-security"),
+            axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service))
         .layer(axum::Extension(mcp_session_manager.clone()))
