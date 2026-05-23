@@ -10,6 +10,45 @@ Severity ordering inside each section: by audit-file number, then by `F-NN`. Use
 
 ---
 
+## Closure Status — `security/remediation-2026-05` (2026-05-23)
+
+PR `security/remediation-2026-05` closes **~70 of 145** Critical/High/Medium findings. The unchecked items in the rest of the document remain open; the one deferred Critical (06-llm-provider F-02) has framework in place (pgcrypto migration + SecretView<T> + core::secrets::storage_key) and only the repository read/write wiring remains.
+
+**Critical (10 of 11 closed):**
+
+- ✅ 01-auth F-01 (cff71cd)
+- ✅ 03-user F-01 (129956d), F-02 (fb68d55)
+- ✅ 04-chat F-01 (ba0779e)
+- ✅ 05-file F-01 (d4aad5c)
+- ✅ 06-llm-provider F-01 (0fea61d)
+- ⏸ 06-llm-provider F-02 — A5 framework done (31dc3ae, 6913b7a); repo wiring deferred
+- ✅ 09-llm-repository F-01 (9eec0a7)
+- ✅ 14-core F-01 (6b5607c), F-02 (50527d8)
+
+**High (~22 of 49 closed):**
+
+01-auth F-02 (ed870a5), F-03 (ed870a5), F-04 (dc714cc), F-07 (c3b43e9), F-09 (8da32da), F-18 (2c1dbf1) · 02-permissions F-02 (bb3a482) · 03-user F-03 (f3470cd), F-04 (28796cd) · 04-chat F-02 (d6fb149) · 05-file F-03 (eec8811), F-06 (e428004) · 06-llm-provider F-03 (be18fbd), F-04 (4dd543a) · 07-llm-model F-02 (ac95220) · 08-llm-local-runtime F-03 (fbd31db) · 09-llm-repository F-03 (9eec0a7) · 12-hardware F-01 (cdde3d5), F-02 (13f9f69) · 13-misc app/H-1 + onboarding/H-2 (d02e9e6, 828b6d9)
+
+**Medium (~25 of 85 closed):**
+
+03-user F-05 (d02e9e6), F-06 (3ab83bc), F-10 (7cbbff6) · 04-chat F-08 (aef5dd5) · 05-file F-08 (830b82c), F-09 (0fa8f93), F-10/F-11 (e62f75c) · 06-llm-provider F-05 (ce456df), F-06 cross-cutting (ce2eea7), F-08 (ce456df) · 07-llm-model F-07 (92c00f2), F-09 (f23fcc5) · 08-llm-local-runtime F-09 partial (8ed9bb9) · 09-llm-repository F-12 (49543f0), F-16 (9ee3612) · 11-hub F-01 (308ab0e), F-02 (ef67485), F-05 (be6e41b) · 12-hardware F-04 (d1f64be) · 13-misc M-3 (a8c57c0) · 14-core F-09 (d350b20), F-10 (9576596), F-14 (acb9506)
+
+**Cross-cutting closures via A1 + A2 + A5-framework:**
+
+- ✅ AppError redaction (94f5295): closes raw-sqlx-leak in 14-core + 03-user F-08 + 06-llm-provider F-06 + 07-llm-model F-05 + 09-llm-repository F-* + 13-misc M-2
+- ✅ eprintln/println sweep (ce2eea7): 06-llm-provider F-06 (full) + 09-llm-repository F-04 (partial) + 07-llm-model F-15 + 04-chat extension/title eprintln
+- ✅ `validate_outbound_url` helper (f6a42d0): foundation for 6+ wired SSRF closures
+- ✅ A5 framework (31dc3ae, 6913b7a): migration 43 + SecretView<T> + storage_key, ready for repo wiring
+
+**Major remaining work (follow-up PR):**
+
+- **06-llm-provider F-02 (Critical, A5-full)**: pgcrypto repo wiring across ~10 SQL paths in `llm_provider/repositories/{admin,user}.rs` + `llm_repositories.auth_config` JSONB.
+- **07-llm-model F-01 (Critical)**: HF + downloads SSRF — full LFS pointer href + git2 clone URL paths through `validate_outbound_url`.
+- **A3 (rate limiting + security headers)**: `tower-governor` + security-headers layer + CORS hardening. Closes ~15 missing-rate-limit findings + 05-file F-13.
+- **07-llm-model F-04, F-11**: per-user model ownership + SSE cross-tenant visibility (needs `created_by` column).
+
+---
+
 ## Critical (fix within 24h)
 
 - [ ] **[01-auth#F-01]** Critical / V8.3.1 / CWE-598 — OAuth callback returns JWT in URL query string — `modules/auth/handlers.rs:572-575` — Source: [`01-auth.md§F-01`](./01-auth.md)
