@@ -25,7 +25,15 @@ pub struct UpdateUserRequest {
     pub email: Option<String>,
     pub display_name: Option<String>,
     pub is_active: Option<bool>,
-    pub permissions: Option<Vec<String>>,
+    // NOTE: `permissions` is intentionally NOT on this DTO. The previous
+    // version exposed it, which let any users::edit holder rewrite the
+    // permissions array of any user (including themselves) and escalate
+    // to wildcard '*' from a single sub-admin grant — see 03-user F-01
+    // (Critical). Permission management for users is handled through
+    // group assignment (POST /api/groups/{id}/users) and a dedicated
+    // set_permissions endpoint planned in A4. Serde drops unknown fields
+    // silently, so old callers sending {"permissions":[...]} now get a
+    // no-op for the permissions field.
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

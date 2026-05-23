@@ -199,7 +199,13 @@ pub async fn update_user(
         }
     }
 
-    // Update user
+    // Update user.
+    //
+    // permissions is intentionally None here — see note on UpdateUserRequest
+    // in modules/user/types.rs. Removing the field from the DTO at the
+    // serde layer closes 03-user F-01 (Critical priv-esc); passing None
+    // through keeps the repository signature stable for the
+    // future dedicated set_permissions endpoint.
     Repos
         .user
         .update(
@@ -207,7 +213,7 @@ pub async fn update_user(
             request.username,
             request.email,
             request.display_name,
-            request.permissions,
+            None,
         )
         .await?;
 
