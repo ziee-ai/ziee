@@ -30,10 +30,24 @@ use crate::modules::user::{
 /// List all users (requires users::read permission)
 #[debug_handler]
 pub async fn list_users(
-    _auth: RequirePermissions<(UsersRead,)>,
+    auth: RequirePermissions<(UsersRead,)>,
     Query(params): Query<PaginationQuery>,
 ) -> ApiResult<Json<UserListResponse>> {
-    let (users, total) = Repos.user.list(params.page, params.per_page).await?;
+    let (mut users, total) = Repos.user.list(params.page, params.per_page).await?;
+
+    // SECURITY: zero out sensitive PII fields when the caller isn't an
+    // admin. The full User row includes email, permissions, and
+    // last_login_at which the audit (03-user F-10 Medium) flagged as PII
+    // that non-admin users::read holders should not see. The defensive
+    // zero-out in get_group_members was not replicated in this list
+    // endpoint; this commit makes the two consistent.
+    if !auth.user.is_admin {
+        for u in users.iter_mut() {
+            u.email = String::new();
+            u.permissions = Vec::new();
+            u.last_login_at = None;
+        }
+    }
 
     let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
 
