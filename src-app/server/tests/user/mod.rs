@@ -1163,3 +1163,115 @@ async fn test_create_user_allows_granting_perm_caller_holds() {
         res.status()
     );
 }
+
+// =====================================================
+// Group privilege-escalation — close 02-permissions F-02
+// =====================================================
+//
+// update_group's is_system check only protected `name` and `is_active`,
+// NOT `permissions`. A holder of groups::edit could POST
+// {"permissions": ["*"]} to the system default Users group and cascade
+// '*' to every existing user — mass escalation. Audit 02-permissions
+// F-02 (High).
+//
+// Tests live in tests/user/ because tests/user_group/ has its own broken
+// helpers module (references missing TEST_CONFIG) and isn't registered
+// in integration_tests.rs.
+
+#[tokio::test]
+async fn test_update_group_system_default_refuses_permission_change() {
+    let server = crate::common::TestServer::start().await;
+    let editor = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "editor",
+        &["groups::edit", "groups::read"],
+    )
+    .await;
+
+    let groups: serde_json::Value = reqwest::Client::new()
+        .get(&server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", editor.token))
+        .send()
+        .await
+        .expect("list groups failed")
+        .json()
+        .await
+        .expect("parse groups failed");
+
+    let default_group_id = groups
+        .get("groups")
+        .and_then(|g| g.as_array())
+        .and_then(|arr| {
+            arr.iter()
+                .find(|g| {
+                    g.get("is_system").and_then(|v| v.as_bool()) == Some(true)
+                        && g.get("is_default").and_then(|v| v.as_bool()) == Some(true)
+                })
+                .and_then(|g| g.get("id").and_then(|id| id.as_str()))
+                .map(String::from)
+        })
+        .expect("no default system group found");
+
+    let res = reqwest::Client::new()
+        .post(&server.api_url(&format!("/groups/{}", default_group_id)))
+        .header("Authorization", format!("Bearer {}", editor.token))
+        .json(&serde_json::json!({
+            "permissions": ["*"]
+        }))
+        .send()
+        .await
+        .expect("update request failed");
+
+    assert!(
+        res.status() == 400 || res.status() == 403,
+        "system default group permission change must be rejected, got {}",
+        res.status()
+    );
+}
+
+#[tokio::test]
+async fn test_update_group_prevents_self_escalation_on_custom_group() {
+    let server = crate::common::TestServer::start().await;
+    let editor = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "editor",
+        &["groups::edit", "groups::read", "groups::create"],
+    )
+    .await;
+
+    let new_group: serde_json::Value = reqwest::Client::new()
+        .post(&server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", editor.token))
+        .json(&serde_json::json!({
+            "name": format!("priv-esc-test-{}", Uuid::new_v4()),
+            "description": "test",
+            "permissions": []
+        }))
+        .send()
+        .await
+        .expect("create group failed")
+        .json()
+        .await
+        .expect("parse failed");
+
+    let group_id = new_group
+        .get("id")
+        .and_then(|id| id.as_str())
+        .expect("group id missing");
+
+    let res = reqwest::Client::new()
+        .post(&server.api_url(&format!("/groups/{}", group_id)))
+        .header("Authorization", format!("Bearer {}", editor.token))
+        .json(&serde_json::json!({
+            "permissions": ["users::delete"]
+        }))
+        .send()
+        .await
+        .expect("update request failed");
+
+    assert!(
+        res.status() == 403 || res.status() == 400,
+        "caller without users::delete cannot grant it via groups; got {}",
+        res.status()
+    );
+}
