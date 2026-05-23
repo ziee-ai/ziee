@@ -113,6 +113,12 @@ jwt:
   audience: "ziee-chat-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
+
+# At-rest secret storage key — enables pgcrypto encryption on api_key /
+# token / password columns. See common/secret.rs. Closes 06-llm-provider
+# F-02 once the repository wiring lands.
+secrets:
+  storage_key: "test-storage-key-for-pgcrypto-min-32-chars-long"
 "#,
             host, port, username, password, database_name, server_port
         );

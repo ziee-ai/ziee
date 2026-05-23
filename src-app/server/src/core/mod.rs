@@ -7,6 +7,7 @@ pub mod config;
 pub mod database;
 pub mod events;
 pub mod repository;
+pub mod secrets;
 
 // Re-export commonly used functions
 pub use app_state::{get_app_data_dir, set_app_data_dir};

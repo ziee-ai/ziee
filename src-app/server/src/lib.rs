@@ -149,6 +149,14 @@ async fn setup_server(
     core::init_repositories((*pool).clone());
     tracing::info!("Global repository factory initialized");
 
+    // Initialize at-rest secret storage key — see core::secrets.
+    core::secrets::init_storage_key(
+        config
+            .secrets
+            .as_ref()
+            .and_then(|s| s.storage_key.clone()),
+    );
+
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone(), Arc::new(config.clone()));
     let mut modules = core::app_builder::create_modules();

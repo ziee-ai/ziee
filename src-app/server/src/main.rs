@@ -125,6 +125,16 @@ async fn main() {
     core::init_repositories((*pool).clone());
     tracing::info!("Global repository factory initialized");
 
+    // Initialize at-rest secret storage key from config. Closes
+    // 06-llm-provider F-02 (Critical) once configured; compat mode if
+    // secrets.storage_key is absent.
+    core::secrets::init_storage_key(
+        config
+            .secrets
+            .as_ref()
+            .and_then(|s| s.storage_key.clone()),
+    );
+
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
     let mut modules = core::app_builder::create_modules();
