@@ -2,6 +2,59 @@ use include_dir::{Dir, include_dir};
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
+
+/// Validate that a locale string matches the IETF BCP 47 minimum subset
+/// the hub supports: a 2-letter ISO 639-1 language code, optionally
+/// followed by `-` and a 2-letter ISO 3166-1 region code. Rejects any
+/// path-traversal payload (`..`, `/`) or oversized input. Closes
+/// 11-hub F-02 (Medium).
+fn is_valid_locale(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    match bytes.len() {
+        2 => bytes.iter().all(|b| b.is_ascii_lowercase()),
+        5 => {
+            bytes[0..2].iter().all(|b| b.is_ascii_lowercase())
+                && bytes[2] == b'-'
+                && bytes[3..5].iter().all(|b| b.is_ascii_uppercase())
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod locale_tests {
+    use super::*;
+    #[test]
+    fn accepts_two_letter_code() {
+        assert!(is_valid_locale("en"));
+        assert!(is_valid_locale("fr"));
+        assert!(is_valid_locale("zh"));
+    }
+    #[test]
+    fn accepts_region_form() {
+        assert!(is_valid_locale("zh-CN"));
+        assert!(is_valid_locale("pt-BR"));
+    }
+    #[test]
+    fn rejects_path_traversal() {
+        assert!(!is_valid_locale("../etc"));
+        assert!(!is_valid_locale("../../../etc/passwd"));
+        assert!(!is_valid_locale("/dev/zero"));
+    }
+    #[test]
+    fn rejects_oversize() {
+        assert!(!is_valid_locale("englishlanguagecode"));
+    }
+    #[test]
+    fn rejects_uppercase_language() {
+        assert!(!is_valid_locale("EN"));
+    }
+    #[test]
+    fn rejects_separator_garbage() {
+        assert!(!is_valid_locale("en_US"));
+        assert!(!is_valid_locale("en/CN"));
+    }
+}
 use tokio::fs as async_fs;
 
 use super::models::{HubAssistant, HubData, HubMCPServer, HubModel};
@@ -106,6 +159,22 @@ impl HubManager {
 
     /// Load hub data with locale support
     pub async fn load_hub_data_with_locale(&self, locale: &str) -> Result<HubData, AppError> {
+        // SECURITY: validate the locale before any path join.
+        //
+        // The original implementation joined `format!("{}.json", locale)`
+        // directly into a PathBuf with no validation, letting an attacker
+        // walk out of the hub data dir via `?lang=../../../etc/passwd`.
+        // The read primitive was constrained to .json files (the format!
+        // appends .json) but the DoS variant via `?lang=/dev/zero` was
+        // fully exploitable. Closes 11-hub F-02 (Medium, carryover from
+        // 06-§1).
+        //
+        // Allowed: 2-letter ISO 639-1 code optionally followed by `-XX`
+        // region (e.g., 'en', 'fr', 'zh-CN', 'pt-BR'). Anything else
+        // falls back to 'en' silently — locale is a UX hint, not an
+        // input that should fail the whole request.
+        let locale = if is_valid_locale(locale) { locale } else { "en" };
+
         let hub_dir = self.app_data_dir.join("hub");
         let version = self.get_current_version("llm-models").await?;
 
