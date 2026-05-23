@@ -860,3 +860,43 @@ async fn test_can_update_admin_user_other_fields() {
     assert_eq!(body["email"], "updatedemail@example.com");
     assert_eq!(body["is_active"], true, "Admin user should remain active");
 }
+
+// =====================================================
+// Body-limit regression test — close 14-core F-01
+// =====================================================
+//
+// The previous DefaultBodyLimit::disable() applied globally let any
+// unauthenticated POST exhaust memory by streaming a multi-GB body.
+// The fix sets a global 16MB cap so non-upload routes return 413 for
+// any request body larger than that; the actual upload routes
+// (file upload, model upload) opt into a higher per-route cap.
+
+#[tokio::test]
+async fn test_body_limit_rejects_oversized_post_to_register() {
+    let server = crate::common::TestServer::start().await;
+
+    // Construct a 20 MB JSON body — larger than the 16 MB global cap,
+    // smaller than upload-route caps. The route is unauthenticated so
+    // this exercises the unauth DoS scenario the audit flagged.
+    let big_padding = "A".repeat(20 * 1024 * 1024);
+    let body = serde_json::json!({
+        "username": "x",
+        "email": "x@example.com",
+        "password": "x",
+        "padding": big_padding,
+    });
+
+    let res = reqwest::Client::new()
+        .post(&server.api_url("/auth/register"))
+        .json(&body)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(
+        res.status(),
+        413,
+        "20 MB POST to /auth/register must be rejected with 413 (was: {})",
+        res.status()
+    );
+}
