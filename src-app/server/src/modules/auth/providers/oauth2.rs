@@ -204,7 +204,20 @@ impl OAuth2Provider {
             AuthError::ConfigurationError("UserInfo URL not configured".to_string())
         })?;
 
-        let client = reqwest::Client::new();
+        // SECURITY: disable redirects on the UserInfo fetch. Without
+        // this, a malicious OIDC provider could return a 302 to
+        // http://169.254.169.254/latest/meta-data/iam/security-credentials
+        // and reqwest would happily follow the redirect WITH the bearer
+        // token attached, exfiltrating the access token to AWS IMDS or
+        // any other private-network service. The legit UserInfo flow
+        // never redirects — providers serve the user info directly.
+        // Closes 01-auth F-18 (High).
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| {
+                AuthError::ConnectionFailed(format!("Failed to build HTTP client: {}", e))
+            })?;
         let response = client
             .get(userinfo_url)
             .bearer_auth(access_token)
