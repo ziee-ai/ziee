@@ -165,11 +165,17 @@ async fn main() {
         (*module_context.db_pool).clone(),
     );
 
-    // Convert ApiRouter to Router and add JWT service and CORS layers
-    // Disable body size limit for model uploads (models can be very large)
+    // Convert ApiRouter to Router and add JWT service and CORS layers.
+    //
+    // SECURITY: the global body limit is set to 16 MB here. Upload routes
+    // that legitimately need more (file upload, model upload, etc.) opt
+    // into a higher per-route limit via `.layer(DefaultBodyLimit::max(N))`
+    // on their handler. The previous `disable()` here let unauthenticated
+    // POSTs to ANY endpoint stream multi-GB bodies and OOM the server —
+    // see 14-core-infrastructure F-01.
     let app = api_router
         .finish_api(&mut api_doc)
-        .layer(axum::extract::DefaultBodyLimit::disable())
+        .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service))
         .layer(axum::Extension(mcp_session_manager.clone()))

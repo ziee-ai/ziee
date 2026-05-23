@@ -191,10 +191,14 @@ async fn setup_server(
         (*module_context.db_pool).clone(),
     );
 
-    // Convert ApiRouter to Router and add layers
+    // Convert ApiRouter to Router and add layers.
+    //
+    // SECURITY: global body limit 16 MB; upload routes set their own
+    // per-route limit. See note in main.rs for the rationale.
+    // Closes 14-core-infrastructure F-01.
     let app = api_router
         .finish_api(&mut api_doc)
-        .layer(axum::extract::DefaultBodyLimit::disable())
+        .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service.clone()))
         .layer(cors);

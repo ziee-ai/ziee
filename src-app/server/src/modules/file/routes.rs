@@ -2,14 +2,26 @@
 
 use aide::axum::routing::{delete_with, get_with, post_with};
 use aide::axum::ApiRouter;
+use axum::extract::DefaultBodyLimit;
 
 use super::handlers::*;
+
+/// Per-route body limit for file uploads. The global router cap is 16 MB
+/// (see main.rs); this route opts into a higher ceiling since files can
+/// legitimately be hundreds of MB. The hard limit is 1 GiB — any single
+/// file beyond that should be uploaded via a streaming/multipart-aware
+/// flow rather than buffered.
+const FILE_UPLOAD_BODY_LIMIT: usize = 1024 * 1024 * 1024;
 
 /// File management routes
 pub fn file_router() -> ApiRouter {
     ApiRouter::new()
-        // Upload
-        .api_route("/files/upload", post_with(upload_file, upload_file_docs))
+        // Upload — explicit higher body limit per 14-core-infrastructure F-01
+        .api_route(
+            "/files/upload",
+            post_with(upload_file, upload_file_docs)
+                .layer(DefaultBodyLimit::max(FILE_UPLOAD_BODY_LIMIT)),
+        )
         // List files
         .api_route("/files", get_with(list_files, list_files_docs))
         // Binary endpoints (must come BEFORE /files/{file_id} to avoid route conflicts)
