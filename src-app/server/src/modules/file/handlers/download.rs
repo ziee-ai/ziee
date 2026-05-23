@@ -19,6 +19,50 @@ use uuid::Uuid;
 
 const TOKEN_EXPIRY: i64 = 3600; // 1 hour
 
+/// Build a `Content-Disposition: attachment; filename=...; filename*=UTF-8''...`
+/// header value that is safe regardless of what the stored filename
+/// contains. Closes 05-file F-08 (Medium): the previous implementation
+/// did `format!("attachment; filename=\"{}\"", file.filename)` which
+/// inserted user-controlled bytes directly into the header — a
+/// filename like `evil";\r\nSet-Cookie: foo=bar` would inject
+/// arbitrary response headers (CRLF injection) or break out of the
+/// quoted form to confuse downstream parsers.
+///
+/// Rationale:
+///   - filename= form: ASCII-only, all unsafe bytes replaced with '_'.
+///     Browsers fall back to this when filename* is missing or unparseable.
+///   - filename*=UTF-8''<percent-encoded>: RFC 5987 form. Carries the
+///     real (multibyte) filename. Percent-encoding makes CRLF / quote
+///     injection impossible.
+fn content_disposition(filename: &str) -> String {
+    let ascii: String = filename
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ' ') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let percent: String = filename
+        .bytes()
+        .flat_map(|b| {
+            // RFC 5987 attr-char set + percent-encode everything else.
+            if b.is_ascii_alphanumeric() || matches!(b, b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~') {
+                vec![b]
+            } else {
+                format!("%{:02X}", b).into_bytes()
+            }
+        })
+        .map(|b| b as char)
+        .collect();
+    format!(
+        "attachment; filename=\"{}\"; filename*=UTF-8''{}",
+        ascii, percent
+    )
+}
+
 /// Download file directly (requires authentication)
 pub async fn download_file(
     auth: RequirePermissions<(FilesDownload,)>,
@@ -59,7 +103,7 @@ pub async fn download_file(
         ),
         (
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", file.filename),
+            content_disposition(&file.filename),
         ),
         (header::CONTENT_LENGTH, file_data.len().to_string()),
     ];
@@ -198,7 +242,7 @@ pub async fn download_with_token(
         ),
         (
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", file.filename),
+            content_disposition(&file.filename),
         ),
         (header::CONTENT_LENGTH, file_data.len().to_string()),
     ];
