@@ -41,6 +41,23 @@ impl AssistantRepository {
         get_assistant(&self.pool, id).await
     }
 
+    /// Get an assistant by ID, scoped to a user. Returns Some only when
+    /// the assistant is either owned by `user_id` OR is a public template
+    /// (`is_template = TRUE`). Returns None for assistants belonging to
+    /// other users, preventing cross-tenant prompt-injection (04-chat
+    /// F-02 High).
+    ///
+    /// Prefer this over `get(id)` in any code path reached by a
+    /// per-conversation request; the unscoped `get` should only be used
+    /// by admin/system paths.
+    pub async fn get_for_user(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<Assistant>, AppError> {
+        get_assistant_for_user(&self.pool, id, user_id).await
+    }
+
     pub async fn update(
         &self,
         id: Uuid,
@@ -171,6 +188,44 @@ pub async fn get_assistant(pool: &PgPool, id: Uuid) -> Result<Option<Assistant>,
         FROM assistants
         WHERE id = $1 AND enabled = true"#,
         id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::database_error)?;
+
+    Ok(row.map(|r| {
+        row_to_assistant(
+            r.id,
+            r.name,
+            r.description,
+            r.instructions,
+            r.parameters,
+            r.created_by,
+            r.is_template,
+            r.is_default,
+            r.enabled,
+            r.created_at,
+            r.updated_at,
+        )
+    }))
+}
+
+/// SSRF-equivalent for cross-tenant assistant lookup: returns Some only
+/// when the row is the user's own assistant or a public template. Closes
+/// 04-chat F-02 (High).
+pub async fn get_assistant_for_user(
+    pool: &PgPool,
+    id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<Assistant>, AppError> {
+    let row = sqlx::query!(
+        r#"SELECT id, name, description, instructions, parameters, created_by, is_template, is_default, enabled, created_at, updated_at
+        FROM assistants
+        WHERE id = $1
+          AND enabled = true
+          AND (created_by = $2 OR is_template = true)"#,
+        id,
+        user_id,
     )
     .fetch_optional(pool)
     .await

@@ -32,15 +32,19 @@ impl ChatExtension for AssistantExtension {
 
     async fn before_llm_call(
         &self,
-        _context: &mut StreamContext,
+        context: &mut StreamContext,
         request: &mut ChatRequest,
         send_request: &SendMessageRequest,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
         // Check if assistant_id is provided (added directly by the macro)
         if let Some(assistant_id) = send_request.assistant_id {
-            // Fetch assistant from database
-            match Repos.assistant.get( assistant_id).await? {
+            // SECURITY: scope by user — returns Some only for the user's
+            // own assistants OR public templates. Without this, user B
+            // could pass user A's private assistant_id and inject A's
+            // system-prompt 'instructions' into B's chat. Closes 04-chat
+            // F-02 (High).
+            match Repos.assistant.get_for_user(assistant_id, context.user_id).await? {
                 Some(assistant) => {
                     // If assistant has instructions, inject as system message
                     if let Some(instructions) = assistant.instructions {
