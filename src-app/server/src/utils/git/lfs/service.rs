@@ -207,7 +207,16 @@ impl LfsService {
         total_size_all_files: u64,
     ) -> Result<NamedTempFile, LfsError> {
         const MEDIA_TYPE: &str = "application/vnd.git-lfs+json";
-        let client = Client::builder().build()?;
+        // SECURITY: bound the HTTP client with explicit timeouts and a
+        // redirect cap. The previous `Client::builder().build()` used
+        // reqwest defaults (no overall timeout, no per-request budget,
+        // up to 10 redirects with no per-host filter). Closes
+        // 07-llm-model F-07 (Medium).
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(60 * 30)) // 30-min absolute cap (LFS blobs can be GB)
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build()?;
 
         if meta_data.hash != Some(super::metadata::Hash::SHA256) {
             return Err(LfsError::InvalidFormat("Only SHA256 hash is supported"));
