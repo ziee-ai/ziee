@@ -294,7 +294,6 @@ export interface DisabledServer {
 export interface DownloadFromRepositoryRequest {
   description?: string
   capabilities?: ModelCapabilities
-  clear_cache?: boolean
   display_name: string
   engine_settings?: ModelEngineSettings
   engine_type?: EngineType
@@ -1115,8 +1114,8 @@ export interface PaginationQuery2 {
 }
 
 export interface PaginationQuery3 {
-  limit?: number
-  page?: number
+  limit: number
+  page: number
 }
 
 export interface PaginationQuery4 {
@@ -1458,9 +1457,7 @@ export interface SetupAdminRequest {
 }
 
 export interface SetupStatusResponse {
-  app_name: string
   needs_setup: boolean
-  version: string
 }
 
 export type StartInstanceRequest = any
@@ -1646,9 +1643,7 @@ export interface UpdateMcpServerRequest {
 
 export interface UpdateUserRequest {
   display_name?: string
-  email?: string
   is_active?: boolean
-  permissions?: string[]
   username?: string
 }
 
@@ -1791,7 +1786,7 @@ export enum Permissions {
   ProfileRead = 'profile::read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
-  RuntimeVersionRead = 'llm_local_runtime::read',
+  RuntimeVersionRead = 'llm_local_runtime::versions_read',
   RuntimeVersionUpdate = 'llm_local_runtime::update',
   UserLlmProvidersRead = 'user_llm_providers::read',
   UsersCreate = 'users::create',
@@ -2053,13 +2048,13 @@ export type ApiEndpointParameters = {
   'Assistant.delete': { id: string }
   'Assistant.get': { id: string }
   'Assistant.getDefault': void
-  'Assistant.list': { limit?: number; page?: number }
+  'Assistant.list': { limit: number; page: number }
   'Assistant.update': { id: string } & UpdateAssistantRequest
   'AssistantTemplate.create': CreateAssistantRequest
   'AssistantTemplate.delete': { id: string }
   'AssistantTemplate.get': { id: string }
   'AssistantTemplate.getDefault': void
-  'AssistantTemplate.list': { limit?: number; page?: number }
+  'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
   'Auth.login': LoginRequest
   'Auth.logout': void

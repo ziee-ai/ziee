@@ -1070,7 +1070,7 @@
           "Onboarding"
         ],
         "summary": "Mark a guide as completed",
-        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
         "operationId": "Onboarding.complete",
         "responses": {
           "403": {
@@ -1084,13 +1084,13 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "View own profile information",
-                        "name": "ProfileRead",
-                        "value": "profile::read"
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
                       }
                     ]
                   },
-                  "error": "Missing required permission: profile::read",
+                  "error": "Missing required permission: profile::edit",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -1126,7 +1126,7 @@
           "Onboarding"
         ],
         "summary": "Mark a guide step as completed",
-        "description": "\n\n**Required Permission:** `profile::read`\n\nView own profile information",
+        "description": "\n\n**Required Permission:** `profile::edit`\n\nEdit own profile information",
         "operationId": "Onboarding.completeStep",
         "responses": {
           "403": {
@@ -1140,13 +1140,13 @@
                   "details": {
                     "required_permissions": [
                       {
-                        "description": "View own profile information",
-                        "name": "ProfileRead",
-                        "value": "profile::read"
+                        "description": "Edit own profile information",
+                        "name": "ProfileEdit",
+                        "value": "profile::edit"
                       }
                     ]
                   },
-                  "error": "Missing required permission: profile::read",
+                  "error": "Missing required permission: profile::edit",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -3359,11 +3359,11 @@
                       {
                         "description": "View runtime versions and check for updates",
                         "name": "RuntimeVersionRead",
-                        "value": "llm_local_runtime::read"
+                        "value": "llm_local_runtime::versions_read"
                       }
                     ]
                   },
-                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -3408,11 +3408,11 @@
                       {
                         "description": "View runtime versions and check for updates",
                         "name": "RuntimeVersionRead",
-                        "value": "llm_local_runtime::read"
+                        "value": "llm_local_runtime::versions_read"
                       }
                     ]
                   },
-                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -3633,11 +3633,11 @@
                       {
                         "description": "View runtime versions and check for updates",
                         "name": "RuntimeVersionRead",
-                        "value": "llm_local_runtime::read"
+                        "value": "llm_local_runtime::versions_read"
                       }
                     ]
                   },
-                  "error": "Missing required permission: llm_local_runtime::read",
+                  "error": "Missing required permission: llm_local_runtime::versions_read",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -4500,24 +4500,24 @@
           {
             "in": "query",
             "name": "limit",
-            "description": "Items per page",
+            "description": "Items per page; clamped to [1, ASSISTANT_MAX_LIMIT] at deserialize.",
+            "required": true,
             "schema": {
-              "description": "Items per page",
+              "description": "Items per page; clamped to [1, ASSISTANT_MAX_LIMIT] at deserialize.",
               "type": "integer",
-              "format": "int64",
-              "default": 20
+              "format": "int64"
             },
             "style": "form"
           },
           {
             "in": "query",
             "name": "page",
-            "description": "Page number (1-indexed)",
+            "description": "Page number (1-indexed); clamped to ≥1 at deserialize.",
+            "required": true,
             "schema": {
-              "description": "Page number (1-indexed)",
+              "description": "Page number (1-indexed); clamped to ≥1 at deserialize.",
               "type": "integer",
-              "format": "int64",
-              "default": 1
+              "format": "int64"
             },
             "style": "form"
           }
@@ -4730,24 +4730,24 @@
           {
             "in": "query",
             "name": "limit",
-            "description": "Items per page",
+            "description": "Items per page; clamped to [1, ASSISTANT_MAX_LIMIT] at deserialize.",
+            "required": true,
             "schema": {
-              "description": "Items per page",
+              "description": "Items per page; clamped to [1, ASSISTANT_MAX_LIMIT] at deserialize.",
               "type": "integer",
-              "format": "int64",
-              "default": 20
+              "format": "int64"
             },
             "style": "form"
           },
           {
             "in": "query",
             "name": "page",
-            "description": "Page number (1-indexed)",
+            "description": "Page number (1-indexed); clamped to ≥1 at deserialize.",
+            "required": true,
             "schema": {
-              "description": "Page number (1-indexed)",
+              "description": "Page number (1-indexed); clamped to ≥1 at deserialize.",
               "type": "integer",
-              "format": "int64",
-              "default": 1
+              "format": "int64"
             },
             "style": "form"
           }
@@ -8458,7 +8458,7 @@
           "Hub"
         ],
         "summary": "Download model from hub catalog",
-        "description": "\n\n**Required Permission:** `hub::models::download`\n\nDownload models from hub",
+        "description": "\n\n**Required Permissions (ALL):**\n- `hub::models::download` - Download models from hub\n- `llm_models::create` - Create new LLM models\n",
         "operationId": "Hub.createModelFromHub",
         "requestBody": {
           "description": "Request to create LLM model from hub catalog (triggers download)",
@@ -8486,10 +8486,15 @@
                         "description": "Download models from hub",
                         "name": "HubModelsCreate",
                         "value": "hub::models::download"
+                      },
+                      {
+                        "description": "Create new LLM models",
+                        "name": "LlmModelsCreate",
+                        "value": "llm_models::create"
                       }
                     ]
                   },
-                  "error": "Missing required permission: hub::models::download",
+                  "error": "Missing required permissions: hub::models::download, llm_models::create",
                   "error_code": "INSUFFICIENT_PERMISSIONS"
                 }
               }
@@ -8698,7 +8703,7 @@
         "operationId": "App.getSetupStatus",
         "responses": {
           "200": {
-            "description": "",
+            "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8749,6 +8754,14 @@
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT obtained from POST /auth/login or POST /auth/register, sent as `Authorization: Bearer <token>`."
+      }
+    },
     "schemas": {
       "ApprovalMode": {
         "description": "Approval mode for conversation MCP settings",
@@ -9603,11 +9616,12 @@
         "type": "object",
         "properties": {
           "description": {
-            "description": "Brief description of the assistant purpose",
+            "description": "Brief description of the assistant purpose. Closes\n 10-assistant F-02 (Medium) — unbounded description was an\n LLM-token-cost amplification vector.",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "maxLength": 4096
           },
           "enabled": {
             "description": "Whether this assistant is enabled\n Defaults to true if not specified",
@@ -9617,11 +9631,12 @@
             ]
           },
           "instructions": {
-            "description": "System instructions for the AI assistant",
+            "description": "System instructions for the AI assistant. Bounded at 64 KiB\n per 10-assistant F-02 (Medium); legitimate prompts fit\n comfortably below 8 KiB.",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "maxLength": 65536
           },
           "is_default": {
             "description": "Whether this is the default assistant\n Setting to true will unset other defaults in the same context",
@@ -10166,13 +10181,6 @@
               {
                 "type": "null"
               }
-            ]
-          },
-          "clear_cache": {
-            "description": "Clear cached repository before downloading (for testing)",
-            "type": [
-              "boolean",
-              "null"
             ]
           },
           "display_name": {
@@ -12489,10 +12497,12 @@
         "type": "object",
         "properties": {
           "api_key": {
+            "description": "API key for upstream provider — write-only.\n\n Deserialize unchanged so admins can POST/PUT the value; Serialize\n suppressed so GET /llm-providers and /llm-providers/{id} no longer\n return the secret. The previous behavior round-tripped the api_key\n to every user with `llm_providers::read` — closes\n 06-llm-provider F-01 (Critical). The deeper at-rest encryption\n (pgcrypto / SecretView) is the follow-up A5-full work.",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "writeOnly": true
           },
           "base_url": {
             "type": [
@@ -13998,6 +14008,7 @@
         ]
       },
       "PaginationQuery": {
+        "description": "Pagination query that clamps at deserialize time so every existing\n handler that consumes `params.page` and `params.per_page` is safe\n without touching its body.\n\n - `page < 1` → 1 (prevents `(page-1)*per_page` underflow / negative offset)\n - `per_page < 1` → 1 (prevents divide-by-zero in callers like\n   `total / per_page`)\n - `per_page > PAGINATION_MAX_PER_PAGE` → PAGINATION_MAX_PER_PAGE\n   (prevents DoS)",
         "type": "object",
         "properties": {
           "page": {
@@ -14032,18 +14043,20 @@
         "type": "object",
         "properties": {
           "limit": {
-            "description": "Items per page",
+            "description": "Items per page; clamped to [1, ASSISTANT_MAX_LIMIT] at deserialize.",
             "type": "integer",
-            "format": "int64",
-            "default": 20
+            "format": "int64"
           },
           "page": {
-            "description": "Page number (1-indexed)",
+            "description": "Page number (1-indexed); clamped to ≥1 at deserialize.",
             "type": "integer",
-            "format": "int64",
-            "default": 1
+            "format": "int64"
           }
-        }
+        },
+        "required": [
+          "page",
+          "limit"
+        ]
       },
       "PaginationQuery4": {
         "type": "object",
@@ -14308,10 +14321,12 @@
         "type": "object",
         "properties": {
           "api_key": {
+            "description": "API key for upstream provider — write-only.\n\n Deserialize unchanged so admins can POST/PUT the value; Serialize\n suppressed so GET /llm-providers and /llm-providers/{id} no longer\n return the secret. The previous behavior round-tripped the api_key\n to every user with `llm_providers::read` — closes\n 06-llm-provider F-01 (Critical). The deeper at-rest encryption\n (pgcrypto / SecretView) is the follow-up A5-full work.",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "writeOnly": true
           },
           "api_key_configured": {
             "description": "Whether an API key is configured (either system-level or user-level)",
@@ -14383,10 +14398,12 @@
         "type": "object",
         "properties": {
           "api_key": {
+            "description": "API key for upstream provider — write-only.\n\n Deserialize unchanged so admins can POST/PUT the value; Serialize\n suppressed so GET /llm-providers and /llm-providers/{id} no longer\n return the secret. The previous behavior round-tripped the api_key\n to every user with `llm_providers::read` — closes\n 06-llm-provider F-01 (Critical). The deeper at-rest encryption\n (pgcrypto / SecretView) is the follow-up A5-full work.",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "writeOnly": true
           },
           "base_url": {
             "type": [
@@ -14465,8 +14482,9 @@
             "default": ""
           },
           "password": {
+            "description": "Proxy password — write-only.\n\n Accepted from request bodies (Deserialize) so admins can set the\n value, but NEVER serialized into a response. Without this guard\n the field round-tripped verbatim on every GET /llm-providers/{id}\n and /llm-providers, exposing the proxy credential. Closes\n 06-llm-provider F-05 (Medium).",
             "type": "string",
-            "default": ""
+            "writeOnly": true
           },
           "url": {
             "type": "string",
@@ -14535,14 +14553,15 @@
         ]
       },
       "RepositoryAuthConfig": {
-        "description": "Authentication configuration for LLM repositories\n This is part of the database entity and stored as JSONB in PostgreSQL",
+        "description": "Authentication configuration for LLM repositories\n This is part of the database entity and stored as JSONB in PostgreSQL.\n\n SECURITY: api_key / password / token are write-only — accepted from\n request bodies (Deserialize unchanged) so admins can set values, but\n NEVER returned in responses. Without these `skip_serializing` guards\n the credentials round-tripped on every GET /llm-repositories and\n /llm-repositories/{id}, exposing the secret to every user with\n `llm_repositories::read` (no per-user scope on llm_repositories).\n Closes 09-llm-repository F-02 (High). The deeper at-rest encryption\n (pgcrypto / SecretView) is the follow-up A5-full work.",
         "type": "object",
         "properties": {
           "api_key": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "writeOnly": true
           },
           "auth_test_api_endpoint": {
             "type": [
@@ -14554,13 +14573,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "writeOnly": true
           },
           "token": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "writeOnly": true
           },
           "username": {
             "type": [
@@ -15591,22 +15612,15 @@
         ]
       },
       "SetupStatusResponse": {
+        "description": "Setup-status response shown to unauthenticated callers.\n\n Closes 13-misc F-02 (Medium): the original response leaked the\n app name + version to every anonymous fetch, which is fingerprint\n material attackers use to pick a known-CVE matrix. We now expose\n only the single bit the client actually needs (`needs_setup`).\n app_name / version remain available to authenticated callers via\n a separate endpoint if needed.",
         "type": "object",
         "properties": {
-          "app_name": {
-            "type": "string"
-          },
           "needs_setup": {
             "type": "boolean"
-          },
-          "version": {
-            "type": "string"
           }
         },
         "required": [
-          "needs_setup",
-          "app_name",
-          "version"
+          "needs_setup"
         ]
       },
       "StartInstanceRequest": {
@@ -15959,11 +15973,12 @@
         "type": "object",
         "properties": {
           "description": {
-            "description": "Update description",
+            "description": "Update description (max 4 KiB per 10-assistant F-02)",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "maxLength": 4096
           },
           "enabled": {
             "description": "Update enabled status (soft delete)",
@@ -15973,11 +15988,12 @@
             ]
           },
           "instructions": {
-            "description": "Update instructions",
+            "description": "Update instructions (max 64 KiB per 10-assistant F-02)",
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "maxLength": 65536
           },
           "is_default": {
             "description": "Update default status\n Setting to true will unset other defaults in the same context",
@@ -16310,7 +16326,8 @@
               }
             ]
           }
-        }
+        },
+        "additionalProperties": false
       },
       "UpdateLlmRepositoryRequest": {
         "type": "object",
@@ -16458,26 +16475,11 @@
               "null"
             ]
           },
-          "email": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "is_active": {
             "type": [
               "boolean",
               "null"
             ]
-          },
-          "permissions": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            }
           },
           "username": {
             "type": [
