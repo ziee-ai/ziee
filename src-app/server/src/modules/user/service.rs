@@ -76,43 +76,6 @@ impl UserService {
         Ok(permissions_vec)
     }
 
-    /// Check if user has a specific permission
-    pub async fn has_permission(&self, user_id: Uuid, permission: &str) -> Result<bool, AppError> {
-        // Get user to check if admin
-        let user = self
-            .user_repo
-            .get_by_id(user_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("User"))?;
-
-        // Admins have all permissions
-        if user.is_admin {
-            return Ok(true);
-        }
-
-        let permissions = self.get_user_permissions(user_id).await?;
-
-        // Check for wildcard permission
-        if permissions.contains("*") {
-            return Ok(true);
-        }
-
-        // Check exact match
-        if permissions.contains(permission) {
-            return Ok(true);
-        }
-
-        // Check resource wildcard (e.g., "chat:*" matches "chat:read")
-        if let Some((resource, _)) = permission.split_once(':') {
-            let wildcard = format!("{}:*", resource);
-            if permissions.contains(&wildcard) {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
-
     /// Assign user to default group
     pub async fn assign_to_default_group(&self, user_id: Uuid) -> Result<(), AppError> {
         // Get default "users" group

@@ -36,11 +36,17 @@ impl PermissionCheck for LocalRuntimeLogs {
 // Runtime Version Management Permissions
 // =====================================================
 
-/// Permission to view runtime versions
+/// Permission to view runtime versions.
+///
+/// Distinct permission string from `LocalRuntimeRead` (which gates the
+/// per-instance status endpoint). The audit's 02-permissions F-10
+/// flagged the collision — a single-permission grant intended for
+/// version-catalogue reading would also grant access to live instance
+/// telemetry. Splitting the string forces explicit grants.
 pub struct RuntimeVersionRead;
 impl PermissionCheck for RuntimeVersionRead {
     const NAME: &'static str = "RuntimeVersionRead";
-    const PERMISSION: &'static str = "llm_local_runtime::read";
+    const PERMISSION: &'static str = "llm_local_runtime::versions_read";
     const DESCRIPTION: &'static str = "View runtime versions and check for updates";
     const MODULE: &'static str = "llm_local_runtime";
 }

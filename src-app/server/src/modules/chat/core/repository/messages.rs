@@ -441,12 +441,20 @@ pub async fn verify_message_ownership(
     Ok(result)
 }
 
-/// Delete message and all its descendants
-/// Note: This only removes the junction records if message is only in one branch
-/// If message is cloned to multiple branches, it won't be deleted
-pub async fn delete_message_and_descendants(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
-    // For now, simplified implementation - just delete the message
-    // The cascade will handle branch_messages
+/// Delete a single message. The schema-level `ON DELETE CASCADE` on
+/// `branch_messages.message_id` removes the junction rows in every
+/// branch that referenced the message.
+///
+/// Note on the previous name (`delete_message_and_descendants`): the
+/// chat model is CoW-branch-based, NOT a hierarchical tree — messages
+/// have no parent_id column. "Descendants" in a branched chat is
+/// ambiguous: per-branch chronological successors? Across all
+/// branches that cloned this message? The original implementation
+/// silently did neither (just one DELETE on the message row), and the
+/// audit's 04-chat F-03 (High) flagged the contract mismatch. Renaming
+/// to `delete_message` makes the contract honest; a richer
+/// "trim from here onward" operation can be designed separately.
+pub async fn delete_message(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
     let result = sqlx::query!(
         r#"
         DELETE FROM messages
