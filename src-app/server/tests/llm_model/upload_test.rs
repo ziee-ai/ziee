@@ -456,8 +456,13 @@ async fn test_upload_duplicate_name_fails() {
     let provider = get_local_provider(&server, &user.token).await;
     let provider_id = provider["id"].as_str().unwrap();
 
-    // Upload first model
-    let dummy_data = b"test model data";
+    // Upload first model. 07-llm-model F-09 (Medium) closure made
+    // validate_file_content actually enforce: a weight file <1024 bytes
+    // is rejected as "suspiciously small". Use 2 KiB of zero-padding
+    // so the test exercises the duplicate-name path, not the
+    // size-validation path.
+    let dummy_data = vec![0u8; 2048];
+    let dummy_data = dummy_data.as_slice();
     let file_part = Part::bytes(dummy_data.to_vec())
         .file_name("model1.gguf")
         .mime_str("application/octet-stream")

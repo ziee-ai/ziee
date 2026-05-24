@@ -76,7 +76,15 @@ impl TestServer {
         // Generate unique identifiers
         let test_id = Uuid::new_v4().to_string();
         let database_name = format!("test_db_{}", test_id.replace("-", "_"));
-        let server_port = rand::rng().random_range(10000..60000);
+        // Use OS-aware port reservation instead of a random pick.
+        // The previous `rand::rng().random_range(10000..60000)`
+        // collided with OTHER listeners (system services, prior
+        // TestServers in TIME_WAIT, parallel test harnesses) and the
+        // resulting "Address already in use" left the server unable
+        // to bind → health-poll timeout → TestServer panicked. Closes
+        // the 19-of-29 boot-timeout cluster in the diagnostic run.
+        let server_port = portpicker::pick_unused_port()
+            .expect("No free TCP port available for TestServer");
 
         // Parse DATABASE_URL to extract connection details
         let db_url = database_url();

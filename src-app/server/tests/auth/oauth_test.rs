@@ -264,19 +264,23 @@ async fn test_oauth_authorization_flow() {
         .expect("Location should be valid string");
 
     println!("Step 5: Redirected to: {}", redirect_url);
+    // 01-auth F-01 (Critical) closure: the access token now lives in
+    // the URL FRAGMENT (`/#token=…`) so it isn't logged on the server,
+    // sent as a Referer, or kept in browser history. Extract from the
+    // fragment instead of the query.
     assert!(
-        redirect_url.contains("token="),
-        "Should include access token in redirect"
+        redirect_url.contains("#token="),
+        "Should include access token in URL fragment (01-auth F-01)"
     );
 
-    // Extract the token from the URL
-    let url = reqwest::Url::parse(&format!("http://example.com{}", redirect_url))
-        .expect("Failed to parse redirect URL");
-    let access_token = url
-        .query_pairs()
-        .find(|(key, _)| key == "token")
-        .map(|(_, value)| value.to_string())
-        .expect("Token not found in redirect URL");
+    let access_token = redirect_url
+        .split_once("#token=")
+        .map(|(_, t)| {
+            // Fragment may carry additional `&key=value` pairs after a
+            // future addition; take only up to the next separator.
+            t.split('&').next().unwrap_or(t).to_string()
+        })
+        .expect("Token not found in URL fragment");
 
     println!("✅ Complete OAuth flow successful!");
     println!("   User authenticated: testuser");

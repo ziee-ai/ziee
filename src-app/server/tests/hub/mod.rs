@@ -2161,11 +2161,15 @@ async fn test_create_model_from_hub_requires_permission() {
 async fn test_create_model_from_hub_invalid_hub_id() {
     let server = crate::common::TestServer::start().await;
 
+    // Endpoint requires hub::models::download (the HubModelsCreate
+    // permission resolves to that string per modules/hub/permissions.rs)
+    // AND llm_models::create (11-hub F-05 closure — back-door defense).
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "hub_user",
         &[
             "hub::models::download",
+            "llm_models::create",
             "llm_providers::read",
             "llm_providers::create",
         ],
