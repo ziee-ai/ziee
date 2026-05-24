@@ -202,8 +202,7 @@ async fn test_delete_message_not_found() {
 // =====================================================
 
 #[tokio::test]
-#[ignore = "Empty content validation removed to support tool-only calls"]
-async fn test_send_message_empty_content() {
+async fn test_send_message_empty_content_accepted_for_tool_only_calls() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -241,7 +240,13 @@ async fn test_send_message_empty_content() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    // Empty content is now accepted by design: tool-only calls (a
+    // model that issues only `tool_use` blocks with no preceding text)
+    // are valid in modern LLM APIs. The endpoint returns 200 + an SSE
+    // stream that the model may immediately close or fill with tool
+    // calls. Previously this returned 400; the validation was
+    // removed when tool-only chats became first-class.
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

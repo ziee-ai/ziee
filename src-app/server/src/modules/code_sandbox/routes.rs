@@ -21,6 +21,7 @@
 
 use aide::axum::routing::{delete_with, get_with};
 use aide::axum::ApiRouter;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 
 use crate::modules::code_sandbox::handlers;
@@ -39,7 +40,20 @@ pub fn code_sandbox_router() -> ApiRouter {
         // which is exactly the "no standalone stream" signal the spec
         // requires. The client (`mcp/client/http.rs::spawn_standalone_get_sse`)
         // tolerates 405 silently.
-        .route("/code-sandbox", post(handlers::jsonrpc_handler))
+        // Per-route body limit raised above the global A3 16 MiB cap.
+        // The sandbox's `write_file` tool genuinely accepts file payloads
+        // up to its internal 32 MiB content cap (enforced in the tool
+        // handler — see tier6_security_regression::e2e_write_file_rejects_
+        // oversized_content). Without this override, A3's global limit
+        // would 413 the request before the sandbox's own validation
+        // could return a structured JSON-RPC error envelope.
+        // Set to 64 MiB so legitimate write_file calls succeed and
+        // oversized calls reach the sandbox's 32 MiB cap (which returns
+        // the proper error shape).
+        .route(
+            "/code-sandbox",
+            post(handlers::jsonrpc_handler).layer(DefaultBodyLimit::max(64 * 1024 * 1024)),
+        )
         .route(
             "/code-sandbox/file/download",
             get(handlers::download_handler),
