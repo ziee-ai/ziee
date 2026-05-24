@@ -324,7 +324,36 @@ impl HubManager {
         base
     }
 
-    /// Get current hub version for a specific category
+    /// Validate that a version string is a safe path component.
+    /// Closes 11-hub F-04 (Medium): the version is read from a
+    /// version.json on disk and then joined into a path; without this
+    /// check, an attacker who can plant a version.json containing
+    /// "../../etc" pivots into arbitrary filesystem reads through
+    /// `hub_dir.join(category).join(version)`. Allowlist matches
+    /// `vN.M.K` plus alphanumeric; rejects anything with `/`, `\`,
+    /// `..`, control chars, or NUL.
+    fn validated_version_segment(v: &str) -> &str {
+        let safe = !v.is_empty()
+            && v.len() <= 32
+            && v.chars().all(|c| {
+                c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_'
+            })
+            && !v.starts_with('.');
+        if safe {
+            v
+        } else {
+            tracing::warn!(
+                "Refusing unsafe hub version segment {:?}; falling back to {}",
+                v,
+                CURRENT_HUB_VERSION
+            );
+            CURRENT_HUB_VERSION
+        }
+    }
+
+    /// Get current hub version for a specific category. The returned
+    /// string is guaranteed to be a safe path component (allowlist
+    /// validated). See `validated_version_segment`.
     pub async fn get_current_version(&self, category: &str) -> Result<String, AppError> {
         let version_path = self
             .app_data_dir
@@ -333,10 +362,10 @@ impl HubManager {
             .join("version.json");
         if version_path.exists() {
             let version_data: serde_json::Value = self.load_json_file(version_path).await?;
-            Ok(version_data["version"]
+            let raw = version_data["version"]
                 .as_str()
-                .unwrap_or(CURRENT_HUB_VERSION)
-                .to_string())
+                .unwrap_or(CURRENT_HUB_VERSION);
+            Ok(Self::validated_version_segment(raw).to_string())
         } else {
             Ok(CURRENT_HUB_VERSION.to_string())
         }

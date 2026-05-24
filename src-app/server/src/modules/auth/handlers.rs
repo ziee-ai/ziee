@@ -57,12 +57,40 @@ pub async fn register(
         ));
     }
 
-    // Check if username or email already exists
-    if Repos.user.get_by_username(&req.username).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?.is_some() {
-        return Err((StatusCode::CONFLICT, AppError::conflict("Username")));
-    }
-    if Repos.user.get_by_email(&req.email).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?.is_some() {
-        return Err((StatusCode::CONFLICT, AppError::conflict("Email")));
+    // Check if username or email already exists. Closes 01-auth F-13
+    // (Medium): the previous "Username" vs "Email" differential let an
+    // attacker probe which of two values is already registered (user
+    // enumeration). We now collapse both branches into the same
+    // generic "ACCOUNT_EXISTS" response, leaking nothing about which
+    // field collided. Server-side logs still record which one for
+    // operator debugging.
+    let username_taken = Repos
+        .user
+        .get_by_username(&req.username)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .is_some();
+    let email_taken = Repos
+        .user
+        .get_by_email(&req.email)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .is_some();
+    if username_taken || email_taken {
+        if username_taken {
+            tracing::info!("Register conflict on username (logged for ops; client sees generic)");
+        }
+        if email_taken {
+            tracing::info!("Register conflict on email (logged for ops; client sees generic)");
+        }
+        return Err((
+            StatusCode::CONFLICT,
+            AppError::new(
+                StatusCode::CONFLICT,
+                "ACCOUNT_EXISTS",
+                "An account with these details already exists",
+            ),
+        ));
     }
 
     // Hash password
@@ -134,52 +162,76 @@ pub async fn login(
         }
     }
 
-    // Local password authentication
-    // Get user by username or email
-    let user = Repos
+    // Local password authentication.
+    //
+    // Closes 01-auth F-06 (Medium): the previous flow leaked
+    // existence three ways: (a) returning early with no bcrypt when
+    // the user didn't exist (~10ms timing differential), (b) a
+    // distinct ACCOUNT_DISABLED error for valid-but-disabled accounts,
+    // and (c) a distinct NO_PASSWORD error for OAuth-only accounts.
+    // Combined, an attacker could enumerate registered emails.
+    //
+    // Defense:
+    //   - Always run bcrypt verify against a precomputed dummy hash
+    //     when the user / password is absent, so the timing matches a
+    //     real verification call.
+    //   - Collapse every failure into the same INVALID_CREDENTIALS
+    //     response shape.
+    //   - Log the real reason server-side for operator debugging.
+    //
+    // The dummy hash is precomputed once at first use; the password
+    // input to bcrypt::verify is the user-supplied password (so the
+    // hashing cost matches the input).
+    static DUMMY_PWHASH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let dummy_hash = DUMMY_PWHASH.get_or_init(|| {
+        // Cost matches the application default (bcrypt::DEFAULT_COST).
+        // A random unguessable value so even a length-equal guess
+        // can't match.
+        bcrypt::hash(uuid::Uuid::new_v4().to_string(), bcrypt::DEFAULT_COST)
+            .expect("bcrypt dummy hash")
+    });
+
+    let user_opt = Repos
         .user
         .get_by_username_or_email(&req.username)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
-        .ok_or_else(|| {
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // Pick the hash to verify: real user hash, dummy when missing or
+    // no-password. Both code paths run bcrypt to keep timing flat.
+    let (hash_to_verify, real_user_active, password_was_present) = match &user_opt {
+        Some(u) => match u.password_hash.as_deref() {
+            Some(h) => (h.to_string(), u.is_active, true),
+            None => (dummy_hash.clone(), u.is_active, false),
+        },
+        None => (dummy_hash.clone(), false, false),
+    };
+
+    let verify_result =
+        password::verify_password(&req.password, &hash_to_verify).map_err(|e| {
             (
-                StatusCode::UNAUTHORIZED,
-                AppError::unauthorized("INVALID_CREDENTIALS", "Invalid username or password"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error(format!("Password verification error: {}", e)),
             )
         })?;
 
-    // Check if user is active
-    if !user.is_active {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            AppError::unauthorized("ACCOUNT_DISABLED", "User account is disabled"),
-        ));
-    }
-
-    // Verify password
-    let password_hash = user.password_hash.as_ref().ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            AppError::unauthorized(
-                "NO_PASSWORD",
-                "No password set for this user. Please use external authentication.",
-            ),
-        )
-    })?;
-
-    let valid = password::verify_password(&req.password, password_hash).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Password verification error: {}", e)),
-        )
-    })?;
-
-    if !valid {
+    if !verify_result || !real_user_active || !password_was_present {
+        if user_opt.is_none() {
+            tracing::info!("Login failed: user not found");
+        } else if !real_user_active {
+            tracing::info!("Login failed: account disabled");
+        } else if !password_was_present {
+            tracing::info!("Login failed: no password (OAuth-only account)");
+        } else {
+            tracing::info!("Login failed: bad password");
+        }
         return Err((
             StatusCode::UNAUTHORIZED,
             AppError::unauthorized("INVALID_CREDENTIALS", "Invalid username or password"),
         ));
     }
+
+    let user = user_opt.expect("user_opt is Some past timing-equalised checks");
 
     // Update last login
     Repos

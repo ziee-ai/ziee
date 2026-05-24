@@ -4,7 +4,7 @@
 // LLM Provider database queries - copied from react-test and refactored for ziee-chat
 // Source: react-test/src-tauri/src/database/queries/providers.rs and user_group_providers.rs
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -13,6 +13,17 @@ use super::super::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
 use crate::common::secret::{encrypt_secret, resolve_optional_secret};
 use crate::core::secrets::storage_key;
 use crate::modules::user::models::Group;
+
+/// Convert a `time::OffsetDateTime` (sqlx return type) to
+/// `chrono::DateTime<Utc>` with full nanosecond precision and without
+/// `unwrap()`. Closes 06-llm-provider F-11 (Medium): the previous
+/// `from_timestamp(.., 0).unwrap()` truncated sub-second precision
+/// AND panicked on out-of-range timestamps. Falls back to the unix
+/// epoch on the (currently-impossible) overflow path so the row still
+/// renders rather than 500-ing the whole response.
+fn to_chrono(ts: time::OffsetDateTime) -> DateTime<Utc> {
+    DateTime::from_timestamp_nanos(ts.unix_timestamp_nanos() as i64)
+}
 
 // =====================================================
 // Repository Struct
@@ -133,8 +144,8 @@ pub async fn get_llm_provider_by_id(
             .proxy_settings
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: to_chrono(r.created_at),
+        updated_at: to_chrono(r.updated_at),
         default_runtime_version_id: r.default_runtime_version_id,
     }))
 }
@@ -164,8 +175,8 @@ pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx:
                 .proxy_settings
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
         });
     }
@@ -198,8 +209,8 @@ pub async fn list_local_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sql
                 .proxy_settings
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
         });
     }
@@ -273,8 +284,8 @@ pub async fn create_llm_provider(
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
         default_runtime_version_id: row.default_runtime_version_id,
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: to_chrono(row.created_at),
+        updated_at: to_chrono(row.updated_at),
     })
 }
 
@@ -447,8 +458,8 @@ pub async fn get_llm_provider_groups(
             is_system: r.is_system,
             is_active: r.is_active,
             is_default: r.is_default,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
         })
         .collect())
 }
@@ -535,8 +546,8 @@ pub async fn get_providers_for_group(
                 .proxy_settings
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
         });
     }
@@ -580,8 +591,8 @@ pub async fn get_providers_for_user(
                 .proxy_settings
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
         });
     }

@@ -60,10 +60,59 @@ pub fn validate_auth_type(auth_type: &str) -> Result<(), AppError> {
 }
 
 /// Validate authentication configuration for create request
+/// Max repository name length. Closes 09-llm-repository F-10 (Medium):
+/// without this, an admin could store a multi-MB name that the UI
+/// renders without escaping → XSS surface; even with escaping the
+/// payload is wasteful.
+const MAX_REPO_NAME_LEN: usize = 128;
+
+/// Bound + validate the optional auth_test_api_endpoint URL. Closes
+/// 09-llm-repository F-08 (Medium): the field was unvalidated
+/// free-form text stored in DB, then fetched without scheme/host
+/// gating — SSRF surface on test-connection paths. Validates via
+/// the shared outbound URL allowlist (no file://, no RFC1918, etc.)
+/// when present.
+fn validate_test_endpoint(endpoint: &Option<String>) -> Result<(), AppError> {
+    if let Some(url) = endpoint {
+        if url.trim().is_empty() {
+            return Ok(());
+        }
+        if url.len() > 2048 {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "auth_test_api_endpoint exceeds 2048 chars",
+            ));
+        }
+        crate::utils::url_validator::validate_outbound_url(
+            url,
+            &crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL,
+        )
+        .map_err(|e| {
+            AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("auth_test_api_endpoint invalid: {}", e),
+            )
+        })?;
+    }
+    Ok(())
+}
+
 /// Ensures all required fields are present based on auth_type
 pub fn validate_auth_config_for_create(
     request: &CreateLlmRepositoryRequest,
 ) -> Result<(), AppError> {
+    // Bound the repository name (09-llm-repository F-10).
+    if request.name.len() > MAX_REPO_NAME_LEN {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            format!("Repository name exceeds {} chars", MAX_REPO_NAME_LEN),
+        ));
+    }
+    // Validate auth_test_api_endpoint when set (09-llm-repository F-08).
+    if let Some(ac) = &request.auth_config {
+        validate_test_endpoint(&ac.auth_test_api_endpoint)?;
+    }
+
     // If auth_type is not "none", auth_config must be provided
     if request.auth_type != "none" && request.auth_config.is_none() {
         return Err(AppError::bad_request(
@@ -120,6 +169,19 @@ pub fn validate_auth_config_for_update(
     current_repository: &LlmRepository,
     request: &UpdateLlmRepositoryRequest,
 ) -> Result<(), AppError> {
+    // Mirror create-time bounds (09-llm-repository F-08/F-10).
+    if let Some(name) = &request.name {
+        if name.len() > MAX_REPO_NAME_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("Repository name exceeds {} chars", MAX_REPO_NAME_LEN),
+            ));
+        }
+    }
+    if let Some(ac) = &request.auth_config {
+        validate_test_endpoint(&ac.auth_test_api_endpoint)?;
+    }
+
     // Determine which auth_type to use (new or current)
     let auth_type = request
         .auth_type

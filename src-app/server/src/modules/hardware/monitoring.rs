@@ -151,7 +151,11 @@ fn collect_hardware_usage(sys: &mut System) -> HardwareUsageUpdate {
     // Memory usage
     let total_ram = sys.total_memory();
     let used_ram = sys.used_memory();
-    let available_ram = total_ram - used_ram;
+    // Saturating subtraction: on Linux, used_memory() can occasionally
+    // report a value > total_memory() due to cgroup vs host accounting
+    // drift, which would panic in debug + wrap to u64::MAX in release.
+    // Closes 12-hardware F-05 (Medium).
+    let available_ram = total_ram.saturating_sub(used_ram);
     let usage_percentage = if total_ram > 0 {
         (used_ram as f32 / total_ram as f32) * 100.0
     } else {
@@ -162,7 +166,7 @@ fn collect_hardware_usage(sys: &mut System) -> HardwareUsageUpdate {
         used_ram,
         available_ram,
         used_swap: Some(sys.used_swap()),
-        available_swap: Some(sys.total_swap() - sys.used_swap()),
+        available_swap: Some(sys.total_swap().saturating_sub(sys.used_swap())),
         usage_percentage,
     };
 
