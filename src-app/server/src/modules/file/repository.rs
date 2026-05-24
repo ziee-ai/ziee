@@ -103,14 +103,20 @@ impl FileRepository {
         Ok(file)
     }
 
-    /// List files for user with pagination
+    /// List files for user with pagination. Defense-in-depth on the
+    /// i32 multiplication: cast both factors to i64 BEFORE multiplying
+    /// so a (theoretical) bypass of the PaginationQuery deserialize
+    /// clamp can't overflow into a tiny / negative offset. Closes
+    /// 05-file F-14 (Medium).
     pub async fn list_by_user(
         &self,
         user_id: Uuid,
         page: i32,
         per_page: i32,
     ) -> Result<(Vec<File>, i64), AppError> {
-        let offset = ((page - 1) * per_page) as i64;
+        let page64 = (page as i64).max(1);
+        let per_page64 = (per_page as i64).max(1);
+        let offset = (page64 - 1).saturating_mul(per_page64);
 
         // Get total count
         let total: i64 = sqlx::query_scalar!(
@@ -137,7 +143,7 @@ impl FileRepository {
             LIMIT $2 OFFSET $3
             "#,
             user_id,
-            per_page as i64,
+            per_page64,
             offset
         )
         .fetch_all(&self.pool)

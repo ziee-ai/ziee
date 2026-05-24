@@ -70,6 +70,9 @@ mime_guess = "2.0"
 pdfium-render = "0.8"
 pdf-extract = "0.10.0"
 calamine = "0.31.0"
+# Zip walker for decompression-bomb pre-validation on OOXML files
+# (DOCX/XLSX/PPTX). See modules/file/utils/zipbomb. Closes 05-file F-05.
+zip = "6.0.0"
 which = "8.0.0"
 include-flate = "0.3"
 

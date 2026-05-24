@@ -65,10 +65,31 @@ pub async fn upload_file(
         .unwrap_or("bin")
         .to_lowercase();
 
-    // Determine MIME type
-    let mime_type = mime_guess::from_ext(&extension)
+    // Determine MIME type. Extension is the starting point, but we
+    // sniff the actual bytes to reject HTML-disguised-as-image-or-pdf
+    // smuggling (browsers may sniff and render HTML in the user's
+    // origin → stored XSS). Closes 05-file F-04 (High).
+    let claimed_mime = mime_guess::from_ext(&extension)
         .first()
-        .map(|m| m.to_string());
+        .map(|m| m.to_string())
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let sniffed_mime = crate::modules::file::utils::magic::sniff_mime(&file_data);
+    if let Some(reason) =
+        crate::modules::file::utils::magic::smuggling_rejection(sniffed_mime, &claimed_mime)
+    {
+        return Err(AppError::bad_request("MIME_MISMATCH", reason).into());
+    }
+    // Prefer the sniffed MIME when known AND it provides more
+    // specificity than the extension-derived value. For
+    // application/zip-family containers (DOCX/XLSX/PPTX/ODT) the
+    // extension-derived MIME is MORE specific than the sniffed
+    // generic "application/zip", so we keep the claimed one in that
+    // case — preserving downstream processor dispatch.
+    let mime_type = Some(match sniffed_mime {
+        Some("application/zip") => claimed_mime,
+        Some(s) => s.to_string(),
+        None => claimed_mime,
+    });
 
     // Get storage and calculate checksum
     let storage = get_file_storage();
@@ -78,6 +99,15 @@ pub async fn upload_file(
     let processing_manager = ProcessingManager::new();
     let mime_type_str = mime_type.as_deref().unwrap_or("application/octet-stream");
     tracing::info!("Processing file with MIME type: {}", mime_type_str);
+
+    // Decompression-bomb pre-validation for OOXML/ODF containers.
+    // Closes 05-file F-05 (High). For non-ZIP-family MIMEs this is a
+    // no-op via the is_ooxml_or_odf gate.
+    if crate::modules::file::utils::zipbomb::is_ooxml_or_odf(mime_type_str) {
+        if let Err(e) = crate::modules::file::utils::zipbomb::validate(&file_data) {
+            return Err(AppError::bad_request("ZIP_BOMB_DETECTED", e.to_string()).into());
+        }
+    }
 
     let processing_result = match processing_manager
         .process_file(&file_data, mime_type_str)

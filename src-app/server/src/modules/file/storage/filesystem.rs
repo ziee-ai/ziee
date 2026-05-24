@@ -8,6 +8,27 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 use uuid::Uuid;
 
+/// Reject reads that would follow a symlink. If the storage tree
+/// somehow contains a symlink (planted by a co-located process, a
+/// privilege escalation, or a future bug), refuse to read it rather
+/// than silently following to arbitrary host paths. Closes
+/// 05-file F-15 (Medium). NotFound is the same shape callers already
+/// expect, so no surface-level change.
+async fn reject_if_symlink(path: &Path) -> StorageResult<()> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            tracing::error!(
+                path = %path.display(),
+                "Refusing to read storage path that is a symlink"
+            );
+            Err(AppError::not_found("File"))
+        }
+        // ENOENT → propagate as not_found later in the read call.
+        // Other errors (permission denied, etc.) → propagate the same.
+        _ => Ok(()),
+    }
+}
+
 /// Filesystem-based file storage
 #[derive(Debug, Clone)]
 pub struct FilesystemStorage {
@@ -153,7 +174,7 @@ impl FileStorage for FilesystemStorage {
         extension: &str,
     ) -> StorageResult<Vec<u8>> {
         let path = self.get_original_path(user_id, file_id, extension);
-
+        reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
             .map_err(|e| AppError::not_found(&format!("File not found: {}", e)))
@@ -161,7 +182,7 @@ impl FileStorage for FilesystemStorage {
 
     async fn load_text_page(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> StorageResult<String> {
         let path = self.get_text_path(user_id, file_id, page_num);
-
+        reject_if_symlink(&path).await?;
         fs::read_to_string(&path)
             .await
             .map_err(|e| AppError::not_found(&format!("Text page {} not found: {}", page_num, e)))
@@ -174,7 +195,7 @@ impl FileStorage for FilesystemStorage {
         page_num: u32,
     ) -> StorageResult<Vec<u8>> {
         let path = self.get_image_path(user_id, file_id, page_num, false);
-
+        reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
             .map_err(|e| AppError::not_found(&format!("Preview image not found: {}", e)))
@@ -182,7 +203,7 @@ impl FileStorage for FilesystemStorage {
 
     async fn load_thumbnail(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<Vec<u8>> {
         let path = self.get_image_path(user_id, file_id, 1, true);
-
+        reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
             .map_err(|e| AppError::not_found(&format!("Thumbnail not found: {}", e)))
