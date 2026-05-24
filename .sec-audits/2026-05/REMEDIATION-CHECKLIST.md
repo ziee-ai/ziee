@@ -40,9 +40,12 @@ PR `security/remediation-2026-05` closes **~71 of 145** Critical/High/Medium fin
 - ✅ `validate_outbound_url` helper (f6a42d0): foundation for 6+ wired SSRF closures
 - ✅ A5 framework (31dc3ae, 6913b7a) + full repo wiring: migration 43 + 45, SecretView<T>, storage_key, encrypt/decrypt round-trip across all api_key + auth_config SQL paths
 
-**Major remaining work (follow-up PR):**
+**N/A per data-model — not actually findings:**
 
-- **07-llm-model F-04, F-11**: SKIPPED — by-design system-wide model curation (see memory `project-llm-models-system-wide`); the audit's generic per-user-ownership finding doesn't apply.
+- **07-llm-model F-04** (per-user model ownership) — `llm_models` are admin-curated and system-wide by design. Audit was generic; product's data model intentionally has no per-user column. See `project-llm-models-system-wide` memory.
+- **07-llm-model F-10** (find_existing_in_progress download hijack) — `download_instances` is admin-driven, not per-user, so "hijack" is admin-on-admin. The permission `llm_models::download_instances_write` isn't in the default Users group (migration 39).
+- **07-llm-model F-11** (SSE broadcast to all clients) — `llm_models::download_instances_read` isn't in default Users group (migration 39), so SSE subscribers are all admins; broadcasting is intentional.
+- **06-llm-provider F-04** (cross-tenant llm_provider_files mapping) — already closed by 4dd543a; the repository's `get_provider_file_mapping` JOINs `files.user_id` and service callers pass `user_id`. Audit framed it as "providers need user_id" which is wrong — providers are system-wide; the mapping is gated by the local file's user_id.
 
 ---
 
