@@ -7,6 +7,33 @@
 
 ---
 
+## Closure Status — `security/remediation-2026-05` (2026-05-23/24)
+
+**Headline: 11 of 11 Critical findings closed. ~30 of 49 High closed. ~50 of 85 Medium closed (incl. ones covered by cross-cutting A1/A2/A3/A5).**
+
+The PR `security/remediation-2026-05` covers ~105 of the 145 C/H/M findings via 5 cross-cutting closures (A1 error redaction, A2 outbound URL validator, A3 middleware stack, A4 permission split, A5 pgcrypto at-rest encryption) plus per-module residue commits. See `REMEDIATION-CHECKLIST.md` for the full SHA-annotated list.
+
+**Deferred (separate PRs):**
+- `08-llm-local-runtime F-01` (engine binary cosign) — needs GitHub Actions OIDC for the runtime release pipeline
+- `08-llm-local-runtime F-04` (engine 127.0.0.1 port auth) — sizable plumbing through ai-providers crate
+- `08-llm-local-runtime F-07` (concurrent-engine quota / cgroup) — needs config + global counter
+- `05-file F-16` (per-user storage quota) — needs `count_user_bytes` query + config
+- `14-core F-15` (EventBus backpressure refactor)
+- `14-core F-16` (build-time download signing) — needs Actions OIDC
+- `14-core F-07/F-08` (unused/old deps) — dep-hygiene PR
+- `01-auth F-12` (registration email-verify) — feature work
+- `02-permissions F-05` (permission caching) — perf, not security
+- Several smaller Mediums in 01-auth (timing-based enumeration F-06, OAuth state binding F-08, etc.) and 06-llm-provider
+
+**N/A per data model (not actual findings):**
+- `07-llm-model F-04` (per-user model ownership) — `llm_models` is admin-curated system-wide
+- `07-llm-model F-10` (download hijack) — `download_instances` is admin-driven; `download_instances_write` not in default Users group
+- `07-llm-model F-11` (SSE broadcast to all clients) — `download_instances_read` not in default Users group; subscribers are admins
+- `06-llm-provider F-04` (cross-tenant llm_provider_files) — already gated via `files.user_id` JOIN (commit 4dd543a)
+- `04-chat F-10` (send_message to non-active branch) — by-design: sending activates the targeted branch
+
+---
+
 ## TL;DR
 
 The Ziee Chat server has a **structurally sound RBAC and SQL layer** (typed `RequirePermissions<T>` extractors, 100% parameterised `sqlx::query!`, fail-closed extractor design, PKCE + algorithm-pinned JWT) but ships with **system-wide operational hardening gaps** that turn a single low-privilege account into a server compromise. **11 Critical** and **49 High** findings concentrate in five repeatable categories: plaintext secret storage and echo, missing SSRF defences on outbound URLs, no body-size or rate limits anywhere in the router stack, raw `sqlx::Error` text leaked through `AppError::database_error`, and three permission strings (`users::edit`, `groups::edit`, `groups::assign_users`) that each escalate to wildcard `*` from a single grant. Most of the prior-round (2025-01 / 2025-11) Critical and High findings remain **unfixed** at the time of re-audit. **Recommended Phase-1 (24h–1 week) action list: F-01 of `01-auth` (OAuth token-in-URL), F-01/F-02 of `03-user` and `02-permissions` (RBAC escalation triple), F-01 of `05-file` (Pandoc-via-pdflatex RCE), F-01/F-02 of `06-llm-provider` (API-key leak + plaintext), F-01 of `07-llm-model` and `09-llm-repository` (SSRF + HF-token exfiltration), and F-01/F-03/F-05/F-06 of `14-core-infrastructure` (body limit, JWT secret, rate limit, CORS).**
