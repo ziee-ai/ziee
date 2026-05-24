@@ -314,7 +314,7 @@ async fn test_gemini_image_vision_e2e() {
 
     // Create message with file reference
     let request = ChatRequest {
-        model: "gemini-2.0-flash-exp".to_string(), // Fast Gemini model
+        model: "gemini-2.5-flash".to_string(), // Fast Gemini model
         messages: vec![ChatMessage {
             role: Role::User,
             content: vec![
@@ -397,7 +397,7 @@ async fn test_gemini_pdf_document_qa_e2e() {
 
     // Create message with document reference
     let request = ChatRequest {
-        model: "gemini-2.0-flash-exp".to_string(),
+        model: "gemini-2.5-flash".to_string(),
         messages: vec![ChatMessage {
             role: Role::User,
             content: vec![
