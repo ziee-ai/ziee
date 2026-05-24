@@ -58,10 +58,22 @@ pub trait EventHandler: Send + Sync {
     fn handler_name(&self) -> &'static str;
 }
 
+/// Hard cap on concurrent in-flight emit_async tasks. Closes
+/// 14-core F-15 (Medium): the original `emit_async` spawned an
+/// unbounded tokio task per emission. Under burst load (a chat storm
+/// triggering 1000s of LlmModel/Assistant events) the spawn rate had
+/// no ceiling → memory bloats with pending closures + handler-task
+/// state. The semaphore bounds the burst; on saturation we DROP the
+/// new event with a tracing::warn rather than blocking the producer
+/// (matches the original fire-and-forget contract). Operators see the
+/// warn and know to scale handlers or move heavy work off-bus.
+const EVENT_BUS_MAX_INFLIGHT: usize = 1024;
+
 /// Event bus manages event handler registration and event dispatch
 pub struct EventBus {
     handlers: Vec<Arc<dyn EventHandler>>,
     pool: Arc<PgPool>,
+    inflight: Arc<tokio::sync::Semaphore>,
 }
 
 impl EventBus {
@@ -69,6 +81,7 @@ impl EventBus {
         Self {
             handlers: Vec::new(),
             pool,
+            inflight: Arc::new(tokio::sync::Semaphore::new(EVENT_BUS_MAX_INFLIGHT)),
         }
     }
 
@@ -95,13 +108,34 @@ impl EventBus {
         }
     }
 
-    /// Emit event in background (non-blocking)
-    /// Returns immediately without waiting for handlers to complete
+    /// Emit event in background (non-blocking).
+    ///
+    /// Returns immediately without waiting for handlers to complete.
+    /// Bounded by `EVENT_BUS_MAX_INFLIGHT`: when the semaphore is
+    /// saturated, the new event is DROPPED with a tracing::warn (we
+    /// preserve the fire-and-forget contract — producers shouldn't
+    /// stall on event-bus backpressure). Closes 14-core F-15.
     pub fn emit_async(&self, event: AppEvent) {
         let handlers = self.handlers.clone();
         let pool = self.pool.clone();
+        let inflight = self.inflight.clone();
 
         tracing::debug!("Emitting event asynchronously: {:?}", event);
+
+        // try_acquire is non-blocking — exactly the right primitive
+        // for "drop on saturation". A truly blocking acquire would
+        // turn fire-and-forget emitters into a sync stall point.
+        let permit = match inflight.clone().try_acquire_owned() {
+            Ok(p) => p,
+            Err(_) => {
+                tracing::warn!(
+                    event = ?event,
+                    cap = EVENT_BUS_MAX_INFLIGHT,
+                    "EventBus inflight cap reached; dropping event"
+                );
+                return;
+            }
+        };
 
         tokio::spawn(async move {
             for handler in handlers {
@@ -114,6 +148,8 @@ impl EventBus {
                     );
                 }
             }
+            // permit drops here, freeing one slot.
+            drop(permit);
         });
     }
 
@@ -128,6 +164,10 @@ impl Clone for EventBus {
         Self {
             handlers: self.handlers.clone(),
             pool: self.pool.clone(),
+            // Share the semaphore: every clone of the bus participates
+            // in the same global inflight cap, otherwise N clones × N
+            // permits = unbounded again.
+            inflight: self.inflight.clone(),
         }
     }
 }
