@@ -87,8 +87,28 @@ pub fn build_api_router(
         combined_router = module.register_routes(combined_router);
     }
 
-    // Create OpenAPI documentation
-    let api_doc = OpenApi::default();
+    // Create OpenAPI documentation. Closes 14-core F-24 (Info): adds
+    // a `bearerAuth` security scheme so generated clients (and the
+    // Redoc/Swagger UI rendering of the spec) know to send the JWT
+    // as `Authorization: Bearer …`. Per-operation `security` arrays
+    // are still up to individual handlers (most use `with_permission`
+    // which already encodes the permission requirement).
+    let mut api_doc = OpenApi::default();
+    let mut components = api_doc.components.unwrap_or_default();
+    components.security_schemes.insert(
+        "bearerAuth".to_string(),
+        aide::openapi::ReferenceOr::Item(aide::openapi::SecurityScheme::Http {
+            scheme: "bearer".to_string(),
+            bearer_format: Some("JWT".to_string()),
+            description: Some(
+                "JWT obtained from POST /auth/login or POST /auth/register, \
+                 sent as `Authorization: Bearer <token>`."
+                    .to_string(),
+            ),
+            extensions: Default::default(),
+        }),
+    );
+    api_doc.components = Some(components);
 
     // Nest all routes under the api_prefix
     let api_router = ApiRouter::new().nest(api_prefix, combined_router);

@@ -1,5 +1,39 @@
 use super::types::{GPUComputeCapabilities, GPUDevice, GPUUsage};
 
+/// Resolve a vendor binary by name to its absolute path within trusted
+/// system directories. Mirrors the helper in
+/// `llm_local_runtime/utils/gpu_detect.rs`. Closes 12-hardware F-06 (Low):
+/// every `Command::new("nvidia-smi")` etc inherits the server's PATH —
+/// a malicious prefix dir shadows the real binary. We now refuse to
+/// spawn from PATH and only try the well-known absolute locations.
+fn resolve_system_binary(name: &str) -> Option<std::path::PathBuf> {
+    const TRUSTED_DIRS: &[&str] = &[
+        "/usr/bin",
+        "/usr/sbin",
+        "/usr/local/bin",
+        "/usr/local/cuda/bin",
+        "/opt/rocm/bin",
+        "/opt/homebrew/bin",
+        "/sbin",
+    ];
+    for dir in TRUSTED_DIRS {
+        let candidate = std::path::PathBuf::from(dir).join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Build a `std::process::Command` for the absolute path of a trusted
+/// vendor binary, or None when the binary isn't installed under any
+/// known location. Callers that previously did
+/// `Command::new("nvidia-smi")` should switch to
+/// `trusted_command("nvidia-smi")` so PATH isn't consulted.
+fn trusted_command(name: &str) -> Option<std::process::Command> {
+    resolve_system_binary(name).map(std::process::Command::new)
+}
+
 // =====================================================
 // GPU Detection
 // =====================================================
@@ -185,7 +219,8 @@ fn detect_nvidia_gpus_nvidia_smi() -> Result<Vec<GPUDevice>, Box<dyn std::error:
 
     // First, get CUDA version from nvidia-smi header
     let mut cuda_version = None;
-    if let Ok(output) = std::process::Command::new("nvidia-smi").output() {
+    if let Some(mut cmd) = trusted_command("nvidia-smi") {
+    if let Ok(output) = cmd.output() {
         if output.status.success() {
             let output_str = String::from_utf8_lossy(&output.stdout);
             for line in output_str.lines() {
@@ -201,9 +236,11 @@ fn detect_nvidia_gpus_nvidia_smi() -> Result<Vec<GPUDevice>, Box<dyn std::error:
             }
         }
     }
+    }
 
     // Query GPU information
-    if let Ok(output) = std::process::Command::new("nvidia-smi")
+    if let Some(mut cmd) = trusted_command("nvidia-smi") {
+    if let Ok(output) = cmd
         .args(&[
             "--query-gpu=index,name,memory.total,driver_version",
             "--format=csv,noheader,nounits",
@@ -237,6 +274,7 @@ fn detect_nvidia_gpus_nvidia_smi() -> Result<Vec<GPUDevice>, Box<dyn std::error:
                 }
             }
         }
+    }
     }
 
     Ok(gpu_devices)
@@ -334,7 +372,10 @@ fn get_amd_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
 fn get_amd_gpu_usage_rocm_smi() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
     let mut gpu_usage = Vec::new();
 
-    let output = std::process::Command::new("rocm-smi")
+    let Some(mut cmd) = trusted_command("rocm-smi") else {
+        return Ok(gpu_usage); // rocm-smi not installed
+    };
+    let output = cmd
         .args(&[
             "--showuse",
             "--showmeminfo",
@@ -471,7 +512,10 @@ fn get_intel_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
     #[cfg(target_os = "linux")]
     {
         // Try using intel_gpu_top for Intel GPU monitoring on Linux
-        match std::process::Command::new("intel_gpu_top")
+        let Some(mut cmd) = trusted_command("intel_gpu_top") else {
+            return Ok(gpu_usage);
+        };
+        match cmd
             .arg("-J") // JSON output
             .arg("-s") // Single sample
             .arg("1000") // 1 second sample
@@ -613,8 +657,10 @@ fn get_apple_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
 // Use iokit to read GPU usage directly
 #[cfg(all(feature = "gpu-detect", target_os = "macos"))]
 fn get_apple_gpu_usage_iokit() -> Result<AppleGpuMetrics, Box<dyn std::error::Error>> {
-    // Try using ioreg to get GPU usage from IOKit
-    let output = std::process::Command::new("ioreg")
+    // Try using ioreg to get GPU usage from IOKit (absolute path).
+    let mut cmd = trusted_command("ioreg")
+        .ok_or_else(|| "ioreg not found in trusted system directories".to_string())?;
+    let output = cmd
         .args(&["-c", "AGXAccelerator", "-r", "-d1"])
         .output()?;
 
@@ -720,7 +766,8 @@ struct AppleGpuMetrics {
 // Get Apple chip name using sysctl (faster than system_profiler)
 #[cfg(all(feature = "gpu-detect", target_os = "macos"))]
 fn get_apple_chip_name() -> String {
-    if let Ok(output) = std::process::Command::new("sysctl")
+    if let Some(mut cmd) = trusted_command("sysctl") {
+    if let Ok(output) = cmd
         .args(&["-n", "machdep.cpu.brand_string"])
         .output()
     {
@@ -741,6 +788,7 @@ fn get_apple_chip_name() -> String {
                 }
             }
         }
+    }
     }
     "Apple Silicon".to_string()
 }
@@ -846,9 +894,8 @@ fn check_vulkan_support() -> bool {
 // Get total system memory on macOS
 #[cfg(target_os = "macos")]
 fn get_system_total_memory() -> Option<u64> {
-    use std::process::Command;
-
-    let output = Command::new("sysctl")
+    let mut cmd = trusted_command("sysctl")?;
+    let output = cmd
         .arg("-n")
         .arg("hw.memsize")
         .output()

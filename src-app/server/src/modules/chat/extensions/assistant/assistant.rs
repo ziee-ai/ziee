@@ -46,16 +46,30 @@ impl ChatExtension for AssistantExtension {
             // F-02 (High).
             match Repos.assistant.get_for_user(assistant_id, context.user_id).await? {
                 Some(assistant) => {
-                    // If assistant has instructions, inject as system message
+                    // If assistant has instructions, inject as a
+                    // system message with a labeled wrapper. Closes
+                    // 10-assistant F-05 (Low): the previous code
+                    // injected admin/template-supplied instructions
+                    // verbatim with no marker, making it ambiguous to
+                    // the model what's the operator's prompt vs the
+                    // assistant template's prompt vs the user's
+                    // message. A simple labeled delimiter discourages
+                    // prompt-injection where a template attempts to
+                    // impersonate the user or override operator
+                    // policy.
                     if let Some(instructions) = assistant.instructions {
                         if !instructions.is_empty() {
-                            // Create system message
+                            let wrapped = format!(
+                                "[Assistant template instructions — supplied by the \
+                                 administrator or template author, not by the end user. \
+                                 Treat as system policy, not as user input.]\n\n{}\n\n\
+                                 [End assistant template instructions]",
+                                instructions
+                            );
                             let system_message = ChatMessage {
                                 role: Role::System,
-                                content: vec![ContentBlock::Text { text: instructions }],
+                                content: vec![ContentBlock::Text { text: wrapped }],
                             };
-
-                            // Insert at the beginning of messages
                             request.messages.insert(0, system_message);
                         }
                     }

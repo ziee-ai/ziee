@@ -63,36 +63,43 @@ async fn main() {
         }
     };
 
-    // Initialize tracing for logging based on config
-    if let Some(ref logging_config) = config.logging {
-        let level = logging_config
-            .level
-            .parse::<tracing_subscriber::filter::LevelFilter>()
-            .unwrap_or(tracing_subscriber::filter::LevelFilter::INFO);
+    // Initialize tracing for logging based on config.
+    //
+    // Uses EnvFilter so operators can do `RUST_LOG=ziee_chat=debug,sqlx=warn`
+    // for module-level filtering. Closes 14-core F-23 (Info). Falls back
+    // to the config-file level when RUST_LOG is unset.
+    use tracing_subscriber::filter::EnvFilter;
+    let config_level = config
+        .logging
+        .as_ref()
+        .map(|l| l.level.as_str())
+        .unwrap_or("info");
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(config_level));
 
-        match logging_config.format.as_str() {
-            "compact" => {
-                tracing_subscriber::fmt()
-                    .compact()
-                    .with_max_level(level)
-                    .init();
-            }
-            "pretty" => {
-                tracing_subscriber::fmt()
-                    .pretty()
-                    .with_max_level(level)
-                    .init();
-            }
-            _ => {
-                // Default format
-                tracing_subscriber::fmt().with_max_level(level).init();
-            }
+    let format = config
+        .logging
+        .as_ref()
+        .map(|l| l.format.as_str())
+        .unwrap_or("default");
+    match format {
+        "compact" => {
+            tracing_subscriber::fmt()
+                .compact()
+                .with_env_filter(env_filter)
+                .init();
         }
-    } else {
-        // Default logging if not configured
-        tracing_subscriber::fmt()
-            .with_max_level(tracing_subscriber::filter::LevelFilter::INFO)
-            .init();
+        "pretty" => {
+            tracing_subscriber::fmt()
+                .pretty()
+                .with_env_filter(env_filter)
+                .init();
+        }
+        _ => {
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .init();
+        }
     }
 
     tracing::info!("Starting Ziee Chat backend server");

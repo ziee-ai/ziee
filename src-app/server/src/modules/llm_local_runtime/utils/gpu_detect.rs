@@ -3,6 +3,44 @@
 
 use std::process::Command;
 
+/// Resolve a binary by name to its absolute path, searching only the
+/// trusted system directories (NOT $PATH). Closes
+/// 08-llm-local-runtime F-14 (Low): the previous `Command::new("nvidia-smi")`
+/// inherits the server's PATH, so a directory at the front of PATH
+/// containing a malicious `nvidia-smi` shadows the real one. Returns
+/// None when the binary isn't in any trusted dir; callers skip the
+/// detection step in that case.
+fn resolve_system_binary(name: &str) -> Option<std::path::PathBuf> {
+    // Vendor-specific tools live under these well-known prefixes. We
+    // prefer absolute paths so PATH injection / DLL search-order
+    // attacks can't pivot through GPU detection.
+    const TRUSTED_DIRS: &[&str] = &[
+        // Linux distros
+        "/usr/bin",
+        "/usr/sbin",
+        "/usr/local/bin",
+        // CUDA / ROCm typical install
+        "/usr/local/cuda/bin",
+        "/opt/rocm/bin",
+        // macOS
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        "/System/Library",
+    ];
+    for dir in TRUSTED_DIRS {
+        let candidate = std::path::PathBuf::from(dir).join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        // macOS sometimes has system_profiler under /usr/sbin/
+        let alt = std::path::PathBuf::from(dir).join("usr").join("sbin").join(name);
+        if alt.is_file() {
+            return Some(alt);
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GpuBackend {
     Cpu,
@@ -62,11 +100,16 @@ pub fn detect_gpu_backend() -> GpuBackend {
 }
 
 fn is_cuda_available() -> bool {
-    // Try nvidia-smi command
-    if let Ok(output) = Command::new("nvidia-smi").output() {
-        if output.status.success() {
-            tracing::debug!("nvidia-smi command succeeded");
-            return true;
+    // Try nvidia-smi command (absolute-path resolved, no PATH lookup).
+    // Closes 08-llm-local-runtime F-14 (Low). If the binary is not in
+    // any trusted dir we skip this probe and fall through to the
+    // library-existence check below.
+    if let Some(nvidia_smi) = resolve_system_binary("nvidia-smi") {
+        if let Ok(output) = Command::new(nvidia_smi).output() {
+            if output.status.success() {
+                tracing::debug!("nvidia-smi command succeeded");
+                return true;
+            }
         }
     }
 
@@ -98,16 +141,18 @@ fn is_metal_available() -> bool {
         // For Intel Macs, try to check via system_profiler
         #[cfg(target_arch = "x86_64")]
         {
-            if let Ok(output) = Command::new("system_profiler")
-                .arg("SPDisplaysDataType")
-                .output()
-            {
-                if output.status.success() {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    // Metal is supported on macOS 10.11+ with compatible GPUs
-                    if stdout.contains("Metal") {
-                        tracing::debug!("Metal support detected via system_profiler");
-                        return true;
+            if let Some(system_profiler) = resolve_system_binary("system_profiler") {
+                if let Ok(output) = Command::new(system_profiler)
+                    .arg("SPDisplaysDataType")
+                    .output()
+                {
+                    if output.status.success() {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        // Metal is supported on macOS 10.11+ with compatible GPUs
+                        if stdout.contains("Metal") {
+                            tracing::debug!("Metal support detected via system_profiler");
+                            return true;
+                        }
                     }
                 }
             }
@@ -125,11 +170,13 @@ fn is_metal_available() -> bool {
 }
 
 fn is_rocm_available() -> bool {
-    // Try rocm-smi command
-    if let Ok(output) = Command::new("rocm-smi").output() {
-        if output.status.success() {
-            tracing::debug!("rocm-smi command succeeded");
-            return true;
+    // Try rocm-smi command (absolute-path resolved, no PATH lookup)
+    if let Some(rocm_smi) = resolve_system_binary("rocm-smi") {
+        if let Ok(output) = Command::new(rocm_smi).output() {
+            if output.status.success() {
+                tracing::debug!("rocm-smi command succeeded");
+                return true;
+            }
         }
     }
 
