@@ -341,11 +341,14 @@ async fn test_get_user_providers_requires_auth() {
 async fn test_get_user_providers_requires_conversations_read_permission() {
     let server = crate::common::TestServer::start().await;
 
-    // Create user without conversations::read permission
-    let user = crate::common::test_helpers::create_user_with_permissions(
+    // Create user without conversations::read permission. Must use
+    // `create_user_with_no_permissions` — the `_with_permissions(_, _, &[])`
+    // variant leaves the user in the default Users group (migration 27)
+    // which DOES grant `conversations::read`, so the assertion would
+    // fail.
+    let user = crate::common::test_helpers::create_user_with_no_permissions(
         &server,
         "no_perms_user",
-        &[], // No permissions
     )
     .await;
 

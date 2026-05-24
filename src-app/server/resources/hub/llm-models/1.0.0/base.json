@@ -52,7 +52,7 @@
       "tokenizer_json": null,
       "arch": "llama"
     },
-    "auth_required": false
+    "auth_required": true
   },
   {
     "id": "llama-3-1-8b-instruct",

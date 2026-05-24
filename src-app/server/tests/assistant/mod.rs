@@ -743,7 +743,12 @@ async fn test_default_template_cloned_on_user_registration() {
         "A template that should be cloned to new users"
     );
     assert_eq!(cloned_assistant["is_template"], false); // It's a user assistant, not a template
-    assert_eq!(cloned_assistant["is_default"], true); // Preserves is_default flag
+    // 10-assistant F-04 (Medium): template-clone-on-signup now forces
+    // is_default=false instead of copying the template's flag. New
+    // users start with no default assistant; they pick one explicitly
+    // post-signup. Previously a `is_default=true` template would mint
+    // a forced-default per user with no opt-out.
+    assert_eq!(cloned_assistant["is_default"], false);
     assert_eq!(cloned_assistant["enabled"], true);
 }
 

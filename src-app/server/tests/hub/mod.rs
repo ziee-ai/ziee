@@ -20,7 +20,7 @@ async fn test_get_hub_models_requires_permission() {
 
     // Create user without permission
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed
     let url = server.api_url("/hub/models?lang=en");
@@ -218,7 +218,7 @@ async fn test_get_hub_models_version_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed
     let url = server.api_url("/hub/models/version");
@@ -268,7 +268,7 @@ async fn test_refresh_hub_models_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed (though may fail due to GitHub)
     let url = server.api_url("/hub/models/refresh");
@@ -508,7 +508,7 @@ async fn test_get_hub_assistants_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed
     let url = server.api_url("/hub/assistants?lang=en");
@@ -687,7 +687,7 @@ async fn test_refresh_hub_assistants_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed (though may fail due to GitHub)
     let url = server.api_url("/hub/assistants/refresh");
@@ -737,7 +737,7 @@ async fn test_get_hub_mcp_servers_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed
     let url = server.api_url("/hub/mcp-servers?lang=en");
@@ -885,7 +885,7 @@ async fn test_refresh_hub_mcp_servers_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed (though may fail due to GitHub)
     let url = server.api_url("/hub/mcp-servers/refresh");

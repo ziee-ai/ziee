@@ -583,8 +583,17 @@ async fn test_setup_status_needs_setup() {
 
     // Should need setup since no admin exists
     assert_eq!(body.get("needs_setup").unwrap(), true, "Should need setup");
-    assert_eq!(body.get("app_name").unwrap(), "Ziee Chat");
-    assert!(body.get("version").is_some());
+    // 13-misc F-02 (Medium): app_name + version no longer leaked to
+    // unauthenticated callers (fingerprint surface for CVE matrix
+    // matching). The response now contains only `needs_setup`.
+    assert!(
+        body.get("app_name").is_none(),
+        "app_name should not be exposed to unauthenticated callers (13-misc F-02)"
+    );
+    assert!(
+        body.get("version").is_none(),
+        "version should not be exposed to unauthenticated callers (13-misc F-02)"
+    );
 }
 
 #[tokio::test]

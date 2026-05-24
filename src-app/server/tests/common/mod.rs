@@ -202,17 +202,31 @@ secrets:
             username, password, host, port, database_name
         );
 
-        // Wait for server to be ready
+        // Wait for server to be ready. Bumped from 30 × 200ms = 6s to
+        // 150 × 200ms = 30s after observing test failures where the
+        // server boot ran past 6s on a busy CI/dev box. The added
+        // security middleware stack (rate-limit init, security
+        // headers, etc) + module registration + migration apply +
+        // external Postgres connect all add up — 30s is a safe
+        // ceiling that still surfaces a genuinely-hung server.
         let client = reqwest::Client::new();
         let health_url = format!("{}/api/health", base_url);
 
-        for _ in 0..30 {
+        let mut ready = false;
+        for _ in 0..150 {
             if let Ok(response) = client.get(&health_url).send().await {
                 if response.status().is_success() {
+                    ready = true;
                     break;
                 }
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        if !ready {
+            panic!(
+                "TestServer at {} did not become healthy within 30s",
+                base_url
+            );
         }
 
         TestServer {
@@ -411,6 +425,43 @@ pub mod test_helpers {
             .execute(&pool)
             .await
             .expect("Failed to strip user from groups");
+
+        pool.close().await;
+        user
+    }
+
+    /// Create a user with EXACTLY the listed permissions — no default-group
+    /// inheritance. Use when a test needs to prove "X works with perm A,
+    /// fails without perm B" but B is in the default Users group too.
+    /// `create_user_with_permissions(_, _, &["A"])` would leave the user
+    /// in default + add a separate group with [A], giving them both A
+    /// AND every default permission.
+    pub async fn create_user_with_only_permissions(
+        server: &TestServer,
+        username: &str,
+        permissions: &[&str],
+    ) -> TestUser {
+        let user = create_user_with_permissions(server, username, permissions).await;
+
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&server.database_url)
+            .await
+            .expect("Failed to connect to test database");
+
+        let user_uuid = Uuid::parse_str(&user.user_id).expect("Invalid user ID");
+        // Drop user from the system default group; leave them in the
+        // per-test group created above (which carries the explicit
+        // permission list).
+        sqlx::query(
+            "DELETE FROM user_groups WHERE user_id = $1 AND group_id IN (\
+                SELECT id FROM groups WHERE is_default = true\
+             )",
+        )
+        .bind(user_uuid)
+        .execute(&pool)
+        .await
+        .expect("Failed to strip user from default group");
 
         pool.close().await;
         user
