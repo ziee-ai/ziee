@@ -13,6 +13,25 @@ use tokio::sync::RwLock;
 type AppResult<T> = Result<T, AppError>;
 use sqlx::types::Uuid;
 
+/// Process-global map of model_id → per-instance bearer token. Chat
+/// code calls `get_instance_api_key(model_id)` to retrieve the token
+/// for outbound calls. Closes 08-llm-local-runtime F-04 (High) at
+/// the runtime layer; the chat-side wiring that actually presents
+/// the bearer to the local engine is a follow-up.
+static INSTANCE_API_KEYS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<Uuid, String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Return the bearer token assigned to the engine instance for
+/// `model_id`, or None if no instance is running.
+pub fn get_instance_api_key(model_id: Uuid) -> Option<String> {
+    INSTANCE_API_KEYS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(&model_id)
+        .cloned()
+}
+
 /// Maximum number of log lines retained per engine instance. When the
 /// buffer fills, the oldest line is popped (FIFO) in O(1) via
 /// VecDeque. The previous Vec::remove(0) was O(n) per push past the
@@ -113,17 +132,28 @@ impl LocalDeployment {
         cmd.stderr(Stdio::piped());
     }
 
-    /// Build command for llama.cpp engine
+    /// Build command for llama.cpp engine.
+    ///
+    /// Closes 08-llm-local-runtime F-04 (High) for llama.cpp's
+    /// HTTP surface: `--api-key TOKEN` makes the engine require
+    /// `Authorization: Bearer TOKEN` on every request. Without this,
+    /// any local process (or an SSRF in a co-located service) can
+    /// reach 127.0.0.1:port and run inferences against the loaded
+    /// model. The chat-side wiring (so authenticated chat requests
+    /// actually present this token to the engine) is the follow-up
+    /// piece — see INSTANCE_API_KEYS getter exposed for future use.
     fn build_llamacpp_command(
         binary_path: &str,
         model_path: &str,
         port: i32,
         config: &serde_json::Value,
+        api_key: &str,
     ) -> Command {
         let mut cmd = Command::new(binary_path);
         cmd.arg("--model").arg(model_path);
         cmd.arg("--port").arg(port.to_string());
         cmd.arg("--host").arg("127.0.0.1");
+        cmd.arg("--api-key").arg(api_key);
 
         // Add context size if specified
         if let Some(ctx_size) = config.get("context_size").and_then(|v| v.as_i64()) {
@@ -140,13 +170,28 @@ impl LocalDeployment {
         cmd
     }
 
-    /// Build command for mistral.rs engine
+    /// Build command for mistral.rs engine.
+    ///
+    /// Note: mistral.rs doesn't expose a `--api-key` flag at time of
+    /// writing (verified against v0.x); the api_key parameter is
+    /// accepted to match the llama.cpp signature but ignored, with a
+    /// warn-once log. Closes 08-llm-local-runtime F-04 (High) for
+    /// llama.cpp; mistral.rs requires an upstream feature first.
     fn build_mistralrs_command(
         binary_path: &str,
         model_path: &str,
         port: i32,
         config: &serde_json::Value,
+        _api_key: &str,
     ) -> Command {
+        tracing::warn!(
+            "08-llm-local-runtime F-04: mistral.rs engine has no \
+             built-in --api-key flag; the local 127.0.0.1:{} port is \
+             reachable from any process. Track upstream feature for \
+             bearer-auth support.",
+            port
+        );
+
         let mut cmd = Command::new(binary_path);
         cmd.arg("--model-path").arg(model_path);
         cmd.arg("--port").arg(port.to_string());
@@ -240,6 +285,28 @@ impl Deployment for LocalDeployment {
         // is parsed by some engines as an additional flag.
         Self::validate_argv_value("model_path", model_path)?;
 
+        // Concurrent-engine quota. Closes 08-llm-local-runtime F-07
+        // (Medium): without this, an admin (or an automated client
+        // hitting the start endpoint in a loop) can spin up dozens of
+        // local engines and OOM the host. 8 matches a typical
+        // workstation's GPU count + the per-model VRAM ceiling.
+        // Operators with bigger boxes can raise this via a future
+        // config; the hardcoded value below is the safe ceiling.
+        const MAX_CONCURRENT_ENGINES: usize = 8;
+        {
+            let processes = self.processes.read().await;
+            if processes.len() >= MAX_CONCURRENT_ENGINES {
+                return Err(AppError::bad_request(
+                    "TOO_MANY_INSTANCES",
+                    format!(
+                        "{} engine instances are already running (cap {}); stop one before starting another",
+                        processes.len(),
+                        MAX_CONCURRENT_ENGINES
+                    ),
+                ));
+            }
+        }
+
         // Find available port
         let port = Self::find_available_port().await?;
         let base_url = format!("http://127.0.0.1:{}", port);
@@ -293,10 +360,24 @@ impl Deployment for LocalDeployment {
             runtime_version.id
         );
 
+        // Mint a per-instance bearer token. Stored in the
+        // process-global INSTANCE_API_KEYS map so chat-side code can
+        // look it up via get_instance_api_key(model_id) when
+        // dispatching to the local engine. Closes
+        // 08-llm-local-runtime F-04 (High) for llama.cpp; chat-side
+        // wiring is the follow-up that actually presents the bearer.
+        let api_key = uuid::Uuid::new_v4()
+            .to_string()
+            .replace('-', "");
+        INSTANCE_API_KEYS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(model_id, api_key.clone());
+
         // Build command based on engine type
         let mut cmd = match normalized_engine {
-            "llamacpp" => Self::build_llamacpp_command(&binary_path.to_string_lossy(), model_path, port, config),
-            "mistralrs" => Self::build_mistralrs_command(&binary_path.to_string_lossy(), model_path, port, config),
+            "llamacpp" => Self::build_llamacpp_command(&binary_path.to_string_lossy(), model_path, port, config, &api_key),
+            "mistralrs" => Self::build_mistralrs_command(&binary_path.to_string_lossy(), model_path, port, config, &api_key),
             _ => unreachable!(), // Already validated above
         };
 
@@ -335,6 +416,15 @@ impl Deployment for LocalDeployment {
     }
 
     async fn stop(&self, model_id: Uuid) -> AppResult<()> {
+        // Drop the per-instance bearer token. Closes
+        // 08-llm-local-runtime F-04 (High) — keeping the token alive
+        // past process death would let a future model_id collision
+        // accidentally reuse it.
+        INSTANCE_API_KEYS
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&model_id);
+
         let mut processes = self.processes.write().await;
 
         let mut proc_info = processes

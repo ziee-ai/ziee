@@ -241,6 +241,16 @@ impl BinaryDownloader {
     /// remaining missing defense. Without it, an attacker-controlled
     /// upstream (e.g. a hijacked GitHub mirror) could redirect to a
     /// /dev/zero stream and fill the host disk.
+    ///
+    /// 08-llm-local-runtime F-01 (High) gap: this function does NOT
+    /// cryptographically verify the downloaded binary. The right
+    /// shape is a cosign-keyless verify (matches the
+    /// `sigstore` crate already pulled by code_sandbox) against a
+    /// `.sig` artifact published alongside each engine binary. That
+    /// requires the llm-runtime release pipeline to actually sign
+    /// (Actions OIDC + cosign sign-blob) — until that ships, this
+    /// download path remains TOFU. Operators reading the SBOM should
+    /// confirm the upstream GitHub Releases page hashes match.
     async fn download_file(&self, url: &str, dest: &Path) -> Result<()> {
         const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GiB
 
