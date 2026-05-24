@@ -111,6 +111,15 @@ server:
   host: "127.0.0.1"
   port: {}
   api_prefix: "/api"
+  # Tests run many sequential requests against a single peer IP
+  # (127.0.0.1), so they share one tower-governor bucket. The
+  # production default (5 req/s, burst 60) self-429s under sustained
+  # test load. Set extremely high caps here — the global cap is
+  # still exercised via the dedicated A3 rate-limit regression test
+  # which sets its own low values.
+  rate_limit:
+    per_second: 10000
+    burst_size: 10000
 
 jwt:
   # Must match the production issuer/audience because the MCP client

@@ -181,22 +181,30 @@ pub async fn update_repository(
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
 
-    // SECURITY: refuse to mutate built-in repositories' URL or
-    // auth_type / auth_config / name. The delete handler already
-    // blocked this for built-in repos, but the update handler didn't
-    // — so any holder of llm_repositories::edit could swap the
-    // Hugging Face URL to an attacker-controlled domain, then watch
-    // tokens flow there on the next model download. Closes
-    // 09-llm-repository F-16.
+    // SECURITY: refuse to mutate the built-in repository's URL,
+    // auth_type, or name. The delete handler already blocked this
+    // for built-in repos, but the update handler didn't — so any
+    // holder of llm_repositories::edit could swap the Hugging Face
+    // URL to an attacker-controlled domain, then watch tokens flow
+    // there on the next model download. Closes 09-llm-repository F-16.
+    //
+    // `auth_config` IS allowed to mutate (originally blocked, then
+    // relaxed): the built-in HF repository ships with an empty
+    // `api_key` in its seed `auth_config` and the operator must
+    // populate it before downloads will authenticate. Blocking
+    // auth_config writes would mean operators can never set the HF
+    // token without an out-of-band migration. The URL/auth_type/name
+    // immutability is sufficient — a malicious operator can supply a
+    // bad api_key, but that exfiltrates only to the legitimate (still
+    // pinned) HF URL.
     if current_repository.built_in {
-        let touches_sensitive = request.url.is_some()
+        let touches_immutable = request.url.is_some()
             || request.auth_type.is_some()
-            || request.auth_config.is_some()
             || request.name.is_some();
-        if touches_sensitive {
+        if touches_immutable {
             return Err(AppError::bad_request(
                 "BUILT_IN_REPOSITORY",
-                "Cannot modify name / URL / auth on built-in repositories",
+                "Cannot modify name / URL / auth_type on built-in repositories",
             )
             .into());
         }

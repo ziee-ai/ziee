@@ -225,10 +225,16 @@ async fn setup_server(
     // 16 MB body limit, 60s timeout, security headers, CORS.
     // Closes 14-core F-01 + 05-file F-09 generalization + A3 headers.
     // Rate limiter — see main.rs for rationale. 5 req/s per peer IP, burst 60.
+    let (rl_per_sec, rl_burst) = config
+        .server
+        .rate_limit
+        .as_ref()
+        .map(|r| (r.per_second, r.burst_size))
+        .unwrap_or((5, 60));
     let governor_conf = std::sync::Arc::new(
         tower_governor::governor::GovernorConfigBuilder::default()
-            .per_second(5)
-            .burst_size(60)
+            .per_second(rl_per_sec)
+            .burst_size(rl_burst)
             .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
             .finish()
             .expect("Failed to build governor config"),

@@ -155,6 +155,20 @@ pub struct ServerConfig {
     pub api_prefix: String,
     #[serde(default)]
     pub cors: Option<CorsConfig>,
+    /// Rate-limit configuration (tower-governor). Optional — defaults
+    /// match the A3 hardening posture (5 req/s sustained, 60-burst).
+    /// Tests override with much higher numbers since they run many
+    /// sequential requests against 127.0.0.1 (single peer-IP bucket).
+    #[serde(default)]
+    pub rate_limit: Option<RateLimitConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RateLimitConfig {
+    /// Sustained requests-per-second per peer IP.
+    pub per_second: u64,
+    /// Token-bucket burst capacity.
+    pub burst_size: u32,
 }
 
 #[derive(Debug, Deserialize, Clone)]
