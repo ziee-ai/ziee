@@ -153,6 +153,22 @@ impl FileRepository {
         Ok((files, total))
     }
 
+    /// Sum the user's current uploaded file bytes. Drives the per-user
+    /// storage quota enforced at upload time. Closes 05-file F-16
+    /// (Medium). Returns 0 when the user has no files.
+    pub async fn count_user_bytes(&self, user_id: Uuid) -> Result<i64, AppError> {
+        let total: Option<i64> = sqlx::query_scalar!(
+            r#"SELECT COALESCE(SUM(file_size), 0)::BIGINT AS "total"
+               FROM files
+               WHERE user_id = $1"#,
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(total.unwrap_or(0))
+    }
+
     /// Delete file
     pub async fn delete(&self, file_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
         let result = sqlx::query!(

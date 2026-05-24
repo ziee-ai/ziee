@@ -568,6 +568,31 @@ pub async fn upload_multiple_files_and_commit(
                         )
                     })?;
 
+                    // Per-upload cumulative size cap. Closes
+                    // 07-llm-model F-03 (High): without this, an
+                    // admin upload can stream multi-GB combined
+                    // payloads (the route currently raises the
+                    // global 16 MiB body limit). 20 GiB matches
+                    // Llama-70B-class weights with comfortable
+                    // headroom.
+                    const MAX_MODEL_UPLOAD_BYTES: usize = 20 * 1024 * 1024 * 1024;
+                    let already: usize = uploaded_files
+                        .iter()
+                        .map(|(_, d): &(String, Vec<u8>)| d.len())
+                        .sum();
+                    if already.saturating_add(data.len()) > MAX_MODEL_UPLOAD_BYTES {
+                        return Err((
+                            StatusCode::PAYLOAD_TOO_LARGE,
+                            AppError::bad_request(
+                                "MODEL_UPLOAD_TOO_LARGE",
+                                format!(
+                                    "Combined model upload exceeds {} GiB cap",
+                                    MAX_MODEL_UPLOAD_BYTES / (1024 * 1024 * 1024)
+                                ),
+                            ),
+                        ));
+                    }
+
                     uploaded_files.push((filename, data.to_vec()));
                 }
             }

@@ -55,6 +55,28 @@ pub async fn upload_file(
         ).into());
     }
 
+    // Per-user storage quota. Closes 05-file F-16 (Medium). 10 GiB
+    // matches typical SaaS chat-attachment quotas; can be promoted to
+    // config when a real product requirement emerges. Without this,
+    // an authenticated user can fill the host disk via repeated
+    // uploads under the per-file cap.
+    const PER_USER_STORAGE_QUOTA_BYTES: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
+    let used = Repos.file.count_user_bytes(auth.user.id).await?;
+    let after = used.saturating_add(file_data.len() as i64);
+    if after > PER_USER_STORAGE_QUOTA_BYTES {
+        return Err(AppError::bad_request(
+            "STORAGE_QUOTA_EXCEEDED",
+            format!(
+                "Upload would put you over the {} GiB per-user storage quota \
+                 ({} bytes already used + {} bytes incoming)",
+                PER_USER_STORAGE_QUOTA_BYTES / (1024 * 1024 * 1024),
+                used,
+                file_data.len()
+            ),
+        )
+        .into());
+    }
+
     // Generate file ID
     let file_id = Uuid::new_v4();
 
