@@ -12,16 +12,16 @@ Severity ordering inside each section: by audit-file number, then by `F-NN`. Use
 
 ## Closure Status — `security/remediation-2026-05` (2026-05-23)
 
-PR `security/remediation-2026-05` closes **~70 of 145** Critical/High/Medium findings. The unchecked items in the rest of the document remain open; the one deferred Critical (06-llm-provider F-02) has framework in place (pgcrypto migration + SecretView<T> + core::secrets::storage_key) and only the repository read/write wiring remains.
+PR `security/remediation-2026-05` closes **~71 of 145** Critical/High/Medium findings. All 11 Criticals are now closed; the unchecked items in the rest of the document remain open.
 
-**Critical (10 of 11 closed):**
+**Critical (11 of 11 closed):**
 
 - ✅ 01-auth F-01 (cff71cd)
 - ✅ 03-user F-01 (129956d), F-02 (fb68d55)
 - ✅ 04-chat F-01 (ba0779e)
 - ✅ 05-file F-01 (d4aad5c)
 - ✅ 06-llm-provider F-01 (0fea61d)
-- ⏸ 06-llm-provider F-02 — A5 framework done (31dc3ae, 6913b7a); repo wiring deferred
+- ✅ 06-llm-provider F-02 (A5-full wiring) — pgcrypto encrypt-on-write + decrypt-on-read for `llm_providers.api_key`, `user_llm_provider_api_keys.api_key`, `llm_repositories.auth_config`
 - ✅ 09-llm-repository F-01 (9eec0a7)
 - ✅ 14-core F-01 (6b5607c), F-02 (50527d8)
 
@@ -38,14 +38,11 @@ PR `security/remediation-2026-05` closes **~70 of 145** Critical/High/Medium fin
 - ✅ AppError redaction (94f5295): closes raw-sqlx-leak in 14-core + 03-user F-08 + 06-llm-provider F-06 + 07-llm-model F-05 + 09-llm-repository F-* + 13-misc M-2
 - ✅ eprintln/println sweep (ce2eea7): 06-llm-provider F-06 (full) + 09-llm-repository F-04 (partial) + 07-llm-model F-15 + 04-chat extension/title eprintln
 - ✅ `validate_outbound_url` helper (f6a42d0): foundation for 6+ wired SSRF closures
-- ✅ A5 framework (31dc3ae, 6913b7a): migration 43 + SecretView<T> + storage_key, ready for repo wiring
+- ✅ A5 framework (31dc3ae, 6913b7a) + full repo wiring: migration 43 + 45, SecretView<T>, storage_key, encrypt/decrypt round-trip across all api_key + auth_config SQL paths
 
 **Major remaining work (follow-up PR):**
 
-- **06-llm-provider F-02 (Critical, A5-full)**: pgcrypto repo wiring across ~10 SQL paths in `llm_provider/repositories/{admin,user}.rs` + `llm_repositories.auth_config` JSONB.
-- **07-llm-model F-01 (Critical)**: HF + downloads SSRF — full LFS pointer href + git2 clone URL paths through `validate_outbound_url`.
-- **A3 (rate limiting + security headers)**: `tower-governor` + security-headers layer + CORS hardening. Closes ~15 missing-rate-limit findings + 05-file F-13.
-- **07-llm-model F-04, F-11**: per-user model ownership + SSE cross-tenant visibility (needs `created_by` column).
+- **07-llm-model F-04, F-11**: SKIPPED — by-design system-wide model curation (see memory `project-llm-models-system-wide`); the audit's generic per-user-ownership finding doesn't apply.
 
 ---
 

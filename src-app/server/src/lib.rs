@@ -13,6 +13,13 @@ use std::sync::Arc;
 // Re-export types for desktop/external use
 pub use core::config::Config;
 pub use core::{Repos, EventBus, EventHandler, AppEvent};
+// Re-exported so integration tests (which construct repositories directly
+// against the test DB pool) can initialise the same at-rest storage_key
+// that the spawned server process used. Without this, repo.get() in the
+// test process can't decrypt rows the server wrote, and resolve-fallback
+// returns None. See common::secret::resolve_optional_secret.
+#[doc(hidden)]
+pub use core::secrets::{init_storage_key, storage_key};
 pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{JwtService, AuthResponse, hash_password};
 pub use modules::user::models::User;

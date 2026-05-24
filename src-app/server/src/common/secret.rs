@@ -118,6 +118,38 @@ pub async fn decrypt_secret(
     Ok(row.0)
 }
 
+/// Repository-side resolver for the encrypted/plaintext dual-column
+/// pattern. Prefers the encrypted column when storage_key is available
+/// and decryption succeeds; otherwise falls back to the plaintext
+/// column (compat mode + not-yet-backfilled rows).
+///
+/// Logs a `tracing::error!` if decryption fails (wrong key / corrupted
+/// data) but does NOT propagate the error — the caller gets the
+/// plaintext fallback (which is None on freshly-encrypted rows whose
+/// plaintext column was cleared on write, so the secret simply
+/// becomes unavailable rather than 500-ing every read).
+pub async fn resolve_optional_secret(
+    pool: &PgPool,
+    encrypted: Option<Vec<u8>>,
+    plaintext: Option<String>,
+) -> Option<String> {
+    if let Some(ref enc) = encrypted {
+        if let Some(key) = crate::core::secrets::storage_key() {
+            match decrypt_secret(pool, enc, key).await {
+                Ok(plain) => return Some(plain),
+                Err(e) => {
+                    tracing::error!(
+                        error = ?e,
+                        "Failed to decrypt secret column; falling back to plaintext column \
+                         (likely wrong storage_key or corrupted ciphertext)"
+                    );
+                }
+            }
+        }
+    }
+    plaintext
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

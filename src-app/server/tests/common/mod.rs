@@ -62,6 +62,17 @@ impl TestServer {
     /// Start a TestServer with the given options. Use this when a test
     /// needs the code_sandbox enabled or wants to inject extra env.
     pub async fn start_with_options(opts: TestServerOptions) -> Self {
+        // Initialise the at-rest secret storage_key in the *test* process
+        // too. The spawned server process initialises its own key from
+        // the YAML config, but tests that construct repositories
+        // directly against the test DB pool (UserKeyRepository,
+        // LlmRepositoryRepository) decrypt rows in-process and need the
+        // key to be available via ziee_chat::storage_key(). Idempotent —
+        // OnceCell::set after first call is a noop.
+        ziee_chat::init_storage_key(Some(
+            "test-storage-key-for-pgcrypto-min-32-chars-long".to_string(),
+        ));
+
         // Generate unique identifiers
         let test_id = Uuid::new_v4().to_string();
         let database_name = format!("test_db_{}", test_id.replace("-", "_"));
