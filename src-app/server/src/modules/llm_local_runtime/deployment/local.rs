@@ -13,13 +13,26 @@ use tokio::sync::RwLock;
 type AppResult<T> = Result<T, AppError>;
 use sqlx::types::Uuid;
 
+/// Maximum number of log lines retained per engine instance. When the
+/// buffer fills, the oldest line is popped (FIFO) in O(1) via
+/// VecDeque. The previous Vec::remove(0) was O(n) per push past the
+/// cap → O(n²) over the buffer lifetime. Closes 08-llm-local-runtime
+/// F-08 (Medium).
+const LOG_BUFFER_MAX_LINES: usize = 1000;
+
+/// Maximum bytes per captured log line. Without this, a runaway
+/// engine that emits gigabyte-long lines would balloon server memory
+/// (each WriteGuard + line allocation). Closes 08-llm-local-runtime
+/// F-08's per-line-size sub-finding.
+const LOG_LINE_MAX_BYTES: usize = 16 * 1024;
+
 #[derive(Debug)]
 struct ProcessInfo {
     child: Child,
     port: i32,
     base_url: String,
     started_at: std::time::Instant,
-    logs: Vec<String>,
+    logs: std::collections::VecDeque<String>,
 }
 
 pub struct LocalDeployment {
@@ -40,6 +53,39 @@ impl LocalDeployment {
         portpicker::pick_unused_port()
             .map(|p| p as i32)
             .ok_or_else(|| AppError::internal_error("No available ports"))
+    }
+
+    /// Validate that a value bound for engine argv is safe. Closes
+    /// 08-llm-local-runtime F-02 (High): model.name flows from
+    /// admin-uploaded model metadata into `--model VALUE` argv. If
+    /// VALUE starts with `-` it could be re-interpreted as another
+    /// flag (argument injection); shell metachars (`;`, `&`, `|`,
+    /// `\``, `$()`) could enable command injection on engines that
+    /// pass through to a shell. We reject either at deploy-time.
+    fn validate_argv_value(label: &str, value: &str) -> AppResult<()> {
+        if value.is_empty() {
+            return Err(AppError::bad_request(
+                "INVALID_ARGV",
+                format!("{} cannot be empty", label),
+            ));
+        }
+        if value.starts_with('-') {
+            return Err(AppError::bad_request(
+                "INVALID_ARGV",
+                format!(
+                    "{} cannot start with '-' (would be parsed as a flag): {:?}",
+                    label, value
+                ),
+            ));
+        }
+        const BANNED: &[char] = &[';', '&', '|', '`', '$', '\n', '\r', '\0', '<', '>'];
+        if value.chars().any(|c| BANNED.contains(&c)) {
+            return Err(AppError::bad_request(
+                "INVALID_ARGV",
+                format!("{} contains shell metacharacters: {:?}", label, value),
+            ));
+        }
+        Ok(())
     }
 
     /// Apply common security hardening to a spawned engine command:
@@ -130,11 +176,7 @@ impl LocalDeployment {
                 while let Ok(Some(line)) = lines.next_line().await {
                     let mut procs = processes_clone.write().await;
                     if let Some(proc_info) = procs.get_mut(&model_id) {
-                        proc_info.logs.push(line);
-                        // Keep only last 1000 lines
-                        if proc_info.logs.len() > 1000 {
-                            proc_info.logs.remove(0);
-                        }
+                        push_capped(&mut proc_info.logs, line);
                     }
                 }
             });
@@ -148,16 +190,30 @@ impl LocalDeployment {
                 while let Ok(Some(line)) = lines.next_line().await {
                     let mut procs = processes_clone.write().await;
                     if let Some(proc_info) = procs.get_mut(&model_id) {
-                        proc_info.logs.push(format!("[stderr] {}", line));
-                        // Keep only last 1000 lines
-                        if proc_info.logs.len() > 1000 {
-                            proc_info.logs.remove(0);
-                        }
+                        push_capped(&mut proc_info.logs, format!("[stderr] {}", line));
                     }
                 }
             });
         }
     }
+}
+
+/// Push a log line with both line-size and ring-buffer caps. Closes
+/// 08-llm-local-runtime F-08 (Medium).
+fn push_capped(buf: &mut std::collections::VecDeque<String>, mut line: String) {
+    if line.len() > LOG_LINE_MAX_BYTES {
+        // Truncate at a UTF-8 boundary just under the cap.
+        let mut end = LOG_LINE_MAX_BYTES;
+        while !line.is_char_boundary(end) && end > 0 {
+            end -= 1;
+        }
+        line.truncate(end);
+        line.push_str("…[truncated]");
+    }
+    while buf.len() >= LOG_BUFFER_MAX_LINES {
+        buf.pop_front();
+    }
+    buf.push_back(line);
 }
 
 #[async_trait::async_trait]
@@ -176,6 +232,13 @@ impl Deployment for LocalDeployment {
                 return Err(AppError::conflict("Model instance already running"));
             }
         }
+
+        // Validate model_path before it flows into engine argv.
+        // Closes 08-llm-local-runtime F-02 (High): model.name (which
+        // becomes model_path in handlers.rs) is admin-uploaded and
+        // unvalidated; without this check, a name like `--exec ...`
+        // is parsed by some engines as an additional flag.
+        Self::validate_argv_value("model_path", model_path)?;
 
         // Find available port
         let port = Self::find_available_port().await?;
@@ -256,7 +319,7 @@ impl Deployment for LocalDeployment {
             port,
             base_url: base_url.clone(),
             started_at: std::time::Instant::now(),
-            logs: Vec::new(),
+            logs: std::collections::VecDeque::new(),
         };
 
         {
@@ -355,13 +418,8 @@ impl Deployment for LocalDeployment {
 
         if let Some(proc_info) = processes.get(&model_id) {
             let total_lines = proc_info.logs.len();
-            let start_index = if total_lines > lines {
-                total_lines - lines
-            } else {
-                0
-            };
-
-            Ok(proc_info.logs[start_index..].to_vec())
+            let start_index = total_lines.saturating_sub(lines);
+            Ok(proc_info.logs.iter().skip(start_index).cloned().collect())
         } else {
             Err(AppError::not_found("Process not found"))
         }
