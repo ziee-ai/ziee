@@ -38,6 +38,22 @@ pub enum GitError {
     InvalidUrl(String),
 }
 
+/// Per-cache-key serialization to prevent two concurrent clones of the
+/// same repo from racing each other through `open_existing_repo` (each
+/// would think the other's partial checkout is corrupt + retry from
+/// scratch). Closes 09-llm-repository F-09 (Medium). The map is
+/// process-global because cache directories are process-global.
+static CLONE_LOCKS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn lock_for(cache_key: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    let mut map = CLONE_LOCKS.lock().unwrap_or_else(|p| p.into_inner());
+    map.entry(cache_key.to_string())
+        .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
 pub struct GitService {
     cache_dir: std::path::PathBuf,
     lfs_service: LfsService,
@@ -121,6 +137,19 @@ impl GitService {
                 e
             )));
         }
+
+        // Serialize concurrent clones of the same (repo_id, url, branch).
+        // Closes 09-llm-repository F-09 (Medium): two callers used to
+        // race the cache directory open + partial checkout, each
+        // seeing the other's in-progress state as corrupt and
+        // retrying from scratch. The async Mutex held for the entire
+        // clone is fine because clones are minutes-scale operations
+        // anyway; the contention window matches the natural
+        // sequential ordering callers would want.
+        let cache_key_lock_str =
+            Self::generate_cache_key(repository_id, repository_url, branch);
+        let clone_lock = lock_for(&cache_key_lock_str);
+        let _clone_guard = clone_lock.lock().await;
 
         // Check for cancellation before starting
         if let Some(ref token) = cancellation_token {
