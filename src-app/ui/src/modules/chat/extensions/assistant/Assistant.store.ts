@@ -55,7 +55,11 @@ export const createAssistantStore = () =>
       })
 
       try {
-        const response = await ApiClient.Assistant.list({})
+        // 10-assistant F-03 closure made page + limit required on the
+        // server side (was unbounded). Use a generous limit since the
+        // chat-side assistant picker wants everything visible at once
+        // anyway; the server caps `limit` at 100.
+        const response = await ApiClient.Assistant.list({ page: 1, limit: 100 })
         set(state => {
           state.availableAssistants = response.assistants
           state.loading = false

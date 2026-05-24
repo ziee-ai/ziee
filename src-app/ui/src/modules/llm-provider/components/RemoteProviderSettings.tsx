@@ -1,8 +1,4 @@
-import {
-  CopyOutlined,
-  EyeInvisibleOutlined,
-  EyeTwoTone,
-} from '@ant-design/icons'
+import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
 import { App, Button, Card, Flex, Form, Input, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -33,14 +29,6 @@ export function RemoteProviderSettings() {
     p => p.id === providerId,
   )
 
-  const copyToClipboard = (text: string) => {
-    if (typeof window !== 'undefined' && window.navigator?.clipboard) {
-      window.navigator.clipboard.writeText(text)
-      message.success('Copied to clipboard')
-    } else {
-      message.error('Clipboard not available')
-    }
-  }
 
   const handleFormChange = (changedValues: any) => {
     if (!currentProvider) return
@@ -145,21 +133,22 @@ export function RemoteProviderSettings() {
               <Form.Item
                 name="api_key"
                 style={{ marginBottom: 0, marginTop: 16 }}
+                help={
+                  /* The server no longer returns the API key in GET
+                   * responses (06-llm-provider F-01 closure — secret
+                   * was exposed to every user with read access).
+                   * Field is write-only; leave empty to keep the
+                   * existing value, or enter a new key to replace it.
+                   */
+                  'Leave empty to keep the current key. Type a new value to replace it.'
+                }
               >
                 <Input.Password
-                  placeholder={'Insert API key'}
+                  placeholder={
+                    'Insert API key (leave empty to keep current value)'
+                  }
                   iconRender={visible =>
                     visible ? <EyeTwoTone /> : <EyeInvisibleOutlined />
-                  }
-                  suffix={
-                    <Button
-                      type="text"
-                      icon={<CopyOutlined aria-hidden="true" />}
-                      onClick={() =>
-                        copyToClipboard(currentProvider.api_key || '')
-                      }
-                      aria-label="Copy API key to clipboard"
-                    />
                   }
                 />
               </Form.Item>

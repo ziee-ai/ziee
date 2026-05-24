@@ -7,7 +7,6 @@ import {
   Input,
   Progress,
   Select,
-  Switch,
   Typography,
 } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
@@ -142,7 +141,6 @@ export function AddLocalLlmModelDownloadDrawer() {
             parameters: values.parameters || {},
             engine_type: values.engine_type || 'mistralrs',
             engine_settings: values.engine_settings || {},
-            clear_cache: values.clear_cache || false,
           },
           Stores.ViewDownloadDrawer.openViewDownloadDrawer,
         )
@@ -321,7 +319,6 @@ export function AddLocalLlmModelDownloadDrawer() {
             file_format: 'safetensors',
             main_filename: '',
             repository_branch: 'main',
-            clear_cache: false,
           }}
         >
           <LocalLlmModelCommonFields />
@@ -386,14 +383,15 @@ export function AddLocalLlmModelDownloadDrawer() {
             <Input placeholder="main" />
           </Form.Item>
 
-          <Form.Item
-            name="clear_cache"
-            label="Clear Cache"
-            valuePropName="checked"
-            tooltip="Clear the cached repository before downloading. Useful for testing or forcing a fresh download."
-          >
-            <Switch />
-          </Form.Item>
+          {/*
+           * Clear-cache toggle removed — the backend's
+           * DownloadFromRepositoryRequest dropped the `clear_cache`
+           * field (07-llm-model F-17): it was a stale debug flag
+           * reachable in production that let any caller wipe the
+           * server-side git cache. Useful only for testing; if you
+           * need to force a fresh download, restart the server's
+           * cache directory manually.
+           */}
         </Form>
       </div>
     </Drawer>

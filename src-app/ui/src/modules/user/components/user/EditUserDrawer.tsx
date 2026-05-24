@@ -2,38 +2,7 @@ import { App, Button, Flex, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import type { UpdateUserRequest } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
 import { useEffect } from 'react'
-
-const { TextArea } = Input
-
-// Helper function to validate permissions
-const validatePermissions = (_: any, value: string) => {
-  if (!value) return Promise.resolve()
-
-  try {
-    const parsed = JSON.parse(value)
-    if (!Array.isArray(parsed)) {
-      return Promise.reject('Must be an array')
-    }
-
-    // Check if all values are valid permissions
-    const validPermissions = Object.values(Permissions)
-    const invalidPermissions = parsed.filter(
-      perm => !validPermissions.includes(perm),
-    )
-
-    if (invalidPermissions.length > 0) {
-      return Promise.reject(
-        `Invalid permissions: ${invalidPermissions.join(', ')}`,
-      )
-    }
-
-    return Promise.resolve()
-  } catch {
-    return Promise.reject('Invalid JSON format')
-  }
-}
 
 export function EditUserDrawer() {
   const { message } = App.useApp()
@@ -45,12 +14,7 @@ export function EditUserDrawer() {
     if (editingUser) {
       editForm.setFieldsValue({
         username: editingUser.username,
-        email: editingUser.email,
         is_active: editingUser.is_active,
-        permissions:
-          editingUser.permissions?.length > 0
-            ? JSON.stringify(editingUser.permissions, null, 2)
-            : '',
       })
     }
   }, [editingUser, editForm])
@@ -59,13 +23,16 @@ export function EditUserDrawer() {
     if (!editingUser) return
 
     try {
+      // NOTE: `email` and `permissions` are intentionally NOT included.
+      // The backend's UpdateUserRequest dropped both fields:
+      //   - `email`: changing email without confirmation enables OAuth
+      //     account takeover (03-user F-03 closure).
+      //   - `permissions`: lets any users::edit holder escalate to
+      //     wildcard '*' (03-user F-01 closure). Permissions are now
+      //     managed via group assignment only.
       const updateData: UpdateUserRequest = {
         username: values.username,
-        email: values.email,
         is_active: values.is_active,
-        permissions: values.permissions
-          ? JSON.parse(values.permissions)
-          : undefined,
       }
 
       await Stores.Users.updateUser(editingUser.id, updateData)
@@ -104,29 +71,18 @@ export function EditUserDrawer() {
         >
           <Input placeholder="Enter username" />
         </Form.Item>
-        <Form.Item
-          name="email"
-          label="Email"
-          rules={[
-            {
-              required: true,
-              type: 'email',
-              message: 'Please enter valid email',
-            },
-          ]}
-        >
-          <Input placeholder="Enter email" />
-        </Form.Item>
         <Form.Item name="is_active" label="Active" valuePropName="checked">
           <Switch />
         </Form.Item>
-        <Form.Item
-          name="permissions"
-          label="Permissions (JSON Array)"
-          rules={[{ validator: validatePermissions }]}
-        >
-          <TextArea rows={6} placeholder='["users::read", "users::edit"]' />
-        </Form.Item>
+        {/*
+         * Email + Permissions removed from this form per security work:
+         * - Email: changing without confirmation enables OAuth takeover
+         *   (03-user F-03). Add a verification-token flow before
+         *   restoring.
+         * - Permissions: editing them here let a sub-admin grant
+         *   themselves wildcard '*' (03-user F-01). Use group
+         *   assignment (POST /api/groups/{id}/users) instead.
+         */}
         <Form.Item className="mb-0">
           <Flex className="gap-2">
             <Button type="primary" htmlType="submit">
