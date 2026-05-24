@@ -1,4 +1,3 @@
-use rand::Rng;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::fs;
@@ -222,12 +221,11 @@ secrets:
 
         let mut ready = false;
         for _ in 0..150 {
-            if let Ok(response) = client.get(&health_url).send().await {
-                if response.status().is_success() {
+            if let Ok(response) = client.get(&health_url).send().await
+                && response.status().is_success() {
                     ready = true;
                     break;
                 }
-            }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
         if !ready {
@@ -315,7 +313,7 @@ pub mod test_helpers {
 
         // Register user via API
         let register_response = reqwest::Client::new()
-            .post(&server.api_url("/auth/register"))
+            .post(server.api_url("/auth/register"))
             .json(&json!({
                 "username": &unique_username,
                 "email": format!("{}@example.com", unique_username),

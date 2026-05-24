@@ -40,7 +40,7 @@ async fn test_get_hub_models_requires_permission() {
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(body.is_array(), "Response should be an array of models");
     assert!(
-        body.as_array().unwrap().len() > 0,
+        !body.as_array().unwrap().is_empty(),
         "Should have at least one model"
     );
 
@@ -339,7 +339,7 @@ async fn test_hub_models_have_auth_required_field() {
     assert!(models.is_array(), "Response should be an array");
 
     let models_array = models.as_array().unwrap();
-    assert!(models_array.len() > 0, "Should have at least one model");
+    assert!(!models_array.is_empty(), "Should have at least one model");
 
     // Verify all models have auth_required field
     for model in models_array {
@@ -528,7 +528,7 @@ async fn test_get_hub_assistants_requires_permission() {
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(body.is_array(), "Response should be an array of assistants");
     assert!(
-        body.as_array().unwrap().len() > 0,
+        !body.as_array().unwrap().is_empty(),
         "Should have at least one assistant"
     );
 
@@ -638,7 +638,7 @@ async fn test_get_hub_assistants_with_locale() {
     let body_zh: serde_json::Value = response_zh.json().await.expect("Failed to parse JSON");
     assert!(body_zh.is_array(), "Response should be an array");
     assert!(
-        body_zh.as_array().unwrap().len() > 0,
+        !body_zh.as_array().unwrap().is_empty(),
         "Should have assistants"
     );
 }
@@ -760,7 +760,7 @@ async fn test_get_hub_mcp_servers_requires_permission() {
         "Response should be an array of MCP servers"
     );
     assert!(
-        body.as_array().unwrap().len() > 0,
+        !body.as_array().unwrap().is_empty(),
         "Should have at least one MCP server"
     );
 
@@ -1005,7 +1005,7 @@ async fn test_create_assistant_from_hub() {
     assert_eq!(response.status(), 200);
     let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(
-        assistants.as_array().unwrap().len() > 0,
+        !assistants.as_array().unwrap().is_empty(),
         "Should have at least one hub assistant"
     );
 
@@ -1139,7 +1139,7 @@ async fn test_create_mcp_server_from_hub() {
     assert_eq!(response.status(), 200);
     let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(
-        servers.as_array().unwrap().len() > 0,
+        !servers.as_array().unwrap().is_empty(),
         "Should have at least one hub MCP server"
     );
 
@@ -1981,7 +1981,7 @@ async fn test_create_model_from_hub() {
     assert_eq!(response.status(), 200);
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(
-        models.as_array().unwrap().len() > 0,
+        !models.as_array().unwrap().is_empty(),
         "Should have at least one hub model"
     );
 
@@ -2478,7 +2478,7 @@ async fn create_enabled_provider(
     provider_type: &str,
 ) -> serde_json::Value {
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&serde_json::json!({
             "name": name,

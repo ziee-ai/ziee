@@ -170,14 +170,13 @@ pub fn validate_auth_config_for_update(
     request: &UpdateLlmRepositoryRequest,
 ) -> Result<(), AppError> {
     // Mirror create-time bounds (09-llm-repository F-08/F-10).
-    if let Some(name) = &request.name {
-        if name.len() > MAX_REPO_NAME_LEN {
+    if let Some(name) = &request.name
+        && name.len() > MAX_REPO_NAME_LEN {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 format!("Repository name exceeds {} chars", MAX_REPO_NAME_LEN),
             ));
         }
-    }
     if let Some(ac) = &request.auth_config {
         validate_test_endpoint(&ac.auth_test_api_endpoint)?;
     }
@@ -290,7 +289,7 @@ pub async fn test_repository_connectivity(
     // Build the request with authentication
     let mut req_builder = client.get(test_url);
 
-    tracing::info!("Testing connection to: {}", redact_url_userinfo(&test_url));
+    tracing::info!("Testing connection to: {}", redact_url_userinfo(test_url));
 
     if let Some(auth_config) = &request.auth_config {
         match request.auth_type.as_str() {

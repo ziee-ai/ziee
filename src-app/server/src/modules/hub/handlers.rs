@@ -438,7 +438,7 @@ pub async fn create_model_from_hub(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(&format!("Database error: {}", e)),
+                AppError::internal_error(format!("Database error: {}", e)),
             )
         })?
         .ok_or_else(|| {
@@ -494,7 +494,7 @@ pub async fn create_model_from_hub(
             .display_name
             .unwrap_or_else(|| hub_model.display_name.clone()),
         description: hub_model.description.clone(),
-        file_format: file_format,
+        file_format,
         main_filename,
         capabilities,
         parameters: hub_model
@@ -516,7 +516,7 @@ pub async fn create_model_from_hub(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(&format!("Failed to initiate download: {}", e)),
+            AppError::internal_error(format!("Failed to initiate download: {}", e)),
         )
     })?;
 
@@ -678,7 +678,7 @@ pub async fn get_hub_local_providers(
     let providers = Repos.llm_provider.list_local_providers().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(&format!("Database error: {}", e)),
+            AppError::internal_error(format!("Database error: {}", e)),
         )
     })?;
 

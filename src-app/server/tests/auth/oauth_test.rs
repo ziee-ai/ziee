@@ -15,7 +15,7 @@ async fn test_oauth_mock_server_connectivity() {
     // Test that we can fetch the OpenID configuration
     let client = reqwest::Client::new();
     let response = client
-        .get(&oauth_server.well_known_url())
+        .get(oauth_server.well_known_url())
         .send()
         .await
         .expect("Failed to fetch well-known config");
@@ -314,5 +314,5 @@ async fn test_oauth_provider_validation() {
     });
 
     // In a real test, you would validate against your provider schema
-    assert!(!invalid_config.get("client_secret").is_some());
+    assert!(invalid_config.get("client_secret").is_none());
 }

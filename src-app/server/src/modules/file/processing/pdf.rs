@@ -52,9 +52,9 @@ impl PdfProcessor {
             .replace("? ", "?\n");
 
         // Clean up any double newlines
-        let result = result.replace("\n\n", "\n").trim().to_string();
+        
 
-        result
+        result.replace("\n\n", "\n").trim().to_string()
     }
 }
 
@@ -78,7 +78,7 @@ impl ContentProcessor for PdfProcessor {
 
         // Extract text from each page
         for page_index in 0..document.pages().len() {
-            let page = document.pages().get(page_index as u16)
+            let page = document.pages().get(page_index)
                 .map_err(|e| AppError::internal_error(format!("Failed to get page {}: {}", page_index + 1, e)))?;
 
             let page_text = page.text()

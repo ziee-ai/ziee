@@ -298,8 +298,7 @@ mod tests {
     /// log via `tracing::error!`; the client gets only a correlation id.
     #[test]
     fn database_error_does_not_leak_inner_error_display() {
-        let inner = io::Error::new(
-            io::ErrorKind::Other,
+        let inner = io::Error::other(
             "secret_constraint_uq_users_email_AT_user_a@example.com",
         );
         let err = AppError::database_error(&inner);
@@ -373,7 +372,7 @@ mod tests {
     /// grep the server log for the matching tracing event.
     #[test]
     fn database_error_includes_trace_id_for_correlation() {
-        let inner = io::Error::new(io::ErrorKind::Other, "x");
+        let inner = io::Error::other("x");
         let err = AppError::database_error(&inner);
         let body = serde_json::to_value(&err).expect("serialize AppError");
         let trace_id = body

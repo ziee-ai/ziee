@@ -368,9 +368,9 @@ pub async fn create_llm_model(
     request: CreateLlmModelRequest,
 ) -> Result<LlmModel, sqlx::Error> {
     let model_id = Uuid::new_v4();
-    let capabilities_json = serde_json::to_value(&request.capabilities.unwrap_or_default())
+    let capabilities_json = serde_json::to_value(request.capabilities.unwrap_or_default())
         .unwrap_or(serde_json::json!({}));
-    let parameters_json = serde_json::to_value(&request.parameters.unwrap_or_default())
+    let parameters_json = serde_json::to_value(request.parameters.unwrap_or_default())
         .unwrap_or(serde_json::json!({}));
     let engine_settings_json = request
         .engine_settings

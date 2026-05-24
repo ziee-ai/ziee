@@ -53,6 +53,7 @@ pub enum FileFormat {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
+#[derive(Default)]
 pub struct ModelCapabilities {
     pub vision: bool,
     pub audio: bool,
@@ -63,19 +64,6 @@ pub struct ModelCapabilities {
     pub image_generator: bool,
 }
 
-impl Default for ModelCapabilities {
-    fn default() -> Self {
-        Self {
-            vision: false,
-            audio: false,
-            tools: false,
-            code_interpreter: false,
-            chat: false,
-            text_embedding: false,
-            image_generator: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct HubModelQuantizationOption {

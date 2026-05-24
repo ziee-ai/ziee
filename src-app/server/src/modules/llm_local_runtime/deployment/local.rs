@@ -318,7 +318,7 @@ impl Deployment for LocalDeployment {
             _ => {
                 return Err(AppError::bad_request(
                     "UNSUPPORTED_ENGINE",
-                    &format!("Unsupported engine type: {}", engine_type),
+                    format!("Unsupported engine type: {}", engine_type),
                 ))
             }
         };
@@ -328,7 +328,7 @@ impl Deployment for LocalDeployment {
             .binary_manager
             .get_system_default(normalized_engine)
             .await
-            .map_err(|e| AppError::internal_error(&format!("Failed to query system default: {}", e)))?
+            .map_err(|e| AppError::internal_error(format!("Failed to query system default: {}", e)))?
             .or_else(|| {
                 // Fallback: try to get latest version (blocking)
                 let binary_manager = self.binary_manager.clone();
@@ -340,7 +340,7 @@ impl Deployment for LocalDeployment {
                 })
             })
             .ok_or_else(|| {
-                AppError::internal_error(&format!(
+                AppError::internal_error(format!(
                     "No runtime version available for engine '{}'. Please download a version first.",
                     normalized_engine
                 ))
@@ -351,7 +351,7 @@ impl Deployment for LocalDeployment {
             .binary_manager
             .get_binary_path(runtime_version.id)
             .await
-            .map_err(|e| AppError::internal_error(&format!("Failed to get binary path: {}", e)))?;
+            .map_err(|e| AppError::internal_error(format!("Failed to get binary path: {}", e)))?;
 
         tracing::info!(
             "Using runtime version: {} {} ({})",
@@ -383,7 +383,7 @@ impl Deployment for LocalDeployment {
 
         // Spawn the process
         let mut child = cmd.spawn().map_err(|e| {
-            AppError::internal_error(&format!("Failed to spawn process: {}", e))
+            AppError::internal_error(format!("Failed to spawn process: {}", e))
         })?;
 
         let pid = child
@@ -489,7 +489,7 @@ impl Deployment for LocalDeployment {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build()
-            .map_err(|e| AppError::internal_error(&format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| AppError::internal_error(format!("Failed to create HTTP client: {}", e)))?;
 
         match client.get(&health_url).send().await {
             Ok(response) => Ok(response.status().is_success()),

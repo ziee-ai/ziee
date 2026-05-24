@@ -56,7 +56,7 @@ async fn test_delete_downloaded_model_removes_files() {
     });
 
     let download_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -83,7 +83,7 @@ async fn test_delete_downloaded_model_removes_files() {
         iterations += 1;
 
         let response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
             .header("Authorization", format!("Bearer {}", user.token))
             .send()
             .await
@@ -121,7 +121,7 @@ async fn test_delete_downloaded_model_removes_files() {
     let model_id = model_id.expect("Download should have created a model");
 
     let get_response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
+        .get(server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -178,7 +178,7 @@ async fn test_delete_downloaded_model_removes_files() {
 
     // Delete the model via API
     let delete_response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .delete(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -252,7 +252,7 @@ async fn test_download_creates_correct_file_structure() {
     });
 
     let download_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -280,7 +280,7 @@ async fn test_download_creates_correct_file_structure() {
         iterations += 1;
 
         let response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
             .header("Authorization", format!("Bearer {}", user.token))
             .send()
             .await
@@ -318,7 +318,7 @@ async fn test_download_creates_correct_file_structure() {
     let model_id = model_id.expect("Download should have created a model");
 
     let get_response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
+        .get(server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

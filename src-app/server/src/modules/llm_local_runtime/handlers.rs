@@ -50,7 +50,7 @@ pub async fn start_model_instance(
         .llm_provider
         .get_by_id(model.provider_id)
         .await
-        .map_err(|e| AppError::internal_error(&format!("Database error: {}", e)))?
+        .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
         .ok_or_else(|| AppError::not_found("Provider"))?;
 
     // Get deployment strategy (always local)

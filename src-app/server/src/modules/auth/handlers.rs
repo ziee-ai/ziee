@@ -148,8 +148,8 @@ pub async fn login(
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
     // Check if external provider is specified
-    if let Some(provider_name) = &req.provider {
-        if provider_name != "local" {
+    if let Some(provider_name) = &req.provider
+        && provider_name != "local" {
             // External authentication (LDAP/OAuth)
             return login_with_provider(
                 Repos.pool().clone(),
@@ -160,7 +160,6 @@ pub async fn login(
             )
             .await;
         }
-    }
 
     // Local password authentication.
     //
@@ -299,7 +298,7 @@ async fn login_with_provider(
                 StatusCode::UNAUTHORIZED,
                 AppError::unauthorized(
                     "INVALID_CREDENTIALS",
-                    format!("Invalid username or password"),
+                    "Invalid username or password".to_string(),
                 ),
             )
         })?;

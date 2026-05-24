@@ -39,8 +39,7 @@ pub async fn get_user_llm_providers(
         let all_models = Repos
             .llm_model
             .list_by_provider(provider.id)
-            .await
-            .map_err(AppError::from)?;
+            .await?;
 
         let enabled_models: Vec<_> = all_models.into_iter().filter(|m| m.enabled).collect();
 

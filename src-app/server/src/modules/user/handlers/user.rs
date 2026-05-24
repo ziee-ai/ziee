@@ -120,8 +120,8 @@ pub async fn create_user(
     // holds (via user perms OR group union). Admins (is_admin=true)
     // bypass. Without this, any users::create holder can mint a wildcard
     // root by posting {"permissions": ["*"]} — 03-user F-04 (High).
-    if let Some(ref requested_perms) = request.permissions {
-        if !auth.user.is_admin {
+    if let Some(ref requested_perms) = request.permissions
+        && !auth.user.is_admin {
             for perm in requested_perms {
                 if !crate::modules::permissions::checker::check_permission_union(
                     &auth.user,
@@ -139,7 +139,6 @@ pub async fn create_user(
                 }
             }
         }
-    }
 
     // Check if username already exists
     if Repos
@@ -230,13 +229,11 @@ pub async fn update_user(
     }
 
     // Check if new username already exists
-    if let Some(ref username) = request.username {
-        if let Some(existing) = Repos.user.get_by_username(username).await? {
-            if existing.id != user_id {
+    if let Some(ref username) = request.username
+        && let Some(existing) = Repos.user.get_by_username(username).await?
+            && existing.id != user_id {
                 return Err(AppError::conflict("Username").into());
             }
-        }
-    }
 
     // Update user.
     //

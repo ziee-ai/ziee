@@ -480,7 +480,7 @@ async fn test_manual_approve_full_workflow() {
     let approval_events: Vec<_> = events1.iter()
         .filter(|e| e.event == "mcpApprovalRequired")
         .collect();
-    assert!(approval_events.len() > 0, "Session 1 should emit mcpApprovalRequired");
+    assert!(!approval_events.is_empty(), "Session 1 should emit mcpApprovalRequired");
 
     // Session 1 should have exactly 1 complete event
     assert_single_complete(&events1);
@@ -491,7 +491,7 @@ async fn test_manual_approve_full_workflow() {
 
     // Get pending approvals
     let pending = get_pending_approvals(&server, &user.token, branch_id).await;
-    assert!(pending.len() > 0, "Should have pending approvals after session 1");
+    assert!(!pending.is_empty(), "Should have pending approvals after session 1");
 
     let tool_use_id = pending[0]["tool_use_id"].as_str().expect("Should have tool_use_id");
     eprintln!("Pending tool_use_id: {}", tool_use_id);

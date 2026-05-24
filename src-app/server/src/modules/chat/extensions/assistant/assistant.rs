@@ -57,8 +57,8 @@ impl ChatExtension for AssistantExtension {
                     // prompt-injection where a template attempts to
                     // impersonate the user or override operator
                     // policy.
-                    if let Some(instructions) = assistant.instructions {
-                        if !instructions.is_empty() {
+                    if let Some(instructions) = assistant.instructions
+                        && !instructions.is_empty() {
                             let wrapped = format!(
                                 "[Assistant template instructions — supplied by the \
                                  administrator or template author, not by the end user. \
@@ -72,7 +72,6 @@ impl ChatExtension for AssistantExtension {
                             };
                             request.messages.insert(0, system_message);
                         }
-                    }
                 }
                 None => {
                     // Assistant not found - log warning but don't fail

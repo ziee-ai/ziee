@@ -163,8 +163,8 @@ impl McpSessionManager {
     pub async fn close_all(&self) -> Result<(), AppError> {
         let sessions = {
             let mut sessions = self.sessions.write().await;
-            let all = sessions.drain().collect::<Vec<_>>();
-            all
+            
+            sessions.drain().collect::<Vec<_>>()
         };
 
         for (_, session) in sessions {

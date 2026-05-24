@@ -250,12 +250,11 @@ pub fn build_validated_client(policy: OutboundUrlPolicy) -> reqwest::Result<reqw
                 Some(h) => h,
                 None => return attempt.error("redirect target has no host"),
             };
-            if let Ok(ip) = host.parse::<IpAddr>() {
-                if is_blocked_ip(&ip, &policy) {
+            if let Ok(ip) = host.parse::<IpAddr>()
+                && is_blocked_ip(&ip, &policy) {
                     return attempt
                         .error(format!("redirect to blocked address {ip}"));
                 }
-            }
             // Note: hostname resolution at redirect time is not done here
             // (the validate_outbound_url call before .send() already covered
             // the pre-fetch case; a redirect by hostname will be re-resolved

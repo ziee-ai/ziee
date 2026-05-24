@@ -253,11 +253,10 @@ impl FileStorage for FilesystemStorage {
                 // Delete files matching pattern
                 if let Ok(mut entries) = fs::read_dir(&path).await {
                     while let Ok(Some(entry)) = entries.next_entry().await {
-                        if let Some(name) = entry.file_name().to_str() {
-                            if name.starts_with(&file_id.to_string()) {
+                        if let Some(name) = entry.file_name().to_str()
+                            && name.starts_with(&file_id.to_string()) {
                                 let _ = fs::remove_file(entry.path()).await;
                             }
-                        }
                     }
                 }
             }

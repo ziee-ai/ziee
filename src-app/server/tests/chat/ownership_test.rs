@@ -29,7 +29,7 @@ async fn test_user_cannot_get_other_users_conversation() {
 
     // User2 tries to get it
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
@@ -64,7 +64,7 @@ async fn test_user_cannot_update_other_users_conversation() {
 
     // User2 tries to update it
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .json(&payload)
         .send()
@@ -96,7 +96,7 @@ async fn test_user_cannot_delete_other_users_conversation() {
 
     // User2 tries to delete it
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .delete(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
@@ -126,7 +126,7 @@ async fn test_user_cannot_see_other_users_conversation_in_list() {
 
     // User2 lists conversations - should not see User1's
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
@@ -164,7 +164,7 @@ async fn test_user_cannot_get_other_users_messages() {
 
     // User2 tries to get messages
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/messages", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
@@ -215,7 +215,7 @@ async fn test_user_cannot_send_to_other_users_conversation() {
 
     // User2 tries to send a message
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .json(&payload)
         .send()
@@ -257,7 +257,7 @@ async fn test_user_cannot_create_branch_in_other_users_conversation() {
 
     // User2 tries to create a branch
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .json(&payload)
         .send()
@@ -289,7 +289,7 @@ async fn test_user_cannot_list_other_users_branches() {
 
     // User2 tries to list branches
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
@@ -321,7 +321,7 @@ async fn test_user_cannot_activate_other_users_branch() {
 
     // User2 tries to activate branch
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/branches/{}/activate",
             conversation_id, branch_id
         )))
@@ -353,7 +353,7 @@ async fn test_user_can_access_own_conversation() {
 
     // User gets their own conversation
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -385,7 +385,7 @@ async fn test_user_can_update_own_conversation() {
 
     // User updates their own conversation
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -414,7 +414,7 @@ async fn test_user_can_delete_own_conversation() {
 
     // User deletes their own conversation
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .delete(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

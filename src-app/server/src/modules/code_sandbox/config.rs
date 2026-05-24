@@ -12,7 +12,7 @@ static STATE: OnceCell<Arc<CodeSandboxState>> = OnceCell::new();
 /// clear signal that the new state was discarded.
 pub fn init_state(state: CodeSandboxState) -> Arc<CodeSandboxState> {
     let arc = Arc::new(state);
-    if let Err(_) = STATE.set(arc.clone()) {
+    if STATE.set(arc.clone()).is_err() {
         tracing::warn!(
             "code_sandbox::init_state called more than once; \
              second call's state is discarded and the FIRST state \

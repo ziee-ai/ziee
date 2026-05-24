@@ -269,7 +269,7 @@ pub async fn edit_file(
     let mut new_lines: Vec<String> =
         new_content.lines().map(String::from).collect();
     if append_mode {
-        lines.extend(new_lines.drain(..));
+        lines.append(&mut new_lines);
     } else {
         let real_end = end_line.min(len);
         let _: Vec<String> = lines.drain((start_line - 1)..real_end).collect();

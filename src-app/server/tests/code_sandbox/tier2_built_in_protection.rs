@@ -143,7 +143,7 @@ async fn upsert_does_not_clobber_admin_tunable_fields() {
     assert_eq!(row.2, 1200, "timeout_seconds was clobbered");
     assert_eq!(row.3, "always", "usage_mode was clobbered");
     assert_eq!(row.4, 8, "max_concurrent_sessions was clobbered");
-    assert_eq!(row.5, false, "enabled was clobbered");
+    assert!(!row.5, "enabled was clobbered");
 }
 
 /// Boot upsert MUST refresh identity columns even on conflict.

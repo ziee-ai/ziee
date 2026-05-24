@@ -128,7 +128,7 @@ pub fn probe_rootfs_schema(rootfs_path: &str) -> Result<u32, String> {
         }
         Err(e) => return Err(format!("stat {}: {e}", sentinel.display())),
     }
-    let mut f = std::fs::File::open(&sentinel)
+    let f = std::fs::File::open(&sentinel)
         .map_err(|e| format!("open {}: {e}", sentinel.display()))?;
     // Read into a tiny buffer so even if the metadata check above
     // was racing a symlink swap, we still cap the read.
@@ -402,11 +402,10 @@ async fn workspace_reaper(root: std::path::PathBuf) {
                 //   `attachments/` is shared staging for
                 //   bind-mounted user attachments;
                 //   `identity/` is the shared synthetic passwd/group.
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name == "attachments" || name == "identity" {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && (name == "attachments" || name == "identity") {
                         continue;
                     }
-                }
                 // Prefer the explicit `.last_used` sentinel: every
                 // `run_in_sandbox` call writes the current Unix
                 // timestamp here, so a long-running conversation that

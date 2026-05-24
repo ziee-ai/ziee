@@ -21,7 +21,7 @@ async fn test_start_instance_requires_manage_permission() {
     let payload = json!({});
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/start", model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/start", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -44,7 +44,7 @@ async fn test_stop_instance_requires_manage_permission() {
     let model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/stop", model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/stop", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -66,7 +66,7 @@ async fn test_restart_instance_requires_manage_permission() {
     let model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/restart", model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/restart", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -84,7 +84,7 @@ async fn test_get_instance_requires_read_permission() {
     let model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/instance", model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/instance", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -102,7 +102,7 @@ async fn test_get_status_requires_read_permission() {
     let model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/status", model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/status", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -120,7 +120,7 @@ async fn test_get_health_requires_read_permission() {
     let model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/health", model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/health", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -142,7 +142,7 @@ async fn test_get_logs_requires_logs_permission() {
     let model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/logs", model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/logs", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -160,7 +160,7 @@ async fn test_get_provider_instances_requires_read_permission() {
     let provider_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/providers/{}/instances", provider_id)))
+        .get(server.api_url(&format!("/local-runtime/providers/{}/instances", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -187,7 +187,7 @@ async fn test_start_instance_model_not_found() {
     let payload = json!({});
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/start", nonexistent_model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/start", nonexistent_model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -210,7 +210,7 @@ async fn test_stop_instance_not_found() {
     let nonexistent_model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/stop", nonexistent_model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/stop", nonexistent_model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -232,7 +232,7 @@ async fn test_restart_instance_not_found() {
     let nonexistent_model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/restart", nonexistent_model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/restart", nonexistent_model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -254,7 +254,7 @@ async fn test_get_instance_not_found() {
     let nonexistent_model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/instance", nonexistent_model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/instance", nonexistent_model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -276,7 +276,7 @@ async fn test_get_status_returns_not_found_for_missing_instance() {
     let nonexistent_model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/status", nonexistent_model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/status", nonexistent_model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -300,7 +300,7 @@ async fn test_get_health_instance_not_found() {
     let nonexistent_model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/health", nonexistent_model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/health", nonexistent_model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -322,7 +322,7 @@ async fn test_get_logs_instance_not_found() {
     let nonexistent_model_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/logs", nonexistent_model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/logs", nonexistent_model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -344,7 +344,7 @@ async fn test_get_provider_instances_empty_for_nonexistent_provider() {
     let nonexistent_provider_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/providers/{}/instances", nonexistent_provider_id)))
+        .get(server.api_url(&format!("/local-runtime/providers/{}/instances", nonexistent_provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -407,7 +407,7 @@ async fn test_full_instance_lifecycle() {
     // Step 4: Start instance
     println!("Step 4: Starting instance...");
     let start_response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/start", model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/start", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({}))
         .send()
@@ -426,7 +426,7 @@ async fn test_full_instance_lifecycle() {
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await; // Let it start
 
     let status_response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/status", model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/status", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -443,7 +443,7 @@ async fn test_full_instance_lifecycle() {
     // Step 6: Health check
     println!("Step 6: Health check...");
     let health_response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/health", model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/health", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -464,7 +464,7 @@ async fn test_full_instance_lifecycle() {
     // Step 7: Get logs
     println!("Step 7: Fetching logs...");
     let logs_response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/logs", model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/logs", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -481,7 +481,7 @@ async fn test_full_instance_lifecycle() {
     // Step 8: Restart instance
     println!("Step 8: Restarting instance...");
     let restart_response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/restart", model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/restart", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -497,7 +497,7 @@ async fn test_full_instance_lifecycle() {
     // Step 9: Stop instance
     println!("Step 9: Stopping instance...");
     let stop_response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/models/{}/stop", model_id)))
+        .post(server.api_url(&format!("/local-runtime/models/{}/stop", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -511,7 +511,7 @@ async fn test_full_instance_lifecycle() {
     // Step 10: Verify cleanup
     println!("Step 10: Verifying cleanup...");
     let final_status_response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/local-runtime/models/{}/status", model_id)))
+        .get(server.api_url(&format!("/local-runtime/models/{}/status", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

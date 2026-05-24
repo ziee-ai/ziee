@@ -238,10 +238,10 @@ impl SSEChatStreamEvent {
     }
 }
 
-impl Into<axum::response::sse::Event> for SSEChatStreamEvent {
-    fn into(self) -> axum::response::sse::Event {
+impl From<SSEChatStreamEvent> for axum::response::sse::Event {
+    fn from(val: SSEChatStreamEvent) -> Self {
         axum::response::sse::Event::default()
-            .event(self.event_name())
-            .data(self.data().unwrap_or_default())
+            .event(val.event_name())
+            .data(val.data().unwrap_or_default())
     }
 }

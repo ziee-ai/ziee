@@ -17,14 +17,13 @@ static STORAGE_KEY: OnceCell<Option<String>> = OnceCell::new();
 /// second call with a different value logs a tracing::warn and ignores
 /// the new value, same as init_repositories).
 pub fn init_storage_key(key: Option<String>) {
-    if let Err(prev) = STORAGE_KEY.set(key.clone()) {
-        if prev != key {
+    if let Err(prev) = STORAGE_KEY.set(key.clone())
+        && prev != key {
             tracing::warn!(
                 "init_storage_key called twice with different values; \
                  ignoring second call"
             );
         }
-    }
     if let Some(stored) = STORAGE_KEY.get() {
         match stored.as_deref() {
             Some(k) if k.len() >= 32 => {

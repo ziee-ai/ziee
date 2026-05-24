@@ -349,9 +349,9 @@ impl BinaryManager {
             .fetch_optional(&self.pool)
             .await?;
 
-            if let Some(record) = model_version {
-                if let Some(version_id) = record.required_runtime_version_id {
-                    if let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
+            if let Some(record) = model_version
+                && let Some(version_id) = record.required_runtime_version_id
+                    && let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
                         tracing::debug!(
                             "Selected runtime version from model: {} {}",
                             version.engine,
@@ -359,8 +359,6 @@ impl BinaryManager {
                         );
                         return Ok(Some(version));
                     }
-                }
-            }
         }
 
         // Step 2: Check provider's default version
@@ -372,9 +370,9 @@ impl BinaryManager {
             .fetch_optional(&self.pool)
             .await?;
 
-            if let Some(record) = provider_version {
-                if let Some(version_id) = record.default_runtime_version_id {
-                    if let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
+            if let Some(record) = provider_version
+                && let Some(version_id) = record.default_runtime_version_id
+                    && let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
                         tracing::debug!(
                             "Selected runtime version from provider: {} {}",
                             version.engine,
@@ -382,8 +380,6 @@ impl BinaryManager {
                         );
                         return Ok(Some(version));
                     }
-                }
-            }
         }
 
         // Step 3: Check system default
@@ -413,7 +409,7 @@ impl BinaryManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
     // Tests would go here, but require database setup
     // These would be integration tests in tests/integration_tests/

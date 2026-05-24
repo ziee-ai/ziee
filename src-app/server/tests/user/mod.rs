@@ -906,7 +906,7 @@ async fn test_body_limit_rejects_oversized_post_to_register() {
     });
 
     let res = reqwest::Client::new()
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&body)
         .send()
         .await
@@ -950,7 +950,7 @@ async fn test_users_edit_cannot_grant_wildcard_via_update() {
     let target_user_id = attacker.user_id;
 
     let res = reqwest::Client::new()
-        .post(&server.api_url(&format!("/users/{}", target_user_id)))
+        .post(server.api_url(&format!("/users/{}", target_user_id)))
         .header("Authorization", format!("Bearer {}", attacker.token))
         .json(&serde_json::json!({
             "permissions": ["*"]
@@ -972,7 +972,7 @@ async fn test_users_edit_cannot_grant_wildcard_via_update() {
     // Verify in the DB by fetching the user (via /me which returns
     // current user's full record including permissions).
     let me = reqwest::Client::new()
-        .get(&server.api_url("/auth/me"))
+        .get(server.api_url("/auth/me"))
         .header("Authorization", format!("Bearer {}", attacker.token))
         .send()
         .await
@@ -1013,7 +1013,7 @@ async fn test_delete_user_refuses_to_delete_admin() {
 
     // Create the root admin via the setup flow (TestServer starts with no admin).
     let setup_resp: serde_json::Value = client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&serde_json::json!({
             "username": "delete_admin_target",
             "email": "delete_admin@example.com",
@@ -1042,7 +1042,7 @@ async fn test_delete_user_refuses_to_delete_admin() {
     .await;
 
     let res = client
-        .delete(&server.api_url(&format!("/users/{}", admin_id)))
+        .delete(server.api_url(&format!("/users/{}", admin_id)))
         .header("Authorization", format!("Bearer {}", attacker.token))
         .send()
         .await
@@ -1057,7 +1057,7 @@ async fn test_delete_user_refuses_to_delete_admin() {
 
     // Verify admin still exists by trying to log in as them.
     let login = client
-        .post(&server.api_url("/auth/login"))
+        .post(server.api_url("/auth/login"))
         .json(&serde_json::json!({
             "username": "delete_admin_target",
             "password": "SecurePass123!",
@@ -1099,7 +1099,7 @@ async fn test_create_user_refuses_granting_perms_caller_lacks() {
     .await;
 
     let res = reqwest::Client::new()
-        .post(&server.api_url("/users"))
+        .post(server.api_url("/users"))
         .header("Authorization", format!("Bearer {}", creator.token))
         .json(&serde_json::json!({
             "username": "minted_root",
@@ -1132,7 +1132,7 @@ async fn test_create_user_refuses_granting_unrelated_perm() {
     .await;
 
     let res = reqwest::Client::new()
-        .post(&server.api_url("/users"))
+        .post(server.api_url("/users"))
         .header("Authorization", format!("Bearer {}", creator.token))
         .json(&serde_json::json!({
             "username": "minted_deleter",
@@ -1164,7 +1164,7 @@ async fn test_create_user_allows_granting_perm_caller_holds() {
     .await;
 
     let res = reqwest::Client::new()
-        .post(&server.api_url("/users"))
+        .post(server.api_url("/users"))
         .header("Authorization", format!("Bearer {}", creator.token))
         .json(&serde_json::json!({
             "username": "files_reader_target",
@@ -1208,7 +1208,7 @@ async fn test_update_group_system_default_refuses_permission_change() {
     .await;
 
     let groups: serde_json::Value = reqwest::Client::new()
-        .get(&server.api_url("/groups"))
+        .get(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", editor.token))
         .send()
         .await
@@ -1232,7 +1232,7 @@ async fn test_update_group_system_default_refuses_permission_change() {
         .expect("no default system group found");
 
     let res = reqwest::Client::new()
-        .post(&server.api_url(&format!("/groups/{}", default_group_id)))
+        .post(server.api_url(&format!("/groups/{}", default_group_id)))
         .header("Authorization", format!("Bearer {}", editor.token))
         .json(&serde_json::json!({
             "permissions": ["*"]
@@ -1259,7 +1259,7 @@ async fn test_update_group_prevents_self_escalation_on_custom_group() {
     .await;
 
     let new_group: serde_json::Value = reqwest::Client::new()
-        .post(&server.api_url("/groups"))
+        .post(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", editor.token))
         .json(&serde_json::json!({
             "name": format!("priv-esc-test-{}", Uuid::new_v4()),
@@ -1279,7 +1279,7 @@ async fn test_update_group_prevents_self_escalation_on_custom_group() {
         .expect("group id missing");
 
     let res = reqwest::Client::new()
-        .post(&server.api_url(&format!("/groups/{}", group_id)))
+        .post(server.api_url(&format!("/groups/{}", group_id)))
         .header("Authorization", format!("Bearer {}", editor.token))
         .json(&serde_json::json!({
             "permissions": ["users::delete"]

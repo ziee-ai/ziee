@@ -226,15 +226,13 @@ impl Config {
         }
 
         // Handle automatic port assignment if port is 0
-        if config.postgresql.use_embedded {
-            if let Some(ref mut embedded) = config.postgresql.embedded {
-                if embedded.port == 0 {
+        if config.postgresql.use_embedded
+            && let Some(ref mut embedded) = config.postgresql.embedded
+                && embedded.port == 0 {
                     embedded.port = find_available_port(50000, 50099)
                         .ok_or("Failed to find available port for database")?;
                     tracing::info!("Auto-assigned database port: {}", embedded.port);
                 }
-            }
-        }
 
         if config.server.port == 0 {
             config.server.port = find_available_port(3000, 3099)

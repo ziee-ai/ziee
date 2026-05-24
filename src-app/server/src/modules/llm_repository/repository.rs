@@ -23,8 +23,8 @@ async fn resolve_auth_config(
     encrypted: Option<Vec<u8>>,
     plaintext: Option<serde_json::Value>,
 ) -> Option<serde_json::Value> {
-    if let Some(ref enc) = encrypted {
-        if let Some(key) = storage_key() {
+    if let Some(ref enc) = encrypted
+        && let Some(key) = storage_key() {
             match crate::common::secret::decrypt_secret(pool, enc, key).await {
                 Ok(json_text) => {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_text) {
@@ -43,7 +43,6 @@ async fn resolve_auth_config(
                 }
             }
         }
-    }
     plaintext
 }
 

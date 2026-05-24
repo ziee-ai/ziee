@@ -144,10 +144,10 @@ pub async fn update_group(
     // permissions to ['*'] and cascade wildcard to every user (group
     // permissions union via check_permission_union). 02-permissions F-02
     // (High).
-    if existing_group.is_system {
-        if request.name.is_some()
+    if existing_group.is_system
+        && (request.name.is_some()
             || request.is_active == Some(false)
-            || request.permissions.is_some()
+            || request.permissions.is_some())
         {
             return Err(AppError::bad_request(
                 "SYSTEM_GROUP",
@@ -155,14 +155,13 @@ pub async fn update_group(
             )
             .into());
         }
-    }
 
     // Prevent self-escalation: caller must hold every permission they're
     // trying to grant via this group (admins bypass). Same pattern as
     // create_user (03-user F-04). Closes the second half of 02-permissions
     // F-02.
-    if let Some(ref requested_perms) = request.permissions {
-        if !auth.user.is_admin {
+    if let Some(ref requested_perms) = request.permissions
+        && !auth.user.is_admin {
             for perm in requested_perms {
                 if !crate::modules::permissions::checker::check_permission_union(
                     &auth.user,
@@ -180,16 +179,13 @@ pub async fn update_group(
                 }
             }
         }
-    }
 
     // Check if new name already exists
-    if let Some(ref name) = request.name {
-        if let Some(existing) = Repos.group.get_by_name(name).await? {
-            if existing.id != group_id {
+    if let Some(ref name) = request.name
+        && let Some(existing) = Repos.group.get_by_name(name).await?
+            && existing.id != group_id {
                 return Err(AppError::conflict("Group name").into());
             }
-        }
-    }
 
     // Update group
     let group = Repos

@@ -8,8 +8,9 @@
 // macOS/Windows (where execution goes through the VM / WSL2 backend).
 #[cfg(target_os = "linux")]
 use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
-#[cfg(target_os = "linux")]
-use std::os::unix::process::CommandExt;
+// tokio::process::Command's `pre_exec` is its own method (unix-gated
+// internally); the std::os::unix::process::CommandExt re-export isn't
+// needed here.
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::process::Stdio;
@@ -219,13 +220,11 @@ pub async fn run_in_sandbox(
     // this attach, so the workload is in the cgroup before it starts. prlimit
     // (applied to the workload itself, not bwrap) is the always-on backstop
     // regardless. Not worth eliminating with unsafe pre_exec self-attach.
-    if let Some(scope) = cgroup_scope.as_ref() {
-        if let Some(pid) = child.id() {
-            if let Err(e) = scope.attach_pid(pid) {
+    if let Some(scope) = cgroup_scope.as_ref()
+        && let Some(pid) = child.id()
+            && let Err(e) = scope.attach_pid(pid) {
                 tracing::warn!("cgroup attach_pid({pid}) failed: {e}");
             }
-        }
-    }
 
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr = child.stderr.take().expect("stderr piped");
@@ -814,8 +813,8 @@ pub use std::os::fd::FromRawFd;
 fn _force_fd_imports(f: std::fs::File) -> RawFd {
     let fd = f.as_raw_fd();
     let _: std::fs::File = unsafe { std::fs::File::from_raw_fd(fd) };
-    let _moved = unsafe { std::fs::File::from_raw_fd(fd) }.into_raw_fd();
-    _moved
+    
+    unsafe { std::fs::File::from_raw_fd(fd) }.into_raw_fd()
 }
 
 // =====================================================================

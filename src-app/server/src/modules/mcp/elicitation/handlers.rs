@@ -75,11 +75,10 @@ pub async fn respond_to_elicitation(
             _ => "cancelled",
         };
         let mut patch = serde_json::json!({ "status": new_status });
-        if action == "accept" {
-            if let Some(values) = content {
+        if action == "accept"
+            && let Some(values) = content {
                 patch["response_content"] = values;
             }
-        }
         let _ = crate::core::Repos.chat.core
             .update_content_json(content_id, patch)
             .await;

@@ -53,7 +53,7 @@ async fn test_download_status_and_progress_tracking() {
 
     println!("Initiating download...");
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -80,7 +80,7 @@ async fn test_download_status_and_progress_tracking() {
 
         // Get download status
         let response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
             .header("Authorization", format!("Bearer {}", user.token))
             .send()
             .await
@@ -111,8 +111,8 @@ async fn test_download_status_and_progress_tracking() {
         }
 
         // Check for progress data
-        if let Some(progress_data) = download["progress_data"].as_object() {
-            if let Some(phase) = progress_data.get("phase") {
+        if let Some(progress_data) = download["progress_data"].as_object()
+            && let Some(phase) = progress_data.get("phase") {
                 saw_progress_update = true;
                 println!(
                     "✅ Progress update: phase={}, current={}, total={}",
@@ -127,7 +127,6 @@ async fn test_download_status_and_progress_tracking() {
                         .unwrap_or(0)
                 );
             }
-        }
 
         // Check if completed
         if status == "completed" {
@@ -140,7 +139,7 @@ async fn test_download_status_and_progress_tracking() {
 
                     // Verify model appears in provider's models list
                     let response = reqwest::Client::new()
-                        .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
+                        .get(server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
                         .header("Authorization", format!("Bearer {}", user.token))
                         .send()
                         .await
@@ -241,7 +240,7 @@ async fn test_download_with_invalid_repository() {
 
     println!("Initiating download with invalid repository...");
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -267,7 +266,7 @@ async fn test_download_with_invalid_repository() {
 
         // Get download status
         let response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
             .header("Authorization", format!("Bearer {}", user.token))
             .send()
             .await
@@ -357,7 +356,7 @@ async fn test_download_cancellation() {
 
     println!("Initiating download...");
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -377,7 +376,7 @@ async fn test_download_cancellation() {
     // Attempt to cancel the download (which should already be completed)
     println!("Attempting to cancel already-completed download...");
     let cancel_response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/downloads/{}/cancel", download_id)))
+        .post(server.api_url(&format!("/llm-models/downloads/{}/cancel", download_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -392,7 +391,7 @@ async fn test_download_cancellation() {
 
     // Verify download is in terminal state (completed, failed, or deleted)
     let status_response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+        .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -476,7 +475,7 @@ async fn test_download_with_authenticated_repository() {
 
     println!("Initiating download from authenticated repository...");
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -500,7 +499,7 @@ async fn test_download_with_authenticated_repository() {
         iterations += 1;
 
         let response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
             .header("Authorization", format!("Bearer {}", user.token))
             .send()
             .await
@@ -543,7 +542,7 @@ async fn test_download_with_authenticated_repository() {
 
     // Verify model appears in provider's models list
     let models_response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
+        .get(server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

@@ -81,8 +81,8 @@ fn validate_assistant_text_lengths(
     description: Option<&str>,
     instructions: Option<&str>,
 ) -> Result<(), AppError> {
-    if let Some(d) = description {
-        if d.len() > ASSISTANT_MAX_DESCRIPTION_BYTES {
+    if let Some(d) = description
+        && d.len() > ASSISTANT_MAX_DESCRIPTION_BYTES {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 format!(
@@ -91,9 +91,8 @@ fn validate_assistant_text_lengths(
                 ),
             ));
         }
-    }
-    if let Some(i) = instructions {
-        if i.len() > ASSISTANT_MAX_INSTRUCTIONS_BYTES {
+    if let Some(i) = instructions
+        && i.len() > ASSISTANT_MAX_INSTRUCTIONS_BYTES {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 format!(
@@ -102,7 +101,6 @@ fn validate_assistant_text_lengths(
                 ),
             ));
         }
-    }
     Ok(())
 }
 

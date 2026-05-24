@@ -104,14 +104,12 @@ fn is_cuda_available() -> bool {
     // Closes 08-llm-local-runtime F-14 (Low). If the binary is not in
     // any trusted dir we skip this probe and fall through to the
     // library-existence check below.
-    if let Some(nvidia_smi) = resolve_system_binary("nvidia-smi") {
-        if let Ok(output) = Command::new(nvidia_smi).output() {
-            if output.status.success() {
+    if let Some(nvidia_smi) = resolve_system_binary("nvidia-smi")
+        && let Ok(output) = Command::new(nvidia_smi).output()
+            && output.status.success() {
                 tracing::debug!("nvidia-smi command succeeded");
                 return true;
             }
-        }
-    }
 
     // Try checking for CUDA libraries (Linux)
     #[cfg(target_os = "linux")]
@@ -171,14 +169,12 @@ fn is_metal_available() -> bool {
 
 fn is_rocm_available() -> bool {
     // Try rocm-smi command (absolute-path resolved, no PATH lookup)
-    if let Some(rocm_smi) = resolve_system_binary("rocm-smi") {
-        if let Ok(output) = Command::new(rocm_smi).output() {
-            if output.status.success() {
+    if let Some(rocm_smi) = resolve_system_binary("rocm-smi")
+        && let Ok(output) = Command::new(rocm_smi).output()
+            && output.status.success() {
                 tracing::debug!("rocm-smi command succeeded");
                 return true;
             }
-        }
-    }
 
     // Try checking for ROCm libraries (Linux)
     #[cfg(target_os = "linux")]

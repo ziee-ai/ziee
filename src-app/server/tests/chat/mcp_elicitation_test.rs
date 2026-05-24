@@ -59,7 +59,7 @@ async fn create_elicit_mcp_server(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/mcp/system-servers"))
+        .post(server.api_url("/mcp/system-servers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -100,7 +100,7 @@ async fn set_mcp_settings_auto_approve(
     conversation_id: Uuid,
 ) {
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!(
+        .put(server.api_url(&format!(
             "/conversations/{}/mcp-settings",
             conversation_id
         )))
@@ -136,7 +136,7 @@ async fn send_streaming_message(
         }
     });
     let resp = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/messages/stream",
             conversation_id
         )))

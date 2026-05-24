@@ -19,7 +19,7 @@ async fn create_http_server(server: &TestServer, token: &str) -> Uuid {
         "timeout_seconds": 30
     });
     let resp = reqwest::Client::new()
-        .post(&server.api_url("/mcp/servers"))
+        .post(server.api_url("/mcp/servers"))
         .header("Authorization", format!("Bearer {token}"))
         .json(&payload)
         .send()
@@ -115,7 +115,7 @@ async fn oauth_config_set_rejects_empty_client_id() {
     let id = create_http_server(&server, &user.token).await;
 
     let resp = reqwest::Client::new()
-        .put(&server.api_url(&format!("/mcp/servers/{id}/oauth")))
+        .put(server.api_url(&format!("/mcp/servers/{id}/oauth")))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "client_id": "", "client_secret": "x" }))
         .send()
@@ -135,7 +135,7 @@ async fn oauth_config_on_unknown_server_returns_404() {
     .await;
 
     let resp = reqwest::Client::new()
-        .put(&server.api_url(&format!("/mcp/servers/{}/oauth", Uuid::new_v4())))
+        .put(server.api_url(&format!("/mcp/servers/{}/oauth", Uuid::new_v4())))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "client_id": "c", "client_secret": "s" }))
         .send()
@@ -172,7 +172,7 @@ async fn oauth_config_survives_a_server_update() {
     // Update the server row (display name only) — OAuth lives in its own table
     // and must be untouched.
     let resp = client
-        .put(&server.api_url(&format!("/mcp/servers/{id}")))
+        .put(server.api_url(&format!("/mcp/servers/{id}")))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "display_name": "Renamed Server" }))
         .send()

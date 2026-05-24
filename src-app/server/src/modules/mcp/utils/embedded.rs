@@ -116,7 +116,7 @@ pub fn ensure_binaries_extracted() -> Result<(), AppError> {
 
             // Create bin directory if it doesn't exist
             fs::create_dir_all(&bin_dir).map_err(|e| {
-                AppError::internal_error(&format!("Failed to create bin directory: {}", e))
+                AppError::internal_error(format!("Failed to create bin directory: {}", e))
             })?;
 
             // Extract UV
@@ -124,7 +124,7 @@ pub fn ensure_binaries_extracted() -> Result<(), AppError> {
             if !uv_path.exists() {
                 tracing::info!("Extracting embedded UV binary to {:?}", uv_path);
                 fs::write(&uv_path, binaries::UV).map_err(|e| {
-                    AppError::internal_error(&format!("Failed to write UV binary: {}", e))
+                    AppError::internal_error(format!("Failed to write UV binary: {}", e))
                 })?;
 
                 #[cfg(unix)]
@@ -140,7 +140,7 @@ pub fn ensure_binaries_extracted() -> Result<(), AppError> {
             if !bun_path.exists() {
                 tracing::info!("Extracting embedded Bun binary to {:?}", bun_path);
                 fs::write(&bun_path, binaries::BUN).map_err(|e| {
-                    AppError::internal_error(&format!("Failed to write Bun binary: {}", e))
+                    AppError::internal_error(format!("Failed to write Bun binary: {}", e))
                 })?;
 
                 #[cfg(unix)]
@@ -183,13 +183,13 @@ fn set_executable(path: &PathBuf) -> Result<(), AppError> {
     use std::os::unix::fs::PermissionsExt;
 
     let mut perms = fs::metadata(path)
-        .map_err(|e| AppError::internal_error(&format!("Failed to get file metadata: {}", e)))?
+        .map_err(|e| AppError::internal_error(format!("Failed to get file metadata: {}", e)))?
         .permissions();
 
     perms.set_mode(0o755);
 
     fs::set_permissions(path, perms)
-        .map_err(|e| AppError::internal_error(&format!("Failed to set executable permissions: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to set executable permissions: {}", e)))?;
 
     Ok(())
 }
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_embedded_binaries_exist() {
         // Just verify the binaries are embedded (compile-time check)
-        assert!(binaries::UV.len() > 0, "UV binary should be embedded");
-        assert!(binaries::BUN.len() > 0, "Bun binary should be embedded");
+        assert!(!binaries::UV.is_empty(), "UV binary should be embedded");
+        assert!(!binaries::BUN.is_empty(), "Bun binary should be embedded");
     }
 }

@@ -97,7 +97,7 @@ impl SpreadsheetImageGenerator {
 
         let table_start_y = MARGIN + 30;
         let num_rows = rows.len().min(MAX_ROWS_PER_PAGE);
-        let num_cols = rows.get(0).map(|r| r.len()).unwrap_or(0).min(MAX_COLS_PER_PAGE);
+        let num_cols = rows.first().map(|r| r.len()).unwrap_or(0).min(MAX_COLS_PER_PAGE);
 
         // Draw grid
         let table_width = (num_cols as u32) * CELL_WIDTH;
@@ -169,7 +169,7 @@ impl SpreadsheetImageGenerator {
                 num_rows,
                 rows.len(),
                 num_cols,
-                rows.get(0).map(|r| r.len()).unwrap_or(0)
+                rows.first().map(|r| r.len()).unwrap_or(0)
             );
             draw_text_mut(
                 &mut img,

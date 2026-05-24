@@ -494,7 +494,7 @@ async fn test_upload_writes_created_by_user() {
     );
 
     let upload_resp = reqwest::Client::new()
-        .post(&server.api_url("/files/upload"))
+        .post(server.api_url("/files/upload"))
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form)
         .send()
@@ -511,7 +511,7 @@ async fn test_upload_writes_created_by_user() {
     // Verify the column is also persisted (read-back via GET metadata).
     let file_id = upload_body["id"].as_str().expect("upload response missing id");
     let get_resp = reqwest::Client::new()
-        .get(&server.api_url(&format!("/files/{}", file_id)))
+        .get(server.api_url(&format!("/files/{}", file_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -667,7 +667,7 @@ async fn test_list_files() {
     assert!(body.get("per_page").is_some(), "Should have per_page value");
 
     let files = body["files"].as_array().unwrap();
-    assert!(files.len() > 0, "Should have at least one file");
+    assert!(!files.is_empty(), "Should have at least one file");
 }
 
 #[tokio::test]
@@ -1403,7 +1403,7 @@ async fn test_get_thumbnail() {
 
     // Verify we got image data
     let thumbnail_data = response.bytes().await.unwrap();
-    assert!(thumbnail_data.len() > 0, "Thumbnail should have data");
+    assert!(!thumbnail_data.is_empty(), "Thumbnail should have data");
 }
 
 #[tokio::test]
@@ -1458,7 +1458,7 @@ async fn test_get_preview() {
 
     // Verify we got image data (should be larger than thumbnail)
     let preview_data = response.bytes().await.unwrap();
-    assert!(preview_data.len() > 0, "Preview should have data");
+    assert!(!preview_data.is_empty(), "Preview should have data");
 }
 
 #[tokio::test]

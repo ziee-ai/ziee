@@ -13,7 +13,7 @@ pub async fn get_huggingface_repository(
     configure_api_key: bool,
 ) -> serde_json::Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-repositories"))
+        .get(server.api_url("/llm-repositories"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -53,7 +53,7 @@ pub async fn get_huggingface_repository(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-repositories/{}", repo_id)))
+        .post(server.api_url(&format!("/llm-repositories/{}", repo_id)))
         .header("Authorization", format!("Bearer {}", token))
         .json(&update_payload)
         .send()
@@ -79,7 +79,7 @@ pub async fn get_local_provider(
     token: &str,
 ) -> serde_json::Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers"))
+        .get(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -105,7 +105,7 @@ pub async fn get_local_provider(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -160,7 +160,7 @@ async fn test_initiate_download_from_huggingface() {
 
     println!("Initiating download request...");
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -222,7 +222,7 @@ async fn test_initiate_download_from_huggingface() {
 
             // Verify model appears in provider's models list
             let response = reqwest::Client::new()
-                .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
+                .get(server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
                 .header("Authorization", format!("Bearer {}", user.token))
                 .send()
                 .await
@@ -280,7 +280,7 @@ async fn test_download_requires_create_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -306,7 +306,7 @@ async fn test_download_requires_create_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&download_payload)
         .send()
@@ -355,7 +355,7 @@ async fn test_download_missing_required_fields() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -403,7 +403,7 @@ async fn test_download_invalid_repository() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -470,7 +470,7 @@ async fn test_download_multiple_models() {
 
         println!("Initiating download for {}...", name);
         let response = reqwest::Client::new()
-            .post(&server.api_url("/llm-models/download"))
+            .post(server.api_url("/llm-models/download"))
             .header("Authorization", format!("Bearer {}", user.token))
             .json(&payload)
             .send()
@@ -538,7 +538,7 @@ async fn test_download_with_specific_branch() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()

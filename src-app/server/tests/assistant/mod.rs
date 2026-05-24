@@ -15,7 +15,7 @@ async fn test_list_assistants_requires_read_permission() {
         crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/assistants"))
+        .get(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -35,7 +35,7 @@ async fn test_create_user_assistant_requires_create_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistants"))
+        .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -60,7 +60,7 @@ async fn test_create_template_requires_template_create_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistant-templates"))
+        .post(server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -81,7 +81,7 @@ async fn test_list_templates_requires_template_read_permission() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/assistant-templates"))
+        .get(server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -111,7 +111,7 @@ async fn test_create_user_assistant_success() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistants"))
+        .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -144,7 +144,7 @@ async fn test_list_user_assistants() {
 
     // List user assistants
     let response = reqwest::Client::new()
-        .get(&server.api_url("/assistants"))
+        .get(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -173,7 +173,7 @@ async fn test_get_user_assistant_by_id() {
 
     // Get by ID
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/assistants/{}", assistant_id)))
+        .get(server.api_url(&format!("/assistants/{}", assistant_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -206,7 +206,7 @@ async fn test_update_user_assistant() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/assistants/{}", assistant_id)))
+        .put(server.api_url(&format!("/assistants/{}", assistant_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -239,7 +239,7 @@ async fn test_delete_user_assistant() {
 
     // Delete
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/assistants/{}", assistant_id)))
+        .delete(server.api_url(&format!("/assistants/{}", assistant_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -249,7 +249,7 @@ async fn test_delete_user_assistant() {
 
     // Verify deleted
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/assistants/{}", assistant_id)))
+        .get(server.api_url(&format!("/assistants/{}", assistant_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -278,7 +278,7 @@ async fn test_create_template_assistant_success() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistant-templates"))
+        .post(server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -308,7 +308,7 @@ async fn test_list_template_assistants() {
 
     // List templates
     let response = reqwest::Client::new()
-        .get(&server.api_url("/assistant-templates"))
+        .get(server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
@@ -336,7 +336,7 @@ async fn test_get_template_assistant_by_id() {
 
     // Get by ID
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/assistant-templates/{}", template_id)))
+        .get(server.api_url(&format!("/assistant-templates/{}", template_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
@@ -368,7 +368,7 @@ async fn test_update_template_assistant() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/assistant-templates/{}", template_id)))
+        .put(server.api_url(&format!("/assistant-templates/{}", template_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&payload)
         .send()
@@ -396,7 +396,7 @@ async fn test_delete_template_assistant() {
 
     // Delete
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/assistant-templates/{}", template_id)))
+        .delete(server.api_url(&format!("/assistant-templates/{}", template_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
@@ -431,7 +431,7 @@ async fn test_user_cannot_read_other_users_assistant() {
 
     // User2 tries to read it
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/assistants/{}", assistant_id)))
+        .get(server.api_url(&format!("/assistants/{}", assistant_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
@@ -463,7 +463,7 @@ async fn test_user_cannot_edit_other_users_assistant() {
     // User2 tries to edit it
     let payload = json!({"name": "Hacked"});
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/assistants/{}", assistant_id)))
+        .put(server.api_url(&format!("/assistants/{}", assistant_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .json(&payload)
         .send()
@@ -495,7 +495,7 @@ async fn test_user_cannot_delete_other_users_assistant() {
 
     // User2 tries to delete it
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/assistants/{}", assistant_id)))
+        .delete(server.api_url(&format!("/assistants/{}", assistant_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
@@ -524,7 +524,7 @@ async fn test_create_default_user_assistant() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistants"))
+        .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -537,7 +537,7 @@ async fn test_create_default_user_assistant() {
 
     // Get default
     let response = reqwest::Client::new()
-        .get(&server.api_url("/assistants/default"))
+        .get(server.api_url("/assistants/default"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -565,7 +565,7 @@ async fn test_only_one_default_per_user() {
     });
 
     let response1 = reqwest::Client::new()
-        .post(&server.api_url("/assistants"))
+        .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload1)
         .send()
@@ -582,7 +582,7 @@ async fn test_only_one_default_per_user() {
     });
 
     let response2 = reqwest::Client::new()
-        .post(&server.api_url("/assistants"))
+        .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload2)
         .send()
@@ -594,7 +594,7 @@ async fn test_only_one_default_per_user() {
 
     // Verify assistant1 is no longer default
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!(
+        .get(server.api_url(&format!(
             "/assistants/{}",
             assistant1["id"].as_str().unwrap()
         )))
@@ -629,7 +629,7 @@ async fn test_create_assistant_empty_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistants"))
+        .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -651,7 +651,7 @@ async fn test_get_assistant_not_found() {
 
     let assistant_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/assistants/{}", assistant_id)))
+        .get(server.api_url(&format!("/assistants/{}", assistant_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -688,7 +688,7 @@ async fn test_default_template_cloned_on_user_registration() {
     });
 
     let create_template_response = reqwest::Client::new()
-        .post(&server.api_url("/assistant-templates"))
+        .post(server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&template_payload)
         .send()
@@ -714,7 +714,7 @@ async fn test_default_template_cloned_on_user_registration() {
 
     // List the new user's assistants to verify the template was cloned
     let list_response = reqwest::Client::new()
-        .get(&server.api_url("/assistants"))
+        .get(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", new_user.token))
         .send()
         .await
@@ -726,7 +726,7 @@ async fn test_default_template_cloned_on_user_registration() {
     // Verify the cloned assistant exists
     let assistants = list_result["assistants"].as_array().unwrap();
     assert!(
-        assistants.len() >= 1,
+        !assistants.is_empty(),
         "New user should have at least one assistant (cloned from template). Found {} assistants",
         assistants.len()
     );
@@ -766,7 +766,7 @@ async fn create_user_assistant(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistants"))
+        .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -787,7 +787,7 @@ async fn create_template_assistant(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/assistant-templates"))
+        .post(server.api_url("/assistant-templates"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()

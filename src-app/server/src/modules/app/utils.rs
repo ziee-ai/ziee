@@ -137,7 +137,7 @@ pub fn is_valid_email(email: &str) -> bool {
     }
 
     // TLD must be at least 2 alphabetic chars
-    let tld = domain.split('.').last().unwrap_or("");
+    let tld = domain.split('.').next_back().unwrap_or("");
     if tld.len() < 2 || !tld.chars().all(|c| c.is_ascii_alphabetic()) {
         return false;
     }

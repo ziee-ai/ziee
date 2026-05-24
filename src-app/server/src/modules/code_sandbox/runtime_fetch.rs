@@ -268,11 +268,9 @@ pub fn available_flavors(_cfg: &CodeSandboxConfig) -> Vec<String> {
             == Some(SANDBOX_ROOTFS_SCHEMA_VERSION as i64)
             && e.get("arch").and_then(|v| v.as_str()) == Some(arch)
             && !e.get("yanked").and_then(|v| v.as_bool()).unwrap_or(false)
-        {
-            if let Some(f) = e.get("flavor").and_then(|v| v.as_str()) {
+            && let Some(f) = e.get("flavor").and_then(|v| v.as_str()) {
                 flavors.insert(f.to_string());
             }
-        }
     }
     flavors.into_iter().collect()
 }
@@ -648,11 +646,9 @@ fn enumerate_flavors_for_schema_arch(
         if e.get("schema").and_then(|v| v.as_integer())
             == Some(SANDBOX_ROOTFS_SCHEMA_VERSION as i64)
             && e.get("arch").and_then(|v| v.as_str()) == Some(arch)
-        {
-            if let Some(f) = e.get("flavor").and_then(|v| v.as_str()) {
+            && let Some(f) = e.get("flavor").and_then(|v| v.as_str()) {
                 set.insert(f.to_string());
             }
-        }
     }
     set.into_iter().collect()
 }

@@ -164,7 +164,9 @@ async fn dispatch_handler(
         }
     };
 
-    let response = match body_json.get("method").and_then(|m| m.as_str()) {
+    
+
+    match body_json.get("method").and_then(|m| m.as_str()) {
         Some("initialize") => handle_initialize(),
         Some("notifications/initialized") => handle_empty_ok(),
         Some("tools/list") => handle_tools_list(&body_json),
@@ -190,9 +192,7 @@ async fn dispatch_handler(
         }
         None if body_json.get("result").is_some() => handle_sampling_response(state, &body_json).await,
         _ => handle_empty_ok(),
-    };
-
-    response
+    }
 }
 
 fn handle_initialize() -> Response<Body> {

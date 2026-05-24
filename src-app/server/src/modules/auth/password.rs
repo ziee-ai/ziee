@@ -21,7 +21,7 @@ pub fn validate_password_strength(password: &str) -> Result<(), &'static str> {
     if password.len() < MIN_PASSWORD_LENGTH {
         return Err("Password must be at least 8 characters long");
     }
-    if password.as_bytes().len() > MAX_PASSWORD_LENGTH {
+    if password.len() > MAX_PASSWORD_LENGTH {
         return Err(
             "Password must be at most 72 bytes (bcrypt truncates beyond that)",
         );

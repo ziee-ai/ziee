@@ -899,7 +899,7 @@ async fn create_repo_request(
     bad_url: &str,
 ) -> reqwest::Response {
     reqwest::Client::new()
-        .post(&server.api_url("/llm-repositories"))
+        .post(server.api_url("/llm-repositories"))
         .header("Authorization", format!("Bearer {}", admin_token))
         .json(&json!({
             "name": format!("ssrf-test-{}", uuid::Uuid::new_v4()),

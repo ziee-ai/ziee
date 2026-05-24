@@ -23,6 +23,7 @@ use uuid::Uuid;
 /// Closes 09-llm-repository F-02 (High). The deeper at-rest encryption
 /// (pgcrypto / SecretView) is the follow-up A5-full work.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Default)]
 pub struct RepositoryAuthConfig {
     #[serde(default, skip_serializing)]
     pub api_key: Option<String>,
@@ -36,17 +37,6 @@ pub struct RepositoryAuthConfig {
     pub auth_test_api_endpoint: Option<String>,
 }
 
-impl Default for RepositoryAuthConfig {
-    fn default() -> Self {
-        Self {
-            api_key: None,
-            username: None,
-            password: None,
-            token: None,
-            auth_test_api_endpoint: None,
-        }
-    }
-}
 
 /// LLM Repository database entity
 /// Represents a row in the llm_repositories table

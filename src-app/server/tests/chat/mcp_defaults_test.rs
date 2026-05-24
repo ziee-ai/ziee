@@ -8,7 +8,7 @@
 
 use serde_json::json;
 
-use crate::common::test_helpers::{self, TestUser};
+use crate::common::test_helpers::{self};
 use crate::common::TestServer;
 
 // ============================================================================

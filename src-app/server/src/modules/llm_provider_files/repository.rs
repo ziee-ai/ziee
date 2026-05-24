@@ -93,17 +93,14 @@ pub async fn is_file_expired(
 ) -> Result<bool, sqlx::Error> {
     let mapping = get_provider_file_mapping(pool, file_id, provider_id, user_id).await?;
 
-    if let Some(mapping) = mapping {
-        if let Some(expires_at_str) = mapping
+    if let Some(mapping) = mapping
+        && let Some(expires_at_str) = mapping
             .provider_metadata
             .get("expires_at")
             .and_then(|v| v.as_str())
-        {
-            if let Ok(expires_at) = DateTime::parse_from_rfc3339(expires_at_str) {
+            && let Ok(expires_at) = DateTime::parse_from_rfc3339(expires_at_str) {
                 return Ok(Utc::now() > expires_at);
             }
-        }
-    }
 
     Ok(false)
 }

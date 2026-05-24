@@ -43,15 +43,14 @@ pub fn validate_provider_type(provider_type: &str) -> Result<(), AppError> {
 /// `llm_providers::create`), so the admin-can-probe-localhost risk is
 /// already gated by trust.
 pub fn validate_base_url(base_url: &Option<String>) -> Result<(), AppError> {
-    if let Some(url) = base_url {
-        if !url.is_empty() {
+    if let Some(url) = base_url
+        && !url.is_empty() {
             crate::utils::url_validator::validate_outbound_url(
                 url,
                 &crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL,
             )
             .map_err(|e| AppError::bad_request("INVALID_BASE_URL", e.to_string()))?;
         }
-    }
     Ok(())
 }
 
@@ -98,37 +97,34 @@ pub fn validate_create_request(request: &CreateLlmProviderRequest) -> Result<(),
     validate_provider_type(&request.provider_type)?;
 
     // Validate base URL if provided
-    if let Some(base_url) = &request.base_url {
-        if base_url.len() > MAX_BASE_URL_LEN {
+    if let Some(base_url) = &request.base_url
+        && base_url.len() > MAX_BASE_URL_LEN {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 format!("base_url exceeds {} chars", MAX_BASE_URL_LEN),
             ));
         }
-    }
     validate_base_url(&request.base_url)?;
 
     // Bound api_key length to prevent multi-MB rows on encrypted columns.
-    if let Some(api_key) = &request.api_key {
-        if api_key.len() > MAX_API_KEY_LEN {
+    if let Some(api_key) = &request.api_key
+        && api_key.len() > MAX_API_KEY_LEN {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 format!("api_key exceeds {} chars", MAX_API_KEY_LEN),
             ));
         }
-    }
 
     // If enabling the provider, ensure required fields are present
     if request.enabled.unwrap_or(false) {
         // For remote providers (not local), API key is usually required
-        if request.provider_type != "local" && request.provider_type != "custom" {
-            if request.api_key.is_none() || request.api_key.as_ref().unwrap().trim().is_empty() {
+        if request.provider_type != "local" && request.provider_type != "custom"
+            && (request.api_key.is_none() || request.api_key.as_ref().unwrap().trim().is_empty()) {
                 return Err(AppError::bad_request(
                     "VALIDATION_ERROR",
                     "API key is required for enabled remote providers",
                 ));
             }
-        }
     }
 
     Ok(())
@@ -154,25 +150,23 @@ pub fn validate_update_request(request: &UpdateLlmProviderRequest) -> Result<(),
     }
 
     // Validate base URL if being updated
-    if let Some(base_url) = &request.base_url {
-        if base_url.len() > MAX_BASE_URL_LEN {
+    if let Some(base_url) = &request.base_url
+        && base_url.len() > MAX_BASE_URL_LEN {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 format!("base_url exceeds {} chars", MAX_BASE_URL_LEN),
             ));
         }
-    }
     validate_base_url(&request.base_url)?;
 
     // Bound api_key length on update too.
-    if let Some(api_key) = &request.api_key {
-        if api_key.len() > MAX_API_KEY_LEN {
+    if let Some(api_key) = &request.api_key
+        && api_key.len() > MAX_API_KEY_LEN {
             return Err(AppError::bad_request(
                 "VALIDATION_ERROR",
                 format!("api_key exceeds {} chars", MAX_API_KEY_LEN),
             ));
         }
-    }
 
     Ok(())
 }

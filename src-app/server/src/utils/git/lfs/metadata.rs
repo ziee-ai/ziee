@@ -127,11 +127,10 @@ pub fn parse_lfs_pointer_content(content: &str) -> Option<(String, u64)> {
             } else {
                 return None;
             }
-        } else if let Some(size_str) = line.strip_prefix("size ") {
-            if let Ok(size_value) = size_str.parse::<u64>() {
+        } else if let Some(size_str) = line.strip_prefix("size ")
+            && let Ok(size_value) = size_str.parse::<u64>() {
                 size = Some(size_value);
             }
-        }
     }
 
     match (oid, size) {

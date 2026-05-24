@@ -296,7 +296,7 @@ async fn test_auto_approve_emits_correct_sse_events() {
     let tool_start_events: Vec<_> = events.iter()
         .filter(|e| e.event == "mcpToolStart")
         .collect();
-    assert!(tool_start_events.len() > 0, "Should emit mcpToolStart event. Got {} events total", events.len());
+    assert!(!tool_start_events.is_empty(), "Should emit mcpToolStart event. Got {} events total", events.len());
 
     if let Some(start_event) = tool_start_events.first() {
         assert!(start_event.data["tool_use_id"].is_string(), "Should have tool_use_id");
@@ -308,7 +308,7 @@ async fn test_auto_approve_emits_correct_sse_events() {
     let tool_complete_events: Vec<_> = events.iter()
         .filter(|e| e.event == "mcpToolComplete")
         .collect();
-    assert!(tool_complete_events.len() > 0, "Should emit mcpToolComplete event");
+    assert!(!tool_complete_events.is_empty(), "Should emit mcpToolComplete event");
 
     if let Some(complete_event) = tool_complete_events.first() {
         assert!(complete_event.data["tool_use_id"].is_string(), "Should have tool_use_id");
@@ -413,7 +413,7 @@ async fn test_manual_approve_creates_pending_approval() {
 
     // Verify pending approval was created
     let pending = get_pending_approvals(&server, &user.token, branch_id).await;
-    assert!(pending.len() > 0, "Should have pending approvals in manual-approve mode");
+    assert!(!pending.is_empty(), "Should have pending approvals in manual-approve mode");
 
     if let Some(approval) = pending.first() {
         assert_eq!(approval["status"], "pending", "Approval status should be pending");
@@ -466,7 +466,7 @@ async fn test_manual_approve_emits_approval_required_event() {
     let approval_events: Vec<_> = events.iter()
         .filter(|e| e.event == "mcpApprovalRequired")
         .collect();
-    assert!(approval_events.len() > 0, "Should emit mcpApprovalRequired event");
+    assert!(!approval_events.is_empty(), "Should emit mcpApprovalRequired event");
 
     if let Some(approval_event) = approval_events.first() {
         assert!(approval_event.data["tool_use_id"].is_string(), "Should have tool_use_id");
@@ -521,7 +521,7 @@ async fn test_approve_tool_and_resume_execution() {
 
     // Get pending approvals
     let pending = get_pending_approvals(&server, &user.token, branch_id).await;
-    assert!(pending.len() > 0, "Should have pending approval");
+    assert!(!pending.is_empty(), "Should have pending approval");
 
     let approval = &pending[0];
     let tool_use_id = approval["tool_use_id"].as_str().unwrap();
@@ -556,12 +556,12 @@ async fn test_approve_tool_and_resume_execution() {
     let tool_start_events: Vec<_> = events.iter()
         .filter(|e| e.event == "mcpToolStart")
         .collect();
-    assert!(tool_start_events.len() > 0, "Should execute approved tool");
+    assert!(!tool_start_events.is_empty(), "Should execute approved tool");
 
     let tool_complete_events: Vec<_> = events.iter()
         .filter(|e| e.event == "mcpToolComplete")
         .collect();
-    assert!(tool_complete_events.len() > 0, "Should complete tool execution");
+    assert!(!tool_complete_events.is_empty(), "Should complete tool execution");
 
     // Log tool execution result for debugging
     // Note: is_error may be true due to:
@@ -650,7 +650,7 @@ async fn test_pending_approvals_cancelled_on_new_message() {
 
     // Verify pending approval exists
     let pending1 = get_pending_approvals(&server, &user.token, branch_id).await;
-    assert!(pending1.len() > 0, "Should have pending approval after first message");
+    assert!(!pending1.is_empty(), "Should have pending approval after first message");
 
     // Send new message WITHOUT approvals (should clear pending)
     let _response2 = send_message_with_mcp(
@@ -730,7 +730,7 @@ async fn test_auto_approved_tool_executes_immediately() {
     let tool_start_events: Vec<_> = events.iter()
         .filter(|e| e.event == "mcpToolStart")
         .collect();
-    assert!(tool_start_events.len() > 0, "Auto-approved tool should execute immediately");
+    assert!(!tool_start_events.is_empty(), "Auto-approved tool should execute immediately");
 
     // Verify no pending approvals
     let pending = get_pending_approvals(&server, &user.token, branch_id).await;
@@ -1506,7 +1506,7 @@ async fn test_deny_tool_skips_llm_call() {
 
     // When all tools are denied, we should see tool_denied event and NO tool execution
     assert!(
-        denied_events.len() > 0 || (tool_start_events.is_empty() && tool_complete_events.is_empty()),
+        !denied_events.is_empty() || (tool_start_events.is_empty() && tool_complete_events.is_empty()),
         "Denied tools should not execute. Got: tool_denied={}, toolStart={}, toolComplete={}",
         denied_events.len(), tool_start_events.len(), tool_complete_events.len()
     );

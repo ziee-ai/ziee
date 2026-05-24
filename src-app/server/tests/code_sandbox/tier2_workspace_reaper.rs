@@ -119,11 +119,10 @@ fn reap_once(root: &std::path::Path, max_age: Duration) {
             continue;
         }
         // Skip shared subsystem dirs.
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if name == "attachments" || name == "identity" {
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && (name == "attachments" || name == "identity") {
                 continue;
             }
-        }
         // Prefer the `.last_used` sentinel over the directory mtime.
         let sentinel = path.join(".last_used");
         let mtime = std::fs::metadata(&sentinel)

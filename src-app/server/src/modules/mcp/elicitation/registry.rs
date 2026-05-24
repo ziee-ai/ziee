@@ -113,5 +113,5 @@ pub fn remove(elicitation_id: Uuid) -> Option<Uuid> {
             poisoned.into_inner().remove(&elicitation_id)
         }
     };
-    entry.map(|e| e.content_id).flatten()
+    entry.and_then(|e| e.content_id)
 }

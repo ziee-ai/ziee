@@ -222,7 +222,7 @@ pub async fn create_llm_provider(
     request: CreateLlmProviderRequest,
 ) -> Result<LlmProvider, sqlx::Error> {
     let provider_id = Uuid::new_v4();
-    let proxy_settings_json = serde_json::to_value(&request.proxy_settings.unwrap_or_default())
+    let proxy_settings_json = serde_json::to_value(request.proxy_settings.unwrap_or_default())
         .unwrap_or(serde_json::json!({}));
 
     // Encrypt the api_key at rest when a storage_key is configured.

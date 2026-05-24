@@ -209,7 +209,7 @@ impl ChatExtension for FileExtension {
             if file.user_id != context.user_id {
                 return Err(AppError::forbidden(
                     "FILE_ACCESS_DENIED",
-                    &format!("You don't have access to file {}", file_id),
+                    format!("You don't have access to file {}", file_id),
                 ));
             }
 
@@ -265,11 +265,10 @@ impl ChatExtension for FileExtension {
             }
 
             // Add file blocks to the user's message
-            if let Some(last_message) = request.messages.last_mut() {
-                if last_message.role == Role::User {
+            if let Some(last_message) = request.messages.last_mut()
+                && last_message.role == Role::User {
                     last_message.content.extend(file_blocks);
                 }
-            }
         }
 
         Ok(BeforeLlmAction::Continue)

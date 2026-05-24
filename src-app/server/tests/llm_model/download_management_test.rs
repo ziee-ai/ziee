@@ -486,7 +486,7 @@ async fn test_sse_completion_event_structure() {
     });
 
     let download_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -510,7 +510,7 @@ async fn test_sse_completion_event_structure() {
         iterations += 1;
 
         let response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
             .header("Authorization", format!("Bearer {}", user.token))
             .send()
             .await
@@ -627,7 +627,7 @@ async fn test_sse_sends_update_events_during_download() {
     });
 
     let download_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()

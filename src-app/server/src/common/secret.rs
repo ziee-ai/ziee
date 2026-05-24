@@ -133,8 +133,8 @@ pub async fn resolve_optional_secret(
     encrypted: Option<Vec<u8>>,
     plaintext: Option<String>,
 ) -> Option<String> {
-    if let Some(ref enc) = encrypted {
-        if let Some(key) = crate::core::secrets::storage_key() {
+    if let Some(ref enc) = encrypted
+        && let Some(key) = crate::core::secrets::storage_key() {
             match decrypt_secret(pool, enc, key).await {
                 Ok(plain) => return Some(plain),
                 Err(e) => {
@@ -146,7 +146,6 @@ pub async fn resolve_optional_secret(
                 }
             }
         }
-    }
     plaintext
 }
 

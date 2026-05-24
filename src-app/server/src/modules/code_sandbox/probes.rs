@@ -77,7 +77,7 @@ pub fn probe_all(config: &CodeSandboxConfig) -> HardeningCapabilities {
             };
         }
     };
-    probe_rootfs_dependent(config, &host).unwrap_or_else(|_| HardeningCapabilities {
+    probe_rootfs_dependent(config, &host).unwrap_or(HardeningCapabilities {
         bwrap_path: host.bwrap_path,
         pid_namespace: PidNsMode::Disabled,
         cgroup: host.cgroup,
@@ -167,11 +167,10 @@ pub(crate) fn probe_pid_ns(bwrap_path: &Path, rootfs: &str) -> PidNsMode {
         ])
         .output();
 
-    if let Ok(o) = strict {
-        if o.status.success() {
+    if let Ok(o) = strict
+        && o.status.success() {
             return PidNsMode::Strict;
         }
-    }
 
     // Fallback: same flags but bind /proc.
     let fallback = StdCommand::new(bwrap_path)
@@ -231,15 +230,14 @@ fn probe_cgroup(parent_str: &str) -> CgroupMode {
     }
     let raw_parent = PathBuf::from(parent_str);
     // Refuse symlinks at the parent path itself.
-    if let Ok(meta) = std::fs::symlink_metadata(&raw_parent) {
-        if meta.file_type().is_symlink() {
+    if let Ok(meta) = std::fs::symlink_metadata(&raw_parent)
+        && meta.file_type().is_symlink() {
             tracing::warn!(
                 "code_sandbox: cgroup_parent {} is a symlink; refusing for safety",
                 raw_parent.display()
             );
             return CgroupMode::None;
         }
-    }
     // Canonicalize and re-check the resolved path is under /sys/fs/cgroup.
     let parent = match std::fs::canonicalize(&raw_parent) {
         Ok(p) => p,

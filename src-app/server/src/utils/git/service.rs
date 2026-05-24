@@ -152,11 +152,10 @@ impl GitService {
         let _clone_guard = clone_lock.lock().await;
 
         // Check for cancellation before starting
-        if let Some(ref token) = cancellation_token {
-            if token.is_cancelled().await {
+        if let Some(ref token) = cancellation_token
+            && token.is_cancelled().await {
                 return Err(GitError::Cancelled);
             }
-        }
 
         // Generate cache key based on repository_id, URL, and branch
         let cache_key = Self::generate_cache_key(repository_id, repository_url, branch);
@@ -350,7 +349,7 @@ impl GitService {
                                 // Reset HEAD to the remote branch
                                 let target_commit_obj = repo.find_commit(target_commit).unwrap();
                                 match repo.reset(
-                                    &target_commit_obj.as_object(),
+                                    target_commit_obj.as_object(),
                                     git2::ResetType::Hard,
                                     None,
                                 ) {
@@ -376,7 +375,7 @@ impl GitService {
                                         let target_commit_obj =
                                             repo.find_commit(target_commit).unwrap();
                                         match repo.reset(
-                                            &target_commit_obj.as_object(),
+                                            target_commit_obj.as_object(),
                                             git2::ResetType::Hard,
                                             None,
                                         ) {
@@ -409,8 +408,8 @@ impl GitService {
                         }
                     }
                     Err(e) => {
-                        if e.code() == git2::ErrorCode::User {
-                            if let Some(ref token) = cancellation_token {
+                        if e.code() == git2::ErrorCode::User
+                            && let Some(ref token) = cancellation_token {
                                 let rt = tokio::runtime::Handle::try_current();
                                 if let Ok(handle) = rt {
                                     let token_clone = token.clone();
@@ -421,7 +420,6 @@ impl GitService {
                                     }
                                 }
                             }
-                        }
 
                         let _ = progress_tx_clone.send(GitProgress {
                             phase: GitPhase::Error,

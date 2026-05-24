@@ -125,11 +125,10 @@ pub async fn upload_file(
     // Decompression-bomb pre-validation for OOXML/ODF containers.
     // Closes 05-file F-05 (High). For non-ZIP-family MIMEs this is a
     // no-op via the is_ooxml_or_odf gate.
-    if crate::modules::file::utils::zipbomb::is_ooxml_or_odf(mime_type_str) {
-        if let Err(e) = crate::modules::file::utils::zipbomb::validate(&file_data) {
+    if crate::modules::file::utils::zipbomb::is_ooxml_or_odf(mime_type_str)
+        && let Err(e) = crate::modules::file::utils::zipbomb::validate(&file_data) {
             return Err(AppError::bad_request("ZIP_BOMB_DETECTED", e.to_string()).into());
         }
-    }
 
     let processing_result = match processing_manager
         .process_file(&file_data, mime_type_str)

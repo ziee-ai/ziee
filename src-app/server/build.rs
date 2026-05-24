@@ -162,17 +162,17 @@ fn generate_chat_repository() {
     // Scan for extensions with repository.rs
     if let Ok(entries) = fs::read_dir(&extensions_path) {
         for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
-                    let ext_name = entry.file_name();
-                    let ext_name_str = ext_name.to_string_lossy();
+            if let Ok(file_type) = entry.file_type()
+                && file_type.is_dir()
+            {
+                let ext_name = entry.file_name();
+                let ext_name_str = ext_name.to_string_lossy();
 
-                    // Check if repository.rs exists
-                    let repo_file = entry.path().join("repository.rs");
-                    if repo_file.exists() {
-                        println!("Found extension repository: {}", ext_name_str);
-                        extensions.push(ext_name_str.to_string());
-                    }
+                // Check if repository.rs exists
+                let repo_file = entry.path().join("repository.rs");
+                if repo_file.exists() {
+                    println!("Found extension repository: {}", ext_name_str);
+                    extensions.push(ext_name_str.to_string());
                 }
             }
         }

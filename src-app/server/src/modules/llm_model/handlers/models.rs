@@ -199,7 +199,7 @@ pub async fn delete_model(
     // Delete files from disk
     let storage = crate::modules::llm_model::storage::ModelStorage::new()
         .await
-        .map_err(|e| AppError::internal_error(&format!("Storage error: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Storage error: {}", e)))?;
 
     let model_path = storage.get_model_path(&provider_id, &model_id);
 
@@ -210,7 +210,7 @@ pub async fn delete_model(
                 model_path.display(),
                 e
             );
-            AppError::internal_error(&format!("Failed to remove model files: {}", e))
+            AppError::internal_error(format!("Failed to remove model files: {}", e))
         })?;
 
         tracing::info!("Removed model directory: {}", model_path.display());

@@ -271,11 +271,10 @@ fn backoff_delay_ms(initial_ms: u64, attempt: u32) -> u64 {
 /// delay before reconnecting.
 fn sse_event_retry_ms(event_block: &str) -> Option<u64> {
     for line in event_block.lines() {
-        if let Some(rest) = line.strip_prefix("retry:") {
-            if let Ok(n) = rest.trim().parse::<u64>() {
+        if let Some(rest) = line.strip_prefix("retry:")
+            && let Ok(n) = rest.trim().parse::<u64>() {
                 return Some(n);
             }
-        }
     }
     None
 }
@@ -499,14 +498,13 @@ impl HttpMcpClient {
         let mut headers = reqwest::header::HeaderMap::new();
         if let Some(headers_map) = server.headers.as_object() {
             for (key, value) in headers_map {
-                if let Some(val_str) = value.as_str() {
-                    if let (Ok(name), Ok(val)) = (
+                if let Some(val_str) = value.as_str()
+                    && let (Ok(name), Ok(val)) = (
                         reqwest::header::HeaderName::from_bytes(key.as_bytes()),
                         reqwest::header::HeaderValue::from_str(val_str)
                     ) {
                         headers.insert(name, val);
                     }
-                }
             }
         }
 
@@ -818,11 +816,10 @@ impl HttpMcpClient {
     /// Abort the standalone GET-SSE task if running. Called from
     /// [`Self::disconnect`]; safe to call when no task is running.
     fn abort_standalone_get_sse(&self) {
-        if let Ok(mut g) = self.get_sse_task.lock() {
-            if let Some(h) = g.take() {
+        if let Ok(mut g) = self.get_sse_task.lock()
+            && let Some(h) = g.take() {
                 h.abort();
             }
-        }
     }
 
     /// Allocate the next monotonically increasing JSON-RPC request id.
@@ -1011,9 +1008,8 @@ impl HttpMcpClient {
                 continue;
             }
 
-            if let Some(session_id) = response.headers().get("mcp-session-id") {
-                if let Ok(s) = session_id.to_str() { self.set_session_id(s); }
-            }
+            if let Some(session_id) = response.headers().get("mcp-session-id")
+                && let Ok(s) = session_id.to_str() { self.set_session_id(s); }
 
             let content_type = response.headers()
                 .get("content-type")
@@ -1209,11 +1205,10 @@ impl HttpMcpClient {
 
         tracing::info!("[sampling] SSE response headers received");
 
-        if let Some(sid) = response.headers().get("mcp-session-id") {
-            if let Ok(s) = sid.to_str() {
+        if let Some(sid) = response.headers().get("mcp-session-id")
+            && let Ok(s) = sid.to_str() {
                 set_sid(s);
             }
-        }
 
         let status = response.status();
         if !status.is_success() {
@@ -2075,11 +2070,10 @@ impl McpClient for HttpMcpClient {
                 }
             };
 
-            if let Some(sid) = response.headers().get("mcp-session-id") {
-                if let Ok(s) = sid.to_str() {
+            if let Some(sid) = response.headers().get("mcp-session-id")
+                && let Ok(s) = sid.to_str() {
                     set_sid(s);
                 }
-            }
 
             let status = response.status();
             if !status.is_success() {

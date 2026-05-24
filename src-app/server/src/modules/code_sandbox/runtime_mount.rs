@@ -41,8 +41,9 @@ use std::collections::HashMap;
 // Linux-only: `pre_exec` (PDEATHSIG) on the squashfuse child. Gated so the
 // crate compiles on macOS/Windows, where mounting happens in the VM / WSL2
 // backend rather than via a host squashfuse process.
-#[cfg(target_os = "linux")]
-use std::os::unix::process::CommandExt;
+// (CommandExt brings pre_exec onto std::process::Command, but the
+// runtime_mount path no longer uses pre_exec — squashfuse is spawned
+// via tokio::process. Removed to satisfy clippy.)
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

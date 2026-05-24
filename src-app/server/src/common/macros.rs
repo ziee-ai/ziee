@@ -213,9 +213,9 @@ macro_rules! make_transparent {
 #[macro_export]
 macro_rules! impl_json_option_from {
     ($concrete_type:ty) => {
-        impl From<Option<serde_json::Value>> for crate::common::types::JsonOption<$concrete_type> {
+        impl From<Option<serde_json::Value>> for $crate::common::types::JsonOption<$concrete_type> {
             fn from(value: Option<serde_json::Value>) -> Self {
-                crate::common::types::JsonOption::from_json_option(value)
+                $crate::common::types::JsonOption::from_json_option(value)
             }
         }
     };
@@ -285,7 +285,7 @@ macro_rules! define_extension_content {
         impl $enum_name {
             /// Convert to MessageContentData via serialization/deserialization
             /// The variants in FileContent map directly to MessageContentData variants
-            pub fn to_message_content(&self) -> crate::modules::chat::core::models::content::MessageContentData {
+            pub fn to_message_content(&self) -> $crate::modules::chat::core::models::content::MessageContentData {
                 // Serialize to JSON and deserialize as MessageContentData
                 // This works because both enums have the same variant structure and use #[serde(tag = "type")]
                 let json = serde_json::to_value(self).expect("Failed to serialize extension content");
@@ -295,7 +295,7 @@ macro_rules! define_extension_content {
             /// Try to extract from MessageContentData
             /// Deserializes and lets serde check type tag
             pub fn from_message_content(
-                data: &crate::modules::chat::core::models::content::MessageContentData
+                data: &$crate::modules::chat::core::models::content::MessageContentData
             ) -> Option<Self> {
                 // Serialize MessageContentData to JSON and try to deserialize as FileContent
                 // This works because both enums have matching variant structures

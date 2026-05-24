@@ -113,7 +113,7 @@ impl LfsService {
                 ".git/config contains no remote url",
             ))?
             .split('=')
-            .last()
+            .next_back()
             .ok_or(LfsError::InvalidFormat(".git/config url line malformed"))?
             .trim();
         Ok(remote_url.to_owned())
@@ -492,7 +492,7 @@ impl LfsService {
         fs::remove_file(&lfs_file).await?;
         fs::hard_link(&file_name_cached, lfs_file)
             .await
-            .map_err(|e| LfsError::Io(e))?;
+            .map_err(LfsError::Io)?;
 
         Ok(origin)
     }
@@ -528,11 +528,10 @@ impl LfsService {
         }
 
         // Check for cancellation before starting
-        if let Some(ref token) = cancellation_token {
-            if token.is_cancelled().await {
+        if let Some(ref token) = cancellation_token
+            && token.is_cancelled().await {
                 return Err(LfsError::Cancelled);
             }
-        }
 
         // First scan which of the requested files are LFS pointers
         let mut lfs_files = Vec::new();
@@ -540,29 +539,26 @@ impl LfsService {
 
         for file_path in file_paths {
             // Check for cancellation during scan
-            if let Some(ref token) = cancellation_token {
-                if token.is_cancelled().await {
+            if let Some(ref token) = cancellation_token
+                && token.is_cancelled().await {
                     return Err(LfsError::Cancelled);
                 }
-            }
 
             let full_path = repo_path.join(file_path);
 
             // Use the existing is_lfs_pointer_file function to check if file is an LFS pointer
-            if let Ok(is_lfs) = is_lfs_pointer_file(&full_path).await {
-                if is_lfs {
+            if let Ok(is_lfs) = is_lfs_pointer_file(&full_path).await
+                && is_lfs {
                     // Read the file content to get metadata
-                    if let Ok(content) = fs::read_to_string(&full_path).await {
-                        if let Some((_oid, size)) = parse_lfs_pointer_content(&content) {
+                    if let Ok(content) = fs::read_to_string(&full_path).await
+                        && let Some((_oid, size)) = parse_lfs_pointer_content(&content) {
                             lfs_files.push(LfsPointer {
                                 size,
                                 path: PathBuf::from(file_path),
                             });
                             total_size += size;
                         }
-                    }
                 }
-            }
         }
 
         info!(
@@ -587,11 +583,10 @@ impl LfsService {
 
         for (index, lfs_pointer) in lfs_files.iter().enumerate() {
             // Check for cancellation before each file
-            if let Some(ref token) = cancellation_token {
-                if token.is_cancelled().await {
+            if let Some(ref token) = cancellation_token
+                && token.is_cancelled().await {
                     return Err(LfsError::Cancelled);
                 }
-            }
 
             let file_name = lfs_pointer
                 .path
@@ -657,11 +652,10 @@ impl LfsService {
         }
 
         // Check for cancellation one final time
-        if let Some(ref token) = cancellation_token {
-            if token.is_cancelled().await {
+        if let Some(ref token) = cancellation_token
+            && token.is_cancelled().await {
                 return Err(LfsError::Cancelled);
             }
-        }
 
         // All files downloaded successfully
         let _ = progress_tx.send(LfsProgress {

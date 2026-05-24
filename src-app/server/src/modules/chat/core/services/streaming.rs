@@ -767,7 +767,7 @@ impl StreamingService {
                                     });
                                     messages.push(ChatMessage {
                                         role: ai_providers::Role::Tool,
-                                        content: current_results.drain(..).collect(),
+                                        content: std::mem::take(&mut current_results),
                                     });
                                 }
                             }

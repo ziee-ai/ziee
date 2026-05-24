@@ -77,7 +77,7 @@ async fn download_test_model(repo_id: &str, filename: &str) -> Result<PathBuf, S
 
     // Use hf download command
     let output = tokio::process::Command::new("hf")
-        .args(&[
+        .args([
             "download",
             repo_id,
             filename,
@@ -111,7 +111,7 @@ async fn download_test_model(repo_id: &str, filename: &str) -> Result<PathBuf, S
 async fn get_local_provider(server: &crate::common::TestServer, token: &str) -> serde_json::Value {
     // Try to get existing local provider
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers"))
+        .get(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -137,7 +137,7 @@ async fn get_local_provider(server: &crate::common::TestServer, token: &str) -> 
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -194,7 +194,7 @@ async fn test_upload_model_helper(
     // Upload the model
     println!("Uploading {} model to server...", file_format);
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/upload"))
+        .post(server.api_url("/llm-models/upload"))
         .header("Authorization", format!("Bearer {}", user_token))
         .multipart(form)
         .send()
@@ -228,7 +228,7 @@ async fn test_upload_model_helper(
     // Verify we can retrieve the model
     let model_id = model["id"].as_str().unwrap();
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .get(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user_token))
         .send()
         .await
@@ -242,7 +242,7 @@ async fn test_upload_model_helper(
 
     // Verify model appears in provider's models list
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
+        .get(server.api_url(&format!("/llm-models?provider_id={}", provider_id)))
         .header("Authorization", format!("Bearer {}", user_token))
         .send()
         .await
@@ -428,7 +428,7 @@ async fn test_upload_requires_create_permission() {
         .part("files", file_part);
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/upload"))
+        .post(server.api_url("/llm-models/upload"))
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form)
         .send()
@@ -477,7 +477,7 @@ async fn test_upload_duplicate_name_fails() {
         .part("files", file_part);
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/upload"))
+        .post(server.api_url("/llm-models/upload"))
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form)
         .send()
@@ -501,7 +501,7 @@ async fn test_upload_duplicate_name_fails() {
         .part("files", file_part2);
 
     let response2 = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/upload"))
+        .post(server.api_url("/llm-models/upload"))
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form2)
         .send()
@@ -555,7 +555,7 @@ async fn test_upload_missing_fields_fails() {
         .part("files", file_part);
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/upload"))
+        .post(server.api_url("/llm-models/upload"))
         .header("Authorization", format!("Bearer {}", user.token))
         .multipart(form)
         .send()

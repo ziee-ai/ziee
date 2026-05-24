@@ -13,7 +13,7 @@ async fn test_list_versions_requires_read_permission() {
         crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/local-runtime/versions"))
+        .get(server.api_url("/local-runtime/versions"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -33,7 +33,7 @@ async fn test_list_versions_with_read_permission() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/local-runtime/versions"))
+        .get(server.api_url("/local-runtime/versions"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -61,7 +61,7 @@ async fn test_download_version_requires_create_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/download"))
+        .post(server.api_url("/local-runtime/versions/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -82,7 +82,7 @@ async fn test_delete_version_requires_delete_permission() {
     .await;
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url("/local-runtime/versions/00000000-0000-0000-0000-000000000000"))
+        .delete(server.api_url("/local-runtime/versions/00000000-0000-0000-0000-000000000000"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -102,7 +102,7 @@ async fn test_set_default_version_requires_update_permission() {
     .await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/00000000-0000-0000-0000-000000000000/set-default"))
+        .post(server.api_url("/local-runtime/versions/00000000-0000-0000-0000-000000000000/set-default"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -126,7 +126,7 @@ async fn test_list_versions_empty_initially() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/local-runtime/versions"))
+        .get(server.api_url("/local-runtime/versions"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -154,7 +154,7 @@ async fn test_list_versions_can_filter_by_engine() {
 
     // Test filtering by llamacpp
     let response = reqwest::Client::new()
-        .get(&server.api_url("/local-runtime/versions?engine=llamacpp"))
+        .get(server.api_url("/local-runtime/versions?engine=llamacpp"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -174,7 +174,7 @@ async fn test_list_versions_can_filter_by_engine() {
 
     // Test filtering by mistralrs
     let response = reqwest::Client::new()
-        .get(&server.api_url("/local-runtime/versions?engine=mistralrs"))
+        .get(server.api_url("/local-runtime/versions?engine=mistralrs"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -210,7 +210,7 @@ async fn test_download_version_validation() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/download"))
+        .post(server.api_url("/local-runtime/versions/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -225,7 +225,7 @@ async fn test_download_version_validation() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/download"))
+        .post(server.api_url("/local-runtime/versions/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -240,7 +240,7 @@ async fn test_download_version_validation() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/download"))
+        .post(server.api_url("/local-runtime/versions/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -262,7 +262,7 @@ async fn test_delete_nonexistent_version() {
 
     let fake_uuid = "00000000-0000-0000-0000-000000000000";
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/local-runtime/versions/{}", fake_uuid)))
+        .delete(server.api_url(&format!("/local-runtime/versions/{}", fake_uuid)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -284,7 +284,7 @@ async fn test_set_default_nonexistent_version() {
 
     let fake_uuid = "00000000-0000-0000-0000-000000000000";
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/versions/{}/set-default", fake_uuid)))
+        .post(server.api_url(&format!("/local-runtime/versions/{}/set-default", fake_uuid)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -351,7 +351,7 @@ async fn test_download_and_list_llamacpp_version() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/download"))
+        .post(server.api_url("/local-runtime/versions/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -383,7 +383,7 @@ async fn test_download_and_list_llamacpp_version() {
 
     // List versions and verify it appears
     let response = reqwest::Client::new()
-        .get(&server.api_url("/local-runtime/versions?engine=llamacpp"))
+        .get(server.api_url("/local-runtime/versions?engine=llamacpp"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -452,7 +452,7 @@ async fn test_full_version_lifecycle() {
     });
 
     let download_response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/download"))
+        .post(server.api_url("/local-runtime/versions/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -477,7 +477,7 @@ async fn test_full_version_lifecycle() {
 
     // 2. Set as default
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/local-runtime/versions/{}/set-default", version_id)))
+        .post(server.api_url(&format!("/local-runtime/versions/{}/set-default", version_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -487,7 +487,7 @@ async fn test_full_version_lifecycle() {
 
     // 3. Verify it's marked as default
     let response = reqwest::Client::new()
-        .get(&server.api_url("/local-runtime/versions?engine=llamacpp"))
+        .get(server.api_url("/local-runtime/versions?engine=llamacpp"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -502,11 +502,11 @@ async fn test_full_version_lifecycle() {
     });
 
     assert!(default_version.is_some());
-    assert_eq!(default_version.unwrap()["is_system_default"].as_bool().unwrap(), true);
+    assert!(default_version.unwrap()["is_system_default"].as_bool().unwrap());
 
     // 4. Delete the version
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/local-runtime/versions/{}", version_id)))
+        .delete(server.api_url(&format!("/local-runtime/versions/{}", version_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -516,7 +516,7 @@ async fn test_full_version_lifecycle() {
 
     // 5. Verify it's deleted
     let response = reqwest::Client::new()
-        .get(&server.api_url("/local-runtime/versions?engine=llamacpp"))
+        .get(server.api_url("/local-runtime/versions?engine=llamacpp"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -576,7 +576,7 @@ async fn test_download_mistralrs_version() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/download"))
+        .post(server.api_url("/local-runtime/versions/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()

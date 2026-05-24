@@ -20,41 +20,6 @@ fn is_valid_locale(s: &str) -> bool {
         _ => false,
     }
 }
-
-#[cfg(test)]
-mod locale_tests {
-    use super::*;
-    #[test]
-    fn accepts_two_letter_code() {
-        assert!(is_valid_locale("en"));
-        assert!(is_valid_locale("fr"));
-        assert!(is_valid_locale("zh"));
-    }
-    #[test]
-    fn accepts_region_form() {
-        assert!(is_valid_locale("zh-CN"));
-        assert!(is_valid_locale("pt-BR"));
-    }
-    #[test]
-    fn rejects_path_traversal() {
-        assert!(!is_valid_locale("../etc"));
-        assert!(!is_valid_locale("../../../etc/passwd"));
-        assert!(!is_valid_locale("/dev/zero"));
-    }
-    #[test]
-    fn rejects_oversize() {
-        assert!(!is_valid_locale("englishlanguagecode"));
-    }
-    #[test]
-    fn rejects_uppercase_language() {
-        assert!(!is_valid_locale("EN"));
-    }
-    #[test]
-    fn rejects_separator_garbage() {
-        assert!(!is_valid_locale("en_US"));
-        assert!(!is_valid_locale("en/CN"));
-    }
-}
 use tokio::fs as async_fs;
 
 use super::models::{HubAssistant, HubData, HubMCPServer, HubModel};
@@ -384,8 +349,7 @@ impl HubManager {
             return Err(AppError::bad_request(
                 "HUB_NOT_CONFIGURED",
                 "Hub refresh is disabled because GITHUB_HUB_REPO is still the placeholder URL ('YOUR_ORG'). Configure a real hub repository before refreshing — until then the placeholder URL is squattable and the refresh would download attacker-controlled content.",
-            )
-            .into());
+            ));
         }
 
         tracing::info!("Refreshing hub category '{}' from GitHub", category);
@@ -438,8 +402,8 @@ impl HubManager {
         })?;
 
         // Pre-check the Content-Length header when present.
-        if let Some(len) = response.content_length() {
-            if len > MAX_HUB_FILE_BYTES as u64 {
+        if let Some(len) = response.content_length()
+            && len > MAX_HUB_FILE_BYTES as u64 {
                 return Err(AppError::bad_request(
                     "HUB_FILE_TOO_LARGE",
                     format!(
@@ -448,7 +412,6 @@ impl HubManager {
                     ),
                 ));
             }
-        }
 
         let content = response
             .bytes()
@@ -514,5 +477,40 @@ impl HubManager {
         }
 
         self.load_json_file(path).await.map(Some)
+    }
+}
+
+#[cfg(test)]
+mod locale_tests {
+    use super::*;
+    #[test]
+    fn accepts_two_letter_code() {
+        assert!(is_valid_locale("en"));
+        assert!(is_valid_locale("fr"));
+        assert!(is_valid_locale("zh"));
+    }
+    #[test]
+    fn accepts_region_form() {
+        assert!(is_valid_locale("zh-CN"));
+        assert!(is_valid_locale("pt-BR"));
+    }
+    #[test]
+    fn rejects_path_traversal() {
+        assert!(!is_valid_locale("../etc"));
+        assert!(!is_valid_locale("../../../etc/passwd"));
+        assert!(!is_valid_locale("/dev/zero"));
+    }
+    #[test]
+    fn rejects_oversize() {
+        assert!(!is_valid_locale("englishlanguagecode"));
+    }
+    #[test]
+    fn rejects_uppercase_language() {
+        assert!(!is_valid_locale("EN"));
+    }
+    #[test]
+    fn rejects_separator_garbage() {
+        assert!(!is_valid_locale("en_US"));
+        assert!(!is_valid_locale("en/CN"));
     }
 }

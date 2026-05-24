@@ -21,7 +21,7 @@ async fn test_get_conversation_history_empty() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/messages", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -46,7 +46,7 @@ async fn test_get_conversation_history_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/messages", fake_id)))
+        .get(server.api_url(&format!("/conversations/{}/messages", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -72,7 +72,7 @@ async fn test_get_message_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/messages/{}", fake_id)))
+        .get(server.api_url(&format!("/messages/{}", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -92,7 +92,7 @@ async fn test_get_message_invalid_uuid() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/messages/not-a-uuid"))
+        .get(server.api_url("/messages/not-a-uuid"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -123,7 +123,7 @@ async fn test_edit_message_not_found() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!(
+        .put(server.api_url(&format!(
             "/conversations/{}/messages/{}",
             fake_conversation_id, fake_message_id
         )))
@@ -157,7 +157,7 @@ async fn test_edit_message_empty_content() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!(
+        .put(server.api_url(&format!(
             "/conversations/{}/messages/{}",
             conversation_id, fake_message_id
         )))
@@ -188,7 +188,7 @@ async fn test_delete_message_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/messages/{}", fake_id)))
+        .delete(server.api_url(&format!("/messages/{}", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -234,7 +234,7 @@ async fn test_send_message_empty_content() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -277,7 +277,7 @@ async fn test_send_message_invalid_branch_id() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -315,7 +315,7 @@ async fn test_send_message_invalid_model_id() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -347,7 +347,7 @@ async fn test_send_message_conversation_not_found() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", fake_conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", fake_conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()

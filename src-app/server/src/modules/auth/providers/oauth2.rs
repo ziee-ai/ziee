@@ -575,13 +575,12 @@ impl AuthProviderTrait for OAuth2Provider {
         // it; matching on it would let an attacker take over an account
         // by signing up with someone else's email at a provider that
         // doesn't verify. Closes 01-auth F-09 (High).
-        if let Some(verified) = user_info.get("email_verified").and_then(|v| v.as_bool()) {
-            if !verified {
+        if let Some(verified) = user_info.get("email_verified").and_then(|v| v.as_bool())
+            && !verified {
                 return Err(AuthError::InvalidCredentials(
                     "OAuth provider returned email_verified=false; refusing to provision".to_string(),
                 ));
             }
-        }
 
         // Extract user attributes
         let attributes = self.extract_user_attributes(&user_info)?;

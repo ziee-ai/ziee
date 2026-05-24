@@ -32,7 +32,7 @@ pub struct UserMcpDefaultsGetResponse {
 pub async fn get_mcp_defaults(
     auth: RequirePermissions<(ConversationsRead,)>,
 ) -> ApiResult<Json<UserMcpDefaultsGetResponse>> {
-    let defaults = repository::get_user_defaults(&crate::core::Repos.pool(), auth.user.id)
+    let defaults = repository::get_user_defaults(crate::core::Repos.pool(), auth.user.id)
         .await?
         .map(models::UserMcpDefaultsResponse::from);
 
@@ -55,7 +55,7 @@ pub async fn update_mcp_defaults(
     Json(request): Json<models::UpsertUserMcpDefaultsRequest>,
 ) -> ApiResult<Json<models::UserMcpDefaultsResponse>> {
     let defaults = repository::upsert_user_defaults(
-        &crate::core::Repos.pool(),
+        crate::core::Repos.pool(),
         auth.user.id,
         request.approval_mode,
         request.auto_approved_tools.as_deref(),

@@ -139,7 +139,7 @@ pub async fn create_test_model_with_config(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&payload)
         .send()
@@ -183,7 +183,7 @@ pub async fn get_or_create_test_model(
 
     // First try to get an existing enabled model
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-models?per_page=100"))
+        .get(server.api_url("/llm-models?per_page=100"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
@@ -197,7 +197,7 @@ pub async fn get_or_create_test_model(
                 if model["enabled"].as_bool().unwrap_or(false) {
                     eprintln!("Using existing model: {}", model["display_name"]);
                     // Grant the user access to this existing model
-                    ensure_user_has_model_access(server, user_id, &model).await;
+                    ensure_user_has_model_access(server, user_id, model).await;
                     return model.clone();
                 }
             }
@@ -242,7 +242,7 @@ pub async fn get_or_create_test_model(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&payload)
         .send()
@@ -289,7 +289,7 @@ pub async fn ensure_user_has_model_access(
 
     // Create a group for this test
     let group_response = reqwest::Client::new()
-        .post(&server.api_url("/groups"))
+        .post(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "name": format!("test_access_group_{}", &Uuid::new_v4().to_string()[..8]),
@@ -306,7 +306,7 @@ pub async fn ensure_user_has_model_access(
 
     // Assign user to group
     let assign_user_response = reqwest::Client::new()
-        .post(&server.api_url("/groups/assign"))
+        .post(server.api_url("/groups/assign"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "user_id": user_id,
@@ -320,7 +320,7 @@ pub async fn ensure_user_has_model_access(
 
     // Assign provider to group
     let assign_provider_response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/groups/{}/providers", group_id)))
+        .put(server.api_url(&format!("/groups/{}/providers", group_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "provider_ids": [provider_id]
@@ -344,7 +344,7 @@ async fn configure_provider_with_api_key(
 ) -> Value {
     // Get all providers
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers?per_page=100"))
+        .get(server.api_url("/llm-providers?per_page=100"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -381,7 +381,7 @@ async fn configure_provider_with_api_key(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", token))
         .json(&update_payload)
         .send()
@@ -445,7 +445,7 @@ pub async fn create_conversation(
     }
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/conversations"))
+        .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -466,7 +466,7 @@ pub async fn list_conversations(
     token: &str,
 ) -> Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -483,7 +483,7 @@ pub async fn get_conversation(
     conversation_id: Uuid,
 ) -> Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -507,7 +507,7 @@ pub async fn update_conversation(
     }
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -525,7 +525,7 @@ pub async fn delete_conversation(
     conversation_id: Uuid,
 ) -> StatusCode {
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .delete(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -541,7 +541,7 @@ pub async fn get_conversation_history(
     conversation_id: Uuid,
 ) -> Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!(
+        .get(server.api_url(&format!(
             "/conversations/{}/messages",
             conversation_id
         )))
@@ -561,7 +561,7 @@ pub async fn get_message(
     message_id: Uuid,
 ) -> Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/messages/{}", message_id)))
+        .get(server.api_url(&format!("/messages/{}", message_id)))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -584,7 +584,7 @@ pub async fn edit_message(
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!(
+        .put(server.api_url(&format!(
             "/conversations/{}/messages/{}",
             conversation_id, message_id
         )))
@@ -605,7 +605,7 @@ pub async fn delete_message(
     message_id: Uuid,
 ) -> StatusCode {
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/messages/{}", message_id)))
+        .delete(server.api_url(&format!("/messages/{}", message_id)))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -628,7 +628,7 @@ pub async fn create_branch(
     }
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/branches",
             conversation_id
         )))
@@ -649,7 +649,7 @@ pub async fn list_branches(
     conversation_id: Uuid,
 ) -> Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!(
+        .get(server.api_url(&format!(
             "/conversations/{}/branches",
             conversation_id
         )))
@@ -670,7 +670,7 @@ pub async fn activate_branch(
     branch_id: Uuid,
 ) -> Value {
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/branches/{}/activate",
             conversation_id, branch_id
         )))
@@ -701,7 +701,7 @@ pub async fn send_message_simple(
     });
 
     reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/messages/stream",
             conversation_id
         )))
@@ -736,8 +736,8 @@ pub async fn send_message(
 
     // Find the first chunk with a message_id
     for chunk in &chunks {
-        if let Some(message_id) = chunk.get("message_id") {
-            if !message_id.is_null() {
+        if let Some(message_id) = chunk.get("message_id")
+            && !message_id.is_null() {
                 // Return a synthetic message object with the ID
                 return json!({
                     "id": message_id,
@@ -746,7 +746,6 @@ pub async fn send_message(
                     "branch_id": branch_id.to_string(),
                 });
             }
-        }
     }
 
     panic!("No message_id found in stream response. Chunks: {:?}", chunks);
@@ -760,13 +759,12 @@ pub async fn parse_sse_stream(response: reqwest::Response) -> Vec<Value> {
 
     let mut chunks = Vec::new();
     for line in text.lines() {
-        if line.starts_with("data: ") {
-            let json_str = &line[6..]; // Remove "data: " prefix
-            if json_str != "[DONE]" {
-                if let Ok(chunk) = serde_json::from_str::<Value>(json_str) {
+        if let Some(json_str) = line.strip_prefix("data: ") {
+            // Remove "data: " prefix
+            if json_str != "[DONE]"
+                && let Ok(chunk) = serde_json::from_str::<Value>(json_str) {
                     chunks.push(chunk);
                 }
-            }
         }
     }
     chunks
@@ -791,16 +789,15 @@ pub async fn parse_sse_events(response: reqwest::Response) -> Vec<SSEEvent> {
     for line in text.lines() {
         if line.starts_with("event: ") {
             current_event = line[7..].trim().to_string();
-        } else if line.starts_with("data: ") {
-            let json_str = &line[6..]; // Remove "data: " prefix
-            if json_str != "[DONE]" {
-                if let Ok(data) = serde_json::from_str::<Value>(json_str) {
+        } else if let Some(json_str) = line.strip_prefix("data: ") {
+            // Remove "data: " prefix
+            if json_str != "[DONE]"
+                && let Ok(data) = serde_json::from_str::<Value>(json_str) {
                     events.push(SSEEvent {
                         event: current_event.clone(),
                         data,
                     });
                 }
-            }
             // Reset to default after consuming data
             current_event = String::from("message");
         }

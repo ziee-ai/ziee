@@ -15,7 +15,7 @@ pub async fn create_content(
     sequence_order: i32,
 ) -> Result<MessageContent, AppError> {
     let content_json =
-        serde_json::to_value(&initial_data).map_err(|e| AppError::database_error(e))?;
+        serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
 
     let content = sqlx::query_as!(
         MessageContent,
@@ -48,7 +48,7 @@ pub async fn create_content_with_id(
     sequence_order: i32,
 ) -> Result<MessageContent, AppError> {
     let content_json =
-        serde_json::to_value(&initial_data).map_err(|e| AppError::database_error(e))?;
+        serde_json::to_value(&initial_data).map_err(AppError::database_error)?;
 
     let content = sqlx::query_as!(
         MessageContent,

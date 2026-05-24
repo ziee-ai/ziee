@@ -61,14 +61,13 @@ pub async fn get_or_upload_provider_file(
         // 2a. Check if expired (Gemini 48h TTL)
         let is_expired = repository::is_file_expired(pool, file_id, provider.id, user_id).await?;
 
-        if !is_expired && mapping.upload_status == UploadStatus::Completed {
-            if let Some(provider_file_id) = mapping.provider_file_id {
+        if !is_expired && mapping.upload_status == UploadStatus::Completed
+            && let Some(provider_file_id) = mapping.provider_file_id {
                 // Valid mapping exists - return it
                 // Note: If provider returns "not found" error later, the caller
                 // should handle re-upload (test-and-validate approach)
                 return Ok(provider_file_id);
             }
-        }
     }
 
     // 3. No valid mapping - need to upload
@@ -103,7 +102,7 @@ pub async fn get_or_upload_provider_file(
             AppError::bad_request("PROVIDER_NO_API_KEY", "Provider has no API key configured")
         })?;
 
-    let base_url = provider.base_url.as_deref().unwrap_or_else(|| {
+    let base_url = provider.base_url.as_deref().unwrap_or({
         // Default base URLs for known providers
         match provider.provider_type.as_str() {
             "anthropic" => "https://api.anthropic.com/v1",

@@ -21,7 +21,7 @@ async fn upload_test_file(
     );
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/files/upload"))
+        .post(server.api_url("/files/upload"))
         .header("Authorization", format!("Bearer {}", token))
         .multipart(form)
         .send()
@@ -86,7 +86,7 @@ async fn test_send_message_with_single_file() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -156,7 +156,7 @@ async fn test_send_message_with_multiple_files() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -225,7 +225,7 @@ async fn test_cannot_attach_other_users_file() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user2.token))
         .json(&payload)
         .send()
@@ -278,7 +278,7 @@ async fn test_send_message_with_nonexistent_file() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -329,7 +329,7 @@ async fn test_send_message_with_empty_file_list() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -394,7 +394,7 @@ async fn test_file_extension_stores_content_as_extension() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -486,7 +486,7 @@ async fn test_file_content_in_conversation_history() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -592,7 +592,7 @@ async fn test_multiple_files_content_ordering() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()

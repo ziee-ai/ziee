@@ -307,7 +307,7 @@ async fn test_gemini_image_vision_e2e() {
         let duration = expires_at - chrono::Utc::now();
         let hours = duration.num_hours();
         eprintln!("⏳ Time until expiration: {} hours", hours);
-        assert!(hours >= 47 && hours <= 49, "Should expire in ~48 hours");
+        assert!((47..=49).contains(&hours), "Should expire in ~48 hours");
     } else {
         panic!("Gemini files should have expiration time");
     }
