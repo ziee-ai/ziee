@@ -555,6 +555,7 @@ pub fn me_docs(op: TransformOperation) -> TransformOperation {
 /// Initiate OAuth flow for the specified provider
 #[debug_handler]
 pub async fn oauth_authorize(
+    headers: axum::http::HeaderMap,
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthAuthorizeQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
@@ -583,7 +584,7 @@ pub async fn oauth_authorize(
     })?;
 
     // SECURITY: ignore the user-supplied redirect_uri query parameter
-    // and always use the server's canonical OAuth callback path. The
+    // and always use the server's canonical OAuth callback URL. The
     // original implementation let `?redirect_uri=https://evil.com/` flow
     // through to the OAuth authorize call; well-configured providers
     // would reject the mismatch against their registered URI, but
@@ -591,7 +592,29 @@ pub async fn oauth_authorize(
     // would happily redirect the victim's browser to evil.com WITH the
     // OAuth `code` in the query string — evil.com can then exchange
     // the code for the access + ID token. Closes 01-auth F-07 (High).
-    let redirect_uri = format!("/api/auth/oauth/{}/callback", provider_name);
+    //
+    // The OAuth2 spec requires an absolute URL — derive scheme + host
+    // from the inbound request. Reverse-proxy operators should ensure
+    // their proxy forwards X-Forwarded-Proto so https survives the
+    // hop; otherwise we fall back to http (the dev / tests default).
+    // The path portion is server-controlled (provider_name comes from
+    // URL routing matched against a string we built ourselves, not
+    // user-controlled here).
+    let _ = query;
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "http".to_string());
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost")
+        .to_string();
+    let redirect_uri = format!(
+        "{}://{}/api/auth/oauth/{}/callback",
+        scheme, host, provider_name
+    );
 
     // Initialize OAuth flow
     let oauth_result = provider.init_oauth_flow(&redirect_uri).await.map_err(|e| {
