@@ -44,10 +44,17 @@ pub async fn list_repositories(
         AppError::internal_error("Database operation failed")
     })?;
 
-    // Calculate pagination
+    // Calculate pagination. Cast to i64 before multiply so the
+    // PaginationQuery clamp can't be circumvented at the multiply
+    // (defense-in-depth; the deserializer already bounds the inputs).
+    // Closes 09-llm-repository F-11 (Medium).
     let total = all_repositories.len() as i64;
-    let start = ((params.page - 1) * params.per_page) as usize;
-    let end = (start + params.per_page as usize).min(all_repositories.len());
+    let start = ((params.page as i64).saturating_sub(1))
+        .saturating_mul(params.per_page as i64)
+        .max(0) as usize;
+    let end = start
+        .saturating_add(params.per_page as usize)
+        .min(all_repositories.len());
 
     let paginated_repositories = if start < all_repositories.len() {
         all_repositories[start..end].to_vec()

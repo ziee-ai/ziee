@@ -10,6 +10,24 @@ use super::{
 };
 use crate::common::AppError;
 
+/// Replace any URL userinfo (`https://user:topsecret@host`) with
+/// `https://[REDACTED]@host` before logging. Closes
+/// 09-llm-repository F-04 (High) on the test-connection path.
+fn redact_url_userinfo(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut u) => {
+            if !u.username().is_empty() || u.password().is_some() {
+                let _ = u.set_username("");
+                let _ = u.set_password(None);
+                format!("{} (userinfo redacted)", u)
+            } else {
+                u.to_string()
+            }
+        }
+        Err(_) => "[unparseable URL]".to_string(),
+    }
+}
+
 /// Validate URL format using reqwest URL parser
 pub fn validate_url(url: &str) -> Result<(), AppError> {
     // SSRF-safe validation: reject non-allowlisted schemes (file://, ftp://,
@@ -210,7 +228,7 @@ pub async fn test_repository_connectivity(
     // Build the request with authentication
     let mut req_builder = client.get(test_url);
 
-    tracing::info!("Testing connection to: {}", test_url);
+    tracing::info!("Testing connection to: {}", redact_url_userinfo(&test_url));
 
     if let Some(auth_config) = &request.auth_config {
         match request.auth_type.as_str() {

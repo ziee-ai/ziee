@@ -26,15 +26,34 @@ use crate::{
 // Query Parameters
 // =====================================================
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PaginationQuery {
-    /// Page number (1-indexed)
-    #[serde(default = "default_page")]
-    pub page: i64,
+/// Maximum page size accepted from the client. Larger values are
+/// clamped silently at deserialize to prevent DoS via unbounded
+/// result-set materialization. Closes 10-assistant F-03 (Medium).
+const ASSISTANT_MAX_LIMIT: i64 = 100;
 
-    /// Items per page
-    #[serde(default = "default_limit")]
+#[derive(Debug, schemars::JsonSchema)]
+pub struct PaginationQuery {
+    /// Page number (1-indexed); clamped to ≥1 at deserialize.
+    pub page: i64,
+    /// Items per page; clamped to [1, ASSISTANT_MAX_LIMIT] at deserialize.
     pub limit: i64,
+}
+
+impl<'de> Deserialize<'de> for PaginationQuery {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(default = "default_page")]
+            page: i64,
+            #[serde(default = "default_limit")]
+            limit: i64,
+        }
+        let raw = Raw::deserialize(d)?;
+        Ok(PaginationQuery {
+            page: raw.page.max(1),
+            limit: raw.limit.max(1).min(ASSISTANT_MAX_LIMIT),
+        })
+    }
 }
 
 fn default_page() -> i64 {

@@ -202,7 +202,18 @@ async fn try_initialize_database_once(
         postgresql.start().await?;
 
         let database_url = postgresql.settings().url("postgres");
-        println!("Generated database_url: {:?}", database_url);
+        // Log only the host:port + db name; the embedded URL contains
+        // the auto-generated password. Closes 14-core F-12 (Medium).
+        match url::Url::parse(&database_url) {
+            Ok(u) => println!(
+                "Embedded PostgreSQL ready: {}://{}:{}{}",
+                u.scheme(),
+                u.host_str().unwrap_or("?"),
+                u.port().map(|p| p.to_string()).unwrap_or_else(|| "?".to_string()),
+                u.path()
+            ),
+            Err(_) => println!("Embedded PostgreSQL ready (URL not loggable)"),
+        }
 
         // Store the PostgreSQL instance to keep it alive
         POSTGRESQL_INSTANCE
