@@ -287,25 +287,45 @@ async fn create_model_with_files(
         file_format: request.file_format,
     };
 
+    // Preflight: explicit duplicate-name check.
+    //
+    // The previous implementation relied on string-matching the
+    // sqlx::Error text for "llm_models_provider_id_name_unique" /
+    // "duplicate key", but the A1 redaction (commit 94f5295) collapses
+    // every sqlx error into a generic "An internal error occurred"
+    // before it reaches this map_err — so the constraint-name detection
+    // never fires and the user sees a confusing 500. Closes the
+    // regression by checking before insert. The race window between
+    // SELECT and INSERT is intentionally narrow and acceptable: in the
+    // race, the second insert hits the unique index → 500, which is
+    // the same outcome as today.
+    let preflight_exists: bool = sqlx::query_scalar!(
+        r#"SELECT EXISTS(
+              SELECT 1 FROM llm_models
+              WHERE provider_id = $1 AND name = $2
+           ) AS "exists!""#,
+        create_request.provider_id,
+        create_request.name,
+    )
+    .fetch_one(crate::core::Repos.pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Preflight duplicate-name query failed");
+        AppError::internal_error("Storage error")
+    })?;
+    if preflight_exists {
+        return Err(AppError::bad_request(
+            "DUPLICATE_ENTRY",
+            format!(
+                "A model with the name '{}' already exists for this provider. \
+                 Please use a different model name.",
+                model_name
+            ),
+        ));
+    }
+
     // Create the model record - it will generate its own ID
-    let model_db = repo.create(create_request)
-        .await
-        .map_err(|e| {
-            let error_str = e.to_string();
-            tracing::warn!("Database error during model creation: {}", error_str);
-            if error_str.contains("llm_models_provider_id_name_unique")
-                || (error_str.contains("duplicate key") && error_str.contains("name")) {
-                AppError::bad_request(
-                    "DUPLICATE_ENTRY",
-                    &format!(
-                        "A model with the name '{}' already exists for this provider. Please use a different model name.",
-                        model_name
-                    )
-                )
-            } else {
-                e
-            }
-        })?;
+    let model_db = repo.create(create_request).await?;
 
     // The database record has been created with its own ID
     // But files are in directory with the pre-generated model_id
@@ -1504,10 +1524,22 @@ pub async fn initiate_repository_download(
     let download_instance = initiate_repository_download_internal(request)
         .await
         .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(&e),
-            )
+            // Propagate "Repository not found" as 404 rather than the
+            // catch-all 500. The internal function returns String
+            // errors today; map by content prefix until the function
+            // is refactored to return AppError.
+            if e.contains("not found") {
+                (
+                    StatusCode::NOT_FOUND,
+                    AppError::not_found("Repository"),
+                )
+            } else {
+                tracing::error!(error = %e, "initiate_repository_download_internal failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    AppError::internal_error("Storage error"),
+                )
+            }
         })?;
 
     Ok((StatusCode::OK, Json(download_instance)))
