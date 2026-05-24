@@ -12,7 +12,7 @@ use crate::core::Repos;
 use crate::modules::file::config::get_jwt_config;
 use crate::modules::file::permissions::{FilesDownload, FilesGenerateToken};
 use crate::modules::file::storage::manager::get_file_storage;
-use crate::modules::file::types::{DownloadTokenClaims, DownloadTokenQuery, DownloadTokenResponse};
+use crate::modules::file::types::{DOWNLOAD_TOKEN_AUDIENCE, DownloadTokenClaims, DownloadTokenQuery, DownloadTokenResponse};
 use crate::modules::permissions::extractors::RequirePermissions;
 use crate::modules::permissions::openapi::with_permission;
 use uuid::Uuid;
@@ -124,16 +124,20 @@ pub async fn generate_download_token(
         .await?
         .ok_or_else(|| AppError::not_found("File"))?;
 
-    // Generate JWT token
+    // Generate JWT token. Sets iss + aud (audience=ziee-chat-download)
+    // so the validator below can refuse cross-audience replay against
+    // the access-token validator. Closes 02-permissions F-03.
+    let jwt_config = get_jwt_config();
     let now = chrono::Utc::now().timestamp() as usize;
     let claims = DownloadTokenClaims {
         file_id: file_id.to_string(),
         user_id: user_id.to_string(),
         exp: now + TOKEN_EXPIRY as usize,
         iat: now,
+        iss: jwt_config.issuer.clone(),
+        aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
     };
 
-    let jwt_config = get_jwt_config();
     let token = encode(
         &Header::default(),
         &claims,
@@ -155,12 +159,18 @@ pub async fn download_with_token(
     Path(file_id): Path<Uuid>,
     Query(query): Query<DownloadTokenQuery>,
 ) -> Result<Response, StatusCode> {
-    // Validate token
+    // Validate token. Enforces iss + aud=DOWNLOAD_TOKEN_AUDIENCE so a
+    // download token cannot be replayed against the access-token
+    // validator (which expects aud="ziee-chat-api"). Closes
+    // 02-permissions F-03.
     let jwt_config = get_jwt_config();
+    let mut validation = Validation::default();
+    validation.set_audience(&[DOWNLOAD_TOKEN_AUDIENCE]);
+    validation.set_issuer(&[jwt_config.issuer.as_str()]);
     let claims = decode::<DownloadTokenClaims>(
         &query.token,
         &DecodingKey::from_secret(jwt_config.secret.as_bytes()),
-        &Validation::default(),
+        &validation,
     )
     .map_err(|_| StatusCode::UNAUTHORIZED)?
     .claims;

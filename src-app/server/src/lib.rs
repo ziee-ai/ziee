@@ -195,8 +195,16 @@ async fn setup_server(
     // Setup CORS from config
     let cors = core::app_builder::create_cors_layer(&config);
 
-    // Set up JWT service
-    let jwt_service = Arc::new(modules::auth::JwtService::new(config.jwt.clone()));
+    // Set up JWT service. try_new refuses weak/placeholder secrets so
+    // the server never boots with a known signer. Closes 01-auth F-10
+    // + 14-core F-03.
+    let jwt_service = Arc::new(
+        modules::auth::JwtService::try_new(config.jwt.clone())
+            .map_err(|e| {
+                tracing::error!("Failed to initialize JWT service: {}", e);
+                e
+            })?,
+    );
     tracing::info!("JWT service initialized");
 
     // Build API router with all module routes

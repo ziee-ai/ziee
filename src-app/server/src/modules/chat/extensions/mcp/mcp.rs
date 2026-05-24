@@ -76,8 +76,17 @@ impl McpChatExtension {
         // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
         let (elicit_notify_tx, mut elicit_notify_rx) =
             tokio::sync::mpsc::unbounded_channel::<ElicitationStartedNotification>();
+        let bind_user_id = context.user_id;
         tokio::spawn(async move {
             while let Some(notif) = elicit_notify_rx.recv().await {
+                // Bind the calling user_id to the elicitation entry so
+                // the /respond handler can verify the responder is the
+                // user who initiated the chat call. Closes
+                // 02-permissions F-04.
+                crate::modules::mcp::elicitation::registry::bind_owner(
+                    notif.elicitation_id,
+                    bind_user_id,
+                );
                 if let Some(msg_id) = notif.message_id {
                     let order = crate::core::Repos.chat.core
                         .get_message_with_content(msg_id).await
@@ -495,13 +504,15 @@ impl McpChatExtension {
                                                                 );
                                                                 let download_url = {
                                                                     use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
-                                                                    use crate::modules::file::types::DownloadTokenClaims;
+                                                                    use crate::modules::file::types::{DownloadTokenClaims, DOWNLOAD_TOKEN_AUDIENCE};
                                                                     let now = chrono::Utc::now().timestamp() as usize;
                                                                     let claims = DownloadTokenClaims {
                                                                         file_id: artifact_id.to_string(),
                                                                         user_id: context.user_id.to_string(),
                                                                         exp: now + 3600,
                                                                         iat: now,
+                                                                        iss: self.config.jwt.issuer.clone(),
+                                                                        aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
                                                                     };
                                                                     encode(
                                                                         &JwtHeader::default(),
@@ -1708,8 +1719,17 @@ impl ChatExtension for McpChatExtension {
         // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
         let (elicit_notify_tx, mut elicit_notify_rx) =
             tokio::sync::mpsc::unbounded_channel::<ElicitationStartedNotification>();
+        let bind_user_id = context.user_id;
         tokio::spawn(async move {
             while let Some(notif) = elicit_notify_rx.recv().await {
+                // Bind the calling user_id to the elicitation entry so
+                // the /respond handler can verify the responder is the
+                // user who initiated the chat call. Closes
+                // 02-permissions F-04.
+                crate::modules::mcp::elicitation::registry::bind_owner(
+                    notif.elicitation_id,
+                    bind_user_id,
+                );
                 if let Some(msg_id) = notif.message_id {
                     let order = crate::core::Repos.chat.core
                         .get_message_with_content(msg_id).await
@@ -2132,13 +2152,15 @@ impl ChatExtension for McpChatExtension {
                                                                 );
                                                                 let download_url = {
                                                                     use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
-                                                                    use crate::modules::file::types::DownloadTokenClaims;
+                                                                    use crate::modules::file::types::{DownloadTokenClaims, DOWNLOAD_TOKEN_AUDIENCE};
                                                                     let now = chrono::Utc::now().timestamp() as usize;
                                                                     let claims = DownloadTokenClaims {
                                                                         file_id: artifact_id.to_string(),
                                                                         user_id: context.user_id.to_string(),
                                                                         exp: now + 3600,
                                                                         iat: now,
+                                                                        iss: self.config.jwt.issuer.clone(),
+                                                                        aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
                                                                     };
                                                                     encode(
                                                                         &JwtHeader::default(),

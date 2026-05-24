@@ -450,6 +450,8 @@ fn sign_download_token(file_id: Uuid, user_id: Uuid) -> Result<String, AppError>
         user_id: user_id.to_string(),
         exp,
         iat: now.timestamp() as usize,
+        iss: jwt_cfg.issuer.clone(),
+        aud: crate::modules::file::types::DOWNLOAD_TOKEN_AUDIENCE.to_string(),
     };
     encode(
         &Header::default(),

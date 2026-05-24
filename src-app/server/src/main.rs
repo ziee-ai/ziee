@@ -158,8 +158,16 @@ async fn main() {
     // Setup CORS from config
     let cors = core::app_builder::create_cors_layer(&config);
 
-    // Set up JWT service
-    let jwt_service = std::sync::Arc::new(modules::auth::JwtService::new(config.jwt.clone()));
+    // Set up JWT service. try_new refuses weak/placeholder secrets so
+    // the server never boots with a known signer. Closes 01-auth F-10
+    // + 14-core F-03.
+    let jwt_service = match modules::auth::JwtService::try_new(config.jwt.clone()) {
+        Ok(svc) => std::sync::Arc::new(svc),
+        Err(e) => {
+            tracing::error!("Failed to initialize JWT service: {}", e);
+            std::process::exit(1);
+        }
+    };
     tracing::info!("JWT service initialized");
 
     // Set up MCP session manager

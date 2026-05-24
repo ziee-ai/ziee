@@ -55,17 +55,65 @@ pub struct JwtService {
     decoding_key: DecodingKey,
 }
 
+/// Minimum acceptable JWT secret length (bytes). HMAC-SHA256 ideally
+/// uses ≥ 32 bytes of entropy. Closes 01-auth F-10 + 14-core F-03.
+const MIN_JWT_SECRET_LEN: usize = 32;
+
+/// Known shipped placeholder secrets. Refuse to boot with any of these
+/// — if an operator's config still contains a template value they
+/// almost certainly forgot to override it, and the secret is in public
+/// source control. Plain string match, not substring, so genuine
+/// 32+-char operator secrets aren't accidentally rejected.
+const BANNED_JWT_SECRETS: &[&str] = &[
+    "dev-secret-change-in-production-min-32-chars-long",
+    "REPLACE_ME_WITH_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS",
+    "your-secret-key-here",
+    "change-me",
+    "secret",
+    "changeme",
+];
+
 impl JwtService {
-    /// Create a new JWT service
-    pub fn new(config: JwtConfig) -> Self {
+    /// Create a new JWT service. Errors if the secret is shorter than
+    /// MIN_JWT_SECRET_LEN bytes or matches a known shipped placeholder.
+    /// Closes 01-auth F-10 + 14-core F-03 (weak/default JWT secret
+    /// accepted at runtime). Callers (main.rs, lib.rs) propagate the
+    /// error so the server refuses to boot rather than continuing with
+    /// a weak signer.
+    pub fn try_new(config: JwtConfig) -> Result<Self, AppError> {
+        if config.secret.len() < MIN_JWT_SECRET_LEN {
+            return Err(AppError::internal_error(format!(
+                "JWT secret is {} bytes; minimum is {}. Set jwt.secret in \
+                 your config to a random ≥32-char string (e.g. \
+                 `openssl rand -base64 48`).",
+                config.secret.len(),
+                MIN_JWT_SECRET_LEN
+            )));
+        }
+        if BANNED_JWT_SECRETS.iter().any(|p| *p == config.secret) {
+            return Err(AppError::internal_error(
+                "JWT secret matches a shipped placeholder value. Set \
+                 jwt.secret in your config to a unique random ≥32-char \
+                 string (e.g. `openssl rand -base64 48`).",
+            ));
+        }
+
         let encoding_key = EncodingKey::from_secret(config.secret.as_bytes());
         let decoding_key = DecodingKey::from_secret(config.secret.as_bytes());
 
-        Self {
+        Ok(Self {
             config,
             encoding_key,
             decoding_key,
-        }
+        })
+    }
+
+    /// Infallible constructor preserved for tests / callers that have
+    /// already validated the secret. Production code MUST use `try_new`
+    /// so a weak secret aborts boot. This thin wrapper panics on a bad
+    /// secret so misuse can't go unnoticed.
+    pub fn new(config: JwtConfig) -> Self {
+        Self::try_new(config).expect("JWT secret validation failed; use try_new for graceful errors")
     }
 
     /// Generate access and refresh tokens for a user (legacy form).
