@@ -61,7 +61,7 @@ async fn test_anthropic_image_vision_e2e() {
 
     // Create message with file reference
     let request = ChatRequest {
-        model: "claude-3-5-haiku-20241022".to_string(), // Fast, cheap model
+        model: "claude-haiku-4-5-20251001".to_string(), // Fast, cheap model
         messages: vec![ChatMessage {
             role: Role::User,
             content: vec![
@@ -144,7 +144,7 @@ async fn test_anthropic_pdf_document_qa_e2e() {
 
     // Create message with document reference
     let request = ChatRequest {
-        model: "claude-3-5-haiku-20241022".to_string(),
+        model: "claude-haiku-4-5-20251001".to_string(),
         messages: vec![ChatMessage {
             role: Role::User,
             content: vec![
