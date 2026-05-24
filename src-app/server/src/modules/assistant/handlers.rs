@@ -67,6 +67,45 @@ fn default_limit() -> i64 {
 // USER ASSISTANT HANDLERS
 // =====================================================
 
+/// Max length caps for assistant text fields. The same values appear
+/// as `#[schemars(length(max = ...))]` annotations on
+/// CreateAssistantRequest / UpdateAssistantRequest so OpenAPI
+/// consumers see the same numbers. Closes 10-assistant F-02 (Medium):
+/// without these, an authenticated user can store multi-MB
+/// instructions that the chat path then ships to the LLM on every
+/// turn, amplifying token cost.
+const ASSISTANT_MAX_INSTRUCTIONS_BYTES: usize = 65_536;
+const ASSISTANT_MAX_DESCRIPTION_BYTES: usize = 4_096;
+
+fn validate_assistant_text_lengths(
+    description: Option<&str>,
+    instructions: Option<&str>,
+) -> Result<(), AppError> {
+    if let Some(d) = description {
+        if d.len() > ASSISTANT_MAX_DESCRIPTION_BYTES {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!(
+                    "description exceeds {} bytes",
+                    ASSISTANT_MAX_DESCRIPTION_BYTES
+                ),
+            ));
+        }
+    }
+    if let Some(i) = instructions {
+        if i.len() > ASSISTANT_MAX_INSTRUCTIONS_BYTES {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!(
+                    "instructions exceeds {} bytes",
+                    ASSISTANT_MAX_INSTRUCTIONS_BYTES
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Create a new user assistant
 #[debug_handler]
 pub async fn create_user_assistant(
@@ -80,6 +119,10 @@ pub async fn create_user_assistant(
             AppError::bad_request("VALIDATION_ERROR", "Assistant name cannot be empty").into(),
         );
     }
+    validate_assistant_text_lengths(
+        request.description.as_deref(),
+        request.instructions.as_deref(),
+    )?;
 
     // Force is_template to false for user assistants
     request.is_template = Some(false);
@@ -184,6 +227,11 @@ pub async fn update_user_assistant(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
+    validate_assistant_text_lengths(
+        request.description.as_deref(),
+        request.instructions.as_deref(),
+    )?;
+
     let existing = Repos
         .assistant
         .get(id)
@@ -311,6 +359,10 @@ pub async fn create_template_assistant(
             AppError::bad_request("VALIDATION_ERROR", "Assistant name cannot be empty").into(),
         );
     }
+    validate_assistant_text_lengths(
+        request.description.as_deref(),
+        request.instructions.as_deref(),
+    )?;
 
     // Force is_template to true for template assistants
     request.is_template = Some(true);
@@ -405,6 +457,11 @@ pub async fn update_template_assistant(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
+    validate_assistant_text_lengths(
+        request.description.as_deref(),
+        request.instructions.as_deref(),
+    )?;
+
     let existing = Repos
         .assistant
         .get(id)

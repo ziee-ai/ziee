@@ -29,6 +29,7 @@ pub struct CreateLlmProviderRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateLlmProviderRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,

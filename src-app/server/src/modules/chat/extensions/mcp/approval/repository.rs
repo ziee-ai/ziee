@@ -94,6 +94,14 @@ pub async fn upsert_conversation_settings(
 // Tool Use Approvals
 // ============================================================================
 
+/// Maximum serialized size of a stored tool_input JSON blob. LLMs can
+/// in principle return arbitrarily-large structured inputs; without
+/// this cap, a runaway model (or a prompt-injection-induced one) can
+/// fill the approvals table with multi-MB rows. 256 KiB matches what
+/// every real tool genuinely needs and is well below the typical
+/// model context. Closes 04-chat F-05 (Medium).
+const MAX_TOOL_INPUT_BYTES: usize = 256 * 1024;
+
 /// Create a pending tool use approval
 pub async fn create_tool_approval(
     pool: &PgPool,
@@ -107,6 +115,19 @@ pub async fn create_tool_approval(
     server_id: Option<Uuid>,
     server_name: String,
 ) -> Result<ToolUseApproval, AppError> {
+    // Reject oversized tool_input before it lands in the DB.
+    let serialized_len = serde_json::to_string(&tool_input)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    if serialized_len > MAX_TOOL_INPUT_BYTES {
+        return Err(AppError::bad_request(
+            "TOOL_INPUT_TOO_LARGE",
+            format!(
+                "tool_input is {} bytes serialized; cap is {}",
+                serialized_len, MAX_TOOL_INPUT_BYTES
+            ),
+        ));
+    }
     let approval = sqlx::query_as!(
         ToolUseApproval,
         r#"

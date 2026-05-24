@@ -55,21 +55,68 @@ pub fn validate_base_url(base_url: &Option<String>) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Maximum lengths for provider fields. Closes 06-llm-provider F-09
+/// (Medium): without these, an admin (or a compromised admin account)
+/// could store multi-MB strings that bloat the DB row, slow every
+/// list query, and inflate response payloads.
+const MAX_NAME_LEN: usize = 128;
+const MAX_BASE_URL_LEN: usize = 2048;
+const MAX_API_KEY_LEN: usize = 4096;
+
+/// Reject control characters in a string-typed field. Closes
+/// 06-llm-provider F-12 (Medium): `\n`/`\r`/`\0` in a provider name
+/// could break log lines and JSON rendering downstream.
+fn reject_control_chars(label: &str, value: &str) -> Result<(), AppError> {
+    if value.chars().any(|c| c.is_control()) {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            format!("{} cannot contain control characters", label),
+        ));
+    }
+    Ok(())
+}
+
 /// Validate that required fields are present for enabled providers
 pub fn validate_create_request(request: &CreateLlmProviderRequest) -> Result<(), AppError> {
-    // Validate name is not empty
-    if request.name.trim().is_empty() {
+    // Validate name is not empty + bounded + free of control chars
+    let trimmed_name = request.name.trim();
+    if trimmed_name.is_empty() {
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
             "Provider name cannot be empty",
         ));
     }
+    if request.name.len() > MAX_NAME_LEN {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            format!("Provider name exceeds {} chars", MAX_NAME_LEN),
+        ));
+    }
+    reject_control_chars("Provider name", &request.name)?;
 
     // Validate provider type
     validate_provider_type(&request.provider_type)?;
 
     // Validate base URL if provided
+    if let Some(base_url) = &request.base_url {
+        if base_url.len() > MAX_BASE_URL_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("base_url exceeds {} chars", MAX_BASE_URL_LEN),
+            ));
+        }
+    }
     validate_base_url(&request.base_url)?;
+
+    // Bound api_key length to prevent multi-MB rows on encrypted columns.
+    if let Some(api_key) = &request.api_key {
+        if api_key.len() > MAX_API_KEY_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("api_key exceeds {} chars", MAX_API_KEY_LEN),
+            ));
+        }
+    }
 
     // If enabling the provider, ensure required fields are present
     if request.enabled.unwrap_or(false) {
@@ -89,7 +136,7 @@ pub fn validate_create_request(request: &CreateLlmProviderRequest) -> Result<(),
 
 /// Validate update request
 pub fn validate_update_request(request: &UpdateLlmProviderRequest) -> Result<(), AppError> {
-    // Validate name is not empty if being updated
+    // Validate name if being updated
     if let Some(name) = &request.name {
         if name.trim().is_empty() {
             return Err(AppError::bad_request(
@@ -97,10 +144,35 @@ pub fn validate_update_request(request: &UpdateLlmProviderRequest) -> Result<(),
                 "Provider name cannot be empty",
             ));
         }
+        if name.len() > MAX_NAME_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("Provider name exceeds {} chars", MAX_NAME_LEN),
+            ));
+        }
+        reject_control_chars("Provider name", name)?;
     }
 
     // Validate base URL if being updated
+    if let Some(base_url) = &request.base_url {
+        if base_url.len() > MAX_BASE_URL_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("base_url exceeds {} chars", MAX_BASE_URL_LEN),
+            ));
+        }
+    }
     validate_base_url(&request.base_url)?;
+
+    // Bound api_key length on update too.
+    if let Some(api_key) = &request.api_key {
+        if api_key.len() > MAX_API_KEY_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("api_key exceeds {} chars", MAX_API_KEY_LEN),
+            ));
+        }
+    }
 
     Ok(())
 }

@@ -244,7 +244,7 @@ pub async fn create_llm_provider(
     let row = sqlx::query!(
         r#"INSERT INTO llm_providers (id, name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in, proxy_settings)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING id, name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in, proxy_settings, created_at, updated_at"#,
+         RETURNING id, name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in, proxy_settings, created_at, updated_at, default_runtime_version_id"#,
         provider_id,
         &request.name,
         &request.provider_type,
@@ -272,7 +272,7 @@ pub async fn create_llm_provider(
             .proxy_settings
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
-        default_runtime_version_id: None,
+        default_runtime_version_id: row.default_runtime_version_id,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
     })
@@ -382,26 +382,38 @@ pub async fn delete_llm_provider(
     pool: &PgPool,
     provider_id: Uuid,
 ) -> Result<Result<bool, String>, sqlx::Error> {
-    // First check if provider exists and if it's built-in
-    let built_in_result = sqlx::query_scalar!(
+    // SECURITY: the original SELECT-then-DELETE was racy — a concurrent
+    // UPDATE that flipped `built_in` to false (or the row being
+    // recreated under the same UUID) between the two queries could
+    // bypass the built-in guard. Atomic single-statement DELETE with
+    // the `built_in = false` predicate eliminates the window. Closes
+    // 06-llm-provider F-10 (Medium). The split return value
+    // (Err("Cannot delete…") vs Ok(true/false)) is preserved so the
+    // handler's existing error-shape doesn't change.
+    let row = sqlx::query!(
+        "DELETE FROM llm_providers WHERE id = $1 AND built_in = false RETURNING id",
+        provider_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if row.is_some() {
+        return Ok(Ok(true));
+    }
+
+    // Nothing deleted — distinguish "not found" from "exists but
+    // built-in" with a second read-only query.
+    let still_exists = sqlx::query_scalar!(
         "SELECT built_in FROM llm_providers WHERE id = $1",
         provider_id
     )
     .fetch_optional(pool)
     .await?;
 
-    match built_in_result {
-        Some(built_in) => {
-            if built_in {
-                Ok(Err("Cannot delete built-in provider".to_string()))
-            } else {
-                let result = sqlx::query!("DELETE FROM llm_providers WHERE id = $1", provider_id)
-                    .execute(pool)
-                    .await?;
-                Ok(Ok(result.rows_affected() > 0))
-            }
-        }
-        None => Ok(Ok(false)), // Provider not found
+    match still_exists {
+        Some(true) => Ok(Err("Cannot delete built-in provider".to_string())),
+        Some(false) => Ok(Ok(false)), // raced with another delete
+        None => Ok(Ok(false)),         // provider not found
     }
 }
 

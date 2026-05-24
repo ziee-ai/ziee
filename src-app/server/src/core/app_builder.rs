@@ -96,8 +96,28 @@ pub fn build_api_router(
     (api_router, api_doc)
 }
 
-/// Create CORS layer from configuration
+/// Create CORS layer from configuration.
+///
+/// Closes 14-core F-04 (High) at the level of "operator visibility":
+/// any deployment booting with `Any/Any/Any` (either via wildcard
+/// `*` in allow_origins, missing config, or empty list) gets a loud
+/// `tracing::error!` at boot. Production deployments behind a
+/// reverse proxy must set an explicit origin allowlist. We don't
+/// hard-fail boot because dev/test environments legitimately need
+/// permissive CORS; the loud log is enough to catch the misconfig
+/// in `journalctl`/`docker logs` review.
 pub fn create_cors_layer(config: &Config) -> CorsLayer {
+    let permissive_warning = |reason: &str| {
+        tracing::error!(
+            "SECURITY: CORS is permissive ({}). Any origin can call \
+             the API and read non-credentialed responses. Set \
+             server.cors.allow_origins to an explicit allowlist for \
+             production deployments (see config/prod.example.yaml). \
+             Closes 14-core F-04.",
+            reason
+        );
+    };
+
     if let Some(ref cors_config) = config.server.cors {
         let origins: Vec<_> = cors_config
             .allow_origins
@@ -127,6 +147,9 @@ pub fn create_cors_layer(config: &Config) -> CorsLayer {
 
         // Set origins
         if cors_config.allow_origins.contains(&"*".to_string()) || origins.is_empty() {
+            permissive_warning(
+                "allow_origins is empty or contains '*'",
+            );
             layer = layer.allow_origin(Any);
         } else {
             layer = layer.allow_origin(AllowOrigin::list(origins));
@@ -149,6 +172,7 @@ pub fn create_cors_layer(config: &Config) -> CorsLayer {
         layer
     } else {
         // Default permissive CORS if not configured
+        permissive_warning("no server.cors block in config");
         CorsLayer::new()
             .allow_origin(Any)
             .allow_methods(Any)
