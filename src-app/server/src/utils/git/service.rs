@@ -439,11 +439,39 @@ impl GitService {
                 // Set up progress callback with cancellation check
                 let cancelled_flag_callback = cancelled_flag_task.clone();
                 let progress_tx_callback = progress_tx_clone.clone();
+                // 09-llm-repository F-05 (High): cap total clone bytes.
+                // Without this, an attacker who controls the repo URL
+                // (or even a benign mis-sized HF repo) can fill the host
+                // disk. 10 GB cap matches the largest legitimate model
+                // weights (Llama-70B + LFS pointers); operators with
+                // genuine larger needs can override via config in a
+                // follow-up. The transfer_progress callback returns
+                // false to cancel; libgit2 surfaces that as
+                // ErrorCode::User.
+                const MAX_CLONE_BYTES: u64 = 10 * 1024 * 1024 * 1024; // 10 GiB
                 callbacks.transfer_progress(move |progress| {
                     // Check for cancellation using atomic flag
                     if cancelled_flag_callback.load(std::sync::atomic::Ordering::Relaxed) {
                         tracing::info!("Git clone cancelled by user");
                         return false; // Cancel the operation
+                    }
+
+                    // Enforce clone size cap. Use received_bytes when
+                    // available (libgit2 ≥ 0.99); otherwise estimate at
+                    // 10KB/object to fail-closed on object-count
+                    // explosion.
+                    let bytes_seen = if progress.received_bytes() > 0 {
+                        progress.received_bytes() as u64
+                    } else {
+                        progress.received_objects() as u64 * 10240
+                    };
+                    if bytes_seen > MAX_CLONE_BYTES {
+                        tracing::error!(
+                            received = bytes_seen,
+                            cap = MAX_CLONE_BYTES,
+                            "Git clone exceeded size cap; aborting"
+                        );
+                        return false;
                     }
 
                     let phase = if progress.received_objects() == progress.total_objects() {

@@ -28,7 +28,7 @@ async fn test_list_versions_with_read_permission() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read"],
+        &["llm_local_runtime::versions_read"],
     )
     .await;
 
@@ -51,7 +51,7 @@ async fn test_download_version_requires_create_permission() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read"],
+        &["llm_local_runtime::versions_read"],
     )
     .await;
 
@@ -77,7 +77,7 @@ async fn test_delete_version_requires_delete_permission() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read"],
+        &["llm_local_runtime::versions_read"],
     )
     .await;
 
@@ -97,7 +97,7 @@ async fn test_set_default_version_requires_update_permission() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read"],
+        &["llm_local_runtime::versions_read"],
     )
     .await;
 
@@ -121,7 +121,7 @@ async fn test_list_versions_empty_initially() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read"],
+        &["llm_local_runtime::versions_read"],
     )
     .await;
 
@@ -148,7 +148,7 @@ async fn test_list_versions_can_filter_by_engine() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read"],
+        &["llm_local_runtime::versions_read"],
     )
     .await;
 
@@ -199,7 +199,7 @@ async fn test_download_version_validation() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read", "llm_local_runtime::create"],
+        &["llm_local_runtime::versions_read", "llm_local_runtime::create"],
     )
     .await;
 
@@ -256,7 +256,7 @@ async fn test_delete_nonexistent_version() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read", "llm_local_runtime::delete"],
+        &["llm_local_runtime::versions_read", "llm_local_runtime::delete"],
     )
     .await;
 
@@ -278,7 +278,7 @@ async fn test_set_default_nonexistent_version() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read", "llm_local_runtime::update"],
+        &["llm_local_runtime::versions_read", "llm_local_runtime::update"],
     )
     .await;
 
@@ -309,7 +309,7 @@ async fn test_download_and_list_llamacpp_version() {
         &server,
         "user",
         &[
-            "llm_local_runtime::read",
+            "llm_local_runtime::versions_read",
             "llm_local_runtime::create",
             "llm_local_runtime::update",
             "llm_local_runtime::delete",
@@ -410,7 +410,7 @@ async fn test_full_version_lifecycle() {
         &server,
         "user",
         &[
-            "llm_local_runtime::read",
+            "llm_local_runtime::versions_read",
             "llm_local_runtime::create",
             "llm_local_runtime::update",
             "llm_local_runtime::delete",
@@ -539,7 +539,7 @@ async fn test_download_mistralrs_version() {
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "user",
-        &["llm_local_runtime::read", "llm_local_runtime::create"],
+        &["llm_local_runtime::versions_read", "llm_local_runtime::create"],
     )
     .await;
 
