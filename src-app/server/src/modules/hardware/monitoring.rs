@@ -74,7 +74,7 @@ pub fn add_client(
 pub fn remove_client(client_id: ClientId) {
     let mut clients = SSE_CLIENTS.lock().unwrap();
     clients.remove(&client_id);
-    println!("Removed hardware monitoring client: {}", client_id);
+    tracing::debug!("Removed hardware monitoring client: {}", client_id);
 }
 
 /// Start hardware monitoring service

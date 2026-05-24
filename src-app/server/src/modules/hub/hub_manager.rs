@@ -427,14 +427,43 @@ impl HubManager {
 
     /// Download file from URL and save to path
     async fn download_hub_file(&self, url: &str, path: PathBuf) -> Result<(), AppError> {
+        // Cap a single hub file at 16 MiB. Hub assets (json/markdown
+        // catalogs, small icons) are well under 1 MiB in practice;
+        // this cap prevents an upstream redirect from filling memory
+        // via an unbounded `.bytes().await`. Closes 11-hub F-07 (Low).
+        const MAX_HUB_FILE_BYTES: usize = 16 * 1024 * 1024;
+
         let response = reqwest::get(url).await.map_err(|e| {
             AppError::internal_error(format!("Failed to download from GitHub: {}", e))
         })?;
+
+        // Pre-check the Content-Length header when present.
+        if let Some(len) = response.content_length() {
+            if len > MAX_HUB_FILE_BYTES as u64 {
+                return Err(AppError::bad_request(
+                    "HUB_FILE_TOO_LARGE",
+                    format!(
+                        "Hub file declares {} bytes (cap {})",
+                        len, MAX_HUB_FILE_BYTES
+                    ),
+                ));
+            }
+        }
 
         let content = response
             .bytes()
             .await
             .map_err(|e| AppError::internal_error(format!("Failed to read response: {}", e)))?;
+        if content.len() > MAX_HUB_FILE_BYTES {
+            return Err(AppError::bad_request(
+                "HUB_FILE_TOO_LARGE",
+                format!(
+                    "Hub file is {} bytes (cap {})",
+                    content.len(),
+                    MAX_HUB_FILE_BYTES
+                ),
+            ));
+        }
 
         // Create parent directories if needed
         if let Some(parent) = path.parent() {

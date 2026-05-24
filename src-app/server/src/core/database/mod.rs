@@ -248,9 +248,17 @@ async fn try_initialize_database_once(
     println!("Testing database connection...");
     sqlx::query("SELECT 1").execute(&pool).await?;
 
-    // Run migrations
-    // Use set_ignore_missing(true) to allow desktop app to have its own migrations
-    // that are tracked in the same _sqlx_migrations table
+    // Run migrations.
+    //
+    // `set_ignore_missing(true)` tells sqlx to NOT panic when the
+    // _sqlx_migrations table contains entries this binary doesn't
+    // recognise (those are the desktop app's own migrations applied
+    // against the shared DB — see src-app/desktop/). It does NOT
+    // apply external/untrusted migrations, which is what the
+    // 14-core F-21 audit-finding implicitly assumed. The desktop +
+    // server share `_sqlx_migrations` and each binary owns its own
+    // subset; ignore_missing is the supported sqlx pattern for that
+    // setup.
     println!("Running database migrations...");
     sqlx::migrate!("./migrations")
         .set_ignore_missing(true)

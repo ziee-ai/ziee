@@ -48,7 +48,10 @@ impl FilesystemStorage {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .await
-                .map_err(|e| AppError::internal_error(format!("Failed to create directory: {}", e)))?;
+                .map_err(|e| {
+                tracing::error!(error = %e, "ensure_dir failed");
+                AppError::internal_error("Storage error")
+            })?;
         }
         Ok(())
     }
@@ -73,7 +76,10 @@ impl FileStorage for FilesystemStorage {
 
         fs::write(&path, data)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to write file: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "save_original write failed");
+                AppError::internal_error("Storage error")
+            })?;
 
         Ok(path)
     }
@@ -90,7 +96,10 @@ impl FileStorage for FilesystemStorage {
 
         fs::write(&path, text)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to write text page: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "save_text_page write failed");
+                AppError::internal_error("Storage error")
+            })?;
 
         Ok(path)
     }
@@ -108,7 +117,10 @@ impl FileStorage for FilesystemStorage {
 
         fs::write(&path, data)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to write image: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "save_image write failed");
+                AppError::internal_error("Storage error")
+            })?;
 
         Ok(path)
     }
@@ -177,7 +189,10 @@ impl FileStorage for FilesystemStorage {
         reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("File not found: {}", e)))
+            .map_err(|e| {
+                tracing::warn!(error = %e, "load_original failed");
+                AppError::not_found("File")
+            })
     }
 
     async fn load_text_page(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> StorageResult<String> {
@@ -185,7 +200,10 @@ impl FileStorage for FilesystemStorage {
         reject_if_symlink(&path).await?;
         fs::read_to_string(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("Text page {} not found: {}", page_num, e)))
+            .map_err(|e| {
+                tracing::warn!(error = %e, page = page_num, "load_text_page failed");
+                AppError::not_found("Text page")
+            })
     }
 
     async fn load_preview(
@@ -198,7 +216,10 @@ impl FileStorage for FilesystemStorage {
         reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("Preview image not found: {}", e)))
+            .map_err(|e| {
+                tracing::warn!(error = %e, "load_preview failed");
+                AppError::not_found("Preview")
+            })
     }
 
     async fn load_thumbnail(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<Vec<u8>> {
@@ -206,7 +227,10 @@ impl FileStorage for FilesystemStorage {
         reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("Thumbnail not found: {}", e)))
+            .map_err(|e| {
+                tracing::warn!(error = %e, "load_thumbnail failed");
+                AppError::not_found("Thumbnail")
+            })
     }
 
     async fn delete_all(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<()> {

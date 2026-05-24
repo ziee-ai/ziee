@@ -290,18 +290,29 @@ async fn main() {
 }
 
 async fn shutdown_signal() {
+    // Graceful-with-warning instead of panicking. Closes 14-core F-19
+    // (Low): a container that strips signal-handler installation
+    // (e.g. unusual seccomp profile) used to crash here; now it
+    // logs + falls back to "never returns", which lets the runtime's
+    // normal shutdown path take over.
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
+        if let Err(e) = signal::ctrl_c().await {
+            tracing::warn!("Failed to install Ctrl+C handler: {}", e);
+            std::future::pending::<()>().await;
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to install signal handler")
-            .recv()
-            .await;
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to install SIGTERM handler: {}", e);
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]

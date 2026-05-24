@@ -504,9 +504,6 @@ pub struct DownloadFromRepositoryRequest {
     pub parameters: Option<ModelParameters>,
     pub engine_type: Option<EngineType>,
     pub engine_settings: Option<ModelEngineSettings>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(description = "Clear cached repository before downloading (for testing)")]
-    pub clear_cache: Option<bool>,
 }
 
 /// Upload multiple model files and auto-commit as a model
@@ -1105,9 +1102,6 @@ pub async fn initiate_repository_download_internal(
         "none" | _ => None,
     };
 
-    // Clone clear_cache flag for background task
-    let clear_cache = request.clear_cache.unwrap_or(false);
-
     // Create cancellation token for this download
     let cancellation_token =
         crate::utils::cancellation::create_cancellation_token(download_id).await;
@@ -1145,21 +1139,6 @@ pub async fn initiate_repository_download_internal(
 
         // Create git service
         let git_service = GitService::new();
-
-        // Clear cache if requested (for testing)
-        if clear_cache {
-            tracing::info!("Clearing cache for repository (clear_cache=true)");
-            if let Err(e) = git_service
-                .clear_cache(
-                    &repository_id,
-                    &repository_url,
-                    repository_branch.as_deref(),
-                )
-                .await
-            {
-                tracing::warn!("Failed to clear git cache: {}", e);
-            }
-        }
 
         // Spawn task to update download progress in database
         let download_id_progress = download_id;

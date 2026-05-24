@@ -506,7 +506,6 @@ pub async fn create_model_from_hub(
         engine_settings: hub_model
             .recommended_engine_settings
             .and_then(|s| serde_json::from_value(s).ok()),
-        clear_cache: None,
     };
 
     // 7. Initiate the actual download (this creates the download instance AND spawns the background task)

@@ -125,8 +125,16 @@ impl UserKeyRepository {
             // A5 encryption. Decryption failures fall back to None.
             let resolved =
                 resolve_optional_secret(&self.pool, r.api_key_encrypted, r.api_key).await;
+            // Character-safe prefix (not byte-index). Closes
+            // 06-llm-provider F-14 (Low): `&key[..4]` panics when
+            // byte index 4 is mid-UTF-8 (e.g. a leading emoji in a
+            // key, or a value pasted with a smart-quote). Using
+            // .chars() guarantees a clean char boundary.
             let masked_key = match resolved.as_deref() {
-                Some(key) if key.len() > 4 => format!("{}***", &key[..4]),
+                Some(key) if key.chars().count() > 4 => {
+                    let prefix: String = key.chars().take(4).collect();
+                    format!("{}***", prefix)
+                }
                 _ => "***".to_string(),
             };
             entries.push(UserApiKeyEntry {
