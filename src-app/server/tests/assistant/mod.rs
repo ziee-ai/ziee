@@ -12,7 +12,7 @@ use uuid::Uuid;
 async fn test_list_assistants_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/assistants"))
@@ -28,7 +28,7 @@ async fn test_list_assistants_requires_read_permission() {
 async fn test_create_user_assistant_requires_create_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let payload = json!({
         "name": "My Assistant"

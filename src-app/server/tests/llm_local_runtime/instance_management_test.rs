@@ -79,7 +79,7 @@ async fn test_restart_instance_requires_manage_permission() {
 async fn test_get_instance_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let model_id = Uuid::new_v4();
 
@@ -97,7 +97,7 @@ async fn test_get_instance_requires_read_permission() {
 async fn test_get_status_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let model_id = Uuid::new_v4();
 
@@ -115,7 +115,7 @@ async fn test_get_status_requires_read_permission() {
 async fn test_get_health_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let model_id = Uuid::new_v4();
 
@@ -155,7 +155,7 @@ async fn test_get_logs_requires_logs_permission() {
 async fn test_get_provider_instances_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let provider_id = Uuid::new_v4();
 

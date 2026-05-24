@@ -10,7 +10,7 @@ use serde_json::json;
 async fn test_list_versions_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/local-runtime/versions"))

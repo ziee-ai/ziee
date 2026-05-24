@@ -532,12 +532,8 @@ async fn test_upload_writes_created_by_user() {
 #[tokio::test]
 async fn test_upload_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(
-        &server,
-        "no_permission_user",
-        &[], // No permissions
-    )
-    .await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "no_permission_user")
+        .await;
 
     let file_bytes = b"test content";
     let form = multipart::Form::new()
@@ -727,11 +723,7 @@ async fn test_list_files_pagination() {
 #[tokio::test]
 async fn test_list_files_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(
-        &server,
-        "no_permission_user",
-        &[],
-    )
+    let user = test_helpers::create_user_with_no_permissions(&server, "no_permission_user")
     .await;
 
     let url = server.api_url("/files");
@@ -1001,11 +993,7 @@ async fn test_download_file_requires_permission() {
     .await;
 
     // User without download permission
-    let user = test_helpers::create_user_with_permissions(
-        &server,
-        "no_download_user",
-        &[],
-    )
+    let user = test_helpers::create_user_with_no_permissions(&server, "no_download_user")
     .await;
 
     // Upload a file
@@ -1599,11 +1587,7 @@ async fn test_delete_file_requires_permission() {
     )
     .await;
 
-    let user = test_helpers::create_user_with_permissions(
-        &server,
-        "no_delete_user",
-        &[],
-    )
+    let user = test_helpers::create_user_with_no_permissions(&server, "no_delete_user")
     .await;
 
     // Upload a file

@@ -18,7 +18,7 @@ use uuid::Uuid;
 async fn test_list_models_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let response = reqwest::Client::new()
         .get(&server.api_url("/llm-models"))
@@ -58,7 +58,7 @@ async fn test_list_models_with_read_permission() {
 async fn test_get_model_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
