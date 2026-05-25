@@ -114,7 +114,7 @@ export function UserGroupsDrawer() {
     >
       {loadingUserGroups ? (
         <div className="flex justify-center py-8">
-          <Spin size="large" tip="Loading group memberships..." />
+          <Spin size="large" description="Loading group memberships..." />
         </div>
       ) : groups.length === 0 ? (
         <Empty description="No groups available" />

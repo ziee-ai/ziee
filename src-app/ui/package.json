@@ -19,7 +19,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "check": "npm run generate-openapi && tsc",
+    "check": "npm run generate-openapi && tsc && npx --no-install antd doctor && npx --no-install antd lint src",
     "build": "npm run generate-openapi && tsc && vite build",
     "preview": "vite preview",
     "format": "biome format --write ./src",

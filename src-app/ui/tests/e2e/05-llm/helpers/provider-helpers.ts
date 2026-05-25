@@ -33,18 +33,6 @@ export async function selectProviderType(page: Page, type: 'local' | 'openai' | 
   await combobox.click()
   await page.waitForTimeout(300) // let dropdown open animation complete
 
-  const labelMap: Record<typeof type, string> = {
-    'local': 'Local',
-    'openai': 'OpenAI',
-    'anthropic': 'Anthropic',
-    'groq': 'Groq',
-    'gemini': 'Google Gemini',
-    'mistral': 'Mistral AI',
-    'deepseek': 'DeepSeek',
-    'huggingface': 'Hugging Face',
-    'custom': 'Custom',
-  }
-
   // Map provider type to its zero-based index in PROVIDER_TYPES:
   // local=0, openai=1, anthropic=2, groq=3, gemini=4, mistral=5,
   // deepseek=6, huggingface=7, custom=8. Use keyboard arrows to

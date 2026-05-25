@@ -108,7 +108,7 @@ export default function UserLlmProvidersPage() {
   }
 
   if (error) {
-    return <Alert type="error" message={error} showIcon className="m-6" />
+    return <Alert type="error" title={error} showIcon className="m-6" />
   }
 
   const renderContent = () => {

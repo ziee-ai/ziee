@@ -89,7 +89,7 @@ export function ConversationCard({
                 <Text type="secondary" className="text-xs">
                   {conversation.message_count} message{conversation.message_count !== 1 ? 's' : ''}
                 </Text>
-                <Divider type="vertical" className="!mx-1" />
+                <Divider orientation="vertical" className="!mx-1" />
               </>
             )}
             <Text type="secondary" className="whitespace-nowrap text-xs">

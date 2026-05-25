@@ -104,7 +104,7 @@ export function McpServerCard({
       classNames={{
         body: '!p-3',
       }}
-      bordered={bordered}
+      variant={bordered ? 'outlined' : 'borderless'}
       data-testid={`mcp-server-card-${server.id}`}
     >
       <div className="flex items-start gap-3 flex-wrap">

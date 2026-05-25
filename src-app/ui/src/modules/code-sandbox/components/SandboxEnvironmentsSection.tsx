@@ -56,7 +56,7 @@ export function SandboxEnvironmentsSection() {
         <Alert
           type="warning"
           showIcon
-          message="You don't have permission to view sandbox environments."
+          title="You don't have permission to view sandbox environments."
         />
       </Card>
     )
@@ -199,7 +199,7 @@ export function SandboxEnvironmentsSection() {
   return (
     <Card title="Rootfs environments" style={{ marginBottom: 16 }}>
       {error && (
-        <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />
+        <Alert type="error" showIcon title={error} style={{ marginBottom: 12 }} />
       )}
       {loading ? (
         <Spin />

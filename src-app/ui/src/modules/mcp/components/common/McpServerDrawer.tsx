@@ -436,7 +436,7 @@ export function McpServerDrawer() {
 
               {transportType === 'http' && isUserMode && (
                 <>
-                  <Divider orientationMargin={0} className="text-sm text-gray-400">
+                  <Divider className="text-sm text-gray-400">
                     OAuth 2.1
                   </Divider>
                   <Form.Item
@@ -486,7 +486,7 @@ export function McpServerDrawer() {
             <InputNumber min={1} max={600} placeholder="30" style={{ width: '100%' }} />
           </Form.Item>
 
-          <Divider orientationMargin={0} className="text-sm text-gray-400">Sampling</Divider>
+          <Divider className="text-sm text-gray-400">Sampling</Divider>
 
           {/* Supports Sampling */}
           <Form.Item

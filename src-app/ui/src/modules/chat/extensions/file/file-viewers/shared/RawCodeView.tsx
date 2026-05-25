@@ -22,7 +22,7 @@ export function RawCodeView({ text }: { text: string }) {
     <div className="flex flex-col w-full h-full">
       {truncated && (
         <Alert
-          message={`Showing first ${MAX_LINES} lines. Download the file to view all data.`}
+          title={`Showing first ${MAX_LINES} lines. Download the file to view all data.`}
           type="warning"
           showIcon
           className="m-2 flex-shrink-0"

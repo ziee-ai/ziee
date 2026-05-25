@@ -343,7 +343,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
           type="success"
           icon={<CheckCircleOutlined />}
           showIcon
-          message={
+          title={
             <div>
               <Text strong>{elicitation.server}</Text>
               <Text type="secondary" className="ml-2 text-xs">
@@ -373,7 +373,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
           type="warning"
           icon={<CloseCircleOutlined />}
           showIcon
-          message={
+          title={
             <div>
               <Text strong>{elicitation.server}</Text>
               <Text type="secondary" className="ml-2 text-xs">
@@ -393,7 +393,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
           type="error"
           icon={<StopOutlined />}
           showIcon
-          message={
+          title={
             <div>
               <Text strong>{elicitation.server}</Text>
               <Text type="secondary" className="ml-2 text-xs">
@@ -414,7 +414,7 @@ export function ElicitationFormContent({ content: data }: ContentRendererProps) 
         type="info"
         icon={<FormOutlined />}
         showIcon
-        message={
+        title={
           <div>
             <Text strong>{elicitation.server}</Text>
             <Text type="secondary" className="ml-2 text-xs">
