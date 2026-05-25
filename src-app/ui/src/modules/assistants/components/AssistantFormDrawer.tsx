@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/modules/assistants/stores'
+import { usePermission } from '@/core/permissions'
 
 const { TextArea } = Input
 
@@ -34,6 +35,12 @@ export function AssistantFormDrawer() {
   // Use drawer store
   const { open, loading, editingAssistant, isTemplate, isCloning } =
     Stores.AssistantDrawer
+
+  // Pick the right permission namespace: admin templates vs user assistants.
+  const ns = isTemplate ? 'assistant_templates' : 'assistants'
+  const canCreate = usePermission(`${ns}::create`)
+  const canEdit = usePermission(`${ns}::edit`)
+  const canSave = editingAssistant && !isCloning ? canEdit : canCreate
 
   // Initialize form when drawer opens or editing assistant changes
   useEffect(() => {
@@ -161,6 +168,7 @@ export function AssistantFormDrawer() {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        disabled={!canSave}
       >
         <Form.Item
           name="name"
@@ -239,11 +247,13 @@ export function AssistantFormDrawer() {
 
         <div className="flex justify-end gap-3 pt-4">
           <Button onClick={handleClose} disabled={loading}>
-            Cancel
+            {canSave ? 'Cancel' : 'Close'}
           </Button>
-          <Button type="primary" htmlType="submit" loading={loading}>
-            {editingAssistant ? 'Update' : 'Create'}
-          </Button>
+          {canSave && (
+            <Button type="primary" htmlType="submit" loading={loading}>
+              {editingAssistant ? 'Update' : 'Create'}
+            </Button>
+          )}
         </div>
       </Form>
     </Drawer>

@@ -5,6 +5,7 @@ import {
 } from '@ant-design/icons'
 import { App, Button, Card, Dropdown, Flex, Tag, Typography } from 'antd'
 import type { Assistant } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
 import { CgMenuRightAlt } from 'react-icons/cg'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
@@ -26,12 +27,51 @@ export function AssistantCard({
 }: AssistantCardProps) {
   const { modal } = App.useApp()
 
+  // User assistants only (template list has its own page with its own
+  // gating). Edit also opens the drawer in view-only when missing the
+  // perm — Form's `disabled` flag downstream handles read-only display.
+  const canEdit = usePermission('assistants::edit')
+  const canDelete = usePermission('assistants::delete')
+
   const handleEdit = () => {
     onEdit(assistant)
   }
 
   const handleCardClick = () => {
     onEdit(assistant)
+  }
+
+  const menuItems: any[] = []
+  if (canEdit) {
+    menuItems.push({
+      key: 'edit',
+      icon: <EditOutlined />,
+      label: 'Edit',
+      onClick: (e: any) => {
+        e.domEvent.stopPropagation()
+        e.domEvent.preventDefault()
+        handleEdit()
+      },
+    })
+  }
+  if (canDelete) {
+    menuItems.push({
+      key: 'delete',
+      icon: <DeleteOutlined />,
+      label: 'Delete',
+      danger: true,
+      onClick: (e: any) => {
+        e.domEvent.stopPropagation()
+        e.domEvent.preventDefault()
+        modal.confirm({
+          title: 'Delete Assistant',
+          content: `Are you sure?`,
+          okText: 'Delete',
+          okType: 'danger',
+          onOk: onDelete,
+        })
+      },
+    })
   }
 
   return (
@@ -94,49 +134,18 @@ export function AssistantCard({
           </div>
         </div>
 
-        <div className="absolute top-2 right-2">
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: 'edit',
-                  icon: <EditOutlined />,
-                  label: 'Edit',
-                  onClick: e => {
-                    e.domEvent.stopPropagation()
-                    e.domEvent.preventDefault()
-                    handleEdit()
-                  },
-                },
-                {
-                  key: 'delete',
-                  icon: <DeleteOutlined />,
-                  label: 'Delete',
-                  danger: true,
-                  onClick: e => {
-                    e.domEvent.stopPropagation()
-                    e.domEvent.preventDefault()
-                    modal.confirm({
-                      title: 'Delete Assistant',
-                      content: `Are you sure?`,
-                      okText: 'Delete',
-                      okType: 'danger',
-                      onOk: onDelete,
-                    })
-                  },
-                },
-              ],
-            }}
-            trigger={['click']}
-          >
-            <Button
-              type="text"
-              icon={<CgMenuRightAlt />}
-              onClick={e => e.stopPropagation()}
-              size="small"
-            />
-          </Dropdown>
-        </div>
+        {menuItems.length > 0 && (
+          <div className="absolute top-2 right-2">
+            <Dropdown menu={{ items: menuItems }} trigger={['click']}>
+              <Button
+                type="text"
+                icon={<CgMenuRightAlt />}
+                onClick={e => e.stopPropagation()}
+                size="small"
+              />
+            </Dropdown>
+          </div>
+        )}
       </Flex>
     </Card>
   )
