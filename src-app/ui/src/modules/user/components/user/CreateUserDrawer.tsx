@@ -128,12 +128,7 @@ export function CreateUserDrawer() {
           />
         </Form.Item>
         <Form.Item className="mb-0">
-          <Flex className="gap-2">
-            {canCreate && (
-              <Button type="primary" htmlType="submit" loading={creatingUser}>
-                Create User
-              </Button>
-            )}
+          <Flex className="justify-end gap-2">
             <Button
               onClick={() => {
                 Stores.CreateUserDrawer.closeCreateUserDrawer()
@@ -143,6 +138,11 @@ export function CreateUserDrawer() {
             >
               {canCreate ? 'Cancel' : 'Close'}
             </Button>
+            {canCreate && (
+              <Button type="primary" htmlType="submit" loading={creatingUser}>
+                Create
+              </Button>
+            )}
           </Flex>
         </Form.Item>
       </Form>

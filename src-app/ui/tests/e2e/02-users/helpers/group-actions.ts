@@ -36,8 +36,9 @@ export async function createGroup(page: Page, groupData: CreateGroupData) {
     await permissionsField.fill(JSON.stringify(groupData.permissions))
   }
 
-  // Submit the form
-  const submitButton = drawer.getByRole('button', { name: /create group/i })
+  // Submit the form. Label is now "Create" (verb-only per audit I-2);
+  // target by primary-button class instead.
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.click()
 
   // Wait for success message
@@ -88,8 +89,9 @@ export async function updateGroup(page: Page, groupData: UpdateGroupData) {
     }
   }
 
-  // Submit the form
-  const submitButton = drawer.getByRole('button', { name: /update group/i })
+  // Submit the form. Label is now "Save" (verb-only per audit I-2);
+  // target by primary-button class instead.
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.click()
 
   // Wait for success message

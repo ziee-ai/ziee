@@ -215,12 +215,7 @@ export function UserGroupsSettings() {
             </Form.Item>
 
             <Form.Item className="mb-0">
-              <Flex className="gap-2">
-                {canCreate && (
-                  <Button type="primary" htmlType="submit">
-                    Create Group
-                  </Button>
-                )}
+              <Flex className="justify-end gap-2">
                 <Button
                   onClick={() => {
                     setCreateModalVisible(false)
@@ -229,6 +224,11 @@ export function UserGroupsSettings() {
                 >
                   {canCreate ? 'Cancel' : 'Close'}
                 </Button>
+                {canCreate && (
+                  <Button type="primary" htmlType="submit">
+                    Create
+                  </Button>
+                )}
               </Flex>
             </Form.Item>
           </Form>

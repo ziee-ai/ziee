@@ -164,10 +164,9 @@ test.describe('User Status Management', () => {
     // Fill in short password (scope to drawer)
     await drawer.getByLabel(/new password/i).fill('123') // Less than 6 characters
 
-    // Try to submit
-    const submitButton = drawer.getByRole('button', {
-      name: /reset password/i,
-    })
+    // Try to submit. Drawer submit label was standardised to "Reset"
+    // (audit I-2); scope by primary-button class.
+    const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Check for validation error

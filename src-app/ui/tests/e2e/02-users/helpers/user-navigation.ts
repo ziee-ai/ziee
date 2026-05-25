@@ -23,9 +23,10 @@ export async function navigateToUserGroups(page: Page, baseURL: string) {
 /**
  * Open the create user drawer
  *
- * The trigger button matches /create user/i but so does the submit
- * button inside a previously-closed drawer (AntD keeps closed drawers
- * in DOM). `.first()` grabs the trigger in document order.
+ * The trigger button is icon-only with `aria-label="Create user"`.
+ * Drawer submit label was standardised to "Create" (audit I-2), so
+ * `/create user/i` now matches only the trigger CTA — but we still
+ * use `.first()` defensively in case other elements share the name.
  */
 export async function openCreateUserDrawer(page: Page) {
   const createButton = page.getByRole('button', { name: /create user/i }).first()
