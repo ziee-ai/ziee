@@ -89,16 +89,18 @@ test.describe('User Status Management', () => {
     const popconfirm = page.locator('.ant-popconfirm:visible')
     await expect(popconfirm).toBeVisible()
 
-    // Verify confirmation buttons exist
+    // Verify confirmation buttons exist (target by role/class instead
+    // of label text — okText now reflects the action verb per audit I-4,
+    // not generic "Yes/No").
     await expect(
-      popconfirm.getByRole('button', { name: /yes/i })
+      popconfirm.locator('.ant-btn-primary')
     ).toBeVisible()
     await expect(
-      popconfirm.getByRole('button', { name: /no/i })
+      popconfirm.locator('.ant-btn').filter({ hasNotText: /^(Delete|Remove|Activate|Deactivate|Confirm)$/i })
     ).toBeVisible()
 
     // Cancel the action
-    await popconfirm.getByRole('button', { name: /no/i }).click()
+    await popconfirm.getByRole('button', { name: /^Cancel$/i }).click()
 
     // Verify status didn't change
     await assertUserStatus(page, userData.username, 'active')

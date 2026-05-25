@@ -55,7 +55,7 @@ export async function deleteSystemServer(
 
     // Confirm deletion
     await page.waitForSelector('.ant-popconfirm', { state: 'visible', timeout: 5000 })
-    await page.click('.ant-popconfirm button:has-text("Yes")')
+    await page.click('.ant-popconfirm .ant-btn-primary')
 
     // Wait for success message
     await page.waitForSelector('.ant-message-success', { timeout: 10000 })

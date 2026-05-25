@@ -106,8 +106,8 @@ export function UsersSettings() {
           key="active-confirm"
           title={`${user.is_active ? 'Deactivate' : 'Activate'} this user?`}
           onConfirm={() => handleToggleActive(user.id)}
-          okText="Yes"
-          cancelText="No"
+          okText={user.is_active ? 'Deactivate' : 'Activate'}
+          cancelText="Cancel"
         >
           <Switch className={'mr-2!'} checked={user.is_active} />
         </Popconfirm>,
@@ -161,8 +161,8 @@ export function UsersSettings() {
           key="delete"
           title="Are you sure you want to delete this user?"
           onConfirm={() => handleDelete(user.id)}
-          okText="Yes"
-          cancelText="No"
+          okText="Delete"
+          cancelText="Cancel"
         >
           <Button
             type="text"

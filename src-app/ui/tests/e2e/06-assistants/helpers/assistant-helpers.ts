@@ -181,9 +181,10 @@ export async function deleteTemplateAssistant(page: Page, assistantName: string)
   const row = await getTemplateAssistantRow(page, assistantName)
   await row.getByRole('button', { name: 'Delete' }).click()
 
-  // Confirm in popconfirm
+  // Confirm in popconfirm. Primary-button class is stable across
+  // okText variations ("Yes" → "Delete" per audit I-4).
   await page.locator('.ant-popconfirm').waitFor({ state: 'visible' })
-  await page.locator('.ant-popconfirm').getByRole('button', { name: 'Yes' }).click()
+  await page.locator('.ant-popconfirm .ant-btn-primary').click()
 
   // Wait for popconfirm to close
   await page.locator('.ant-popconfirm').waitFor({ state: 'hidden' })

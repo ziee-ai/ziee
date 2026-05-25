@@ -88,8 +88,8 @@ export function GroupListItem({
           key="delete"
           title="Are you sure you want to delete this group?"
           onConfirm={() => onDelete(group.id)}
-          okText="Yes"
-          cancelText="No"
+          okText="Delete"
+          cancelText="Cancel"
         >
           <Button
             type="text"

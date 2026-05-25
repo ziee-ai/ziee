@@ -130,8 +130,8 @@ export function UserGroupsDrawer() {
                       key="remove"
                       title="Remove user from this group?"
                       onConfirm={() => handleRemoveFromGroup(group.id)}
-                      okText="Yes"
-                      cancelText="No"
+                      okText="Remove"
+                      cancelText="Cancel"
                     >
                       <Button type="link" danger size="small">
                         Remove

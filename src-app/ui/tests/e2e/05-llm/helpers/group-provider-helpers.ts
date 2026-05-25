@@ -422,7 +422,7 @@ export async function deleteUserGroup(
 
   // Confirm deletion - look for "Yes" button in confirmation dialog
   await page.waitForSelector('.ant-popconfirm', { state: 'visible', timeout: 5000 })
-  await page.click('.ant-popconfirm button:has-text("Yes")')
+  await page.click('.ant-popconfirm .ant-btn-primary')
 
   // Wait for success message
   await page.waitForSelector('text=User group deleted successfully', { timeout: 10000 })

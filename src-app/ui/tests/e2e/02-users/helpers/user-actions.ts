@@ -96,8 +96,10 @@ export async function deleteUser(page: Page, username: string) {
   await deleteButton.waitFor({ state: 'visible', timeout: 5000 })
   await deleteButton.click()
 
-  // Confirm the deletion in the popconfirm
-  const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
+  // Confirm the deletion in the popconfirm. Target the primary button
+  // by class so the locator survives okText standardisation
+  // ("Yes" → "Delete" / "Deactivate" per audit I-4).
+  const confirmButton = page.locator('.ant-popconfirm:visible .ant-btn-primary')
   await confirmButton.click()
 
   // Wait for success message
@@ -122,8 +124,9 @@ export async function toggleUserStatus(page: Page, username: string) {
 
   await statusSwitch.click()
 
-  // Confirm the action in the popconfirm
-  const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
+  // Confirm the action in the popconfirm. Primary-button class is
+  // stable across okText variations.
+  const confirmButton = page.locator('.ant-popconfirm:visible .ant-btn-primary')
   await confirmButton.click()
 
   // Wait for success message

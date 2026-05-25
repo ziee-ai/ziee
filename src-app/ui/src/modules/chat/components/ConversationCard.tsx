@@ -129,8 +129,8 @@ export function ConversationCard({
               setPopconfirmOpen(false)
             }}
             onCancel={() => setPopconfirmOpen(false)}
-            okText="Yes"
-            cancelText="No"
+            okText="Delete"
+            cancelText="Cancel"
             okButtonProps={{ loading: false }}
           >
             <Button

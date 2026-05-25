@@ -110,8 +110,10 @@ export async function deleteGroup(page: Page, groupName: string) {
 
   await deleteButton.first().click()
 
-  // Confirm the deletion in the popconfirm
-  const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
+  // Confirm the deletion in the popconfirm. Target the primary button
+  // by class so the locator survives okText standardisation
+  // ("Yes" → "Delete" / "Remove" per audit I-4).
+  const confirmButton = page.locator('.ant-popconfirm:visible .ant-btn-primary')
   await confirmButton.click()
 
   // Wait for success message
@@ -145,8 +147,9 @@ export async function removeUserFromGroup(page: Page, username: string) {
 
   await removeButton.click()
 
-  // Confirm if popconfirm appears
-  const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
+  // Confirm if popconfirm appears. Primary-button class is stable
+  // across okText variations.
+  const confirmButton = page.locator('.ant-popconfirm:visible .ant-btn-primary')
   if (await confirmButton.isVisible()) {
     await confirmButton.click()
   }

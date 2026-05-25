@@ -92,8 +92,8 @@ export function AssistantsSettings() {
           title="Delete Assistant"
           description="Are you sure you want to delete this assistant?"
           onConfirm={() => handleDelete(assistant)}
-          okText="Yes"
-          cancelText="No"
+          okText="Delete"
+          cancelText="Cancel"
         >
           <Button type="text" danger icon={<DeleteOutlined />}>
             Delete
