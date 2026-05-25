@@ -6,6 +6,7 @@ import type {
 } from 'react'
 import type { StoreProxy } from '@/core/stores'
 import type { useAppLayoutStore } from '@/modules/layouts/app-layout/AppLayout.store'
+import type { PermissionExpr } from '@/core/permissions'
 
 // Store type declarations
 declare module '@/core/stores' {
@@ -23,7 +24,12 @@ export interface SidebarNavItem {
   label: string
   path: string
   order?: number
-  requiresPermission?: string
+  /**
+   * Optional permission expression. When set, the entry is hidden
+   * from the sidebar for users who don't satisfy it. See
+   * `.claude/PERMISSION_GATING.md`.
+   */
+  permission?: PermissionExpr
 }
 
 /**
@@ -35,6 +41,12 @@ export interface SidebarToolItem {
   label: string
   path: string
   order?: number
+  /**
+   * Optional permission expression. When set, the entry is hidden
+   * from the sidebar tools section for users who don't satisfy it.
+   * See `.claude/PERMISSION_GATING.md`.
+   */
+  permission?: PermissionExpr
 }
 
 /**
