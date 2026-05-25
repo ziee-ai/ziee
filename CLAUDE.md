@@ -386,10 +386,19 @@ and the ongoing release workflow.
 
 **[React Component Patterns](./.claude/REACT_COMPONENT_PATTERNS.md)** ⚠️ CRITICAL
 - Correct store access patterns
+- Permission gating (Can / usePermission / slot field)
 - Anti-patterns to avoid
 - Initialization system
 - Error handling
 - Loading states
+
+**[Permission Gating](./.claude/PERMISSION_GATING.md)** ⚠️ CRITICAL (when adding admin features)
+- The `PermissionExpr` type and three gating layers
+- Root admin vs Administrators group
+- Wildcards and `is_admin` short-circuit
+- Slot fields for declarative gating
+- Checklist for adding a new feature
+- Anti-patterns to avoid
 
 **[Backend Architecture](./.claude/BACKEND_ARCHITECTURE.md)**
 - Rust module system

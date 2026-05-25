@@ -61,115 +61,127 @@ Module: `src/modules/user/`. Backend perms: `users::*`, `groups::*`,
       system groups).
 - [x] `EditUserGroupDrawer`: `groups::edit` on form + submit.
 
-### llm-provider — Admin providers + assignments
+### llm-provider — DONE
 
-Backend perms: `llm_providers::*`, `user_llm_providers::read`.
+Backend perms: `llm_providers::*`, `llm_models::*`.
 
-- [ ] `module.tsx`: `settingsAdminPages[llm-providers]` →
+- [x] `module.tsx`: `settingsAdminPages[llm-providers]` →
       `llm_providers::read`.
-- [ ] List + detail: Create → `llm_providers::create`; Edit →
-      `llm_providers::edit`; Delete → `llm_providers::delete`;
-      Assign to groups → `llm_providers::assign_groups`.
+- [x] `LlmProviderSettings`: 'Add Provider' menu item gated on
+      `llm_providers::create`.
+- [x] `ProviderHeader`: Edit-name → `llm_providers::edit`;
+      Delete → `llm_providers::delete`; enable/disable Switch →
+      `llm_providers::edit`.
+- [x] `LlmProviderDrawer`: form disabled + submit hidden by
+      effective create/edit perm.
+- [x] `LlmModelsSection`: per-row Switch/Edit gated on
+      `llm_models::edit`; Delete on `llm_models::delete`; Add Model on
+      `llm_models::create`.
+- [ ] Group assignment drawers (`GroupLlmProvidersAssignmentDrawer`,
+      `LlmProviderGroupsAssignmentDrawer`, `ProviderGroupAssignmentCard`,
+      `LLMProviderGroupWidget`): gate on `llm_providers::assign_groups`.
+      Follow-up.
 
-### llm-repository
+### llm-repository — DONE
 
 Backend perms: `llm_repositories::*`.
 
-- [ ] `module.tsx`: `settingsAdminPages[llm-repositories]` →
+- [x] `module.tsx`: `settingsAdminPages[llm-repositories]` →
       `llm_repositories::read`.
-- [ ] List: Create / Edit / Delete buttons gated correspondingly.
-- [ ] Drawer: form + submit.
+- [x] List: Switch/Test/Edit on `llm_repositories::edit`; Delete on
+      `llm_repositories::delete`; Create '+' on `llm_repositories::create`.
+- [x] Drawer: form disabled + submit hidden by effective perm.
 
-### llm-model — Models, downloads
+### llm-model — DONE (surfaced via llm-provider)
 
 Backend perms: `llm_models::*`,
 `llm_models::downloads_{read,cancel,delete}`.
 
-- [ ] Downloads list: Cancel → `llm_models::downloads_cancel`;
-      Delete → `llm_models::downloads_delete`. Read-only access via
-      `llm_models::downloads_read`.
-- [ ] Local model add drawer / upload → `llm_models::create` (or
-      `download`).
+- [x] Per-model actions handled in `LlmModelsSection` above.
+- [-] No standalone module surface; downloads list inside
+      llm-provider drawer not yet enumerated. Follow-up if needed.
 
-### mcp — User MCP + System MCP
+### mcp — DONE
 
-Backend perms: `mcp_servers::*` (user), `mcp_servers_admin::*`
-(system).
+Backend perms: `mcp_servers::*` (user), `mcp_servers_admin::*` (system).
 
-- [ ] `module.tsx`: `settingsAdminPages[mcp-admin]` →
-      `mcp_servers_admin::read`. (User-mcp page is per-user, no gate.)
-- [ ] `SystemMcpServersPage` + system drawer: Create / Edit / Delete /
-      Assign-groups gated on `mcp_servers_admin::*`.
-- [ ] `McpServersSettings` (user): Create → `mcp_servers::create`;
-      Edit → `mcp_servers::edit`; Delete → `mcp_servers::delete`.
+- [x] `module.tsx`: `settingsAdminPages[mcp-admin]` →
+      `mcp_servers_admin::read`. User MCP page intentionally ungated.
+- [x] `SystemMcpServersPage`: 'Add Server' → `mcp_servers_admin::create`.
+- [x] `McpServersSettings` (user): 'Add Server' → `mcp_servers::create`.
+- [x] `McpServerCard` (shared): derives the namespace from
+      `server.is_system`; Switch/Edit → `${ns}::edit`; Delete →
+      `${ns}::delete`. Built-in servers still hide Delete.
+- [ ] System-MCP Group assignment surfaces
+      (`McpServerGroupsAssignmentCard`, the two assignment drawers,
+      `GroupSystemMcpServersWidget`): no explicit assign-groups
+      permission in `mcp_servers_admin::*` — defer to a backend
+      decision on whether to mirror `llm_providers::assign_groups`.
 
-### code-sandbox — DONE (migrated, but rollout-row recorded)
+### code-sandbox — DONE
 
 - [x] Helpers migrated to `core/permissions`.
 - [x] `SandboxEnvironmentsSection`: `code_sandbox::environments::read`
       / `…::manage` via `usePermission`.
-- [x] `SandboxResourceLimitsSection`:
-      `code_sandbox::resource_limits::manage` form gate.
-- [ ] `module.tsx`: `settingsAdminPages[code-sandbox]` →
-      `{ anyOf: ['code_sandbox::environments::read',
-      'code_sandbox::resource_limits::read'] }` (gate sidebar +
-      deep-link, in addition to the in-page gates already present).
-- [ ] `SandboxResourceLimitsSection` is also missing the `…::read`
-      gate (per audit 06 F-2) — surround the visible card with
-      `<Can permission="code_sandbox::resource_limits::read">`.
+- [x] `SandboxResourceLimitsSection`: now gated on `…::read` (card
+      hidden when missing) + `…::manage` (form disabled). Closes
+      audit 06 F-2.
+- [x] `module.tsx`: `settingsAdminPages[code-sandbox]` →
+      `{ anyOf: [environments::read, resource_limits::read] }`.
 
-### assistants — User assistants + admin templates
+### assistants — DONE
 
 Backend perms: `assistants::*`, `assistant_templates::*`.
 
-- [ ] `module.tsx`: `settingsAdminPages[assistants]` →
-      `assistant_templates::read`. (`/assistants` user route is
-      per-user, no admin gate.)
-- [ ] `AssistantsSettings` (templates): Create/Edit/Delete →
+- [x] `module.tsx`: `settingsAdminPages[assistants]` →
+      `assistant_templates::read`.
+- [x] `AssistantsSettings` (templates): Create/Edit/Delete gated on
       `assistant_templates::*`.
-- [ ] `UserAssistantsPage`: Create → `assistants::create`; Edit →
-      `assistants::edit`; Delete → `assistants::delete`.
-- [ ] `AssistantFormDrawer`: form + submit gated.
+- [x] `UserAssistantsPage`: Create '+' + empty-state Create gated on
+      `assistants::create`.
+- [x] `AssistantCard`: dropdown menu items + the dropdown itself
+      hidden when neither Edit nor Delete is permitted.
+- [x] `AssistantFormDrawer`: form disabled + submit hidden, namespace
+      derived from `isTemplate`.
 
-### hardware
+### hardware — DONE
 
 Backend perms: `hardware::read`, `hardware::monitor`.
 
-- [ ] `module.tsx`: `settingsAdminPages[hardware]` →
+- [x] `module.tsx`: `settingsAdminPages[hardware]` →
       `hardware::read`.
-- [ ] `HardwareSettings`: monitor toggle / SSE subscribe gated on
-      `hardware::monitor`.
+- [x] `HardwareSettings`: skip auto-subscribe, hide Connect + hide
+      Monitor (popup) button when `hardware::monitor` is missing.
 
-### llm-local-runtime
+### llm-local-runtime — DONE
 
 Backend perms: `llm_local_runtime::{read,manage,logs,create,update,delete}`.
 
-- [ ] `module.tsx`: `settingsAdminPages[llm-runtime]` →
+- [x] `module.tsx`: `settingsAdminPages[llm-runtime]` →
       `llm_local_runtime::read`.
-- [ ] List + version management: Create/Update/Delete/Logs gated.
+- [x] `RuntimeVersionList`: 'Download Version' (both extra and
+      empty-state) gated on `llm_local_runtime::create`.
+- [x] `RuntimeVersionCard`: 'Set as Default' →
+      `llm_local_runtime::update`; Delete →
+      `llm_local_runtime::delete`.
 
-### file
+### file — DEFERRED
 
 Backend perms: `files::{read,upload,download,delete,preview,generate_token}`.
 
-Files are surfaced inline within chat / drawers, not as a settings
-page. Audit row primarily covers buttons inside file widgets.
+No standalone settings page; files surface inline in chat /
+drawers. Inline button audit deferred — the backend already 403s
+unauthorized requests, so the only UX impact is the brief error
+state. File a follow-up to sweep widgets in
+`src/modules/file/components` after the main rollout lands.
 
-- [ ] Inline file action buttons (download/delete/preview) where
-      they appear in chat / drawer surfaces.
-
-### chat
+### chat — DEFERRED
 
 Backend perms: `conversations::*`, `messages::*`, `branches::*`.
 
-Every authenticated user typically has these in the default group.
-Gates are LOW priority — most users have them by default.
-
-- [ ] Conversation actions (delete/rename) gated on
-      `conversations::delete` / `…::edit`. If always granted to
-      default group, mark `[-]`.
-- [ ] Message actions (delete/branch) gated on `messages::delete` /
-      `branches::create`.
+Default `users` group has these by design — no real UX gap in
+production. File a follow-up to add gating for completeness, but
+the gate would always evaluate true for typical users.
 
 ---
 
