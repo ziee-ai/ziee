@@ -57,7 +57,8 @@ export default createModule({
         icon: <CloudServerOutlined />,
         label: 'Local Runtimes',
         path: '/settings/llm-runtime',
-        order: 52 // After LLM Providers (51), before LLM Repositories (53)
+        order: 52, // After LLM Providers (51), before LLM Repositories (53)
+        permission: 'llm_local_runtime::read',
       }
     ]
   }

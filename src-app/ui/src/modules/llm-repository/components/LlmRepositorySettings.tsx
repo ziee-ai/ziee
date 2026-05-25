@@ -16,6 +16,7 @@ import {
   Typography,
 } from 'antd'
 import { Stores } from '@/core/stores'
+import { Can, usePermission } from '@/core/permissions'
 import type { LlmRepository } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 
@@ -26,6 +27,9 @@ export function LlmRepositorySettings() {
 
   // Stores
   const { repositories, testing } = Stores.LlmRepository
+
+  const canEdit = usePermission('llm_repositories::edit')
+  const canDelete = usePermission('llm_repositories::delete')
 
   const testRepositoryConnection = async (repository: LlmRepository) => {
     // Check if repository has credentials configured
@@ -103,41 +107,50 @@ export function LlmRepositorySettings() {
   const getRepositoryActions = (repository: LlmRepository) => {
     const actions: React.ReactNode[] = []
 
-    // Always include the enable/disable switch first
-    actions.push(
-      <Switch
-        key="enable"
-        className="!mr-2"
-        checked={repository.enabled}
-        onChange={checked => handleToggleRepository(repository.id, checked)}
-        aria-label={`Toggle ${repository.name} repository`}
-      />,
-    )
+    // Enable/disable switch — requires edit
+    if (canEdit) {
+      actions.push(
+        <Switch
+          key="enable"
+          className="!mr-2"
+          checked={repository.enabled}
+          onChange={checked => handleToggleRepository(repository.id, checked)}
+          aria-label={`Toggle ${repository.name} repository`}
+        />,
+      )
+    }
 
-    actions.push(
-      <Button
-        key="test"
-        type="text"
-        icon={<CloudDownloadOutlined />}
-        loading={testing}
-        onClick={() => testRepositoryConnection(repository)}
-      >
-        Test
-      </Button>,
-    )
+    // Test connection — read is enough to view, but testing hits
+    // outbound auth so gate behind edit to stay consistent with the
+    // backend's update endpoint.
+    if (canEdit) {
+      actions.push(
+        <Button
+          key="test"
+          type="text"
+          icon={<CloudDownloadOutlined />}
+          loading={testing}
+          onClick={() => testRepositoryConnection(repository)}
+        >
+          Test
+        </Button>,
+      )
+    }
 
-    actions.push(
-      <Button
-        key="edit"
-        type="text"
-        icon={<EditOutlined />}
-        onClick={() => handleEditRepository(repository)}
-      >
-        Edit
-      </Button>,
-    )
+    if (canEdit) {
+      actions.push(
+        <Button
+          key="edit"
+          type="text"
+          icon={<EditOutlined />}
+          onClick={() => handleEditRepository(repository)}
+        >
+          Edit
+        </Button>,
+      )
+    }
 
-    if (!repository.built_in) {
+    if (canDelete && !repository.built_in) {
       actions.push(
         <Popconfirm
           key="delete"
@@ -171,11 +184,13 @@ export function LlmRepositorySettings() {
           </Flex>
         }
         extra={
-          <Button
-            type={'text'}
-            icon={<PlusOutlined />}
-            onClick={handleAddRepository}
-          />
+          <Can permission="llm_repositories::create">
+            <Button
+              type={'text'}
+              icon={<PlusOutlined />}
+              onClick={handleAddRepository}
+            />
+          </Can>
         }
       >
         <Flex className="flex-col gap-4">

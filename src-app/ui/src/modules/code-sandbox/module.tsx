@@ -46,6 +46,15 @@ export default createModule({
         label: 'Code Sandbox',
         path: 'sandbox',
         order: 26,
+        // Either card on the page is enough access to justify showing
+        // the menu entry; per-section gates inside the page still
+        // hide each card individually.
+        permission: {
+          anyOf: [
+            'code_sandbox::environments::read',
+            'code_sandbox::resource_limits::read',
+          ],
+        },
       },
     ],
   },

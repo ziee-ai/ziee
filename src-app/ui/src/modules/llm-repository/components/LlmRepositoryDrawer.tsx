@@ -7,6 +7,7 @@ import { App, Button, Form, Input, Select, Switch, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import type {
   CreateLlmRepositoryRequest,
   UpdateLlmRepositoryRequest,
@@ -21,6 +22,10 @@ export function LlmRepositoryDrawer() {
 
   const { creating, updating, testing } = Stores.LlmRepository
   const { open, editingRepository: repository } = Stores.LlmRepositoryDrawer
+  const canCreate = usePermission('llm_repositories::create')
+  const canEdit = usePermission('llm_repositories::edit')
+  // Effective gate on the form: editing requires edit; creating requires create.
+  const canSave = repository ? canEdit : canCreate
 
   // Update form when editing repository.
   //
@@ -202,6 +207,7 @@ export function LlmRepositoryDrawer() {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        disabled={!canSave}
       >
         <Form.Item
           name="name"
@@ -373,15 +379,17 @@ export function LlmRepositoryDrawer() {
             onClick={handleClose}
             disabled={loading || creating || updating}
           >
-            Cancel
+            {canSave ? 'Cancel' : 'Close'}
           </Button>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={loading || creating || updating}
-          >
-            {repository ? 'Update' : 'Add'} Repository
-          </Button>
+          {canSave && (
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading || creating || updating}
+            >
+              {repository ? 'Update' : 'Add'} Repository
+            </Button>
+          )}
         </div>
       </Form>
     </Drawer>

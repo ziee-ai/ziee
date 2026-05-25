@@ -132,6 +132,7 @@ export default createModule({
         label: 'System MCP Servers',
         path: 'mcp-admin',
         order: 25,
+        permission: 'mcp_servers_admin::read',
       },
     ],
     userGroup: [

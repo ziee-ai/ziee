@@ -144,6 +144,7 @@ export default createModule({
         label: 'LLM Providers',
         path: 'llm-providers',
         order: 21,
+        permission: 'llm_providers::read',
       },
     ],
     userGroup: [

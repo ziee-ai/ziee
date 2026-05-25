@@ -46,6 +46,7 @@ export default createModule({
         label: 'Hardware',
         path: 'hardware',
         order: 30,
+        permission: 'hardware::read',
       },
     ],
   },

@@ -58,6 +58,7 @@ export default createModule({
         label: 'LLM Repositories',
         path: 'llm-repositories',
         order: 20,
+        permission: 'llm_repositories::read',
       },
     ],
   },

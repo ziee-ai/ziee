@@ -72,6 +72,7 @@ export default createModule({
         label: 'Assistants',
         path: 'assistants',
         order: 25,
+        permission: 'assistant_templates::read',
       },
     ],
   },
