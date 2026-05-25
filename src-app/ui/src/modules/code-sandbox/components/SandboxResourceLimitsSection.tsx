@@ -21,6 +21,7 @@ import type {
 } from '@/api-client/types'
 
 const MANAGE_PERM = 'code_sandbox::resource_limits::manage'
+const READ_PERM = 'code_sandbox::resource_limits::read'
 
 const MIB = 1024 * 1024
 const GIB = 1024 * 1024 * 1024
@@ -91,6 +92,7 @@ function formToPatch(v: FormValues): UpdateCodeSandboxResourceLimits {
 export function SandboxResourceLimitsSection() {
   const { limits, loading, saving, error } = Stores.SandboxResourceLimits
   const canManage = usePermission(MANAGE_PERM)
+  const canRead = usePermission(READ_PERM) || canManage
 
   const [form] = Form.useForm<FormValues>()
   const [dirty, setDirty] = useState(false)
@@ -117,6 +119,18 @@ export function SandboxResourceLimitsSection() {
       form.setFieldsValue(rowToForm(limits))
       setDirty(false)
     }
+  }
+
+  if (!canRead) {
+    return (
+      <Card title="Resource limits" style={{ marginBottom: 16 }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="You don't have permission to view sandbox resource limits."
+        />
+      </Card>
+    )
   }
 
   return (

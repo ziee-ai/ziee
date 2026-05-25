@@ -2,6 +2,7 @@ import React from 'react'
 import { Button, Card, Empty, Spin, Space, Divider, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { Can, usePermission } from '@/core/permissions'
 import type { RuntimeEngine } from '../types'
 import { RuntimeVersionCard } from './RuntimeVersionCard'
 
@@ -13,6 +14,7 @@ export function RuntimeVersionList({ engine }: Props) {
   const { versions, loading, error } = Stores.RuntimeVersion
   const { openDrawer } = Stores.RuntimeDownloadDrawer
 
+  const canCreate = usePermission('llm_local_runtime::create')
   const engineVersions = versions.filter(v => v.engine === engine)
 
   // Show error message
@@ -38,13 +40,15 @@ export function RuntimeVersionList({ engine }: Props) {
           description={`No ${engine} versions installed`}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         >
-          <Button
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={() => openDrawer(engine)}
-          >
-            Download Version
-          </Button>
+          {canCreate && (
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={() => openDrawer(engine)}
+            >
+              Download Version
+            </Button>
+          )}
         </Empty>
       </Card>
     )
@@ -61,13 +65,15 @@ export function RuntimeVersionList({ engine }: Props) {
         </Space>
       }
       extra={
-        <Button
-          type="primary"
-          icon={<DownloadOutlined />}
-          onClick={() => openDrawer(engine)}
-        >
-          Download Version
-        </Button>
+        <Can permission="llm_local_runtime::create">
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={() => openDrawer(engine)}
+          >
+            Download Version
+          </Button>
+        </Can>
       }
     >
       {engineVersions.map((version, index) => (

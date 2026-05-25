@@ -5,6 +5,7 @@ import {
   StarOutlined
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import type { RuntimeVersionResponse } from '@/api-client/types'
 
 interface Props {
@@ -16,6 +17,9 @@ export function RuntimeVersionCard({ version }: Props) {
 
   const isSettingDefault = settingDefault.get(version.id) || false
   const isDeleting = deleting.get(version.id) || false
+
+  const canUpdate = usePermission('llm_local_runtime::update')
+  const canDelete = usePermission('llm_local_runtime::delete')
 
   const handleSetDefault = async () => {
     try {
@@ -67,7 +71,7 @@ export function RuntimeVersionCard({ version }: Props) {
       </Descriptions>
 
       <Space style={{ marginTop: 12 }}>
-        {!version.is_system_default && (
+        {canUpdate && !version.is_system_default && (
           <Button
             icon={<StarOutlined />}
             loading={isSettingDefault}
@@ -77,30 +81,32 @@ export function RuntimeVersionCard({ version }: Props) {
           </Button>
         )}
 
-        <Popconfirm
-          title="Delete Runtime Version"
-          description={
-            <>
-              Are you sure you want to delete version {version.version}?
-              {version.is_system_default && (
-                <div style={{ color: '#ff4d4f', marginTop: 8 }}>
-                  Warning: This is the default version.
-                </div>
-              )}
-            </>
-          }
-          onConfirm={handleDelete}
-          okText="Delete"
-          okButtonProps={{ danger: true }}
-        >
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            loading={isDeleting}
+        {canDelete && (
+          <Popconfirm
+            title="Delete Runtime Version"
+            description={
+              <>
+                Are you sure you want to delete version {version.version}?
+                {version.is_system_default && (
+                  <div style={{ color: '#ff4d4f', marginTop: 8 }}>
+                    Warning: This is the default version.
+                  </div>
+                )}
+              </>
+            }
+            onConfirm={handleDelete}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
           >
-            Delete
-          </Button>
-        </Popconfirm>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              loading={isDeleting}
+            >
+              Delete
+            </Button>
+          </Popconfirm>
+        )}
       </Space>
     </div>
   )
