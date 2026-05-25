@@ -3,10 +3,12 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { ApiClient } from '@/api-client'
+import { usePermission } from '@/core/permissions'
 import { useMcpServerDrawerStore } from '@/modules/mcp/stores'
-import type {
-  CreateMcpServerRequest,
-  UpdateMcpServerRequest,
+import {
+  Permissions,
+  type CreateMcpServerRequest,
+  type UpdateMcpServerRequest,
 } from '@/api-client/types'
 
 const { TextArea } = Input
@@ -43,6 +45,28 @@ export function McpServerDrawer() {
   // OAuth is configurable only for user-owned HTTP servers (the endpoints are
   // owner-scoped). Built-in/system servers authenticate differently.
   const isUserMode = mode === 'create' || mode === 'edit'
+
+  // Mirror the user/ + assistants/ pattern (audit I-3): gate the form
+  // by mode-specific manage permissions so the drawer becomes read-
+  // only if a perm is revoked while it's open.
+  const canCreateUser = usePermission(Permissions.McpServersCreate)
+  const canEditUser = usePermission(Permissions.McpServersEdit)
+  const canCreateSystem = usePermission(Permissions.McpServersAdminCreate)
+  const canEditSystem = usePermission(Permissions.McpServersAdminEdit)
+  const canManage = (() => {
+    switch (mode) {
+      case 'create':
+        return canCreateUser
+      case 'edit':
+        return canEditUser
+      case 'create-system':
+        return canCreateSystem
+      case 'edit-system':
+        return canEditSystem
+      default:
+        return false
+    }
+  })()
 
   // Load any existing OAuth config when editing a user HTTP server.
   useEffect(() => {
@@ -314,7 +338,12 @@ export function McpServerDrawer() {
   return (
     <Drawer open={open} onClose={handleClose} title={getTitle()} size={600}>
       <div className="flex flex-col gap-4">
-        <Form name="mcp-server-form" form={form} layout="vertical">
+        <Form
+          name="mcp-server-form"
+          form={form}
+          layout="vertical"
+          disabled={!canManage}
+        >
           {/* Name (only for create mode) */}
           {(mode === 'create' || mode === 'create-system') && (
             <Form.Item
@@ -521,10 +550,14 @@ export function McpServerDrawer() {
         </Form>
 
         <div className="flex gap-2 justify-end">
-          <Button onClick={handleClose}>Cancel</Button>
-          <Button type="primary" loading={loading} onClick={handleSubmit}>
-            {getButtonText()}
+          <Button onClick={handleClose}>
+            {canManage ? 'Cancel' : 'Close'}
           </Button>
+          {canManage && (
+            <Button type="primary" loading={loading} onClick={handleSubmit}>
+              {getButtonText()}
+            </Button>
+          )}
         </div>
       </div>
     </Drawer>
