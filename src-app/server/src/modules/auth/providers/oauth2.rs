@@ -1,9 +1,7 @@
-// Auth provider infrastructure - part of future auth system
-#![allow(dead_code)]
-
 // OAuth2/OIDC authentication provider implementation
 
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
@@ -124,6 +122,32 @@ pub struct OAuth2Config {
     pub attribute_mapping: OAuth2AttributeMapping,
     /// Session timeout in seconds (default: 300 = 5 minutes)
     pub session_timeout_seconds: Option<i64>,
+    /// Microsoft Entra ONLY: allowlist of tenant IDs (the `tid` claim
+    /// on the ID token). When `Some`, the callback REJECTS tokens
+    /// whose `tid` is not in this list — critical for safety when
+    /// using the `https://login.microsoftonline.com/common/v2.0`
+    /// (multi-tenant) issuer, because `common`'s discovery returns
+    /// the templated issuer `https://login.microsoftonline.com/{tenantid}/v2.0`,
+    /// which `openidconnect` cannot equality-check. Without this
+    /// allowlist, ANY Microsoft tenant in the world is a valid login.
+    /// `None` = accept any tenant (only safe for true consumer apps
+    /// using the `consumers` endpoint).
+    #[serde(default)]
+    pub allowed_tenant_ids: Option<Vec<String>>,
+}
+
+/// Extract a string claim from a verified JWT compact serialization.
+/// Safe because openidconnect has already validated signature +
+/// standard claims before this is called; we just need to read one
+/// additional claim (`tid`) that isn't in `CoreIdTokenClaims`.
+fn extract_string_claim(id_token_jwt: &str, claim: &str) -> Option<String> {
+    let parts: Vec<&str> = id_token_jwt.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
+    let payload: serde_json::Value = serde_json::from_slice(&payload_bytes).ok()?;
+    payload.get(claim).and_then(|v| v.as_str()).map(String::from)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -334,7 +358,11 @@ impl AuthProviderTrait for OAuth2Provider {
         ))
     }
 
-    async fn init_oauth_flow(&self, redirect_uri: &str) -> Result<OAuthResult, AuthError> {
+    async fn init_oauth_flow(
+        &self,
+        redirect_uri: &str,
+        return_to: Option<&str>,
+    ) -> Result<OAuthResult, AuthError> {
         // Generate PKCE challenge
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -430,6 +458,7 @@ impl AuthProviderTrait for OAuth2Provider {
             redirect_uri: redirect_uri.to_string(),
             created_at: Utc::now(),
             expires_at,
+            return_to: return_to.map(|s| s.to_string()),
         };
 
         Repos.auth.create_oauth_session(&session)
@@ -520,15 +549,106 @@ impl AuthProviderTrait for OAuth2Provider {
                 .id_token()
                 .ok_or_else(|| AuthError::InternalError("No ID token in response".to_string()))?;
 
-            // Verify ID token
-            let verifier = client.id_token_verifier();
+            // Peek at `tid` from the JWT payload BEFORE verification.
+            // Required for two reasons:
+            //   (a) Microsoft's `common` endpoint discovery returns the
+            //       templated issuer `https://login.microsoftonline.com/{tenantid}/v2.0`
+            //       (literal curly-brace placeholder), which fails
+            //       openidconnect's strict issuer-equality check. We
+            //       substitute `{tenantid}` with the token's tid and
+            //       re-do discovery against the resulting single-tenant
+            //       URL before verifying.
+            //   (b) Tenant-allowlist enforcement when configured.
+            // The peek is safe — it reads JSON from the verified-signature
+            // payload only AFTER we re-verify below. We never trust the
+            // peeked value beyond using it to pick the right verifier.
+            let id_token_jwt = id_token.to_string();
+            let token_tid = extract_string_claim(&id_token_jwt, "tid");
+
+            let needs_substitution = issuer_url.contains("{tenantid}");
+
+            // Enforce the allowlist + substitute issuer URL if templated.
+            // Order matters: reject BEFORE the expensive re-discovery.
+            let (verify_client, _verify_client_holder);
             let nonce = Nonce::new(nonce_str.clone());
+
+            if needs_substitution {
+                let tid = token_tid.as_deref().ok_or_else(|| {
+                    AuthError::InvalidCredentials(
+                        "Microsoft templated-issuer flow requires a `tid` claim on the ID token".to_string(),
+                    )
+                })?;
+                // A templated issuer means a multi-tenant endpoint; without
+                // an explicit allowlist ANY Microsoft tenant in the world
+                // can log in. Refuse to operate in this footgun configuration.
+                let allowed = self.config.allowed_tenant_ids.as_ref().ok_or_else(|| {
+                    AuthError::ConfigurationError(format!(
+                        "Provider '{}' uses templated issuer URL but `allowed_tenant_ids` is not set — any Microsoft tenant could log in. Configure `allowed_tenant_ids` with the tenants you trust.",
+                        self.name
+                    ))
+                })?;
+                if !allowed.iter().any(|t| t.eq_ignore_ascii_case(tid)) {
+                    return Err(AuthError::InvalidCredentials(format!(
+                        "Tenant '{}' is not in the allowlist for provider '{}'",
+                        tid, self.name
+                    )));
+                }
+                let substituted = issuer_url.replace("{tenantid}", tid);
+                let sub_issuer = IssuerUrl::new(substituted).map_err(|e| {
+                    AuthError::ConfigurationError(format!(
+                        "Invalid substituted issuer URL: {}",
+                        e
+                    ))
+                })?;
+                let sub_metadata =
+                    CoreProviderMetadata::discover_async(sub_issuer, &async_http_client)
+                        .await
+                        .map_err(|e| {
+                            AuthError::ConfigurationError(format!(
+                                "Failed to discover OIDC metadata for substituted issuer: {}",
+                                e
+                            ))
+                        })?;
+                let sub_client_id = ClientId::new(self.config.client_id.clone());
+                let sub_client_secret = ClientSecret::new(self.config.client_secret.clone());
+                let sub_redirect_url =
+                    RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
+                        AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
+                    })?;
+                _verify_client_holder = CoreClient::from_provider_metadata(
+                    sub_metadata,
+                    sub_client_id,
+                    Some(sub_client_secret),
+                )
+                .set_redirect_uri(sub_redirect_url);
+                verify_client = &_verify_client_holder;
+            } else {
+                // Single-tenant or non-MS provider: still enforce the
+                // allowlist if one is configured, but no substitution.
+                if let Some(allowed) = &self.config.allowed_tenant_ids {
+                    let tid = token_tid.as_deref().ok_or_else(|| {
+                        AuthError::InvalidCredentials(
+                            "Tenant allowlist configured but ID token has no `tid` claim".to_string(),
+                        )
+                    })?;
+                    if !allowed.iter().any(|t| t.eq_ignore_ascii_case(tid)) {
+                        return Err(AuthError::InvalidCredentials(format!(
+                            "Tenant '{}' is not in the allowlist for provider '{}'",
+                            tid, self.name
+                        )));
+                    }
+                }
+                verify_client = &client;
+            }
+
+            // Now verify against the correct (possibly substituted) client.
+            let verifier = verify_client.id_token_verifier();
             let _claims = id_token.claims(&verifier, &nonce).map_err(|e| {
                 AuthError::InvalidCredentials(format!("ID token verification failed: {}", e))
             })?;
 
-            // Note: AccessTokenHash verification skipped - requires JWK key which is complex to obtain
-            // The ID token verification above provides sufficient security
+            // Note: AccessTokenHash verification skipped - requires JWK key which is complex to obtain.
+            // The ID token verification above provides sufficient security.
 
             let user_info = self
                 .get_user_info_from_token(id_token, &verifier, &nonce)

@@ -5,6 +5,7 @@ pub mod handlers;
 pub mod jwt;
 pub mod jwt_extractor;
 pub mod password;
+pub mod permissions;
 pub mod providers;
 pub mod refresh_tokens;
 mod repository;
@@ -15,11 +16,8 @@ pub mod types;
 pub use jwt::JwtService;
 pub use password::hash_password;
 pub use repository::AuthRepository;
-pub use routes::auth_routes;
+pub use routes::{auth_admin_routes, auth_routes};
 pub use types::AuthResponse;
-
-// Modules to be added:
-// - provisioning: User auto-provisioning from external auth
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
@@ -70,8 +68,10 @@ impl AppModule for AuthModule {
 
     fn register_routes(&self, router: ApiRouter) -> ApiRouter {
         if let Some(_pool) = &self.pool {
-            let auth_router_with_state = ApiRouter::new().nest("/auth", auth_routes());
-            router.merge(auth_router_with_state)
+            let auth_router = ApiRouter::new()
+                .nest("/auth", auth_routes())
+                .merge(auth_admin_routes());
+            router.merge(auth_router)
         } else {
             tracing::error!("AuthModule: Pool not initialized during route registration");
             router

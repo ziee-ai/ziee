@@ -1,12 +1,16 @@
-// Auth provider infrastructure - part of future auth system
-#![allow(dead_code)]
+// Provider lookup helpers. OAuth session + auth-link mutations live
+// on `AuthRepository` (see ../repository.rs) — this file is just
+// for lightweight by-name lookups used during the OAuth callback
+// and admin CRUD flows.
 
 use sqlx::PgPool;
+use uuid::Uuid;
 
-use super::models::{AuthProvider, OAuthSession};
+use super::models::AuthProvider;
 use crate::common::AppError;
 
-/// Get auth provider by name
+/// Look up an auth provider by its `name` column (the identifier
+/// in the URL path).
 pub async fn get_provider_by_name(
     pool: &PgPool,
     name: &str,
@@ -27,62 +31,152 @@ pub async fn get_provider_by_name(
     .map_err(AppError::database_error)
 }
 
-/// Create OAuth session for OAuth/OIDC flows
-pub async fn create_oauth_session(pool: &PgPool, session: &OAuthSession) -> Result<(), AppError> {
-    let expires_at_timestamp = session.expires_at.timestamp() as f64;
-    sqlx::query!(
-        r#"
-        INSERT INTO oauth_sessions (id, state, provider_id, pkce_verifier, nonce, redirect_uri, expires_at)
-        VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7))
-        "#,
-        session.id,
-        session.state,
-        session.provider_id,
-        session.pkce_verifier,
-        session.nonce,
-        session.redirect_uri,
-        expires_at_timestamp
-    )
-    .execute(pool)
-    .await
-    .map_err(AppError::database_error)?;
-
-    Ok(())
-}
-
-/// Get OAuth session by state
-pub async fn get_oauth_session_by_state(
+/// Look up an auth provider by id. Used by the admin CRUD handlers.
+pub async fn get_provider_by_id(
     pool: &PgPool,
-    state: &str,
-) -> Result<Option<OAuthSession>, AppError> {
+    id: Uuid,
+) -> Result<Option<AuthProvider>, AppError> {
     sqlx::query_as!(
-        OAuthSession,
+        AuthProvider,
         r#"
-        SELECT id, state, provider_id, pkce_verifier, nonce, redirect_uri,
+        SELECT id, name, provider_type, enabled, config,
                created_at as "created_at: _",
-               expires_at as "expires_at: _"
-        FROM oauth_sessions
-        WHERE state = $1 AND expires_at > NOW()
+               updated_at as "updated_at: _"
+        FROM auth_providers
+        WHERE id = $1
         "#,
-        state
+        id
     )
     .fetch_optional(pool)
     .await
     .map_err(AppError::database_error)
 }
 
-/// Delete OAuth session by state
-pub async fn delete_oauth_session(pool: &PgPool, state: &str) -> Result<(), AppError> {
-    sqlx::query!(
+/// List all configured auth providers (admin view — returns ALL
+/// rows including disabled ones; secret-masking happens at the
+/// response-building layer in handlers.rs).
+pub async fn list_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, AppError> {
+    sqlx::query_as!(
+        AuthProvider,
         r#"
-        DELETE FROM oauth_sessions
-        WHERE state = $1
+        SELECT id, name, provider_type, enabled, config,
+               created_at as "created_at: _",
+               updated_at as "updated_at: _"
+        FROM auth_providers
+        ORDER BY name ASC
         "#,
-        state
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// List enabled auth providers — the subset surfaced on the
+/// `/login` page via `GET /api/auth/providers` (public, no auth).
+/// Excludes the built-in `local` provider since the username/password
+/// form is rendered statically.
+pub async fn list_public_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, AppError> {
+    sqlx::query_as!(
+        AuthProvider,
+        r#"
+        SELECT id, name, provider_type, enabled, config,
+               created_at as "created_at: _",
+               updated_at as "updated_at: _"
+        FROM auth_providers
+        WHERE enabled = true AND provider_type <> 'local'
+        ORDER BY name ASC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// Create a new auth_providers row.
+pub async fn create_provider(
+    pool: &PgPool,
+    name: &str,
+    provider_type: &str,
+    enabled: bool,
+    config: &serde_json::Value,
+) -> Result<AuthProvider, AppError> {
+    sqlx::query_as!(
+        AuthProvider,
+        r#"
+        INSERT INTO auth_providers (name, provider_type, enabled, config)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, name, provider_type, enabled, config,
+                  created_at as "created_at: _",
+                  updated_at as "updated_at: _"
+        "#,
+        name,
+        provider_type,
+        enabled,
+        config,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// Update an auth_providers row. Pass `None` for fields you want to
+/// leave unchanged.
+pub async fn update_provider(
+    pool: &PgPool,
+    id: Uuid,
+    name: Option<&str>,
+    enabled: Option<bool>,
+    config: Option<&serde_json::Value>,
+) -> Result<AuthProvider, AppError> {
+    sqlx::query_as!(
+        AuthProvider,
+        r#"
+        UPDATE auth_providers
+        SET name = COALESCE($2, name),
+            enabled = COALESCE($3, enabled),
+            config = COALESCE($4, config)
+        WHERE id = $1
+        RETURNING id, name, provider_type, enabled, config,
+                  created_at as "created_at: _",
+                  updated_at as "updated_at: _"
+        "#,
+        id,
+        name,
+        enabled,
+        config,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)
+}
+
+/// Delete an auth_providers row. CASCADE drops any user_auth_links
+/// + oauth_sessions referencing it.
+pub async fn delete_provider(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
+    let res = sqlx::query!(
+        r#"
+        DELETE FROM auth_providers WHERE id = $1
+        "#,
+        id,
     )
     .execute(pool)
     .await
     .map_err(AppError::database_error)?;
+    Ok(res.rows_affected())
+}
 
-    Ok(())
+/// Count user_auth_links that reference a provider — used by the
+/// delete-provider confirm flow to warn the admin how many users
+/// will lose this login method.
+pub async fn count_links_for_provider(pool: &PgPool, id: Uuid) -> Result<i64, AppError> {
+    let row = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as "count!" FROM user_auth_links WHERE provider_id = $1
+        "#,
+        id,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(row.count)
 }

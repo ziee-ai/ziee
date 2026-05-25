@@ -6,7 +6,8 @@ use std::process::{Child, Command};
 use std::time::Duration;
 use uuid::Uuid;
 
-// Test helpers for OAuth and LDAP mock servers
+// Test helpers for OAuth, LDAP, and Apple Sign In mock servers
+pub mod apple_mock;
 pub mod ldap_mock;
 pub mod oauth_mock;
 

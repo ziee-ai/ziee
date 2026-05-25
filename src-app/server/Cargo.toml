@@ -181,3 +181,5 @@ serde_yaml = "0.9"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres"] }
 postgresql_embedded = { version = "0.20.0", default-features = false, features = ["bundled", "theseus", "rustls"] }
 testcontainers = "0.25.2"
+wiremock = "0.6"
+rsa = { version = "0.9", features = ["pem"] }

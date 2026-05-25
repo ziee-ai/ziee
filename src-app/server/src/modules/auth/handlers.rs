@@ -2,7 +2,7 @@
 
 use aide::transform::TransformOperation;
 use axum::{
-    Extension, Json, debug_handler,
+    Extension, Form, Json, debug_handler,
     extract::{Path, Query},
     http::StatusCode,
     response::{IntoResponse, Redirect},
@@ -12,17 +12,21 @@ use std::sync::Arc;
 
 use crate::common::{ApiResult, AppError};
 use crate::core::{EventBus, Repos};
+use crate::modules::permissions::{RequirePermissions, with_permission};
 use crate::modules::user::events::UserEvent;
 use crate::modules::user::UserService;
 
 use super::jwt::{JwtService, TokenPair};
 use super::jwt_extractor::JwtAuth;
 use super::password;
-use super::providers::{create_provider, repository as provider_repo};
+use super::permissions::{AuthProvidersManage, AuthProvidersRead};
+use super::providers::{AuthResult, create_provider, repository as provider_repo};
 use super::refresh_tokens;
 use super::types::{
-    AuthResponse, LoginRequest, MeResponse, OAuthAuthorizeQuery, OAuthCallbackQuery,
-    RefreshTokenRequest, RegisterRequest,
+    AppleCallbackForm, AuthProviderResponse, AuthResponse, CreateAuthProviderRequest,
+    DeleteProviderResponse, LinkAccountRequest, LoginRequest, MeResponse, OAuthAuthorizeQuery,
+    OAuthCallbackQuery, PublicProvider, PublicProvidersResponse, RefreshTokenRequest,
+    RegisterRequest, TestProviderResponse, UpdateAuthProviderRequest,
 };
 
 // =====================================================
@@ -615,43 +619,89 @@ pub async fn oauth_authorize(
         scheme, host, provider_name
     );
 
+    // Validate + capture return_to. We never round-trip it through
+    // the provider URL — it lives on `oauth_sessions.return_to`
+    // (see G3 in the plan). Only same-origin paths are accepted;
+    // anything else (absolute URLs, protocol-relative `//host/...`,
+    // backslash tricks) is silently dropped so the callback falls
+    // back to `/`.
+    let validated_return_to = validate_return_to(query.return_to.as_deref());
+
     // Initialize OAuth flow
-    let oauth_result = provider.init_oauth_flow(&redirect_uri).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("OAuth initialization failed: {}", e)),
-        )
-    })?;
+    let oauth_result = provider
+        .init_oauth_flow(&redirect_uri, validated_return_to.as_deref())
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error(format!("OAuth initialization failed: {}", e)),
+            )
+        })?;
 
     // Redirect to provider's authorization URL
     Ok(Redirect::temporary(&oauth_result.redirect_url))
 }
 
+/// Reject anything that isn't a same-origin path: must start with a
+/// single `/` (not `//` — protocol-relative), no backslashes, no
+/// control characters. Anything else returns None and the callback
+/// falls back to `/`.
+fn validate_return_to(rt: Option<&str>) -> Option<String> {
+    let rt = rt?;
+    if !rt.starts_with('/') || rt.starts_with("//") {
+        return None;
+    }
+    if rt.bytes().any(|b| b == b'\\' || b < 0x20) {
+        return None;
+    }
+    Some(rt.to_string())
+}
+
 /// GET /api/auth/oauth/{provider_name}/callback
-/// Handle OAuth callback from provider
+/// Handle OAuth callback from provider (Google, Microsoft, generic
+/// OIDC, etc. — anything that uses the `query` response mode).
 #[debug_handler]
 pub async fn oauth_callback(
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
-    // Get provider configuration
+    oauth_complete(jwt_service, provider_name, query.code, query.state, None).await
+}
+
+/// POST /api/auth/oauth/{provider_name}/callback
+/// Apple Sign In's `response_mode=form_post` lands here. Same
+/// decision tree as the GET path, plus first-time-only Apple `user`
+/// JSON merging (Apple gives us the user's display name exactly
+/// ONCE, in this body — persist it or lose it forever).
+#[debug_handler]
+pub async fn oauth_callback_post(
+    Extension(jwt_service): Extension<Arc<JwtService>>,
+    Path(provider_name): Path<String>,
+    Form(form): Form<AppleCallbackForm>,
+) -> Result<impl IntoResponse, (StatusCode, AppError)> {
+    oauth_complete(jwt_service, provider_name, form.code, form.state, form.user).await
+}
+
+/// Shared callback completion logic. The user has bounced back from
+/// the OAuth provider; figure out which of the four landing states
+/// they're in (returning user / first-broker-link required / new
+/// user / nothing to do) and route accordingly.
+async fn oauth_complete(
+    jwt_service: Arc<JwtService>,
+    provider_name: String,
+    code: String,
+    state: String,
+    apple_user_json: Option<String>,
+) -> Result<Redirect, (StatusCode, AppError)> {
     let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
         .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(format!("Database error: {}", e)),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                AppError::not_found("Authentication provider"),
-            )
-        })?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (
+            StatusCode::NOT_FOUND,
+            AppError::not_found("Authentication provider"),
+        ))?;
 
-    // Create provider instance
     let provider = create_provider(&provider_config, Repos.pool().clone()).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -659,9 +709,20 @@ pub async fn oauth_callback(
         )
     })?;
 
-    // Handle OAuth callback
-    let auth_result = provider
-        .handle_oauth_callback(&query.code, &query.state, &query.state)
+    // PEEK at the oauth_sessions row before handing off to the
+    // provider — the provider deletes it on success and we need the
+    // return_to for the final redirect. Errors here are non-fatal:
+    // worst case we fall back to "/".
+    let return_to = Repos
+        .auth
+        .get_oauth_session_by_state(&state)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| s.return_to);
+
+    let mut auth_result = provider
+        .handle_oauth_callback(&code, &state, &state)
         .await
         .map_err(|e| {
             (
@@ -673,22 +734,29 @@ pub async fn oauth_callback(
             )
         })?;
 
-    // Try to find user via auth link
-    let user_id = Repos
-        .auth
-        .find_user_by_auth_link(provider_config.id, &auth_result.external_id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    // Apple form_post: merge the first-time-only `user` JSON before
+    // any DB writes so the new user gets the display name on row
+    // creation. No-op for non-Apple providers.
+    if let Some(user_json_str) = apple_user_json.as_deref() {
+        merge_apple_user_json(&mut auth_result, user_json_str);
+    }
 
-    if let Some(link_user_id) = user_id {
+    let provider_id = provider_config.id;
+
+    // ── 1. Existing link → returning user, just issue JWT ────────
+    if let Some(user_id) = Repos
+        .auth
+        .find_user_by_auth_link(provider_id, &auth_result.external_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+    {
         let user = Repos
             .user
-            .get_by_id(link_user_id)
+            .get_by_id(user_id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
             .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?;
 
-        // Check if user is active
         if !user.is_active {
             return Err((
                 StatusCode::UNAUTHORIZED,
@@ -696,43 +764,670 @@ pub async fn oauth_callback(
             ));
         }
 
-        // Update last login
         Repos
             .user
             .update_last_login(user.id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        Repos
+            .auth
+            .update_auth_link_last_login(provider_id, &auth_result.external_id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-        // Generate JWT tokens
         let tokens = jwt_service
             .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-        // SECURITY: return the token in the URL FRAGMENT (#) rather than
-        // the query (?). The fragment is not transmitted to the server,
-        // not written to server access logs, not sent as the Referer on
-        // subsequent navigations, and not indexed by search engines that
-        // crawl the redirect chain. The frontend reads
-        // window.location.hash on landing and immediately calls
-        // history.replaceState to scrub it from browser history.
-        //
-        // Closes 01-auth F-01 (Critical): the previous '/?token=...'
-        // form wrote the bearer token to browser history, Referer
-        // headers, and every reverse-proxy access log on the path —
-        // full account takeover blast radius from a single Referer leak
-        // or shared browser session.
-        Ok(Redirect::temporary(&format!(
-            "/#token={}",
-            tokens.access_token
-        )))
-    } else {
-        // User doesn't exist - need to provision
-        Err((
-            StatusCode::UNAUTHORIZED,
-            AppError::unauthorized(
-                "USER_NOT_PROVISIONED",
-                "User not found. Please contact administrator to provision your account.",
-            ),
-        ))
+        return Ok(success_redirect(&tokens.access_token, return_to.as_deref()));
     }
+
+    // ── 2. Email collision with an existing local account ───────
+    //     → First-Broker-Link: do NOT auto-link, require password.
+    if email_verified_from_auth_result(&auth_result) {
+        if let Some(email) = auth_result.external_email.as_deref() {
+            if !email.is_empty() {
+                if let Some(target_user_id) = Repos
+                    .auth
+                    .find_user_by_email_for_linking(email)
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+                {
+                    let target_user = Repos
+                        .user
+                        .get_by_id(target_user_id)
+                        .await
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+                        .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?;
+
+                    if target_user.password_hash.is_some() {
+                        // Local-password account → standard FBL flow.
+                        let link_token = Repos
+                            .auth
+                            .create_pending_link(
+                                provider_id,
+                                target_user_id,
+                                &auth_result.external_id,
+                                auth_result.external_email.as_deref(),
+                                Some(&auth_result.metadata),
+                            )
+                            .await
+                            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+                        return Ok(Redirect::temporary(&format!(
+                            "/auth/link-account?link_token={}",
+                            url::form_urlencoded::byte_serialize(link_token.as_bytes())
+                                .collect::<String>()
+                        )));
+                    } else {
+                        // External-only account with the same email exists.
+                        // Refuse with a clear error — auto-linking these
+                        // would let the user hijack the account.
+                        return Err((
+                            StatusCode::CONFLICT,
+                            AppError::new(
+                                StatusCode::CONFLICT,
+                                "EMAIL_TAKEN_BY_EXTERNAL_ACCOUNT",
+                                "An account with this email already exists via another login method. Sign in with that method instead.",
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    // ── 3. No link, no collision → auto-provision a new user ────
+    let username = ensure_unique_username(&auth_result.attributes.username).await?;
+    let email = auth_result
+        .external_email
+        .clone()
+        .filter(|e| !e.is_empty());
+    let display_name = auth_result
+        .attributes
+        .display_name
+        .clone()
+        .unwrap_or_else(|| username.clone());
+
+    if email.is_none() && username.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "OAUTH_NO_IDENTITY",
+                "Provider returned no email or username; cannot create an account.",
+            ),
+        ));
+    }
+
+    let new_user_id = Repos
+        .auth
+        .create_external_user(&username, email.clone(), &display_name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Repos
+        .auth
+        .create_auth_link_with_data(
+            new_user_id,
+            provider_id,
+            &auth_result.external_id,
+            email.as_deref(),
+            Some(&auth_result.metadata),
+        )
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Repos
+        .auth
+        .assign_user_to_default_group(new_user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let user = Repos
+        .user
+        .get_by_id(new_user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error("Failed to fetch newly created user"),
+            )
+        })?;
+
+    let tokens = jwt_service
+        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Ok(success_redirect(&tokens.access_token, return_to.as_deref()))
+}
+
+/// Was the email asserted as verified by the provider? Both shapes
+/// happen in the wild: standard OIDC providers put it under
+/// `metadata.user_info.email_verified` (boolean), Apple puts it
+/// under `metadata.email_verified` (boolean — we coerced from
+/// Apple's quirky string earlier).
+fn email_verified_from_auth_result(r: &AuthResult) -> bool {
+    let read = |v: &serde_json::Value| -> Option<bool> {
+        v.as_bool()
+            .or_else(|| v.as_str().map(|s| s.eq_ignore_ascii_case("true")))
+    };
+    if let Some(v) = r
+        .metadata
+        .get("user_info")
+        .and_then(|ui| ui.get("email_verified"))
+    {
+        if let Some(b) = read(v) {
+            return b;
+        }
+    }
+    if let Some(v) = r.metadata.get("email_verified") {
+        if let Some(b) = read(v) {
+            return b;
+        }
+    }
+    false
+}
+
+/// Append `2`, `3`, … to the username until we find one that's not
+/// taken. Up to 999 attempts before giving up — a hard cap rather
+/// than an infinite loop to avoid pathological cases.
+async fn ensure_unique_username(
+    base: &str,
+) -> Result<String, (StatusCode, AppError)> {
+    let mut candidate = base.trim().to_string();
+    if candidate.is_empty() {
+        candidate = "user".to_string();
+    }
+    if Repos
+        .user
+        .get_by_username(&candidate)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .is_none()
+    {
+        return Ok(candidate);
+    }
+    for n in 2..=999u32 {
+        let next = format!("{}{}", candidate, n);
+        if Repos
+            .user
+            .get_by_username(&next)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+            .is_none()
+        {
+            return Ok(next);
+        }
+    }
+    Err((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        AppError::internal_error("Could not derive a unique username"),
+    ))
+}
+
+/// Merge Apple's first-auth-only `user` form field into the
+/// AuthResult. The id_token has `sub` and `email` but never `name`;
+/// `name` arrives in this body exactly once and only on first auth.
+fn merge_apple_user_json(auth_result: &mut AuthResult, user_json_str: &str) {
+    #[derive(serde::Deserialize)]
+    struct AppleUser {
+        name: Option<AppleName>,
+        email: Option<String>,
+    }
+    #[derive(serde::Deserialize)]
+    struct AppleName {
+        #[serde(rename = "firstName")]
+        first_name: Option<String>,
+        #[serde(rename = "lastName")]
+        last_name: Option<String>,
+    }
+    let Ok(parsed) = serde_json::from_str::<AppleUser>(user_json_str) else {
+        return;
+    };
+    if let Some(email) = parsed.email {
+        if auth_result
+            .external_email
+            .as_deref()
+            .map(str::is_empty)
+            .unwrap_or(true)
+        {
+            auth_result.external_email = Some(email.clone());
+            auth_result.attributes.email = email;
+        }
+    }
+    if let Some(name) = parsed.name {
+        let first = name.first_name.clone();
+        let last = name.last_name.clone();
+        if auth_result.attributes.first_name.is_none() {
+            auth_result.attributes.first_name = first.clone();
+        }
+        if auth_result.attributes.last_name.is_none() {
+            auth_result.attributes.last_name = last.clone();
+        }
+        if auth_result.attributes.display_name.is_none() {
+            auth_result.attributes.display_name = match (first, last) {
+                (Some(f), Some(l)) => Some(format!("{} {}", f, l)),
+                (Some(f), None) => Some(f),
+                (None, Some(l)) => Some(l),
+                _ => None,
+            };
+        }
+    }
+}
+
+/// Build the post-auth redirect. The access token rides in the URL
+/// **fragment** (`#token=…`) so it does not appear in server access
+/// logs, Referer headers, or browser history. The SPA's
+/// `/auth/callback` page reads the fragment then immediately calls
+/// `history.replaceState` to scrub it.
+fn success_redirect(access_token: &str, return_to: Option<&str>) -> Redirect {
+    let target = return_to.unwrap_or("/");
+    let fragment = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("token", access_token)
+        .append_pair("return_to", target)
+        .finish();
+    Redirect::temporary(&format!("/auth/callback#{}", fragment))
+}
+
+/// POST /api/auth/link-account
+/// First-Broker-Login confirmation. The user proves ownership of an
+/// existing local account by entering its password; on success we
+/// atomically create the user_auth_links row + issue a JWT. The
+/// pending row is consumed (deleted) regardless of outcome on success.
+#[debug_handler]
+pub async fn link_account(
+    Extension(jwt_service): Extension<Arc<JwtService>>,
+    Json(req): Json<LinkAccountRequest>,
+) -> ApiResult<Json<AuthResponse>> {
+    let pending = Repos
+        .auth
+        .consume_pending_link(&req.link_token)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                AppError::unauthorized(
+                    "INVALID_LINK_TOKEN",
+                    "Link token is invalid, already used, or expired",
+                ),
+            )
+        })?;
+
+    let user = Repos
+        .user
+        .get_by_id(pending.target_user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("User")))?;
+
+    if !user.is_active {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            AppError::unauthorized("ACCOUNT_DISABLED", "Account is disabled"),
+        ));
+    }
+
+    let pw_hash = user.password_hash.as_deref().ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            AppError::unauthorized("INVALID_CREDENTIALS", "Invalid credentials"),
+        )
+    })?;
+    let ok = password::verify_password(&req.password, pw_hash).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(format!("Password verification failed: {}", e)),
+        )
+    })?;
+    if !ok {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            AppError::unauthorized("INVALID_CREDENTIALS", "Invalid credentials"),
+        ));
+    }
+
+    Repos
+        .auth
+        .create_auth_link_with_data(
+            user.id,
+            pending.provider_id,
+            &pending.external_id,
+            pending.external_email.as_deref(),
+            pending.external_data.as_ref(),
+        )
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Repos
+        .user
+        .update_last_login(user.id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let tokens = jwt_service
+        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Ok((StatusCode::OK, Json(AuthResponse { user, tokens })))
+}
+
+pub fn link_account_docs(op: TransformOperation) -> TransformOperation {
+    op.description(
+        "Confirm a First-Broker-Login pending link by proving ownership of \
+         the existing local account with its password. Returns a fresh JWT \
+         pair on success.",
+    )
+    .id("Auth.linkAccount")
+    .tag("auth")
+    .response::<200, Json<AuthResponse>>()
+}
+
+/// GET /api/auth/providers — public list of enabled providers for
+/// the login page. Returns ONLY the fields the login UI needs;
+/// never exposes config / secrets / tenant IDs.
+#[debug_handler]
+pub async fn list_public_providers() -> ApiResult<Json<PublicProvidersResponse>> {
+    let rows = provider_repo::list_public_providers(Repos.pool())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let providers: Vec<PublicProvider> = rows
+        .into_iter()
+        .map(|p| {
+            let display_name = p
+                .config
+                .get("display_name")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| default_display_name(&p.name, &p.provider_type));
+            PublicProvider {
+                name: p.name,
+                provider_type: p.provider_type,
+                display_name,
+            }
+        })
+        .collect();
+    Ok((StatusCode::OK, Json(PublicProvidersResponse { providers })))
+}
+
+pub fn list_public_providers_docs(op: TransformOperation) -> TransformOperation {
+    op.description(
+        "List enabled third-party auth providers for the login page. Public \
+         endpoint; returns only display fields, never config or secrets.",
+    )
+    .id("Auth.listProviders")
+    .tag("auth")
+    .response::<200, Json<PublicProvidersResponse>>()
+}
+
+fn default_display_name(name: &str, provider_type: &str) -> String {
+    match provider_type {
+        "apple" => "Sign in with Apple".to_string(),
+        _ => format!("Sign in with {}", name),
+    }
+}
+
+// =====================================================
+// Admin: Auth Provider CRUD
+// =====================================================
+//
+// All handlers below are gated through the typed permission
+// extractor — never hand-rolled. The list endpoint requires
+// `auth_providers::read`; everything mutating + the test endpoint
+// requires `auth_providers::manage`. Administrators-group members
+// get both implicitly via the `*` wildcard, so no seed grants needed.
+
+/// Sensitive keys whose values are masked in any GET / list response.
+const SENSITIVE_CONFIG_KEYS: &[&str] = &["client_secret", "bind_password"];
+
+/// Mask sensitive values inside an auth_providers.config JSONB
+/// payload. Returns a cloned + masked copy; the original (with real
+/// secrets) stays in the DB.
+fn mask_provider_config(config: &serde_json::Value) -> serde_json::Value {
+    let mut masked = config.clone();
+    if let serde_json::Value::Object(map) = &mut masked {
+        for key in SENSITIVE_CONFIG_KEYS {
+            if let Some(v) = map.get_mut(*key) {
+                if v.as_str().map(|s| !s.is_empty()).unwrap_or(false) {
+                    *v = serde_json::Value::String("••••••".to_string());
+                }
+            }
+        }
+    }
+    masked
+}
+
+fn provider_to_response(p: super::providers::models::AuthProvider) -> AuthProviderResponse {
+    AuthProviderResponse {
+        config: mask_provider_config(&p.config),
+        id: p.id,
+        name: p.name,
+        provider_type: p.provider_type,
+        enabled: p.enabled,
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+    }
+}
+
+/// GET /api/admin/auth-providers
+#[debug_handler]
+pub async fn admin_list_providers(
+    _: RequirePermissions<(AuthProvidersRead,)>,
+) -> ApiResult<Json<Vec<AuthProviderResponse>>> {
+    let rows = provider_repo::list_providers(Repos.pool())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let resp: Vec<AuthProviderResponse> = rows.into_iter().map(provider_to_response).collect();
+    Ok((StatusCode::OK, Json(resp)))
+}
+
+pub fn admin_list_providers_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(AuthProvidersRead,)>(op)
+        .id("AuthProviders.list")
+        .tag("auth-providers")
+        .summary("List all configured auth providers (secrets masked)")
+        .response::<200, Json<Vec<AuthProviderResponse>>>()
+}
+
+/// POST /api/admin/auth-providers
+#[debug_handler]
+pub async fn admin_create_provider(
+    _: RequirePermissions<(AuthProvidersManage,)>,
+    Json(req): Json<CreateAuthProviderRequest>,
+) -> ApiResult<Json<AuthProviderResponse>> {
+    if req.name.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request("INVALID_NAME", "Provider name cannot be empty"),
+        ));
+    }
+    let allowed_types = ["oidc", "oauth2", "apple", "ldap", "local"];
+    if !allowed_types.contains(&req.provider_type.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "INVALID_PROVIDER_TYPE",
+                format!(
+                    "provider_type must be one of: {}",
+                    allowed_types.join(", ")
+                ),
+            ),
+        ));
+    }
+    let row = provider_repo::create_provider(
+        Repos.pool(),
+        req.name.trim(),
+        req.provider_type.as_str(),
+        req.enabled,
+        &req.config,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok((StatusCode::CREATED, Json(provider_to_response(row))))
+}
+
+pub fn admin_create_provider_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(AuthProvidersManage,)>(op)
+        .id("AuthProviders.create")
+        .tag("auth-providers")
+        .summary("Create a new auth provider")
+        .response::<201, Json<AuthProviderResponse>>()
+}
+
+/// PUT /api/admin/auth-providers/{id}
+/// Empty `client_secret` in the patch config preserves the existing
+/// value — so admins can edit other fields without re-entering
+/// secrets they don't have at hand.
+#[debug_handler]
+pub async fn admin_update_provider(
+    _: RequirePermissions<(AuthProvidersManage,)>,
+    Path(id): Path<uuid::Uuid>,
+    Json(req): Json<UpdateAuthProviderRequest>,
+) -> ApiResult<Json<AuthProviderResponse>> {
+    // If config is being patched, merge sensitive empty fields with
+    // the existing row to preserve secrets.
+    let final_config = if let Some(mut new_config) = req.config {
+        let existing = provider_repo::get_provider_by_id(Repos.pool(), id)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+            .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
+        preserve_sensitive_fields(&existing.config, &mut new_config);
+        Some(new_config)
+    } else {
+        None
+    };
+
+    let row = provider_repo::update_provider(
+        Repos.pool(),
+        id,
+        req.name.as_deref().map(str::trim),
+        req.enabled,
+        final_config.as_ref(),
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok((StatusCode::OK, Json(provider_to_response(row))))
+}
+
+/// For each `SENSITIVE_CONFIG_KEYS`: if it's missing or empty in
+/// `new_config`, copy the existing value over. Lets admins PATCH a
+/// provider row without re-entering secrets.
+fn preserve_sensitive_fields(
+    existing: &serde_json::Value,
+    new_config: &mut serde_json::Value,
+) {
+    let (existing_obj, new_obj) = match (existing, new_config) {
+        (serde_json::Value::Object(e), serde_json::Value::Object(n)) => (e, n),
+        _ => return,
+    };
+    for key in SENSITIVE_CONFIG_KEYS {
+        let new_empty = new_obj
+            .get(*key)
+            .map(|v| v.as_str().map(str::is_empty).unwrap_or(false))
+            .unwrap_or(true);
+        if new_empty {
+            if let Some(existing_val) = existing_obj.get(*key) {
+                new_obj.insert((*key).to_string(), existing_val.clone());
+            }
+        }
+    }
+}
+
+pub fn admin_update_provider_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(AuthProvidersManage,)>(op)
+        .id("AuthProviders.update")
+        .tag("auth-providers")
+        .summary("Update an auth provider (empty client_secret preserves existing)")
+        .response::<200, Json<AuthProviderResponse>>()
+}
+
+/// DELETE /api/admin/auth-providers/{id}
+#[debug_handler]
+pub async fn admin_delete_provider(
+    _: RequirePermissions<(AuthProvidersManage,)>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<DeleteProviderResponse>> {
+    let affected = provider_repo::count_links_for_provider(Repos.pool(), id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let n = provider_repo::delete_provider(Repos.pool(), id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    if n == 0 {
+        return Err((StatusCode::NOT_FOUND, AppError::not_found("Auth provider")));
+    }
+    Ok((
+        StatusCode::OK,
+        Json(DeleteProviderResponse {
+            deleted: true,
+            affected_user_links: affected,
+        }),
+    ))
+}
+
+pub fn admin_delete_provider_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(AuthProvidersManage,)>(op)
+        .id("AuthProviders.delete")
+        .tag("auth-providers")
+        .summary("Delete an auth provider (cascades user_auth_links)")
+        .response::<200, Json<DeleteProviderResponse>>()
+}
+
+/// POST /api/admin/auth-providers/{id}/test
+/// Run the provider's `test_connection` — OIDC providers do
+/// discovery; Apple verifies the .p8 + signs a sample JWT. Returns
+/// 200 always; success / failure is in the body so the admin UI can
+/// render a nicer inline message than a non-200.
+#[debug_handler]
+pub async fn admin_test_provider(
+    _: RequirePermissions<(AuthProvidersManage,)>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<TestProviderResponse>> {
+    let row = provider_repo::get_provider_by_id(Repos.pool(), id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
+
+    // Temporarily flip `enabled` so the factory accepts a disabled
+    // provider — we want test-while-disabled to work.
+    let mut row_for_test = row;
+    row_for_test.enabled = true;
+
+    let provider = match create_provider(&row_for_test, Repos.pool().clone()) {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok((
+                StatusCode::OK,
+                Json(TestProviderResponse {
+                    ok: false,
+                    message: format!("Configuration error: {}", e),
+                }),
+            ));
+        }
+    };
+
+    match provider.test_connection().await {
+        Ok(()) => Ok((
+            StatusCode::OK,
+            Json(TestProviderResponse {
+                ok: true,
+                message: "Connection test succeeded".to_string(),
+            }),
+        )),
+        Err(e) => Ok((
+            StatusCode::OK,
+            Json(TestProviderResponse {
+                ok: false,
+                message: format!("{}", e),
+            }),
+        )),
+    }
+}
+
+pub fn admin_test_provider_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(AuthProvidersManage,)>(op)
+        .id("AuthProviders.test")
+        .tag("auth-providers")
+        .summary("Test the auth provider's connection / discovery / key")
+        .response::<200, Json<TestProviderResponse>>()
 }

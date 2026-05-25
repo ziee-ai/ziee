@@ -45,6 +45,16 @@ export interface AssistantListResponse {
   total: number
 }
 
+export interface AuthProviderResponse {
+  config: any
+  created_at: string
+  enabled: boolean
+  id: string
+  name: string
+  provider_type: string
+  updated_at: string
+}
+
 export interface AuthResponse {
   access_token: string
   expires_in: number
@@ -194,6 +204,13 @@ export interface CreateAssistantRequest {
   parameters?: ModelParameters
 }
 
+export interface CreateAuthProviderRequest {
+  config: any
+  enabled?: boolean
+  name: string
+  provider_type: string
+}
+
 export interface CreateBranchRequest {
   fork_level?: string
   from_message_id: string
@@ -278,6 +295,11 @@ export interface CreateUserRequest {
   password: string
   permissions?: string[]
   username: string
+}
+
+export interface DeleteProviderResponse {
+  affected_user_links: number
+  deleted: boolean
 }
 
 export interface DeleteVersionQuery {
@@ -706,6 +728,11 @@ export interface InstanceStatusResponse {
   model_id: string
   status: string
   uptime_seconds?: number
+}
+
+export interface LinkAccountRequest {
+  link_token: string
+  password: string
 }
 
 export interface ListModelsQuery {
@@ -1226,6 +1253,16 @@ export interface ProxySettings {
   username?: string
 }
 
+export interface PublicProvider {
+  display_name: string
+  name: string
+  provider_type: string
+}
+
+export interface PublicProvidersResponse {
+  providers: PublicProvider[]
+}
+
 export interface ReadResourceRequest {
   uri: string
 }
@@ -1484,6 +1521,11 @@ export interface SyncCacheResponse {
   synced_count: number
 }
 
+export interface TestProviderResponse {
+  message: string
+  ok: boolean
+}
+
 export interface TestRepositoryConnectionRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -1558,6 +1600,12 @@ export interface UpdateAssistantRequest {
   is_default?: boolean
   name?: string
   parameters?: ModelParameters
+}
+
+export interface UpdateAuthProviderRequest {
+  config?: any
+  enabled?: boolean
+  name?: string
 }
 
 export interface UpdateCodeSandboxResourceLimits {
@@ -1735,6 +1783,8 @@ export enum Permissions {
   AssistantsTemplateDelete = 'assistant_templates::delete',
   AssistantsTemplateEdit = 'assistant_templates::edit',
   AssistantsTemplateRead = 'assistant_templates::read',
+  AuthProvidersManage = 'auth_providers::manage',
+  AuthProvidersRead = 'auth_providers::read',
   BranchesCreate = 'branches::create',
   BranchesSwitch = 'branches::switch',
   CodeSandboxEnvironmentsManage = 'code_sandbox::environments::manage',
@@ -1824,6 +1874,8 @@ export const PermissionDescriptions: Record<string, string> = {
   AssistantsTemplateDelete: 'Delete system-wide template assistants',
   AssistantsTemplateEdit: 'Edit system-wide template assistants',
   AssistantsTemplateRead: 'Read system-wide template assistants',
+  AuthProvidersManage: 'Create, update, delete, enable/disable, and test auth providers.',
+  AuthProvidersRead: 'List configured auth providers and view their (masked) config.',
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
   CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
@@ -1924,11 +1976,18 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.linkAccount': 'POST /api/auth/link-account',
+  'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
   'Auth.logout': 'POST /api/auth/logout',
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'AuthProviders.create': 'POST /api/admin/auth-providers',
+  'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
+  'AuthProviders.list': 'GET /api/admin/auth-providers',
+  'AuthProviders.test': 'POST /api/admin/auth-providers/{id}/test',
+  'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
   'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
@@ -2092,11 +2151,18 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.getDefault': void
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.linkAccount': LinkAccountRequest
+  'Auth.listProviders': void
   'Auth.login': LoginRequest
   'Auth.logout': void
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'AuthProviders.create': CreateAuthProviderRequest
+  'AuthProviders.delete': { id: string }
+  'AuthProviders.list': void
+  'AuthProviders.test': { id: string }
+  'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
   'Branch.activate': { id: string; branch_id: string }
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
@@ -2260,11 +2326,18 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.linkAccount': AuthResponse
+  'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
   'Auth.logout': void
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'AuthProviders.create': AuthProviderResponse
+  'AuthProviders.delete': DeleteProviderResponse
+  'AuthProviders.list': AuthProviderResponse[]
+  'AuthProviders.test': TestProviderResponse
+  'AuthProviders.update': AuthProviderResponse
   'Branch.activate': void
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse

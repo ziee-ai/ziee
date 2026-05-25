@@ -1,0 +1,526 @@
+// Sign in with Apple — Apple-specific provider.
+//
+// Apple cannot reuse `OAuth2Provider` because of three quirks:
+//   1. `client_secret` is an ES256 JWT signed with a `.p8` ECDSA
+//      private key — Apple does NOT accept a static secret. We
+//      regenerate it per token exchange (max 6-month lifetime;
+//      regenerating each time is the simplest correctness story).
+//   2. `response_mode=form_post` is mandatory when scope includes
+//      `name` or `email`. The callback arrives as a POST form body,
+//      not a query string.
+//   3. The first-time-only `user` JSON arrives in the callback POST
+//      body, NOT in the ID token. Handled in `handlers.rs`
+//      (`oauth_callback_post`) by merging into UserAttributes after
+//      this provider returns its base AuthResult.
+//
+// Apple JWKS for ID-token verification: https://appleid.apple.com/auth/keys
+//
+// All of this is fetched at runtime; no Apple-specific code paths in
+// the rest of the codebase.
+
+use async_trait::async_trait;
+use chrono::{DateTime, Duration, Utc};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, encode};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use uuid::Uuid;
+
+use crate::core::Repos;
+use super::{AuthError, AuthProvider, AuthProviderTrait, AuthResult, OAuthResult, OAuthSession, UserAttributes};
+
+const DEFAULT_APPLE_BASE_URL: &str = "https://appleid.apple.com";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppleConfig {
+    /// Apple Developer Team ID (10-char alphanumeric).
+    pub team_id: String,
+    /// Apple Services ID — used as the `client_id` on the wire.
+    pub services_id: String,
+    /// Key ID for the `.p8` private key (10-char).
+    pub key_id: String,
+    /// Filesystem path to the `AuthKey_<KEY_ID>.p8` ECDSA private
+    /// key. NOT uploaded through the admin UI — filesystem perms
+    /// are the right control for a private key. Operators drop the
+    /// file on disk and reference it here.
+    pub private_key_path: PathBuf,
+    /// Scopes to request. Defaults to `["name", "email"]`. Including
+    /// either of these triggers Apple's `form_post` requirement.
+    pub scopes: Vec<String>,
+    /// Session timeout in seconds (default: 300 = 5 minutes)
+    #[serde(default)]
+    pub session_timeout_seconds: Option<i64>,
+    /// Base URL for Apple's auth endpoints. Defaults to
+    /// `https://appleid.apple.com`. Override is exposed so
+    /// integration tests can point at a local wiremock; operators
+    /// should never set this in production.
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+/// Cached Apple JWKS. Apple rotates keys infrequently; refresh on
+/// kid-miss with a small backoff to avoid hammering Apple if a token
+/// references a kid that doesn't exist.
+#[derive(Default, Clone)]
+struct JwksCache {
+    keys: Vec<AppleJwk>,
+    fetched_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AppleJwks {
+    keys: Vec<AppleJwk>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AppleJwk {
+    kid: String,
+    n: String,
+    e: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    kty: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    alg: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    r#use: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AppleTokenResponse {
+    #[allow(dead_code)]
+    access_token: String,
+    #[allow(dead_code)]
+    #[serde(default)]
+    expires_in: Option<i64>,
+    id_token: String,
+    #[allow(dead_code)]
+    #[serde(default)]
+    refresh_token: Option<String>,
+    #[allow(dead_code)]
+    #[serde(default)]
+    token_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AppleIdTokenClaims {
+    sub: String,
+    #[serde(default)]
+    email: Option<String>,
+    /// Apple sends `email_verified` as the STRING `"true"` (not bool).
+    /// `StringOrBool` handles both shapes.
+    #[serde(default)]
+    email_verified: Option<StringOrBool>,
+    #[serde(default)]
+    is_private_email: Option<StringOrBool>,
+    #[serde(default)]
+    nonce: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum StringOrBool {
+    Bool(bool),
+    Str(String),
+}
+
+impl StringOrBool {
+    fn as_bool(&self) -> bool {
+        match self {
+            StringOrBool::Bool(b) => *b,
+            StringOrBool::Str(s) => s.eq_ignore_ascii_case("true"),
+        }
+    }
+}
+
+pub struct AppleProvider {
+    name: String,
+    provider_id: Uuid,
+    config: AppleConfig,
+    raw_config: serde_json::Value,
+    #[allow(dead_code)]
+    pool: PgPool,
+    jwks_cache: Arc<RwLock<JwksCache>>,
+    http: reqwest::Client,
+}
+
+impl AppleProvider {
+    fn base_url(&self) -> &str {
+        self.config
+            .base_url
+            .as_deref()
+            .unwrap_or(DEFAULT_APPLE_BASE_URL)
+    }
+    fn authorize_url(&self) -> String {
+        format!("{}/auth/authorize", self.base_url())
+    }
+    fn token_url(&self) -> String {
+        format!("{}/auth/token", self.base_url())
+    }
+    fn jwks_url(&self) -> String {
+        format!("{}/auth/keys", self.base_url())
+    }
+    fn issuer(&self) -> String {
+        self.base_url().to_string()
+    }
+
+    pub fn new(provider: &AuthProvider, pool: PgPool) -> Result<Self, AuthError> {
+        let config: AppleConfig = serde_json::from_value(provider.config.clone()).map_err(|e| {
+            AuthError::ConfigurationError(format!("Invalid Apple configuration: {}", e))
+        })?;
+
+        // SSRF hardening: disable redirects on the HTTP client used to
+        // talk to Apple endpoints.
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| {
+                AuthError::ConfigurationError(format!("Failed to create HTTP client: {}", e))
+            })?;
+
+        Ok(Self {
+            name: provider.name.clone(),
+            provider_id: provider.id,
+            config,
+            raw_config: provider.config.clone(),
+            pool,
+            jwks_cache: Arc::new(RwLock::new(JwksCache::default())),
+            http,
+        })
+    }
+
+    /// Generate the ES256 client_secret JWT that Apple expects on
+    /// every token exchange. 5-minute lifetime — short to limit
+    /// replay window; Apple's max is 6 months but there's no benefit
+    /// to keeping it longer when regeneration is essentially free.
+    fn generate_client_secret_jwt(&self) -> Result<String, AuthError> {
+        let pem = std::fs::read(&self.config.private_key_path).map_err(|e| {
+            AuthError::ConfigurationError(format!(
+                "Failed to read Apple private key at {:?}: {}",
+                self.config.private_key_path, e
+            ))
+        })?;
+        let key = EncodingKey::from_ec_pem(&pem).map_err(|e| {
+            AuthError::ConfigurationError(format!("Invalid Apple .p8 key: {}", e))
+        })?;
+
+        let mut header = Header::new(Algorithm::ES256);
+        header.kid = Some(self.config.key_id.clone());
+
+        let now = Utc::now();
+        let claims = serde_json::json!({
+            "iss": self.config.team_id,
+            "iat": now.timestamp(),
+            "exp": (now + Duration::minutes(5)).timestamp(),
+            "aud": self.issuer(),
+            "sub": self.config.services_id,
+        });
+
+        encode(&header, &claims, &key).map_err(|e| {
+            AuthError::InternalError(format!("Failed to sign Apple client_secret JWT: {}", e))
+        })
+    }
+
+    async fn fetch_jwks(&self) -> Result<Vec<AppleJwk>, AuthError> {
+        let resp = self.http.get(&self.jwks_url()).send().await.map_err(|e| {
+            AuthError::ConnectionFailed(format!("Failed to fetch Apple JWKS: {}", e))
+        })?;
+        if !resp.status().is_success() {
+            return Err(AuthError::ConnectionFailed(format!(
+                "Apple JWKS endpoint returned {}",
+                resp.status()
+            )));
+        }
+        let jwks: AppleJwks = resp.json().await.map_err(|e| {
+            AuthError::InternalError(format!("Failed to parse Apple JWKS: {}", e))
+        })?;
+        Ok(jwks.keys)
+    }
+
+    /// Look up the JWK by `kid`. Refresh the cache once if the kid
+    /// isn't found (Apple may have rotated). Beyond that we don't
+    /// retry, to avoid amplifying a misconfigured token into a flood
+    /// of requests.
+    async fn get_jwk_for_kid(&self, kid: &str) -> Result<AppleJwk, AuthError> {
+        {
+            let cache = self.jwks_cache.read().await;
+            if let Some(jwk) = cache.keys.iter().find(|j| j.kid == kid) {
+                return Ok(jwk.clone());
+            }
+        }
+        let fresh = self.fetch_jwks().await?;
+        let found = fresh.iter().find(|j| j.kid == kid).cloned();
+        let mut cache = self.jwks_cache.write().await;
+        cache.keys = fresh;
+        cache.fetched_at = Some(Utc::now());
+        found.ok_or_else(|| {
+            AuthError::InvalidCredentials(format!("Apple kid '{}' not found in JWKS", kid))
+        })
+    }
+
+    /// Verify the Apple-issued ID token: signature via JWKS, audience
+    /// = our services_id, issuer = appleid.apple.com, nonce matches
+    /// the one we sent in init_oauth_flow.
+    async fn verify_id_token(
+        &self,
+        id_token_jwt: &str,
+        expected_nonce: Option<&str>,
+    ) -> Result<AppleIdTokenClaims, AuthError> {
+        // Pull kid out of the JOSE header without verifying signature.
+        let header = jsonwebtoken::decode_header(id_token_jwt).map_err(|e| {
+            AuthError::InvalidCredentials(format!("Failed to decode ID token header: {}", e))
+        })?;
+        let kid = header.kid.ok_or_else(|| {
+            AuthError::InvalidCredentials("Apple ID token header missing kid".to_string())
+        })?;
+
+        let jwk = self.get_jwk_for_kid(&kid).await?;
+        let key = DecodingKey::from_rsa_components(&jwk.n, &jwk.e).map_err(|e| {
+            AuthError::InternalError(format!("Invalid Apple JWK: {}", e))
+        })?;
+
+        let mut validation = Validation::new(Algorithm::RS256);
+        let issuer = self.issuer();
+        validation.set_issuer(&[issuer.as_str()]);
+        validation.set_audience(&[self.config.services_id.as_str()]);
+
+        let decoded = jsonwebtoken::decode::<AppleIdTokenClaims>(id_token_jwt, &key, &validation)
+            .map_err(|e| {
+                AuthError::InvalidCredentials(format!("Apple ID token verification failed: {}", e))
+            })?;
+
+        if let Some(expected) = expected_nonce {
+            let token_nonce = decoded.claims.nonce.as_deref().unwrap_or_default();
+            if token_nonce != expected {
+                return Err(AuthError::InvalidCredentials(
+                    "Apple ID token nonce mismatch".to_string(),
+                ));
+            }
+        }
+
+        Ok(decoded.claims)
+    }
+}
+
+#[async_trait]
+impl AuthProviderTrait for AppleProvider {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn provider_type(&self) -> &str {
+        "apple"
+    }
+
+    async fn authenticate(
+        &self,
+        _username: &str,
+        _password: &str,
+    ) -> Result<AuthResult, AuthError> {
+        Err(AuthError::NotSupported(
+            "Apple Sign In does not support password authentication".to_string(),
+        ))
+    }
+
+    async fn init_oauth_flow(
+        &self,
+        redirect_uri: &str,
+        return_to: Option<&str>,
+    ) -> Result<OAuthResult, AuthError> {
+        let state = Uuid::new_v4().to_string();
+        let nonce = Uuid::new_v4().to_string();
+
+        let scope_str = self.config.scopes.join(" ");
+        let needs_form_post = self
+            .config
+            .scopes
+            .iter()
+            .any(|s| s == "name" || s == "email");
+        let response_mode = if needs_form_post { "form_post" } else { "query" };
+
+        let query: String = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("response_type", "code")
+            .append_pair("response_mode", response_mode)
+            .append_pair("client_id", &self.config.services_id)
+            .append_pair("redirect_uri", redirect_uri)
+            .append_pair("scope", &scope_str)
+            .append_pair("state", &state)
+            .append_pair("nonce", &nonce)
+            .finish();
+        let auth_url = format!("{}?{}", self.authorize_url(), query);
+
+        let timeout = self.config.session_timeout_seconds.unwrap_or(300);
+        let expires_at = Utc::now() + Duration::seconds(timeout);
+
+        let session = OAuthSession {
+            id: Uuid::new_v4(),
+            state: state.clone(),
+            provider_id: self.provider_id,
+            pkce_verifier: None, // Apple does not require PKCE for confidential clients
+            nonce: Some(nonce),
+            redirect_uri: redirect_uri.to_string(),
+            created_at: Utc::now(),
+            expires_at,
+            return_to: return_to.map(|s| s.to_string()),
+        };
+        Repos.auth.create_oauth_session(&session).await.map_err(|e| {
+            AuthError::InternalError(format!("Failed to create oauth session: {}", e))
+        })?;
+
+        Ok(OAuthResult {
+            redirect_url: auth_url,
+            session_key: state,
+        })
+    }
+
+    async fn handle_oauth_callback(
+        &self,
+        code: &str,
+        state: &str,
+        _session_key: &str,
+    ) -> Result<AuthResult, AuthError> {
+        let session = Repos
+            .auth
+            .get_oauth_session_by_state(state)
+            .await
+            .map_err(|e| AuthError::InternalError(format!("Failed to load session: {}", e)))?
+            .ok_or_else(|| {
+                AuthError::InvalidCredentials("Invalid or expired session".to_string())
+            })?;
+
+        if session.provider_id != self.provider_id {
+            return Err(AuthError::InvalidCredentials(
+                "Provider mismatch".to_string(),
+            ));
+        }
+
+        let client_secret = self.generate_client_secret_jwt()?;
+
+        let form = [
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", session.redirect_uri.as_str()),
+            ("client_id", self.config.services_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+        ];
+
+        let resp = self
+            .http
+            .post(&self.token_url())
+            .form(&form)
+            .send()
+            .await
+            .map_err(|e| {
+                AuthError::ConnectionFailed(format!("Apple token request failed: {}", e))
+            })?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AuthError::InvalidCredentials(format!(
+                "Apple token endpoint returned {}: {}",
+                status, body
+            )));
+        }
+
+        let token_response: AppleTokenResponse = resp.json().await.map_err(|e| {
+            AuthError::InternalError(format!("Failed to parse Apple token response: {}", e))
+        })?;
+
+        let claims = self
+            .verify_id_token(&token_response.id_token, session.nonce.as_deref())
+            .await?;
+
+        // Clean up session — single-use.
+        let _ = Repos.auth.delete_oauth_session(state).await;
+
+        let email = claims.email.clone().unwrap_or_default();
+        let email_verified = claims
+            .email_verified
+            .as_ref()
+            .map(|v| v.as_bool())
+            .unwrap_or(false);
+        let is_private = claims
+            .is_private_email
+            .as_ref()
+            .map(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Apple gives us no username; derive from email local-part
+        // (the handler may override using the `user` JSON if it's
+        // the user's first auth ever).
+        let username = email
+            .split('@')
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&claims.sub)
+            .to_string();
+
+        Ok(AuthResult {
+            external_id: claims.sub.clone(),
+            external_username: Some(username.clone()),
+            external_email: if email.is_empty() { None } else { Some(email.clone()) },
+            metadata: serde_json::json!({
+                "provider": "apple",
+                "auth_method": "apple_sign_in",
+                "email_verified": email_verified,
+                "is_private_email": is_private,
+            }),
+            attributes: UserAttributes {
+                username,
+                email,
+                display_name: None,
+                first_name: None,
+                last_name: None,
+                groups: vec![],
+            },
+        })
+    }
+
+    async fn test_connection(&self) -> Result<(), AuthError> {
+        // Two checks: (1) the JWKS endpoint reachable; (2) we can
+        // sign a client_secret JWT (private key valid + readable).
+        self.fetch_jwks().await?;
+        let _ = self.generate_client_secret_jwt()?;
+        Ok(())
+    }
+
+    fn get_config(&self) -> &serde_json::Value {
+        &self.raw_config
+    }
+}
+
+/// Apple's `email_verified` claim — a private helper for testability.
+#[cfg(test)]
+mod string_or_bool_tests {
+    use super::StringOrBool;
+
+    #[test]
+    fn parses_string_true() {
+        let v: StringOrBool = serde_json::from_str(r#""true""#).unwrap();
+        assert!(v.as_bool());
+    }
+
+    #[test]
+    fn parses_bool_true() {
+        let v: StringOrBool = serde_json::from_str("true").unwrap();
+        assert!(v.as_bool());
+    }
+
+    #[test]
+    fn parses_string_false() {
+        let v: StringOrBool = serde_json::from_str(r#""false""#).unwrap();
+        assert!(!v.as_bool());
+    }
+
+    #[test]
+    fn parses_bool_false() {
+        let v: StringOrBool = serde_json::from_str("false").unwrap();
+        assert!(!v.as_bool());
+    }
+}
+

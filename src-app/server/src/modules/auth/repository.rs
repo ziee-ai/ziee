@@ -1,8 +1,9 @@
+use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::common::AppError;
-use crate::modules::auth::providers::models::OAuthSession;
+use crate::modules::auth::providers::models::{OAuthSession, PendingAccountLink};
 use crate::modules::user::Group;
 
 /// Auth Repository
@@ -84,8 +85,8 @@ impl AuthRepository {
     ) -> Result<(), AppError> {
         sqlx::query!(
             r#"
-            INSERT INTO user_auth_links (user_id, provider_id, external_id, created_at)
-            VALUES ($1, $2, $3, NOW())
+            INSERT INTO user_auth_links (user_id, provider_id, external_id, created_at, last_login_at)
+            VALUES ($1, $2, $3, NOW(), NOW())
             "#,
             user_id,
             provider_id,
@@ -96,6 +97,81 @@ impl AuthRepository {
         .map_err(AppError::database_error)?;
 
         Ok(())
+    }
+
+    /// Create a user auth link including the provider's email + raw
+    /// claims. Used by the social-login provisioning + First-Broker-Link
+    /// flows. Use this in preference to the bare `create_auth_link`
+    /// when you have the email/claims at hand.
+    pub async fn create_auth_link_with_data(
+        &self,
+        user_id: Uuid,
+        provider_id: Uuid,
+        external_id: &str,
+        external_email: Option<&str>,
+        external_data: Option<&serde_json::Value>,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            INSERT INTO user_auth_links (user_id, provider_id, external_id, external_email, external_data, created_at, last_login_at)
+            VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+            "#,
+            user_id,
+            provider_id,
+            external_id,
+            external_email,
+            external_data,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+
+        Ok(())
+    }
+
+    /// Bump `last_login_at` on an existing user_auth_links row.
+    /// Called whenever a returning user re-authenticates via the
+    /// social provider — distinct from the `users.last_login_at`
+    /// bump because a user may have multiple linked providers.
+    pub async fn update_auth_link_last_login(
+        &self,
+        provider_id: Uuid,
+        external_id: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            UPDATE user_auth_links
+            SET last_login_at = NOW(), updated_at = NOW()
+            WHERE provider_id = $1 AND external_id = $2
+            "#,
+            provider_id,
+            external_id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
+    }
+
+    /// Find a local user by email — used to detect First-Broker-Login
+    /// collisions. Returns the user_id if a local-password account
+    /// exists with the given email. NOTE: matches on the literal
+    /// email; callers can lowercase first if they want
+    /// case-insensitive behavior.
+    pub async fn find_user_by_email_for_linking(
+        &self,
+        email: &str,
+    ) -> Result<Option<Uuid>, AppError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id FROM users WHERE email = $1 LIMIT 1
+            "#,
+            email
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(row.map(|r| r.id))
     }
 
     /// Create a new user from external auth (used by LDAP/OAuth)
@@ -152,8 +228,8 @@ impl AuthRepository {
         let expires_at_timestamp = session.expires_at.timestamp() as f64;
         sqlx::query!(
             r#"
-            INSERT INTO oauth_sessions (id, state, provider_id, pkce_verifier, nonce, redirect_uri, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7))
+            INSERT INTO oauth_sessions (id, state, provider_id, pkce_verifier, nonce, redirect_uri, return_to, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8))
             "#,
             session.id,
             session.state,
@@ -161,6 +237,7 @@ impl AuthRepository {
             session.pkce_verifier,
             session.nonce,
             session.redirect_uri,
+            session.return_to,
             expires_at_timestamp
         )
         .execute(&self.pool)
@@ -178,7 +255,7 @@ impl AuthRepository {
         sqlx::query_as!(
             OAuthSession,
             r#"
-            SELECT id, state, provider_id, pkce_verifier, nonce, redirect_uri,
+            SELECT id, state, provider_id, pkce_verifier, nonce, redirect_uri, return_to,
                    created_at as "created_at: _",
                    expires_at as "expires_at: _"
             FROM oauth_sessions
@@ -205,5 +282,62 @@ impl AuthRepository {
         .map_err(AppError::database_error)?;
 
         Ok(())
+    }
+
+    /// Create a pending account link with a 10-minute TTL. The
+    /// returned token is what we put in the `/auth/link-account?token=...`
+    /// redirect URL.
+    pub async fn create_pending_link(
+        &self,
+        provider_id: Uuid,
+        target_user_id: Uuid,
+        external_id: &str,
+        external_email: Option<&str>,
+        external_data: Option<&serde_json::Value>,
+    ) -> Result<String, AppError> {
+        let link_token = Uuid::new_v4().to_string();
+        let expires_at: DateTime<Utc> = Utc::now() + Duration::minutes(10);
+        let expires_at_ts = expires_at.timestamp() as f64;
+        sqlx::query!(
+            r#"
+            INSERT INTO pending_account_links (link_token, provider_id, target_user_id, external_id, external_email, external_data, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7))
+            "#,
+            link_token,
+            provider_id,
+            target_user_id,
+            external_id,
+            external_email,
+            external_data,
+            expires_at_ts,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(link_token)
+    }
+
+    /// Atomically read + delete a pending link by token. Returns
+    /// None if the token is unknown or expired. Single-use: a
+    /// subsequent call with the same token returns None.
+    pub async fn consume_pending_link(
+        &self,
+        link_token: &str,
+    ) -> Result<Option<PendingAccountLink>, AppError> {
+        sqlx::query_as!(
+            PendingAccountLink,
+            r#"
+            DELETE FROM pending_account_links
+            WHERE link_token = $1 AND expires_at > NOW()
+            RETURNING link_token, provider_id, target_user_id, external_id,
+                      external_email, external_data,
+                      created_at as "created_at: _",
+                      expires_at as "expires_at: _"
+            "#,
+            link_token
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)
     }
 }
