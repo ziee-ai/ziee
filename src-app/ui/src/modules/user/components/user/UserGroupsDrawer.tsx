@@ -3,6 +3,7 @@ import { App, Button, Empty, List, Popconfirm, Spin, Tag } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { useEffect, useState } from 'react'
 
 export function UserGroupsDrawer() {
@@ -11,7 +12,7 @@ export function UserGroupsDrawer() {
   const { groups } = Stores.UserGroups
   const [userGroupIds, setUserGroupIds] = useState<Set<string>>(new Set())
   const [loadingUserGroups, setLoadingUserGroups] = useState(false)
-  const canAssign = usePermission('groups::assign_users')
+  const canAssign = usePermission(Permissions.GroupsAssignUsers)
 
   // Load user's group memberships when drawer opens
   useEffect(() => {

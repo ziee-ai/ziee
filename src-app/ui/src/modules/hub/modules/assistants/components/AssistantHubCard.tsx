@@ -4,7 +4,7 @@ import {
   RobotOutlined,
   EyeOutlined,
 } from '@ant-design/icons'
-import type { HubAssistant } from '@/api-client/types'
+import { Permissions, type HubAssistant } from '@/api-client/types'
 import { useState } from 'react'
 import { AssistantDetailsDrawer } from '@/modules/hub/modules/assistants/components/AssistantDetailsDrawer'
 import { Stores } from '@/core/stores'
@@ -22,7 +22,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
-  const canCreate = usePermission('hub::assistants::create')
+  const canCreate = usePermission(Permissions.HubAssistantsCreate)
 
   // Check if assistant was already created from this hub assistant
   const isAlreadyCreated =

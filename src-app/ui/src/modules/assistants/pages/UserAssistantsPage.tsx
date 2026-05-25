@@ -4,7 +4,7 @@ import { PlusOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons'
 import { PiSortAscending } from 'react-icons/pi'
 import { Stores } from '@/modules/assistants/stores'
 import { Can } from '@/core/permissions'
-import type { Assistant } from '@/api-client/types'
+import { Permissions, type Assistant } from '@/api-client/types'
 import { AssistantCard } from '@/modules/assistants/components/AssistantCard'
 import { AssistantFormDrawer } from '@/modules/assistants/components/AssistantFormDrawer'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
@@ -156,7 +156,7 @@ export function UserAssistantsPage() {
                   aria-label="Sort assistants"
                 />
               </Dropdown>
-              <Can permission="assistants::create">
+              <Can permission={Permissions.AssistantsCreate}>
                 <Button
                   type="text"
                   icon={<PlusOutlined aria-hidden="true" />}
@@ -224,7 +224,7 @@ export function UserAssistantsPage() {
                 : 'Create your first assistant to get started'}
             </Text>
             {!searchQuery && (
-              <Can permission="assistants::create">
+              <Can permission={Permissions.AssistantsCreate}>
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}

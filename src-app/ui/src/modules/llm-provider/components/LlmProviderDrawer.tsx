@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import type {
-  CreateLlmProviderRequest,
-  UpdateLlmProviderRequest,
+import {
+  Permissions,
+  type CreateLlmProviderRequest,
+  type UpdateLlmProviderRequest,
 } from '@/api-client/types'
 
 const { Text } = Typography
@@ -29,8 +30,8 @@ export function LlmProviderDrawer() {
   const [loading, setLoading] = useState(false)
 
   const { isOpen: open, editingProvider: provider } = Stores.LlmProviderDrawer
-  const canCreate = usePermission('llm_providers::create')
-  const canEdit = usePermission('llm_providers::edit')
+  const canCreate = usePermission(Permissions.LlmProvidersCreate)
+  const canEdit = usePermission(Permissions.LlmProvidersEdit)
   const canSave = provider ? canEdit : canCreate
 
   // Update form when editing provider

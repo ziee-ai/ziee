@@ -4,5 +4,5 @@
 export { Can } from './Can'
 export { evaluatePermission } from './evaluatePermission'
 export { hasPermission } from './hasPermission'
-export type { PermissionExpr } from './types'
+export type { Permission, PermissionExpr } from './types'
 export { usePermission } from './usePermission'

@@ -3,6 +3,7 @@ import { Button, Card, Empty, Spin, Space, Divider, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import type { RuntimeEngine } from '../types'
 import { RuntimeVersionCard } from './RuntimeVersionCard'
 
@@ -14,7 +15,7 @@ export function RuntimeVersionList({ engine }: Props) {
   const { versions, loading, error } = Stores.RuntimeVersion
   const { openDrawer } = Stores.RuntimeDownloadDrawer
 
-  const canCreate = usePermission('llm_local_runtime::create')
+  const canCreate = usePermission(Permissions.RuntimeVersionCreate)
   const engineVersions = versions.filter(v => v.engine === engine)
 
   // Show error message
@@ -65,7 +66,7 @@ export function RuntimeVersionList({ engine }: Props) {
         </Space>
       }
       extra={
-        <Can permission="llm_local_runtime::create">
+        <Can permission={Permissions.RuntimeVersionCreate}>
           <Button
             type="primary"
             icon={<DownloadOutlined />}

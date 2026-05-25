@@ -3,7 +3,18 @@ import { App, Button, Card, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
 import { EditOutlined, ToolOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import type { McpServer } from '@/api-client/types'
+import { Permissions, type McpServer } from '@/api-client/types'
+
+// System and user MCP servers gate on different permission namespaces.
+// `server.is_system` selects which set applies at render time.
+const SYSTEM_PERMS = {
+  edit: Permissions.McpServersAdminEdit,
+  delete: Permissions.McpServersAdminDelete,
+} as const
+const USER_PERMS = {
+  edit: Permissions.McpServersEdit,
+  delete: Permissions.McpServersDelete,
+} as const
 
 const { Text } = Typography
 
@@ -21,12 +32,9 @@ export function McpServerCard({
   const { message, modal } = App.useApp()
   const [enableLoading, setEnableLoading] = useState(false)
 
-  // System and user MCP servers gate on different permission namespaces.
-  // The shared card detects which one applies by the server's is_system
-  // flag rather than asking the caller to pass it explicitly.
-  const ns = server.is_system ? 'mcp_servers_admin' : 'mcp_servers'
-  const canEdit = usePermission(`${ns}::edit`)
-  const canDelete = usePermission(`${ns}::delete`)
+  const perms = server.is_system ? SYSTEM_PERMS : USER_PERMS
+  const canEdit = usePermission(perms.edit)
+  const canDelete = usePermission(perms.delete)
 
   const handleEdit = () => {
     if (server.is_system) {

@@ -21,7 +21,7 @@ import {
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistants/stores'
 import { Can, usePermission } from '@/core/permissions'
-import type { Assistant } from '@/api-client/types'
+import { Permissions, type Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistants/components/AssistantFormDrawer'
 
@@ -40,8 +40,8 @@ export function AssistantsSettings() {
     error,
   } = Stores.TemplateAssistants
 
-  const canEdit = usePermission('assistant_templates::edit')
-  const canDelete = usePermission('assistant_templates::delete')
+  const canEdit = usePermission(Permissions.AssistantsTemplateEdit)
+  const canDelete = usePermission(Permissions.AssistantsTemplateDelete)
 
   // Show errors
   useEffect(() => {
@@ -121,7 +121,7 @@ export function AssistantsSettings() {
         <Card
           title="Template Assistants"
           extra={
-            <Can permission="assistant_templates::create">
+            <Can permission={Permissions.AssistantsTemplateCreate}>
               <Button
                 type="text"
                 icon={<PlusOutlined aria-hidden="true" />}

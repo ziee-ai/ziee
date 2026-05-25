@@ -8,9 +8,10 @@ import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import type {
-  CreateLlmRepositoryRequest,
-  UpdateLlmRepositoryRequest,
+import {
+  Permissions,
+  type CreateLlmRepositoryRequest,
+  type UpdateLlmRepositoryRequest,
 } from '@/api-client/types'
 
 const { Text } = Typography
@@ -22,8 +23,8 @@ export function LlmRepositoryDrawer() {
 
   const { creating, updating, testing } = Stores.LlmRepository
   const { open, editingRepository: repository } = Stores.LlmRepositoryDrawer
-  const canCreate = usePermission('llm_repositories::create')
-  const canEdit = usePermission('llm_repositories::edit')
+  const canCreate = usePermission(Permissions.LlmRepositoriesCreate)
+  const canEdit = usePermission(Permissions.LlmRepositoriesEdit)
   // Effective gate on the form: editing requires edit; creating requires create.
   const canSave = repository ? canEdit : canCreate
 

@@ -564,7 +564,6 @@ pub fn list_environments_docs(op: aide::transform::TransformOperation) -> aide::
         )
         .response::<200, Json<EnvironmentsResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Missing CodeSandboxEnvironmentsRead"))
 }
 
 // ─── DELETE /code-sandbox/environments/{flavor} ───
@@ -627,7 +626,6 @@ pub fn evict_environment_docs(op: aide::transform::TransformOperation) -> aide::
         )
         .response::<200, Json<EnvironmentsResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Missing CodeSandboxEnvironmentsManage"))
         .response_with::<404, (), _>(|res| res.description("Unknown flavor"))
 }
 
@@ -667,7 +665,6 @@ pub fn list_prefetch_tasks_docs(op: aide::transform::TransformOperation) -> aide
         )
         .response::<200, Json<ListPrefetchTasksResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Missing CodeSandboxEnvironmentsRead"))
 }
 
 // ─── POST /code-sandbox/prefetch ───
@@ -720,7 +717,6 @@ pub fn start_prefetch_docs(op: aide::transform::TransformOperation) -> aide::tra
         .response::<200, Json<StartPrefetchResponse>>()
         .response_with::<400, (), _>(|res| res.description("Unknown flavor"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Missing CodeSandboxEnvironmentsManage"))
 }
 
 // ─── GET /code-sandbox/prefetch/{flavor}/events ───
@@ -835,7 +831,6 @@ pub fn subscribe_prefetch_events_docs(op: aide::transform::TransformOperation) -
         )
         .response::<200, Json<SSEPrefetchEvent>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Missing CodeSandboxEnvironmentsRead"))
         .response_with::<404, (), _>(|res| res.description("No task for this flavor"))
 }
 
@@ -1457,7 +1452,6 @@ pub fn get_resource_limits_docs(
         )
         .response::<200, Json<CodeSandboxResourceLimits>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
-        .response_with::<403, (), _>(|r| r.description("Missing code_sandbox::resource_limits::read"))
 }
 
 /// PUT /code-sandbox/resource-limits
@@ -1490,7 +1484,6 @@ pub fn update_resource_limits_docs(
         )
         .response::<200, Json<CodeSandboxResourceLimits>>()
         .response_with::<401, (), _>(|r| r.description("Unauthorized"))
-        .response_with::<403, (), _>(|r| r.description("Missing code_sandbox::resource_limits::manage"))
         .response_with::<422, (), _>(|r| r.description("Value out of range"))
 }
 

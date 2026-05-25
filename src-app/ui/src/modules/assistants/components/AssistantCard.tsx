@@ -4,7 +4,7 @@ import {
   EditOutlined,
 } from '@ant-design/icons'
 import { App, Button, Card, Dropdown, Flex, Tag, Typography } from 'antd'
-import type { Assistant } from '@/api-client/types'
+import { Permissions, type Assistant } from '@/api-client/types'
 import { usePermission } from '@/core/permissions'
 import { CgMenuRightAlt } from 'react-icons/cg'
 import dayjs from 'dayjs'
@@ -30,8 +30,8 @@ export function AssistantCard({
   // User assistants only (template list has its own page with its own
   // gating). Edit also opens the drawer in view-only when missing the
   // perm — Form's `disabled` flag downstream handles read-only display.
-  const canEdit = usePermission('assistants::edit')
-  const canDelete = usePermission('assistants::delete')
+  const canEdit = usePermission(Permissions.AssistantsEdit)
+  const canDelete = usePermission(Permissions.AssistantsDelete)
 
   const handleEdit = () => {
     onEdit(assistant)

@@ -1,5 +1,6 @@
 import { createModule } from '@/core'
 import { CloudDownloadOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { useLlmRepositoryStore } from '@/modules/llm-repository/stores/LlmRepository.store'
 import { useLlmRepositoryDrawerStore } from '@/modules/llm-repository/components/LlmRepositoryDrawer.store'
@@ -58,7 +59,7 @@ export default createModule({
         label: 'LLM Repositories',
         path: 'llm-repositories',
         order: 20,
-        permission: 'llm_repositories::read',
+        permission: Permissions.LlmRepositoriesRead,
       },
     ],
   },

@@ -19,7 +19,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
-import type { LlmProvider } from '@/api-client/types'
+import { Permissions, type LlmProvider } from '@/api-client/types'
 
 export function ProviderHeader() {
   const [isEditingName, setIsEditingName] = useState(false)
@@ -28,8 +28,8 @@ export function ProviderHeader() {
   const { message, modal } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
 
-  const canEdit = usePermission('llm_providers::edit')
-  const canDelete = usePermission('llm_providers::delete')
+  const canEdit = usePermission(Permissions.LlmProvidersEdit)
+  const canDelete = usePermission(Permissions.LlmProvidersDelete)
 
   // Get current provider from store
   const currentProvider = Stores.LlmProvider.providers.find(

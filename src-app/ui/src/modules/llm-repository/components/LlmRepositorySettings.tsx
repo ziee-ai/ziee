@@ -17,7 +17,7 @@ import {
 } from 'antd'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
-import type { LlmRepository } from '@/api-client/types'
+import { Permissions, type LlmRepository } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 
 const { Text } = Typography
@@ -28,8 +28,8 @@ export function LlmRepositorySettings() {
   // Stores
   const { repositories, testing } = Stores.LlmRepository
 
-  const canEdit = usePermission('llm_repositories::edit')
-  const canDelete = usePermission('llm_repositories::delete')
+  const canEdit = usePermission(Permissions.LlmRepositoriesEdit)
+  const canDelete = usePermission(Permissions.LlmRepositoriesDelete)
 
   const testRepositoryConnection = async (repository: LlmRepository) => {
     // Check if repository has credentials configured
@@ -184,7 +184,7 @@ export function LlmRepositorySettings() {
           </Flex>
         }
         extra={
-          <Can permission="llm_repositories::create">
+          <Can permission={Permissions.LlmRepositoriesCreate}>
             <Button
               type={'text'}
               icon={<PlusOutlined />}

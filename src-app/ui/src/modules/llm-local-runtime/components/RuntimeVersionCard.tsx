@@ -6,7 +6,7 @@ import {
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import type { RuntimeVersionResponse } from '@/api-client/types'
+import { Permissions, type RuntimeVersionResponse } from '@/api-client/types'
 
 interface Props {
   version: RuntimeVersionResponse
@@ -18,8 +18,8 @@ export function RuntimeVersionCard({ version }: Props) {
   const isSettingDefault = settingDefault.get(version.id) || false
   const isDeleting = deleting.get(version.id) || false
 
-  const canUpdate = usePermission('llm_local_runtime::update')
-  const canDelete = usePermission('llm_local_runtime::delete')
+  const canUpdate = usePermission(Permissions.RuntimeVersionUpdate)
+  const canDelete = usePermission(Permissions.RuntimeVersionDelete)
 
   const handleSetDefault = async () => {
     try {

@@ -2,6 +2,7 @@ import { createModule } from '@/core'
 import { CloudDownloadOutlined } from '@ant-design/icons'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { Permissions } from '@/api-client/types'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useSandboxEnvironmentsStore } from './stores/SandboxEnvironments.store'
 import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
@@ -51,8 +52,8 @@ export default createModule({
         // hide each card individually.
         permission: {
           anyOf: [
-            'code_sandbox::environments::read',
-            'code_sandbox::resource_limits::read',
+            Permissions.CodeSandboxEnvironmentsRead,
+            Permissions.CodeSandboxResourceLimitsRead,
           ],
         },
       },

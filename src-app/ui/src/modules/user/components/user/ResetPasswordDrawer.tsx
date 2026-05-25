@@ -2,12 +2,13 @@ import { App, Button, Flex, Form, Input } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 export function ResetPasswordDrawer() {
   const { message } = App.useApp()
   const { isOpen, user } = Stores.ResetPasswordDrawer
   const [passwordForm] = Form.useForm()
-  const canReset = usePermission('users::reset_password')
+  const canReset = usePermission(Permissions.UsersResetPassword)
 
   const handleResetPassword = async (values: any) => {
     if (!user) return

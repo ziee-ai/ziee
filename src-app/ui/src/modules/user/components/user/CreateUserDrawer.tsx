@@ -40,7 +40,7 @@ export function CreateUserDrawer() {
   const { isOpen } = Stores.CreateUserDrawer
   const { creating: creatingUser } = Stores.Users
   const [createForm] = Form.useForm()
-  const canCreate = usePermission('users::create')
+  const canCreate = usePermission(Permissions.UsersCreate)
 
   const handleCreateUser = async (values: any) => {
     try {

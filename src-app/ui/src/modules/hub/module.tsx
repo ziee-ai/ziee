@@ -2,6 +2,7 @@ import { createModule } from '@/core'
 import { AppstoreOutlined } from '@ant-design/icons'
 import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { Permissions } from '@/api-client/types'
 
 // Hub coordination module
 // Sub-modules are auto-discovered from hub/modules/**/module.tsx
@@ -38,9 +39,9 @@ export default createModule({
         // least one tab.
         permission: {
           anyOf: [
-            'hub::models::read',
-            'hub::assistants::read',
-            'hub::mcp_servers::read',
+            Permissions.HubModelsRead,
+            Permissions.HubAssistantsRead,
+            Permissions.HubMCPServersRead,
           ],
         },
       },

@@ -3,8 +3,7 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import type { UpdateGroupRequest } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { Permissions, type UpdateGroupRequest } from '@/api-client/types'
 
 const { TextArea } = Input
 
@@ -42,7 +41,7 @@ export function EditUserGroupDrawer() {
   const [loading, setLoading] = useState(false)
 
   const { isOpen: open, editingGroup: group } = Stores.EditUserGroupDrawer
-  const canEdit = usePermission('groups::edit')
+  const canEdit = usePermission(Permissions.GroupsEdit)
 
   // Load group data when it changes
   useEffect(() => {

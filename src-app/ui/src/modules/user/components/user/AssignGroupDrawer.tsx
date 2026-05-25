@@ -2,6 +2,7 @@ import { App, Button, Flex, Form, Select } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 const { Option } = Select
 
@@ -10,7 +11,7 @@ export function AssignGroupDrawer() {
   const { isOpen, user } = Stores.AssignGroupDrawer
   const { groups } = Stores.UserGroups
   const [assignGroupForm] = Form.useForm()
-  const canAssign = usePermission('groups::assign_users')
+  const canAssign = usePermission(Permissions.GroupsAssignUsers)
 
   const handleAssignGroup = async (values: any) => {
     if (!user) return

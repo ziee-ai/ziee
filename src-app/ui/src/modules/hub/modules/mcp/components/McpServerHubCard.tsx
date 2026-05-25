@@ -6,7 +6,7 @@ import {
   GithubOutlined,
   EyeOutlined,
 } from '@ant-design/icons'
-import type { HubMCPServer } from '@/api-client/types'
+import { Permissions, type HubMCPServer } from '@/api-client/types'
 import { useState } from 'react'
 import { McpServerDetailsDrawer } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer'
 import { Stores } from '@/core/stores'
@@ -24,7 +24,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [installing, setInstalling] = useState(false)
-  const canInstall = usePermission('hub::mcp_servers::create')
+  const canInstall = usePermission(Permissions.HubMcpServersCreate)
 
   // Check if server was already created from this hub server
   const isAlreadyInstalled = server.created_ids && server.created_ids.length > 0

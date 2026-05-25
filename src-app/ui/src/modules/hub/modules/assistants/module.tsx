@@ -1,5 +1,6 @@
 import { createModule } from '@/core'
 import { RobotOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
 import { useHubAssistantsStore } from '@/modules/hub/modules/assistants/stores/hub-assistants-store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import '@/modules/hub/modules/assistants/types'
@@ -32,8 +33,8 @@ export default createModule({
         component: AssistantsHubTab,
         order: 20,
         permissions: {
-          read: 'hub::assistants::read',
-          refresh: 'hub::assistants::refresh',
+          read: Permissions.HubAssistantsRead,
+          refresh: Permissions.HubAssistantsRefresh,
         },
         refresh: async () => {
           await useHubAssistantsStore.getState().refreshFromGitHub()

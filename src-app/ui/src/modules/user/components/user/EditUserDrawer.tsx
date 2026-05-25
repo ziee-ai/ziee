@@ -2,14 +2,14 @@ import { App, Button, Flex, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import type { UpdateUserRequest } from '@/api-client/types'
+import { Permissions, type UpdateUserRequest } from '@/api-client/types'
 import { useEffect } from 'react'
 
 export function EditUserDrawer() {
   const { message } = App.useApp()
   const { isOpen, editingUser } = Stores.EditUserDrawer
   const [editForm] = Form.useForm()
-  const canEdit = usePermission('users::edit')
+  const canEdit = usePermission(Permissions.UsersEdit)
 
   // Update form when editingUser changes
   useEffect(() => {

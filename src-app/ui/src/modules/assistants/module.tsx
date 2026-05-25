@@ -6,6 +6,7 @@ import { useUserAssistantsStore, useTemplateAssistantsStore } from '@/modules/as
 import { useAssistantDrawerStore } from '@/modules/assistants/components/AssistantDrawer.store'
 import '@/modules/assistants/types'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { Permissions } from '@/api-client/types'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const UserAssistantsPage = lazyWithPreload(() =>
@@ -72,7 +73,7 @@ export default createModule({
         label: 'Assistants',
         path: 'assistants',
         order: 25,
-        permission: 'assistant_templates::read',
+        permission: Permissions.AssistantsTemplateRead,
       },
     ],
   },

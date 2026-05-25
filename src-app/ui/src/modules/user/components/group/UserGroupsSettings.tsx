@@ -14,8 +14,7 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
-import type { CreateGroupRequest, Group } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { Permissions, type CreateGroupRequest, type Group } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 import { EditUserGroupDrawer } from '@/modules/user/components/group/EditUserGroupDrawer.tsx'
 import { GroupMembersDrawer } from '@/modules/user/components/group/GroupMembersDrawer.tsx'
@@ -65,7 +64,7 @@ export function UserGroupsSettings() {
 
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const [createForm] = Form.useForm()
-  const canCreate = usePermission('groups::create')
+  const canCreate = usePermission(Permissions.GroupsCreate)
 
   // Show errors
   useEffect(() => {
@@ -123,7 +122,7 @@ export function UserGroupsSettings() {
         <Card
           title="User Groups"
           extra={
-            <Can permission="groups::create">
+            <Can permission={Permissions.GroupsCreate}>
               <Button
                 type="text"
                 icon={<PlusOutlined aria-hidden="true" />}

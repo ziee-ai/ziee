@@ -24,7 +24,7 @@ import {
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
-import type { User } from '@/api-client/types'
+import { Permissions, type User } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 import { UserRegistrationSettings } from '@/modules/user/components/user/UserRegistrationSettings.tsx'
 import { CreateUserDrawer } from '@/modules/user/components/user/CreateUserDrawer.tsx'
@@ -50,11 +50,11 @@ export function UsersSettings() {
   const { error: groupsError } = Stores.UserGroups
   const { user: currentUser } = Stores.Auth
 
-  const canEdit = usePermission('users::edit')
-  const canResetPassword = usePermission('users::reset_password')
-  const canAssignGroups = usePermission('groups::assign_users')
-  const canDelete = usePermission('users::delete')
-  const canToggleStatus = usePermission('users::toggle_status')
+  const canEdit = usePermission(Permissions.UsersEdit)
+  const canResetPassword = usePermission(Permissions.UsersResetPassword)
+  const canAssignGroups = usePermission(Permissions.GroupsAssignUsers)
+  const canDelete = usePermission(Permissions.UsersDelete)
+  const canToggleStatus = usePermission(Permissions.UsersToggleStatus)
 
   // Show errors
   useEffect(() => {
@@ -195,7 +195,7 @@ export function UsersSettings() {
           <Card
             title="Users"
             extra={
-              <Can permission="users::create">
+              <Can permission={Permissions.UsersCreate}>
                 <Button
                   type="text"
                   icon={<PlusOutlined aria-hidden="true" />}

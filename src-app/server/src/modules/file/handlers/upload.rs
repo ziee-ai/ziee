@@ -211,5 +211,4 @@ pub fn upload_file_docs(op: TransformOperation) -> TransformOperation {
             res.description("Bad Request - Invalid file or file too large")
         })
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Forbidden"))
 }

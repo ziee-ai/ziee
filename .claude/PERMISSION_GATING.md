@@ -33,38 +33,95 @@ Three layers of gating, in order of preference:
 
 ---
 
-## The `PermissionExpr` type
+## The `Permission` and `PermissionExpr` types
 
 ```ts
+import { Permissions } from '@/api-client/types'
+
+export type Permission = Permissions
+
 export type PermissionExpr =
-  | string
+  | Permission
   | { allOf: PermissionExpr[] }
   | { anyOf: PermissionExpr[] }
 ```
 
-- A bare string is the 90% case: `'users::delete'`.
+- **`Permissions.*` enum** is generated from the backend OpenAPI spec
+  by `openapi/generate-endpoints.ts`, which extracts each endpoint's
+  structured `403.required_permissions` example. Strictly typed —
+  raw strings are rejected at compile time.
 - `allOf: [a, b]` = AND (every child must pass). Empty `allOf` is
   vacuously true.
-- `anyOf: [a, b]` = OR (at least one must pass). Empty `anyOf` is
+- `anyOf: [a, b]` = OR (at least one child must pass). Empty `anyOf` is
   false.
 - The types nest. Pass them through any of the gating primitives.
 
 Real examples from the codebase:
 
 ```ts
-// 90%
-permission: 'users::delete'
+// 90% case — single enum member
+permission: Permissions.UsersDelete
 
 // AND — page renders content from two backend modules
-permission: { allOf: ['users::read', 'groups::read'] }
+permission: { allOf: [Permissions.UsersRead, Permissions.GroupsRead] }
 
 // OR — Hub sidebar entry should appear if user can see ANY tab
 permission: { anyOf: [
-  'hub::models::read',
-  'hub::assistants::read',
-  'hub::mcp_servers::read',
+  Permissions.HubModelsRead,
+  Permissions.HubAssistantsRead,
+  Permissions.HubMCPServersRead,
 ]}
 ```
+
+### If a permission isn't in the enum
+
+The generator can only see permissions that appear in the OpenAPI
+spec under
+`responses.403.content.application/json.example.details.required_permissions`.
+That structured example is auto-attached by the backend
+`with_permission::<…>()` helper. Two failure modes keep an
+endpoint's perm out of the enum:
+
+1. **The handler's `*_docs` function never calls `with_permission`.**
+   Fix: call it. `with_permission::<(MyPerm,)>(op)` is the first
+   line; everything else is chained on the returned operation.
+2. **The `*_docs` function calls `with_permission` AND ALSO
+   `.response::<403, ()>()` or `.response_with::<403, (), _>(…)`.**
+   Those calls override the structured 403 from `with_permission`
+   with an empty body. Fix: delete the redundant 403 override.
+   `with_permission` already documents the 403.
+
+After fixing, regenerate:
+```bash
+cd src-app/server && cargo build && \
+  CONFIG_FILE=config/dev.yaml ./target/debug/ziee-chat --generate-openapi
+cd ../ui && npm run generate-openapi
+```
+
+### Dynamic namespaces
+
+If a component picks the permission namespace at runtime (e.g. a
+shared card serving both user and admin modes based on a flag), use
+a lookup map on enum members instead of a template-string permission:
+
+```ts
+const SYSTEM_PERMS = {
+  edit: Permissions.McpServersAdminEdit,
+  delete: Permissions.McpServersAdminDelete,
+} as const
+const USER_PERMS = {
+  edit: Permissions.McpServersEdit,
+  delete: Permissions.McpServersDelete,
+} as const
+
+const perms = server.is_system ? SYSTEM_PERMS : USER_PERMS
+const canEdit = usePermission(perms.edit)
+```
+
+Template strings like `${ns}::edit` are NOT type-safe (TypeScript
+can't narrow string concatenation to enum members) and bypass the
+gating guarantee. Always look up enum members through a discriminated
+const.
 
 A `not` variant is intentionally omitted — no current surface needs
 it. Add it later as `{ not: PermissionExpr }` non-breakingly if a
@@ -140,9 +197,12 @@ React hook (slot filters, route consumers).
 ### `core/permissions/usePermission.ts` — React hook
 
 ```ts
-const canEdit = usePermission('users::edit')
+const canEdit = usePermission(Permissions.UsersEdit)
 const canManageSandbox = usePermission({
-  allOf: ['code_sandbox::environments::manage', 'code_sandbox::resource_limits::manage'],
+  allOf: [
+    'code_sandbox::environments::manage',
+    'code_sandbox::resource_limits::manage',
+  ],
 })
 ```
 
@@ -152,11 +212,13 @@ conditional logic with multiple branches or `disabled` props.
 ### `core/permissions/Can.tsx` — declarative wrapper
 
 ```tsx
-<Can permission="users::delete">
+<Can permission={Permissions.UsersDelete}>
   <Button danger onClick={handleDelete}>Delete</Button>
 </Can>
 
-<Can permission={{ anyOf: ['users::edit', 'users::reset_password'] }}>
+<Can permission={{
+  anyOf: [Permissions.UsersEdit, Permissions.UsersResetPassword]
+}}>
   <UserActionsMenu user={user} />
 </Can>
 ```
@@ -177,6 +239,8 @@ filter on it.
 
 ```tsx
 // src/modules/users/module.tsx
+import { Permissions } from '@/api-client/types'
+
 slots: {
   settingsAdminPages: [{
     id: 'users',
@@ -184,7 +248,7 @@ slots: {
     label: 'Users',
     path: 'users',
     order: 10,
-    permission: 'users::read',  // ← gate here
+    permission: Permissions.UsersRead,  // ← gate here
   }],
 }
 ```
@@ -207,9 +271,9 @@ sidebarNavigation: [{
   icon: <HubIcon />,
   order: 50,
   permission: { anyOf: [
-    'hub::models::read',
-    'hub::assistants::read',
-    'hub::mcp_servers::read',
+    Permissions.HubModelsRead,
+    Permissions.HubAssistantsRead,
+    Permissions.HubMCPServersRead,
   ]},
 }]
 ```

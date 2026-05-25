@@ -230,9 +230,6 @@ pub fn list_server_tools_docs(op: TransformOperation) -> TransformOperation {
         .summary("List MCP server tools")
         .description("List tools available from an MCP server")
         .response::<200, Json<ListToolsResponse>>()
-        .response_with::<403, (), _>(|res| {
-            res.description("User does not have access to this server")
-        })
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }
 
@@ -243,9 +240,6 @@ pub fn call_server_tool_docs(op: TransformOperation) -> TransformOperation {
         .summary("Call MCP server tool")
         .description("Execute a tool on an MCP server")
         .response::<200, Json<CallToolResponse>>()
-        .response_with::<403, (), _>(|res| {
-            res.description("User does not have access to this server")
-        })
         .response_with::<404, (), _>(|res| res.description("Server or tool not found"))
 }
 
@@ -256,9 +250,6 @@ pub fn list_server_resources_docs(op: TransformOperation) -> TransformOperation 
         .summary("List MCP server resources")
         .description("List resources available from an MCP server")
         .response::<200, Json<ListResourcesResponse>>()
-        .response_with::<403, (), _>(|res| {
-            res.description("User does not have access to this server")
-        })
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }
 
@@ -269,9 +260,6 @@ pub fn read_server_resource_docs(op: TransformOperation) -> TransformOperation {
         .summary("Read MCP server resource")
         .description("Read the contents of a resource from an MCP server")
         .response::<200, Json<ReadResourceResponse>>()
-        .response_with::<403, (), _>(|res| {
-            res.description("User does not have access to this server")
-        })
         .response_with::<404, (), _>(|res| {
             res.description("Server or resource not found")
         })
@@ -284,9 +272,6 @@ pub fn disconnect_server_docs(op: TransformOperation) -> TransformOperation {
         .summary("Disconnect MCP server")
         .description("Disconnect from an MCP server and clean up the session")
         .response::<200, Json<()>>()
-        .response_with::<403, (), _>(|res| {
-            res.description("User does not have access to this server")
-        })
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }
 
@@ -342,7 +327,6 @@ pub fn list_server_prompts_docs(op: TransformOperation) -> TransformOperation {
         .summary("List MCP server prompts")
         .description("List prompt templates available from an MCP server")
         .response::<200, Json<ListPromptsResponse>>()
-        .response_with::<403, (), _>(|res| res.description("User does not have access to this server"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }
 
@@ -353,7 +337,6 @@ pub fn get_server_prompt_docs(op: TransformOperation) -> TransformOperation {
         .summary("Get rendered MCP prompt")
         .description("Render a prompt template with the given arguments")
         .response::<200, Json<GetPromptResponse>>()
-        .response_with::<403, (), _>(|res| res.description("User does not have access to this server"))
         .response_with::<404, (), _>(|res| res.description("Server or prompt not found"))
 }
 
@@ -388,6 +371,5 @@ pub fn ping_server_docs(op: TransformOperation) -> TransformOperation {
         .summary("Ping MCP server")
         .description("Liveness check — verifies the server is reachable and responsive")
         .response::<200, Json<PingResponse>>()
-        .response_with::<403, (), _>(|res| res.description("User does not have access to this server"))
         .response_with::<404, (), _>(|res| res.description("Server not found"))
 }

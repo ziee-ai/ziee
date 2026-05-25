@@ -13,6 +13,7 @@ import { useEffect } from 'react'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
@@ -33,7 +34,7 @@ export default function HardwareSettings() {
     sseError,
   } = Stores.Hardware
 
-  const canMonitor = usePermission('hardware::monitor')
+  const canMonitor = usePermission(Permissions.HardwareMonitor)
 
   // Initialize hardware monitoring on component mount. Only auto-connect
   // when the viewer has the monitor permission — non-monitor users see

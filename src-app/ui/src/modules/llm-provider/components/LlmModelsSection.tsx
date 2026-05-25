@@ -19,7 +19,7 @@ import {
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import type { LlmModel } from '@/api-client/types'
+import { Permissions, type LlmModel } from '@/api-client/types'
 
 const { Text } = Typography
 
@@ -29,9 +29,9 @@ export function LlmModelsSection() {
 
   // Store data
   const { llmModelsLoading } = Stores.LlmProvider
-  const canEditModels = usePermission('llm_models::edit')
-  const canDeleteModels = usePermission('llm_models::delete')
-  const canCreateModels = usePermission('llm_models::create')
+  const canEditModels = usePermission(Permissions.LlmModelsEdit)
+  const canDeleteModels = usePermission(Permissions.LlmModelsDelete)
+  const canCreateModels = usePermission(Permissions.LlmModelsCreate)
 
   // Get current provider and its models
   const currentProvider = Stores.LlmProvider.providers.find(

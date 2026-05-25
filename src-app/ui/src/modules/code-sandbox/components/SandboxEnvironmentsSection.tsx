@@ -7,10 +7,14 @@ import {
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
-import type { EnvironmentInfo, FetchPhase } from '@/api-client/types'
+import {
+  Permissions,
+  type EnvironmentInfo,
+  type FetchPhase,
+} from '@/api-client/types'
 
-const MANAGE_PERM = 'code_sandbox::environments::manage'
-const READ_PERM = 'code_sandbox::environments::read'
+const MANAGE_PERM = Permissions.CodeSandboxEnvironmentsManage
+const READ_PERM = Permissions.CodeSandboxEnvironmentsRead
 
 // The backend emits discrete phase events (resolving/downloading/
 // verifying/installing), not byte-granular progress, so the bar is a

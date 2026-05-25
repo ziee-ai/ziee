@@ -15,13 +15,14 @@ import {
 } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import type {
-  CodeSandboxResourceLimits,
-  UpdateCodeSandboxResourceLimits,
+import {
+  Permissions,
+  type CodeSandboxResourceLimits,
+  type UpdateCodeSandboxResourceLimits,
 } from '@/api-client/types'
 
-const MANAGE_PERM = 'code_sandbox::resource_limits::manage'
-const READ_PERM = 'code_sandbox::resource_limits::read'
+const MANAGE_PERM = Permissions.CodeSandboxResourceLimitsManage
+const READ_PERM = Permissions.CodeSandboxResourceLimitsRead
 
 const MIB = 1024 * 1024
 const GIB = 1024 * 1024 * 1024

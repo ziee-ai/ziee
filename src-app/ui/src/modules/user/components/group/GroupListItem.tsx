@@ -14,7 +14,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import type { Group } from '@/api-client/types'
+import { Permissions, type Group } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
@@ -40,9 +40,9 @@ export function GroupListItem({
   const { slots } = Stores.ModuleSystem
   const userGroupWidgets = (slots.get('userGroup') || []) as GroupWidget[]
 
-  const canReadMembers = usePermission('groups::read')
-  const canEdit = usePermission('groups::edit')
-  const canDelete = usePermission('groups::delete')
+  const canReadMembers = usePermission(Permissions.GroupsRead)
+  const canEdit = usePermission(Permissions.GroupsEdit)
+  const canDelete = usePermission(Permissions.GroupsDelete)
 
   // Sort items by order
   const registeredWidgets = [...userGroupWidgets].sort(

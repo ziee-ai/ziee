@@ -2,6 +2,7 @@
 // checklist for new features.
 
 import type { User } from '@/api-client/types'
+import type { Permission } from './types'
 
 /**
  * Leaf permission check — mirrors the backend's
@@ -24,7 +25,7 @@ import type { User } from '@/api-client/types'
 export function hasPermission(
   user: User | null | undefined,
   permissions: string[] | null | undefined,
-  required: string,
+  required: Permission,
 ): boolean {
   if (user?.is_admin) return true
 
