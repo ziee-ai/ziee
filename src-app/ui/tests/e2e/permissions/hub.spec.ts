@@ -2,6 +2,17 @@ import { test, expect } from './no-403'
 import { loginAsHubMcpOnly, loginAsMember, loginWithPerms } from './fixtures'
 import { Permissions } from '../../../src/api-client/types'
 
+// The no-403 fixture is too strict for these tests. AppLayout loads
+// chat/mcp/conversations/llm-models data on every page render
+// regardless of which page the user is on. When the test user lacks
+// permissions on those resources, the app shell 403s on its own
+// background fetches — none of which the *hub* gating is responsible
+// for. Opt this whole describe out and audit the broader fetch-on-
+// shell-load pattern as a follow-up. (The existing users.spec.ts
+// hits the same issue but masks it by using only toHaveCount(0)
+// assertions that finish before the background fetches complete.)
+test.use({ allow403: true })
+
 test.describe('hub module — permission gating', () => {
   test('non-admin without any hub::*::read: sidebar entry hidden + /hub renders inline 403', async ({
     page,
@@ -13,7 +24,7 @@ test.describe('hub module — permission gating', () => {
     // `HUB_READ_PERM` anyOf in hub/module.tsx.
     await page.goto(`${testInfra.baseURL}/`)
     await expect(
-      page.getByRole('menuitem', { name: /^Hub$/i }),
+      page.getByRole('link', { name: /^Hub$/i }),
     ).toHaveCount(0)
 
     // Deep-link directly to /hub — RoutePermissionGate should render
@@ -33,9 +44,12 @@ test.describe('hub module — permission gating', () => {
     await page.goto(`${testInfra.baseURL}/hub`)
     await expect(page.getByText(/Not authorized/i)).toHaveCount(0)
 
-    // Sidebar entry should be present.
+    // Sidebar entry should be present. SidebarItem renders as a
+    // <Link>, so the accessible role is `link`, not `menuitem` (the
+    // existing users.spec.ts uses `menuitem` but its toHaveCount(0)
+    // assertion passes for the wrong reason — see audit follow-up).
     await expect(
-      page.getByRole('menuitem', { name: /^Hub$/i }).first(),
+      page.getByRole('link', { name: /^Hub$/i }).first(),
     ).toBeVisible()
 
     // The Segmented control inside the Hub renders one item per
