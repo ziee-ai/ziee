@@ -4,6 +4,7 @@ import {
   Flex,
   Form,
   Input,
+  Popconfirm,
   Switch,
   Tooltip,
   Typography,
@@ -25,7 +26,7 @@ export function ProviderHeader() {
   const [isEditingName, setIsEditingName] = useState(false)
   const [form] = Form.useForm()
   const navigate = useNavigate()
-  const { message, modal } = App.useApp()
+  const { message } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
 
   const canEdit = usePermission(Permissions.LlmProvidersEdit)
@@ -80,32 +81,14 @@ export function ProviderHeader() {
 
   const handleDeleteProvider = async () => {
     if (!currentProvider) return
-
-    // Don't allow deleting built-in providers
-    if (currentProvider.built_in) {
-      message.warning('Built-in providers cannot be deleted')
-      return
+    try {
+      await Stores.LlmProvider.deleteLlmProvider(currentProvider.id)
+      navigate(`/settings/llm-providers`, { replace: true })
+      message.success('Provider deleted successfully')
+    } catch (error: any) {
+      console.error('Failed to delete provider:', error)
+      message.error(error?.message || 'Failed to delete provider')
     }
-
-    modal.confirm({
-      title: 'Confirm Deletion',
-      content: `Are you sure you want to delete "${currentProvider.name}"? This action cannot be undone.`,
-      okText: 'Delete',
-      okType: 'danger',
-      cancelText: 'Cancel',
-      onOk: async () => {
-        try {
-          await Stores.LlmProvider.deleteLlmProvider(currentProvider.id)
-          navigate(`/settings/llm-providers`, {
-            replace: true,
-          })
-          message.success('Provider deleted successfully')
-        } catch (error: any) {
-          console.error('Failed to delete provider:', error)
-          message.error(error?.message || 'Failed to delete provider')
-        }
-      },
-    })
   }
 
   // Return early if no provider
@@ -190,14 +173,22 @@ export function ProviderHeader() {
               </Button>
             )}
             {canDelete && !currentProvider.built_in && (
-              <Button
-                type={'text'}
-                danger
-                onClick={handleDeleteProvider}
-                aria-label="Delete provider"
+              <Popconfirm
+                title="Delete Provider"
+                description={`Are you sure you want to delete "${currentProvider.name}"? This action cannot be undone.`}
+                okText="Delete"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+                onConfirm={handleDeleteProvider}
               >
-                <DeleteOutlined aria-hidden="true" />
-              </Button>
+                <Button
+                  type={'text'}
+                  danger
+                  aria-label="Delete provider"
+                >
+                  <DeleteOutlined aria-hidden="true" />
+                </Button>
+              </Popconfirm>
             )}
           </div>
         </div>

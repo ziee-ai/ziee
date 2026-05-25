@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { App, Button, Card, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
+import { App, Button, Card, Popconfirm, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
 import { EditOutlined, ToolOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -29,7 +29,7 @@ export function McpServerCard({
   isEditable = true,
   bordered = true,
 }: McpServerCardProps) {
-  const { message, modal } = App.useApp()
+  const { message } = App.useApp()
   const [enableLoading, setEnableLoading] = useState(false)
 
   const perms = server.is_system ? SYSTEM_PERMS : USER_PERMS
@@ -44,31 +44,17 @@ export function McpServerCard({
     }
   }
 
-  const handleDelete = () => {
-    if (server.enabled) {
-      message.warning('Please disable the server before deleting it')
-      return
+  const handleDelete = async () => {
+    try {
+      if (server.is_system) {
+        await Stores.SystemMcpServer.deleteSystemServer(server.id)
+      } else {
+        await Stores.McpServer.deleteMcpServer(server.id)
+      }
+      message.success('Server deleted successfully')
+    } catch (_error) {
+      message.error('Failed to delete server')
     }
-
-    modal.confirm({
-      title: 'Delete Server',
-      content: `Are you sure you want to delete "${server.display_name}"? This action cannot be undone.`,
-      okText: 'Delete',
-      okType: 'danger',
-      cancelText: 'Cancel',
-      onOk: async () => {
-        try {
-          if (server.is_system) {
-            await Stores.SystemMcpServer.deleteSystemServer(server.id)
-          } else {
-            await Stores.McpServer.deleteMcpServer(server.id)
-          }
-          message.success('Server deleted successfully')
-        } catch (error) {
-          message.error('Failed to delete server')
-        }
-      },
-    })
   }
 
   const handleToggleEnable = async (enabled: boolean) => {
@@ -167,18 +153,32 @@ export function McpServerCard({
                     </Button>
                   )}
                   {canDelete && !server.is_built_in && (
-                    <Button
-                      icon={<DeleteOutlined />}
-                      danger
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleDelete()
-                      }}
-                      aria-label={`Delete ${server.display_name}`}
-                      data-testid="mcp-server-delete-btn"
+                    <Popconfirm
+                      title="Delete Server"
+                      description={`Are you sure you want to delete "${server.display_name}"? This action cannot be undone.`}
+                      okText="Delete"
+                      cancelText="Cancel"
+                      okButtonProps={{ danger: true }}
+                      disabled={server.enabled}
+                      onConfirm={handleDelete}
                     >
-                      Delete
-                    </Button>
+                      <Button
+                        icon={<DeleteOutlined />}
+                        danger
+                        onClick={e => {
+                          e.stopPropagation()
+                          if (server.enabled) {
+                            message.warning(
+                              'Please disable the server before deleting it',
+                            )
+                          }
+                        }}
+                        aria-label={`Delete ${server.display_name}`}
+                        data-testid="mcp-server-delete-btn"
+                      >
+                        Delete
+                      </Button>
+                    </Popconfirm>
                   )}
                 </>
               )}
