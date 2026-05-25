@@ -299,13 +299,11 @@ export function McpServerDrawer() {
   const getButtonText = () => {
     switch (mode) {
       case 'create':
-        return 'Create Server'
-      case 'edit':
-        return 'Update Server'
       case 'create-system':
-        return 'Create System Server'
+        return 'Create'
+      case 'edit':
       case 'edit-system':
-        return 'Update System Server'
+        return 'Save'
       default:
         return 'Save'
     }

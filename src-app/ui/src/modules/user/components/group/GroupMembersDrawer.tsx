@@ -25,7 +25,7 @@ export function GroupMembersDrawer() {
       placement="right"
       onClose={handleClose}
       open={open}
-      size={400}
+      size={600}
     >
       <List
         loading={loadingGroupMembers}

@@ -48,7 +48,7 @@ export function RuntimeDownloadDrawer() {
       title={`Download ${engine} Runtime`}
       open={open}
       onClose={handleClose}
-      size={500}
+      size={600}
       footer={
         <Space>
           <Button onClick={handleClose}>Cancel</Button>

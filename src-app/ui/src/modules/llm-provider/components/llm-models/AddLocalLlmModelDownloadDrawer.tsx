@@ -251,7 +251,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                   loading={loading}
                   onClick={handleSubmit}
                 >
-                  Start Download
+                  Download
                 </Button>
               ),
             ]

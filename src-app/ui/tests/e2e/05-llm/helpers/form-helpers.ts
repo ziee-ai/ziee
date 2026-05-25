@@ -77,7 +77,10 @@ export async function submitProviderForm(page: Page) {
   // submit button after focusing.
   await page.waitForTimeout(500)
   const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  const submitButton = drawer.locator('button[type="submit"]:has-text("Add Provider")')
+  // Submit label was standardised to verb-only ("Add Provider" → "Add",
+  // audit I-2). Scope by primary-button class to avoid colliding with
+  // the "Add Provider" menu item that triggered the drawer.
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.focus()
   await submitButton.press('Enter')
   await page.waitForLoadState('networkidle')
@@ -86,7 +89,9 @@ export async function submitProviderForm(page: Page) {
 export async function updateProviderForm(page: Page) {
   await page.waitForTimeout(500)
   const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  const submitButton = drawer.locator('button[type="submit"]:has-text("Update Provider")')
+  // Submit label was standardised to verb-only ("Update Provider" →
+  // "Save", audit I-2).
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.focus()
   await submitButton.press('Enter')
   await page.waitForLoadState('networkidle')

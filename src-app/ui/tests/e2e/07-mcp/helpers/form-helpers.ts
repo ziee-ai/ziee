@@ -140,14 +140,14 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
 }
 
 export async function submitMcpServerForm(page: Page, action: 'create' | 'update' = 'create', isSystemServer = false) {
-  const buttonText = isSystemServer
-    ? (action === 'create' ? 'Create System Server' : 'Update System Server')
-    : (action === 'create' ? 'Create Server' : 'Update Server')
+  // Submit labels were standardised to verb-only ("Create Server" →
+  // "Create", "Update Server" → "Save", audit I-2). Scope the click
+  // to the open drawer's primary button rather than text-matching.
   const drawerTitle = isSystemServer
     ? (action === 'create' ? 'Add System Server' : 'Edit System Server')
     : (action === 'create' ? 'Add MCP Server' : 'Edit MCP Server')
 
-  await page.click(`button:has-text("${buttonText}")`)
+  await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
   // Wait for success message to appear (before checking if drawer closed)
   // This must happen first because Ant Design messages auto-dismiss after ~3 seconds

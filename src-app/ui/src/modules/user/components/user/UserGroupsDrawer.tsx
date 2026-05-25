@@ -94,7 +94,7 @@ export function UserGroupsDrawer() {
         setUserGroupIds(new Set())
       }}
       open={isOpen}
-      size={400}
+      size={600}
       extra={
         canAssign && (
           <Button

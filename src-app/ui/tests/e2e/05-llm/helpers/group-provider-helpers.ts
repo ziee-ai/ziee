@@ -391,8 +391,9 @@ export async function createUserGroup(
     await page.fill('textarea[placeholder="Enter group description"]', description)
   }
 
-  // Submit - button text is "Create Group", not "Create"
-  await page.click('.ant-drawer.ant-drawer-open button:has-text("Create Group")')
+  // Submit — label was standardised to verb-only ("Create Group" →
+  // "Create", audit I-2). Scope by primary-button class.
+  await page.locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]').click()
 
   // Wait for success message
   await page.waitForSelector('text=User group created successfully', { timeout: 10000 })
