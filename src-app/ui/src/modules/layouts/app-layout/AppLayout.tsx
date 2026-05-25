@@ -190,6 +190,28 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Mobile sidebar a11y: when the overlay is open (xs viewport AND not
+  // collapsed), trap focus + scroll inside the dialog and let Escape
+  // close it. Modeled on standard dialog semantics. (audit 02 R-1)
+  useEffect(() => {
+    if (!windowMinSize.xs || isSidebarCollapsed) return
+
+    const previousBodyOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        Stores.AppLayout.setSidebarCollapsed(true)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [windowMinSize.xs, isSidebarCollapsed])
+
   const handleMaskClick = () => {
     if (sidebarRef.current) {
       sidebarRef.current.style.transition = 'transform 200ms ease-out'
@@ -210,7 +232,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       }}
     >
       {/* Sidebar - Always visible, width controlled by container */}
-      {/* Mask for Left Sidebar */}
+      {/* Mask for Left Sidebar (mobile only). Single onClick is enough;
+        * the prior triple-fire (onClick + onMouseDown + onTouchStart)
+        * caused the close handler to fire 2-3 times for any tap,
+        * which interacted badly with the closing animation. (audit 02 R-1) */}
       {windowMinSize.xs && (
         <div
           className={
@@ -223,14 +248,27 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             pointerEvents: isSidebarCollapsed ? 'none' : 'auto',
           }}
           onClick={handleMaskClick}
-          onMouseDown={handleMaskClick}
-          onTouchStart={handleMaskClick}
+          aria-hidden="true"
         />
       )}
 
       <div
         ref={sidebarRef}
+        id="app-sidebar"
         className="absolute h-full z-1 overflow-hidden"
+        // Mobile-only dialog semantics: when the sidebar is acting as
+        // an overlay (xs viewport), expose it to assistive tech as a
+        // dialog so screen readers announce its open/close state and
+        // focus is constrained to it. On desktop the sidebar is a
+        // permanent fixture, so no dialog role. (audit 02 R-1)
+        {...(windowMinSize.xs
+          ? {
+              role: 'dialog' as const,
+              'aria-modal': true,
+              'aria-label': 'Navigation menu',
+              'aria-hidden': isSidebarCollapsed,
+            }
+          : {})}
         style={{
           width: isSidebarCollapsed
             ? `${ICON_ONLY_WIDTH}px`
