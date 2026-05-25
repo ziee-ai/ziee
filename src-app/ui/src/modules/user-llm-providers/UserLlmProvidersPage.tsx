@@ -115,7 +115,7 @@ export default function UserLlmProvidersPage() {
     if (providers.length === 0) {
       return (
         <Empty
-          description="No LLM providers are available."
+          description="No LLM providers yet"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )

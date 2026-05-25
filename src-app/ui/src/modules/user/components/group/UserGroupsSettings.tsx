@@ -138,7 +138,7 @@ export function UserGroupsSettings() {
             </div>
           ) : groups.length === 0 ? (
             <div>
-              <Empty description="No user groups found" />
+              <Empty description="No user groups yet" />
             </div>
           ) : (
             <div className="flex flex-col gap-3">

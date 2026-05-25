@@ -273,7 +273,7 @@ test.describe('User Assistants - User Page', () => {
     // Search for non-existent assistant
     await searchAssistants(page, 'nonexistent')
 
-    await assertEmptyState(page, 'No assistants found')
+    await assertEmptyState(page, 'No assistants yet')
     await assertEmptyState(page, 'Try adjusting your search criteria')
   })
 

@@ -117,7 +117,7 @@ export function UserGroupsDrawer() {
           <Spin size="large" description="Loading group memberships..." />
         </div>
       ) : groups.length === 0 ? (
-        <Empty description="No groups available" />
+        <Empty description="No groups yet" />
       ) : (
         <List
           dataSource={groups}

@@ -247,7 +247,7 @@ export function McpConfigModal() {
         </div>
       ),
       children: tools.length === 0 ? (
-        <Empty description="No tools available" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <Empty description="No tools yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (
         <div className="space-y-2">
           {tools.map(tool => (

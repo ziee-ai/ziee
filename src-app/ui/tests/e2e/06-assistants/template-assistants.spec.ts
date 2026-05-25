@@ -33,7 +33,7 @@ test.describe('Template Assistants - Settings Page', () => {
 
   test('should display empty state when no templates exist', async ({ page }) => {
     // Check for empty state
-    const emptyDescription = page.getByText('No assistants found', { exact: true })
+    const emptyDescription = page.getByText('No assistants yet', { exact: true })
     if (await emptyDescription.isVisible()) {
       await expect(emptyDescription).toBeVisible()
     }

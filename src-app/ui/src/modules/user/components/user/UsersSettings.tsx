@@ -218,7 +218,7 @@ export function UsersSettings() {
               </div>
             ) : users.length === 0 ? (
               <div>
-                <Empty description="No users found" />
+                <Empty description="No users yet" />
               </div>
             ) : (
               <div>

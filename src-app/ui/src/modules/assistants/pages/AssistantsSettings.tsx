@@ -137,7 +137,7 @@ export function AssistantsSettings() {
             </div>
           ) : assistants.length === 0 ? (
             <div>
-              <Empty description="No assistants found" />
+              <Empty description="No assistants yet" />
             </div>
           ) : (
             <div>
