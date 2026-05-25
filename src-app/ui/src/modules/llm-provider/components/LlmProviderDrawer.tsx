@@ -3,6 +3,7 @@ import { App, Button, Form, Input, Select, Switch, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import type {
   CreateLlmProviderRequest,
   UpdateLlmProviderRequest,
@@ -28,6 +29,9 @@ export function LlmProviderDrawer() {
   const [loading, setLoading] = useState(false)
 
   const { isOpen: open, editingProvider: provider } = Stores.LlmProviderDrawer
+  const canCreate = usePermission('llm_providers::create')
+  const canEdit = usePermission('llm_providers::edit')
+  const canSave = provider ? canEdit : canCreate
 
   // Update form when editing provider
   useEffect(() => {
@@ -102,6 +106,7 @@ export function LlmProviderDrawer() {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        disabled={!canSave}
       >
         <Form.Item
           name="name"
@@ -171,11 +176,13 @@ export function LlmProviderDrawer() {
 
         <div className="flex justify-end gap-3 pt-4">
           <Button onClick={handleClose} disabled={loading}>
-            Cancel
+            {canSave ? 'Cancel' : 'Close'}
           </Button>
-          <Button type="primary" htmlType="submit" loading={loading}>
-            {provider ? 'Update' : 'Add'} Provider
-          </Button>
+          {canSave && (
+            <Button type="primary" htmlType="submit" loading={loading}>
+              {provider ? 'Update' : 'Add'} Provider
+            </Button>
+          )}
         </div>
       </Form>
     </Drawer>

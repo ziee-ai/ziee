@@ -18,6 +18,7 @@ import {
 } from 'antd'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import type { LlmModel } from '@/api-client/types'
 
 const { Text } = Typography
@@ -28,6 +29,9 @@ export function LlmModelsSection() {
 
   // Store data
   const { llmModelsLoading } = Stores.LlmProvider
+  const canEditModels = usePermission('llm_models::edit')
+  const canDeleteModels = usePermission('llm_models::delete')
+  const canCreateModels = usePermission('llm_models::create')
 
   // Get current provider and its models
   const currentProvider = Stores.LlmProvider.providers.find(
@@ -127,16 +131,18 @@ export function LlmModelsSection() {
   const getLlmModelActions = (llmModel: LlmModel) => {
     const actions: React.ReactNode[] = []
 
-    // Always include the enable/disable switch first
-    actions.push(
-      <Switch
-        className={'!mr-2'}
-        key="enable"
-        checked={llmModel.enabled !== false}
-        onChange={checked => handleToggleLlmModel(llmModel.id, checked)}
-        aria-label={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
-      />,
-    )
+    // Enable/disable switch — needs edit permission
+    if (canEditModels) {
+      actions.push(
+        <Switch
+          className={'!mr-2'}
+          key="enable"
+          checked={llmModel.enabled !== false}
+          onChange={checked => handleToggleLlmModel(llmModel.id, checked)}
+          aria-label={`${llmModel.enabled !== false ? 'Disable' : 'Enable'} ${llmModel.display_name} model`}
+        />,
+      )
+    }
 
     // TODO: Add Start/Stop button for local models once backend supports it
     // if (currentProvider?.provider_type === 'local') {
@@ -159,35 +165,40 @@ export function LlmModelsSection() {
     //   )
     // }
 
-    actions.push(
-      <Button
-        key="edit"
-        type="text"
-        icon={<EditOutlined aria-hidden="true" />}
-        onClick={() => handleEditLlmModel(llmModel.id)}
-        aria-label={`Edit ${llmModel.display_name} model`}
-      >
-        {'Edit'}
-      </Button>,
-    )
+    if (canEditModels) {
+      actions.push(
+        <Button
+          key="edit"
+          type="text"
+          icon={<EditOutlined aria-hidden="true" />}
+          onClick={() => handleEditLlmModel(llmModel.id)}
+          aria-label={`Edit ${llmModel.display_name} model`}
+        >
+          {'Edit'}
+        </Button>,
+      )
+    }
 
-    actions.push(
-      <Button
-        key="delete"
-        type="text"
-        icon={<DeleteOutlined aria-hidden="true" />}
-        onClick={() => handleDeleteLlmModel(llmModel.id)}
-        aria-label={`Delete ${llmModel.display_name} model`}
-      >
-        {'Delete'}
-      </Button>,
-    )
+    if (canDeleteModels) {
+      actions.push(
+        <Button
+          key="delete"
+          type="text"
+          icon={<DeleteOutlined aria-hidden="true" />}
+          onClick={() => handleDeleteLlmModel(llmModel.id)}
+          aria-label={`Delete ${llmModel.display_name} model`}
+        >
+          {'Delete'}
+        </Button>,
+      )
+    }
 
     return actions.filter(Boolean)
   }
 
   const getAddButton = () => {
     if (!currentProvider) return null
+    if (!canCreateModels) return null
 
     if (currentProvider.provider_type === 'local') {
       return (

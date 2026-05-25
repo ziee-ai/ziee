@@ -17,6 +17,7 @@ import {
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import type { LlmProvider } from '@/api-client/types'
 
@@ -26,6 +27,9 @@ export function ProviderHeader() {
   const navigate = useNavigate()
   const { message, modal } = App.useApp()
   const { providerId } = useParams<{ providerId?: string }>()
+
+  const canEdit = usePermission('llm_providers::edit')
+  const canDelete = usePermission('llm_providers::delete')
 
   // Get current provider from store
   const currentProvider = Stores.LlmProvider.providers.find(
@@ -174,16 +178,18 @@ export function ProviderHeader() {
             {currentProvider.name}
           </Typography.Title>
           <div className={'flex items-center'}>
-            <Button
-              type={'text'}
-              onClick={() => {
-                setIsEditingName(!isEditingName)
-              }}
-              aria-label="Edit provider name"
-            >
-              <EditOutlined aria-hidden="true" />
-            </Button>
-            {!currentProvider.built_in && (
+            {canEdit && (
+              <Button
+                type={'text'}
+                onClick={() => {
+                  setIsEditingName(!isEditingName)
+                }}
+                aria-label="Edit provider name"
+              >
+                <EditOutlined aria-hidden="true" />
+              </Button>
+            )}
+            {canDelete && !currentProvider.built_in && (
               <Button
                 type={'text'}
                 danger
@@ -196,7 +202,7 @@ export function ProviderHeader() {
           </div>
         </div>
       </Flex>
-      {(() => {
+      {canEdit && (() => {
         const disabledReason = getEnableDisabledReason(currentProvider)
         const switchElement = (
           <Switch
