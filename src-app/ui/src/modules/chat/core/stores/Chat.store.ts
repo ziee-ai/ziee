@@ -1511,6 +1511,16 @@ export const useChatStore = create<ChatState>()(
 
         const state = get()
 
+        // Abort any in-flight streaming fetch BEFORE the rest of teardown.
+        // Without this, when the user navigates away mid-stream and the
+        // proxy refTracker schedules destruction (5s grace), the SSE
+        // fetch keeps running. On re-init a SECOND parallel fetch is
+        // spawned and the abandoned one's set() callbacks execute
+        // against a frozen state. (audit 09 B-1)
+        if (state.streamingAbortController) {
+          state.streamingAbortController.abort()
+        }
+
         for (const [conversationId, timer] of state.cacheClearTimers.entries()) {
           clearTimeout(timer)
           console.log(

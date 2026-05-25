@@ -28,6 +28,7 @@ interface AuthState {
   __init__: {
     __store__: () => void
   }
+  __destroy__: () => void
 
   // Actions
   authenticateUser: (credentials: LoginRequest) => Promise<void>
@@ -180,6 +181,12 @@ export const useAuthStore = create<AuthState>()(
               'AuthStore',
             )
           },
+        },
+
+        // Unsubscribe from EventBus on store destroy so listener slots
+        // don't accumulate per destroy/re-init cycle. (audit 09 B-9)
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('AuthStore')
         },
 
         initAuth: async () => {

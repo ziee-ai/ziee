@@ -31,6 +31,7 @@ interface SandboxEnvironmentsStore {
   __init__: {
     environments?: () => Promise<void>
   }
+  __destroy__?: () => void
 
   loadEnvironments: () => Promise<void>
   resumeRunningTasks: () => Promise<void>
@@ -184,6 +185,13 @@ export const useSandboxEnvironmentsStore = create<SandboxEnvironmentsStore>()(
             s.error = e?.message ?? 'Failed to evict environment'
             delete s.evicting[flavor]
           })
+        }
+      },
+
+      // Abort all per-flavor SSE controllers on store destroy. (audit 09 B-8)
+      __destroy__: () => {
+        for (const flavor of Object.keys(sseControllers)) {
+          cleanupSse(flavor)
         }
       },
     })),
