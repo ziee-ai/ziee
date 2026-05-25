@@ -14,26 +14,13 @@ import {
   message,
 } from 'antd'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import type {
   CodeSandboxResourceLimits,
   UpdateCodeSandboxResourceLimits,
 } from '@/api-client/types'
 
 const MANAGE_PERM = 'code_sandbox::resource_limits::manage'
-
-/**
- * Permission predicate aligned with the backend's `has_permission`
- * (auth/backend.rs): honor the global `*` wildcard + `resource:*` wildcard
- * in addition to exact matches. Without this, an Administrator (seeded with
- * `['*']`) would see a forbidden message.
- */
-function hasPermission(perms: string[], perm: string): boolean {
-  if (perms.includes('*')) return true
-  if (perms.includes(perm)) return true
-  const idx = perm.indexOf(':')
-  if (idx > 0 && perms.includes(`${perm.slice(0, idx)}:*`)) return true
-  return false
-}
 
 const MIB = 1024 * 1024
 const GIB = 1024 * 1024 * 1024
@@ -103,9 +90,7 @@ function formToPatch(v: FormValues): UpdateCodeSandboxResourceLimits {
  */
 export function SandboxResourceLimitsSection() {
   const { limits, loading, saving, error } = Stores.SandboxResourceLimits
-  const { permissions } = Stores.Auth
-  const perms = permissions ?? []
-  const canManage = hasPermission(perms, MANAGE_PERM)
+  const canManage = usePermission(MANAGE_PERM)
 
   const [form] = Form.useForm<FormValues>()
   const [dirty, setDirty] = useState(false)

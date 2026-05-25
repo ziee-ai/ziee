@@ -5,22 +5,12 @@ import {
   DeleteOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import type { EnvironmentInfo, FetchPhase } from '@/api-client/types'
 
 const MANAGE_PERM = 'code_sandbox::environments::manage'
 const READ_PERM = 'code_sandbox::environments::read'
-
-// Mirror the backend's permission matching (auth/backend.rs::has_permission):
-// honor the global `*` wildcard (the Administrators group is seeded with
-// ARRAY['*']) and a `resource:*` wildcard, in addition to an exact match.
-function hasPermission(perms: string[], perm: string): boolean {
-  if (perms.includes('*')) return true
-  if (perms.includes(perm)) return true
-  const idx = perm.indexOf(':')
-  if (idx > 0 && perms.includes(`${perm.slice(0, idx)}:*`)) return true
-  return false
-}
 
 // The backend emits discrete phase events (resolving/downloading/
 // verifying/installing), not byte-granular progress, so the bar is a
@@ -53,10 +43,8 @@ function phasePercent(phase?: FetchPhase): number {
 export function SandboxEnvironmentsSection() {
   const { environments, loading, error, progress, evicting } =
     Stores.SandboxEnvironments
-  const { permissions } = Stores.Auth
-  const perms = permissions ?? []
-  const canManage = hasPermission(perms, MANAGE_PERM)
-  const canRead = hasPermission(perms, READ_PERM) || canManage
+  const canManage = usePermission(MANAGE_PERM)
+  const canRead = usePermission(READ_PERM) || canManage
 
   if (!canRead) {
     return (
