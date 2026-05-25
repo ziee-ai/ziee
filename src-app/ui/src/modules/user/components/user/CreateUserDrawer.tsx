@@ -122,7 +122,10 @@ export function CreateUserDrawer() {
           label="Permissions (JSON Array)"
           rules={[{ validator: validatePermissions }]}
         >
-          <TextArea rows={6} placeholder='["users::read", "users::edit"]' />
+          <TextArea
+            rows={6}
+            placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
+          />
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="gap-2">

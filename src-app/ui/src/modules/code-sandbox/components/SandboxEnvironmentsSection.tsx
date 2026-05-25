@@ -167,7 +167,7 @@ export function SandboxEnvironmentsSection() {
           return canManage ? (
             evictBtn
           ) : (
-            <Tooltip title="Requires code_sandbox::environments::manage">
+            <Tooltip title={`Requires ${MANAGE_PERM}`}>
               {evictBtn}
             </Tooltip>
           )
@@ -188,7 +188,7 @@ export function SandboxEnvironmentsSection() {
         return canManage ? (
           btn
         ) : (
-          <Tooltip title="Requires code_sandbox::environments::manage">
+          <Tooltip title={`Requires ${MANAGE_PERM}`}>
             {btn}
           </Tooltip>
         )

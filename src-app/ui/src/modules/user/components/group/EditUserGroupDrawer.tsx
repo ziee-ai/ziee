@@ -138,7 +138,10 @@ export function EditUserGroupDrawer() {
           label="Permissions (JSON Array)"
           rules={[{ validator: validatePermissions }]}
         >
-          <TextArea placeholder='["users::read", "users::edit"]' rows={6} />
+          <TextArea
+            placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
+            rows={6}
+          />
         </Form.Item>
 
         <Form.Item name="is_active" label="Active" valuePropName="checked">
