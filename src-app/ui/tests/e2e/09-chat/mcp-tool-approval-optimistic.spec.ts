@@ -238,19 +238,43 @@ test.describe('MCP Tool Approval — optimistic UX', () => {
     // Capture all /mcp-settings PUTs
     const settingsBodies: unknown[] = []
     await page.route(/\/api\/conversations\/[^/]+\/mcp-settings/, async (route, req) => {
+      const url = req.url()
+      const convMatch = url.match(/\/conversations\/([^/]+)\/mcp-settings/)
+      const conversationId = convMatch?.[1] ?? '00000000-0000-0000-0000-000000000000'
+      let parsedBody: Record<string, unknown> = {}
       if (req.method() === 'PUT') {
         try {
-          settingsBodies.push(JSON.parse(req.postData() || '{}'))
+          parsedBody = JSON.parse(req.postData() || '{}')
+          settingsBodies.push(parsedBody)
         } catch {
           /* ignore */
         }
       }
-      // We can't continue to real backend (conversation may not exist for
-      // a new chat) — return 200.
+      // Return the FULL ConversationMcpSettingsResponse shape — the
+      // frontend updates its store from the PUT response, so a
+      // `{ success: true }` stub leaves every field undefined and
+      // breaks the optimistic-update flow we're testing.
+      const now = new Date().toISOString()
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true }),
+        body: JSON.stringify({
+          id: '00000000-0000-0000-0000-000000000aa1',
+          conversation_id: conversationId,
+          user_id: '00000000-0000-0000-0000-000000000aa2',
+          approval_mode: (parsedBody.approval_mode as string) ?? 'manual_approve',
+          auto_approved_tools: (parsedBody.auto_approved_tools as unknown[]) ?? [],
+          disabled_servers: (parsedBody.disabled_servers as unknown[]) ?? [],
+          loop_settings: (parsedBody.loop_settings as Record<string, unknown>) ?? {
+            stop_when_no_tool_calling: true,
+            max_iteration: 10,
+            stop_when_tools_called: [],
+            force_final_answer: false,
+            per_tool_max_iteration: [],
+          },
+          created_at: now,
+          updated_at: now,
+        }),
       })
     })
 

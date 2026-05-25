@@ -31,56 +31,74 @@ export async function openAddServerDrawer(page: Page, _isSystemServer = false) {
 }
 
 export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
+  // Scope label lookups to the active drawer because AntD leaves
+  // closed drawers in the DOM and `page.getByLabel` would otherwise
+  // resolve to both the closed Create drawer's fields and the open
+  // Edit drawer's fields (strict-mode flake).
+  const drawer = page.locator('.ant-drawer.ant-drawer-open')
+
   // Name field (only visible in create mode)
-  const nameField = page.getByLabel('Name', { exact: true })
+  const nameField = drawer.getByLabel('Name', { exact: true })
   if (await nameField.isVisible()) {
     await nameField.fill(data.name)
   }
 
   // Display name
-  await page.getByLabel('Display Name').fill(data.displayName)
+  await drawer.getByLabel('Display Name').fill(data.displayName)
 
   // Description (optional)
   if (data.description) {
-    await page.getByLabel('Description').fill(data.description)
+    await drawer.getByLabel('Description').fill(data.description)
   }
 
-  // Transport type - use force: true because Ant Design Select has overlay span
-  await page.getByLabel('Transport Type').click({ force: true })
-  await page.click(`.ant-select-item-option:has-text("${data.transportType === 'stdio' ? 'Standard I/O' : data.transportType === 'http' ? 'HTTP' : 'Server-Sent Events'}")`)
+  // Transport type — use keyboard nav. UI order (per
+  // McpServerDrawer.tsx TRANSPORT_TYPES) is:
+  //   0: stdio (Standard I/O), 1: http (HTTP), 2: sse (Server-Sent Events)
+  const transportCombobox = drawer
+    .locator('.ant-form-item:has-text("Transport Type")')
+    .first()
+    .getByRole('combobox')
+  await transportCombobox.click({ force: true })
+  await page.waitForTimeout(300)
+  const transportIdx = data.transportType === 'stdio' ? 0 : data.transportType === 'http' ? 1 : 2
+  await transportCombobox.press('Home')
+  for (let i = 0; i < transportIdx; i++) {
+    await transportCombobox.press('ArrowDown')
+  }
+  await transportCombobox.press('Enter')
 
   // Wait for transport-specific fields to appear and be ready
   if (data.transportType === 'stdio') {
     // Wait for command field to be visible
-    await page.getByLabel('Command').waitFor({ state: 'visible', timeout: 5000 })
+    await drawer.getByLabel('Command').waitFor({ state: 'visible', timeout: 5000 })
 
     // Command
     if (data.command) {
-      await page.getByLabel('Command').fill(data.command)
+      await drawer.getByLabel('Command').fill(data.command)
     }
 
     // Arguments (JSON array)
     if (data.args) {
-      await page.getByLabel('Arguments').fill(JSON.stringify(data.args))
+      await drawer.getByLabel('Arguments').fill(JSON.stringify(data.args))
     }
 
     // Environment variables (JSON object)
     if (data.env) {
-      await page.getByLabel('Environment Variables').fill(JSON.stringify(data.env, null, 2))
+      await drawer.getByLabel('Environment Variables').fill(JSON.stringify(data.env, null, 2))
     }
   } else {
     // Wait for URL field to be visible and ready
-    await page.getByLabel('URL').waitFor({ state: 'visible', timeout: 5000 })
+    await drawer.getByLabel('URL').waitFor({ state: 'visible', timeout: 5000 })
 
     // URL for http/sse
     if (data.url) {
-      await page.getByLabel('URL').fill(data.url)
+      await drawer.getByLabel('URL').fill(data.url)
     }
   }
 
   // Enabled switch (first switch in the form)
   if (data.enabled !== undefined) {
-    const enabledSwitch = page.getByLabel('Enabled')
+    const enabledSwitch = drawer.getByLabel('Enabled')
     const isChecked = await enabledSwitch.evaluate((el) =>
       el.classList.contains('ant-switch-checked')
     )
@@ -91,7 +109,7 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
 
   // Sampling fields
   if (data.supportsSampling !== undefined) {
-    const samplingSwitch = page.getByLabel('Enable MCP Sampling')
+    const samplingSwitch = drawer.getByLabel('Enable MCP Sampling')
     const isChecked = await samplingSwitch.evaluate((el) =>
       el.classList.contains('ant-switch-checked')
     )
@@ -101,13 +119,23 @@ export async function fillMcpServerForm(page: Page, data: McpServerFormData) {
   }
 
   if (data.usageMode !== undefined) {
-    await page.getByLabel('Usage Mode').click({ force: true })
-    const optionText = data.usageMode === 'always' ? 'Always (pre-process every prompt)' : 'Auto (LLM decides)'
-    await page.click(`.ant-select-item-option:has-text("${optionText}")`)
+    // Usage Mode — keyboard nav. Options: 0: Auto, 1: Always.
+    const usageCombobox = drawer
+      .locator('.ant-form-item:has-text("Usage Mode")')
+      .first()
+      .getByRole('combobox')
+    await usageCombobox.click({ force: true })
+    await page.waitForTimeout(300)
+    const usageIdx = data.usageMode === 'always' ? 1 : 0
+    await usageCombobox.press('Home')
+    for (let i = 0; i < usageIdx; i++) {
+      await usageCombobox.press('ArrowDown')
+    }
+    await usageCombobox.press('Enter')
   }
 
   if (data.maxConcurrentSessions !== undefined) {
-    await page.getByLabel('Max Concurrent Sessions').fill(String(data.maxConcurrentSessions))
+    await drawer.getByLabel('Max Concurrent Sessions').fill(String(data.maxConcurrentSessions))
   }
 }
 

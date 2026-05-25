@@ -31,6 +31,10 @@ const baseTheme = {
     // These affect Tag color="success" and color="error"
     colorSuccess: '#237804', // Dark green for better contrast (5.74:1 on light bg)
     colorError: '#d4380d', // Dark red for better contrast (4.54:1 on light bg)
+    // Fix Select / Input placeholder contrast (WCAG AA requires 4.5:1)
+    // Default: #bfbfbf on #ffffff = 1.83:1 (FAIL)
+    // Fix: Use darker gray for better contrast
+    colorTextPlaceholder: '#737373', // Improves contrast to ~4.62:1
   },
   components: {
     Button: {
@@ -82,6 +86,16 @@ const baseTheme = {
       // The .ant-dropdown-menu-title-content elements specifically need this
       colorText: 'rgba(0,0,0,0.88)', // Primary text color for menu items
     },
+    Select: {
+      // Fix Select placeholder contrast — token override doesn't always
+      // apply to `.ant-select-placeholder`. WCAG AA needs 4.5:1.
+      colorTextPlaceholder: '#737373',
+      colorTextQuaternary: '#737373',
+    },
+    Input: {
+      // Same fix for Input placeholders.
+      colorTextPlaceholder: '#737373',
+    },
     Dropdown: {
       // Fix color contrast for dropdown menu items (WCAG AA requires 4.5:1)
       // Default Ant Design uses rgba(0,0,0,0.65) which gives insufficient contrast
@@ -106,6 +120,12 @@ const baseTheme = {
       colorErrorText: '#a8071a', // Dark red improves contrast
       colorErrorBg: '#ffccc7', // Light red background
       colorErrorBorder: '#ffa39e', // Border color
+      // Fix color contrast for orange tags ("System" badge etc.)
+      // Default: #d46b08 on #fff7e6 = 3.33:1 (FAIL)
+      // Fix: Use darker orange for better contrast
+      colorWarningText: '#873800', // Darker orange improves contrast to ~4.7:1
+      colorWarningBg: '#fff1b8',
+      colorWarningBorder: '#ffd591',
     },
   },
   app: {

@@ -21,6 +21,11 @@ type Row = {
   cpu_secs_max: number
   timeout_secs: number
   vm_idle_evict_secs: number
+  // macOS libkrun + WSL2 fields added in sandbox cross-platform work;
+  // keep mock in sync with backend `CodeSandboxResourceLimits`.
+  mac_vm_vcpus: number
+  mac_vm_ram_mib: number
+  vm_max_concurrent_execs: number
   created_at: string
   updated_at: string
 }
@@ -39,6 +44,9 @@ function defaults(): Row {
     cpu_secs_max: 1240,
     timeout_secs: 620,
     vm_idle_evict_secs: 900,
+    mac_vm_vcpus: 4,
+    mac_vm_ram_mib: 4096,
+    vm_max_concurrent_execs: 2,
     created_at: now,
     updated_at: now,
   }

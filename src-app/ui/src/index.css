@@ -30,3 +30,10 @@
     width: 100dvw;
   }
 }
+
+/* WCAG AA color contrast overrides for AntD preset Tag colors.
+ * Default `color="orange"` renders #d46b08 on #fff7e6 = 3.33:1 (FAIL).
+ * Use a darker orange to meet 4.5:1. */
+.ant-tag.ant-tag-orange {
+  color: #873800 !important;
+}

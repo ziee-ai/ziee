@@ -99,11 +99,11 @@ test.describe('LLM Provider Assignment in User Groups', () => {
     ).toBeVisible()
 
     // Verify provider appears in the drawer
-    await expect(page.locator(`.ant-drawer:visible:has-text("${providerName}")`)).toBeVisible()
+    await expect(page.locator(`.ant-drawer.ant-drawer-open:has-text("${providerName}")`)).toBeVisible()
 
     // Verify switch exists
     const providerCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has-text("${providerName}")`
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("${providerName}")`
     )
     const switchElement = providerCard.locator('.ant-switch')
     await expect(switchElement).toBeVisible()
@@ -227,15 +227,15 @@ test.describe('LLM Provider Assignment in User Groups', () => {
 
     // Verify provider appears even though it's disabled
     const providerCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has-text("${providerName}")`
-    )
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("${providerName}")`
+    ).first()
     await expect(providerCard).toBeVisible()
 
     // Verify it shows "Disabled" tag
-    await expect(providerCard.locator('.ant-tag:has-text("Disabled")')).toBeVisible()
+    await expect(providerCard.locator('.ant-tag:has-text("Disabled")').first()).toBeVisible()
 
     // Verify we can still toggle it
-    const switchElement = providerCard.locator('.ant-switch')
+    const switchElement = providerCard.locator('.ant-switch').first()
     await expect(switchElement).toBeEnabled()
 
     // Close drawer
@@ -336,7 +336,7 @@ test.describe('LLM Provider Assignment in User Groups', () => {
 
     // Look for Ollama (which is built-in)
     const ollamaCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has-text("Ollama")`
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("Ollama")`
     )
 
     // If Ollama exists, verify it has Built-in tag
@@ -369,7 +369,7 @@ test.describe('LLM Provider Assignment in User Groups', () => {
 
     // Get the provider card and switch
     const providerCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has-text("${providerName}")`
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("${providerName}")`
     )
     const switchElement = providerCard.locator('.ant-switch')
 

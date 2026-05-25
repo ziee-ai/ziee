@@ -13,22 +13,29 @@ import { fillDownloadForm, fillUploadForm, submitUploadForm, type DownloadFormDa
 // =====================================================
 
 export async function openAddModelDropdown(page: Page) {
-  // Click the + button in the Models card header
-  // Use semantic selector with fallback
-  const addButton = page.getByRole('button', { name: /add.*model/i })
-    .or(page.locator('.ant-card-head:has-text("Models") button[data-icon="plus"], .ant-card-head:has-text("Models") button:has([data-icon="plus"])'))
+  // Click the + button in the Models card header. Scope to the
+  // Models card by its aria-label="Add model" so we don't collide
+  // with "Add provider" on the Providers card or with the
+  // "Downloading Models" card (whose title text would also match a
+  // loose "Models" substring).
+  const addButton = page.locator('button[aria-label="Add model"]').first()
 
   // Wait for button to be ready and visible
   await addButton.waitFor({ state: 'visible', timeout: 10000 })
 
   // Ensure button is enabled and stable before clicking
-  await expect(addButton.first()).toBeEnabled()
+  await expect(addButton).toBeEnabled()
   await page.waitForTimeout(300) // Small delay to ensure button is fully interactive
 
-  await addButton.first().click()
+  await addButton.click()
 
-  // Wait for dropdown menu to appear and be stable
-  await page.getByRole('menu').or(page.locator('.ant-dropdown-menu')).waitFor({ state: 'visible', timeout: 10000 })
+  // Wait for dropdown menu to appear and be stable — multiple dropdowns
+  // may exist in the DOM (e.g. closed drawers leaving their menus
+  // behind). Filter to the one carrying the menuitem we care about.
+  await page
+    .getByRole('menuitem', { name: /Upload from Files|Download from Repository|Add Remote Model/ })
+    .first()
+    .waitFor({ state: 'visible', timeout: 10000 })
 }
 
 export async function selectAddModelOption(page: Page, option: 'upload' | 'download' | 'remote') {
@@ -38,12 +45,14 @@ export async function selectAddModelOption(page: Page, option: 'upload' | 'downl
     remote: 'Add Remote Model',
   }
 
-  // Use semantic selector with fallback to text
-  const menuItem = page.getByRole('menuitem', { name: optionMap[option] })
-    .or(page.locator('.ant-dropdown-menu').getByText(optionMap[option]))
+  // Use semantic selector; `.first()` to disambiguate when multiple
+  // dropdown menus are present in DOM.
+  const menuItem = page
+    .getByRole('menuitem', { name: optionMap[option] })
+    .first()
 
   await menuItem.waitFor({ state: 'visible', timeout: 10000 })
-  await menuItem.first().click()
+  await menuItem.click()
 
   // Wait for network to settle after clicking
   await page.waitForLoadState('domcontentloaded')
@@ -78,9 +87,12 @@ export async function uploadModel(
   await openAddModelDropdown(page)
   await selectAddModelOption(page, 'upload')
 
-  // Wait for upload drawer to open
+  // Wait for upload drawer to open. `.first()` because both branches
+  // of `.or()` can match: AntD keeps closed drawers in DOM, so the
+  // dialog role and the drawer-title may each resolve to 2 elements.
   await page.getByRole('dialog', { name: /upload.*model/i })
     .or(page.locator('.ant-drawer-title:has-text("Upload Local Model")'))
+    .first()
     .waitFor({ timeout: 5000 })
 
   // Upload folder
@@ -105,28 +117,46 @@ export async function waitForUploadProgress(page: Page): Promise<void> {
 }
 
 export async function assertUploadProgressVisible(page: Page): Promise<void> {
-  await expect(page.getByText('Upload Progress').or(page.locator('.ant-card-head-title:has-text("Upload Progress")'))).toBeVisible()
-  await expect(page.locator('.ant-progress-line')).toBeVisible()
+  await expect(page.getByText('Upload Progress').or(page.locator('.ant-card-head-title:has-text("Upload Progress")')).first()).toBeVisible()
+  await expect(page.locator('.ant-progress-line').first()).toBeVisible()
 }
 
 export async function openUploadDrawer(page: Page): Promise<void> {
+  // Wait for any prior drawer's close-animation to settle so the
+  // dropdown isn't intercepted and the new drawer fully opens.
+  await page.locator('.ant-drawer.ant-drawer-open').first().waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
   await openAddModelDropdown(page)
   await selectAddModelOption(page, 'upload')
 
-  // Wait for drawer to appear using semantic selector
-  const uploadDrawer = page.getByRole('dialog', { name: /upload.*model/i })
-    .or(page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("Upload Local Model"))'))
+  // Wait for drawer to appear. Use `.ant-drawer-open` directly so the
+  // dialog is the currently-open one (not a stale closed drawer that
+  // AntD leaves in DOM). `.first()` to dedupe across `.or()` branches.
+  const uploadDrawer = page
+    .locator('.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Upload Local Model"))')
+    .first()
 
   await uploadDrawer.waitFor({ state: 'visible', timeout: 10000 })
 
   // Wait for drawer to be fully loaded - check that form fields and buttons are present
-  await expect(uploadDrawer.getByLabel(/display name/i).or(uploadDrawer.locator('label:has-text("Display Name")'))).toBeVisible()
-  await expect(uploadDrawer.getByRole('button', { name: 'Upload' })).toBeVisible()
-  await expect(uploadDrawer.getByRole('button', { name: 'Cancel' })).toBeVisible()
+  await expect(uploadDrawer.getByLabel(/display name/i).or(uploadDrawer.locator('label:has-text("Display Name")')).first()).toBeVisible()
 
-  // Ensure buttons are enabled (not in uploading state)
-  await expect(uploadDrawer.getByRole('button', { name: 'Upload' })).toBeEnabled({ timeout: 5000 })
-  await expect(uploadDrawer.getByRole('button', { name: 'Cancel' })).toBeEnabled({ timeout: 5000 })
+  // The footer Upload button: while a previous upload's React state
+  // is still being flushed it briefly carries `ant-btn-loading`, which
+  // changes its accessible name from "Upload" to "loading Upload".
+  // Wait on the structural footer-button selector instead, then wait
+  // for `ant-btn-loading` to clear before asserting.
+  const uploadButton = uploadDrawer
+    .locator('.ant-drawer-footer button:has-text("Upload")')
+    .or(uploadDrawer.getByRole('button', { name: /^(loading )?upload$/i }))
+    .first()
+  const cancelButton = uploadDrawer
+    .locator('.ant-drawer-footer button:has-text("Cancel")')
+    .first()
+  await expect(uploadButton).toBeVisible()
+  await expect(cancelButton).toBeVisible()
+  await expect(uploadButton).not.toHaveClass(/ant-btn-loading/, { timeout: 10000 })
+  await expect(uploadButton).toBeEnabled({ timeout: 5000 })
+  await expect(cancelButton).toBeEnabled({ timeout: 5000 })
 
   // Small delay to ensure all animations are complete
   await page.waitForTimeout(300)
@@ -143,9 +173,11 @@ export async function startModelDownload(
   await openAddModelDropdown(page)
   await selectAddModelOption(page, 'download')
 
-  // Wait for drawer to be fully loaded
+  // Wait for drawer to be fully loaded. `.first()` to dedupe across
+  // `.or()` branches.
   await page.getByRole('dialog', { name: /download.*repository/i })
     .or(page.locator('.ant-drawer-title:has-text("Download from Repository")'))
+    .first()
     .waitFor({ timeout: 10000 })
   await page.waitForTimeout(500) // Allow drawer to fully render
 
@@ -158,9 +190,11 @@ export async function startModelDownload(
   // Wait for success message
   await page.getByText('Download started successfully').waitFor({ timeout: 15000 })
 
-  // Wait for drawer to close completely
+  // Wait for drawer to close completely. The hidden state should be
+  // unambiguous, but use `.first()` for consistency with the open wait.
   await page.getByRole('dialog', { name: /download.*repository/i })
     .or(page.locator('.ant-drawer-title:has-text("Download from Repository")'))
+    .first()
     .waitFor({ state: 'hidden', timeout: 10000 })
 }
 
@@ -175,9 +209,10 @@ export async function openEditModelDrawer(page: Page, modelName: string) {
 
   await editButton.first().click()
 
-  // Wait for edit drawer
+  // Wait for edit drawer. `.first()` to dedupe across `.or()` branches.
   await page.getByRole('dialog', { name: /edit model/i })
     .or(page.getByText('Edit Model'))
+    .first()
     .waitFor({ timeout: 30000 })
 }
 

@@ -40,9 +40,11 @@ test.describe('MCP - Admin System Servers', () => {
   })
 
   test('should display existing system servers', async ({ page }) => {
-    // Default system servers from migration should be visible
-    await expect(page.locator('.ant-card:has-text("Filesystem Access")')).toBeVisible()
-    await expect(page.locator('.ant-card:has-text("Web Fetch")')).toBeVisible()
+    // Default system servers from migration should be visible. `.first()`
+    // because `.ant-card` matches both the outer page card and the
+    // inner server cards containing the same text.
+    await expect(page.locator('.ant-card:has-text("Filesystem Access")').first()).toBeVisible()
+    await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).toBeVisible()
   })
 
   test('should open Add System Server drawer', async ({ page }) => {
@@ -67,7 +69,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -90,7 +92,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -110,7 +112,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'update', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
   })
 
   test('should toggle system server enabled state', async ({ page }) => {
@@ -118,7 +120,7 @@ test.describe('MCP - Admin System Servers', () => {
     await toggleServerEnabled(page, 'Filesystem Access')
 
     // Verify success message
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify switch state changed
     await verifyServerEnabled(page, 'Filesystem Access', true)
@@ -129,10 +131,10 @@ test.describe('MCP - Admin System Servers', () => {
     await searchInput.fill('Filesystem')
 
     // Should show Filesystem server
-    await expect(page.locator('.ant-card:has-text("Filesystem Access")')).toBeVisible()
+    await expect(page.locator('.ant-card:has-text("Filesystem Access")').first()).toBeVisible()
 
     // Should not show Web Fetch server
-    await expect(page.locator('.ant-card:has-text("Web Fetch")')).not.toBeVisible()
+    await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).not.toBeVisible()
   })
 
   test('should filter by enabled status', async ({ page }) => {
@@ -143,10 +145,10 @@ test.describe('MCP - Admin System Servers', () => {
     await page.click('.ant-select-item-option:has-text("Enabled")')
 
     // Should show only enabled servers
-    await expect(page.locator('.ant-card:has-text("Web Fetch")')).toBeVisible()
+    await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).toBeVisible()
 
     // Should not show disabled servers
-    await expect(page.locator('.ant-card:has-text("Filesystem Access")')).not.toBeVisible()
+    await expect(page.locator('.ant-card:has-text("Filesystem Access")').first()).not.toBeVisible()
   })
 
   test('should filter by disabled status', async ({ page }) => {
@@ -157,15 +159,15 @@ test.describe('MCP - Admin System Servers', () => {
     await page.click('.ant-select-item-option:has-text("Disabled")')
 
     // Should show only disabled servers
-    await expect(page.locator('.ant-card:has-text("Filesystem Access")')).toBeVisible()
+    await expect(page.locator('.ant-card:has-text("Filesystem Access")').first()).toBeVisible()
 
     // Should not show enabled servers
-    await expect(page.locator('.ant-card:has-text("Web Fetch")')).not.toBeVisible()
+    await expect(page.locator('.ant-card:has-text("Web Fetch")').first()).not.toBeVisible()
   })
 
   test('should sort servers by name', async ({ page }) => {
     // Default sort is now "Date Added"; explicitly switch to Name to test alpha order.
-    await page.getByLabel('Sort servers').click({ force: true })
+    await page.getByLabel('Sort servers').first().click({ force: true })
     await page.click('.ant-select-item-option:has-text("Name")')
     await page.waitForTimeout(500)
 
@@ -178,7 +180,7 @@ test.describe('MCP - Admin System Servers', () => {
 
   test('should sort servers by status', async ({ page }) => {
     // Click sort dropdown (default label is now "Date Added", not "Name")
-    await page.getByLabel('Sort servers').click({ force: true })
+    await page.getByLabel('Sort servers').first().click({ force: true })
 
     // Select 'Status' sort
     await page.click('.ant-select-item-option:has-text("Status")')
@@ -215,7 +217,7 @@ test.describe('MCP - Admin System Servers', () => {
   })
 
   test('should display all system servers as editable', async ({ page }) => {
-    const serverCard = page.locator('.ant-card:has-text("Web Fetch")')
+    const serverCard = page.locator('.ant-card:has-text("Web Fetch")').first()
 
     // System servers in admin page should have Edit button
     await expect(serverCard.locator('button:has-text("Edit")')).toBeVisible()
@@ -264,7 +266,7 @@ test.describe('MCP - Admin System Servers', () => {
     await submitMcpServerForm(page, 'create', true)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -287,7 +289,7 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify sampling badge and always badge are visible on the card
     const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
@@ -309,7 +311,7 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
     await expect(serverCard.locator('.ant-tag:has-text("Sampling")')).not.toBeVisible()
@@ -333,7 +335,7 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Open edit drawer
     await clickEditServerButton(page, serverData.displayName, true)
@@ -345,7 +347,13 @@ test.describe('MCP - Admin System Servers', () => {
     )
     expect(isSamplingChecked).toBe(true)
 
-    await expect(page.getByLabel('Usage Mode')).toContainText('Always')
+    // AntD Select stores the displayed text in a separate span, not
+    // the hidden input that `getByLabel` resolves to. Read it from
+    // the Form.Item's content-value span instead.
+    const usageModeSelect = page
+      .locator('.ant-form-item:has-text("Usage Mode") .ant-select')
+      .first()
+    await expect(usageModeSelect).toContainText('Always')
     await expect(page.getByLabel('Max Concurrent Sessions')).toHaveValue('5')
   })
 
@@ -364,7 +372,7 @@ test.describe('MCP - Admin System Servers', () => {
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
 
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify no sampling badges initially
     const serverCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
@@ -379,7 +387,7 @@ test.describe('MCP - Admin System Servers', () => {
     })
     await submitMcpServerForm(page, 'update', true)
 
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify sampling and always badges now appear
     const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
@@ -406,7 +414,7 @@ test.describe('MCP - Admin System Servers', () => {
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     const card = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
     await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
@@ -416,7 +424,7 @@ test.describe('MCP - Admin System Servers', () => {
     await clickEditServerButton(page, serverData.displayName, true)
     await fillMcpServerForm(page, { ...serverData, supportsSampling: false })
     await submitMcpServerForm(page, 'update', true)
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     const updatedCard = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
     await expect(updatedCard.locator('[data-testid="mcp-sampling-badge"]')).not.toBeVisible()
@@ -439,7 +447,7 @@ test.describe('MCP - Admin System Servers', () => {
     await openAddServerDrawer(page, true)
     await fillMcpServerForm(page, serverData)
     await submitMcpServerForm(page, 'create', true)
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     const card = page.locator(`.ant-card:has-text("${serverData.displayName}")`).first()
     await expect(card.locator('[data-testid="mcp-sampling-badge"]')).toBeVisible()
@@ -492,14 +500,24 @@ test.describe('MCP - Admin System Servers', () => {
   })
 
   test('should default sort to "Date Added" on first load', async ({ page }) => {
-    // The Sort by select reads "Date Added" by default (was "Name" pre-rewrite)
-    const sortSelect = page.getByLabel('Sort servers')
-    const sortContainer = sortSelect.locator('xpath=ancestor::div[contains(@class, "ant-select")][1]')
+    // The Sort by select reads "Date Added" by default. AntD Select's
+    // accessible-name input is empty; the displayed text lives in a
+    // separate span — use a CSS ancestor selector via Playwright's
+    // `:has` to anchor on the outer `.ant-select`.
+    const sortContainer = page
+      .locator('.ant-select:has([aria-label="Sort servers"])')
+      .first()
     await expect(sortContainer).toContainText('Date Added')
 
     // Verify the dropdown contains "Date Added" as an option
-    await sortSelect.click({ force: true })
-    await expect(page.locator('.ant-select-item-option:has-text("Date Added")')).toBeVisible()
+    await sortContainer.click({ force: true })
+    await expect(
+      page
+        .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
+        .first()
+        .locator('.ant-select-item-option:has-text("Date Added")')
+        .first()
+    ).toBeVisible()
     await page.keyboard.press('Escape')
   })
 

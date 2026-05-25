@@ -18,14 +18,21 @@ export async function openAddProviderDrawer(page: Page) {
 }
 
 export async function selectProviderType(page: Page, type: 'local' | 'openai' | 'anthropic' | 'groq' | 'gemini' | 'mistral' | 'deepseek' | 'huggingface' | 'custom') {
-  // Provider Type is an Ant Design Select dropdown
-  // Click anywhere on the select to open it
-  await page.click('.ant-select-selector:has(.ant-select-selection-item):visible')
+  // Drive the Provider Type Select via AntD's combobox-role input:
+  // - focus the input (which is inside `.ant-form-item` under the
+  //   "Provider Type" label)
+  // - use Playwright's `selectOption`-equivalent via keyboard:
+  //   type the label, press Enter
+  // This works around AntD's animation-driven dropdown which trips
+  // Playwright's stability checks for direct option clicks.
+  const drawer = page.locator('.ant-drawer.ant-drawer-open')
+  const combobox = drawer
+    .locator('.ant-form-item:has-text("Provider Type")')
+    .first()
+    .getByRole('combobox')
+  await combobox.click()
+  await page.waitForTimeout(300) // let dropdown open animation complete
 
-  // Wait for dropdown to appear
-  await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 5000 })
-
-  // Map type to label text shown in UI
   const labelMap: Record<typeof type, string> = {
     'local': 'Local',
     'openai': 'OpenAI',
@@ -38,8 +45,27 @@ export async function selectProviderType(page: Page, type: 'local' | 'openai' | 
     'custom': 'Custom',
   }
 
-  // Click the option in the dropdown
-  await page.click(`.ant-select-item-option:has-text("${labelMap[type]}")`)
+  // Map provider type to its zero-based index in PROVIDER_TYPES:
+  // local=0, openai=1, anthropic=2, groq=3, gemini=4, mistral=5,
+  // deepseek=6, huggingface=7, custom=8. Use keyboard arrows to
+  // navigate (combobox is readonly so we can't type-filter).
+  const orderMap: Record<typeof type, number> = {
+    'local': 0,
+    'openai': 1,
+    'anthropic': 2,
+    'groq': 3,
+    'gemini': 4,
+    'mistral': 5,
+    'deepseek': 6,
+    'huggingface': 7,
+    'custom': 8,
+  }
+  // Reset to top of list with Home, then arrow-down to the target.
+  await combobox.press('Home')
+  for (let i = 0; i < orderMap[type]; i++) {
+    await combobox.press('ArrowDown')
+  }
+  await combobox.press('Enter')
 
   await page.waitForLoadState('networkidle')
 }

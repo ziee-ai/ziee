@@ -89,7 +89,15 @@ export async function loginAsAdmin(
 
   if (needsSetup) {
     // Admin doesn't exist - create it via setup form (form name: setup-form)
-    await page.waitForSelector('#setup-form_username', { timeout: 30000 })
+    // Vite's optimizeDeps re-bundle can return 504 for an in-flight chunk
+    // request during the FIRST page load of a fresh worker; reload once
+    // if the setup form doesn't render within 8s before giving up.
+    try {
+      await page.waitForSelector('#setup-form_username', { timeout: 8000 })
+    } catch {
+      await page.reload({ waitUntil: 'networkidle' })
+      await page.waitForSelector('#setup-form_username', { timeout: 30000 })
+    }
     await page.fill('#setup-form_username', username)
     await page.fill('#setup-form_email', email)
     await page.fill('#setup-form_password', password)
@@ -113,9 +121,15 @@ export async function loginAsAdmin(
       { timeout: 10000 }
     )
   } else {
-    // Admin already exists - login instead
+    // Admin already exists - login instead. Same Vite 504 reload-retry
+    // pattern as the setup branch.
     await page.goto(`${baseURL}/auth`)
-    await page.waitForSelector('#login_username', { timeout: 30000 })
+    try {
+      await page.waitForSelector('#login_username', { timeout: 8000 })
+    } catch {
+      await page.reload({ waitUntil: 'networkidle' })
+      await page.waitForSelector('#login_username', { timeout: 30000 })
+    }
     await page.fill('#login_username', username)
     await page.fill('#login_password', password)
     await page.click('button:has-text("Sign In")')

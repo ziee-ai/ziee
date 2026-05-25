@@ -100,11 +100,11 @@ test.describe('MCP Server Assignment in User Groups', () => {
     ).toBeVisible()
 
     // Verify server appears in the drawer
-    await expect(page.locator(`.ant-drawer:visible:has-text("${serverDisplayName}")`)).toBeVisible()
+    await expect(page.locator(`.ant-drawer.ant-drawer-open:has-text("${serverDisplayName}")`)).toBeVisible()
 
     // Verify switch exists
     const serverCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
     )
     const switchElement = serverCard.locator('.ant-switch')
     await expect(switchElement).toBeVisible()
@@ -219,7 +219,7 @@ test.describe('MCP Server Assignment in User Groups', () => {
     // Verify drawer shows default system servers (Web Fetch, Filesystem, etc.)
     // These are created in migrations
     const webFetchCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has(strong:has-text("Web Fetch"))`
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("Web Fetch"))`
     )
     await expect(webFetchCard).toBeVisible()
 
@@ -248,7 +248,7 @@ test.describe('MCP Server Assignment in User Groups', () => {
 
     // Find the server card
     const serverCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
     )
     await expect(serverCard).toBeVisible()
 
@@ -354,7 +354,7 @@ test.describe('MCP Server Assignment in User Groups', () => {
 
     // Get the server card and switch
     const serverCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
     )
     const switchElement = serverCard.locator('.ant-switch')
 
@@ -403,7 +403,7 @@ test.describe('MCP Server Assignment in User Groups', () => {
 
     // Find the server card
     const serverCard = page.locator(
-      `.ant-drawer:visible .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverDisplayName}"))`
     )
     await expect(serverCard).toBeVisible()
 
@@ -439,19 +439,19 @@ test.describe('MCP Server Assignment in User Groups', () => {
     await openServerAssignmentDrawerFromGroup(page, groupName)
 
     // Search for "Alpha"
-    const searchInput = page.locator('.ant-drawer:visible input[placeholder*="Search"]')
+    const searchInput = page.locator('.ant-drawer.ant-drawer-open input[placeholder*="Search"]')
     if (await searchInput.count() > 0) {
       await searchInput.fill('Alpha')
       await page.waitForTimeout(500)
 
       // Should show Alpha server
       await expect(
-        page.locator(`.ant-drawer:visible:has-text("${server1DisplayName}")`)
+        page.locator(`.ant-drawer.ant-drawer-open:has-text("${server1DisplayName}")`)
       ).toBeVisible()
 
       // Should not show Beta server
       await expect(
-        page.locator(`.ant-drawer:visible .ant-drawer-body .ant-card:has-text("${server2DisplayName}")`)
+        page.locator(`.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has-text("${server2DisplayName}")`)
       ).not.toBeVisible()
     }
 
@@ -479,14 +479,14 @@ test.describe('MCP Server Assignment in User Groups', () => {
     await openServerAssignmentDrawerFromGroup(page, groupName)
 
     // Search for non-existent server
-    const searchInput = page.locator('.ant-drawer:visible input[placeholder*="Search"]')
+    const searchInput = page.locator('.ant-drawer.ant-drawer-open input[placeholder*="Search"]')
     if (await searchInput.count() > 0) {
       await searchInput.fill('nonexistent-server-xyz-12345')
       await page.waitForTimeout(500)
 
       // Should display empty state
       await expect(
-        page.locator('.ant-drawer:visible:has-text("No servers found")')
+        page.locator('.ant-drawer.ant-drawer-open:has-text("No servers found")')
       ).toBeVisible()
     }
 

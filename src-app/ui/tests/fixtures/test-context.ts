@@ -222,6 +222,15 @@ server:
   port: ${backendPort}
   api_prefix: "/api"
 
+  # Disable rate limiting for E2E tests — a single test peer-IP can
+  # legitimately make many requests in quick succession (page reloads,
+  # data refresh after mutations) and would otherwise trip the default
+  # 5-req/s + 60-burst limit. The rate-limit logic itself is exercised
+  # in the dedicated A3 backend regression test.
+  rate_limit:
+    per_second: 10000
+    burst_size: 10000
+
   cors:
     allow_origins:
       - "http://localhost:${vitePort}"
@@ -318,6 +327,11 @@ import path from 'node:path'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   root: '${srcRoot}',
+  // Per-test cache dir so parallel workers don't race over the shared
+  // node_modules/.vite — that race caused intermittent 504 "Outdated
+  // Optimize Dep" errors when worker A re-bundled mid-test and worker
+  // B was still loading the previous hash.
+  cacheDir: '${resolve(projectRoot, 'node_modules/.vite-test', testId)}',
   resolve: {
     alias: {
       '@': path.resolve('${projectRoot}', './src'),
@@ -460,6 +474,11 @@ export default defineConfig({
     try {
       rmSync(configPath, { force: true })
       rmSync(viteConfigPath, { force: true })
+      // Per-test Vite cacheDir; safe to nuke after the test ends.
+      rmSync(resolve(projectRoot, 'node_modules/.vite-test', testId), {
+        recursive: true,
+        force: true,
+      })
     } catch {}
 
     // Release port lock so other test runs can use these ports

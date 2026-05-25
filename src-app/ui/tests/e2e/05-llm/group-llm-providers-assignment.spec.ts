@@ -142,13 +142,13 @@ test.describe('User Group Assignment in LLM Providers', () => {
     ).toBeVisible()
 
     // Verify group appears in the drawer
-    await expect(page.locator(`.ant-drawer:visible:has-text("${groupName}")`)).toBeVisible()
+    await expect(page.locator(`.ant-drawer.ant-drawer-open:has-text("${groupName}")`)).toBeVisible()
 
     // Verify switch exists
     const groupContainer = page.locator(
-      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
-    )
-    const switchElement = groupContainer.locator('.ant-switch')
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${groupName}"))`
+    ).first()
+    const switchElement = groupContainer.locator('.ant-switch').first()
     await expect(switchElement).toBeVisible()
 
     // Close drawer
@@ -322,13 +322,13 @@ test.describe('User Group Assignment in LLM Providers', () => {
 
     // Look for "All Users" (which is a system group)
     const allUsersContainer = page.locator(
-      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("All Users"))`
-    )
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("All Users"))`
+    ).first()
 
     // If All Users exists, verify it has System tag
     const allUsersCount = await allUsersContainer.count()
     if (allUsersCount > 0) {
-      await expect(allUsersContainer.locator('.ant-tag:has-text("System")')).toBeVisible()
+      await expect(allUsersContainer.locator('.ant-tag:has-text("System")').first()).toBeVisible()
     }
 
     // Close drawer
@@ -360,12 +360,12 @@ test.describe('User Group Assignment in LLM Providers', () => {
 
     // Find the group container
     const groupContainer = page.locator(
-      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
-    )
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${groupName}"))`
+    ).first()
     await expect(groupContainer).toBeVisible()
 
     // Verify it shows "Active" tag (groups are active by default)
-    await expect(groupContainer.locator('.ant-tag:has-text("Active")')).toBeVisible()
+    await expect(groupContainer.locator('.ant-tag:has-text("Active")').first()).toBeVisible()
 
     // Close drawer
     await cancelGroupAssignment(page)
@@ -459,57 +459,11 @@ test.describe('User Group Assignment in LLM Providers', () => {
     await deleteUserGroup(page, groupName)
   })
 
-  test('should toggle group by clicking card', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    const groupName = `test-group-click-${Date.now()}`
-    const providerName = `test-provider-click-${Date.now()}`
-
-    await loginAsAdmin(page, baseURL)
-
-    // Setup
-    await createUserGroup(page, baseURL, groupName, 'Click test group')
-    await createLocalProvider(page, baseURL, providerName, 'Click test provider')
-
-    // Navigate to provider detail page
-    await goToProvidersPage(page, baseURL)
-    await clickProviderCard(page, providerName)
-
-
-    // Open drawer
-    await openGroupAssignmentDrawerFromProvider(page)
-
-    // Get the group container and switch
-    const groupContainer = page.locator(
-      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
-    )
-    const switchElement = groupContainer.locator('.ant-switch')
-
-    // Verify initially unchecked
-    await expect(switchElement).toHaveAttribute('aria-checked', 'false')
-
-    // Click the container (not the switch)
-    await groupContainer.click()
-    await page.waitForTimeout(300)
-
-    // Verify switch is now checked
-    await expect(switchElement).toHaveAttribute('aria-checked', 'true')
-
-    // Click container again
-    await groupContainer.click()
-    await page.waitForTimeout(300)
-
-    // Verify switch is back to unchecked
-    await expect(switchElement).toHaveAttribute('aria-checked', 'false')
-
-    // Close drawer
-    await cancelGroupAssignment(page)
-
-    // Cleanup
-    await page.goBack()
-    await deleteProvider(page, providerName)
-    await goToUserGroupsPage(page, baseURL)
-    await deleteUserGroup(page, groupName)
-  })
+  // "should toggle group by clicking card" was removed. The
+  // LlmProviderGroupsAssignmentDrawer doesn't wire Card onClick
+  // (the switch's wrapper explicitly stopPropagation()s) so the
+  // behavior the test asserted has never existed in the product.
+  // Per product decision the test is dropped entirely (not deferred).
 
   test('should show group description in drawer', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
@@ -533,8 +487,8 @@ test.describe('User Group Assignment in LLM Providers', () => {
 
     // Find the group container
     const groupContainer = page.locator(
-      `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
-    )
+      `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${groupName}"))`
+    ).first()
     await expect(groupContainer).toBeVisible()
 
     // Verify description is shown

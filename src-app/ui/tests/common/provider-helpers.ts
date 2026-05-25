@@ -28,7 +28,7 @@ export async function createProviderViaAPI(
 
   const baseUrlMap = {
     openai: 'https://api.openai.com/v1',
-    anthropic: 'https://api.anthropic.com',
+    anthropic: 'https://api.anthropic.com/v1',
     gemini: 'https://generativelanguage.googleapis.com',
     groq: 'https://api.groq.com/openai/v1',
     local: 'http://localhost:11434',

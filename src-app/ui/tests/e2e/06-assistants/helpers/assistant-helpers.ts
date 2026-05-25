@@ -229,11 +229,26 @@ export async function goToPage(page: Page, pageNumber: number) {
 }
 
 export async function changePageSize(page: Page, size: number) {
-  // Click the page size selector (find by aria-label or any current value)
-  await page.locator('.ant-select-selector').filter({ hasText: '/ page' }).click()
-  await page.locator('.ant-select-dropdown').waitFor({ state: 'visible' })
-  // Match the actual dropdown option text format: "20 / page"
-  await page.locator('.ant-select-dropdown').getByText(`${size} / page`, { exact: true }).click()
+  // Drive the AntD page-size Select via keyboard — option clicks
+  // are flaky due to animation/positioning. The combobox is inside
+  // the pagination options group.
+  const combobox = page
+    .locator('.ant-pagination-options')
+    .first()
+    .getByRole('combobox')
+  await combobox.click({ force: true })
+  await page.waitForTimeout(300) // open dropdown
+  // Page-size options are typically [5, 10, 20, 50] — index of `size`.
+  const options = [5, 10, 20, 50, 100]
+  const idx = options.indexOf(size)
+  if (idx < 0) {
+    throw new Error(`Unsupported pageSize ${size}; helper supports ${options.join(', ')}`)
+  }
+  await combobox.press('Home')
+  for (let i = 0; i < idx; i++) {
+    await combobox.press('ArrowDown')
+  }
+  await combobox.press('Enter')
   await page.waitForLoadState('networkidle')
 }
 

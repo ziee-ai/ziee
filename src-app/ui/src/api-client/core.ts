@@ -125,11 +125,22 @@ export const callAsync = async <U extends ApiEndpointUrl>(
       }
     }
 
-    // Prepare the request body
+    // Prepare the request body. Strip path-captured params from the
+    // body — sending them as body fields (e.g. `provider_id`) trips
+    // the backend's serde deny-unknown-fields validators (introduced
+    // in the 2026-05 security pass), which return 422.
     let body: any = undefined
     if (['POST', 'PUT', 'PATCH'].includes(method) && params !== undefined) {
       if (isFormData) {
         body = params as FormData
+      } else if (captureMatches.length > 0 && typeof params === 'object') {
+        const bodyParams: Record<string, unknown> = {}
+        for (const [key, value] of Object.entries(params)) {
+          if (!captureMatches.includes(key)) {
+            bodyParams[key] = value
+          }
+        }
+        body = JSON.stringify(bodyParams)
       } else {
         body = JSON.stringify(params)
       }

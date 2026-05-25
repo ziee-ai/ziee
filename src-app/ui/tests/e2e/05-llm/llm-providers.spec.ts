@@ -93,7 +93,9 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
 
     // Verify Provider Type field exists and is a Select dropdown
     await expect(page.locator('label:has-text("Provider Type")')).toBeVisible()
-    const providerTypeSelect = page.locator('.ant-select-selector').first()
+    // Newer AntD versions render `.ant-select-content` instead of
+    // `.ant-select-selector`; the outer `.ant-select` is consistent.
+    const providerTypeSelect = page.locator('.ant-select').first()
     await expect(providerTypeSelect).toBeVisible()
 
     // Verify Provider Name field (with form-prefixed ID)
@@ -273,8 +275,9 @@ test.describe('LLM Providers - Remote Provider CRUD', () => {
 
     await openAddProviderDrawer(page)
 
-    // Open provider type dropdown
-    await page.click('.ant-select-selector')
+    // Open provider type dropdown (use `.ant-select` not the inner
+    // `.ant-select-selector` — newer AntD uses `.ant-select-content`).
+    await page.locator('.ant-drawer.ant-drawer-open').locator('.ant-select').first().click()
     await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
 
     // Verify all provider types are available

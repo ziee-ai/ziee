@@ -17,28 +17,34 @@ export interface UpdateUserData {
 
 /**
  * Create a new user through the UI
+ *
+ * Scoped to the active drawer (`.ant-drawer-open`) because AntD leaves
+ * closed drawers in the DOM; page-wide getByLabel matches inputs from
+ * prior drawers and trips Playwright strict-mode.
  */
 export async function createUser(page: Page, userData: CreateUserData) {
+  const drawer = page.locator('.ant-drawer.ant-drawer-open')
+
   // Fill in the form
-  await page.getByLabel(/username/i).fill(userData.username)
-  await page.getByLabel(/email/i).fill(userData.email)
-  await page.getByLabel(/^password/i).fill(userData.password)
+  await drawer.getByLabel(/username/i).fill(userData.username)
+  await drawer.getByLabel(/email/i).fill(userData.email)
+  await drawer.getByLabel(/^password/i).fill(userData.password)
 
   if (userData.displayName) {
-    await page.getByLabel(/display name/i).fill(userData.displayName)
+    await drawer.getByLabel(/display name/i).fill(userData.displayName)
   }
 
   if (userData.permissions && userData.permissions.length > 0) {
-    const permissionsField = page.getByLabel(/permissions.*json/i)
+    const permissionsField = drawer.getByLabel(/permissions.*json/i)
     await permissionsField.fill(JSON.stringify(userData.permissions))
   }
 
   // Submit the form
-  const submitButton = page.locator('.ant-drawer:visible').getByRole('button', { name: /create user/i })
+  const submitButton = drawer.getByRole('button', { name: /create user/i })
   await submitButton.click()
 
   // Wait for success message
-  await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
   // Wait for drawer to close
   await page.waitForTimeout(500)
@@ -46,32 +52,31 @@ export async function createUser(page: Page, userData: CreateUserData) {
 
 /**
  * Update an existing user through the UI
+ *
+ * Note: email + permissions are no longer editable in this drawer
+ * (03-user F-01 / F-03 closure). Callers passing those fields are
+ * silently ignored — `UpdateUserData` keeps them on the type so existing
+ * tests still typecheck, but the helper no-ops those branches.
  */
 export async function updateUser(page: Page, userData: UpdateUserData) {
+  const drawer = page.locator('.ant-drawer.ant-drawer-open')
+
   if (userData.username) {
-    await page.getByLabel(/username/i).fill(userData.username)
+    await drawer.getByLabel(/username/i).fill(userData.username)
   }
 
-  if (userData.email) {
-    await page.getByLabel(/email/i).fill(userData.email)
-  }
+  // email + permissions intentionally not edited here.
 
   if (userData.displayName !== undefined) {
-    await page.getByLabel(/display name/i).fill(userData.displayName)
-  }
-
-  if (userData.permissions) {
-    const permissionsField = page.getByLabel(/permissions.*json/i)
-    await permissionsField.clear()
-    await permissionsField.fill(JSON.stringify(userData.permissions))
+    await drawer.getByLabel(/display name/i).fill(userData.displayName)
   }
 
   // Submit the form
-  const submitButton = page.locator('.ant-drawer:visible').getByRole('button', { name: /update user/i })
+  const submitButton = drawer.getByRole('button', { name: /update user/i })
   await submitButton.click()
 
   // Wait for success message
-  await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
   // Wait for drawer to close
   await page.waitForTimeout(500)
@@ -79,16 +84,15 @@ export async function updateUser(page: Page, userData: UpdateUserData) {
 
 /**
  * Delete a user through the UI
+ *
+ * The Delete button itself uniquely identifies the row — its
+ * aria-label includes the username (e.g. "Delete admin").
  */
 export async function deleteUser(page: Page, username: string) {
-  // Find username element, go up to user section, then find Delete button
-  const usernameEl = page.locator('.ant-typography.font-medium', { hasText: username }).first()
-
-  // Go up to the user info section container (2 levels up from username text)
-  const userSection = usernameEl.locator('../..')
-
-  // Find Delete button within that section
-  const deleteButton = userSection.getByRole('button', { name: /^delete$/i })
+  const deleteButton = page.getByRole('button', {
+    name: `Delete ${username}`,
+    exact: true,
+  })
   await deleteButton.waitFor({ state: 'visible', timeout: 5000 })
   await deleteButton.click()
 
@@ -105,20 +109,25 @@ export async function deleteUser(page: Page, username: string) {
 
 /**
  * Toggle user active status through the UI
+ *
+ * Anchor on the user-specific Delete button (its aria-label includes
+ * the username) and walk to the switch via XPath sibling axis. The
+ * switch precedes Edit/Reset/Groups/Delete in document order.
  */
 export async function toggleUserStatus(page: Page, username: string) {
-  // Find the switch for the specific user
-  const userRow = page.locator(`text="${username}"`).locator('..')
-  const statusSwitch = userRow.locator('button.ant-switch').or(userRow.locator('.ant-switch'))
+  const statusSwitch = page
+    .getByRole('button', { name: `Delete ${username}`, exact: true })
+    .locator('xpath=preceding-sibling::button[contains(@class, "ant-switch")]')
+    .first()
 
-  await statusSwitch.first().click()
+  await statusSwitch.click()
 
   // Confirm the action in the popconfirm
   const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
   await confirmButton.click()
 
   // Wait for success message
-  await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
   // Wait for UI to update
   await page.waitForTimeout(500)
@@ -132,25 +141,31 @@ export async function resetUserPassword(
   username: string,
   newPassword: string
 ) {
-  // Open reset password drawer
+  // Open reset password drawer — same Delete-button anchor approach
+  // as toggleUserStatus.
   const resetButton = page.getByRole('button', { name: new RegExp(`reset password.*${username}`, 'i') })
-    .or(page.locator(`text="${username}"`).locator('..').getByRole('button', { name: /reset password/i }))
+    .or(
+      page
+        .getByRole('button', { name: `Delete ${username}`, exact: true })
+        .locator('xpath=preceding-sibling::button[normalize-space()="Reset Password"]')
+    )
 
   await resetButton.first().click()
 
   // Wait for drawer
-  const drawer = page.locator('.ant-drawer:visible', { hasText: /reset password/i })
+  const drawer = page.locator('.ant-drawer.ant-drawer-open', { hasText: /reset password/i })
   await drawer.waitFor({ state: 'visible' })
 
-  // Fill in new password
-  await page.getByLabel(/new password/i).fill(newPassword)
+  // Fill in new password — scoped to drawer to avoid strict-mode flake
+  // (closed drawers from earlier steps remain in the DOM).
+  await drawer.getByLabel(/new password/i).fill(newPassword)
 
   // Submit the form
   const submitButton = drawer.getByRole('button', { name: /reset password/i })
   await submitButton.click()
 
   // Wait for success message
-  await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
   // Wait for drawer to close
   await page.waitForTimeout(500)
@@ -164,14 +179,18 @@ export async function assignUserToGroups(
   username: string,
   groupNames: string[]
 ) {
-  // Open user groups drawer
+  // Open user groups drawer — same Delete-button anchor approach.
   const groupsButton = page.getByRole('button', { name: new RegExp(`groups.*${username}`, 'i') })
-    .or(page.locator(`text="${username}"`).locator('..').getByRole('button', { name: /groups/i }))
+    .or(
+      page
+        .getByRole('button', { name: `Delete ${username}`, exact: true })
+        .locator('xpath=preceding-sibling::button[normalize-space()="Groups"]')
+    )
 
   await groupsButton.first().click()
 
   // Wait for drawer
-  const drawer = page.locator('.ant-drawer:visible')
+  const drawer = page.locator('.ant-drawer.ant-drawer-open')
   await drawer.waitFor({ state: 'visible' })
 
   // Click assign groups button
@@ -183,16 +202,16 @@ export async function assignUserToGroups(
 
   // Select groups (implementation depends on the actual UI component)
   for (const groupName of groupNames) {
-    const groupCheckbox = page.locator('.ant-drawer:visible').getByText(groupName)
+    const groupCheckbox = page.locator('.ant-drawer.ant-drawer-open').getByText(groupName)
     await groupCheckbox.click()
   }
 
   // Submit
-  const submitButton = page.locator('.ant-drawer:visible').getByRole('button', { name: /assign/i }).last()
+  const submitButton = page.locator('.ant-drawer.ant-drawer-open').getByRole('button', { name: /assign/i }).last()
   await submitButton.click()
 
   // Wait for success message
-  await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
   // Wait for UI to update
   await page.waitForTimeout(500)

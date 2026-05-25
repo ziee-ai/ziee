@@ -68,7 +68,7 @@ test.describe('MCP - User Servers', () => {
     await submitMcpServerForm(page, 'create')
 
     // Verify success message
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)
@@ -91,7 +91,7 @@ test.describe('MCP - User Servers', () => {
     await submitMcpServerForm(page, 'create')
 
     // Verify success message
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
 
     // Verify server appears in list
     await verifyServerExists(page, serverData.displayName)

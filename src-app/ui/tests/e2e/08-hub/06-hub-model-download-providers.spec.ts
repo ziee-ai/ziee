@@ -47,6 +47,10 @@ async function mockDownloadStart(page: Page): Promise<() => number> {
     await route.fulfill({
       status: 201,
       contentType: 'application/json',
+      // Shape must match backend `ModelFromHubResponse`: `download` is
+      // a full `DownloadInstance` (with optional fields) and
+      // `hub_tracking` is a full `HubEntity` record (NOT an empty
+      // object — every UI read of the fields would crash).
       body: JSON.stringify({
         download: {
           id: '00000000-0000-0000-0000-0000000000d1',
@@ -54,11 +58,23 @@ async function mockDownloadStart(page: Page): Promise<() => number> {
           repository_id: '00000000-0000-0000-0000-0000000000b1',
           status: 'pending',
           request_data: { repository_path: 'mock/repo' },
+          progress_data: null,
+          error_message: null,
+          model_id: null,
+          completed_at: null,
           created_at: now,
           started_at: now,
           updated_at: now,
         },
-        hub_tracking: {},
+        hub_tracking: {
+          id: '00000000-0000-0000-0000-0000000000e1',
+          entity_type: 'llm_model',
+          entity_id: '00000000-0000-0000-0000-0000000000d1',
+          hub_id: 'mock-hub-model-id',
+          hub_category: 'mock-category',
+          created_at: now,
+          created_by: null,
+        },
       }),
     })
   })

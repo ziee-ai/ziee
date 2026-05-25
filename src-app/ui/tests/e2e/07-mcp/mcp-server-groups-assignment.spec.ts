@@ -130,11 +130,11 @@ test.describe('User Group Assignment in MCP Servers', () => {
     ).toBeVisible()
 
     // Verify group appears in the drawer
-    await expect(page.locator(`.ant-drawer:visible:has-text("${groupName}")`)).toBeVisible()
+    await expect(page.locator(`.ant-drawer.ant-drawer-open:has-text("${groupName}")`)).toBeVisible()
 
     // Verify switch exists
     const groupCard = page.locator(
-      `.ant-drawer:visible .ant-card:has(strong:has-text("${groupName}"))`
+      `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("${groupName}"))`
     )
     const switchElement = groupCard.locator('.ant-switch')
     await expect(switchElement).toBeVisible()
@@ -272,7 +272,7 @@ test.describe('User Group Assignment in MCP Servers', () => {
 
     // Look for "All Users" (which is a default group)
     const allUsersCard = page.locator(
-      `.ant-drawer:visible .ant-card:has(strong:has-text("All Users"))`
+      `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("All Users"))`
     )
 
     // If All Users exists, verify it has Default tag
@@ -393,7 +393,7 @@ test.describe('User Group Assignment in MCP Servers', () => {
 
     // Get the group card and switch
     const groupCard = page.locator(
-      `.ant-drawer:visible .ant-card:has(strong:has-text("${groupName}"))`
+      `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("${groupName}"))`
     )
     const switchElement = groupCard.locator('.ant-switch')
 
@@ -446,7 +446,7 @@ test.describe('User Group Assignment in MCP Servers', () => {
 
     // Find the group card
     const groupCard = page.locator(
-      `.ant-drawer:visible .ant-card:has(strong:has-text("${groupName}"))`
+      `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("${groupName}"))`
     )
     await expect(groupCard).toBeVisible()
 

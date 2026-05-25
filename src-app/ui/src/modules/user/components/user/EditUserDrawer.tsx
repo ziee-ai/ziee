@@ -14,6 +14,7 @@ export function EditUserDrawer() {
     if (editingUser) {
       editForm.setFieldsValue({
         username: editingUser.username,
+        display_name: editingUser.display_name ?? '',
         is_active: editingUser.is_active,
       })
     }
@@ -32,6 +33,7 @@ export function EditUserDrawer() {
       //     managed via group assignment only.
       const updateData: UpdateUserRequest = {
         username: values.username,
+        display_name: values.display_name || null,
         is_active: values.is_active,
       }
 
@@ -70,6 +72,9 @@ export function EditUserDrawer() {
           rules={[{ required: true, message: 'Please enter username' }]}
         >
           <Input placeholder="Enter username" />
+        </Form.Item>
+        <Form.Item name="display_name" label="Display Name">
+          <Input placeholder="Enter display name (optional)" />
         </Form.Item>
         <Form.Item name="is_active" label="Active" valuePropName="checked">
           <Switch />
