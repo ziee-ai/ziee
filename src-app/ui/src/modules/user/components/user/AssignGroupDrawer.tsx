@@ -1,6 +1,7 @@
 import { App, Button, Flex, Form, Select } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 
 const { Option } = Select
 
@@ -9,6 +10,7 @@ export function AssignGroupDrawer() {
   const { isOpen, user } = Stores.AssignGroupDrawer
   const { groups } = Stores.UserGroups
   const [assignGroupForm] = Form.useForm()
+  const canAssign = usePermission('groups::assign_users')
 
   const handleAssignGroup = async (values: any) => {
     if (!user) return
@@ -39,6 +41,7 @@ export function AssignGroupDrawer() {
         form={assignGroupForm}
         layout="vertical"
         onFinish={handleAssignGroup}
+        disabled={!canAssign}
       >
         <Form.Item
           name="group_id"
@@ -60,16 +63,18 @@ export function AssignGroupDrawer() {
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="gap-2">
-            <Button type="primary" htmlType="submit">
-              Assign Group
-            </Button>
+            {canAssign && (
+              <Button type="primary" htmlType="submit">
+                Assign Group
+              </Button>
+            )}
             <Button
               onClick={() => {
                 Stores.AssignGroupDrawer.closeAssignGroupDrawer()
                 assignGroupForm.resetFields()
               }}
             >
-              Cancel
+              {canAssign ? 'Cancel' : 'Close'}
             </Button>
           </Flex>
         </Form.Item>

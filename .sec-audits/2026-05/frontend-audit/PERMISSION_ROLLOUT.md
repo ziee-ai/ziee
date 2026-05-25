@@ -38,27 +38,28 @@ exposure).
 
 ## Per-module rollout
 
-### user — Users + Groups
+### user — Users + Groups — DONE
 
 Module: `src/modules/user/`. Backend perms: `users::*`, `groups::*`,
 `profile::*`.
 
-- [ ] `module.tsx`: `settingsAdminPages[users]` → `users::read`,
+- [x] `module.tsx`: `settingsAdminPages[users]` → `users::read`,
       `settingsAdminPages[user-groups]` → `groups::read`.
-- [ ] `UsersSettings`: Create+ → `users::create`; Edit →
+- [x] `UsersSettings`: Create+ → `users::create`; Edit →
       `users::edit`; Reset Password → `users::reset_password`; Groups
       → `groups::assign_users`; Delete → `users::delete`; active
-      Switch → `users::toggle_status`. Plus self-row + root-admin
-      lockout guards.
-- [ ] `CreateUserDrawer`, `EditUserDrawer`, `ResetPasswordDrawer`,
+      Switch → `users::toggle_status`. Self-row + root-admin lockout
+      guards on Switch and Delete.
+- [x] `CreateUserDrawer`, `EditUserDrawer`, `ResetPasswordDrawer`,
       `AssignGroupDrawer`, `UserGroupsDrawer`: form `disabled`
-      derived from corresponding `users::*` / `groups::*` perm; hide
-      submit when missing.
-- [ ] `UserGroupsSettings`: Create group → `groups::create`; drawer
+      derived from corresponding `users::*` / `groups::*` perm; submit
+      hidden when missing (Cancel relabeled "Close").
+- [x] `UserGroupsSettings`: Create group → `groups::create`; drawer
       same pattern.
-- [ ] `GroupListItem`: Members → `groups::read`; Edit →
-      `groups::edit`; Delete → `groups::delete`.
-- [ ] `EditUserGroupDrawer`: `groups::edit` on form + submit.
+- [x] `GroupListItem`: Members → `groups::read`; Edit →
+      `groups::edit`; Delete → `groups::delete` (also hidden on
+      system groups).
+- [x] `EditUserGroupDrawer`: `groups::edit` on form + submit.
 
 ### llm-provider — Admin providers + assignments
 

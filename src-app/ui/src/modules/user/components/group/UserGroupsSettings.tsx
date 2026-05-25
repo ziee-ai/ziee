@@ -13,6 +13,7 @@ import {
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
+import { Can, usePermission } from '@/core/permissions'
 import type { CreateGroupRequest, Group } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
@@ -64,6 +65,7 @@ export function UserGroupsSettings() {
 
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const [createForm] = Form.useForm()
+  const canCreate = usePermission('groups::create')
 
   // Show errors
   useEffect(() => {
@@ -121,12 +123,14 @@ export function UserGroupsSettings() {
         <Card
           title="User Groups"
           extra={
-            <Button
-              type="text"
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={() => setCreateModalVisible(true)}
-              aria-label="Create group"
-            />
+            <Can permission="groups::create">
+              <Button
+                type="text"
+                icon={<PlusOutlined aria-hidden="true" />}
+                onClick={() => setCreateModalVisible(true)}
+                aria-label="Create group"
+              />
+            </Can>
           }
         >
           {loadingGroups ? (
@@ -188,6 +192,7 @@ export function UserGroupsSettings() {
             form={createForm}
             layout="vertical"
             onFinish={handleCreateGroup}
+            disabled={!canCreate}
           >
             <Form.Item
               name="name"
@@ -209,16 +214,18 @@ export function UserGroupsSettings() {
 
             <Form.Item className="mb-0">
               <Flex className="gap-2">
-                <Button type="primary" htmlType="submit">
-                  Create Group
-                </Button>
+                {canCreate && (
+                  <Button type="primary" htmlType="submit">
+                    Create Group
+                  </Button>
+                )}
                 <Button
                   onClick={() => {
                     setCreateModalVisible(false)
                     createForm.resetFields()
                   }}
                 >
-                  Cancel
+                  {canCreate ? 'Cancel' : 'Close'}
                 </Button>
               </Flex>
             </Form.Item>

@@ -1,11 +1,13 @@
 import { App, Button, Flex, Form, Input } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 
 export function ResetPasswordDrawer() {
   const { message } = App.useApp()
   const { isOpen, user } = Stores.ResetPasswordDrawer
   const [passwordForm] = Form.useForm()
+  const canReset = usePermission('users::reset_password')
 
   const handleResetPassword = async (values: any) => {
     if (!user) return
@@ -37,6 +39,7 @@ export function ResetPasswordDrawer() {
         form={passwordForm}
         layout="vertical"
         onFinish={handleResetPassword}
+        disabled={!canReset}
       >
         <Form.Item
           name="new_password"
@@ -68,16 +71,18 @@ export function ResetPasswordDrawer() {
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="gap-2">
-            <Button type="primary" htmlType="submit">
-              Reset Password
-            </Button>
+            {canReset && (
+              <Button type="primary" htmlType="submit">
+                Reset Password
+              </Button>
+            )}
             <Button
               onClick={() => {
                 Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
                 passwordForm.resetFields()
               }}
             >
-              Cancel
+              {canReset ? 'Cancel' : 'Close'}
             </Button>
           </Flex>
         </Form.Item>

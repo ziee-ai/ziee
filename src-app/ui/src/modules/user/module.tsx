@@ -92,6 +92,7 @@ export default createModule({
         label: 'Users',
         path: 'users',
         order: 10,
+        permission: 'users::read',
       },
       {
         id: 'user-groups',
@@ -99,6 +100,7 @@ export default createModule({
         label: 'User Groups',
         path: 'user-groups',
         order: 11,
+        permission: 'groups::read',
       },
     ],
   },

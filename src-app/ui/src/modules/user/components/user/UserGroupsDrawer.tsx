@@ -2,6 +2,7 @@ import { PlusOutlined, TeamOutlined } from '@ant-design/icons'
 import { App, Button, Empty, List, Popconfirm, Spin, Tag } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { useEffect, useState } from 'react'
 
 export function UserGroupsDrawer() {
@@ -10,6 +11,7 @@ export function UserGroupsDrawer() {
   const { groups } = Stores.UserGroups
   const [userGroupIds, setUserGroupIds] = useState<Set<string>>(new Set())
   const [loadingUserGroups, setLoadingUserGroups] = useState(false)
+  const canAssign = usePermission('groups::assign_users')
 
   // Load user's group memberships when drawer opens
   useEffect(() => {
@@ -93,18 +95,20 @@ export function UserGroupsDrawer() {
       open={isOpen}
       size={400}
       extra={
-        <Button
-          type="text"
-          icon={<PlusOutlined aria-hidden="true" />}
-          onClick={() => {
-            Stores.UserGroupsDrawer.closeUserGroupsDrawer()
-            if (user) {
-              Stores.AssignGroupDrawer.openAssignGroupDrawer(user)
-            }
-          }}
-          className={'mr-2'}
-          aria-label="Assign group"
-        />
+        canAssign && (
+          <Button
+            type="text"
+            icon={<PlusOutlined aria-hidden="true" />}
+            onClick={() => {
+              Stores.UserGroupsDrawer.closeUserGroupsDrawer()
+              if (user) {
+                Stores.AssignGroupDrawer.openAssignGroupDrawer(user)
+              }
+            }}
+            className={'mr-2'}
+            aria-label="Assign group"
+          />
+        )
       }
     >
       {loadingUserGroups ? (
@@ -118,9 +122,8 @@ export function UserGroupsDrawer() {
           dataSource={groups}
           renderItem={group => {
             const isMember = userGroupIds.has(group.id)
-            return (
-              <List.Item
-                actions={[
+            const actions = canAssign
+              ? [
                   isMember ? (
                     <Popconfirm
                       key="remove"
@@ -143,8 +146,10 @@ export function UserGroupsDrawer() {
                       Assign
                     </Button>
                   ),
-                ]}
-              >
+                ]
+              : []
+            return (
+              <List.Item actions={actions}>
                 <List.Item.Meta
                   avatar={<TeamOutlined />}
                   title={

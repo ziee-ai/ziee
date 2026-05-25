@@ -1,6 +1,7 @@
 import { App, Button, Flex, Form, Input } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import type { CreateUserRequest } from '@/api-client/types'
 import { Permissions } from '@/api-client/types'
 
@@ -39,6 +40,7 @@ export function CreateUserDrawer() {
   const { isOpen } = Stores.CreateUserDrawer
   const { creating: creatingUser } = Stores.Users
   const [createForm] = Form.useForm()
+  const canCreate = usePermission('users::create')
 
   const handleCreateUser = async (values: any) => {
     try {
@@ -75,7 +77,13 @@ export function CreateUserDrawer() {
       size={600}
       maskClosable={false}
     >
-      <Form name="create-user" form={createForm} layout="vertical" onFinish={handleCreateUser}>
+      <Form
+        name="create-user"
+        form={createForm}
+        layout="vertical"
+        onFinish={handleCreateUser}
+        disabled={!canCreate}
+      >
         <Form.Item
           name="username"
           label="Username"
@@ -118,9 +126,11 @@ export function CreateUserDrawer() {
         </Form.Item>
         <Form.Item className="mb-0">
           <Flex className="gap-2">
-            <Button type="primary" htmlType="submit" loading={creatingUser}>
-              Create User
-            </Button>
+            {canCreate && (
+              <Button type="primary" htmlType="submit" loading={creatingUser}>
+                Create User
+              </Button>
+            )}
             <Button
               onClick={() => {
                 Stores.CreateUserDrawer.closeCreateUserDrawer()
@@ -128,7 +138,7 @@ export function CreateUserDrawer() {
               }}
               disabled={creatingUser}
             >
-              Cancel
+              {canCreate ? 'Cancel' : 'Close'}
             </Button>
           </Flex>
         </Form.Item>
