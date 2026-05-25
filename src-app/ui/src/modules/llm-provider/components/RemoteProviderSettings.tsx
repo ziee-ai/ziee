@@ -3,6 +3,8 @@ import { App, Button, Card, Flex, Form, Input, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { ProviderProxySettingsForm } from '@/modules/llm-provider/components/ProviderProxySettingsForm'
 import { ProviderHeader } from '@/modules/llm-provider/components/ProviderHeader'
 import { LlmModelsSection } from '@/modules/llm-provider/components/LlmModelsSection'
@@ -23,6 +25,7 @@ export function RemoteProviderSettings() {
 
   // Store data
   const { error } = Stores.LlmProvider
+  const canEditProvider = usePermission(Permissions.LlmProvidersEdit)
 
   // Get current provider and its models
   const currentProvider = Stores.LlmProvider.providers.find(
@@ -113,13 +116,15 @@ export function RemoteProviderSettings() {
         <Card
           title={'API Configuration'}
           extra={
-            <Button
-              type="primary"
-              onClick={handleSaveSettings}
-              disabled={!hasUnsavedChanges}
-            >
-              Save
-            </Button>
+            canEditProvider && (
+              <Button
+                type="primary"
+                onClick={handleSaveSettings}
+                disabled={!hasUnsavedChanges}
+              >
+                Save
+              </Button>
+            )
           }
         >
           <Flex className={'flex-col gap-3'}>

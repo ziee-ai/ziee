@@ -12,9 +12,14 @@ import {
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
 import { ApiClient } from '@/api-client'
-import type { LlmRepository, FileFormat } from '@/api-client/types'
+import {
+  Permissions,
+  type LlmRepository,
+  type FileFormat,
+} from '@/api-client/types'
 
 const { Text } = Typography
 
@@ -28,6 +33,8 @@ export function AddLocalLlmModelDownloadDrawer() {
   const { open: addMode, providerId } = Stores.AddLocalLlmModelDownloadDrawer
   const { open: viewMode, downloadId } = Stores.ViewDownloadDrawer
   const { downloads } = Stores.LlmModelDownload
+  const canCreate = usePermission(Permissions.LlmModelsCreate)
+  const canCancelDownload = usePermission(Permissions.LlmModelsDownloadsCancel)
 
   const open = viewMode || addMode
 
@@ -208,7 +215,8 @@ export function AddLocalLlmModelDownloadDrawer() {
               <Button key="close" onClick={handleCloseModal}>
                 Close
               </Button>,
-              viewDownload &&
+              canCancelDownload &&
+                viewDownload &&
                 (viewDownload.status === 'downloading' ||
                   viewDownload.status === 'pending') && (
                   <Button
@@ -234,16 +242,18 @@ export function AddLocalLlmModelDownloadDrawer() {
             ].filter(Boolean)
           : [
               <Button key="cancel" onClick={handleCancel}>
-                Cancel
+                {canCreate ? 'Cancel' : 'Close'}
               </Button>,
-              <Button
-                key="submit"
-                type="primary"
-                loading={loading}
-                onClick={handleSubmit}
-              >
-                Start Download
-              </Button>,
+              canCreate && (
+                <Button
+                  key="submit"
+                  type="primary"
+                  loading={loading}
+                  onClick={handleSubmit}
+                >
+                  Start Download
+                </Button>
+              ),
             ]
       }
       size={600}

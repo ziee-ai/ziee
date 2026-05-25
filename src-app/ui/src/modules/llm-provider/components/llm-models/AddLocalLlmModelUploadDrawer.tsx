@@ -15,6 +15,8 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { LOCAL_FILE_TYPE_OPTIONS } from '@/modules/llm-provider/constants'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { formatBytes } from '@/utils/downloadUtils'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
 
@@ -39,6 +41,7 @@ export function AddLocalLlmModelUploadDrawer() {
   const { uploading, uploadProgress, overallUploadProgress } =
     Stores.LlmModelUpload
   const { open, providerId } = Stores.AddLocalLlmModelUploadDrawer
+  const canCreate = usePermission(Permissions.LlmModelsCreate)
 
   /**
    * Generate a unique model ID from display name
@@ -376,17 +379,19 @@ export function AddLocalLlmModelUploadDrawer() {
       onClose={handleCancel}
       footer={[
         <Button key="cancel" onClick={handleCancel} disabled={uploading}>
-          Cancel
+          {canCreate ? 'Cancel' : 'Close'}
         </Button>,
-        <Button
-          key="submit"
-          type="primary"
-          loading={loading}
-          onClick={handleSubmit}
-          disabled={uploading}
-        >
-          {uploading ? 'Uploading...' : 'Upload'}
-        </Button>,
+        canCreate && (
+          <Button
+            key="submit"
+            type="primary"
+            loading={loading}
+            onClick={handleSubmit}
+            disabled={uploading}
+          >
+            {uploading ? 'Uploading...' : 'Upload'}
+          </Button>
+        ),
       ]}
       size={600}
       maskClosable={!uploading}

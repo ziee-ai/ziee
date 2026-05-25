@@ -3,7 +3,9 @@ import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useState } from 'react'
 import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { ApiClient } from '@/api-client'
+import { Permissions } from '@/api-client/types'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import { BASIC_MODEL_FIELDS } from '@/modules/llm-provider/constants/llmModelParameters'
 
@@ -14,6 +16,7 @@ export function AddRemoteLlmModelDrawer() {
 
   // Get modal state from drawer store
   const { open, providerId } = Stores.AddRemoteLlmModelDrawer
+  const canCreate = usePermission(Permissions.LlmModelsCreate)
 
   const handleSubmit = async () => {
     if (!providerId) return
@@ -72,16 +75,18 @@ export function AddRemoteLlmModelDrawer() {
       onClose={handleCancel}
       footer={[
         <Button key="cancel" onClick={handleCancel}>
-          Cancel
+          {canCreate ? 'Cancel' : 'Close'}
         </Button>,
-        <Button
-          key="submit"
-          type="primary"
-          loading={loading}
-          onClick={handleSubmit}
-        >
-          Add
-        </Button>,
+        canCreate && (
+          <Button
+            key="submit"
+            type="primary"
+            loading={loading}
+            onClick={handleSubmit}
+          >
+            Add
+          </Button>
+        ),
       ]}
       size={600}
       maskClosable={false}
