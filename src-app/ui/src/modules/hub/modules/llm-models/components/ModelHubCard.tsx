@@ -11,10 +11,16 @@ import {
   ToolOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
-import type { HubLocalProvider, HubModel, HubModelQuantizationOption } from '@/api-client/types'
+import {
+  Permissions,
+  type HubLocalProvider,
+  type HubModel,
+  type HubModelQuantizationOption,
+} from '@/api-client/types'
 import { useState } from 'react'
 import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 
 const { Text } = Typography
 
@@ -25,6 +31,7 @@ interface ModelHubCardProps {
 export function ModelHubCard({ model }: ModelHubCardProps) {
   const { message, modal } = App.useApp()
   const [showDetails, setShowDetails] = useState(false)
+  const canDownload = usePermission(Permissions.HubModelsCreate)
 
   const { localProviders } = Stores.HubModels
   const { downloads } = Stores.LlmModelDownload
@@ -263,18 +270,20 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                 >
                   README
                 </Button>
-                <Button
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  onClick={e => {
-                    e.stopPropagation()
-                    handleDownload()
-                  }}
-                  disabled={isModelBeingDownloaded}
-                  loading={isModelBeingDownloaded}
-                >
-                  Download
-                </Button>
+                {canDownload && (
+                  <Button
+                    type="primary"
+                    icon={<DownloadOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleDownload()
+                    }}
+                    disabled={isModelBeingDownloaded}
+                    loading={isModelBeingDownloaded}
+                  >
+                    Download
+                  </Button>
+                )}
               </div>
             </div>
 

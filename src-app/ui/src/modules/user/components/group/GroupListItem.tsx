@@ -14,8 +14,9 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import type { Group } from '@/api-client/types'
+import { Permissions, type Group } from '@/api-client/types'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { WidgetRenderer } from '@/core/components/LazyComponentRenderer'
 import type { GroupWidget } from '@/modules/user/types/GroupWidget'
 
@@ -39,6 +40,10 @@ export function GroupListItem({
   const { slots } = Stores.ModuleSystem
   const userGroupWidgets = (slots.get('userGroup') || []) as GroupWidget[]
 
+  const canReadMembers = usePermission(Permissions.GroupsRead)
+  const canEdit = usePermission(Permissions.GroupsEdit)
+  const canDelete = usePermission(Permissions.GroupsDelete)
+
   // Sort items by order
   const registeredWidgets = [...userGroupWidgets].sort(
     (a, b) => a.order - b.order,
@@ -47,48 +52,56 @@ export function GroupListItem({
   const getGroupActions = () => {
     const actions: React.ReactNode[] = []
 
-    actions.push(
-      <Button
-        key="members"
-        type="text"
-        icon={<UserOutlined aria-hidden="true" />}
-        onClick={() => onViewMembers(group)}
-        aria-label={`View members of ${group.name}`}
-      >
-        Members
-      </Button>,
-    )
-
-    actions.push(
-      <Button
-        key="edit"
-        type="text"
-        icon={<EditOutlined aria-hidden="true" />}
-        onClick={() => onEdit(group)}
-        aria-label={`Edit ${group.name}`}
-      >
-        Edit
-      </Button>,
-    )
-
-    actions.push(
-      <Popconfirm
-        key="delete"
-        title="Are you sure you want to delete this group?"
-        onConfirm={() => onDelete(group.id)}
-        okText="Yes"
-        cancelText="No"
-      >
+    if (canReadMembers) {
+      actions.push(
         <Button
+          key="members"
           type="text"
-          danger
-          icon={<DeleteOutlined aria-hidden="true" />}
-          aria-label={`Delete ${group.name}`}
+          icon={<UserOutlined aria-hidden="true" />}
+          onClick={() => onViewMembers(group)}
+          aria-label={`View members of ${group.name}`}
         >
-          Delete
-        </Button>
-      </Popconfirm>,
-    )
+          Members
+        </Button>,
+      )
+    }
+
+    if (canEdit) {
+      actions.push(
+        <Button
+          key="edit"
+          type="text"
+          icon={<EditOutlined aria-hidden="true" />}
+          onClick={() => onEdit(group)}
+          aria-label={`Edit ${group.name}`}
+        >
+          Edit
+        </Button>,
+      )
+    }
+
+    // Hide Delete on system groups regardless of permission — backend
+    // refuses to delete system groups and the UI shouldn't pretend.
+    if (canDelete && !group.is_system) {
+      actions.push(
+        <Popconfirm
+          key="delete"
+          title="Are you sure you want to delete this group?"
+          onConfirm={() => onDelete(group.id)}
+          okText="Yes"
+          cancelText="No"
+        >
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined aria-hidden="true" />}
+            aria-label={`Delete ${group.name}`}
+          >
+            Delete
+          </Button>
+        </Popconfirm>,
+      )
+    }
 
     return actions.filter(Boolean)
   }

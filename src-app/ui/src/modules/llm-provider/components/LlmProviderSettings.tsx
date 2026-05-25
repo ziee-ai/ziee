@@ -12,6 +12,8 @@ import {
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Stores } from '@/modules/llm-provider/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { PROVIDER_ICONS } from '@/modules/llm-provider/constants'
 import { LlmProviderDrawer } from '@/modules/llm-provider/components/LlmProviderDrawer'
 import { LocalProviderSettings } from '@/modules/llm-provider/components/LocalProviderSettings'
@@ -29,6 +31,7 @@ export function LlmProviderSettings() {
 
   // Provider store
   const { providers, loading, error } = Stores.LlmProvider
+  const canCreate = usePermission(Permissions.LlmProvidersCreate)
 
   const currentProvider = providers.find(p => p.id === providerId)
 
@@ -77,12 +80,14 @@ export function LlmProviderSettings() {
     }
   })
 
-  menuItems.push({
-    key: 'add-provider',
-    //@ts-ignore
-    icon: <PlusOutlined />,
-    label: <Typography.Text>Add Provider</Typography.Text>,
-  })
+  if (canCreate) {
+    menuItems.push({
+      key: 'add-provider',
+      //@ts-ignore
+      icon: <PlusOutlined />,
+      label: <Typography.Text>Add Provider</Typography.Text>,
+    })
+  }
 
   const ProviderMenu = () => (
     <Menu

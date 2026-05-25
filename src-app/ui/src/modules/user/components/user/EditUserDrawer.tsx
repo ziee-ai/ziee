@@ -1,13 +1,15 @@
 import { App, Button, Flex, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
-import type { UpdateUserRequest } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
+import { Permissions, type UpdateUserRequest } from '@/api-client/types'
 import { useEffect } from 'react'
 
 export function EditUserDrawer() {
   const { message } = App.useApp()
   const { isOpen, editingUser } = Stores.EditUserDrawer
   const [editForm] = Form.useForm()
+  const canEdit = usePermission(Permissions.UsersEdit)
 
   // Update form when editingUser changes
   useEffect(() => {
@@ -65,6 +67,7 @@ export function EditUserDrawer() {
         form={editForm}
         layout="vertical"
         onFinish={handleEditUser}
+        disabled={!canEdit}
       >
         <Form.Item
           name="username"
@@ -90,16 +93,18 @@ export function EditUserDrawer() {
          */}
         <Form.Item className="mb-0">
           <Flex className="gap-2">
-            <Button type="primary" htmlType="submit">
-              Update User
-            </Button>
+            {canEdit && (
+              <Button type="primary" htmlType="submit">
+                Update User
+              </Button>
+            )}
             <Button
               onClick={() => {
                 Stores.EditUserDrawer.closeEditUserDrawer()
                 editForm.resetFields()
               }}
             >
-              Cancel
+              {canEdit ? 'Cancel' : 'Close'}
             </Button>
           </Flex>
         </Form.Item>

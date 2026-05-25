@@ -110,7 +110,6 @@ pub fn get_hardware_info_docs(op: TransformOperation) -> TransformOperation {
         .tag("Hardware")
         .response::<200, Json<HardwareInfoResponse>>()
         .response::<401, ()>()
-        .response::<403, ()>()
 }
 
 /// GET /api/hardware/usage-stream
@@ -163,7 +162,6 @@ pub fn subscribe_hardware_usage_docs(op: TransformOperation) -> TransformOperati
         .tag("Hardware")
         .response::<200, Json<SSEHardwareUsageEvent>>()
         .response::<401, ()>()
-        .response::<403, ()>()
 }
 
 /// Dummy endpoint for type generation - ensures SSE types are included in OpenAPI spec

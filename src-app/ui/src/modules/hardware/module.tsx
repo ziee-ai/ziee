@@ -5,6 +5,7 @@ import { useHardwareStore } from '@/modules/hardware/Hardware.store'
 import '@/modules/hardware/types'
 import { BlankLayout } from '@/modules/layouts/blank' // Import type augmentation
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { Permissions } from '@/api-client/types'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 
 const HardwareSettings = lazyWithPreload(() => import('./HardwareSettings'))
@@ -23,12 +24,14 @@ export default createModule({
       path: '/settings/hardware',
       element: HardwareSettings,
       requiresAuth: true,
+      permission: Permissions.HardwareRead,
       layout: SettingsLayoutDef,
     },
     {
       path: '/hardware-monitor',
       element: HardwareMonitor,
       requiresAuth: true,
+      permission: Permissions.HardwareMonitor,
       layout: BlankLayout,
     },
   ],
@@ -46,6 +49,7 @@ export default createModule({
         label: 'Hardware',
         path: 'hardware',
         order: 30,
+        permission: Permissions.HardwareRead,
       },
     ],
   },

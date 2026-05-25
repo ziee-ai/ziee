@@ -1,5 +1,6 @@
 import { createModule } from '@/core'
 import { ApiOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
 import { useHubMcpServersStore } from '@/modules/hub/modules/mcp/stores/hub-mcp-servers-store'
 import { useMcpServerDetailsDrawerStore } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -36,7 +37,10 @@ export default createModule({
         icon: <ApiOutlined />,
         component: McpServersHubTab,
         order: 30,
-        permission: 'hub::mcp_servers::read',
+        permissions: {
+          read: Permissions.HubMCPServersRead,
+          refresh: Permissions.HubMCPServersRefresh,
+        },
         refresh: async () => {
           await useHubMcpServersStore.getState().refreshFromGitHub()
         },

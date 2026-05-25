@@ -1,12 +1,14 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { navigateToHub, waitForHubDataLoad, refreshHubData } from './helpers/hub-navigation'
+import { navigateToHub, waitForHubDataLoad } from './helpers/hub-navigation'
 import {
   createAssistantFromHub,
   getAssistantCards,
   isAssistantCreated,
   getAssistantCardStatus,
 } from './helpers/hub-assistants'
+import { loginWithPerms } from '../permissions/fixtures'
+import { Permissions } from '../../../src/api-client/types'
 
 test.describe('Hub Assistants', () => {
   test.beforeEach(async ({ page, testInfra }) => {
@@ -34,10 +36,16 @@ test.describe('Hub Assistants', () => {
     await expect(firstCard).toContainText(/.+/)
   })
 
-  test.skip('should create assistant from hub without customization', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
-    // Currently, refreshHubData() only refreshes from GitHub, not from backend
-    // This test will be enabled once the backend sync feature is implemented
+  // After page.reload() the Hub store re-fetches from the backend's
+  // GET /api/hub/assistants, which stitches in the freshly-updated
+  // created_ids. Previously these tests also called refreshHubData()
+  // — that hits refresh-from-github and wipes out the local cache
+  // including the stitched created_ids. Removed.
+
+  test('should create assistant from hub without customization', async ({
+    page,
+    testInfra,
+  }) => {
     const assistantCards = await getAssistantCards(page)
     const firstCard = assistantCards.first()
 
@@ -55,18 +63,19 @@ test.describe('Hub Assistants', () => {
       page.getByText(/created.*successfully|assistant.*created/i).first(),
     ).toBeVisible({ timeout: 5000 })
 
-    // Reload and check status
-    await page.reload()
-    await waitForHubDataLoad(page)
-    await refreshHubData(page) // Refresh to get updated created_ids from backend
+    // The card navigates away to /assistants on success; go back to
+    // the hub to verify the badge.
+    await navigateToHub(page, testInfra.baseURL, 'assistants')
     await waitForHubDataLoad(page)
 
     const created = await isAssistantCreated(page, assistantId)
     expect(created).toBe(true)
   })
 
-  test.skip('should create assistant from hub with customization', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  test('should create assistant from hub with customization', async ({
+    page,
+    testInfra,
+  }) => {
     const assistantCards = await getAssistantCards(page)
 
     // Get second assistant if available
@@ -90,17 +99,17 @@ test.describe('Hub Assistants', () => {
     ).toBeVisible({ timeout: 5000 })
 
     // Verify assistant was created
-    await page.reload()
-    await waitForHubDataLoad(page)
-    await refreshHubData(page) // Refresh to get updated created_ids from backend
+    await navigateToHub(page, testInfra.baseURL, 'assistants')
     await waitForHubDataLoad(page)
 
     const created = await isAssistantCreated(page, assistantId)
     expect(created).toBe(true)
   })
 
-  test.skip('should show "View" button for already created assistants', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  test('should show "View" button for already created assistants', async ({
+    page,
+    testInfra,
+  }) => {
     // Create first assistant
     const assistantCards = await getAssistantCards(page)
     const firstCard = assistantCards.first()
@@ -113,9 +122,7 @@ test.describe('Hub Assistants', () => {
 
     if (!alreadyCreated) {
       await createAssistantFromHub(page, assistantId)
-      await page.reload()
-      await waitForHubDataLoad(page)
-      await refreshHubData(page) // Refresh to get updated created_ids from backend
+      await navigateToHub(page, testInfra.baseURL, 'assistants')
       await waitForHubDataLoad(page)
     }
 
@@ -129,8 +136,7 @@ test.describe('Hub Assistants', () => {
     expect(useButtonVisible).toBe(false)
   })
 
-  test.skip('should track creation status badge', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  test('should track creation status badge', async ({ page, testInfra }) => {
     const assistantCards = await getAssistantCards(page)
     const firstCard = assistantCards.first()
 
@@ -144,10 +150,8 @@ test.describe('Hub Assistants', () => {
       // Not created yet, create it
       await createAssistantFromHub(page, assistantId)
 
-      // Reload and check status
-      await page.reload()
-      await waitForHubDataLoad(page)
-      await refreshHubData(page) // Refresh to get updated created_ids from backend
+      // Navigate back from /assistants to /hub/assistants and check
+      await navigateToHub(page, testInfra.baseURL, 'assistants')
       await waitForHubDataLoad(page)
 
       const newStatus = await getAssistantCardStatus(page, assistantId)
@@ -159,8 +163,10 @@ test.describe('Hub Assistants', () => {
     }
   })
 
-  test.skip('should navigate to assistant detail when clicking "View"', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  test('should navigate to assistant detail when clicking "View"', async ({
+    page,
+    testInfra,
+  }) => {
     // Find an assistant that's already created
     const assistantCards = await getAssistantCards(page)
     let createdAssistantId = ''
@@ -183,7 +189,7 @@ test.describe('Hub Assistants', () => {
       createdAssistantId = testId?.replace('hub-assistant-card-', '') || ''
 
       await createAssistantFromHub(page, createdAssistantId)
-      await page.reload()
+      await navigateToHub(page, testInfra.baseURL, 'assistants')
       await waitForHubDataLoad(page)
     }
 
@@ -191,17 +197,40 @@ test.describe('Hub Assistants', () => {
     const card = page.getByTestId(`hub-assistant-card-${createdAssistantId}`)
     await card.getByRole('button', { name: /view/i }).click()
 
-    // Should navigate to assistant detail or open drawer
-    // Check for URL change or drawer opening
-    const urlChanged = await page.waitForURL(/\/assistants\//, { timeout: 3000 }).catch(() => false)
+    // View navigates to /assistants (the user's own assistants list)
+    // per AssistantHubCard. Sanity-check by URL after navigation
+    // settles, not waitForURL (SPA navigations don't always trip
+    // its event hook reliably).
+    await page.waitForLoadState('networkidle').catch(() => {})
+    const urlChanged = !page.url().includes('/hub/')
     const drawer = page.getByRole('dialog', { name: /assistant/i })
-    const drawerVisible = await drawer.isVisible({ timeout: 3000 }).catch(() => false)
+    const drawerVisible = await drawer.isVisible({ timeout: 2000 }).catch(() => false)
 
     expect(urlChanged || drawerVisible).toBe(true)
   })
 
-  test.skip('should prevent creation without required permissions', async ({ page: _page }) => {
-    // TODO: Implement test with user permission system
-    // This requires creating a non-admin user without hub::assistants::create permission
+  test('should prevent creation without required permissions', async ({
+    page,
+    testInfra,
+  }) => {
+    // User with hub::assistants::read but NOT ::create. Cards render
+    // (read gives access) but AssistantHubCard's usePermission(
+    // HubAssistantsCreate) hides the "Use Assistant" button.
+    await loginWithPerms(
+      page,
+      testInfra.baseURL,
+      testInfra.apiURL,
+      [Permissions.HubAssistantsRead],
+    )
+    await navigateToHub(page, testInfra.baseURL, 'assistants')
+    await waitForHubDataLoad(page)
+
+    const cards = await getAssistantCards(page)
+    const cardCount = await cards.count()
+    if (cardCount > 0) {
+      await expect(
+        cards.first().getByRole('button', { name: /use.*assistant/i }),
+      ).toHaveCount(0)
+    }
   })
 })

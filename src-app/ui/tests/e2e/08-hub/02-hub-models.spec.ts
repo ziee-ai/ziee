@@ -9,6 +9,8 @@ import {
   hasAuthRequiredBadge,
   handleAuthRequiredModal as _handleAuthRequiredModal,
 } from './helpers/hub-models'
+import { loginWithPerms } from '../permissions/fixtures'
+import { Permissions } from '../../../src/api-client/types'
 
 test.describe('Hub Models', () => {
   test.beforeEach(async ({ page, testInfra }) => {
@@ -161,9 +163,30 @@ test.describe('Hub Models', () => {
     expect(typeof hasPopularity).toBe('boolean')
   })
 
-  test.skip('should prevent download without required permissions', async ({ page: _page }) => {
-    // TODO: Implement test with user permission system
-    // This requires creating a non-admin user without llm_model::create permission
+  test('should prevent download without required permissions', async ({
+    page,
+    testInfra,
+  }) => {
+    // User with hub::models::read but NOT hub::models::download.
+    // Cards render (read gives access) but ModelHubCard's
+    // usePermission(HubModelsCreate) — the enum member for the
+    // hub::models::download permission — hides the "Download" button.
+    await loginWithPerms(
+      page,
+      testInfra.baseURL,
+      testInfra.apiURL,
+      [Permissions.HubModelsRead],
+    )
+    await navigateToHub(page, testInfra.baseURL, 'models')
+    await waitForHubDataLoad(page)
+
+    const cards = await getModelCards(page)
+    const cardCount = await cards.count()
+    if (cardCount > 0) {
+      await expect(
+        cards.first().getByRole('button', { name: /^download$/i }),
+      ).toHaveCount(0)
+    }
   })
 
   test('should show model provider/source', async ({ page }) => {

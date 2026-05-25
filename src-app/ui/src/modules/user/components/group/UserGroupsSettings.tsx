@@ -13,8 +13,8 @@ import {
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
-import type { CreateGroupRequest, Group } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { Can, usePermission } from '@/core/permissions'
+import { Permissions, type CreateGroupRequest, type Group } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 import { EditUserGroupDrawer } from '@/modules/user/components/group/EditUserGroupDrawer.tsx'
 import { GroupMembersDrawer } from '@/modules/user/components/group/GroupMembersDrawer.tsx'
@@ -64,6 +64,7 @@ export function UserGroupsSettings() {
 
   const [createModalVisible, setCreateModalVisible] = useState(false)
   const [createForm] = Form.useForm()
+  const canCreate = usePermission(Permissions.GroupsCreate)
 
   // Show errors
   useEffect(() => {
@@ -121,12 +122,14 @@ export function UserGroupsSettings() {
         <Card
           title="User Groups"
           extra={
-            <Button
-              type="text"
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={() => setCreateModalVisible(true)}
-              aria-label="Create group"
-            />
+            <Can permission={Permissions.GroupsCreate}>
+              <Button
+                type="text"
+                icon={<PlusOutlined aria-hidden="true" />}
+                onClick={() => setCreateModalVisible(true)}
+                aria-label="Create group"
+              />
+            </Can>
           }
         >
           {loadingGroups ? (
@@ -188,6 +191,7 @@ export function UserGroupsSettings() {
             form={createForm}
             layout="vertical"
             onFinish={handleCreateGroup}
+            disabled={!canCreate}
           >
             <Form.Item
               name="name"
@@ -204,21 +208,26 @@ export function UserGroupsSettings() {
               label="Permissions (JSON Array)"
               rules={[{ validator: validatePermissions }]}
             >
-              <TextArea rows={6} placeholder='["users::read", "users::edit"]' />
+              <TextArea
+                rows={6}
+                placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
+              />
             </Form.Item>
 
             <Form.Item className="mb-0">
               <Flex className="gap-2">
-                <Button type="primary" htmlType="submit">
-                  Create Group
-                </Button>
+                {canCreate && (
+                  <Button type="primary" htmlType="submit">
+                    Create Group
+                  </Button>
+                )}
                 <Button
                   onClick={() => {
                     setCreateModalVisible(false)
                     createForm.resetFields()
                   }}
                 >
-                  Cancel
+                  {canCreate ? 'Cancel' : 'Close'}
                 </Button>
               </Flex>
             </Form.Item>

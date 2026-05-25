@@ -23,7 +23,8 @@ import {
 } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
-import type { User } from '@/api-client/types'
+import { Can, usePermission } from '@/core/permissions'
+import { Permissions, type User } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
 import { UserRegistrationSettings } from '@/modules/user/components/user/UserRegistrationSettings.tsx'
 import { CreateUserDrawer } from '@/modules/user/components/user/CreateUserDrawer.tsx'
@@ -47,6 +48,13 @@ export function UsersSettings() {
     error: usersError,
   } = Stores.Users
   const { error: groupsError } = Stores.UserGroups
+  const { user: currentUser } = Stores.Auth
+
+  const canEdit = usePermission(Permissions.UsersEdit)
+  const canResetPassword = usePermission(Permissions.UsersResetPassword)
+  const canAssignGroups = usePermission(Permissions.GroupsAssignUsers)
+  const canDelete = usePermission(Permissions.UsersDelete)
+  const canToggleStatus = usePermission(Permissions.UsersToggleStatus)
 
   // Show errors
   useEffect(() => {
@@ -83,70 +91,89 @@ export function UsersSettings() {
   const getUserActions = (user: User) => {
     const actions: React.ReactNode[] = []
 
-    // Always include the active/inactive status switch first
-    actions.push(
-      <Popconfirm
-        key="active-confirm"
-        title={`${user.is_active ? 'Deactivate' : 'Activate'} this user?`}
-        onConfirm={() => handleToggleActive(user.id)}
-        okText="Yes"
-        cancelText="No"
-      >
-        <Switch className={'mr-2!'} checked={user.is_active} />
-      </Popconfirm>,
-    )
+    // Self / root-admin lockout guards: hide destructive controls on
+    // the viewer's own row and on the root admin row regardless of
+    // permission (the backend enforces these too, but the UI should
+    // never offer a button that will reliably 400/403).
+    const isSelf = currentUser?.id === user.id
+    const isRootAdmin = user.is_admin
 
-    actions.push(
-      <Button
-        key="edit"
-        type="text"
-        icon={<EditOutlined />}
-        onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
-      >
-        Edit
-      </Button>,
-    )
-
-    actions.push(
-      <Button
-        key="password"
-        type="text"
-        icon={<LockOutlined />}
-        onClick={() => Stores.ResetPasswordDrawer.openResetPasswordDrawer(user)}
-      >
-        Reset Password
-      </Button>,
-    )
-
-    actions.push(
-      <Button
-        key="groups"
-        type="text"
-        icon={<TeamOutlined />}
-        onClick={() => Stores.UserGroupsDrawer.openUserGroupsDrawer(user)}
-      >
-        Groups
-      </Button>,
-    )
-
-    actions.push(
-      <Popconfirm
-        key="delete"
-        title="Are you sure you want to delete this user?"
-        onConfirm={() => handleDelete(user.id)}
-        okText="Yes"
-        cancelText="No"
-      >
-        <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined aria-hidden="true" />}
-          aria-label={`Delete ${user.username}`}
+    // Active/inactive switch
+    if (canToggleStatus && !isSelf && !isRootAdmin) {
+      actions.push(
+        <Popconfirm
+          key="active-confirm"
+          title={`${user.is_active ? 'Deactivate' : 'Activate'} this user?`}
+          onConfirm={() => handleToggleActive(user.id)}
+          okText="Yes"
+          cancelText="No"
         >
-          Delete
-        </Button>
-      </Popconfirm>,
-    )
+          <Switch className={'mr-2!'} checked={user.is_active} />
+        </Popconfirm>,
+      )
+    }
+
+    if (canEdit) {
+      actions.push(
+        <Button
+          key="edit"
+          type="text"
+          icon={<EditOutlined />}
+          onClick={() => Stores.EditUserDrawer.openEditUserDrawer(user)}
+        >
+          Edit
+        </Button>,
+      )
+    }
+
+    if (canResetPassword) {
+      actions.push(
+        <Button
+          key="password"
+          type="text"
+          icon={<LockOutlined />}
+          onClick={() =>
+            Stores.ResetPasswordDrawer.openResetPasswordDrawer(user)
+          }
+        >
+          Reset Password
+        </Button>,
+      )
+    }
+
+    if (canAssignGroups) {
+      actions.push(
+        <Button
+          key="groups"
+          type="text"
+          icon={<TeamOutlined />}
+          onClick={() => Stores.UserGroupsDrawer.openUserGroupsDrawer(user)}
+        >
+          Groups
+        </Button>,
+      )
+    }
+
+    if (canDelete && !isSelf && !isRootAdmin) {
+      actions.push(
+        <Popconfirm
+          key="delete"
+          title="Are you sure you want to delete this user?"
+          onConfirm={() => handleDelete(user.id)}
+          okText="Yes"
+          cancelText="No"
+        >
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined aria-hidden="true" />}
+            aria-label={`Delete ${user.username}`}
+          >
+            Delete
+          </Button>
+        </Popconfirm>,
+      )
+    }
 
     return actions.filter(Boolean)
   }
@@ -168,12 +195,14 @@ export function UsersSettings() {
           <Card
             title="Users"
             extra={
-              <Button
-                type="text"
-                icon={<PlusOutlined aria-hidden="true" />}
-                onClick={() => Stores.CreateUserDrawer.openCreateUserDrawer()}
-                aria-label="Create user"
-              />
+              <Can permission={Permissions.UsersCreate}>
+                <Button
+                  type="text"
+                  icon={<PlusOutlined aria-hidden="true" />}
+                  onClick={() => Stores.CreateUserDrawer.openCreateUserDrawer()}
+                  aria-label="Create user"
+                />
+              </Can>
             }
           >
             {loadingUsers ? (

@@ -153,7 +153,6 @@ pub fn list_all_downloads_docs(op: TransformOperation) -> TransformOperation {
         .description("Get paginated list of download instances with optional status filter")
         .response::<200, Json<DownloadInstanceListResponse>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
 }
 
 /// GET /api/llm-models/downloads/{download_id}
@@ -184,7 +183,6 @@ pub fn get_download_docs(op: TransformOperation) -> TransformOperation {
         .description("Retrieve a specific download instance")
         .response::<200, Json<DownloadInstance>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Download not found"))
 }
 
@@ -291,7 +289,6 @@ pub fn cancel_download_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<204, (), _>(|res| res.description("Download cancelled successfully"))
         .response_with::<400, (), _>(|res| res.description("Cannot cancel download in current state"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Download not found"))
 }
 
@@ -342,7 +339,6 @@ pub fn delete_download_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<204, (), _>(|res| res.description("Download deleted successfully"))
         .response_with::<400, (), _>(|res| res.description("Cannot delete active download"))
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Download not found"))
 }
 
@@ -397,7 +393,6 @@ pub fn subscribe_download_progress_docs(op: TransformOperation) -> TransformOper
         .description("Real-time Server-Sent Events stream of download progress. Updates every 2 seconds. Auto-closes when no active downloads remain.")
         .response::<200, Json<SSEDownloadProgressEvent>>()
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
 }
 
 // =====================================================

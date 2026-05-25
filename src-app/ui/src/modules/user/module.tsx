@@ -1,5 +1,6 @@
 import { createModule } from '@/core'
 import { UserOutlined, TeamOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { useUsersStore, useUserGroupsStore } from '@/modules/user/stores'
 import { useUserGroupDrawerStore } from '@/modules/user/components/group/EditUserGroupDrawer.store'
@@ -37,12 +38,14 @@ export default createModule({
       path: '/settings/users',
       element: UsersSettings,
       requiresAuth: true,
+      permission: Permissions.UsersRead,
       layout: SettingsLayoutDef,
     },
     {
       path: '/settings/user-groups',
       element: UserGroupsSettings,
       requiresAuth: true,
+      permission: Permissions.GroupsRead,
       layout: SettingsLayoutDef,
     },
   ],
@@ -92,6 +95,7 @@ export default createModule({
         label: 'Users',
         path: 'users',
         order: 10,
+        permission: Permissions.UsersRead,
       },
       {
         id: 'user-groups',
@@ -99,6 +103,7 @@ export default createModule({
         label: 'User Groups',
         path: 'user-groups',
         order: 11,
+        permission: Permissions.GroupsRead,
       },
     ],
   },

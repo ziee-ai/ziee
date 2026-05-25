@@ -1,6 +1,7 @@
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
 import { ApiOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useMcpStore,
@@ -66,6 +67,7 @@ export default createModule({
       path: '/settings/mcp-admin',
       element: SystemMcpServersPage,
       requiresAuth: true,
+      permission: Permissions.McpServersAdminRead,
       layout: SettingsLayoutDef,
     },
   ],
@@ -132,6 +134,7 @@ export default createModule({
         label: 'System MCP Servers',
         path: 'mcp-admin',
         order: 25,
+        permission: Permissions.McpServersAdminRead,
       },
     ],
     userGroup: [

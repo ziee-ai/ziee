@@ -6,7 +6,8 @@ import {
   DownloadOutlined,
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import type { File as FileEntity } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
+import { Permissions, type File as FileEntity } from '@/api-client/types'
 import type { FileUploadProgress } from '@/modules/chat/extensions/file/File.store'
 import { getViewer } from '@/modules/chat/extensions/file/fileViewerRegistry'
 
@@ -56,6 +57,7 @@ export function FileCard({
 }: FileCardProps) {
   const { token } = theme.useToken()
   const { message } = App.useApp()
+  const canDownload = usePermission(Permissions.FilesDownload)
 
   const thumbnailUrls = Stores.Chat.FileStore.thumbnailUrls
   const thumbnailUrl = file ? (thumbnailUrls.get(file.id) ?? null) : null
@@ -177,15 +179,17 @@ export function FileCard({
         </div>
 
         {/* Download button */}
-        <Button
-          type="text"
-          icon={<DownloadOutlined style={{ fontSize: 20 }} />}
-          onClick={e => {
-            e.stopPropagation()
-            Stores.Chat.FileStore.downloadFile(file)
-              .catch(() => message.error('Failed to download file'))
-          }}
-        />
+        {canDownload && (
+          <Button
+            type="text"
+            icon={<DownloadOutlined style={{ fontSize: 20 }} />}
+            onClick={e => {
+              e.stopPropagation()
+              Stores.Chat.FileStore.downloadFile(file)
+                .catch(() => message.error('Failed to download file'))
+            }}
+          />
+        )}
       </div>
     )
   }

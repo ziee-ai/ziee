@@ -1,6 +1,7 @@
 import { createModule } from '@/core'
 import { Stores } from '@/core/stores'
 import { CloudServerOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import {
   useLlmProviderStore,
@@ -56,6 +57,7 @@ export default createModule({
       path: '/settings/llm-providers/:providerId?',
       element: LlmProviderSettings,
       requiresAuth: true,
+      permission: Permissions.LlmProvidersRead,
       layout: SettingsLayoutDef,
     },
   ],
@@ -144,6 +146,7 @@ export default createModule({
         label: 'LLM Providers',
         path: 'llm-providers',
         order: 21,
+        permission: Permissions.LlmProvidersRead,
       },
     ],
     userGroup: [

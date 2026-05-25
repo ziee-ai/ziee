@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { App, Button, Card, Checkbox, Divider, Popconfirm, theme, Typography } from 'antd'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { DeleteOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
@@ -34,6 +36,7 @@ export function ConversationCard({
   const navigate = useNavigate()
   const { token } = theme.useToken()
   const [popconfirmOpen, setPopconfirmOpen] = useState(false)
+  const canDelete = usePermission(Permissions.ConversationsDelete)
 
   const handleCardClick = () => {
     if (isInSelectionMode && onSelect) {
@@ -112,7 +115,7 @@ export function ConversationCard({
       )}
 
       {/* Delete button - positioned in top right */}
-      {!isInSelectionMode && (
+      {canDelete && !isInSelectionMode && (
         <div
           className="absolute top-2 right-2"
           onClick={e => e.stopPropagation()}

@@ -1559,13 +1559,34 @@ impl ChatExtension for McpChatExtension {
             .get_conversation_settings(context.conversation_id)
             .await?;
 
+        // Load user defaults — used both as fallback when this conversation
+        // has no per-conversation settings AND as an additional source of
+        // auto-approved tools (e.g. built-in servers auto-approved at the
+        // user level should be honored regardless of conversation overrides).
+        let user_defaults = {
+            use crate::modules::chat::extensions::mcp::defaults::repository as defaults_repo;
+            defaults_repo::get_user_defaults(&self.pool, context.user_id)
+                .await
+                .ok()
+                .flatten()
+        };
+        let user_auto_approved: Vec<super::approval::models::AutoApprovedServer> = user_defaults
+            .as_ref()
+            .map(|d| d.get_auto_approved_tools())
+            .unwrap_or_default();
+
         let (approval_mode, auto_approved_servers) = if let Some(ref settings) = settings {
-            // Parse auto_approved_tools as Vec<AutoApprovedServer>
+            // Conversation-specific settings exist — use them verbatim.
             let servers: Vec<super::approval::models::AutoApprovedServer> =
                 serde_json::from_value(settings.auto_approved_tools.clone()).unwrap_or_default();
             (settings.get_approval_mode(), servers)
+        } else if let Some(ref defaults) = user_defaults {
+            // No conversation override — inherit the user's defaults so the
+            // approval_mode they configured in `/api/mcp/defaults` actually
+            // takes effect for fresh conversations.
+            (defaults.get_approval_mode(), defaults.get_auto_approved_tools())
         } else {
-            // No settings = default to manual approve with no auto-approved tools
+            // No conversation override AND no user defaults: be conservative.
             (crate::modules::chat::extensions::mcp::ApprovalMode::ManualApprove, Vec::new())
         };
 
@@ -1585,17 +1606,6 @@ impl ChatExtension for McpChatExtension {
         // Get accessible servers for lookups
         let accessible_servers =
             helpers::get_all_accessible_config(&self.pool, context.user_id).await?;
-
-        // Load user defaults once for fallback auto-approval check (e.g. built-in servers)
-        let user_auto_approved: Vec<super::approval::models::AutoApprovedServer> = {
-            use crate::modules::chat::extensions::mcp::defaults::repository as defaults_repo;
-            defaults_repo::get_user_defaults(&self.pool, context.user_id)
-                .await
-                .ok()
-                .flatten()
-                .map(|d| d.get_auto_approved_tools())
-                .unwrap_or_default()
-        };
 
         // Determine which tools need approval vs can execute immediately
         let mut tools_to_execute = Vec::new();

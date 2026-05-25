@@ -3,6 +3,8 @@ import { Button, Card, Input, Select, Typography, Flex } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
+import { Can } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/McpServerGroupsAssignmentCard'
@@ -99,13 +101,15 @@ export function SystemMcpServersPage() {
               { label: 'Status', value: 'status' },
             ]}
           />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleCreateServer}
-          >
-            Add Server
-          </Button>
+          <Can permission={Permissions.McpServersAdminCreate}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleCreateServer}
+            >
+              Add Server
+            </Button>
+          </Can>
         </div>
 
         {(searchTerm || statusFilter !== 'all') && (

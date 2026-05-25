@@ -6,10 +6,11 @@ import {
   GithubOutlined,
   EyeOutlined,
 } from '@ant-design/icons'
-import type { HubMCPServer } from '@/api-client/types'
+import { Permissions, type HubMCPServer } from '@/api-client/types'
 import { useState } from 'react'
 import { McpServerDetailsDrawer } from '@/modules/hub/modules/mcp/components/McpServerDetailsDrawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 
 const { Text } = Typography
@@ -23,6 +24,7 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [installing, setInstalling] = useState(false)
+  const canInstall = usePermission(Permissions.HubMcpServersCreate)
 
   // Check if server was already created from this hub server
   const isAlreadyInstalled = server.created_ids && server.created_ids.length > 0
@@ -111,24 +113,30 @@ export function McpServerHubCard({ server }: McpServerHubCardProps) {
                     }}
                   />
                 )}
-                <Button
-                  type={isAlreadyInstalled ? undefined : 'primary'}
-                  icon={
-                    isAlreadyInstalled ? <EyeOutlined /> : <DownloadOutlined />
-                  }
-                  onClick={e => {
-                    e.stopPropagation()
-                    if (isAlreadyInstalled) {
+                {isAlreadyInstalled ? (
+                  <Button
+                    icon={<EyeOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
                       navigate('/settings/mcp-servers')
-                    } else {
+                    }}
+                  >
+                    View Server
+                  </Button>
+                ) : canInstall ? (
+                  <Button
+                    type="primary"
+                    icon={<DownloadOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
                       handleInstall()
-                    }
-                  }}
-                  disabled={installing}
-                  loading={installing}
-                >
-                  {isAlreadyInstalled ? 'View Server' : 'Install'}
-                </Button>
+                    }}
+                    disabled={installing}
+                    loading={installing}
+                  >
+                    Install
+                  </Button>
+                ) : null}
               </div>
             </div>
 

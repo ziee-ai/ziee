@@ -2,6 +2,7 @@ import { createModule } from '@/core'
 import { CloudServerOutlined } from '@ant-design/icons'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
+import { Permissions } from '@/api-client/types'
 import {
   useRuntimeVersionStore,
   useRuntimeUpdateStore,
@@ -27,6 +28,7 @@ export default createModule({
       path: '/settings/llm-runtime',
       element: RuntimeVersionSettings,
       requiresAuth: true,
+      permission: Permissions.LocalRuntimeRead,
       layout: SettingsLayoutDef,
     }
   ],
@@ -57,7 +59,8 @@ export default createModule({
         icon: <CloudServerOutlined />,
         label: 'Local Runtimes',
         path: '/settings/llm-runtime',
-        order: 52 // After LLM Providers (51), before LLM Repositories (53)
+        order: 52, // After LLM Providers (51), before LLM Repositories (53)
+        permission: Permissions.LocalRuntimeRead,
       }
     ]
   }

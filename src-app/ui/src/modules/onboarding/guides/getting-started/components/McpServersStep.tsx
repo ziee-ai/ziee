@@ -11,6 +11,8 @@ import {
 import { ToolOutlined } from '@ant-design/icons'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -18,11 +20,19 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
   const selectedMcpServerIds = Stores.McpServersStep.selectedMcpServerIds
   const { systemServers, hubServers, installedNames, loadingServers, serversError } = Stores.McpServersStep
 
+  // The step renders for every authenticated user, but the controls are
+  // admin-only. Non-admins see just the intro paragraph and continue.
+  const canManageSystemMcp = usePermission(Permissions.McpServersAdminEdit)
+  const canInstallFromHub = usePermission(Permissions.HubMcpServersCreate)
+  const canSeeAdminControls = canManageSystemMcp || canInstallFromHub
+
   useEffect(() => {
     Stores.Onboarding.setReady(true)
     registerBeforeNext(null)
-    Stores.McpServersStep.loadMcpServers()
-  }, [])
+    if (canSeeAdminControls) {
+      Stores.McpServersStep.loadMcpServers()
+    }
+  }, [canSeeAdminControls])
 
   if (loadingServers) {
     return (
@@ -42,15 +52,16 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
       </div>
 
       <Paragraph type="secondary">
-        MCP servers extend your AI assistant with tools and data access. Toggle
-        the ones you want to use, or install new ones from the Hub.
+        {canSeeAdminControls
+          ? 'MCP servers extend your AI assistant with tools and data access. Toggle the ones you want to use, or install new ones from the Hub.'
+          : 'MCP servers extend your AI assistant with tools and data access. Your administrator has already configured the servers available to you.'}
       </Paragraph>
 
-      {serversError && (
+      {serversError && canSeeAdminControls && (
         <Alert type="error" message={serversError} showIcon className="mb-4" />
       )}
 
-      {systemServers.length > 0 && (
+      {canManageSystemMcp && systemServers.length > 0 && (
         <>
           <Text strong className="block mb-2">
             System Servers
@@ -82,7 +93,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
         </>
       )}
 
-      {hubServers.length > 0 && (
+      {canInstallFromHub && hubServers.length > 0 && (
         <>
           <Text strong className="block mb-2">
             Install from Hub

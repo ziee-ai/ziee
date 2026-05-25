@@ -12,6 +12,8 @@ import {
 import { useEffect } from 'react'
 import { MdOutlineMonitorHeart } from 'react-icons/md'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 
@@ -32,16 +34,22 @@ export default function HardwareSettings() {
     sseError,
   } = Stores.Hardware
 
-  // Initialize hardware monitoring on component mount
+  const canMonitor = usePermission(Permissions.HardwareMonitor)
+
+  // Initialize hardware monitoring on component mount. Only auto-connect
+  // when the viewer has the monitor permission — non-monitor users see
+  // the static hardware info card without a live SSE stream and without
+  // a Connect/Monitor button.
   useEffect(() => {
-    // TODO: Check hardware::monitor permission before auto-connecting
+    if (!canMonitor) return
+
     Stores.Hardware.subscribeToHardwareUsage().catch(console.error)
 
     // Cleanup on component unmount
     return () => {
       Stores.Hardware.disconnectHardwareUsage()
     }
-  }, [])
+  }, [canMonitor])
 
   // Show errors
   useEffect(() => {
@@ -606,7 +614,7 @@ export default function HardwareSettings() {
             {sseConnected ? 'Connected' : 'Disconnected'}
           </Tag>
         </div>
-        {!sseConnected && !usageLoading && (
+        {canMonitor && !sseConnected && !usageLoading && (
           <Button type="primary" onClick={handleManualConnect}>
             Connect
           </Button>
@@ -629,9 +637,14 @@ export default function HardwareSettings() {
   const titleWithButton = (
     <div className="flex items-center justify-between w-full">
       <span>Hardware</span>
-      <Button icon={<MdOutlineMonitorHeart />} onClick={handleOpenMonitorPopup}>
-        Monitor
-      </Button>
+      {canMonitor && (
+        <Button
+          icon={<MdOutlineMonitorHeart />}
+          onClick={handleOpenMonitorPopup}
+        >
+          Monitor
+        </Button>
+      )}
     </div>
   )
 

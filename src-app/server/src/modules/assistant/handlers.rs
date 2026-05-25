@@ -143,7 +143,6 @@ pub fn create_user_assistant_docs(op: TransformOperation) -> TransformOperation 
         )
         .response::<201, Json<Assistant>>()
         .response_with::<400, (), _>(|res| res.description("Invalid request"))
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
 }
 
 /// List user's assistants
@@ -173,7 +172,6 @@ pub fn list_user_assistants_docs(op: TransformOperation) -> TransformOperation {
         .summary("List user assistants")
         .description("List all assistants owned by the authenticated user.")
         .response::<200, Json<AssistantListResponse>>()
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
 }
 
 /// Get user assistant by ID
@@ -213,7 +211,6 @@ pub fn get_user_assistant_docs(op: TransformOperation) -> TransformOperation {
         .summary("Get user assistant by ID")
         .description("Get a specific user assistant. Only the owner can access their assistants.")
         .response::<200, Json<Assistant>>()
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions or not owner"))
         .response_with::<404, (), _>(|res| res.description("Assistant not found"))
 }
 
@@ -263,7 +260,6 @@ pub fn update_user_assistant_docs(op: TransformOperation) -> TransformOperation 
         .summary("Update user assistant")
         .description("Update a user assistant. Only the owner can edit their assistants.")
         .response::<200, Json<Assistant>>()
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions or not owner"))
         .response_with::<404, (), _>(|res| res.description("Assistant not found"))
 }
 
@@ -310,7 +306,6 @@ pub fn delete_user_assistant_docs(op: TransformOperation) -> TransformOperation 
         .summary("Delete user assistant")
         .description("Delete a user assistant. Only the owner can delete their assistants.")
         .response_with::<204, (), _>(|res| res.description("Assistant deleted successfully"))
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions or not owner"))
         .response_with::<404, (), _>(|res| res.description("Assistant not found"))
 }
 
@@ -336,7 +331,6 @@ pub fn get_default_user_assistant_docs(op: TransformOperation) -> TransformOpera
         .summary("Get default user assistant")
         .description("Get the default assistant for the user. Falls back to default template if no user default is set.")
         .response::<200, Json<Assistant>>()
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Default assistant not found"))
 }
 
@@ -382,7 +376,6 @@ pub fn create_template_assistant_docs(op: TransformOperation) -> TransformOperat
         .description("Create a template assistant. Templates are system-wide and have no owner.")
         .response::<201, Json<Assistant>>()
         .response_with::<400, (), _>(|res| res.description("Invalid request"))
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
 }
 
 /// List template assistants
@@ -412,7 +405,6 @@ pub fn list_template_assistants_docs(op: TransformOperation) -> TransformOperati
         .summary("List template assistants")
         .description("List all template assistants. Templates are system-wide assistants available to all users.")
         .response::<200, Json<AssistantListResponse>>()
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
 }
 
 /// Get template assistant by ID
@@ -443,7 +435,6 @@ pub fn get_template_assistant_docs(op: TransformOperation) -> TransformOperation
         .summary("Get template assistant by ID")
         .description("Get a specific template assistant.")
         .response::<200, Json<Assistant>>()
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Assistant template not found"))
 }
 
@@ -486,7 +477,6 @@ pub fn update_template_assistant_docs(op: TransformOperation) -> TransformOperat
         .summary("Update template assistant")
         .description("Update a template assistant.")
         .response::<200, Json<Assistant>>()
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Assistant template not found"))
 }
 
@@ -525,7 +515,6 @@ pub fn delete_template_assistant_docs(op: TransformOperation) -> TransformOperat
         .response_with::<204, (), _>(|res| {
             res.description("Assistant template deleted successfully")
         })
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Assistant template not found"))
 }
 
@@ -551,6 +540,5 @@ pub fn get_default_template_assistant_docs(op: TransformOperation) -> TransformO
         .summary("Get default template assistant")
         .description("Get the default template assistant.")
         .response::<200, Json<Assistant>>()
-        .response_with::<403, (), _>(|res| res.description("Insufficient permissions"))
         .response_with::<404, (), _>(|res| res.description("Default template assistant not found"))
 }

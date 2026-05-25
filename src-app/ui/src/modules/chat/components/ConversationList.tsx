@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Input, Card, Button, Typography, Empty, Flex, Popconfirm, App } from 'antd'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { SearchOutlined, DeleteOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { ConversationCard } from '@/modules/chat/components/ConversationCard'
@@ -24,6 +26,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
   const { message } = App.useApp()
   const [, forceRender] = useState({})
   const [localSearchQuery, setLocalSearchQuery] = useState('')
+  const canDelete = usePermission(Permissions.ConversationsDelete)
 
   const {
     conversations,
@@ -152,19 +155,21 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                   <Button onClick={() => Stores.ChatHistory.__state.selectAll()}>
                     Select All
                   </Button>
-                  <Popconfirm
-                    title="Delete selected conversations"
-                    description={`Are you sure you want to delete ${selectedIds.size} conversation${selectedIds.size > 1 ? 's' : ''}?`}
-                    onConfirm={handleDeleteSelected}
-                    okText="Yes"
-                    cancelText="No"
-                    okType="danger"
-                    okButtonProps={{ loading: deleting }}
-                  >
-                    <Button danger icon={<DeleteOutlined />} loading={deleting}>
-                      Delete Selected
-                    </Button>
-                  </Popconfirm>
+                  {canDelete && (
+                    <Popconfirm
+                      title="Delete selected conversations"
+                      description={`Are you sure you want to delete ${selectedIds.size} conversation${selectedIds.size > 1 ? 's' : ''}?`}
+                      onConfirm={handleDeleteSelected}
+                      okText="Yes"
+                      cancelText="No"
+                      okType="danger"
+                      okButtonProps={{ loading: deleting }}
+                    >
+                      <Button danger icon={<DeleteOutlined />} loading={deleting}>
+                        Delete Selected
+                      </Button>
+                    </Popconfirm>
+                  )}
                 </Flex>
               </Flex>
             </Card>

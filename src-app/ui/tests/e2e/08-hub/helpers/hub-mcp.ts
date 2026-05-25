@@ -46,7 +46,8 @@ export async function getMcpCardStatus(
   const mcpCard = page.getByTestId(`hub-mcp-card-${mcpServerId}`)
   const badge = mcpCard.getByText(/installed/i)
 
-  const visible = await badge.isVisible({ timeout: 1000 }).catch(() => false)
+  // Allow several seconds — see hub-assistants helper for rationale.
+  const visible = await badge.isVisible({ timeout: 10000 }).catch(() => false)
   if (visible) {
     return await badge.textContent()
   }
@@ -63,7 +64,7 @@ export async function isMcpServerInstalled(
 ): Promise<boolean> {
   const mcpCard = page.getByTestId(`hub-mcp-card-${mcpServerId}`)
   const viewButton = mcpCard.getByRole('button', { name: /view/i })
-  return await viewButton.isVisible({ timeout: 1000 }).catch(() => false)
+  return await viewButton.isVisible({ timeout: 10000 }).catch(() => false)
 }
 
 /**

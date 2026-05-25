@@ -20,7 +20,8 @@ import {
 } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/modules/assistants/stores'
-import type { Assistant } from '@/api-client/types'
+import { Can, usePermission } from '@/core/permissions'
+import { Permissions, type Assistant } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { AssistantFormDrawer } from '@/modules/assistants/components/AssistantFormDrawer'
 
@@ -38,6 +39,9 @@ export function AssistantsSettings() {
     loading,
     error,
   } = Stores.TemplateAssistants
+
+  const canEdit = usePermission(Permissions.AssistantsTemplateEdit)
+  const canDelete = usePermission(Permissions.AssistantsTemplateDelete)
 
   // Show errors
   useEffect(() => {
@@ -68,31 +72,35 @@ export function AssistantsSettings() {
   const getAssistantActions = (assistant: Assistant) => {
     const actions: React.ReactNode[] = []
 
-    actions.push(
-      <Button
-        key="edit"
-        type="text"
-        icon={<EditOutlined />}
-        onClick={() => handleEdit(assistant)}
-      >
-        Edit
-      </Button>,
-    )
+    if (canEdit) {
+      actions.push(
+        <Button
+          key="edit"
+          type="text"
+          icon={<EditOutlined />}
+          onClick={() => handleEdit(assistant)}
+        >
+          Edit
+        </Button>,
+      )
+    }
 
-    actions.push(
-      <Popconfirm
-        key="delete"
-        title="Delete Assistant"
-        description="Are you sure you want to delete this assistant?"
-        onConfirm={() => handleDelete(assistant)}
-        okText="Yes"
-        cancelText="No"
-      >
-        <Button type="text" danger icon={<DeleteOutlined />}>
-          Delete
-        </Button>
-      </Popconfirm>,
-    )
+    if (canDelete) {
+      actions.push(
+        <Popconfirm
+          key="delete"
+          title="Delete Assistant"
+          description="Are you sure you want to delete this assistant?"
+          onConfirm={() => handleDelete(assistant)}
+          okText="Yes"
+          cancelText="No"
+        >
+          <Button type="text" danger icon={<DeleteOutlined />}>
+            Delete
+          </Button>
+        </Popconfirm>,
+      )
+    }
 
     return actions.filter(Boolean)
   }
@@ -113,12 +121,14 @@ export function AssistantsSettings() {
         <Card
           title="Template Assistants"
           extra={
-            <Button
-              type="text"
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={handleCreate}
-              aria-label="Create assistant"
-            />
+            <Can permission={Permissions.AssistantsTemplateCreate}>
+              <Button
+                type="text"
+                icon={<PlusOutlined aria-hidden="true" />}
+                onClick={handleCreate}
+                aria-label="Create assistant"
+              />
+            </Can>
           }
         >
           {loading ? (

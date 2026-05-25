@@ -2,6 +2,7 @@ import { createModule } from '@/core'
 import { CloudDownloadOutlined } from '@ant-design/icons'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
+import { Permissions } from '@/api-client/types'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useSandboxEnvironmentsStore } from './stores/SandboxEnvironments.store'
 import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
@@ -12,6 +13,16 @@ const SandboxSettingsPage = lazyWithPreload(() =>
     default: m.SandboxSettingsPage,
   })),
 )
+
+// Either card on the page is enough access to justify showing the
+// menu entry / letting the page render; per-section gates inside
+// the page still hide each card individually.
+const SANDBOX_READ_PERM = {
+  anyOf: [
+    Permissions.CodeSandboxEnvironmentsRead,
+    Permissions.CodeSandboxResourceLimitsRead,
+  ],
+}
 
 export default createModule({
   metadata: {
@@ -25,6 +36,7 @@ export default createModule({
       path: '/settings/sandbox',
       element: SandboxSettingsPage,
       requiresAuth: true,
+      permission: SANDBOX_READ_PERM,
       layout: SettingsLayoutDef,
     },
   ],
@@ -46,6 +58,7 @@ export default createModule({
         label: 'Code Sandbox',
         path: 'sandbox',
         order: 26,
+        permission: SANDBOX_READ_PERM,
       },
     ],
   },

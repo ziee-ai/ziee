@@ -2,6 +2,8 @@ import { Button, Upload, message } from 'antd'
 import { PaperClipOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 // Maximum file size (100MB)
 const MAX_FILE_SIZE = 100 * 1024 * 1024
@@ -13,6 +15,9 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024
 export function FileUploadButton() {
   // Access file extension store directly via Stores.Chat (reactive via store proxy)
   const { uploadFiles } = Stores.Chat.FileStore
+  const canUpload = usePermission(Permissions.FilesUpload)
+
+  if (!canUpload) return null
 
   const handleBeforeUpload: UploadProps['beforeUpload'] = (file, fileList) => {
     // Validate file size

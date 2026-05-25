@@ -1,7 +1,8 @@
 import { Card } from 'antd'
 import { DownloadItem } from '@/modules/llm-provider/components/downloads/DownloadItem'
 import { Stores } from '@/core/stores'
-import type { DownloadInstance } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
+import { Permissions, type DownloadInstance } from '@/api-client/types'
 
 interface DownloadsSectionProps {
   providerId: string
@@ -9,6 +10,8 @@ interface DownloadsSectionProps {
 
 export function DownloadsSection({ providerId }: DownloadsSectionProps) {
   const { downloads } = Stores.LlmModelDownload
+  const canCancel = usePermission(Permissions.LlmModelsDownloadsCancel)
+  const canDelete = usePermission(Permissions.LlmModelsDownloadsDelete)
 
   // Filter downloads for this provider
   const providerDownloads = downloads.filter(
@@ -49,8 +52,12 @@ export function DownloadsSection({ providerId }: DownloadsSectionProps) {
           <DownloadItem
             download={download}
             mode="full"
-            onCancel={() => handleCancelDownload(download.id)}
-            onClose={() => handleCloseDownload(download.id)}
+            onCancel={
+              canCancel ? () => handleCancelDownload(download.id) : undefined
+            }
+            onClose={
+              canDelete ? () => handleCloseDownload(download.id) : undefined
+            }
             onViewDetails={() => handleViewDetails(download.id)}
           />
         </div>

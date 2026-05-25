@@ -2,6 +2,19 @@ import { useEffect } from 'react'
 import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/modules/assistants/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
+
+// Template assistants vs user assistants gate on different permission
+// namespaces. `isTemplate` selects which set applies at render time.
+const TEMPLATE_PERMS = {
+  create: Permissions.AssistantsTemplateCreate,
+  edit: Permissions.AssistantsTemplateEdit,
+} as const
+const USER_PERMS = {
+  create: Permissions.AssistantsCreate,
+  edit: Permissions.AssistantsEdit,
+} as const
 
 const { TextArea } = Input
 
@@ -34,6 +47,11 @@ export function AssistantFormDrawer() {
   // Use drawer store
   const { open, loading, editingAssistant, isTemplate, isCloning } =
     Stores.AssistantDrawer
+
+  const perms = isTemplate ? TEMPLATE_PERMS : USER_PERMS
+  const canCreate = usePermission(perms.create)
+  const canEdit = usePermission(perms.edit)
+  const canSave = editingAssistant && !isCloning ? canEdit : canCreate
 
   // Initialize form when drawer opens or editing assistant changes
   useEffect(() => {
@@ -161,6 +179,7 @@ export function AssistantFormDrawer() {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        disabled={!canSave}
       >
         <Form.Item
           name="name"
@@ -239,11 +258,13 @@ export function AssistantFormDrawer() {
 
         <div className="flex justify-end gap-3 pt-4">
           <Button onClick={handleClose} disabled={loading}>
-            Cancel
+            {canSave ? 'Cancel' : 'Close'}
           </Button>
-          <Button type="primary" htmlType="submit" loading={loading}>
-            {editingAssistant ? 'Update' : 'Create'}
-          </Button>
+          {canSave && (
+            <Button type="primary" htmlType="submit" loading={loading}>
+              {editingAssistant ? 'Update' : 'Create'}
+            </Button>
+          )}
         </div>
       </Form>
     </Drawer>

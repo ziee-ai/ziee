@@ -2367,7 +2367,27 @@
         },
         "responses": {
           "403": {
-            "description": "Forbidden"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upload new files",
+                        "name": "FilesUpload",
+                        "value": "files::upload"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: files::upload",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "201": {
             "description": "File entity",
@@ -4334,7 +4354,27 @@
         ],
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read download instances",
+                        "name": "LlmModelsDownloadsRead",
+                        "value": "llm_models::downloads_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::downloads_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Response for download instance list",
@@ -4367,7 +4407,27 @@
         "operationId": "LlmModel.subscribeDownloadProgress",
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read download instances",
+                        "name": "LlmModelsDownloadsRead",
+                        "value": "llm_models::downloads_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::downloads_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -4400,7 +4460,27 @@
         "operationId": "LlmModel.getDownload",
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read download instances",
+                        "name": "LlmModelsDownloadsRead",
+                        "value": "llm_models::downloads_read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::downloads_read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Download instance database entity",
@@ -4434,7 +4514,27 @@
         "operationId": "LlmModel.deleteDownload",
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete download instances",
+                        "name": "LlmModelsDownloadsDelete",
+                        "value": "llm_models::downloads_delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::downloads_delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "204": {
             "description": "Download deleted successfully"
@@ -4466,7 +4566,27 @@
         "operationId": "LlmModel.cancelDownload",
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Cancel active downloads",
+                        "name": "LlmModelsDownloadsCancel",
+                        "value": "llm_models::downloads_cancel"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: llm_models::downloads_cancel",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "204": {
             "description": "Download cancelled successfully"
@@ -4524,7 +4644,27 @@
         ],
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read user assistants",
+                        "name": "AssistantsRead",
+                        "value": "assistants::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistants::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Response structure for listing assistants",
@@ -4563,7 +4703,27 @@
         },
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create user assistants",
+                        "name": "AssistantsCreate",
+                        "value": "assistants::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistants::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "201": {
             "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
@@ -4596,7 +4756,27 @@
         "operationId": "Assistant.getDefault",
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read user assistants",
+                        "name": "AssistantsRead",
+                        "value": "assistants::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistants::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
@@ -4629,7 +4809,27 @@
         "operationId": "Assistant.get",
         "responses": {
           "403": {
-            "description": "Insufficient permissions or not owner"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read user assistants",
+                        "name": "AssistantsRead",
+                        "value": "assistants::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistants::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
@@ -4671,7 +4871,27 @@
         },
         "responses": {
           "403": {
-            "description": "Insufficient permissions or not owner"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit user assistants",
+                        "name": "AssistantsEdit",
+                        "value": "assistants::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistants::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
@@ -4702,7 +4922,27 @@
         "operationId": "Assistant.delete",
         "responses": {
           "403": {
-            "description": "Insufficient permissions or not owner"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete user assistants",
+                        "name": "AssistantsDelete",
+                        "value": "assistants::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistants::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "204": {
             "description": "Assistant deleted successfully"
@@ -4754,7 +4994,27 @@
         ],
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read system-wide template assistants",
+                        "name": "AssistantsTemplateRead",
+                        "value": "assistant_templates::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistant_templates::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Response structure for listing assistants",
@@ -4793,7 +5053,27 @@
         },
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create system-wide template assistants",
+                        "name": "AssistantsTemplateCreate",
+                        "value": "assistant_templates::create"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistant_templates::create",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "201": {
             "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
@@ -4826,7 +5106,27 @@
         "operationId": "AssistantTemplate.getDefault",
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read system-wide template assistants",
+                        "name": "AssistantsTemplateRead",
+                        "value": "assistant_templates::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistant_templates::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
@@ -4859,7 +5159,27 @@
         "operationId": "AssistantTemplate.get",
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read system-wide template assistants",
+                        "name": "AssistantsTemplateRead",
+                        "value": "assistant_templates::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistant_templates::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
@@ -4901,7 +5221,27 @@
         },
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Edit system-wide template assistants",
+                        "name": "AssistantsTemplateEdit",
+                        "value": "assistant_templates::edit"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistant_templates::edit",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Assistant entity\n Defines AI behavior with instructions, parameters, and settings\n Supports both user-created assistants and system-wide templates",
@@ -4932,7 +5272,27 @@
         "operationId": "AssistantTemplate.delete",
         "responses": {
           "403": {
-            "description": "Insufficient permissions"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Delete system-wide template assistants",
+                        "name": "AssistantsTemplateDelete",
+                        "value": "assistant_templates::delete"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: assistant_templates::delete",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "204": {
             "description": "Assistant template deleted successfully"
@@ -6574,7 +6934,27 @@
         "operationId": "McpServerRuntime.listTools",
         "responses": {
           "403": {
-            "description": "User does not have access to this server"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -6617,7 +6997,27 @@
         },
         "responses": {
           "403": {
-            "description": "User does not have access to this server"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -6650,7 +7050,27 @@
         "operationId": "McpServerRuntime.listResources",
         "responses": {
           "403": {
-            "description": "User does not have access to this server"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -6693,7 +7113,27 @@
         },
         "responses": {
           "403": {
-            "description": "User does not have access to this server"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -6726,7 +7166,27 @@
         "operationId": "McpServerRuntime.disconnect",
         "responses": {
           "403": {
-            "description": "User does not have access to this server"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -6759,7 +7219,27 @@
         "operationId": "McpServerRuntime.listPrompts",
         "responses": {
           "403": {
-            "description": "User does not have access to this server"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -6802,7 +7282,27 @@
         },
         "responses": {
           "403": {
-            "description": "User does not have access to this server"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "Result of a `prompts/get` call — server's rendered prompt messages.",
@@ -6835,7 +7335,27 @@
         "operationId": "McpServerRuntime.ping",
         "responses": {
           "403": {
-            "description": "User does not have access to this server"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View MCP servers",
+                        "name": "McpServersRead",
+                        "value": "mcp_servers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: mcp_servers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -7534,7 +8054,27 @@
         "operationId": "CodeSandbox.listEnvironments",
         "responses": {
           "403": {
-            "description": "Missing CodeSandboxEnvironmentsRead"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -7567,7 +8107,27 @@
         "operationId": "CodeSandbox.evictEnvironment",
         "responses": {
           "403": {
-            "description": "Missing CodeSandboxEnvironmentsManage"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -7603,7 +8163,27 @@
         "operationId": "CodeSandbox.listPrefetchTasks",
         "responses": {
           "403": {
-            "description": "Missing CodeSandboxEnvironmentsRead"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -7644,7 +8224,27 @@
         },
         "responses": {
           "403": {
-            "description": "Missing CodeSandboxEnvironmentsManage"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -7680,7 +8280,27 @@
         "operationId": "CodeSandbox.subscribePrefetchEvents",
         "responses": {
           "403": {
-            "description": "Missing CodeSandboxEnvironmentsRead"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -7716,7 +8336,27 @@
         "operationId": "CodeSandbox.getResourceLimits",
         "responses": {
           "403": {
-            "description": "Missing code_sandbox::resource_limits::read"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the sandbox resource limits configuration.",
+                        "name": "CodeSandboxResourceLimitsRead",
+                        "value": "code_sandbox::resource_limits::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
@@ -7758,7 +8398,27 @@
         },
         "responses": {
           "403": {
-            "description": "Missing code_sandbox::resource_limits::manage"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
+                        "name": "CodeSandboxResourceLimitsManage",
+                        "value": "code_sandbox::resource_limits::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
@@ -8590,7 +9250,27 @@
         "operationId": "Hardware.info",
         "responses": {
           "403": {
-            "description": "no content"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "View hardware information",
+                        "name": "HardwareRead",
+                        "value": "hardware::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hardware::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",
@@ -8623,7 +9303,27 @@
         "operationId": "Hardware.stream",
         "responses": {
           "403": {
-            "description": "no content"
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Monitor real-time hardware usage",
+                        "name": "HardwareMonitor",
+                        "value": "hardware::monitor"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: hardware::monitor",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
           },
           "200": {
             "description": "",

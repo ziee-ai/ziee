@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import {
   BrowserRouter,
   Routes,
@@ -5,11 +6,64 @@ import {
   Navigate,
   Outlet,
 } from 'react-router-dom'
-import { Spin } from 'antd'
+import { Result, Spin } from 'antd'
 import { Stores } from '@/core/stores'
 import { AuthGuard } from '@/modules/auth'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import { usePermission } from '@/core/permissions'
+import type { PermissionExpr } from '@/core/permissions'
 import type { LayoutDefinition, RouteConfig } from '@/modules/router/types'
+
+/**
+ * Private router-level gate. Renders an inline 403 panel in place
+ * of the route element when the current user fails the route's
+ * `permission` expression — URL and layout stay intact.
+ */
+function RoutePermissionGate({
+  permission,
+  children,
+}: {
+  permission: PermissionExpr
+  children: ReactNode
+}) {
+  const allowed = usePermission(permission)
+  if (!allowed) {
+    return (
+      <Result
+        status="403"
+        title="Not authorized"
+        subTitle="You don't have permission to view this page."
+      />
+    )
+  }
+  return <>{children}</>
+}
+
+const ROUTE_SPINNER = (
+  <div className="h-full w-full flex items-center justify-center">
+    <Spin size="large" />
+  </div>
+)
+
+/**
+ * Materializes a route's element: feeds `route.element` through
+ * `LazyComponentRenderer` and wraps with `RoutePermissionGate` when
+ * `route.permission` is set.
+ */
+function renderRouteElement(route: RouteConfig<any>) {
+  const inner = (
+    <LazyComponentRenderer
+      component={route.element}
+      fallback={ROUTE_SPINNER}
+    />
+  )
+  if (!route.permission) return inner
+  return (
+    <RoutePermissionGate permission={route.permission}>
+      {inner}
+    </RoutePermissionGate>
+  )
+}
 
 /**
  * RouterComponent - Handles all routing logic for the application.
@@ -56,16 +110,7 @@ export function RouterComponent() {
             <Route
               key={route.path}
               path={route.path}
-              element={
-                <LazyComponentRenderer
-                  component={route.element}
-                  fallback={
-                    <div className="h-full w-full flex items-center justify-center">
-                      <Spin size="large" />
-                    </div>
-                  }
-                />
-              }
+              element={renderRouteElement(route)}
               index={route.index}
             />
           ))
@@ -87,16 +132,7 @@ export function RouterComponent() {
               <Route
                 key={route.path}
                 path={route.path}
-                element={
-                  <LazyComponentRenderer
-                    component={route.element}
-                    fallback={
-                      <div className="h-full w-full flex items-center justify-center">
-                        <Spin size="large" />
-                      </div>
-                    }
-                  />
-                }
+                element={renderRouteElement(route)}
                 index={route.index}
               />
             ))}

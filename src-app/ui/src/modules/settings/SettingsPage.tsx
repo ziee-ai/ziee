@@ -1,10 +1,12 @@
-import { Button, Dropdown, Flex, Menu, theme, Typography } from 'antd'
+import { Button, Dropdown, Flex, Menu, Result, theme, Typography } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
+import { evaluatePermission } from '@/core/permissions'
+import type { SettingsPageSlot } from '@/modules/settings/types/SettingsSlots'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -13,16 +15,28 @@ export default function SettingsPage() {
   const { token } = theme.useToken()
 
   const { slots } = Stores.ModuleSystem
+  const { user, permissions } = Stores.Auth
 
-  // Get and sort user settings from slots
-  const userSettingsItems = (slots.get('settingsUserPages') || []).sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
-  )
+  const isAllowed = (item: SettingsPageSlot) =>
+    !item.permission || evaluatePermission(user, permissions, item.permission)
 
-  // Get and sort admin settings from slots
-  const adminSettingsItems = (slots.get('settingsAdminPages') || []).sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
-  )
+  // Get, sort, and permission-filter user settings from slots
+  const userSettingsItems = (slots.get('settingsUserPages') || [])
+    .filter(isAllowed)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+
+  // Get, sort, and permission-filter admin settings from slots
+  const adminSettingsItems = (slots.get('settingsAdminPages') || [])
+    .filter(isAllowed)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+
+  // Slot entries the user can't see, kept around so we can distinguish
+  // "section doesn't exist" from "section exists but you're forbidden"
+  // when handling deep-link URLs below.
+  const forbiddenSettingsItems = [
+    ...(slots.get('settingsUserPages') || []),
+    ...(slots.get('settingsAdminPages') || []),
+  ].filter(item => !isAllowed(item))
 
   // Build final menu
   const menuItems = [
@@ -61,21 +75,32 @@ export default function SettingsPage() {
     )
     .map(item => (item as any).key)
 
+  // Did the user deep-link to a section that exists but their
+  // permissions hide? Treat that distinctly from "section doesn't
+  // exist" — render an inline 403 rather than silently redirecting,
+  // so admin-shared links produce a meaningful page.
+  const forbiddenSection = urlSection
+    ? forbiddenSettingsItems.find(item => item.path === urlSection)
+    : undefined
+
   const currentSection = validSections.includes(urlSection)
     ? urlSection
     : validSections[0]
 
-  // Redirect to first available settings page if at root /settings
+  // Redirect to first available settings page if at root /settings.
+  // Skip redirect when the URL points at a forbidden section — we want
+  // to render the 403 panel in place, not bounce the user elsewhere.
   useEffect(() => {
     if (
-      location.pathname === '/settings' ||
-      location.pathname === '/settings/'
+      (location.pathname === '/settings' ||
+        location.pathname === '/settings/') &&
+      !forbiddenSection
     ) {
       if (validSections.length > 0) {
         navigate(`/settings/${validSections[0]}`, { replace: true })
       }
     }
-  }, [location.pathname, navigate, validSections])
+  }, [location.pathname, navigate, validSections, forbiddenSection])
 
   const handleMenuClick = (key: string) => {
     navigate(`/settings/${key}`)
@@ -184,7 +209,15 @@ export default function SettingsPage() {
 
         {/* Main Content Area */}
         <div className="flex-1 overflow-hidden">
-          <Outlet />
+          {forbiddenSection ? (
+            <Result
+              status="403"
+              title="Not authorized"
+              subTitle={`You don't have permission to view "${forbiddenSection.label}".`}
+            />
+          ) : (
+            <Outlet />
+          )}
         </div>
       </div>
     </div>

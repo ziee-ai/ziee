@@ -1048,11 +1048,56 @@ export const useChatStore = create<ChatState>()(
                     const state = get()
 
                     if (data.content && Array.isArray(data.content)) {
+                      // Any content-block delta (text, thinking, tool_use)
+                      // is the LLM emitting *something* on the assistant
+                      // turn. Ensure a placeholder streaming message is in
+                      // the messages map BEFORE branching on block type, so
+                      // the DOM bubble (`[data-role="assistant"]`) renders
+                      // immediately even when the first events are
+                      // tool_use_delta (which the MCP extension turns into
+                      // a real tool_use content block via mcpToolStart only
+                      // after the tool starts executing). Without this, the
+                      // bubble appears late on tool-first flows and tests /
+                      // users see a blank wait.
+                      if (!state.streamingMessage && data.content.length > 0) {
+                        const placeholderId =
+                          data.message_id || `streaming-${Date.now()}`
+                        const placeholder: MessageWithContent = {
+                          id: placeholderId,
+                          role: 'assistant',
+                          contents: [],
+                          originated_from_id: '',
+                          edit_count: 0,
+                          created_at: new Date().toISOString(),
+                        }
+                        set(state => {
+                          const newMessages = new Map(state.messages)
+                          newMessages.set(placeholder.id, placeholder)
+                          return {
+                            streamingMessage: placeholder,
+                            messages: newMessages,
+                          }
+                        })
+                      }
+
                       for (const block of data.content) {
                         if (block.type === 'text_delta') {
-                          if (!state.streamingMessage) {
+                          // First text_delta: hydrate the placeholder (or
+                          // create a new streaming message if none yet —
+                          // covers the original text-only path).
+                          const currentState = get()
+                          const hasTextContent =
+                            currentState.streamingMessage?.contents.some(
+                              c =>
+                                c.content_type === 'text' ||
+                                (c.content as any)?.type === 'text',
+                            ) ?? false
+
+                          if (!currentState.streamingMessage || !hasTextContent) {
                             const messageId =
-                              data.message_id || `streaming-${Date.now()}`
+                              currentState.streamingMessage?.id ||
+                              data.message_id ||
+                              `streaming-${Date.now()}`
 
                             const initialContent = await chatExtensionRegistry.provideStreamingContent(
                               'text',
@@ -1060,19 +1105,24 @@ export const useChatStore = create<ChatState>()(
                             )
 
                             if (initialContent) {
+                              const baseMessage =
+                                currentState.streamingMessage ?? {
+                                  id: messageId,
+                                  role: 'assistant' as const,
+                                  contents: [],
+                                  originated_from_id: '',
+                                  edit_count: 0,
+                                  created_at: new Date().toISOString(),
+                                }
+                              const newContent = {
+                                ...initialContent,
+                                id: `${messageId}-content-${baseMessage.contents.length}`,
+                                message_id: messageId,
+                              }
                               const newMessage: MessageWithContent = {
+                                ...baseMessage,
                                 id: messageId,
-                                role: 'assistant',
-                                contents: [
-                                  {
-                                    ...initialContent,
-                                    id: `${messageId}-content-0`,
-                                    message_id: messageId,
-                                  },
-                                ],
-                                originated_from_id: '',
-                                edit_count: 0,
-                                created_at: new Date().toISOString(),
+                                contents: [...baseMessage.contents, newContent],
                               }
 
                               set(state => {

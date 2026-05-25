@@ -2,8 +2,8 @@ import { App, Button, Form, Input, Switch } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
-import type { UpdateGroupRequest } from '@/api-client/types'
-import { Permissions } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
+import { Permissions, type UpdateGroupRequest } from '@/api-client/types'
 
 const { TextArea } = Input
 
@@ -41,6 +41,7 @@ export function EditUserGroupDrawer() {
   const [loading, setLoading] = useState(false)
 
   const { isOpen: open, editingGroup: group } = Stores.EditUserGroupDrawer
+  const canEdit = usePermission(Permissions.GroupsEdit)
 
   // Load group data when it changes
   useEffect(() => {
@@ -110,6 +111,7 @@ export function EditUserGroupDrawer() {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        disabled={!canEdit}
       >
         <Form.Item
           name="name"
@@ -136,7 +138,10 @@ export function EditUserGroupDrawer() {
           label="Permissions (JSON Array)"
           rules={[{ validator: validatePermissions }]}
         >
-          <TextArea placeholder='["users::read", "users::edit"]' rows={6} />
+          <TextArea
+            placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
+            rows={6}
+          />
         </Form.Item>
 
         <Form.Item name="is_active" label="Active" valuePropName="checked">
@@ -145,11 +150,13 @@ export function EditUserGroupDrawer() {
 
         <div className="flex justify-end gap-3 pt-4">
           <Button onClick={handleClose} disabled={loading}>
-            Cancel
+            {canEdit ? 'Cancel' : 'Close'}
           </Button>
-          <Button type="primary" htmlType="submit" loading={loading}>
-            Update Group
-          </Button>
+          {canEdit && (
+            <Button type="primary" htmlType="submit" loading={loading}>
+              Update Group
+            </Button>
+          )}
         </div>
       </Form>
     </Drawer>

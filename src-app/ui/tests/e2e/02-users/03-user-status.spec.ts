@@ -190,33 +190,23 @@ test.describe('User Status Management', () => {
       // Walk up 3 levels to the row container (same shape as
       // toggleUserStatus helper).
       const adminRow = adminUser.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
-      const statusSwitch = adminRow
-        .locator('button.ant-switch')
-        .or(adminRow.locator('.ant-switch'))
 
-      // Try to click the switch (might be disabled)
-      await statusSwitch.first().click({ force: true })
+      // The active-status Switch and the Delete button are hidden
+      // entirely on the root admin row (UsersSettings.tsx self/
+      // root-admin lockout guards — audit 03 B-6). The backend also
+      // rejects toggling root admin to inactive, but the UI is the
+      // first line of defense and should never offer the control.
+      await expect(adminRow.locator('.ant-switch')).toHaveCount(0)
+      await expect(
+        adminRow.getByRole('button', { name: /delete/i }),
+      ).toHaveCount(0)
 
-      // If popconfirm appears, try to confirm
-      const popconfirm = page.locator('.ant-popconfirm:visible')
-      const popconfirmExists = await popconfirm.isVisible()
-
-      if (popconfirmExists) {
-        const confirmButton = popconfirm.getByRole('button', { name: /yes/i })
-        await confirmButton.click()
-
-        // Should show error message about protected user
-        const errorMessage = page.locator('.ant-message-error').first()
-        const errorExists = await errorMessage.isVisible()
-
-        if (errorExists) {
-          // If error is shown, admin is protected
-          await expect(errorMessage).toBeVisible()
-        } else {
-          // If no error, check that admin is still active
-          await assertUserStatus(page, 'admin', 'active')
-        }
-      }
+      // The badge inside this row should still read 'Active' (or
+      // 'Inactive' — point is the badge is present even though the
+      // toggle is hidden).
+      await expect(
+        adminRow.locator('.ant-badge-status-text').first(),
+      ).toBeVisible()
     }
   })
 

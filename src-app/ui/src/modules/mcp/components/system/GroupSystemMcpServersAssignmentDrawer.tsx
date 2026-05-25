@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
-import type { McpServer } from '@/api-client/types'
+import { usePermission } from '@/core/permissions'
+import { Permissions, type McpServer } from '@/api-client/types'
 
 const { Text, Title } = Typography
 
@@ -18,6 +19,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const canManage = usePermission(Permissions.McpServersAdminEdit)
 
   // Load assigned servers when drawer opens
   useEffect(() => {
@@ -81,16 +83,18 @@ export function GroupSystemMcpServersAssignmentDrawer() {
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={handleClose} disabled={saving}>
-            Cancel
+            {canManage ? 'Cancel' : 'Close'}
           </Button>
-          <Button
-            type="primary"
-            onClick={handleSave}
-            loading={saving}
-            disabled={loading}
-          >
-            Save
-          </Button>
+          {canManage && (
+            <Button
+              type="primary"
+              onClick={handleSave}
+              loading={saving}
+              disabled={loading}
+            >
+              Save
+            </Button>
+          )}
         </div>
       }
     >
@@ -120,14 +124,17 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                 return (
                   <Card
                     key={server.id}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => handleToggle(server.id, !isChecked)}
+                    style={{ cursor: canManage ? 'pointer' : 'default' }}
+                    onClick={() =>
+                      canManage && handleToggle(server.id, !isChecked)
+                    }
                   >
                     <div className="flex items-start gap-3">
                       <div onClick={e => e.stopPropagation()}>
                         <Switch
                           checked={isChecked}
                           onChange={checked => handleToggle(server.id, checked)}
+                          disabled={!canManage}
                           style={{ marginTop: '2px' }}
                         />
                       </div>

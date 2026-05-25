@@ -41,7 +41,13 @@ export async function createAssistantFromHub(
 }
 
 /**
- * Get assistant card status badge
+ * Get assistant card status badge.
+ *
+ * Allow several seconds — callers typically invoke this immediately
+ * after a page.reload() and the hub store still needs to re-trigger
+ * its __init__ → loadAssistants → backend → render cycle before the
+ * stitched-in created_ids reach the DOM. The 1s prior timeout
+ * routinely fired before the store finished.
  */
 export async function getAssistantCardStatus(
   page: Page,
@@ -50,7 +56,7 @@ export async function getAssistantCardStatus(
   const assistantCard = page.getByTestId(`hub-assistant-card-${assistantId}`)
   const badge = assistantCard.getByText(/created/i)
 
-  const visible = await badge.isVisible({ timeout: 1000 }).catch(() => false)
+  const visible = await badge.isVisible({ timeout: 10000 }).catch(() => false)
   if (visible) {
     return await badge.textContent()
   }
@@ -59,7 +65,8 @@ export async function getAssistantCardStatus(
 }
 
 /**
- * Check if assistant has "View" button (indicating it's been created)
+ * Check if assistant has "View" button (indicating it's been created).
+ * See timing note on getAssistantCardStatus above.
  */
 export async function isAssistantCreated(
   page: Page,
@@ -67,7 +74,7 @@ export async function isAssistantCreated(
 ): Promise<boolean> {
   const assistantCard = page.getByTestId(`hub-assistant-card-${assistantId}`)
   const viewButton = assistantCard.getByRole('button', { name: /view/i })
-  return await viewButton.isVisible({ timeout: 1000 }).catch(() => false)
+  return await viewButton.isVisible({ timeout: 10000 }).catch(() => false)
 }
 
 /**

@@ -3,6 +3,7 @@ import { theme, Typography, Divider, Tooltip } from 'antd'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { Stores } from '@/core/stores'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
+import { evaluatePermission } from '@/core/permissions'
 import type {
   SidebarNavItem,
   SidebarToolItem,
@@ -119,10 +120,14 @@ export function LeftSidebar() {
   const windowMinSize = useWindowMinSize()
   const { slots } = Stores.ModuleSystem
   const { isSidebarCollapsed } = Stores.AppLayout
+  const { user, permissions } = Stores.Auth
 
   const isActive = (path: string) => {
     return location.pathname.startsWith(path)
   }
+
+  const isAllowed = (item: { permission?: SidebarNavItem['permission'] }) =>
+    !item.permission || evaluatePermission(user, permissions, item.permission)
 
   // Get and sort items from slots
   const primaryActions = (slots.get('sidebarPrimaryActions') ||
@@ -136,10 +141,12 @@ export function LeftSidebar() {
   const sortedPrimaryActions = [...primaryActions].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   )
-  const sortedNavigation = [...navigation].sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
-  )
-  const sortedTools = [...tools].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const sortedNavigation = [...navigation]
+    .filter(isAllowed)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const sortedTools = [...tools]
+    .filter(isAllowed)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   // On desktop, collapsed means icon-only mode (not fully hidden)
   const isIconOnly = isSidebarCollapsed && !windowMinSize.xs

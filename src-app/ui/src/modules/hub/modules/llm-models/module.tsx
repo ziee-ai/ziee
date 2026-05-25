@@ -1,5 +1,6 @@
 import { createModule } from '@/core'
 import { CloudServerOutlined } from '@ant-design/icons'
+import { Permissions } from '@/api-client/types'
 import { useHubModelsStore } from '@/modules/hub/modules/llm-models/stores/hub-models-store'
 import { useModelDetailsDrawerStore } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
@@ -34,7 +35,10 @@ export default createModule({
         icon: <CloudServerOutlined />,
         component: ModelsHubTab,
         order: 10,
-        permission: 'hub::models::read',
+        permissions: {
+          read: Permissions.HubModelsRead,
+          refresh: Permissions.HubModelsRefresh,
+        },
         refresh: async () => {
           await useHubModelsStore.getState().refreshFromGitHub()
         },

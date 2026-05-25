@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { App, Button, Flex, Input, Select, Spin, Typography } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { Can } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { McpServerCard } from '@/modules/mcp/components/common/McpServerCard'
 import { McpServerDrawer } from '@/modules/mcp/components/common/McpServerDrawer'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
@@ -150,13 +152,15 @@ export function McpServersSettings() {
               { label: 'Type', value: 'type' },
             ]}
           />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAddServer}
-          >
-            Add Server
-          </Button>
+          <Can permission={Permissions.McpServersCreate}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleAddServer}
+            >
+              Add Server
+            </Button>
+          </Can>
         </div>
 
         {(searchTerm || statusFilter !== 'all') && (

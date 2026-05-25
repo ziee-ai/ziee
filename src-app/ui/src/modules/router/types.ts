@@ -4,6 +4,7 @@ import type {
   ReactElement,
   LazyExoticComponent,
 } from 'react'
+import type { PermissionExpr } from '@/core/permissions'
 
 /**
  * LayoutDefinition defines a layout component.
@@ -37,6 +38,14 @@ export interface RouteConfig<
 
   /** Whether route requires authentication (default: false) */
   requiresAuth?: boolean
+
+  /**
+   * Optional permission expression. When set, the router wraps the
+   * route element with a gate that renders an inline 403 panel if
+   * the current user fails the expression (URL preserved, layout
+   * preserved). See `.claude/PERMISSION_GATING.md`.
+   */
+  permission?: PermissionExpr
 
   /** Whether this is an index route */
   index?: boolean
