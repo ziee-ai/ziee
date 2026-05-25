@@ -172,13 +172,7 @@ export function HubPage() {
           <div className="max-w-4xl w-full flex flex-col self-center">
             <div className="flex-1 h-full w-full overflow-y-auto">
               <div className="flex flex-col py-3 w-full">
-                {visibleTabs.length === 0 ? (
-                  <Result
-                    status="403"
-                    title="Not authorized"
-                    subTitle="You don't have permission to view any Hub catalog."
-                  />
-                ) : urlSegmentIsForbidden ? (
+                {urlSegmentIsForbidden ? (
                   <Result
                     status="403"
                     title="Not authorized"

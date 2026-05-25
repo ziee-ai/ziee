@@ -67,6 +67,7 @@ export default createModule({
       path: '/settings/mcp-admin',
       element: SystemMcpServersPage,
       requiresAuth: true,
+      permission: Permissions.McpServersAdminRead,
       layout: SettingsLayoutDef,
     },
   ],

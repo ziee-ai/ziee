@@ -28,6 +28,7 @@ export default createModule({
       path: '/settings/llm-runtime',
       element: RuntimeVersionSettings,
       requiresAuth: true,
+      permission: Permissions.LocalRuntimeRead,
       layout: SettingsLayoutDef,
     }
   ],

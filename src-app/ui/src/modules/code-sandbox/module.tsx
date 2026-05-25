@@ -14,6 +14,16 @@ const SandboxSettingsPage = lazyWithPreload(() =>
   })),
 )
 
+// Either card on the page is enough access to justify showing the
+// menu entry / letting the page render; per-section gates inside
+// the page still hide each card individually.
+const SANDBOX_READ_PERM = {
+  anyOf: [
+    Permissions.CodeSandboxEnvironmentsRead,
+    Permissions.CodeSandboxResourceLimitsRead,
+  ],
+}
+
 export default createModule({
   metadata: {
     name: 'code-sandbox',
@@ -26,6 +36,7 @@ export default createModule({
       path: '/settings/sandbox',
       element: SandboxSettingsPage,
       requiresAuth: true,
+      permission: SANDBOX_READ_PERM,
       layout: SettingsLayoutDef,
     },
   ],
@@ -47,15 +58,7 @@ export default createModule({
         label: 'Code Sandbox',
         path: 'sandbox',
         order: 26,
-        // Either card on the page is enough access to justify showing
-        // the menu entry; per-section gates inside the page still
-        // hide each card individually.
-        permission: {
-          anyOf: [
-            Permissions.CodeSandboxEnvironmentsRead,
-            Permissions.CodeSandboxResourceLimitsRead,
-          ],
-        },
+        permission: SANDBOX_READ_PERM,
       },
     ],
   },

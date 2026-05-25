@@ -5,6 +5,7 @@ import {
   login,
   loginAsAdmin,
 } from '../../common/auth-helpers'
+import { Permissions } from '../../../src/api-client/types'
 
 /**
  * Permission-scoped test-user helpers.
@@ -79,8 +80,8 @@ export async function loginAsUsersReadOnly(
   apiURL: string,
 ) {
   return createAndLoginAs(page, baseURL, apiURL, 'users-readonly-test', [
-    'users::read',
-    'groups::read',
+    Permissions.UsersRead,
+    Permissions.GroupsRead,
   ])
 }
 
@@ -94,6 +95,6 @@ export async function loginAsHubMcpOnly(
   apiURL: string,
 ) {
   return createAndLoginAs(page, baseURL, apiURL, 'hub-mcp-only-test', [
-    'hub::mcp_servers::read',
+    Permissions.HubMCPServersRead,
   ])
 }

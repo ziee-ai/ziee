@@ -15,18 +15,24 @@ controls they can't use.
 
 ## Mental model
 
-Three layers of gating, in order of preference:
+Four layers of gating, in order of preference (outer → inner):
 
 1. **Slot field (declarative).** If the surface is registered through
    the module system (admin settings pages, sidebar entries, hub
    tabs), add a `permission?: PermissionExpr` field to the slot
    entry. The slot consumer handles menu filtering and deep-link 403
-   in one place. **Use this whenever possible.**
-2. **`<Can>` wrapper (component).** For per-button gates inside a
+   in one place.
+2. **Route field (declarative).** Set `permission?: PermissionExpr`
+   on the `RouteConfig` in `module.tsx`'s `routes: [...]` array. The
+   router wraps the route element with an inline 403 panel when the
+   viewer fails the expression — URL and layout preserved. Pair with
+   the slot field (single `const` shared) so the menu hides AND
+   deep-links 403.
+3. **`<Can>` wrapper (component).** For per-button gates inside a
    page (Create, Edit, Delete, etc.) where the button is a discrete
    element you can wrap. Renders `null` when denied — the button
    simply isn't in the DOM.
-3. **`usePermission` hook (boolean).** For conditional logic that
+4. **`usePermission` hook (boolean).** For conditional logic that
    doesn't fit a wrapper — ternaries with fallback content,
    `disabled` props on form fields, building action arrays from a
    list, conditionally including dropdown menu items.
@@ -277,6 +283,51 @@ sidebarNavigation: [{
   ]},
 }]
 ```
+
+### Route field
+
+Set `permission?: PermissionExpr` on the route registration in
+`module.tsx`. The router renders an inline `<Result status="403">`
+when the viewer fails the expression — URL preserved, layout
+preserved. Pair this with the slot entry so the menu hides AND
+deep-links 403:
+
+```tsx
+// modules/hub/module.tsx
+import { Permissions } from '@/api-client/types'
+
+// Single source of truth shared by route + slot.
+const HUB_READ_PERM = { anyOf: [
+  Permissions.HubModelsRead,
+  Permissions.HubAssistantsRead,
+  Permissions.HubMCPServersRead,
+]}
+
+routes: [{
+  path: '/hub/:activeTab?',
+  element: HubPage,
+  requiresAuth: true,
+  permission: HUB_READ_PERM,        // ← navigational 403 fallback
+  layout: AppLayoutDef,
+}],
+slots: {
+  sidebarTools: [{
+    id: 'hub', icon, label: 'Hub', path: '/hub', order: 30,
+    permission: HUB_READ_PERM,      // ← menu filter
+  }],
+}
+```
+
+Why use both layers? Defense in depth: the slot filter handles the
+menu UX, the route gate is the navigational fallback. Single `const`
+keeps them in sync. **Always hoist the expression** when the value
+is non-trivial (`anyOf` / `allOf`); for a bare enum member, inlining
+at both sites is fine.
+
+Pages registered through `settingsAdminPages` get the same treatment:
+the SettingsLayout's slot consumer renders the 403, AND the
+underlying route carries `permission` so a regressing slot filter
+doesn't silently expose the page.
 
 `LeftSidebar.tsx` filters both `sidebarNavigation` and
 `sidebarTools` slots. Non-permitted entries don't appear.

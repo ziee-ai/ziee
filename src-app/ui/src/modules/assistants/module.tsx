@@ -39,6 +39,7 @@ export default createModule({
       path: '/settings/assistants',
       element: AssistantsSettings,
       requiresAuth: true,
+      permission: Permissions.AssistantsTemplateRead,
       layout: SettingsLayoutDef,
     },
   ],

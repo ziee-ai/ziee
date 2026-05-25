@@ -57,6 +57,7 @@ export default createModule({
       path: '/settings/llm-providers/:providerId?',
       element: LlmProviderSettings,
       requiresAuth: true,
+      permission: Permissions.LlmProvidersRead,
       layout: SettingsLayoutDef,
     },
   ],

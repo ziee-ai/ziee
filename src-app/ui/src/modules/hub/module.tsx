@@ -11,6 +11,17 @@ const HubPage = lazyWithPreload(() =>
   import('./HubPage').then(m => ({ default: m.HubPage })),
 )
 
+// Single source of truth shared between the route gate and the
+// sidebar entry. When adding a new hub submodule, list its ::read
+// here so both the route and the sidebar entry stay in sync.
+const HUB_READ_PERM = {
+  anyOf: [
+    Permissions.HubModelsRead,
+    Permissions.HubAssistantsRead,
+    Permissions.HubMCPServersRead,
+  ],
+}
+
 export default createModule({
   metadata: {
     name: 'hub',
@@ -23,6 +34,7 @@ export default createModule({
       path: '/hub/:activeTab?',
       element: HubPage,
       requiresAuth: true,
+      permission: HUB_READ_PERM,
       layout: AppLayoutDef,
     },
   ],
@@ -34,16 +46,7 @@ export default createModule({
         label: 'Hub',
         path: '/hub',
         order: 30,
-        // When adding a new hub submodule, list its ::read here so
-        // the sidebar entry only appears for users with access to at
-        // least one tab.
-        permission: {
-          anyOf: [
-            Permissions.HubModelsRead,
-            Permissions.HubAssistantsRead,
-            Permissions.HubMCPServersRead,
-          ],
-        },
+        permission: HUB_READ_PERM,
       },
     ],
   },

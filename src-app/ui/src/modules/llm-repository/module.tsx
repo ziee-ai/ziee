@@ -31,6 +31,7 @@ export default createModule({
       path: '/settings/llm-repositories',
       element: LlmRepositorySettings,
       requiresAuth: true,
+      permission: Permissions.LlmRepositoriesRead,
       layout: SettingsLayoutDef,
     },
   ],
