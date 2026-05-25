@@ -192,9 +192,14 @@ export async function searchAssistants(page: Page, query: string) {
 }
 
 export async function clearSearch(page: Page) {
-  const clearButton = page.getByRole('button', { name: /clear.*search/i })
-    .or(page.locator('input[placeholder="Search assistants"]').locator('..').locator('.ant-input-clear-icon'))
-  await clearButton.click()
+  // AntD's Input clear-icon is the canonical target; the broader
+  // /clear.*search/i regex was fragile and now collides with assistant
+  // card aria-labels containing "Clear" or "Search" (audit I-4
+  // refactored AssistantCard to surface Edit/Delete icon buttons with
+  // `aria-label="Edit ${name}"` / `Delete ${name}`, where {name}
+  // tests can include "Clear Search Test").
+  const searchWrapper = page.locator('input[placeholder="Search assistants"]').locator('..')
+  await searchWrapper.locator('.ant-input-clear-icon').click()
 }
 
 export async function sortAssistantsBy(page: Page, sortType: 'Activity' | 'Name' | 'Created') {
