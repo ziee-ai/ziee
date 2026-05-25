@@ -579,10 +579,20 @@ export const useChatStore = create<ChatState>()(
         set({ loading: true, loadingConversationId: id, error: null })
         try {
           const conversation = await ApiClient.Conversation.get({ id })
+          // Stale-result guard: if the user navigated away during the
+          // await (loadingConversationId changed), drop this response.
+          // Prevents the A→B→A race where A's slow response overwrites
+          // B's freshly-loaded conversation. (audit 04 HIGH-1 mitigation)
+          if (get().loadingConversationId !== id) {
+            console.log(`[Chat.store] Stale response for ${id}, dropping`)
+            return
+          }
           set({ conversation, loading: false, loadingConversationId: null })
 
           await get().loadMessages(id)
+          if (get().conversation?.id !== id) return
           await get().loadBranches(id)
+          if (get().conversation?.id !== id) return
 
           await chatExtensionRegistry.initialize()
           await chatExtensionRegistry.onConversationLoad(conversation)
@@ -597,11 +607,15 @@ export const useChatStore = create<ChatState>()(
             touchPanelSnapshot(id)
           }
         } catch (error: any) {
-          set({
-            error: error.message || 'Failed to load conversation',
-            loading: false,
-            loadingConversationId: null,
-          })
+          // Only surface error if we're still on this conversation; an
+          // abort from navigation is not a user-facing error.
+          if (get().loadingConversationId === id) {
+            set({
+              error: error.message || 'Failed to load conversation',
+              loading: false,
+              loadingConversationId: null,
+            })
+          }
         }
       },
 
@@ -1143,8 +1157,20 @@ export const useChatStore = create<ChatState>()(
                                 return {}
                               }
 
-                              const messageId = incomingMessageId || currentState.streamingMessage.id
-                              const idChanged = messageId !== currentState.streamingMessage.id
+                              // Keep `streamingMessage.id` STABLE as the
+                              // original placeholder throughout the stream
+                              // (audit 04 HIGH-2 — was changing mid-stream
+                              // when the backend's real DB id arrived,
+                              // forcing React to remount the ChatMessage
+                              // component on every key change and tearing
+                              // down any local state inside it). The real
+                              // DB id is still propagated into each
+                              // content's `message_id` field below; on
+                              // stream complete, `loadMessages()` reloads
+                              // the authoritative messages keyed by the
+                              // real id, so no data is lost.
+                              const stableId = currentState.streamingMessage.id
+                              const dbId = incomingMessageId || stableId
 
                               const textContentIndex = currentState.streamingMessage.contents.findIndex(
                                 c => c.content_type === 'text' || (c.content as any)?.type === 'text'
@@ -1168,8 +1194,8 @@ export const useChatStore = create<ChatState>()(
                               } else {
                                 const now = new Date().toISOString()
                                 const newContent: MessageContent = {
-                                  id: `${messageId}-content-${currentState.streamingMessage.contents.length}`,
-                                  message_id: messageId,
+                                  id: `${stableId}-content-${currentState.streamingMessage.contents.length}`,
+                                  message_id: dbId,
                                   content_type: 'text',
                                   content: { type: 'text', text: delta } as any,
                                   sequence_order: currentState.streamingMessage.contents.length,
@@ -1181,18 +1207,15 @@ export const useChatStore = create<ChatState>()(
 
                               const updatedMessage: MessageWithContent = {
                                 ...currentState.streamingMessage,
-                                id: messageId,
+                                // id unchanged — see comment above
                                 contents: updatedContents.map(c => ({
                                   ...c,
-                                  message_id: messageId,
+                                  message_id: dbId,
                                 })),
                               }
 
                               const newMessages = new Map(currentState.messages)
-                              if (idChanged) {
-                                newMessages.delete(currentState.streamingMessage.id)
-                              }
-                              newMessages.set(updatedMessage.id, updatedMessage)
+                              newMessages.set(stableId, updatedMessage)
 
                               return {
                                 streamingMessage: updatedMessage,
