@@ -20,9 +20,11 @@ test.describe('users module — permission gating', () => {
     ).toHaveCount(0)
 
     // Deep-link directly to the page — should render the inline 403,
-    // URL preserved.
+    // URL preserved. Ant Design's <Result status="403"> renders "403"
+    // inside an SVG, not as a text node, so assert against the title /
+    // subtitle text the router-level RoutePermissionGate emits.
     await page.goto(`${testInfra.baseURL}/settings/users`)
-    await expect(page.getByText(/403/i)).toBeVisible()
+    await expect(page.getByText(/Not authorized/i)).toBeVisible()
     expect(page.url()).toContain('/settings/users')
   })
 

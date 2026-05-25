@@ -306,11 +306,15 @@ test.describe('Sandbox Environments admin settings', () => {
     await createTestUser(apiURL, adminToken, uname, `${uname}@example.com`, 'password123', [])
     await login(page, baseURL, uname, 'password123')
 
-    await gotoSandboxEnvironments(page, baseURL)
-
-    await expect(
-      page.getByText("You don't have permission to view sandbox environments."),
-    ).toBeVisible({ timeout: 10000 })
+    // The route itself is gated on { anyOf: [environments::read,
+    // resource_limits::read] }, so a user with NEITHER perm gets
+    // the router-level 403 panel before the page mounts — the page
+    // heading and in-page warning never render. URL preserved.
+    await page.goto(`${baseURL}/settings/sandbox`)
+    await expect(page.getByText(/Not authorized/i)).toBeVisible({
+      timeout: 10000,
+    })
+    expect(page.url()).toContain('/settings/sandbox')
   })
 
   test('evict removes a cached environment', async ({ page, testInfra }) => {
