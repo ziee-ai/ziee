@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { App, Button, Card, Tag, Typography, Tooltip, Switch, Flex } from 'antd'
 import { EditOutlined, ToolOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import type { McpServer } from '@/api-client/types'
 
 const { Text } = Typography
@@ -19,6 +20,13 @@ export function McpServerCard({
 }: McpServerCardProps) {
   const { message, modal } = App.useApp()
   const [enableLoading, setEnableLoading] = useState(false)
+
+  // System and user MCP servers gate on different permission namespaces.
+  // The shared card detects which one applies by the server's is_system
+  // flag rather than asking the caller to pass it explicitly.
+  const ns = server.is_system ? 'mcp_servers_admin' : 'mcp_servers'
+  const canEdit = usePermission(`${ns}::edit`)
+  const canDelete = usePermission(`${ns}::delete`)
 
   const handleEdit = () => {
     if (server.is_system) {
@@ -126,27 +134,31 @@ export function McpServerCard({
             <div className="flex gap-2 items-center justify-end">
               {isEditable && (
                 <>
-                  <Tooltip
-                    title={server.enabled ? 'Disable Server' : 'Enable Server'}
-                  >
-                    <Switch
-                      checked={server.enabled}
-                      onChange={handleToggleEnable}
-                      loading={enableLoading}
-                      aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
-                    />
-                  </Tooltip>
-                  <Button
-                    icon={<EditOutlined />}
-                    onClick={e => {
-                      e.stopPropagation()
-                      handleEdit()
-                    }}
-                    data-testid="mcp-server-edit-btn"
-                  >
-                    Edit
-                  </Button>
-                  {!server.is_built_in && (
+                  {canEdit && (
+                    <Tooltip
+                      title={server.enabled ? 'Disable Server' : 'Enable Server'}
+                    >
+                      <Switch
+                        checked={server.enabled}
+                        onChange={handleToggleEnable}
+                        loading={enableLoading}
+                        aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.display_name}`}
+                      />
+                    </Tooltip>
+                  )}
+                  {canEdit && (
+                    <Button
+                      icon={<EditOutlined />}
+                      onClick={e => {
+                        e.stopPropagation()
+                        handleEdit()
+                      }}
+                      data-testid="mcp-server-edit-btn"
+                    >
+                      Edit
+                    </Button>
+                  )}
+                  {canDelete && !server.is_built_in && (
                     <Button
                       icon={<DeleteOutlined />}
                       danger
