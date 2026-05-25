@@ -238,8 +238,9 @@ test.describe('Hub Search and Filters', () => {
       expect(filteredCount).toBeGreaterThanOrEqual(0)
     })
 
-    test.skip('should clear all filters at once', async ({ page, testInfra }) => {
-      // Skipped: Depends on clear filters implementation
+    test('should clear all filters at once', async ({ page, testInfra }) => {
+      // Clear-all button is implemented in ModelsHubTab.tsx
+      // (`Clear all` button visible when any filter is active).
       const { baseURL } = testInfra
       await navigateToHub(page, baseURL, 'models')
       await waitForHubDataLoad(page)
@@ -247,9 +248,11 @@ test.describe('Hub Search and Filters', () => {
       const initialCards = await getModelCards(page)
       const initialCount = await initialCards.count()
 
-      // Apply multiple filters
+      // Apply multiple filters. Use 'chat' tag (consistent with the
+      // sibling 'should combine search and tag filters' test above —
+      // 'conversational' isn't present in the test hub catalog).
       await searchHubResources(page, 'llama')
-      await filterByTags(page, ['conversational'])
+      await filterByTags(page, ['chat'])
 
       // Clear all
       await clearAllFilters(page)

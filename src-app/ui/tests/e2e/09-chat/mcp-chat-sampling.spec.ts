@@ -98,11 +98,11 @@ test.describe('Chat — MCP sampling (real LLM + mock server)', () => {
     await mock?.dispose()
   })
 
-  // Skipped — Chat.store only registers a streaming assistant message
-  // on `text_delta`, but the LLM in this sampling-roundtrip path emits
-  // `tool_use_delta` first and only emits text after the sampling
-  // callback completes. See TODO_E2E.md item 5.
-  test.skip('research tool triggers two sampling roundtrips and returns a final answer', async ({
+  // Chat.store now creates a placeholder streaming message on the
+  // first delta of any type (text/thinking/tool_use), so the assistant
+  // bubble renders immediately even on tool-first flows — fixing the
+  // TODO_E2E.md item-5 wait timeout that previously skipped this test.
+  test('research tool triggers two sampling roundtrips and returns a final answer', async ({
     page,
     testInfra,
   }) => {

@@ -1,12 +1,14 @@
 import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
-import { navigateToHub, waitForHubDataLoad, refreshHubData } from './helpers/hub-navigation'
+import { navigateToHub, waitForHubDataLoad } from './helpers/hub-navigation'
 import {
   installMcpServerFromHub,
   getMcpServerCards,
   isMcpServerInstalled,
   getMcpCardStatus,
 } from './helpers/hub-mcp'
+import { loginWithPerms } from '../permissions/fixtures'
+import { Permissions } from '../../../src/api-client/types'
 
 test.describe('Hub MCP Servers', () => {
   test.beforeEach(async ({ page, testInfra }) => {
@@ -34,8 +36,16 @@ test.describe('Hub MCP Servers', () => {
     await expect(firstCard).toContainText(/.+/)
   })
 
-  test.skip('should install MCP server from hub without customization', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  // Note: McpServerHubCard.handleInstall navigates to /settings/mcp-servers
+  // after install ("Navigate to user MCP servers after creation"). The
+  // tests below navigate back to /hub/mcp-servers before checking the
+  // badge. Backend GET /api/hub/mcp_servers stitches in created_ids
+  // from hub_entities + the user's group memberships.
+
+  test('should install MCP server from hub without customization', async ({
+    page,
+    testInfra,
+  }) => {
     const mcpCards = await getMcpServerCards(page)
     const firstCard = mcpCards.first()
 
@@ -53,18 +63,17 @@ test.describe('Hub MCP Servers', () => {
       page.getByText(/installed.*successfully|mcp.*server.*installed/i).first(),
     ).toBeVisible({ timeout: 5000 })
 
-    // Reload and check status
-    await page.reload()
-    await waitForHubDataLoad(page)
-    await refreshHubData(page) // Refresh to get updated created_ids from backend
+    await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
     await waitForHubDataLoad(page)
 
     const installed = await isMcpServerInstalled(page, mcpServerId)
     expect(installed).toBe(true)
   })
 
-  test.skip('should install MCP server with customization', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  test('should install MCP server with customization', async ({
+    page,
+    testInfra,
+  }) => {
     const mcpCards = await getMcpServerCards(page)
 
     // Get second MCP server if available
@@ -87,18 +96,17 @@ test.describe('Hub MCP Servers', () => {
       page.getByText(/installed.*successfully|mcp.*server.*installed/i).first(),
     ).toBeVisible({ timeout: 5000 })
 
-    // Verify MCP server was installed
-    await page.reload()
-    await waitForHubDataLoad(page)
-    await refreshHubData(page) // Refresh to get updated created_ids from backend
+    await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
     await waitForHubDataLoad(page)
 
     const installed = await isMcpServerInstalled(page, mcpServerId)
     expect(installed).toBe(true)
   })
 
-  test.skip('should show "View" button for already installed MCP servers', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  test('should show "View" button for already installed MCP servers', async ({
+    page,
+    testInfra,
+  }) => {
     // Install first MCP server
     const mcpCards = await getMcpServerCards(page)
     const firstCard = mcpCards.first()
@@ -111,10 +119,8 @@ test.describe('Hub MCP Servers', () => {
 
     if (!alreadyInstalled) {
       await installMcpServerFromHub(page, mcpServerId)
-      await page.reload()
+      await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
       await waitForHubDataLoad(page)
-    await refreshHubData(page) // Refresh to get updated created_ids from backend
-    await waitForHubDataLoad(page)
     }
 
     // Should have "View" button instead of "Install"
@@ -127,8 +133,7 @@ test.describe('Hub MCP Servers', () => {
     expect(installButtonVisible).toBe(false)
   })
 
-  test.skip('should track installation status badge', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  test('should track installation status badge', async ({ page, testInfra }) => {
     const mcpCards = await getMcpServerCards(page)
     const firstCard = mcpCards.first()
 
@@ -142,11 +147,8 @@ test.describe('Hub MCP Servers', () => {
       // Not installed yet, install it
       await installMcpServerFromHub(page, mcpServerId)
 
-      // Reload and check status
-      await page.reload()
+      await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
       await waitForHubDataLoad(page)
-    await refreshHubData(page) // Refresh to get updated created_ids from backend
-    await waitForHubDataLoad(page)
 
       const newStatus = await getMcpCardStatus(page, mcpServerId)
       expect(newStatus).toBeTruthy()
@@ -157,8 +159,10 @@ test.describe('Hub MCP Servers', () => {
     }
   })
 
-  test.skip('should navigate to MCP server detail when clicking "View"', async ({ page }) => {
-    // TODO: Requires "update hub data from platform server" feature
+  test('should navigate to MCP server detail when clicking "View"', async ({
+    page,
+    testInfra,
+  }) => {
     // Find an MCP server that's already installed
     const mcpCards = await getMcpServerCards(page)
     let installedMcpId = ''
@@ -181,27 +185,51 @@ test.describe('Hub MCP Servers', () => {
       installedMcpId = testId?.replace('hub-mcp-card-', '') || ''
 
       await installMcpServerFromHub(page, installedMcpId)
-      await page.reload()
+      await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
       await waitForHubDataLoad(page)
-    await refreshHubData(page) // Refresh to get updated created_ids from backend
-    await waitForHubDataLoad(page)
     }
 
     // Click "View" button
     const card = page.getByTestId(`hub-mcp-card-${installedMcpId}`)
     await card.getByRole('button', { name: /view/i }).click()
 
-    // Should navigate to MCP server detail or open drawer
-    const urlChanged = await page.waitForURL(/\/mcp/, { timeout: 3000 }).catch(() => false)
+    // The View button navigates to /settings/mcp-servers (user MCP
+    // page) per McpServerHubCard. We're satisfied if we leave the
+    // hub or a detail drawer opens. Use a stable wait instead of
+    // waitForURL (which expects an explicit navigation EVENT —
+    // SPA navigations sometimes don't trigger that path reliably
+    // under Playwright's history hooks).
+    await page.waitForLoadState('networkidle').catch(() => {})
+    const urlChanged = !page.url().includes('/hub/')
     const drawer = page.getByRole('dialog', { name: /mcp.*server/i })
-    const drawerVisible = await drawer.isVisible({ timeout: 3000 }).catch(() => false)
+    const drawerVisible = await drawer.isVisible({ timeout: 2000 }).catch(() => false)
 
     expect(urlChanged || drawerVisible).toBe(true)
   })
 
-  test.skip('should prevent installation without required permissions', async ({ page: _page }) => {
-    // TODO: Implement test with user permission system
-    // This requires creating a non-admin user without hub::mcp_servers::create permission
+  test('should prevent installation without required permissions', async ({
+    page,
+    testInfra,
+  }) => {
+    // User with hub::mcp_servers::read but NOT ::create. Cards render
+    // (read gives access) but McpServerHubCard's usePermission(
+    // HubMcpServersCreate) hides the "Install" button.
+    await loginWithPerms(
+      page,
+      testInfra.baseURL,
+      testInfra.apiURL,
+      [Permissions.HubMCPServersRead],
+    )
+    await navigateToHub(page, testInfra.baseURL, 'mcp-servers')
+    await waitForHubDataLoad(page)
+
+    const cards = await getMcpServerCards(page)
+    const cardCount = await cards.count()
+    if (cardCount > 0) {
+      await expect(
+        cards.first().getByRole('button', { name: /^install$/i }),
+      ).toHaveCount(0)
+    }
   })
 
   test('should show MCP server tags', async ({ page }) => {
