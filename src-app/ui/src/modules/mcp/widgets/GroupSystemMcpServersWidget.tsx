@@ -3,6 +3,8 @@ import { Button, Card, Space, Tag, Typography, Spin } from 'antd'
 import { ApiOutlined, EditOutlined } from '@ant-design/icons'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 const { Text } = Typography
 
@@ -22,6 +24,7 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
   const servers = serverData?.servers || []
   const loading = serverData?.loading || false
   const error = serverData?.error || null
+  const canManage = usePermission(Permissions.McpServersAdminEdit)
 
   // CRITICAL: Load data on mount
   // The store has 30-second caching, so this won't cause excessive API calls
@@ -47,15 +50,17 @@ export function GroupSystemMcpServersWidget({ group }: GroupWidgetProps) {
               <Text type="secondary">({servers.length})</Text>
             )}
           </Space>
-          <Button
-            size="small"
-            type="link"
-            icon={<EditOutlined aria-hidden="true" />}
-            onClick={handleEdit}
-            aria-label={`Edit System MCP Servers for ${group.name}`}
-          >
-            Edit
-          </Button>
+          {canManage && (
+            <Button
+              size="small"
+              type="link"
+              icon={<EditOutlined aria-hidden="true" />}
+              onClick={handleEdit}
+              aria-label={`Edit System MCP Servers for ${group.name}`}
+            >
+              Edit
+            </Button>
+          )}
         </div>
 
         {/* Content */}

@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { ApiClient } from '@/api-client'
-import type { McpServer } from '@/api-client/types'
+import { Permissions, type McpServer } from '@/api-client/types'
 import { emitMcpServerGroupsChanged } from '@/modules/mcp/events'
 
 const { Text, Title } = Typography
@@ -20,6 +21,7 @@ export function McpServerGroupsAssignmentDrawer() {
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const canManage = usePermission(Permissions.McpServersAdminEdit)
 
   // Load assigned groups when drawer opens
   useEffect(() => {
@@ -93,16 +95,18 @@ export function McpServerGroupsAssignmentDrawer() {
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={handleClose} disabled={saving}>
-            Cancel
+            {canManage ? 'Cancel' : 'Close'}
           </Button>
-          <Button
-            type="primary"
-            onClick={handleSave}
-            loading={saving}
-            disabled={loading}
-          >
-            Save
-          </Button>
+          {canManage && (
+            <Button
+              type="primary"
+              onClick={handleSave}
+              loading={saving}
+              disabled={loading}
+            >
+              Save
+            </Button>
+          )}
         </div>
       }
     >
@@ -136,6 +140,7 @@ export function McpServerGroupsAssignmentDrawer() {
                         <Switch
                           checked={isChecked}
                           onChange={checked => handleToggle(group.id, checked)}
+                          disabled={!canManage}
                           style={{ marginTop: '2px' }}
                         />
                       </div>

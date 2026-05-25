@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { Button, Collapse, Empty, Space, Spin, Tag, Typography } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 const { Text } = Typography
 
@@ -23,6 +25,7 @@ export function McpServerGroupsAssignmentCard({
   const serverData = Stores.SystemMcpServerGroupCard.serverGroups.get(serverId)
   const assignedGroups = serverData?.groups || []
   const loading = serverData?.loading || false
+  const canManage = usePermission(Permissions.McpServersAdminEdit)
 
   useEffect(() => {
     Stores.SystemMcpServerGroupCard.loadGroupsForServer(serverId)
@@ -42,7 +45,7 @@ export function McpServerGroupsAssignmentCard({
           {
             key: 'groups',
             label: <Text className="font-medium text-sm">User Groups</Text>,
-            extra: (
+            extra: canManage ? (
               <Button
                 type="text"
                 size="small"
@@ -53,7 +56,7 @@ export function McpServerGroupsAssignmentCard({
                 }}
                 aria-label="Manage user groups"
               />
-            ),
+            ) : null,
             children: loading ? (
               <Spin size="small" />
             ) : assignedGroups.length === 0 ? (
