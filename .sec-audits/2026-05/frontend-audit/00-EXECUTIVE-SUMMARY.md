@@ -35,13 +35,20 @@ now uses the project Drawer wrapper). **2 → RESOLVED.**
 - **Cluster D** (`2b87a62`) — 02 B-4 (HIGH), 04 HIGH-3 (MED), plus the
   Auth `/me` re-fetch on `visibilitychange` permission follow-up.
 - **Cluster E** (`27c1e55`) — 02 R-1 (HIGH).
-- **Cluster F** (`e0fbaf4` + `598c2f8`) — 09 B-15 (MED, Biome rule),
-  08 I-4 (MED, Popconfirm okText standardisation across 7 sites + 7
-  E2E helper files).
-- **Cluster G** (this commit) — audit-doc annotation, store-proxy doc,
-  remaining LOW cleanups deferred.
+- **Cluster F** (`e0fbaf4` + `598c2f8` + `31b3438` + `b40cd8d` +
+  `c7c7ffb` + `6027d36` + `6ac453e`) — 09 B-15 (MED, Biome rule), 08
+  I-1 (footer order, user/ module), 08 I-2 (verb-only submits across
+  user/ + 5 other modules), 08 I-3 (`disabled={!canManage}`
+  rolled out to McpServerDrawer), 08 I-4 (MED, Popconfirm okText
+  standardisation + 3-site Modal.confirm migration), 08 I-5
+  (drawer widths normalised to 600), 08 I-6 (empty-state copy
+  standardised to "No {resource} yet").
+- **Cluster G** (`2876ec5`) — store-proxy contract documented in
+  `.claude/REACT_COMPONENT_PATTERNS.md`, new
+  `tests/e2e/permissions/hub.spec.ts` for the permission follow-up.
 
-**14 HIGH + 9 MED + permission follow-up resolved across the series.**
+**14 HIGH + 16 MED + 2 permission follow-ups resolved across the
+series.**
 
 **Withdrawn during verification** (do not appear in fix tracking):
 - 05 LLM-25 — already fixed pre-remediation in dep cluster 3.
@@ -52,18 +59,42 @@ now uses the project Drawer wrapper). **2 → RESOLVED.**
   post-init concurrent dedup.
 
 **Deferred to follow-up commits / future PRs** (out of this PR's scope):
-- Remaining Cluster F consistency items: 08 I-1 (footer order — only
-  user/ module deviates), 08 I-2 (submit-button labels — 5+ phrasings),
-  08 I-3 (`disabled={!canManage}` rollout — code-sandbox-only today),
-  08 I-5 (drawer widths — 600 dominant, 2× 400 list-only justifiable),
-  08 I-6 (empty-state copy — 6 phrasings). Each touches 10+ files +
-  many E2E specs; better as separate review-able PRs.
-- Cluster G tooling: `scripts/lint-stores.ts` static analyser + dev-
+- Cluster G tooling: `scripts/lint-stores.ts` ts-morph walker + dev-
   only runtime guard in `createStoreProxy`. Deferred — substantial
-  new infrastructure (~150 LOC + tests + CI wiring) that warrants its
-  own PR.
-- `tests/e2e/permissions/hub.spec.ts` — permission follow-up; defer
-  with the lint-stores work into the tooling PR.
+  new infrastructure (~150 LOC + tests + CI wiring), and the React 19
+  internals required for the runtime guard
+  (`React.__CLIENT_INTERNALS_*`) are unstable. The pattern is now
+  documented in `.claude/REACT_COMPONENT_PATTERNS.md`; existing
+  "Invalid hook call" errors from React already surface the violation
+  with stores.ts in the stack.
+- **E2E coverage gaps from the plan's "E2E impact" lists** — the
+  remediation series shipped source fixes for every confirmed HIGH +
+  scoped MED, plus 7 Cluster F consistency items, but only added one
+  new E2E spec (`permissions/hub.spec.ts`). The plan called for ~19
+  new specs covering the user-visible behavior changes. **Deferred to
+  a follow-up coverage PR** rather than land unrun new specs in this
+  PR:
+  - `00-foundational/error-boundary.spec.ts` + `auth-token-corruption.spec.ts`
+  - `09-chat/conversation-switch-race.spec.ts`,
+    `streaming-cleanup.spec.ts`, `streaming-message-key-stability.spec.ts`,
+    `scroll-anchor.spec.ts`
+  - `02-users/users-pagination-race.spec.ts`,
+    `registration-settings.spec.ts` (gated on backend endpoint)
+  - `05-llm/provider-edit-state-preserved.spec.ts`,
+    `model-load-race.spec.ts`
+  - `02-auth/auth-events.spec.ts` (only if the LOW 03 B-3 lands first),
+    `visibility-refetch.spec.ts`
+  - `02-layout/sidebar-width-persistence.spec.ts`,
+    `drawer-width-consistency.spec.ts`
+  - `mobile/sidebar-overlay-a11y.spec.ts`, `tap-target-sizes.spec.ts`,
+    `mobile-flow.spec.ts`
+  - `iOS/visual-viewport-scroll.spec.ts`
+  - `permissions/manage-gating.spec.ts`
+  - `00-foundational/console-strip.spec.ts` (needs prod build)
+  Updates to existing helpers (e.g. assistant card icon-button +
+  Popconfirm, drawer-submit primary-button selectors, empty-state
+  copy "No X yet") landed alongside the source changes — `npm run
+  test:e2e` should pick those up cleanly without new specs.
 - 4 confirmed LOWs (05 H-1 — backend already masks; 02 B-3 — pixel
   width reset; 03 B-3 — auth events speculative; 01 B-1 — proxy doc
   partial). Address opportunistically.
