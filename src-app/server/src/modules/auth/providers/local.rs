@@ -94,7 +94,7 @@ impl AuthProviderTrait for LocalAuthProvider {
         })
     }
 
-    async fn test_connection(&self) -> Result<(), AuthError> {
+    async fn test_connection(&self) -> Result<String, AuthError> {
         // For local provider, just verify database connectivity
         Repos.user.get_by_username("__test_connection__")
             .await
@@ -102,7 +102,7 @@ impl AuthProviderTrait for LocalAuthProvider {
                 AuthError::ConnectionFailed(format!("Database connection failed: {}", e))
             })?;
 
-        Ok(())
+        Ok("Database reachable".to_string())
     }
 
     fn get_config(&self) -> &serde_json::Value {

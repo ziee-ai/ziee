@@ -20,7 +20,10 @@ pub async fn get_provider_by_name(
         r#"
         SELECT id, name, provider_type, enabled, config,
                created_at as "created_at: _",
-               updated_at as "updated_at: _"
+               updated_at as "updated_at: _",
+               last_test_at as "last_test_at: _",
+               last_test_ok,
+               last_test_message
         FROM auth_providers
         WHERE name = $1
         "#,
@@ -41,7 +44,10 @@ pub async fn get_provider_by_id(
         r#"
         SELECT id, name, provider_type, enabled, config,
                created_at as "created_at: _",
-               updated_at as "updated_at: _"
+               updated_at as "updated_at: _",
+               last_test_at as "last_test_at: _",
+               last_test_ok,
+               last_test_message
         FROM auth_providers
         WHERE id = $1
         "#,
@@ -61,7 +67,10 @@ pub async fn list_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, AppError
         r#"
         SELECT id, name, provider_type, enabled, config,
                created_at as "created_at: _",
-               updated_at as "updated_at: _"
+               updated_at as "updated_at: _",
+               last_test_at as "last_test_at: _",
+               last_test_ok,
+               last_test_message
         FROM auth_providers
         ORDER BY name ASC
         "#,
@@ -81,7 +90,10 @@ pub async fn list_public_providers(pool: &PgPool) -> Result<Vec<AuthProvider>, A
         r#"
         SELECT id, name, provider_type, enabled, config,
                created_at as "created_at: _",
-               updated_at as "updated_at: _"
+               updated_at as "updated_at: _",
+               last_test_at as "last_test_at: _",
+               last_test_ok,
+               last_test_message
         FROM auth_providers
         WHERE enabled = true AND provider_type <> 'local'
         ORDER BY name ASC
@@ -107,7 +119,10 @@ pub async fn create_provider(
         VALUES ($1, $2, $3, $4)
         RETURNING id, name, provider_type, enabled, config,
                   created_at as "created_at: _",
-                  updated_at as "updated_at: _"
+                  updated_at as "updated_at: _",
+                  last_test_at as "last_test_at: _",
+                  last_test_ok,
+                  last_test_message
         "#,
         name,
         provider_type,
@@ -138,7 +153,10 @@ pub async fn update_provider(
         WHERE id = $1
         RETURNING id, name, provider_type, enabled, config,
                   created_at as "created_at: _",
-                  updated_at as "updated_at: _"
+                  updated_at as "updated_at: _",
+                  last_test_at as "last_test_at: _",
+                  last_test_ok,
+                  last_test_message
         "#,
         id,
         name,
@@ -163,6 +181,33 @@ pub async fn delete_provider(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
     .await
     .map_err(AppError::database_error)?;
     Ok(res.rows_affected())
+}
+
+/// Record the outcome of a test_connection call on the row.
+/// Updates last_test_at/ok/message so the admin UI can show the
+/// result on the next list refresh.
+pub async fn record_test_result(
+    pool: &PgPool,
+    id: Uuid,
+    ok: bool,
+    message: &str,
+) -> Result<(), AppError> {
+    sqlx::query!(
+        r#"
+        UPDATE auth_providers
+        SET last_test_at = NOW(),
+            last_test_ok = $2,
+            last_test_message = $3
+        WHERE id = $1
+        "#,
+        id,
+        ok,
+        message,
+    )
+    .execute(pool)
+    .await
+    .map_err(AppError::database_error)?;
+    Ok(())
 }
 
 /// Count user_auth_links that reference a provider — used by the

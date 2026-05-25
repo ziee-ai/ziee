@@ -332,7 +332,7 @@ impl AuthProviderTrait for LdapAuthProvider {
         })
     }
 
-    async fn test_connection(&self) -> Result<(), AuthError> {
+    async fn test_connection(&self) -> Result<String, AuthError> {
         // Test connection by attempting to connect and bind (if admin credentials provided)
         let (conn, mut ldap) = LdapConnAsync::new(&self.config.url).await.map_err(|e| {
             AuthError::ConnectionFailed(format!("Failed to connect to LDAP: {}", e))
@@ -340,16 +340,18 @@ impl AuthProviderTrait for LdapAuthProvider {
 
         ldap3::drive!(conn);
 
+        let mut msg = "LDAP server reachable".to_string();
         if let (Some(admin_dn), Some(admin_pw)) =
             (&self.config.admin_bind_dn, &self.config.admin_password)
         {
             ldap.simple_bind(admin_dn, admin_pw)
                 .await
                 .map_err(|e| AuthError::ConfigurationError(format!("Test bind failed: {}", e)))?;
+            msg.push_str("; admin bind succeeded");
         }
 
         let _ = ldap.unbind().await;
-        Ok(())
+        Ok(msg)
     }
 
     fn get_config(&self) -> &serde_json::Value {

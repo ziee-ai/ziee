@@ -14,17 +14,20 @@ import type {
  * `AuthProviders` store in modules/auth — that one feeds the
  * login-page button row; this one drives the admin settings table.
  *
- * Per-row test results live in `testResults` keyed by provider id,
- * so the table can render an inline "✓ ok" / "✗ <reason>" badge
- * without scattering test state across components.
+ * Test results are persisted on the row (`last_test_at`,
+ * `last_test_ok`, `last_test_message` — migration 48), so the table
+ * reads them directly off the provider row. After a Test action we
+ * just refresh the list to pick up the new values; no separate
+ * in-memory cache.
  */
 interface AuthProvidersAdminStore {
   providers: AuthProviderResponse[]
   loading: boolean
   saving: boolean
   error: string | null
-  testResults: Record<string, TestProviderResponse>
-  testingId: string | null
+  /// IDs currently mid-test, so the row's Test button can show a
+  /// spinner. Cleared per-id when the call returns.
+  testingIds: Set<string>
 
   __init__: {
     providers?: () => Promise<void>
@@ -37,7 +40,13 @@ interface AuthProvidersAdminStore {
     req: UpdateAuthProviderRequest,
   ) => Promise<AuthProviderResponse>
   deleteProvider: (id: string) => Promise<{ affected_user_links: number }>
+  /// Test a saved provider. Server persists the result on the row;
+  /// we refresh the list afterwards so the UI shows the new values.
   testProvider: (id: string) => Promise<TestProviderResponse>
+  /// Test a config payload WITHOUT saving it to the DB. Used by the
+  /// EditDrawer's "Test config" button so admins can verify before
+  /// committing.
+  testConfig: (req: CreateAuthProviderRequest) => Promise<TestProviderResponse>
 }
 
 export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
@@ -47,8 +56,7 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
       loading: false,
       saving: false,
       error: null,
-      testResults: {},
-      testingId: null,
+      testingIds: new Set<string>(),
 
       __init__: {
         providers: async () => {
@@ -131,7 +139,7 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
           const res = await ApiClient.AuthProviders.delete({ id }, undefined)
           set(s => {
             s.providers = s.providers.filter(p => p.id !== id)
-            delete s.testResults[id]
+            s.testingIds.delete(id)
             s.saving = false
           })
           return { affected_user_links: res.affected_user_links }
@@ -146,25 +154,36 @@ export const useAuthProvidersAdminStore = create<AuthProvidersAdminStore>()(
 
       testProvider: async (id: string) => {
         set(s => {
-          s.testingId = id
+          s.testingIds.add(id)
         })
         try {
           const res = await ApiClient.AuthProviders.test({ id }, undefined)
+          // Server persists the result on the row; reload so the
+          // table renders the new last_test_at/ok/message immediately.
+          await get().loadProviders()
           set(s => {
-            s.testResults[id] = res
-            s.testingId = null
+            s.testingIds.delete(id)
           })
           return res
         } catch (e: any) {
-          const res: TestProviderResponse = {
+          set(s => {
+            s.testingIds.delete(id)
+          })
+          return {
             ok: false,
             message: e?.message ?? 'Test failed',
           }
-          set(s => {
-            s.testResults[id] = res
-            s.testingId = null
-          })
-          return res
+        }
+      },
+
+      testConfig: async (req: CreateAuthProviderRequest) => {
+        try {
+          return await ApiClient.AuthProviders.testConfig(req, undefined)
+        } catch (e: any) {
+          return {
+            ok: false,
+            message: e?.message ?? 'Test failed',
+          }
         }
       },
     })),

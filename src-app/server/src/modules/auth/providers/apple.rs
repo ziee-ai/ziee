@@ -481,12 +481,85 @@ impl AuthProviderTrait for AppleProvider {
         })
     }
 
-    async fn test_connection(&self) -> Result<(), AuthError> {
-        // Two checks: (1) the JWKS endpoint reachable; (2) we can
-        // sign a client_secret JWT (private key valid + readable).
+    async fn test_connection(&self) -> Result<String, AuthError> {
+        // Layered checks so the admin sees what passed + what didn't:
+        //   1. JWKS reachable
+        //   2. .p8 readable + signs ES256
+        //   3. dummy token exchange with our client_secret JWT —
+        //      proves Apple recognizes our team_id/services_id/key_id
+        let mut messages: Vec<String> = Vec::new();
+
         self.fetch_jwks().await?;
-        let _ = self.generate_client_secret_jwt()?;
-        Ok(())
+        messages.push("Apple JWKS reachable".to_string());
+
+        let client_secret = self.generate_client_secret_jwt()?;
+        messages.push("private key valid (.p8 signs ES256)".to_string());
+
+        // Refuse to probe with obvious placeholder values — the admin
+        // hasn't entered real credentials yet.
+        if self.config.team_id.trim().is_empty()
+            || self.config.services_id.trim().is_empty()
+            || self.config.key_id.trim().is_empty()
+        {
+            messages.push(
+                "team_id/services_id/key_id not fully configured; skipped credential probe"
+                    .to_string(),
+            );
+            return Ok(messages.join("; "));
+        }
+
+        let form = [
+            ("grant_type", "authorization_code"),
+            ("code", "ziee-test-connection-probe-dummy-code"),
+            ("redirect_uri", "http://localhost/ziee-config-probe"),
+            ("client_id", self.config.services_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+        ];
+        let resp = match self
+            .http
+            .post(&self.token_url())
+            .form(&form)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                return Err(AuthError::ConnectionFailed(format!(
+                    "Apple token endpoint unreachable: {}",
+                    e
+                )));
+            }
+        };
+        let status = resp.status();
+        let body_text = resp.text().await.unwrap_or_default();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&body_text).unwrap_or(serde_json::Value::Null);
+        let error_code = parsed.get("error").and_then(|v| v.as_str()).unwrap_or("");
+
+        match (status.as_u16(), error_code) {
+            (400, "invalid_grant") => messages.push(
+                "credentials accepted (Apple returned invalid_grant for our dummy code — proves team_id/services_id/key_id are recognized)"
+                    .to_string(),
+            ),
+            (400 | 401, "invalid_client") => {
+                return Err(AuthError::InvalidCredentials(format!(
+                    "Apple rejected the client_secret JWT — verify team_id ({}), services_id ({}), and key_id ({}) match what's registered in Apple Developer",
+                    self.config.team_id, self.config.services_id, self.config.key_id
+                )));
+            }
+            (s, code) if s == 400 || s == 401 => messages.push(format!(
+                "Apple returned unexpected error '{}' (HTTP {}) — body: {}",
+                code,
+                s,
+                body_text.chars().take(160).collect::<String>()
+            )),
+            (s, _) => messages.push(format!(
+                "Apple returned HTTP {} (unexpected) — body: {}",
+                s,
+                body_text.chars().take(160).collect::<String>()
+            )),
+        }
+        Ok(messages.join("; "))
     }
 
     fn get_config(&self) -> &serde_json::Value {

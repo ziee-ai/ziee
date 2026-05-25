@@ -53,4 +53,8 @@ pub fn auth_admin_routes() -> ApiRouter {
             "/admin/auth-providers/{id}/test",
             post_with(admin_test_provider, admin_test_provider_docs),
         )
+        .api_route(
+            "/admin/auth-providers/test-config",
+            post_with(admin_test_provider_config, admin_test_provider_config_docs),
+        )
 }

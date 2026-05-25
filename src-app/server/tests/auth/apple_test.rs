@@ -24,7 +24,10 @@ use crate::common::apple_mock::AppleMockServer;
 use chrono::Utc;
 use serde_json::json;
 
-/// Helper: seed an "apple" auth_providers row pointing at the mock.
+/// Helper: seed an Apple auth_providers row pointing at the mock.
+/// The default seeded `apple` row (migration 47) means tests must
+/// pick a different name like `apple-test` to avoid the unique-name
+/// constraint.
 async fn seed_apple_provider(
     pool: &sqlx::PgPool,
     name: &str,
@@ -133,9 +136,9 @@ async fn test_apple_first_login_auto_provisions_user() {
         .unwrap();
     let services_id = "com.example.app";
     let provider_id =
-        seed_apple_provider(&pool, "apple", services_id, &apple_mock).await;
+        seed_apple_provider(&pool, "apple-test", services_id, &apple_mock).await;
 
-    let (state, nonce) = init_apple_flow(&test_server, "apple").await;
+    let (state, nonce) = init_apple_flow(&test_server, "apple-test").await;
 
     let now = Utc::now().timestamp();
     let id_token = apple_mock.sign_id_token(&json!({
@@ -153,7 +156,7 @@ async fn test_apple_first_login_auto_provisions_user() {
 
     let resp = post_apple_callback(
         &test_server,
-        "apple",
+        "apple-test",
         "test-apple-code",
         &state,
         Some(r#"{"name":{"firstName":"Test","lastName":"User"},"email":"tester@privaterelay.appleid.com"}"#),
@@ -219,10 +222,10 @@ async fn test_apple_second_login_reuses_existing_user() {
         .unwrap();
     let services_id = "com.example.repeat";
     let provider_id =
-        seed_apple_provider(&pool, "apple", services_id, &apple_mock).await;
+        seed_apple_provider(&pool, "apple-test", services_id, &apple_mock).await;
 
     // First login — create the user via the same auto-provision path.
-    let (state1, nonce1) = init_apple_flow(&test_server, "apple").await;
+    let (state1, nonce1) = init_apple_flow(&test_server, "apple-test").await;
     let now = Utc::now().timestamp();
     let id_token1 = apple_mock.sign_id_token(&json!({
         "iss": apple_mock.base_url,
@@ -237,7 +240,7 @@ async fn test_apple_second_login_reuses_existing_user() {
     apple_mock.queue_token_response(&id_token1).await;
     let r1 = post_apple_callback(
         &test_server,
-        "apple",
+        "apple-test",
         "code1",
         &state1,
         Some(r#"{"name":{"firstName":"Re","lastName":"Peat"},"email":"repeat@privaterelay.appleid.com"}"#),
@@ -246,7 +249,7 @@ async fn test_apple_second_login_reuses_existing_user() {
     assert!(r1.status().is_redirection());
 
     // Second login — same sub, NO user JSON (Apple-correct).
-    let (state2, nonce2) = init_apple_flow(&test_server, "apple").await;
+    let (state2, nonce2) = init_apple_flow(&test_server, "apple-test").await;
     let now = Utc::now().timestamp();
     let id_token2 = apple_mock.sign_id_token(&json!({
         "iss": apple_mock.base_url,
@@ -259,7 +262,7 @@ async fn test_apple_second_login_reuses_existing_user() {
         "nonce": nonce2,
     }));
     apple_mock.queue_token_response(&id_token2).await;
-    let r2 = post_apple_callback(&test_server, "apple", "code2", &state2, None).await;
+    let r2 = post_apple_callback(&test_server, "apple-test", "code2", &state2, None).await;
     assert!(r2.status().is_redirection());
 
     // Exactly one user, exactly one link.
@@ -283,9 +286,9 @@ async fn test_apple_callback_rejects_nonce_mismatch() {
         .await
         .unwrap();
     let services_id = "com.example.nonce";
-    seed_apple_provider(&pool, "apple", services_id, &apple_mock).await;
+    seed_apple_provider(&pool, "apple-test", services_id, &apple_mock).await;
 
-    let (state, _real_nonce) = init_apple_flow(&test_server, "apple").await;
+    let (state, _real_nonce) = init_apple_flow(&test_server, "apple-test").await;
 
     let now = Utc::now().timestamp();
     let id_token = apple_mock.sign_id_token(&json!({
@@ -299,7 +302,7 @@ async fn test_apple_callback_rejects_nonce_mismatch() {
         "nonce": "DEFINITELY_NOT_THE_RIGHT_NONCE",
     }));
     apple_mock.queue_token_response(&id_token).await;
-    let resp = post_apple_callback(&test_server, "apple", "code", &state, None).await;
+    let resp = post_apple_callback(&test_server, "apple-test", "code", &state, None).await;
     assert_eq!(resp.status(), 401, "Nonce mismatch must be 401");
 }
 
@@ -316,9 +319,9 @@ async fn test_apple_callback_rejects_bad_signature() {
         .await
         .unwrap();
     let services_id = "com.example.badsig";
-    seed_apple_provider(&pool, "apple", services_id, &apple_mock).await;
+    seed_apple_provider(&pool, "apple-test", services_id, &apple_mock).await;
 
-    let (state, nonce) = init_apple_flow(&test_server, "apple").await;
+    let (state, nonce) = init_apple_flow(&test_server, "apple-test").await;
 
     let now = Utc::now().timestamp();
     let id_token = foreign_mock.sign_id_token(&json!({
@@ -332,7 +335,7 @@ async fn test_apple_callback_rejects_bad_signature() {
         "nonce": nonce,
     }));
     apple_mock.queue_token_response(&id_token).await;
-    let resp = post_apple_callback(&test_server, "apple", "code", &state, None).await;
+    let resp = post_apple_callback(&test_server, "apple-test", "code", &state, None).await;
     assert_eq!(resp.status(), 401, "Bad signature must be 401");
 }
 
@@ -346,7 +349,7 @@ async fn test_apple_test_connection_succeeds_for_valid_config() {
         .await
         .unwrap();
     let provider_id =
-        seed_apple_provider(&pool, "apple", "com.example.test-conn", &apple_mock).await;
+        seed_apple_provider(&pool, "apple-test", "com.example.test-conn", &apple_mock).await;
 
     // Need an admin user + token to hit the admin endpoint.
     let setup_body = json!({

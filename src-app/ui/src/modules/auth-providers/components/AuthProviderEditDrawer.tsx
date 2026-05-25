@@ -1,20 +1,22 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
+  App,
   Button,
-  Drawer,
+  Flex,
   Form,
   Input,
   Select,
-  Space,
+  Spin,
   Switch,
   Typography,
 } from 'antd'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Permissions } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
 import { usePermission } from '@/core/permissions/usePermission'
-import type { AuthProviderResponse } from '@/api-client/types'
+import type { AuthProviderResponse, TestProviderResponse } from '@/api-client/types'
 import type { ProviderTemplate } from '../types'
 
 const { Title, Paragraph } = Typography
@@ -53,9 +55,14 @@ export function AuthProviderEditDrawer({
   existing,
   onClose,
 }: EditDrawerProps) {
+  const { message } = App.useApp()
   const [form] = Form.useForm<FormShape>()
   const { saving, error } = Stores.AuthProvidersAdmin
   const canManage = usePermission(Permissions.AuthProvidersManage)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<TestProviderResponse | null>(
+    null,
+  )
 
   // Resolve the provider type for this drawer instance.
   const providerType = useMemo<string>(
@@ -65,10 +72,19 @@ export function AuthProviderEditDrawer({
 
   useEffect(() => {
     if (!open) return
+    setTestResult(null)
     if (template) {
+      // Auto-fill `name` from the template key for Google / Microsoft
+      // / Apple. The migration 47 pre-seed already created rows with
+      // those names, so the Add menu disables those entries (see
+      // AddProviderMenu.existingNames); this branch only fires for
+      // generic templates where `key` doesn't collide.
+      const defaultName = templateDefaultName(template)
       form.setFieldsValue({
-        name: '',
-        enabled: true,
+        name: defaultName,
+        // Safer default: rows are created disabled. Admin verifies
+        // with Test config + toggles on when ready.
+        enabled: false,
         config: template.defaultConfig,
       })
     } else if (existing) {
@@ -79,6 +95,26 @@ export function AuthProviderEditDrawer({
       })
     }
   }, [open, template, existing, form])
+
+  const onTestConfig = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const values = await form.validateFields()
+      const normalized = normalizeConfig(values.config, providerType)
+      const res = await Stores.AuthProvidersAdmin.testConfig({
+        name: values.name.trim(),
+        provider_type: providerType,
+        enabled: false,
+        config: normalized,
+      })
+      setTestResult(res)
+    } catch {
+      // form validation failed; AntD surfaces inline
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const onSubmit = async () => {
     try {
@@ -92,12 +128,14 @@ export function AuthProviderEditDrawer({
           enabled: values.enabled,
           config: normalized,
         })
+        message.success(`Created ${values.name.trim()}`)
       } else if (existing) {
         await Stores.AuthProvidersAdmin.updateProvider(existing.id, {
           name: values.name.trim(),
           enabled: values.enabled,
           config: normalized,
         })
+        message.success(`Saved ${existing.name}`)
       }
       onClose()
     } catch {
@@ -116,21 +154,46 @@ export function AuthProviderEditDrawer({
       title={titleText}
       open={open}
       onClose={onClose}
-      width={560}
+      size={600}
+      maskClosable={false}
       destroyOnClose
       footer={
-        <Space className="flex justify-end">
-          <Button onClick={onClose}>Cancel</Button>
+        // Cancel → Test → Save, right-aligned. Matches the dominant
+        // convention from 08-cross-cutting-consistency I-1 (every
+        // non-user-module drawer uses justify-end + Cancel-then-Submit).
+        <Flex className="justify-end gap-2">
+          <Button onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
           <Can permission={Permissions.AuthProvidersManage}>
+            <Button loading={testing} onClick={onTestConfig}>
+              Test config
+            </Button>
             <Button type="primary" loading={saving} onClick={onSubmit}>
-              {existing ? 'Save' : 'Create'}
+              {existing ? 'Save changes' : 'Create'}
             </Button>
           </Can>
-        </Space>
+        </Flex>
       }
     >
       {error && (
         <Alert type="error" message={error} showIcon className="mb-4" />
+      )}
+      {testing && (
+        <div className="text-center py-3 mb-4">
+          <Spin /> <Typography.Text type="secondary">Testing…</Typography.Text>
+        </div>
+      )}
+      {testResult && !testing && (
+        <Alert
+          type={testResult.ok ? 'success' : 'warning'}
+          message={testResult.ok ? 'Configuration OK' : 'Configuration issues'}
+          description={testResult.message}
+          showIcon
+          closable
+          onClose={() => setTestResult(null)}
+          className="mb-4"
+        />
       )}
       <Form form={form} layout="vertical" disabled={!canManage}>
         <Form.Item
@@ -346,6 +409,17 @@ function normalizeScopeArray(value: any): string[] {
       .filter(Boolean)
   }
   return []
+}
+
+/// Auto-fill the `name` field for Google / Microsoft / Apple
+/// templates so the row matches the migration-47 pre-seed naming.
+/// Other templates (generic OIDC/OAuth2) leave it blank for the
+/// admin to fill.
+function templateDefaultName(t: ProviderTemplate): string {
+  if (t.key === 'google' || t.key === 'microsoft' || t.key === 'apple') {
+    return t.key
+  }
+  return ''
 }
 
 function normalizeConfig(

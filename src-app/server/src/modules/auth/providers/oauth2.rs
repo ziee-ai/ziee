@@ -108,17 +108,24 @@ pub struct OAuth2Config {
     pub client_id: String,
     /// OAuth 2.0 client secret
     pub client_secret: String,
-    /// Authorization endpoint URL
-    pub authorization_url: String,
-    /// Token endpoint URL
-    pub token_url: String,
-    /// OIDC issuer URL (for OIDC providers)
+    /// Authorization endpoint URL. Optional for OIDC providers
+    /// (discovery returns it); required for plain OAuth2.
+    #[serde(default)]
+    pub authorization_url: Option<String>,
+    /// Token endpoint URL. Optional for OIDC providers (discovery
+    /// returns it); required for plain OAuth2.
+    #[serde(default)]
+    pub token_url: Option<String>,
+    /// OIDC issuer URL (required for OIDC providers; omit for plain OAuth2)
     pub issuer_url: Option<String>,
     /// User info endpoint URL (for OAuth 2.0 providers without OIDC)
     pub userinfo_url: Option<String>,
     /// Scopes to request
+    #[serde(default)]
     pub scopes: Vec<String>,
-    /// Attribute mapping for user info
+    /// Attribute mapping for user info. Defaults to standard OIDC
+    /// claim names (sub/email/preferred_username/etc.).
+    #[serde(default)]
     pub attribute_mapping: OAuth2AttributeMapping,
     /// Session timeout in seconds (default: 300 = 5 minutes)
     pub session_timeout_seconds: Option<i64>,
@@ -134,6 +141,82 @@ pub struct OAuth2Config {
     /// using the `consumers` endpoint).
     #[serde(default)]
     pub allowed_tenant_ids: Option<Vec<String>>,
+}
+
+/// Outcome of `probe_oidc_credentials`. Interpreted by `test_connection`
+/// to build the admin-facing message.
+enum ProbeResult {
+    /// Token endpoint replied with `invalid_grant` (or equivalent
+    /// 400-class error specifically about the code being invalid).
+    /// Means: client_id + client_secret are recognized; only the
+    /// code itself was bad — which it was, because we sent a dummy.
+    CredentialsOk,
+    /// Token endpoint replied with `invalid_client` or 401 — the
+    /// provider didn't recognize our client_id / client_secret pair.
+    CredentialsBad(String),
+    /// Provider rejected the redirect_uri (it's not registered).
+    /// Credentials format is fine but the admin needs to register
+    /// the callback URL in the provider's console.
+    RedirectUriMismatch,
+    /// Couldn't reach the token endpoint at all.
+    NetworkError(String),
+    /// Provider replied with something we don't recognize. Surface
+    /// it verbatim to the admin.
+    Unexpected(String),
+}
+
+/// POST `grant_type=authorization_code` to the token endpoint with a
+/// hand-crafted dummy code. Used by `test_connection` to distinguish:
+///   - bad credentials (provider rejects client_id/client_secret)
+///   - good credentials but bad redirect_uri (admin must register URL)
+///   - good credentials, only the code was bad (our dummy → expected)
+/// See https://datatracker.ietf.org/doc/html/rfc6749#section-5.2 for
+/// the standard error codes.
+async fn probe_oidc_credentials(
+    token_url: &str,
+    client_id: &str,
+    client_secret: &str,
+) -> ProbeResult {
+    let client = create_http_client();
+    let body = [
+        ("grant_type", "authorization_code"),
+        ("code", "ziee-test-connection-probe-dummy-code"),
+        ("redirect_uri", "http://localhost/ziee-config-probe"),
+        ("client_id", client_id),
+        ("client_secret", client_secret),
+    ];
+    let resp = match client.post(token_url).form(&body).send().await {
+        Ok(r) => r,
+        Err(e) => return ProbeResult::NetworkError(e.to_string()),
+    };
+    let status = resp.status();
+    let body_text = resp.text().await.unwrap_or_default();
+    let parsed: serde_json::Value = serde_json::from_str(&body_text).unwrap_or(serde_json::Value::Null);
+    let error_code = parsed.get("error").and_then(|v| v.as_str()).unwrap_or("");
+    let error_desc = parsed
+        .get("error_description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    match (status.as_u16(), error_code) {
+        (400, "invalid_grant") => ProbeResult::CredentialsOk,
+        (400 | 401, "invalid_client") | (401, _) => {
+            ProbeResult::CredentialsBad(if error_desc.is_empty() {
+                format!("HTTP {} {}", status, error_code)
+            } else {
+                format!("{}: {}", error_code, error_desc)
+            })
+        }
+        (_, code) if code.contains("redirect_uri") => ProbeResult::RedirectUriMismatch,
+        (_, "invalid_request") if error_desc.to_lowercase().contains("redirect") => {
+            ProbeResult::RedirectUriMismatch
+        }
+        _ => ProbeResult::Unexpected(format!(
+            "HTTP {} body={}",
+            status,
+            body_text.chars().take(200).collect::<String>()
+        )),
+    }
 }
 
 /// Extract a string claim from a verified JWT compact serialization.
@@ -416,10 +499,20 @@ impl AuthProviderTrait for OAuth2Provider {
             // OAuth 2.0 flow - create client inline to avoid type parameter issues
             let client_id = ClientId::new(self.config.client_id.clone());
             let client_secret = ClientSecret::new(self.config.client_secret.clone());
-            let auth_url = AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
+            let auth_url_str = self.config.authorization_url.clone().ok_or_else(|| {
+                AuthError::ConfigurationError(
+                    "OAuth2 provider requires `authorization_url` (or set `issuer_url` for OIDC)".to_string(),
+                )
+            })?;
+            let token_url_str = self.config.token_url.clone().ok_or_else(|| {
+                AuthError::ConfigurationError(
+                    "OAuth2 provider requires `token_url` (or set `issuer_url` for OIDC)".to_string(),
+                )
+            })?;
+            let auth_url = AuthUrl::new(auth_url_str).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
             })?;
-            let token_url = TokenUrl::new(self.config.token_url.clone())
+            let token_url = TokenUrl::new(token_url_str)
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
             let redirect_url = RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
@@ -658,10 +751,20 @@ impl AuthProviderTrait for OAuth2Provider {
             // OAuth 2.0 flow - create client inline to avoid type parameter issues
             let client_id = ClientId::new(self.config.client_id.clone());
             let client_secret = ClientSecret::new(self.config.client_secret.clone());
-            let auth_url = AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
+            let auth_url_str = self.config.authorization_url.clone().ok_or_else(|| {
+                AuthError::ConfigurationError(
+                    "OAuth2 provider requires `authorization_url` (or set `issuer_url` for OIDC)".to_string(),
+                )
+            })?;
+            let token_url_str = self.config.token_url.clone().ok_or_else(|| {
+                AuthError::ConfigurationError(
+                    "OAuth2 provider requires `token_url` (or set `issuer_url` for OIDC)".to_string(),
+                )
+            })?;
+            let auth_url = AuthUrl::new(auth_url_str).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
             })?;
-            let token_url = TokenUrl::new(self.config.token_url.clone())
+            let token_url = TokenUrl::new(token_url_str)
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
             let redirect_url = RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
@@ -727,27 +830,127 @@ impl AuthProviderTrait for OAuth2Provider {
         })
     }
 
-    async fn test_connection(&self) -> Result<(), AuthError> {
-        // Test by attempting to discover OIDC metadata if OIDC provider
-        if let Some(issuer_url) = &self.config.issuer_url {
-            let issuer = IssuerUrl::new(issuer_url.clone())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e)))?;
+    async fn test_connection(&self) -> Result<String, AuthError> {
+        // Layered checks so the success message tells the admin
+        // exactly what was verified — config error vs credential
+        // error becomes obvious instead of a single opaque pass/fail.
+        let mut messages: Vec<String> = Vec::new();
 
-            CoreProviderMetadata::discover_async(issuer, &async_http_client)
-                .await
-                .map_err(|e| {
-                    AuthError::ConnectionFailed(format!("Failed to discover OIDC metadata: {}", e))
-                })?;
-        } else {
-            // For OAuth 2.0, just validate URLs
-            AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
-                AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
-            })?;
-            TokenUrl::new(self.config.token_url.clone())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
+        // Layer 1: structural validation of config fields.
+        if self.config.client_id.trim().is_empty() {
+            return Err(AuthError::ConfigurationError(
+                "client_id is empty".to_string(),
+            ));
         }
 
-        Ok(())
+        // Layer 2: OIDC discovery (proves issuer URL is reachable + serves a valid doc).
+        let (token_url, original_issuer_url): (String, Option<String>) =
+            if let Some(issuer_url) = &self.config.issuer_url {
+                // For templated Microsoft `common` URLs we can't run
+                // real discovery against the literal `{tenantid}`
+                // placeholder — `openidconnect` only accepts a fully-
+                // qualified issuer. Substitute with a benign placeholder
+                // (matches `common` itself, which is what's reachable).
+                let probe_issuer_url = issuer_url.replace("{tenantid}", "common");
+                let issuer = IssuerUrl::new(probe_issuer_url.clone()).map_err(|e| {
+                    AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e))
+                })?;
+                let metadata =
+                    CoreProviderMetadata::discover_async(issuer, &async_http_client)
+                        .await
+                        .map_err(|e| {
+                            AuthError::ConnectionFailed(format!(
+                                "OIDC discovery failed for {}: {}",
+                                probe_issuer_url, e
+                            ))
+                        })?;
+                messages.push("OIDC discovery succeeded".to_string());
+                let token_endpoint = metadata.token_endpoint().ok_or_else(|| {
+                    AuthError::ConfigurationError(
+                        "OIDC metadata missing token_endpoint".to_string(),
+                    )
+                })?;
+                (
+                    token_endpoint.url().to_string(),
+                    Some(issuer_url.clone()),
+                )
+            } else {
+                // OAuth 2.0 (non-OIDC): URL syntax only.
+                let auth_url_str = self.config.authorization_url.clone().ok_or_else(|| {
+                    AuthError::ConfigurationError(
+                        "OAuth2 provider requires `authorization_url` (or set `issuer_url` for OIDC)".to_string(),
+                    )
+                })?;
+                let token_url_str = self.config.token_url.clone().ok_or_else(|| {
+                    AuthError::ConfigurationError(
+                        "OAuth2 provider requires `token_url` (or set `issuer_url` for OIDC)".to_string(),
+                    )
+                })?;
+                AuthUrl::new(auth_url_str).map_err(|e| {
+                    AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
+                })?;
+                TokenUrl::new(token_url_str.clone()).map_err(|e| {
+                    AuthError::ConfigurationError(format!("Invalid token URL: {}", e))
+                })?;
+                messages.push("OAuth2 URLs are valid".to_string());
+                (token_url_str, None)
+            };
+
+        // Layer 3: dummy token-exchange probe — distinguishes wrong
+        // credentials from wrong URL. Skipped if client_secret is
+        // empty (we'd just see a guaranteed invalid_client and the
+        // admin hasn't actually entered anything to probe).
+        if self.config.client_secret.trim().is_empty() {
+            messages.push("client_secret empty; skipped credential probe".to_string());
+            return Ok(messages.join("; "));
+        }
+
+        match probe_oidc_credentials(
+            &token_url,
+            &self.config.client_id,
+            &self.config.client_secret,
+        )
+        .await
+        {
+            ProbeResult::CredentialsOk => messages.push(
+                "credentials accepted (token endpoint returned `invalid_grant` for our dummy probe — proves client_id/secret are recognized)"
+                    .to_string(),
+            ),
+            ProbeResult::CredentialsBad(detail) => {
+                return Err(AuthError::InvalidCredentials(format!(
+                    "token endpoint rejected client_id/client_secret: {}",
+                    detail
+                )));
+            }
+            ProbeResult::RedirectUriMismatch => messages.push(
+                "credentials format OK; redirect URI not registered with provider (register `<your-server>/api/auth/oauth/<name>/callback` in the provider's console)"
+                    .to_string(),
+            ),
+            ProbeResult::NetworkError(e) => {
+                return Err(AuthError::ConnectionFailed(format!(
+                    "token endpoint unreachable: {}",
+                    e
+                )));
+            }
+            ProbeResult::Unexpected(s) => {
+                messages.push(format!("token endpoint returned unexpected response: {}", s))
+            }
+        }
+
+        // For templated `common` issuers, note that the per-tenant
+        // validation only kicks in at real login time.
+        if original_issuer_url
+            .as_deref()
+            .map(|s| s.contains("{tenantid}"))
+            .unwrap_or(false)
+        {
+            messages.push(
+                "templated issuer uses `{tenantid}`; per-tenant validation happens at real login via the allowed_tenant_ids allowlist"
+                    .to_string(),
+            );
+        }
+
+        Ok(messages.join("; "))
     }
 
     fn get_config(&self) -> &serde_json::Value {

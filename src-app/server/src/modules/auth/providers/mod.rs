@@ -85,8 +85,14 @@ pub trait AuthProviderTrait: Send + Sync {
         ))
     }
 
-    /// Test provider connection (for admin testing)
-    async fn test_connection(&self) -> Result<(), AuthError>;
+    /// Test provider connection (for admin testing). Returns a
+    /// human-readable success message describing what was verified
+    /// — e.g. "OIDC discovery succeeded; credentials accepted (token
+    /// endpoint returned invalid_grant for our dummy probe, which
+    /// proves client_id/secret are recognized)". On failure, the
+    /// AuthError carries an actionable message ("client_id or
+    /// client_secret rejected", "issuer URL unreachable", etc.).
+    async fn test_connection(&self) -> Result<String, AuthError>;
 
     /// Get provider configuration as JSON
     fn get_config(&self) -> &serde_json::Value;

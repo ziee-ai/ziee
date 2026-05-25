@@ -1206,6 +1206,9 @@ fn provider_to_response(p: super::providers::models::AuthProvider) -> AuthProvid
         enabled: p.enabled,
         created_at: p.created_at,
         updated_at: p.updated_at,
+        last_test_at: p.last_test_at,
+        last_test_ok: p.last_test_ok,
+        last_test_message: p.last_test_message,
     }
 }
 
@@ -1374,10 +1377,13 @@ pub fn admin_delete_provider_docs(op: TransformOperation) -> TransformOperation 
 }
 
 /// POST /api/admin/auth-providers/{id}/test
-/// Run the provider's `test_connection` — OIDC providers do
-/// discovery; Apple verifies the .p8 + signs a sample JWT. Returns
-/// 200 always; success / failure is in the body so the admin UI can
-/// render a nicer inline message than a non-200.
+/// Run the provider's `test_connection`. Discovery + dummy
+/// token-exchange probe for OIDC / Apple; URL-syntax check for
+/// OAuth2. Returns 200 always; success / failure is in the body so
+/// the admin UI can render a nicer inline message than a non-200.
+/// Persists the result on the auth_providers row (`last_test_at`,
+/// `last_test_ok`, `last_test_message`) so the result survives a
+/// page reload.
 #[debug_handler]
 pub async fn admin_test_provider(
     _: RequirePermissions<(AuthProvidersManage,)>,
@@ -1388,46 +1394,91 @@ pub async fn admin_test_provider(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, AppError::not_found("Auth provider")))?;
 
-    // Temporarily flip `enabled` so the factory accepts a disabled
-    // provider — we want test-while-disabled to work.
-    let mut row_for_test = row;
-    row_for_test.enabled = true;
-
-    let provider = match create_provider(&row_for_test, Repos.pool().clone()) {
-        Ok(p) => p,
-        Err(e) => {
-            return Ok((
-                StatusCode::OK,
-                Json(TestProviderResponse {
-                    ok: false,
-                    message: format!("Configuration error: {}", e),
-                }),
-            ));
-        }
-    };
-
-    match provider.test_connection().await {
-        Ok(()) => Ok((
-            StatusCode::OK,
-            Json(TestProviderResponse {
-                ok: true,
-                message: "Connection test succeeded".to_string(),
-            }),
-        )),
-        Err(e) => Ok((
-            StatusCode::OK,
-            Json(TestProviderResponse {
-                ok: false,
-                message: format!("{}", e),
-            }),
-        )),
+    let result = run_test_for_row(row).await;
+    // Persist the outcome regardless of pass/fail so the row reflects
+    // current state on the next list call.
+    if let Err(e) = provider_repo::record_test_result(
+        Repos.pool(),
+        id,
+        result.ok,
+        &result.message,
+    )
+    .await
+    {
+        tracing::warn!(error = ?e, "failed to persist auth-provider test result");
     }
+    Ok((StatusCode::OK, Json(result)))
 }
 
 pub fn admin_test_provider_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(AuthProvidersManage,)>(op)
         .id("AuthProviders.test")
         .tag("auth-providers")
-        .summary("Test the auth provider's connection / discovery / key")
+        .summary("Test the auth provider's connection (probes discovery + credentials)")
         .response::<200, Json<TestProviderResponse>>()
+}
+
+/// POST /api/admin/auth-providers/test-config
+/// Test a provider config WITHOUT saving it to the database. Used by
+/// the EditDrawer's "Test config" button so admins can verify their
+/// inputs before committing. Body is the same shape as Create — we
+/// just don't persist the row. Result is not stored anywhere (no row
+/// to attach to).
+#[debug_handler]
+pub async fn admin_test_provider_config(
+    _: RequirePermissions<(AuthProvidersManage,)>,
+    Json(req): Json<CreateAuthProviderRequest>,
+) -> ApiResult<Json<TestProviderResponse>> {
+    // Construct a transient AuthProvider in memory matching what
+    // create_provider expects. The fake id + timestamps don't affect
+    // behavior — test_connection only reads `config` + `provider_type`.
+    let transient = super::providers::models::AuthProvider {
+        id: uuid::Uuid::nil(),
+        name: req.name,
+        provider_type: req.provider_type,
+        enabled: true,
+        config: req.config,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        last_test_at: None,
+        last_test_ok: None,
+        last_test_message: None,
+    };
+    let result = run_test_for_row(transient).await;
+    Ok((StatusCode::OK, Json(result)))
+}
+
+pub fn admin_test_provider_config_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(AuthProvidersManage,)>(op)
+        .id("AuthProviders.testConfig")
+        .tag("auth-providers")
+        .summary("Test a provider config without saving (used by the EditDrawer)")
+        .response::<200, Json<TestProviderResponse>>()
+}
+
+/// Shared core: build the provider in-memory, run test_connection,
+/// massage the result into a TestProviderResponse. Used by both the
+/// per-row /test endpoint and the pre-save /test-config endpoint.
+async fn run_test_for_row(
+    mut row: super::providers::models::AuthProvider,
+) -> TestProviderResponse {
+    // Force-enable so the factory accepts the row even when the
+    // admin has the provider switched off (we want test-while-disabled).
+    row.enabled = true;
+    let provider = match create_provider(&row, Repos.pool().clone()) {
+        Ok(p) => p,
+        Err(e) => {
+            return TestProviderResponse {
+                ok: false,
+                message: format!("Configuration error: {}", e),
+            };
+        }
+    };
+    match provider.test_connection().await {
+        Ok(msg) => TestProviderResponse { ok: true, message: msg },
+        Err(e) => TestProviderResponse {
+            ok: false,
+            message: format!("{}", e),
+        },
+    }
 }

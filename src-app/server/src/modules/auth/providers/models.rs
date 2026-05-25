@@ -13,6 +13,12 @@ pub struct AuthProvider {
     pub config: serde_json::Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// When the admin last clicked Test on this row.
+    pub last_test_at: Option<DateTime<Utc>>,
+    /// Result of that test — null if never tested.
+    pub last_test_ok: Option<bool>,
+    /// Human-readable detail from test_connection.
+    pub last_test_message: Option<String>,
 }
 
 /// OAuth session for OAuth/OIDC flows - matches new schema

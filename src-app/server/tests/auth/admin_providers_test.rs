@@ -124,7 +124,7 @@ async fn test_admin_providers_crud_happy_path() {
 
     // 1. Create.
     let create_body = json!({
-        "name": "google",
+        "name": "google-test",
         "provider_type": "oidc",
         "enabled": true,
         "config": {
@@ -155,7 +155,7 @@ async fn test_admin_providers_crud_happy_path() {
         .unwrap();
     assert_eq!(r.status(), 200);
     let list: Vec<serde_json::Value> = r.json().await.unwrap();
-    let row = list.iter().find(|p| p["name"] == "google").unwrap();
+    let row = list.iter().find(|p| p["name"] == "google-test").unwrap();
     assert_eq!(row["config"]["client_secret"], json!("••••••"));
     assert_ne!(row["config"]["client_secret"], json!("INITIAL-SECRET-VALUE"));
 
@@ -165,7 +165,7 @@ async fn test_admin_providers_crud_happy_path() {
         .await
         .unwrap();
     let secret_before: Option<String> = sqlx::query_scalar!(
-        r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google'"#
+        r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google-test'"#
     )
     .fetch_one(&pool)
     .await
@@ -189,7 +189,7 @@ async fn test_admin_providers_crud_happy_path() {
     assert_eq!(r.status(), 200);
 
     let secret_after: Option<String> = sqlx::query_scalar!(
-        r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google'"#
+        r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google-test'"#
     )
     .fetch_one(&pool)
     .await
@@ -201,7 +201,7 @@ async fn test_admin_providers_crud_happy_path() {
     );
     let scopes_after: Option<Vec<String>> = sqlx::query_scalar!(
         r#"SELECT ARRAY(SELECT jsonb_array_elements_text(config->'scopes'))::text[]
-           FROM auth_providers WHERE name = 'google'"#
+           FROM auth_providers WHERE name = 'google-test'"#
     )
     .fetch_one(&pool)
     .await
@@ -228,7 +228,7 @@ async fn test_admin_providers_crud_happy_path() {
         .unwrap();
     assert_eq!(r.status(), 200);
     let secret_after2: Option<String> = sqlx::query_scalar!(
-        r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google'"#
+        r#"SELECT config->>'client_secret' FROM auth_providers WHERE name = 'google-test'"#
     )
     .fetch_one(&pool)
     .await
@@ -262,7 +262,7 @@ async fn test_public_providers_list_no_secrets() {
         .post(test_server.api_url("/admin/auth-providers"))
         .header("Authorization", &bearer)
         .json(&json!({
-            "name": "google",
+            "name": "google-test",
             "provider_type": "oidc",
             "enabled": true,
             "config": {
@@ -310,7 +310,7 @@ async fn test_public_providers_list_no_secrets() {
         .iter()
         .map(|p| p["name"].as_str().unwrap())
         .collect();
-    assert!(names.contains(&"google"), "Enabled provider must appear");
+    assert!(names.contains(&"google-test"), "Enabled provider must appear");
     assert!(
         !names.contains(&"disabled-okta"),
         "Disabled provider must NOT appear in public list"
@@ -325,7 +325,7 @@ async fn test_public_providers_list_no_secrets() {
     );
 
     // Display field present.
-    let g = providers.iter().find(|p| p["name"] == "google").unwrap();
+    let g = providers.iter().find(|p| p["name"] == "google-test").unwrap();
     assert_eq!(g["display_name"], json!("Sign in with Google"));
 }
 
@@ -364,6 +364,134 @@ async fn test_admin_providers_delete_missing_returns_404() {
         .await
         .unwrap();
     assert_eq!(r.status(), 404);
+}
+
+/// /test endpoint persists last_test_at/ok/message on the row.
+/// We test against a deliberately-bad provider (unreachable issuer
+/// URL) so the result is `ok=false` and we can verify the persisted
+/// failure message survives a list refresh.
+#[tokio::test]
+async fn test_admin_providers_test_persists_result() {
+    let test_server = crate::common::TestServer::start().await;
+    let admin_token = make_admin(&test_server).await;
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {}", admin_token);
+
+    let r = client
+        .post(test_server.api_url("/admin/auth-providers"))
+        .header("Authorization", &bearer)
+        .json(&json!({
+            "name": "persist-test-failing",
+            "provider_type": "oidc",
+            "enabled": true,
+            "config": {
+                "client_id": "x",
+                "client_secret": "y",
+                "issuer_url": "http://127.0.0.1:1/__unreachable__",
+                "scopes": ["openid"]
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 201);
+    let id = r.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let test = client
+        .post(test_server.api_url(&format!(
+            "/admin/auth-providers/{}/test",
+            id
+        )))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(test.status(), 200);
+    let body: serde_json::Value = test.json().await.unwrap();
+    assert_eq!(body["ok"], json!(false), "Unreachable URL must fail");
+
+    // Refresh via list and confirm the failure was persisted.
+    let list = client
+        .get(test_server.api_url("/admin/auth-providers"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .unwrap();
+    let rows: Vec<serde_json::Value> = list.json().await.unwrap();
+    let row = rows
+        .iter()
+        .find(|p| p["name"] == "persist-test-failing")
+        .unwrap();
+    assert_eq!(row["last_test_ok"], json!(false));
+    assert!(
+        row["last_test_at"].is_string(),
+        "last_test_at must be set after a test"
+    );
+    let msg = row["last_test_message"].as_str().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("discovery") || msg.to_lowercase().contains("unreachable"),
+        "last_test_message should describe the failure, got: {:?}",
+        msg
+    );
+}
+
+/// /test-config endpoint: member 403, admin gets a result without
+/// the call ever persisting a DB row.
+#[tokio::test]
+async fn test_admin_providers_test_config_endpoint() {
+    let test_server = crate::common::TestServer::start().await;
+    let admin_token = make_admin(&test_server).await;
+    let member_token = make_member(&test_server, "carol").await;
+    let client = reqwest::Client::new();
+
+    let body = json!({
+        "name": "ephemeral-probe",
+        "provider_type": "oidc",
+        "config": {
+            "client_id": "x",
+            "client_secret": "y",
+            "issuer_url": "http://127.0.0.1:1/__unreachable__",
+            "scopes": ["openid"]
+        }
+    });
+
+    let r = client
+        .post(test_server.api_url("/admin/auth-providers/test-config"))
+        .header("Authorization", format!("Bearer {}", member_token))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 403, "Member must be 403 on test-config");
+
+    let r = client
+        .post(test_server.api_url("/admin/auth-providers/test-config"))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let resp_body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(resp_body["ok"], json!(false));
+
+    // CRITICAL: the test-config call must NOT have created a DB row.
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .unwrap();
+    let count: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) AS "c!" FROM auth_providers WHERE name = 'ephemeral-probe'"#
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        count, 0,
+        "test-config endpoint must NOT persist a row"
+    );
 }
 
 /// CREATE rejects an invalid provider_type.

@@ -409,9 +409,69 @@
         "tags": [
           "auth-providers"
         ],
-        "summary": "Test the auth provider's connection / discovery / key",
+        "summary": "Test the auth provider's connection (probes discovery + credentials)",
         "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
         "operationId": "AuthProviders.test",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/auth-providers/test-config": {
+      "post": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Test a provider config without saving (used by the EditDrawer)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.testConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAuthProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -9960,6 +10020,28 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "last_test_at": {
+            "description": "When the admin last clicked Test on this row (null = never).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_test_message": {
+            "description": "Human-readable detail from the last test.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_test_ok": {
+            "description": "Outcome of the last test (null = never tested).",
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "name": {
             "type": "string"

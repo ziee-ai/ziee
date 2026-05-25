@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   Alert,
+  App,
   Badge,
   Button,
   Card,
@@ -10,7 +11,6 @@ import {
   Tag,
   Tooltip,
   Typography,
-  message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Permissions, type AuthProviderResponse } from '@/api-client/types'
@@ -29,9 +29,22 @@ type DrawerState =
   | { mode: 'create'; template: ProviderTemplate }
   | { mode: 'edit'; existing: AuthProviderResponse }
 
+/// Render the relative time for a TIMESTAMPTZ string. Small dependency-
+/// free helper — Intl.RelativeTimeFormat would be heavier than what
+/// this UI needs ("2m ago" / "1h ago" / "3d ago").
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  const secs = Math.floor((Date.now() - then) / 1000)
+  if (secs < 60) return `${secs}s ago`
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
+  return `${Math.floor(secs / 86400)}d ago`
+}
+
 export function AuthProvidersListSection() {
-  const { providers, loading, error, testResults, testingId } =
-    Stores.AuthProvidersAdmin
+  const { message } = App.useApp()
+  const { providers, loading, error, testingIds } = Stores.AuthProvidersAdmin
   const canManage = usePermission(Permissions.AuthProvidersManage)
   const [drawer, setDrawer] = useState<DrawerState>({ mode: 'closed' })
   const [toDelete, setToDelete] = useState<AuthProviderResponse | null>(null)
@@ -81,15 +94,18 @@ export function AuthProvidersListSection() {
       title: 'Last test',
       key: 'last_test',
       render: (_: any, row) => {
-        const t = testResults[row.id]
-        if (!t) return <Text type="secondary">never</Text>
-        return t.ok ? (
-          <Tooltip title={t.message}>
-            <Text type="success">✓ ok</Text>
+        if (row.last_test_ok === null || row.last_test_ok === undefined) {
+          return <Text type="secondary">never</Text>
+        }
+        const when = relativeTime(row.last_test_at)
+        const tip = row.last_test_message ?? ''
+        return row.last_test_ok ? (
+          <Tooltip title={tip}>
+            <Text type="success">✓ ok ({when})</Text>
           </Tooltip>
         ) : (
-          <Tooltip title={t.message}>
-            <Text type="danger">✗ fail</Text>
+          <Tooltip title={tip}>
+            <Text type="danger">✗ fail ({when})</Text>
           </Tooltip>
         )
       },
@@ -99,14 +115,17 @@ export function AuthProvidersListSection() {
       key: 'actions',
       render: (_: any, row) => (
         <Space wrap>
-          <Button
-            size="small"
-            loading={testingId === row.id}
-            onClick={() => onTest(row)}
-          >
-            Test
-          </Button>
+          {/* Test endpoint requires AuthProvidersManage — gate the
+              button consistently so reader users don't see a button
+              that 403s on click. */}
           <Can permission={Permissions.AuthProvidersManage}>
+            <Button
+              size="small"
+              loading={testingIds.has(row.id)}
+              onClick={() => onTest(row)}
+            >
+              Test
+            </Button>
             <Button
               size="small"
               onClick={() => setDrawer({ mode: 'edit', existing: row })}
@@ -134,6 +153,7 @@ export function AuthProvidersListSection() {
         extra={
           <AddProviderMenu
             disabled={!canManage}
+            existingNames={providers.map(p => p.name)}
             onPick={template => setDrawer({ mode: 'create', template })}
           />
         }

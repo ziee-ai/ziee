@@ -124,6 +124,12 @@ pub struct AuthProviderResponse {
     pub config: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    /// When the admin last clicked Test on this row (null = never).
+    pub last_test_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Outcome of the last test (null = never tested).
+    pub last_test_ok: Option<bool>,
+    /// Human-readable detail from the last test.
+    pub last_test_message: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

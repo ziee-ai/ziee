@@ -50,6 +50,9 @@ export interface AuthProviderResponse {
   created_at: string
   enabled: boolean
   id: string
+  last_test_at?: string
+  last_test_message?: string
+  last_test_ok?: boolean
   name: string
   provider_type: string
   updated_at: string
@@ -1987,6 +1990,7 @@ export const ApiEndpoints = {
   'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
   'AuthProviders.list': 'GET /api/admin/auth-providers',
   'AuthProviders.test': 'POST /api/admin/auth-providers/{id}/test',
+  'AuthProviders.testConfig': 'POST /api/admin/auth-providers/test-config',
   'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
   'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
   'Branch.create': 'POST /api/conversations/{id}/branches',
@@ -2162,6 +2166,7 @@ export type ApiEndpointParameters = {
   'AuthProviders.delete': { id: string }
   'AuthProviders.list': void
   'AuthProviders.test': { id: string }
+  'AuthProviders.testConfig': CreateAuthProviderRequest
   'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
   'Branch.activate': { id: string; branch_id: string }
   'Branch.create': { id: string } & CreateBranchRequest
@@ -2337,6 +2342,7 @@ export type ApiEndpointResponses = {
   'AuthProviders.delete': DeleteProviderResponse
   'AuthProviders.list': AuthProviderResponse[]
   'AuthProviders.test': TestProviderResponse
+  'AuthProviders.testConfig': TestProviderResponse
   'AuthProviders.update': AuthProviderResponse
   'Branch.activate': void
   'Branch.create': Branch
