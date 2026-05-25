@@ -162,12 +162,10 @@ impl ChatCoreRepository {
             .await
     }
 
-    /// Delete a message and its descendants
-    pub async fn delete_message_and_descendants(
-        &self,
-        message_id: Uuid,
-    ) -> Result<u64, AppError> {
-        messages::delete_message_and_descendants(&self.pool, message_id).await
+    /// Delete a single message. See `messages::delete_message` for the
+    /// rationale on the absence of descendant semantics (04-chat F-03).
+    pub async fn delete_message(&self, message_id: Uuid) -> Result<u64, AppError> {
+        messages::delete_message(&self.pool, message_id).await
     }
 
     /// Create a new branch from a specific message

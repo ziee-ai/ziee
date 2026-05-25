@@ -134,13 +134,13 @@ async fn create_model_with_files(
     // Initialize storage
     let storage = ModelStorage::new()
         .await
-        .map_err(|e| AppError::internal_error(&format!("Failed to initialize storage: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to initialize storage: {}", e)))?;
 
     // Validate provider exists and is of type 'local'
     let provider =
         Repos.llm_provider.get_by_id(request.provider_id)
             .await
-            .map_err(|e| AppError::internal_error(&e.to_string()))?
+            .map_err(|e| AppError::internal_error(e.to_string()))?
             .ok_or_else(|| AppError::bad_request("NOT_FOUND", "Provider not found"))?;
 
     if provider.provider_type.as_str() != "local" {
@@ -164,7 +164,7 @@ async fn create_model_with_files(
         .create_model_directory(&request.provider_id, &model_id)
         .await
         .map_err(|e| {
-            AppError::internal_error(&format!("Failed to create storage directory: {}", e))
+            AppError::internal_error(format!("Failed to create storage directory: {}", e))
         })?;
 
     tracing::debug!(
@@ -177,13 +177,13 @@ async fn create_model_with_files(
         Ok(mut entries) => {
             let mut files = Vec::new();
             while let Some(entry) = entries.next_entry().await.map_err(|e| {
-                AppError::internal_error(&format!("Failed to read directory entry: {}", e))
+                AppError::internal_error(format!("Failed to read directory entry: {}", e))
             })? {
                 if entry
                     .file_type()
                     .await
                     .map_err(|e| {
-                        AppError::internal_error(&format!("Failed to get file type: {}", e))
+                        AppError::internal_error(format!("Failed to get file type: {}", e))
                     })?
                     .is_file()
                 {
@@ -193,7 +193,7 @@ async fn create_model_with_files(
             files
         }
         Err(e) => {
-            return Err(AppError::internal_error(&format!(
+            return Err(AppError::internal_error(format!(
                 "Failed to read source directory: {}",
                 e
             )));
@@ -213,7 +213,7 @@ async fn create_model_with_files(
     if files_to_copy.is_empty() {
         return Err(AppError::bad_request(
             "VALIDATION_ERROR",
-            &format!(
+            format!(
                 "No relevant files found for main filename: {}",
                 request.main_filename
             ),
@@ -239,7 +239,7 @@ async fn create_model_with_files(
 
         // Get file size
         let metadata = tokio::fs::metadata(&source_path).await.map_err(|e| {
-            AppError::internal_error(&format!(
+            AppError::internal_error(format!(
                 "Failed to get file metadata for {}: {}",
                 filename, e
             ))
@@ -251,7 +251,7 @@ async fn create_model_with_files(
         tokio::fs::copy(&source_path, &dest_path)
             .await
             .map_err(|e| {
-                AppError::internal_error(&format!("Failed to copy file {}: {}", filename, e))
+                AppError::internal_error(format!("Failed to copy file {}: {}", filename, e))
             })?;
 
         // Collect file information for database insertion later
@@ -287,25 +287,45 @@ async fn create_model_with_files(
         file_format: request.file_format,
     };
 
+    // Preflight: explicit duplicate-name check.
+    //
+    // The previous implementation relied on string-matching the
+    // sqlx::Error text for "llm_models_provider_id_name_unique" /
+    // "duplicate key", but the A1 redaction (commit 94f5295) collapses
+    // every sqlx error into a generic "An internal error occurred"
+    // before it reaches this map_err — so the constraint-name detection
+    // never fires and the user sees a confusing 500. Closes the
+    // regression by checking before insert. The race window between
+    // SELECT and INSERT is intentionally narrow and acceptable: in the
+    // race, the second insert hits the unique index → 500, which is
+    // the same outcome as today.
+    let preflight_exists: bool = sqlx::query_scalar!(
+        r#"SELECT EXISTS(
+              SELECT 1 FROM llm_models
+              WHERE provider_id = $1 AND name = $2
+           ) AS "exists!""#,
+        create_request.provider_id,
+        create_request.name,
+    )
+    .fetch_one(crate::core::Repos.pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Preflight duplicate-name query failed");
+        AppError::internal_error("Storage error")
+    })?;
+    if preflight_exists {
+        return Err(AppError::bad_request(
+            "DUPLICATE_ENTRY",
+            format!(
+                "A model with the name '{}' already exists for this provider. \
+                 Please use a different model name.",
+                model_name
+            ),
+        ));
+    }
+
     // Create the model record - it will generate its own ID
-    let model_db = repo.create(create_request)
-        .await
-        .map_err(|e| {
-            let error_str = e.to_string();
-            tracing::warn!("Database error during model creation: {}", error_str);
-            if error_str.contains("llm_models_provider_id_name_unique")
-                || (error_str.contains("duplicate key") && error_str.contains("name")) {
-                AppError::bad_request(
-                    "DUPLICATE_ENTRY",
-                    &format!(
-                        "A model with the name '{}' already exists for this provider. Please use a different model name.",
-                        model_name
-                    )
-                )
-            } else {
-                e
-            }
-        })?;
+    let model_db = repo.create(create_request).await?;
 
     // The database record has been created with its own ID
     // But files are in directory with the pre-generated model_id
@@ -315,7 +335,7 @@ async fn create_model_with_files(
 
     if old_dir != new_dir {
         tokio::fs::rename(&old_dir, &new_dir).await.map_err(|e| {
-            AppError::internal_error(&format!("Failed to rename model directory: {}", e))
+            AppError::internal_error(format!("Failed to rename model directory: {}", e))
         })?;
         tracing::debug!(
             "Renamed model directory from {} to {}",
@@ -379,24 +399,22 @@ fn determine_files_to_copy(
         // Handle case where user provided a sharded filename as main filename
         if let Some(of_pos) = base_name.find("-of-") {
             let before_of = &base_name[..of_pos];
-            if let Some(dash_pos) = before_of.rfind('-') {
-                if before_of[dash_pos + 1..]
+            if let Some(dash_pos) = before_of.rfind('-')
+                && before_of[dash_pos + 1..]
                     .chars()
                     .all(|c| c.is_ascii_digit())
                 {
                     base_name = &before_of[..dash_pos];
                 }
-            }
         } else if let Some(of_pos) = base_name.find("_of_") {
             let before_of = &base_name[..of_pos];
-            if let Some(underscore_pos) = before_of.rfind('_') {
-                if before_of[underscore_pos + 1..]
+            if let Some(underscore_pos) = before_of.rfind('_')
+                && before_of[underscore_pos + 1..]
                     .chars()
                     .all(|c| c.is_ascii_digit())
                 {
                     base_name = &before_of[..underscore_pos];
                 }
-            }
         }
 
         // Add all weight files that match the sharding pattern
@@ -447,7 +465,7 @@ fn determine_files_to_copy(
     } else {
         return Err(AppError::bad_request(
             "NOT_FOUND",
-            &format!(
+            format!(
                 "Neither '{}' nor '{}' found in source directory",
                 main_filename,
                 if !main_is_json {
@@ -504,9 +522,6 @@ pub struct DownloadFromRepositoryRequest {
     pub parameters: Option<ModelParameters>,
     pub engine_type: Option<EngineType>,
     pub engine_settings: Option<ModelEngineSettings>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(description = "Clear cached repository before downloading (for testing)")]
-    pub clear_cache: Option<bool>,
 }
 
 /// Upload multiple model files and auto-commit as a model
@@ -519,7 +534,7 @@ pub async fn upload_multiple_files_and_commit(
     let storage = ModelStorage::new().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(&format!("Storage initialization failed: {}", e)),
+            AppError::internal_error(format!("Storage initialization failed: {}", e)),
         )
     })?;
 
@@ -543,7 +558,7 @@ pub async fn upload_multiple_files_and_commit(
             StatusCode::BAD_REQUEST,
             AppError::bad_request(
                 "INVALID_INPUT",
-                &format!("Failed to read multipart field: {}", e),
+                format!("Failed to read multipart field: {}", e),
             ),
         )
     })? {
@@ -563,10 +578,35 @@ pub async fn upload_multiple_files_and_commit(
                             StatusCode::BAD_REQUEST,
                             AppError::bad_request(
                                 "INVALID_INPUT",
-                                &format!("Failed to read file data: {}", e),
+                                format!("Failed to read file data: {}", e),
                             ),
                         )
                     })?;
+
+                    // Per-upload cumulative size cap. Closes
+                    // 07-llm-model F-03 (High): without this, an
+                    // admin upload can stream multi-GB combined
+                    // payloads (the route currently raises the
+                    // global 16 MiB body limit). 20 GiB matches
+                    // Llama-70B-class weights with comfortable
+                    // headroom.
+                    const MAX_MODEL_UPLOAD_BYTES: usize = 20 * 1024 * 1024 * 1024;
+                    let already: usize = uploaded_files
+                        .iter()
+                        .map(|(_, d): &(String, Vec<u8>)| d.len())
+                        .sum();
+                    if already.saturating_add(data.len()) > MAX_MODEL_UPLOAD_BYTES {
+                        return Err((
+                            StatusCode::PAYLOAD_TOO_LARGE,
+                            AppError::bad_request(
+                                "MODEL_UPLOAD_TOO_LARGE",
+                                format!(
+                                    "Combined model upload exceeds {} GiB cap",
+                                    MAX_MODEL_UPLOAD_BYTES / (1024 * 1024 * 1024)
+                                ),
+                            ),
+                        ));
+                    }
 
                     uploaded_files.push((filename, data.to_vec()));
                 }
@@ -577,7 +617,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read main_filename: {}", e),
+                            format!("Failed to read main_filename: {}", e),
                         ),
                     )
                 })?;
@@ -589,7 +629,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read provider_id: {}", e),
+                            format!("Failed to read provider_id: {}", e),
                         ),
                     )
                 })?;
@@ -598,7 +638,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Invalid provider_id format: {}", e),
+                            format!("Invalid provider_id format: {}", e),
                         ),
                     )
                 })?);
@@ -609,7 +649,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read name: {}", e),
+                            format!("Failed to read name: {}", e),
                         ),
                     )
                 })?;
@@ -621,7 +661,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read display_name: {}", e),
+                            format!("Failed to read display_name: {}", e),
                         ),
                     )
                 })?;
@@ -633,7 +673,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read description: {}", e),
+                            format!("Failed to read description: {}", e),
                         ),
                     )
                 })?;
@@ -645,7 +685,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read file_format: {}", e),
+                            format!("Failed to read file_format: {}", e),
                         ),
                     )
                 })?;
@@ -657,7 +697,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read capabilities: {}", e),
+                            format!("Failed to read capabilities: {}", e),
                         ),
                     )
                 })?;
@@ -667,7 +707,7 @@ pub async fn upload_multiple_files_and_commit(
                             StatusCode::BAD_REQUEST,
                             AppError::bad_request(
                                 "INVALID_INPUT",
-                                &format!("Invalid capabilities JSON: {}", e),
+                                format!("Invalid capabilities JSON: {}", e),
                             ),
                         )
                     })?;
@@ -679,7 +719,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read engine_type: {}", e),
+                            format!("Failed to read engine_type: {}", e),
                         ),
                     )
                 })?;
@@ -689,7 +729,7 @@ pub async fn upload_multiple_files_and_commit(
                             StatusCode::BAD_REQUEST,
                             AppError::bad_request(
                                 "INVALID_INPUT",
-                                &format!("Invalid engine_type: {}", value),
+                                format!("Invalid engine_type: {}", value),
                             ),
                         )
                     })?);
@@ -701,7 +741,7 @@ pub async fn upload_multiple_files_and_commit(
                         StatusCode::BAD_REQUEST,
                         AppError::bad_request(
                             "INVALID_INPUT",
-                            &format!("Failed to read engine_settings: {}", e),
+                            format!("Failed to read engine_settings: {}", e),
                         ),
                     )
                 })?;
@@ -711,7 +751,7 @@ pub async fn upload_multiple_files_and_commit(
                             StatusCode::BAD_REQUEST,
                             AppError::bad_request(
                                 "INVALID_INPUT",
-                                &format!("Invalid engine_settings JSON: {}", e),
+                                format!("Invalid engine_settings JSON: {}", e),
                             ),
                         )
                     })?)
@@ -793,9 +833,27 @@ pub async fn upload_multiple_files_and_commit(
     for (filename, file_data) in uploaded_files {
         total_size += file_data.len() as u64;
 
-        // Check and validate files
+        // Validate file content; refuse the upload if any check fails.
+        // The previous implementation collected the issues into
+        // _validation_issues and threw them away — the model would be
+        // accepted regardless of whether it actually looked like a valid
+        // GGUF / safetensors / pytorch file. Closes 07-llm-model F-09
+        // (Medium).
         let _file_type = determine_model_file_type(&filename);
-        let _validation_issues = validate_file_content(&filename, &file_data);
+        let validation_issues = validate_file_content(&filename, &file_data);
+        if !validation_issues.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "INVALID_MODEL_FILE",
+                    format!(
+                        "File '{}' failed validation: {}",
+                        filename,
+                        validation_issues.join("; ")
+                    ),
+                ),
+            ));
+        }
 
         // Save files to temporary storage
         let temp_file_id = Uuid::new_v4();
@@ -805,7 +863,7 @@ pub async fn upload_multiple_files_and_commit(
             .map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    AppError::internal_error(&format!("Failed to save file {}: {}", filename, e)),
+                    AppError::internal_error(format!("Failed to save file {}: {}", filename, e)),
                 )
             })?;
     }
@@ -829,7 +887,7 @@ pub async fn upload_multiple_files_and_commit(
 
     // Create model using the existing function
     let model = create_model_with_files(
-        &*Repos.llm_model,
+        &Repos.llm_model,
         CreateModelWithFilesRequest {
             provider_id,
             name,
@@ -840,7 +898,7 @@ pub async fn upload_multiple_files_and_commit(
                     StatusCode::BAD_REQUEST,
                     AppError::bad_request(
                         "INVALID_INPUT",
-                        &format!("Invalid file format: {}", file_format),
+                        format!("Invalid file format: {}", file_format),
                     ),
                 )
             })?,
@@ -936,11 +994,10 @@ fn validate_file_content(filename: &str, file_data: &[u8]) -> Vec<String> {
             }
         }
         ModelFileType::TokenizerFile => {
-            if filename_lower == "tokenizer.json" {
-                if serde_json::from_slice::<serde_json::Value>(file_data).is_err() {
+            if filename_lower == "tokenizer.json"
+                && serde_json::from_slice::<serde_json::Value>(file_data).is_err() {
                     issues.push("Tokenizer file is not valid JSON".to_string());
                 }
-            }
         }
         _ => {}
     }
@@ -1027,7 +1084,7 @@ pub async fn initiate_repository_download_internal(
             main_filename: Some(request.main_filename.clone()),
             capabilities: request.capabilities.clone(),
             parameters: request.parameters.clone(),
-            engine_type: request.engine_type.clone(),
+            engine_type: request.engine_type,
             engine_settings: request.engine_settings.clone(),
         },
     };
@@ -1040,10 +1097,10 @@ pub async fn initiate_repository_download_internal(
 
     // Clone necessary data for the background task
     let download_id = download_instance.id;
-    let repository_id = repository.id;
+    let _repository_id = repository.id;
     let repository_url =
         GitService::build_repository_url(&repository.url, &request.repository_path);
-    let repository_branch = request.repository_branch.clone();
+    let _repository_branch = request.repository_branch.clone();
 
     // Extract authentication token based on repository auth type
     let auth_token = match repository.auth_type.as_str() {
@@ -1061,9 +1118,6 @@ pub async fn initiate_repository_download_internal(
         }
         "none" | _ => None,
     };
-
-    // Clone clear_cache flag for background task
-    let clear_cache = request.clear_cache.unwrap_or(false);
 
     // Create cancellation token for this download
     let cancellation_token =
@@ -1102,21 +1156,6 @@ pub async fn initiate_repository_download_internal(
 
         // Create git service
         let git_service = GitService::new();
-
-        // Clear cache if requested (for testing)
-        if clear_cache {
-            tracing::info!("Clearing cache for repository (clear_cache=true)");
-            if let Err(e) = git_service
-                .clear_cache(
-                    &repository_id,
-                    &repository_url,
-                    repository_branch.as_deref(),
-                )
-                .await
-            {
-                tracing::warn!("Failed to clear git cache: {}", e);
-            }
-        }
 
         // Spawn task to update download progress in database
         let download_id_progress = download_id;
@@ -1341,7 +1380,7 @@ pub async fn initiate_repository_download_internal(
 
                 // Create model with files
                 match create_model_with_files(
-                    &*Repos.llm_model,
+                    &Repos.llm_model,
                     CreateModelWithFilesRequest {
                         provider_id: request.provider_id,
                         name: request.name,
@@ -1482,10 +1521,22 @@ pub async fn initiate_repository_download(
     let download_instance = initiate_repository_download_internal(request)
         .await
         .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                AppError::internal_error(&e),
-            )
+            // Propagate "Repository not found" as 404 rather than the
+            // catch-all 500. The internal function returns String
+            // errors today; map by content prefix until the function
+            // is refactored to return AppError.
+            if e.contains("not found") {
+                (
+                    StatusCode::NOT_FOUND,
+                    AppError::not_found("Repository"),
+                )
+            } else {
+                tracing::error!(error = %e, "initiate_repository_download_internal failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    AppError::internal_error("Storage error"),
+                )
+            }
         })?;
 
     Ok((StatusCode::OK, Json(download_instance)))

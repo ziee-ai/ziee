@@ -40,14 +40,21 @@ pub async fn list_repositories(
 ) -> ApiResult<Json<LlmRepositoryListResponse>> {
     // Get all repositories
     let all_repositories = Repos.llm_repository.list().await.map_err(|e| {
-        eprintln!("Failed to get repositories: {}", e);
+        tracing::error!("Failed to get repositories: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
 
-    // Calculate pagination
+    // Calculate pagination. Cast to i64 before multiply so the
+    // PaginationQuery clamp can't be circumvented at the multiply
+    // (defense-in-depth; the deserializer already bounds the inputs).
+    // Closes 09-llm-repository F-11 (Medium).
     let total = all_repositories.len() as i64;
-    let start = ((params.page - 1) * params.per_page) as usize;
-    let end = (start + params.per_page as usize).min(all_repositories.len());
+    let start = ((params.page as i64).saturating_sub(1))
+        .saturating_mul(params.per_page as i64)
+        .max(0) as usize;
+    let end = start
+        .saturating_add(params.per_page as usize)
+        .min(all_repositories.len());
 
     let paginated_repositories = if start < all_repositories.len() {
         all_repositories[start..end].to_vec()
@@ -86,7 +93,7 @@ pub async fn get_repository(
         .get_by_id(repository_id)
         .await
         .map_err(|e| {
-            eprintln!("Failed to get repository {}: {}", repository_id, e);
+            tracing::error!("Failed to get repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
@@ -124,7 +131,7 @@ pub async fn create_repository(
 
     // Create repository
     let repository = Repos.llm_repository.create(request).await.map_err(|e| {
-        eprintln!("Failed to create repository: {}", e);
+        tracing::error!("Failed to create repository: {}", e);
         AppError::internal_error("Database operation failed")
     })?;
 
@@ -169,10 +176,39 @@ pub async fn update_repository(
         .get_by_id(repository_id)
         .await
         .map_err(|e| {
-            eprintln!("Failed to get repository {}: {}", repository_id, e);
+            tracing::error!("Failed to get repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
+
+    // SECURITY: refuse to mutate the built-in repository's URL,
+    // auth_type, or name. The delete handler already blocked this
+    // for built-in repos, but the update handler didn't — so any
+    // holder of llm_repositories::edit could swap the Hugging Face
+    // URL to an attacker-controlled domain, then watch tokens flow
+    // there on the next model download. Closes 09-llm-repository F-16.
+    //
+    // `auth_config` IS allowed to mutate (originally blocked, then
+    // relaxed): the built-in HF repository ships with an empty
+    // `api_key` in its seed `auth_config` and the operator must
+    // populate it before downloads will authenticate. Blocking
+    // auth_config writes would mean operators can never set the HF
+    // token without an out-of-band migration. The URL/auth_type/name
+    // immutability is sufficient — a malicious operator can supply a
+    // bad api_key, but that exfiltrates only to the legitimate (still
+    // pinned) HF URL.
+    if current_repository.built_in {
+        let touches_immutable = request.url.is_some()
+            || request.auth_type.is_some()
+            || request.name.is_some();
+        if touches_immutable {
+            return Err(AppError::bad_request(
+                "BUILT_IN_REPOSITORY",
+                "Cannot modify name / URL / auth_type on built-in repositories",
+            )
+            .into());
+        }
+    }
 
     // Validate auth fields based on auth type (use current or new values)
     utils::validate_auth_config_for_update(&current_repository, &request)?;
@@ -182,7 +218,7 @@ pub async fn update_repository(
         .update(repository_id, request)
         .await
         .map_err(|e| {
-            eprintln!("Failed to update repository {}: {}", repository_id, e);
+            tracing::error!("Failed to update repository {}: {}", repository_id, e);
             AppError::internal_error("Database operation failed")
         })?
         .ok_or_else(|| AppError::not_found("Repository"))?;
@@ -231,7 +267,7 @@ pub async fn delete_repository(
         }
         Ok(Ok(false)) => Err(AppError::not_found("Repository").into()),
         Ok(Err(error_message)) => {
-            eprintln!(
+            tracing::error!(
                 "Cannot delete repository {}: {}",
                 repository_id, error_message
             );
@@ -241,7 +277,7 @@ pub async fn delete_repository(
             )
         }
         Err(e) => {
-            eprintln!("Failed to delete repository {}: {}", repository_id, e);
+            tracing::error!("Failed to delete repository {}: {}", repository_id, e);
             Err(AppError::internal_error("Database operation failed").into())
         }
     }

@@ -13,6 +13,13 @@ use std::sync::Arc;
 // Re-export types for desktop/external use
 pub use core::config::Config;
 pub use core::{Repos, EventBus, EventHandler, AppEvent};
+// Re-exported so integration tests (which construct repositories directly
+// against the test DB pool) can initialise the same at-rest storage_key
+// that the spawned server process used. Without this, repo.get() in the
+// test process can't decrypt rows the server wrote, and resolve-fallback
+// returns None. See common::secret::resolve_optional_secret.
+#[doc(hidden)]
+pub use core::secrets::{init_storage_key, storage_key};
 pub use module_api::ModuleContext as ServerContext;
 pub use modules::auth::{JwtService, AuthResponse, hash_password};
 pub use modules::user::models::User;
@@ -85,41 +92,46 @@ struct ServerSetup {
     addr: String,
 }
 
-/// Initialize tracing based on config
+/// Initialize tracing based on config. Closes 14-core F-23 (Info):
+/// uses EnvFilter so operators can do `RUST_LOG=ziee_chat=debug,sqlx=warn`
+/// for module-level filtering. Falls back to the config-file level when
+/// RUST_LOG is unset.
 fn init_tracing(config: &Config) {
-    if let Some(ref logging_config) = config.logging {
-        let level = logging_config
-            .level
-            .parse::<tracing_subscriber::filter::LevelFilter>()
-            .unwrap_or(tracing_subscriber::filter::LevelFilter::INFO);
+    use tracing_subscriber::filter::EnvFilter;
+    let config_level = config
+        .logging
+        .as_ref()
+        .map(|l| l.level.as_str())
+        .unwrap_or("info");
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(config_level));
 
-        match logging_config.format.as_str() {
-            "compact" => {
-                tracing_subscriber::fmt()
-                    .compact()
-                    .with_max_level(level)
-                    .try_init()
-                    .ok();
-            }
-            "pretty" => {
-                tracing_subscriber::fmt()
-                    .pretty()
-                    .with_max_level(level)
-                    .try_init()
-                    .ok();
-            }
-            _ => {
-                tracing_subscriber::fmt()
-                    .with_max_level(level)
-                    .try_init()
-                    .ok();
-            }
+    let format = config
+        .logging
+        .as_ref()
+        .map(|l| l.format.as_str())
+        .unwrap_or("default");
+    match format {
+        "compact" => {
+            tracing_subscriber::fmt()
+                .compact()
+                .with_env_filter(env_filter)
+                .try_init()
+                .ok();
         }
-    } else {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing_subscriber::filter::LevelFilter::INFO)
-            .try_init()
-            .ok();
+        "pretty" => {
+            tracing_subscriber::fmt()
+                .pretty()
+                .with_env_filter(env_filter)
+                .try_init()
+                .ok();
+        }
+        _ => {
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .try_init()
+                .ok();
+        }
     }
 }
 
@@ -148,6 +160,14 @@ async fn setup_server(
     // Initialize global repository factory
     core::init_repositories((*pool).clone());
     tracing::info!("Global repository factory initialized");
+
+    // Initialize at-rest secret storage key — see core::secrets.
+    core::secrets::init_storage_key(
+        config
+            .secrets
+            .as_ref()
+            .and_then(|s| s.storage_key.clone()),
+    );
 
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone(), Arc::new(config.clone()));
@@ -180,8 +200,16 @@ async fn setup_server(
     // Setup CORS from config
     let cors = core::app_builder::create_cors_layer(&config);
 
-    // Set up JWT service
-    let jwt_service = Arc::new(modules::auth::JwtService::new(config.jwt.clone()));
+    // Set up JWT service. try_new refuses weak/placeholder secrets so
+    // the server never boots with a known signer. Closes 01-auth F-10
+    // + 14-core F-03.
+    let jwt_service = Arc::new(
+        modules::auth::JwtService::try_new(config.jwt.clone())
+            .map_err(|e| {
+                tracing::error!("Failed to initialize JWT service: {}", e);
+                e
+            })?,
+    );
     tracing::info!("JWT service initialized");
 
     // Build API router with all module routes
@@ -191,10 +219,55 @@ async fn setup_server(
         (*module_context.db_pool).clone(),
     );
 
-    // Convert ApiRouter to Router and add layers
+    // Convert ApiRouter to Router and add layers.
+    //
+    // SECURITY: matches the middleware stack in main.rs::main —
+    // 16 MB body limit, 60s timeout, security headers, CORS.
+    // Closes 14-core F-01 + 05-file F-09 generalization + A3 headers.
+    // Rate limiter — see main.rs for rationale. 5 req/s per peer IP, burst 60.
+    let (rl_per_sec, rl_burst) = config
+        .server
+        .rate_limit
+        .as_ref()
+        .map(|r| (r.per_second, r.burst_size))
+        .unwrap_or((5, 60));
+    let governor_conf = std::sync::Arc::new(
+        tower_governor::governor::GovernorConfigBuilder::default()
+            .per_second(rl_per_sec)
+            .burst_size(rl_burst)
+            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
+            .finish()
+            .expect("Failed to build governor config"),
+    );
+    let governor_layer = tower_governor::GovernorLayer {
+        config: governor_conf,
+    };
+
     let app = api_router
         .finish_api(&mut api_doc)
-        .layer(axum::extract::DefaultBodyLimit::disable())
+        .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
+        .layer(governor_layer)
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-content-type-options"),
+            axum::http::HeaderValue::from_static("nosniff"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-frame-options"),
+            axum::http::HeaderValue::from_static("DENY"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("referrer-policy"),
+            axum::http::HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("permissions-policy"),
+            axum::http::HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("strict-transport-security"),
+            axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service.clone()))
         .layer(cors);
@@ -224,7 +297,13 @@ async fn run_server(
     );
 
     tokio::spawn(async move {
-        axum::serve(listener, app.into_make_service())
+        // into_make_service_with_connect_info surfaces the TCP peer
+        // address for tower_governor's PeerIpKeyExtractor — same fix
+        // as main.rs. Without it, rate-limited requests return 500.
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
             .await
             .expect("Failed to run server");
     });

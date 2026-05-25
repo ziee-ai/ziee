@@ -30,10 +30,24 @@ use crate::modules::user::{
 /// List all users (requires users::read permission)
 #[debug_handler]
 pub async fn list_users(
-    _auth: RequirePermissions<(UsersRead,)>,
+    auth: RequirePermissions<(UsersRead,)>,
     Query(params): Query<PaginationQuery>,
 ) -> ApiResult<Json<UserListResponse>> {
-    let (users, total) = Repos.user.list(params.page, params.per_page).await?;
+    let (mut users, total) = Repos.user.list(params.page, params.per_page).await?;
+
+    // SECURITY: zero out sensitive PII fields when the caller isn't an
+    // admin. The full User row includes email, permissions, and
+    // last_login_at which the audit (03-user F-10 Medium) flagged as PII
+    // that non-admin users::read holders should not see. The defensive
+    // zero-out in get_group_members was not replicated in this list
+    // endpoint; this commit makes the two consistent.
+    if !auth.user.is_admin {
+        for u in users.iter_mut() {
+            u.email = String::new();
+            u.permissions = Vec::new();
+            u.last_login_at = None;
+        }
+    }
 
     let total_pages = (total + params.per_page as i64 - 1) / params.per_page as i64;
 
@@ -88,7 +102,7 @@ pub fn get_user_docs(op: TransformOperation) -> TransformOperation {
 /// Create a new user (requires users::create permission)
 #[debug_handler]
 pub async fn create_user(
-    _auth: RequirePermissions<(UsersCreate,)>,
+    auth: RequirePermissions<(UsersCreate,)>,
 
     Extension(event_bus): Extension<Arc<EventBus>>,
     Json(request): Json<CreateUserRequest>,
@@ -100,6 +114,31 @@ pub async fn create_user(
     if request.email.is_empty() {
         return Err(AppError::bad_request("VALIDATION_ERROR", "Email cannot be empty").into());
     }
+
+    // Prevent self-escalation via the permissions field: every permission
+    // the caller is trying to grant must be one the caller themselves
+    // holds (via user perms OR group union). Admins (is_admin=true)
+    // bypass. Without this, any users::create holder can mint a wildcard
+    // root by posting {"permissions": ["*"]} — 03-user F-04 (High).
+    if let Some(ref requested_perms) = request.permissions
+        && !auth.user.is_admin {
+            for perm in requested_perms {
+                if !crate::modules::permissions::checker::check_permission_union(
+                    &auth.user,
+                    &auth.groups,
+                    perm,
+                ) {
+                    return Err(AppError::forbidden(
+                        "CANNOT_GRANT_PERMISSION",
+                        format!(
+                            "Cannot grant permission '{}' that you do not hold yourself",
+                            perm
+                        ),
+                    )
+                    .into());
+                }
+            }
+        }
 
     // Check if username already exists
     if Repos
@@ -114,6 +153,14 @@ pub async fn create_user(
     // Check if email already exists
     if Repos.user.get_by_email(&request.email).await?.is_some() {
         return Err(AppError::conflict("Email").into());
+    }
+
+    // Validate password strength (min 8 / max 72 bytes / no NUL).
+    // Closes 03-user F-05 (Medium).
+    if let Err(msg) =
+        crate::modules::auth::password::validate_password_strength(&request.password)
+    {
+        return Err(AppError::bad_request("WEAK_PASSWORD", msg).into());
     }
 
     // Hash password
@@ -182,32 +229,27 @@ pub async fn update_user(
     }
 
     // Check if new username already exists
-    if let Some(ref username) = request.username {
-        if let Some(existing) = Repos.user.get_by_username(username).await? {
-            if existing.id != user_id {
+    if let Some(ref username) = request.username
+        && let Some(existing) = Repos.user.get_by_username(username).await?
+            && existing.id != user_id {
                 return Err(AppError::conflict("Username").into());
             }
-        }
-    }
 
-    // Check if new email already exists
-    if let Some(ref email) = request.email {
-        if let Some(existing) = Repos.user.get_by_email(email).await? {
-            if existing.id != user_id {
-                return Err(AppError::conflict("Email").into());
-            }
-        }
-    }
-
-    // Update user
+    // Update user.
+    //
+    // Both `email` and `permissions` are intentionally None here. The
+    // DTO (modules/user/types.rs::UpdateUserRequest) no longer carries
+    // either field — closes 03-user F-01 (Critical: permissions priv-esc)
+    // and 03-user F-03 (High: silent email rewrite → OAuth takeover).
+    // Email and permissions are managed via dedicated future endpoints.
     Repos
         .user
         .update(
             user_id,
             request.username,
-            request.email,
+            None,
             request.display_name,
-            request.permissions,
+            None,
         )
         .await?;
 
@@ -312,6 +354,13 @@ pub async fn reset_user_password(
         return Err(AppError::not_found("User").into());
     }
 
+    // Validate new password strength. Closes 03-user F-05 (Medium).
+    if let Err(msg) =
+        crate::modules::auth::password::validate_password_strength(&request.new_password)
+    {
+        return Err(AppError::bad_request("WEAK_PASSWORD", msg).into());
+    }
+
     // Hash new password
     let password_hash = bcrypt::hash(&request.new_password, bcrypt::DEFAULT_COST)
         .map_err(|e| AppError::internal_error(format!("Failed to hash password: {}", e)))?;
@@ -344,8 +393,21 @@ pub async fn delete_user(
     Path(user_id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     // Check if user exists
-    if Repos.user.get_by_id(user_id).await?.is_none() {
-        return Err(AppError::not_found("User").into());
+    let user = Repos
+        .user
+        .get_by_id(user_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("User"))?;
+
+    // Prevent deleting admin users (symmetric with toggle_user_active and
+    // update_user). Without this guard, a users::delete grant lets a
+    // sub-admin delete the root admin and brick the deployment — the
+    // unique_root_admin partial index then prevents re-creation.
+    // Closes 03-user F-02 (Critical).
+    if user.is_admin {
+        return Err(
+            AppError::bad_request("CANNOT_DELETE_ADMIN", "Cannot delete admin users").into(),
+        );
     }
 
     // Delete user

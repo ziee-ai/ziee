@@ -41,7 +41,7 @@ pub struct MessageContent {
 impl MessageContent {
     /// Parse the JSONB content into MessageContentData
     pub fn parse_content(&self) -> Result<MessageContentData, AppError> {
-        serde_json::from_value(self.content.clone()).map_err(|e| AppError::database_error(e))
+        serde_json::from_value(self.content.clone()).map_err(AppError::database_error)
     }
 }
 

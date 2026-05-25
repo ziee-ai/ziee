@@ -2,6 +2,24 @@ use include_dir::{Dir, include_dir};
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
+
+/// Validate that a locale string matches the IETF BCP 47 minimum subset
+/// the hub supports: a 2-letter ISO 639-1 language code, optionally
+/// followed by `-` and a 2-letter ISO 3166-1 region code. Rejects any
+/// path-traversal payload (`..`, `/`) or oversized input. Closes
+/// 11-hub F-02 (Medium).
+fn is_valid_locale(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    match bytes.len() {
+        2 => bytes.iter().all(|b| b.is_ascii_lowercase()),
+        5 => {
+            bytes[0..2].iter().all(|b| b.is_ascii_lowercase())
+                && bytes[2] == b'-'
+                && bytes[3..5].iter().all(|b| b.is_ascii_uppercase())
+        }
+        _ => false,
+    }
+}
 use tokio::fs as async_fs;
 
 use super::models::{HubAssistant, HubData, HubMCPServer, HubModel};
@@ -106,6 +124,22 @@ impl HubManager {
 
     /// Load hub data with locale support
     pub async fn load_hub_data_with_locale(&self, locale: &str) -> Result<HubData, AppError> {
+        // SECURITY: validate the locale before any path join.
+        //
+        // The original implementation joined `format!("{}.json", locale)`
+        // directly into a PathBuf with no validation, letting an attacker
+        // walk out of the hub data dir via `?lang=../../../etc/passwd`.
+        // The read primitive was constrained to .json files (the format!
+        // appends .json) but the DoS variant via `?lang=/dev/zero` was
+        // fully exploitable. Closes 11-hub F-02 (Medium, carryover from
+        // 06-§1).
+        //
+        // Allowed: 2-letter ISO 639-1 code optionally followed by `-XX`
+        // region (e.g., 'en', 'fr', 'zh-CN', 'pt-BR'). Anything else
+        // falls back to 'en' silently — locale is a UX hint, not an
+        // input that should fail the whole request.
+        let locale = if is_valid_locale(locale) { locale } else { "en" };
+
         let hub_dir = self.app_data_dir.join("hub");
         let version = self.get_current_version("llm-models").await?;
 
@@ -255,7 +289,36 @@ impl HubManager {
         base
     }
 
-    /// Get current hub version for a specific category
+    /// Validate that a version string is a safe path component.
+    /// Closes 11-hub F-04 (Medium): the version is read from a
+    /// version.json on disk and then joined into a path; without this
+    /// check, an attacker who can plant a version.json containing
+    /// "../../etc" pivots into arbitrary filesystem reads through
+    /// `hub_dir.join(category).join(version)`. Allowlist matches
+    /// `vN.M.K` plus alphanumeric; rejects anything with `/`, `\`,
+    /// `..`, control chars, or NUL.
+    fn validated_version_segment(v: &str) -> &str {
+        let safe = !v.is_empty()
+            && v.len() <= 32
+            && v.chars().all(|c| {
+                c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_'
+            })
+            && !v.starts_with('.');
+        if safe {
+            v
+        } else {
+            tracing::warn!(
+                "Refusing unsafe hub version segment {:?}; falling back to {}",
+                v,
+                CURRENT_HUB_VERSION
+            );
+            CURRENT_HUB_VERSION
+        }
+    }
+
+    /// Get current hub version for a specific category. The returned
+    /// string is guaranteed to be a safe path component (allowlist
+    /// validated). See `validated_version_segment`.
     pub async fn get_current_version(&self, category: &str) -> Result<String, AppError> {
         let version_path = self
             .app_data_dir
@@ -264,10 +327,10 @@ impl HubManager {
             .join("version.json");
         if version_path.exists() {
             let version_data: serde_json::Value = self.load_json_file(version_path).await?;
-            Ok(version_data["version"]
+            let raw = version_data["version"]
                 .as_str()
-                .unwrap_or(CURRENT_HUB_VERSION)
-                .to_string())
+                .unwrap_or(CURRENT_HUB_VERSION);
+            Ok(Self::validated_version_segment(raw).to_string())
         } else {
             Ok(CURRENT_HUB_VERSION.to_string())
         }
@@ -275,6 +338,20 @@ impl HubManager {
 
     /// Refresh hub data for a specific category from GitHub
     pub async fn refresh_hub_category(&self, category: &str) -> Result<(), AppError> {
+        // SECURITY: refuse to refresh while the source URL is the
+        // placeholder. The placeholder GITHUB_HUB_REPO points at a
+        // 'YOUR_ORG' org that doesn't yet exist; if an attacker registers
+        // that org, every admin who hits Refresh downloads attacker-
+        // controlled JSON which then becomes MCP server configs / model
+        // entries / assistant prompts on disk. Closes 11-hub F-01
+        // (Medium).
+        if GITHUB_HUB_REPO.contains("YOUR_ORG") {
+            return Err(AppError::bad_request(
+                "HUB_NOT_CONFIGURED",
+                "Hub refresh is disabled because GITHUB_HUB_REPO is still the placeholder URL ('YOUR_ORG'). Configure a real hub repository before refreshing — until then the placeholder URL is squattable and the refresh would download attacker-controlled content.",
+            ));
+        }
+
         tracing::info!("Refreshing hub category '{}' from GitHub", category);
 
         // Download latest version info for this category
@@ -314,14 +391,42 @@ impl HubManager {
 
     /// Download file from URL and save to path
     async fn download_hub_file(&self, url: &str, path: PathBuf) -> Result<(), AppError> {
+        // Cap a single hub file at 16 MiB. Hub assets (json/markdown
+        // catalogs, small icons) are well under 1 MiB in practice;
+        // this cap prevents an upstream redirect from filling memory
+        // via an unbounded `.bytes().await`. Closes 11-hub F-07 (Low).
+        const MAX_HUB_FILE_BYTES: usize = 16 * 1024 * 1024;
+
         let response = reqwest::get(url).await.map_err(|e| {
             AppError::internal_error(format!("Failed to download from GitHub: {}", e))
         })?;
+
+        // Pre-check the Content-Length header when present.
+        if let Some(len) = response.content_length()
+            && len > MAX_HUB_FILE_BYTES as u64 {
+                return Err(AppError::bad_request(
+                    "HUB_FILE_TOO_LARGE",
+                    format!(
+                        "Hub file declares {} bytes (cap {})",
+                        len, MAX_HUB_FILE_BYTES
+                    ),
+                ));
+            }
 
         let content = response
             .bytes()
             .await
             .map_err(|e| AppError::internal_error(format!("Failed to read response: {}", e)))?;
+        if content.len() > MAX_HUB_FILE_BYTES {
+            return Err(AppError::bad_request(
+                "HUB_FILE_TOO_LARGE",
+                format!(
+                    "Hub file is {} bytes (cap {})",
+                    content.len(),
+                    MAX_HUB_FILE_BYTES
+                ),
+            ));
+        }
 
         // Create parent directories if needed
         if let Some(parent) = path.parent() {
@@ -372,5 +477,40 @@ impl HubManager {
         }
 
         self.load_json_file(path).await.map(Some)
+    }
+}
+
+#[cfg(test)]
+mod locale_tests {
+    use super::*;
+    #[test]
+    fn accepts_two_letter_code() {
+        assert!(is_valid_locale("en"));
+        assert!(is_valid_locale("fr"));
+        assert!(is_valid_locale("zh"));
+    }
+    #[test]
+    fn accepts_region_form() {
+        assert!(is_valid_locale("zh-CN"));
+        assert!(is_valid_locale("pt-BR"));
+    }
+    #[test]
+    fn rejects_path_traversal() {
+        assert!(!is_valid_locale("../etc"));
+        assert!(!is_valid_locale("../../../etc/passwd"));
+        assert!(!is_valid_locale("/dev/zero"));
+    }
+    #[test]
+    fn rejects_oversize() {
+        assert!(!is_valid_locale("englishlanguagecode"));
+    }
+    #[test]
+    fn rejects_uppercase_language() {
+        assert!(!is_valid_locale("EN"));
+    }
+    #[test]
+    fn rejects_separator_garbage() {
+        assert!(!is_valid_locale("en_US"));
+        assert!(!is_valid_locale("en/CN"));
     }
 }

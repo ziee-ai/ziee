@@ -40,7 +40,7 @@ async fn test_get_user_providers_returns_providers_from_groups() {
 
     // Create a group
     let group_response = reqwest::Client::new()
-        .post(&server.api_url("/groups"))
+        .post(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "name": "test_group",
@@ -56,7 +56,7 @@ async fn test_get_user_providers_returns_providers_from_groups() {
 
     // Add user to group
     let add_member_response = reqwest::Client::new()
-        .post(&server.api_url("/groups/assign"))
+        .post(server.api_url("/groups/assign"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "user_id": user.user_id,
@@ -69,7 +69,7 @@ async fn test_get_user_providers_returns_providers_from_groups() {
 
     // Create a provider
     let provider_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "name": "test_provider",
@@ -88,7 +88,7 @@ async fn test_get_user_providers_returns_providers_from_groups() {
 
     // Create a model for the provider
     let model_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "provider_id": provider_id,
@@ -125,7 +125,7 @@ async fn test_get_user_providers_returns_providers_from_groups() {
 
     // Assign provider to group
     let assign_response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/groups/{}/providers", group_id)))
+        .put(server.api_url(&format!("/groups/{}/providers", group_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "provider_ids": [provider_id]
@@ -137,7 +137,7 @@ async fn test_get_user_providers_returns_providers_from_groups() {
 
     // Now test the user-accessible providers endpoint
     let response = reqwest::Client::new()
-        .get(&server.api_url("/chat/llm-providers"))
+        .get(server.api_url("/chat/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -182,7 +182,7 @@ async fn test_get_user_providers_empty_when_no_group_assignments() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/chat/llm-providers"))
+        .get(server.api_url("/chat/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -227,7 +227,7 @@ async fn test_get_user_providers_filters_disabled_models() {
 
     // Create group, provider, and assign user to group
     let group_response = reqwest::Client::new()
-        .post(&server.api_url("/groups"))
+        .post(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({"name": "test_group", "permissions": []}))
         .send()
@@ -237,7 +237,7 @@ async fn test_get_user_providers_filters_disabled_models() {
     let group_id = group["id"].as_str().unwrap();
 
     reqwest::Client::new()
-        .post(&server.api_url("/groups/assign"))
+        .post(server.api_url("/groups/assign"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({"user_id": user.user_id, "group_id": group_id}))
         .send()
@@ -245,7 +245,7 @@ async fn test_get_user_providers_filters_disabled_models() {
         .unwrap();
 
     let provider_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "name": "test_provider",
@@ -262,7 +262,7 @@ async fn test_get_user_providers_filters_disabled_models() {
 
     // Create one enabled model
     reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "provider_id": provider_id,
@@ -280,7 +280,7 @@ async fn test_get_user_providers_filters_disabled_models() {
 
     // Create one disabled model
     reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({
             "provider_id": provider_id,
@@ -298,7 +298,7 @@ async fn test_get_user_providers_filters_disabled_models() {
 
     // Assign provider to group
     reqwest::Client::new()
-        .put(&server.api_url(&format!("/groups/{}/providers", group_id)))
+        .put(server.api_url(&format!("/groups/{}/providers", group_id)))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({"provider_ids": [provider_id]}))
         .send()
@@ -307,7 +307,7 @@ async fn test_get_user_providers_filters_disabled_models() {
 
     // Get user's providers
     let response = reqwest::Client::new()
-        .get(&server.api_url("/chat/llm-providers"))
+        .get(server.api_url("/chat/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -329,7 +329,7 @@ async fn test_get_user_providers_requires_auth() {
     let server = crate::common::TestServer::start().await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/chat/llm-providers"))
+        .get(server.api_url("/chat/llm-providers"))
         .send()
         .await
         .unwrap();
@@ -341,16 +341,19 @@ async fn test_get_user_providers_requires_auth() {
 async fn test_get_user_providers_requires_conversations_read_permission() {
     let server = crate::common::TestServer::start().await;
 
-    // Create user without conversations::read permission
-    let user = crate::common::test_helpers::create_user_with_permissions(
+    // Create user without conversations::read permission. Must use
+    // `create_user_with_no_permissions` — the `_with_permissions(_, _, &[])`
+    // variant leaves the user in the default Users group (migration 27)
+    // which DOES grant `conversations::read`, so the assertion would
+    // fail.
+    let user = crate::common::test_helpers::create_user_with_no_permissions(
         &server,
         "no_perms_user",
-        &[], // No permissions
     )
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/chat/llm-providers"))
+        .get(server.api_url("/chat/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

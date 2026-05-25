@@ -27,9 +27,20 @@ test.describe('MCP - OAuth config', () => {
     // Default transport is stdio → no OAuth section.
     await expect(page.getByLabel('OAuth Client ID')).toHaveCount(0)
 
-    // Switch to HTTP → OAuth section appears.
-    await page.getByLabel('Transport Type').click({ force: true })
-    await page.locator('.ant-select-item-option:has-text("HTTP")').first().click()
+    // Switch to HTTP → OAuth section appears. Use keyboard nav on the
+    // combobox (option clicks are flaky for AntD Select in drawers).
+    // Order: 0=Standard I/O, 1=HTTP, 2=Server-Sent Events.
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
+    const transportCombobox = drawer
+      .locator('.ant-form-item:has-text("Transport Type")')
+      .first()
+      .getByRole('combobox')
+    await transportCombobox.click({ force: true })
+    await page.waitForTimeout(300)
+    await transportCombobox.press('Home')
+    await transportCombobox.press('ArrowDown')
+    await transportCombobox.press('Enter')
+
     await expect(page.getByLabel('OAuth Client ID')).toBeVisible()
     await expect(page.getByLabel('OAuth Client Secret')).toBeVisible()
   })
@@ -50,7 +61,7 @@ test.describe('MCP - OAuth config', () => {
     await page.getByLabel('OAuth Scopes').fill('mcp read')
     await submitMcpServerForm(page, 'create')
 
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
     await page.waitForTimeout(800)
 
     // Re-open in edit mode → the stored config loads.
@@ -84,7 +95,7 @@ test.describe('MCP - OAuth config', () => {
     await page.getByLabel('OAuth Client ID').fill('mcp-client')
     await page.getByLabel('OAuth Client Secret').fill('super-secret')
     await submitMcpServerForm(page, 'create')
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
     await page.waitForTimeout(800)
 
     // Edit → clear client id → save → reopen → config gone.
@@ -145,7 +156,7 @@ test.describe('MCP - OAuth config', () => {
     await page.getByLabel('OAuth Client ID').fill('mcp-client')
     await page.getByLabel('OAuth Client Secret').fill('super-secret')
     await submitMcpServerForm(page, 'create')
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({ timeout: 5000 })
     await page.waitForTimeout(800)
 
     // Edit the display name; leave the secret field blank (= keep current).

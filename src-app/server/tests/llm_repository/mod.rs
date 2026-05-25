@@ -126,11 +126,15 @@ async fn test_create_llm_repository() {
         "Created repository should not be built-in"
     );
 
-    // Verify auth_config is present
+    // Verify auth_config is present but api_key is write-only.
+    // Post-09-llm-repository-F-02 fix: api_key / password / token are
+    // serde(skip_serializing). Inverting the original assertion.
     let auth_config = body.get("auth_config").expect("Should have auth_config");
-    assert_eq!(
-        auth_config.get("api_key").and_then(|v| v.as_str()),
-        Some("test-api-key-12345")
+    assert!(
+        auth_config.get("api_key").is_none()
+            || auth_config["api_key"].is_null(),
+        "api_key must not be returned in response (09-llm-repository F-02); got {:?}",
+        auth_config.get("api_key")
     );
 }
 
@@ -165,9 +169,12 @@ async fn test_create_llm_repository_validation() {
     assert_eq!(response.status(), 400, "Should reject invalid URL format");
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert_eq!(
-        body.get("error_code").and_then(|v| v.as_str()),
-        Some("VALIDATION_ERROR")
+    // Either error code is acceptable; 'INVALID_URL' is the post-F-01-fix shape.
+    let code = body.get("error_code").and_then(|v| v.as_str());
+    assert!(
+        code == Some("VALIDATION_ERROR") || code == Some("INVALID_URL"),
+        "expected VALIDATION_ERROR or INVALID_URL, got {:?}",
+        code
     );
 
     // Test 2: Invalid auth type
@@ -872,5 +879,132 @@ async fn test_delete_requires_permission() {
     assert_eq!(
         body.get("error_code").and_then(|v| v.as_str()),
         Some("INSUFFICIENT_PERMISSIONS")
+    );
+}
+
+// =====================================================
+// SSRF regression tests — close 09-llm-repository F-01
+// =====================================================
+//
+// The original validate_url accepted any URL that reqwest::Url::parse
+// succeeds on. That admitted file://, ftp://, gopher://, data:, http://
+// to private IPs (RFC 1918, 169.254/16 — AWS IMDS) — every kind of SSRF
+// the audit flagged as Critical. These tests pin the post-fix behavior:
+// repositories with such URLs are rejected at the create-time validation
+// layer with a 400.
+
+async fn create_repo_request(
+    server: &crate::common::TestServer,
+    admin_token: &str,
+    bad_url: &str,
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(server.api_url("/llm-repositories"))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .json(&json!({
+            "name": format!("ssrf-test-{}", uuid::Uuid::new_v4()),
+            "url": bad_url,
+            "auth_type": "none",
+            "enabled": true,
+        }))
+        .send()
+        .await
+        .expect("request failed")
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_aws_imds_ip() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(
+        &server,
+        &admin.token,
+        "http://169.254.169.254/latest/meta-data/",
+    )
+    .await;
+    assert_eq!(
+        res.status(),
+        400,
+        "AWS IMDS link-local IP must be rejected at create-time"
+    );
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_loopback_ip() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "http://127.0.0.1/").await;
+    assert_eq!(res.status(), 400, "loopback IP must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_rfc1918_ip() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "http://10.0.0.1/").await;
+    assert_eq!(res.status(), 400, "RFC 1918 IP must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_file_scheme() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "file:///etc/passwd").await;
+    assert_eq!(res.status(), 400, "file:// scheme must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_ftp_scheme() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "ftp://example.com/").await;
+    assert_eq!(res.status(), 400, "ftp:// scheme must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_create_rejects_url_with_credentials() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_repositories::create"],
+    )
+    .await;
+
+    let res = create_repo_request(&server, &admin.token, "https://user:pass@example.com/").await;
+    assert_eq!(
+        res.status(),
+        400,
+        "URL embedding credentials must be rejected"
     );
 }

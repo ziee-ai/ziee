@@ -103,14 +103,20 @@ impl FileRepository {
         Ok(file)
     }
 
-    /// List files for user with pagination
+    /// List files for user with pagination. Defense-in-depth on the
+    /// i32 multiplication: cast both factors to i64 BEFORE multiplying
+    /// so a (theoretical) bypass of the PaginationQuery deserialize
+    /// clamp can't overflow into a tiny / negative offset. Closes
+    /// 05-file F-14 (Medium).
     pub async fn list_by_user(
         &self,
         user_id: Uuid,
         page: i32,
         per_page: i32,
     ) -> Result<(Vec<File>, i64), AppError> {
-        let offset = ((page - 1) * per_page) as i64;
+        let page64 = (page as i64).max(1);
+        let per_page64 = (per_page as i64).max(1);
+        let offset = (page64 - 1).saturating_mul(per_page64);
 
         // Get total count
         let total: i64 = sqlx::query_scalar!(
@@ -137,7 +143,7 @@ impl FileRepository {
             LIMIT $2 OFFSET $3
             "#,
             user_id,
-            per_page as i64,
+            per_page64,
             offset
         )
         .fetch_all(&self.pool)
@@ -145,6 +151,22 @@ impl FileRepository {
         .map_err(AppError::database_error)?;
 
         Ok((files, total))
+    }
+
+    /// Sum the user's current uploaded file bytes. Drives the per-user
+    /// storage quota enforced at upload time. Closes 05-file F-16
+    /// (Medium). Returns 0 when the user has no files.
+    pub async fn count_user_bytes(&self, user_id: Uuid) -> Result<i64, AppError> {
+        let total: Option<i64> = sqlx::query_scalar!(
+            r#"SELECT COALESCE(SUM(file_size), 0)::BIGINT AS "total"
+               FROM files
+               WHERE user_id = $1"#,
+            user_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(total.unwrap_or(0))
     }
 
     /// Delete file

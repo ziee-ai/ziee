@@ -14,10 +14,16 @@ pub struct CreateAssistantRequest {
     #[schemars(length(min = 1, max = 255))]
     pub name: String,
 
-    /// Brief description of the assistant purpose
+    /// Brief description of the assistant purpose. Closes
+    /// 10-assistant F-02 (Medium) — unbounded description was an
+    /// LLM-token-cost amplification vector.
+    #[schemars(length(max = 4096))]
     pub description: Option<String>,
 
-    /// System instructions for the AI assistant
+    /// System instructions for the AI assistant. Bounded at 64 KiB
+    /// per 10-assistant F-02 (Medium); legitimate prompts fit
+    /// comfortably below 8 KiB.
+    #[schemars(length(max = 65_536))]
     pub instructions: Option<String>,
 
     /// Model parameters (temperature, max_tokens, etc.)
@@ -46,12 +52,14 @@ pub struct UpdateAssistantRequest {
     #[schemars(length(min = 1, max = 255))]
     pub name: Option<String>,
 
-    /// Update description
+    /// Update description (max 4 KiB per 10-assistant F-02)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(length(max = 4096))]
     pub description: Option<String>,
 
-    /// Update instructions
+    /// Update instructions (max 64 KiB per 10-assistant F-02)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(length(max = 65_536))]
     pub instructions: Option<String>,
 
     /// Update model parameters

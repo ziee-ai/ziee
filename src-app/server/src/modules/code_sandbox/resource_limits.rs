@@ -100,56 +100,46 @@ impl UpdateCodeSandboxResourceLimits {
                 format!("invalid {field}: {}", msg.into()),
             )
         }
-        if let Some(v) = self.memory_max_bytes {
-            if v < 16 * 1024 * 1024 {
+        if let Some(v) = self.memory_max_bytes
+            && v < 16 * 1024 * 1024 {
                 return Err(bad("memory_max_bytes", "must be ≥ 16 MiB"));
             }
-        }
-        if let Some(v) = self.memory_swap_max_bytes {
-            if v < 0 {
+        if let Some(v) = self.memory_swap_max_bytes
+            && v < 0 {
                 return Err(bad("memory_swap_max_bytes", "must be ≥ 0"));
             }
-        }
-        if let Some(v) = self.pids_max {
-            if !(8..=100_000).contains(&v) {
+        if let Some(v) = self.pids_max
+            && !(8..=100_000).contains(&v) {
                 return Err(bad("pids_max", "must be in 8..=100000"));
             }
-        }
-        if let Some(v) = self.address_space_bytes {
-            if v < 16 * 1024 * 1024 {
+        if let Some(v) = self.address_space_bytes
+            && v < 16 * 1024 * 1024 {
                 return Err(bad("address_space_bytes", "must be ≥ 16 MiB"));
             }
-        }
-        if let Some(v) = self.fsize_bytes {
-            if v < 1024 * 1024 {
+        if let Some(v) = self.fsize_bytes
+            && v < 1024 * 1024 {
                 return Err(bad("fsize_bytes", "must be ≥ 1 MiB"));
             }
-        }
-        if let Some(v) = self.nproc_max {
-            if !(8..=100_000).contains(&v) {
+        if let Some(v) = self.nproc_max
+            && !(8..=100_000).contains(&v) {
                 return Err(bad("nproc_max", "must be in 8..=100000"));
             }
-        }
-        if let Some(v) = self.nofile_max {
-            if !(64..=1_048_576).contains(&v) {
+        if let Some(v) = self.nofile_max
+            && !(64..=1_048_576).contains(&v) {
                 return Err(bad("nofile_max", "must be in 64..=1048576"));
             }
-        }
-        if let Some(v) = self.cpu_secs_max {
-            if !(10..=86_400).contains(&v) {
+        if let Some(v) = self.cpu_secs_max
+            && !(10..=86_400).contains(&v) {
                 return Err(bad("cpu_secs_max", "must be in 10..=86400"));
             }
-        }
-        if let Some(v) = self.timeout_secs {
-            if !(5..=86_400).contains(&v) {
+        if let Some(v) = self.timeout_secs
+            && !(5..=86_400).contains(&v) {
                 return Err(bad("timeout_secs", "must be in 5..=86400"));
             }
-        }
-        if let Some(v) = self.vm_idle_evict_secs {
-            if v < 0 {
+        if let Some(v) = self.vm_idle_evict_secs
+            && v < 0 {
                 return Err(bad("vm_idle_evict_secs", "must be ≥ 0"));
             }
-        }
         if let Some(s) = self.cpu_max.as_deref() {
             // Stricter than the DB's `~ '^[0-9]+ [0-9]+$'` regex: require both
             // values to be parseable u64 + non-zero.
@@ -175,21 +165,18 @@ impl UpdateCodeSandboxResourceLimits {
                 ));
             }
         }
-        if let Some(v) = self.mac_vm_vcpus {
-            if !(1..=128).contains(&v) {
+        if let Some(v) = self.mac_vm_vcpus
+            && !(1..=128).contains(&v) {
                 return Err(bad("mac_vm_vcpus", "must be in 1..=128"));
             }
-        }
-        if let Some(v) = self.mac_vm_ram_mib {
-            if !(256..=262_144).contains(&v) {
+        if let Some(v) = self.mac_vm_ram_mib
+            && !(256..=262_144).contains(&v) {
                 return Err(bad("mac_vm_ram_mib", "must be in 256..=262144 (MiB)"));
             }
-        }
-        if let Some(v) = self.vm_max_concurrent_execs {
-            if !(1..=1000).contains(&v) {
+        if let Some(v) = self.vm_max_concurrent_execs
+            && !(1..=1000).contains(&v) {
                 return Err(bad("vm_max_concurrent_execs", "must be in 1..=1000"));
             }
-        }
         Ok(())
     }
 }
@@ -285,8 +272,8 @@ impl CodeSandboxRepository {
             tracing::error!(error = ?e, "code_sandbox: update resource_limits");
             // Surface the most common operator mistake (CHECK constraint
             // violation) with a 422 so the UI can render it clearly.
-            if let sqlx::Error::Database(db) = &e {
-                if db.constraint().is_some() {
+            if let sqlx::Error::Database(db) = &e
+                && db.constraint().is_some() {
                     return AppError::new(
                         StatusCode::UNPROCESSABLE_ENTITY,
                         "SANDBOX_LIMIT_DB_CONSTRAINT",
@@ -297,7 +284,6 @@ impl CodeSandboxRepository {
                         ),
                     );
                 }
-            }
             AppError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "DATABASE_ERROR",

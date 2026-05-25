@@ -231,8 +231,29 @@ impl BinaryDownloader {
         Ok(tag_name.to_string())
     }
 
-    /// Download a file with progress bar
+    /// Download a file with progress bar.
+    ///
+    /// Closes 08-llm-local-runtime F-06 (Medium): enforces a 2 GiB
+    /// hard cap on downloaded bytes (single engine binary ≤ ~300 MB
+    /// in practice; leaves headroom for fat CUDA builds). The
+    /// surrounding `client` already has its `timeout()` set in
+    /// BinaryDownloader::new; this method adds the size cap as the
+    /// remaining missing defense. Without it, an attacker-controlled
+    /// upstream (e.g. a hijacked GitHub mirror) could redirect to a
+    /// /dev/zero stream and fill the host disk.
+    ///
+    /// 08-llm-local-runtime F-01 (High) gap: this function does NOT
+    /// cryptographically verify the downloaded binary. The right
+    /// shape is a cosign-keyless verify (matches the
+    /// `sigstore` crate already pulled by code_sandbox) against a
+    /// `.sig` artifact published alongside each engine binary. That
+    /// requires the llm-runtime release pipeline to actually sign
+    /// (Actions OIDC + cosign sign-blob) — until that ships, this
+    /// download path remains TOFU. Operators reading the SBOM should
+    /// confirm the upstream GitHub Releases page hashes match.
     async fn download_file(&self, url: &str, dest: &Path) -> Result<()> {
+        const MAX_DOWNLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GiB
+
         // Get file size from HEAD request
         let head_response = self.client.head(url).send().await?;
 
@@ -249,6 +270,15 @@ impl BinaryDownloader {
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(0);
+
+        // Pre-check the Content-Length when present; fail fast before
+        // streaming a single byte.
+        if total_size > MAX_DOWNLOAD_BYTES {
+            return Err(RuntimeError::network(format!(
+                "Refusing to download {} bytes (cap {} bytes / 2 GiB)",
+                total_size, MAX_DOWNLOAD_BYTES
+            )));
+        }
 
         // Setup progress bar
         let pb = ProgressBar::new(total_size);
@@ -271,8 +301,18 @@ impl BinaryDownloader {
         }
 
         let mut file = File::create(dest)?;
+        let mut received: u64 = 0;
 
         while let Some(chunk) = response.chunk().await? {
+            received = received.saturating_add(chunk.len() as u64);
+            if received > MAX_DOWNLOAD_BYTES {
+                // Drop the partial download.
+                let _ = std::fs::remove_file(dest);
+                return Err(RuntimeError::network(format!(
+                    "Download exceeded {} bytes / 2 GiB cap; aborted",
+                    MAX_DOWNLOAD_BYTES
+                )));
+            }
             file.write_all(&chunk)?;
             pb.inc(chunk.len() as u64);
         }
@@ -304,12 +344,26 @@ impl BinaryDownloader {
                 continue;
             }
 
+            // Skip symlink / hardlink entries: a malicious archive
+            // could plant a `lib_evil.so → /etc/passwd` symlink that
+            // a later write through the extracted directory would
+            // follow out of the cache dir. Closes
+            // 08-llm-local-runtime F-05 (Medium).
+            let entry_type = entry.header().entry_type();
+            if entry_type.is_symlink() || entry_type.is_hard_link() {
+                tracing::warn!(
+                    "Skipping symlink/hardlink entry in archive: {}",
+                    path.display()
+                );
+                continue;
+            }
+
             // Get the filename without any directory prefix
             let file_name = path.file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("");
 
-            // Extract binary to root of dest_dir (preserves symlinks)
+            // Extract binary to root of dest_dir
             if file_name == binary_name {
                 let dest_path = dest_dir.join(binary_name);
                 entry.unpack(&dest_path)?;
@@ -318,7 +372,7 @@ impl BinaryDownloader {
                 continue;
             }
 
-            // Extract shared libraries (.so, .dylib, .dll files) - preserves symlinks
+            // Extract shared libraries (.so, .dylib, .dll files)
             let is_library = file_name.ends_with(".so")
                 || file_name.contains(".so.")
                 || file_name.ends_with(".dylib")

@@ -92,7 +92,7 @@ impl StdioMcpClient {
         if !ALLOWED_COMMANDS.contains(&cmd.as_str()) {
             return Err(AppError::bad_request(
                 "INVALID_COMMAND",
-                &format!("Command '{}' is not allowed. Allowed commands: {:?}", cmd, ALLOWED_COMMANDS)
+                format!("Command '{}' is not allowed. Allowed commands: {:?}", cmd, ALLOWED_COMMANDS)
             ));
         }
 
@@ -236,11 +236,7 @@ impl McpClient for StdioMcpClient {
         let service = self.service.as_ref()
             .ok_or_else(|| AppError::internal_error("Not connected"))?;
 
-        let args_map = if let Some(obj) = arguments.as_object() {
-            Some(obj.clone())
-        } else {
-            None
-        };
+        let args_map = arguments.as_object().cloned();
 
         let result = service.call_tool(CallToolRequestParam {
             name: Cow::Owned(name.to_string()),

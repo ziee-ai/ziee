@@ -10,16 +10,40 @@ use super::{
 };
 use crate::common::AppError;
 
+/// Replace any URL userinfo (`https://user:topsecret@host`) with
+/// `https://[REDACTED]@host` before logging. Closes
+/// 09-llm-repository F-04 (High) on the test-connection path.
+fn redact_url_userinfo(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut u) => {
+            if !u.username().is_empty() || u.password().is_some() {
+                let _ = u.set_username("");
+                let _ = u.set_password(None);
+                format!("{} (userinfo redacted)", u)
+            } else {
+                u.to_string()
+            }
+        }
+        Err(_) => "[unparseable URL]".to_string(),
+    }
+}
+
 /// Validate URL format using reqwest URL parser
 pub fn validate_url(url: &str) -> Result<(), AppError> {
-    if reqwest::Url::parse(url).is_ok() {
-        Ok(())
-    } else {
-        Err(AppError::bad_request(
-            "VALIDATION_ERROR",
-            "Invalid URL format",
-        ))
-    }
+    // SSRF-safe validation: reject non-allowlisted schemes (file://, ftp://,
+    // git://, gopher://, data:), reject private/loopback/link-local IPs
+    // (RFC 1918 + 127/8 + 169.254/16 — AWS IMDS), reject URLs embedding
+    // credentials. The previous implementation only checked Url::parse
+    // succeeded — that admitted every SSRF flagged by 09-llm-repository
+    // F-01 + F-03. PUBLIC_HTTP_OR_HTTPS allows both http and https since
+    // self-hosted upstreams may not yet have TLS, but blocks all private
+    // address space.
+    crate::utils::url_validator::validate_outbound_url(
+        url,
+        &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+    )
+    .map(|_| ())
+    .map_err(|e| AppError::bad_request("INVALID_URL", e.to_string()))
 }
 
 /// Validate auth type is one of the allowed types
@@ -36,10 +60,59 @@ pub fn validate_auth_type(auth_type: &str) -> Result<(), AppError> {
 }
 
 /// Validate authentication configuration for create request
+/// Max repository name length. Closes 09-llm-repository F-10 (Medium):
+/// without this, an admin could store a multi-MB name that the UI
+/// renders without escaping → XSS surface; even with escaping the
+/// payload is wasteful.
+const MAX_REPO_NAME_LEN: usize = 128;
+
+/// Bound + validate the optional auth_test_api_endpoint URL. Closes
+/// 09-llm-repository F-08 (Medium): the field was unvalidated
+/// free-form text stored in DB, then fetched without scheme/host
+/// gating — SSRF surface on test-connection paths. Validates via
+/// the shared outbound URL allowlist (no file://, no RFC1918, etc.)
+/// when present.
+fn validate_test_endpoint(endpoint: &Option<String>) -> Result<(), AppError> {
+    if let Some(url) = endpoint {
+        if url.trim().is_empty() {
+            return Ok(());
+        }
+        if url.len() > 2048 {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "auth_test_api_endpoint exceeds 2048 chars",
+            ));
+        }
+        crate::utils::url_validator::validate_outbound_url(
+            url,
+            &crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL,
+        )
+        .map_err(|e| {
+            AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("auth_test_api_endpoint invalid: {}", e),
+            )
+        })?;
+    }
+    Ok(())
+}
+
 /// Ensures all required fields are present based on auth_type
 pub fn validate_auth_config_for_create(
     request: &CreateLlmRepositoryRequest,
 ) -> Result<(), AppError> {
+    // Bound the repository name (09-llm-repository F-10).
+    if request.name.len() > MAX_REPO_NAME_LEN {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            format!("Repository name exceeds {} chars", MAX_REPO_NAME_LEN),
+        ));
+    }
+    // Validate auth_test_api_endpoint when set (09-llm-repository F-08).
+    if let Some(ac) = &request.auth_config {
+        validate_test_endpoint(&ac.auth_test_api_endpoint)?;
+    }
+
     // If auth_type is not "none", auth_config must be provided
     if request.auth_type != "none" && request.auth_config.is_none() {
         return Err(AppError::bad_request(
@@ -96,6 +169,18 @@ pub fn validate_auth_config_for_update(
     current_repository: &LlmRepository,
     request: &UpdateLlmRepositoryRequest,
 ) -> Result<(), AppError> {
+    // Mirror create-time bounds (09-llm-repository F-08/F-10).
+    if let Some(name) = &request.name
+        && name.len() > MAX_REPO_NAME_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!("Repository name exceeds {} chars", MAX_REPO_NAME_LEN),
+            ));
+        }
+    if let Some(ac) = &request.auth_config {
+        validate_test_endpoint(&ac.auth_test_api_endpoint)?;
+    }
+
     // Determine which auth_type to use (new or current)
     let auth_type = request
         .auth_type
@@ -204,7 +289,7 @@ pub async fn test_repository_connectivity(
     // Build the request with authentication
     let mut req_builder = client.get(test_url);
 
-    println!("Testing connection to: {}", test_url);
+    tracing::info!("Testing connection to: {}", redact_url_userinfo(test_url));
 
     if let Some(auth_config) = &request.auth_config {
         match request.auth_type.as_str() {

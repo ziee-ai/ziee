@@ -10,20 +10,17 @@ use crate::modules::chat::extensions::mcp::defaults::models::LoopSettings;
 /// Approval mode for conversation MCP settings
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ApprovalMode {
     /// MCP is disabled for this conversation
     Disabled,
     /// All tools are auto-approved
     AutoApprove,
     /// Manual approval required for each tool use
+    #[default]
     ManualApprove,
 }
 
-impl Default for ApprovalMode {
-    fn default() -> Self {
-        Self::ManualApprove
-    }
-}
 
 impl std::fmt::Display for ApprovalMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

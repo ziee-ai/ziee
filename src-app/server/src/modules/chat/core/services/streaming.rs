@@ -767,7 +767,7 @@ impl StreamingService {
                                     });
                                     messages.push(ChatMessage {
                                         role: ai_providers::Role::Tool,
-                                        content: current_results.drain(..).collect(),
+                                        content: std::mem::take(&mut current_results),
                                     });
                                 }
                             }
@@ -1145,7 +1145,7 @@ impl DeltaAccumulator {
                 }
                 Err(e) => {
                     // Log error but don't fail the stream
-                    eprintln!("Extension error in after_llm_call: {}", e);
+                    tracing::error!("Extension error in after_llm_call: {}", e);
                     // Default to Complete on error
                     self.extension_action =
                         Some(crate::modules::chat::core::extension::ExtensionAction::Complete);

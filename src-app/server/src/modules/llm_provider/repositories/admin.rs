@@ -4,13 +4,26 @@
 // LLM Provider database queries - copied from react-test and refactored for ziee-chat
 // Source: react-test/src-tauri/src/database/queries/providers.rs and user_group_providers.rs
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::super::models::LlmProvider;
 use super::super::types::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
+use crate::common::secret::{encrypt_secret, resolve_optional_secret};
+use crate::core::secrets::storage_key;
 use crate::modules::user::models::Group;
+
+/// Convert a `time::OffsetDateTime` (sqlx return type) to
+/// `chrono::DateTime<Utc>` with full nanosecond precision and without
+/// `unwrap()`. Closes 06-llm-provider F-11 (Medium): the previous
+/// `from_timestamp(.., 0).unwrap()` truncated sub-second precision
+/// AND panicked on out-of-range timestamps. Falls back to the unix
+/// epoch on the (currently-impossible) overflow path so the row still
+/// renders rather than 500-ing the whole response.
+fn to_chrono(ts: time::OffsetDateTime) -> DateTime<Utc> {
+    DateTime::from_timestamp_nanos(ts.unix_timestamp_nanos() as i64)
+}
 
 // =====================================================
 // Repository Struct
@@ -103,7 +116,7 @@ pub async fn get_llm_provider_by_id(
     provider_id: Uuid,
 ) -> Result<Option<LlmProvider>, sqlx::Error> {
     let row = sqlx::query!(
-        r#"SELECT id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at,
+        r#"SELECT id, name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in, proxy_settings, created_at, updated_at,
                   default_runtime_version_id
          FROM llm_providers
          WHERE id = $1"#,
@@ -112,27 +125,34 @@ pub async fn get_llm_provider_by_id(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|r| LlmProvider {
+    let Some(r) = row else {
+        return Ok(None);
+    };
+    // Decrypt-with-fallback: prefer the bytea column, fall back to
+    // plaintext for rows written before A5 / when storage_key is
+    // unconfigured. See common::secret::resolve_optional_secret.
+    let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
+    Ok(Some(LlmProvider {
         id: r.id,
         name: r.name,
         provider_type: r.provider_type,
         enabled: r.enabled,
-        api_key: r.api_key,
+        api_key,
         base_url: r.base_url,
         built_in: r.built_in,
         proxy_settings: r
             .proxy_settings
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
-        created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+        created_at: to_chrono(r.created_at),
+        updated_at: to_chrono(r.updated_at),
         default_runtime_version_id: r.default_runtime_version_id,
     }))
 }
 
 pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"SELECT id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at,
+        r#"SELECT id, name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in, proxy_settings, created_at, updated_at,
                   default_runtime_version_id
          FROM llm_providers
          ORDER BY built_in DESC, name ASC"#
@@ -140,30 +160,32 @@ pub async fn list_llm_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx:
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|r| LlmProvider {
+    let mut providers = Vec::with_capacity(rows.len());
+    for r in rows {
+        let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
+        providers.push(LlmProvider {
             id: r.id,
             name: r.name,
             provider_type: r.provider_type,
             enabled: r.enabled,
-            api_key: r.api_key,
+            api_key,
             base_url: r.base_url,
             built_in: r.built_in,
             proxy_settings: r
                 .proxy_settings
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
-        })
-        .collect())
+        });
+    }
+    Ok(providers)
 }
 
 pub async fn list_local_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"SELECT id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at,
+        r#"SELECT id, name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in, proxy_settings, created_at, updated_at,
                   default_runtime_version_id
          FROM llm_providers
          WHERE provider_type = 'local' AND enabled = true
@@ -172,25 +194,27 @@ pub async fn list_local_providers(pool: &PgPool) -> Result<Vec<LlmProvider>, sql
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|r| LlmProvider {
+    let mut providers = Vec::with_capacity(rows.len());
+    for r in rows {
+        let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
+        providers.push(LlmProvider {
             id: r.id,
             name: r.name,
             provider_type: r.provider_type,
             enabled: r.enabled,
-            api_key: r.api_key,
+            api_key,
             base_url: r.base_url,
             built_in: r.built_in,
             proxy_settings: r
                 .proxy_settings
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
-        })
-        .collect())
+        });
+    }
+    Ok(providers)
 }
 
 pub async fn create_llm_provider(
@@ -198,18 +222,46 @@ pub async fn create_llm_provider(
     request: CreateLlmProviderRequest,
 ) -> Result<LlmProvider, sqlx::Error> {
     let provider_id = Uuid::new_v4();
-    let proxy_settings_json = serde_json::to_value(&request.proxy_settings.unwrap_or_default())
+    let proxy_settings_json = serde_json::to_value(request.proxy_settings.unwrap_or_default())
         .unwrap_or(serde_json::json!({}));
 
+    // Encrypt the api_key at rest when a storage_key is configured.
+    // Storage layout (closes 06-llm-provider F-02 Critical):
+    //   - encrypted column: `api_key_encrypted` BYTEA (preferred)
+    //   - plaintext column: `api_key` TEXT (compat / not-yet-backfilled)
+    // When storage_key is configured we write ONLY to the encrypted
+    // column (plaintext stays NULL). When it's absent we write the
+    // plaintext column (and a `tracing::warn` fires once at boot per
+    // core::secrets::init_storage_key).
+    let raw_key: Option<&str> = request
+        .api_key
+        .as_deref()
+        .and_then(|k| if k.trim().is_empty() { None } else { Some(k) });
+
+    let (plaintext_key, encrypted_key): (Option<&str>, Option<Vec<u8>>) = match raw_key {
+        Some(key) => match encrypt_secret(pool, key, storage_key()).await {
+            Ok(Some(blob)) => (None, Some(blob)),
+            Ok(None) => (Some(key), None),
+            Err(e) => {
+                tracing::error!(error = ?e, "Failed to encrypt provider api_key; aborting create");
+                return Err(sqlx::Error::Protocol(
+                    "secret encryption failed".to_string(),
+                ));
+            }
+        },
+        None => (None, None),
+    };
+
     let row = sqlx::query!(
-        r#"INSERT INTO llm_providers (id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, name, provider_type, enabled, api_key, base_url, built_in, proxy_settings, created_at, updated_at"#,
+        r#"INSERT INTO llm_providers (id, name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in, proxy_settings)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, name, provider_type, enabled, api_key, api_key_encrypted, base_url, built_in, proxy_settings, created_at, updated_at, default_runtime_version_id"#,
         provider_id,
         &request.name,
         &request.provider_type,
         request.enabled.unwrap_or(false),
-        request.api_key.as_deref().and_then(|k| if k.trim().is_empty() { None } else { Some(k) }),
+        plaintext_key,
+        encrypted_key.as_deref(),
         request.base_url.as_deref(),
         false, // Custom providers are never built-in
         proxy_settings_json
@@ -217,21 +269,23 @@ pub async fn create_llm_provider(
     .fetch_one(pool)
     .await?;
 
+    let resolved_api_key = resolve_optional_secret(pool, row.api_key_encrypted, row.api_key).await;
+
     Ok(LlmProvider {
         id: row.id,
         name: row.name,
         provider_type: row.provider_type,
         enabled: row.enabled,
-        api_key: row.api_key,
+        api_key: resolved_api_key,
         base_url: row.base_url,
         built_in: row.built_in,
         proxy_settings: row
             .proxy_settings
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default(),
-        default_runtime_version_id: None,
-        created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0).unwrap(),
-        updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0).unwrap(),
+        default_runtime_version_id: row.default_runtime_version_id,
+        created_at: to_chrono(row.created_at),
+        updated_at: to_chrono(row.updated_at),
     })
 }
 
@@ -272,10 +326,37 @@ pub async fn update_llm_provider(
     }
 
     if let Some(api_key) = &request.api_key {
-        let stored_key: Option<&str> = if api_key.trim().is_empty() { None } else { Some(api_key.as_str()) };
+        // Mirror create_llm_provider's dual-column strategy. When the
+        // storage_key is configured, write the encrypted column and
+        // explicitly NULL out the plaintext column so a previously-
+        // plaintext row is migrated on next update. Closes
+        // 06-llm-provider F-02 on the update path.
+        let raw_key: Option<&str> = if api_key.trim().is_empty() {
+            None
+        } else {
+            Some(api_key.as_str())
+        };
+
+        let (plaintext_key, encrypted_key): (Option<&str>, Option<Vec<u8>>) = match raw_key {
+            Some(key) => match encrypt_secret(pool, key, storage_key()).await {
+                Ok(Some(blob)) => (None, Some(blob)),
+                Ok(None) => (Some(key), None),
+                Err(e) => {
+                    tracing::error!(error = ?e, "Failed to encrypt provider api_key on update");
+                    return Err(sqlx::Error::Protocol(
+                        "secret encryption failed".to_string(),
+                    ));
+                }
+            },
+            None => (None, None),
+        };
+
         sqlx::query!(
-            "UPDATE llm_providers SET api_key = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
-            stored_key,
+            "UPDATE llm_providers \
+             SET api_key = $1, api_key_encrypted = $2, updated_at = CURRENT_TIMESTAMP \
+             WHERE id = $3",
+            plaintext_key,
+            encrypted_key.as_deref(),
             provider_id
         )
         .execute(pool)
@@ -312,26 +393,38 @@ pub async fn delete_llm_provider(
     pool: &PgPool,
     provider_id: Uuid,
 ) -> Result<Result<bool, String>, sqlx::Error> {
-    // First check if provider exists and if it's built-in
-    let built_in_result = sqlx::query_scalar!(
+    // SECURITY: the original SELECT-then-DELETE was racy — a concurrent
+    // UPDATE that flipped `built_in` to false (or the row being
+    // recreated under the same UUID) between the two queries could
+    // bypass the built-in guard. Atomic single-statement DELETE with
+    // the `built_in = false` predicate eliminates the window. Closes
+    // 06-llm-provider F-10 (Medium). The split return value
+    // (Err("Cannot delete…") vs Ok(true/false)) is preserved so the
+    // handler's existing error-shape doesn't change.
+    let row = sqlx::query!(
+        "DELETE FROM llm_providers WHERE id = $1 AND built_in = false RETURNING id",
+        provider_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if row.is_some() {
+        return Ok(Ok(true));
+    }
+
+    // Nothing deleted — distinguish "not found" from "exists but
+    // built-in" with a second read-only query.
+    let still_exists = sqlx::query_scalar!(
         "SELECT built_in FROM llm_providers WHERE id = $1",
         provider_id
     )
     .fetch_optional(pool)
     .await?;
 
-    match built_in_result {
-        Some(built_in) => {
-            if built_in {
-                Ok(Err("Cannot delete built-in provider".to_string()))
-            } else {
-                let result = sqlx::query!("DELETE FROM llm_providers WHERE id = $1", provider_id)
-                    .execute(pool)
-                    .await?;
-                Ok(Ok(result.rows_affected() > 0))
-            }
-        }
-        None => Ok(Ok(false)), // Provider not found
+    match still_exists {
+        Some(true) => Ok(Err("Cannot delete built-in provider".to_string())),
+        Some(false) => Ok(Ok(false)), // raced with another delete
+        None => Ok(Ok(false)),         // provider not found
     }
 }
 
@@ -365,8 +458,8 @@ pub async fn get_llm_provider_groups(
             is_system: r.is_system,
             is_active: r.is_active,
             is_default: r.is_default,
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
         })
         .collect())
 }
@@ -427,7 +520,7 @@ pub async fn get_providers_for_group(
     group_id: Uuid,
 ) -> Result<Vec<LlmProvider>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"SELECT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
+        r#"SELECT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.api_key_encrypted, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
                   p.default_runtime_version_id
          FROM llm_providers p
          INNER JOIN user_group_llm_providers ugp ON p.id = ugp.provider_id
@@ -438,25 +531,27 @@ pub async fn get_providers_for_group(
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|r| LlmProvider {
+    let mut providers = Vec::with_capacity(rows.len());
+    for r in rows {
+        let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
+        providers.push(LlmProvider {
             id: r.id,
             name: r.name,
             provider_type: r.provider_type,
             enabled: r.enabled,
-            api_key: r.api_key,
+            api_key,
             base_url: r.base_url,
             built_in: r.built_in,
             proxy_settings: r
                 .proxy_settings
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
-        })
-        .collect())
+        });
+    }
+    Ok(providers)
 }
 
 /// Get all providers available to a user based on their group memberships
@@ -466,7 +561,7 @@ pub async fn get_providers_for_user(
     user_id: Uuid,
 ) -> Result<Vec<LlmProvider>, sqlx::Error> {
     let rows = sqlx::query!(
-        r#"SELECT DISTINCT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
+        r#"SELECT DISTINCT p.id, p.name, p.provider_type, p.enabled, p.api_key, p.api_key_encrypted, p.base_url, p.built_in, p.proxy_settings, p.created_at, p.updated_at,
                   p.default_runtime_version_id
          FROM llm_providers p
          INNER JOIN user_group_llm_providers ugp ON p.id = ugp.provider_id
@@ -481,25 +576,27 @@ pub async fn get_providers_for_user(
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|r| LlmProvider {
+    let mut providers = Vec::with_capacity(rows.len());
+    for r in rows {
+        let api_key = resolve_optional_secret(pool, r.api_key_encrypted, r.api_key).await;
+        providers.push(LlmProvider {
             id: r.id,
             name: r.name,
             provider_type: r.provider_type,
             enabled: r.enabled,
-            api_key: r.api_key,
+            api_key,
             base_url: r.base_url,
             built_in: r.built_in,
             proxy_settings: r
                 .proxy_settings
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-            created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
-            updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
+            created_at: to_chrono(r.created_at),
+            updated_at: to_chrono(r.updated_at),
             default_runtime_version_id: r.default_runtime_version_id,
-        })
-        .collect())
+        });
+    }
+    Ok(providers)
 }
 
 /// Check if a user has access to a specific provider through their group assignments

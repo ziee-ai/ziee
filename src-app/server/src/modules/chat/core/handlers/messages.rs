@@ -128,7 +128,10 @@ pub fn edit_message_docs(op: TransformOperation) -> TransformOperation {
         .response_with::<401, (), _>(|res| res.description("Unauthorized"))
 }
 
-/// Delete a message and all its descendants
+/// Delete a single message. The branch_messages cascade removes the
+/// junction rows in every branch that referenced it. See 04-chat F-03
+/// rationale in `messages::delete_message` (descendant semantics are
+/// undefined for CoW-branched chats).
 #[debug_handler]
 pub async fn delete_message(
     auth: RequirePermissions<(MessagesDelete,)>,
@@ -141,7 +144,7 @@ pub async fn delete_message(
         .await?
         .ok_or_else(|| AppError::not_found("Message"))?;
 
-    let deleted_count = Repos.chat.core.delete_message_and_descendants( message_id).await?;
+    let deleted_count = Repos.chat.core.delete_message(message_id).await?;
 
     if deleted_count == 0 {
         return Err(AppError::not_found("Message").into());

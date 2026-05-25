@@ -158,11 +158,10 @@ async fn discover_token_endpoint(client: &Client, as_base: &str) -> Result<Strin
             Ok(r) if r.status().is_success() => r,
             _ => continue,
         };
-        if let Ok(md) = resp.json::<AuthServerMetadata>().await {
-            if let Some(ep) = md.token_endpoint {
+        if let Ok(md) = resp.json::<AuthServerMetadata>().await
+            && let Some(ep) = md.token_endpoint {
                 return Ok(ep);
             }
-        }
     }
     // Last-resort default per RFC 8414 (token endpoint at /token).
     Ok(format!("{base}/token"))
@@ -176,11 +175,10 @@ async fn request_client_credentials_token(
     config: &OAuthClientConfig,
 ) -> Result<StoredToken, AppError> {
     let mut form = vec![("grant_type", "client_credentials".to_string())];
-    if let Some(scope) = &config.scopes {
-        if !scope.is_empty() {
+    if let Some(scope) = &config.scopes
+        && !scope.is_empty() {
             form.push(("scope", scope.clone()));
         }
-    }
     if let Some(resource) = &config.resource {
         form.push(("resource", resource.clone()));
     }
@@ -264,15 +262,14 @@ pub async fn refresh_token(
             .send()
             .await
             .map_err(|e| AppError::internal_error(format!("OAuth refresh failed: {e}")))?;
-        if resp.status().is_success() {
-            if let Ok(tok) = resp.json::<TokenResponse>().await {
+        if resp.status().is_success()
+            && let Ok(tok) = resp.json::<TokenResponse>().await {
                 return Ok(StoredToken {
                     access_token: tok.access_token,
                     refresh_token: tok.refresh_token.or_else(|| current.refresh_token.clone()),
                     expires_at: tok.expires_in.map(|s| Instant::now() + Duration::from_secs(s)),
                 });
             }
-        }
         // Fall through to a fresh client-credentials exchange on refresh failure.
     }
     request_client_credentials_token(client, token_endpoint, config).await

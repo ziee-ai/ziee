@@ -48,7 +48,7 @@ async fn test_create_branch_minimal() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -79,7 +79,7 @@ async fn test_create_branch_conversation_not_found() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/branches", fake_id)))
+        .post(server.api_url(&format!("/conversations/{}/branches", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -107,7 +107,7 @@ async fn test_list_branches_default() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -160,7 +160,7 @@ async fn test_list_branches_multiple() {
     super::helpers::create_branch(&server, &user.token, conversation_id, Some(message_id)).await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -185,7 +185,7 @@ async fn test_list_branches_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/branches", fake_id)))
+        .get(server.api_url(&format!("/conversations/{}/branches", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -241,7 +241,7 @@ async fn test_activate_branch_updates_active_branch_id() {
 
     // Activate the new branch
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/branches/{}/activate",
             conversation_id, new_branch_id
         )))
@@ -274,7 +274,7 @@ async fn test_activate_branch_not_found() {
     let fake_branch_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/branches/{}/activate",
             conversation_id, fake_branch_id
         )))
@@ -300,7 +300,7 @@ async fn test_activate_branch_conversation_not_found() {
     let fake_branch_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/branches/{}/activate",
             fake_conversation_id, fake_branch_id
         )))
@@ -467,7 +467,7 @@ async fn test_create_branch_defaults_fork_level_user() {
     let (user, conversation_id, message_id) = fork_level_test_setup(&server).await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "from_message_id": message_id.to_string() }))
         .send()
@@ -486,7 +486,7 @@ async fn test_create_branch_with_assistant_fork_level() {
     let (user, conversation_id, message_id) = fork_level_test_setup(&server).await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "from_message_id": message_id.to_string(),
@@ -553,7 +553,7 @@ async fn test_create_branch_rejects_invalid_fork_level() {
     let (user, conversation_id, message_id) = fork_level_test_setup(&server).await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "from_message_id": message_id.to_string(),

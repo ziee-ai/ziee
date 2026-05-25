@@ -18,10 +18,10 @@ use uuid::Uuid;
 async fn test_list_models_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-models"))
+        .get(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -41,7 +41,7 @@ async fn test_list_models_with_read_permission() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-models"))
+        .get(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -58,11 +58,11 @@ async fn test_list_models_with_read_permission() {
 async fn test_get_model_requires_read_permission() {
     let server = crate::common::TestServer::start().await;
     let user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .get(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -93,7 +93,7 @@ async fn test_create_model_requires_create_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -126,7 +126,7 @@ async fn test_update_model_requires_edit_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model["id"])))
+        .post(server.api_url(&format!("/llm-models/{}", model["id"])))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -155,7 +155,7 @@ async fn test_delete_model_requires_delete_permission() {
 
     // Try to delete without delete permission
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-models/{}", model["id"])))
+        .delete(server.api_url(&format!("/llm-models/{}", model["id"])))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -183,7 +183,7 @@ async fn test_enable_model_requires_edit_permission() {
 
     // Try to enable without edit permission
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}/enable", model["id"])))
+        .post(server.api_url(&format!("/llm-models/{}/enable", model["id"])))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -211,7 +211,7 @@ async fn test_disable_model_requires_edit_permission() {
 
     // Try to disable without edit permission
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}/disable", model["id"])))
+        .post(server.api_url(&format!("/llm-models/{}/disable", model["id"])))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -236,7 +236,7 @@ async fn test_list_models_with_pagination() {
 
     // Test default pagination
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-models"))
+        .get(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -250,7 +250,7 @@ async fn test_list_models_with_pagination() {
 
     // Test custom pagination (using camelCase as per serde configuration)
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-models?page=1&perPage=5"))
+        .get(server.api_url("/llm-models?page=1&perPage=5"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -287,7 +287,7 @@ async fn test_list_models_with_provider_filter() {
 
     // List models filtered by provider
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models?providerId={}", provider_id)))
+        .get(server.api_url(&format!("/llm-models?providerId={}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -322,7 +322,7 @@ async fn test_get_model_by_id_success() {
 
     // Get the model
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .get(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -347,7 +347,7 @@ async fn test_get_model_not_found() {
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .get(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -377,7 +377,7 @@ async fn test_create_model_minimal() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -422,7 +422,7 @@ async fn test_create_model_with_all_fields() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -463,7 +463,7 @@ async fn test_update_model_display_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -502,7 +502,7 @@ async fn test_update_model_enabled_and_description() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -540,7 +540,7 @@ async fn test_update_model_engine_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -568,7 +568,7 @@ async fn test_update_model_not_found() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -599,7 +599,7 @@ async fn test_delete_model() {
 
     // Delete it
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .delete(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -609,7 +609,7 @@ async fn test_delete_model() {
 
     // Verify it's gone
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .get(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -630,7 +630,7 @@ async fn test_delete_model_not_found() {
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .delete(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -660,7 +660,7 @@ async fn test_enable_model() {
 
     // Enable it
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}/enable", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}/enable", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -692,7 +692,7 @@ async fn test_disable_model() {
 
     // First enable it
     reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}/enable", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}/enable", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -700,7 +700,7 @@ async fn test_disable_model() {
 
     // Then disable it
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}/disable", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}/disable", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -723,7 +723,7 @@ async fn test_enable_model_not_found() {
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}/enable", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}/enable", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -744,7 +744,7 @@ async fn test_disable_model_not_found() {
 
     let model_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}/disable", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}/disable", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -778,7 +778,7 @@ async fn test_create_model_empty_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -809,7 +809,7 @@ async fn test_create_model_empty_display_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -842,7 +842,7 @@ async fn test_create_model_name_too_long() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -875,7 +875,7 @@ async fn test_create_model_display_name_too_long() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -910,7 +910,7 @@ async fn test_update_model_empty_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -945,7 +945,7 @@ async fn test_update_model_empty_display_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -976,7 +976,7 @@ async fn test_create_model_invalid_provider() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1009,7 +1009,7 @@ async fn test_create_model_missing_provider_id() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1039,7 +1039,7 @@ async fn test_create_model_missing_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1069,7 +1069,7 @@ async fn test_create_model_missing_display_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1099,7 +1099,7 @@ async fn test_create_model_missing_engine_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1129,7 +1129,7 @@ async fn test_create_model_missing_file_format() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1162,7 +1162,7 @@ async fn test_create_model_provider_id_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1193,7 +1193,7 @@ async fn test_create_model_name_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1224,7 +1224,7 @@ async fn test_create_model_display_name_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1256,7 +1256,7 @@ async fn test_create_model_enabled_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1288,7 +1288,7 @@ async fn test_create_model_description_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1320,7 +1320,7 @@ async fn test_create_model_capabilities_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1352,7 +1352,7 @@ async fn test_create_model_parameters_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1384,7 +1384,7 @@ async fn test_create_model_engine_settings_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1419,7 +1419,7 @@ async fn test_create_model_invalid_engine_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1450,7 +1450,7 @@ async fn test_create_model_invalid_file_format() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1487,7 +1487,7 @@ async fn test_update_model_name_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1520,7 +1520,7 @@ async fn test_update_model_display_name_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1553,7 +1553,7 @@ async fn test_update_model_enabled_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1586,7 +1586,7 @@ async fn test_update_model_description_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1619,7 +1619,7 @@ async fn test_update_model_invalid_engine_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1652,7 +1652,7 @@ async fn test_update_model_invalid_file_format() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1685,7 +1685,7 @@ async fn test_update_model_capabilities_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1718,7 +1718,7 @@ async fn test_update_model_parameters_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1751,7 +1751,7 @@ async fn test_update_model_engine_settings_wrong_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-models/{}", model_id)))
+        .post(server.api_url(&format!("/llm-models/{}", model_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1779,7 +1779,7 @@ async fn create_test_model(server: &crate::common::TestServer, token: &str) -> s
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -1793,7 +1793,7 @@ async fn create_test_model(server: &crate::common::TestServer, token: &str) -> s
 async fn get_first_provider(server: &crate::common::TestServer, token: &str) -> serde_json::Value {
     // Ensure user has permission to read providers
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers?per_page=1"))
+        .get(server.api_url("/llm-providers?per_page=1"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await

@@ -204,7 +204,20 @@ impl OAuth2Provider {
             AuthError::ConfigurationError("UserInfo URL not configured".to_string())
         })?;
 
-        let client = reqwest::Client::new();
+        // SECURITY: disable redirects on the UserInfo fetch. Without
+        // this, a malicious OIDC provider could return a 302 to
+        // http://169.254.169.254/latest/meta-data/iam/security-credentials
+        // and reqwest would happily follow the redirect WITH the bearer
+        // token attached, exfiltrating the access token to AWS IMDS or
+        // any other private-network service. The legit UserInfo flow
+        // never redirects — providers serve the user info directly.
+        // Closes 01-auth F-18 (High).
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| {
+                AuthError::ConnectionFailed(format!("Failed to build HTTP client: {}", e))
+            })?;
         let response = client
             .get(userinfo_url)
             .bearer_auth(access_token)
@@ -553,6 +566,21 @@ impl AuthProviderTrait for OAuth2Provider {
             let user_info = self.get_user_info_from_api(&access_token).await?;
             (access_token, user_info)
         };
+
+        // SECURITY: require email_verified to be true (or absent — some
+        // providers don't include the claim but only return verified
+        // emails) before treating the email as authoritative for user
+        // matching. If a provider explicitly returns email_verified=false,
+        // the email belongs to someone who hasn't yet proven control of
+        // it; matching on it would let an attacker take over an account
+        // by signing up with someone else's email at a provider that
+        // doesn't verify. Closes 01-auth F-09 (High).
+        if let Some(verified) = user_info.get("email_verified").and_then(|v| v.as_bool())
+            && !verified {
+                return Err(AuthError::InvalidCredentials(
+                    "OAuth provider returned email_verified=false; refusing to provision".to_string(),
+                ));
+            }
 
         // Extract user attributes
         let attributes = self.extract_user_attributes(&user_info)?;

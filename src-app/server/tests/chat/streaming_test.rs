@@ -247,7 +247,7 @@ async fn test_sse_stream_has_event_names() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -559,7 +559,7 @@ async fn test_assistant_extension_injects_system_message() {
     });
 
     let assistant_response = reqwest::Client::new()
-        .post(&server.api_url("/assistants"))
+        .post(server.api_url("/assistants"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&assistant_payload)
         .send()
@@ -587,7 +587,7 @@ async fn test_assistant_extension_injects_system_message() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/messages/stream",
             conversation_id
         )))
@@ -642,7 +642,7 @@ async fn test_assistant_extension_handles_missing_assistant() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/messages/stream",
             conversation_id
         )))

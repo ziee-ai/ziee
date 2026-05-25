@@ -76,8 +76,7 @@ impl From<&DownloadInstance> for DownloadProgressUpdate {
             total: download.progress_data.as_ref().map(|p| p.total),
             message: download
                 .progress_data
-                .as_ref()
-                .and_then(|p| Some(p.message.clone())),
+                .as_ref().map(|p| p.message.clone()),
             speed_bps: download.progress_data.as_ref().map(|p| p.speed_bps),
             eta_seconds: download.progress_data.as_ref().map(|p| p.eta_seconds),
             error_message: download.error_message.clone(),

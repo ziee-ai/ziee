@@ -123,10 +123,33 @@ pub fn update_mcp_settings_docs(op: TransformOperation) -> TransformOperation {
 /// Get pending tool approvals for a branch
 #[debug_handler]
 pub async fn get_pending_approvals_for_branch(
-    _auth: RequirePermissions<(ConversationsRead,)>,
+    auth: RequirePermissions<(ConversationsRead,)>,
     Path(branch_id): Path<Uuid>,
 ) -> ApiResult<Json<PendingApprovalsResponse>> {
-    // Get pending approvals for the branch
+    // SECURITY: verify the caller owns the conversation that contains
+    // this branch. The original handler used `_auth` and ran the query
+    // unconditionally, leaking tool_use_id / tool_name / full tool_input
+    // JSON / conversation+message metadata to anyone who could name a
+    // branch UUID. Carryover-fix from 2025-01; closes 04-chat F-01
+    // (Critical, open ~16 months).
+    //
+    // Both lookups return 404 (not 403) so an attacker can't distinguish
+    // "branch does not exist" from "branch exists but belongs to another
+    // user" — prevents UUID enumeration.
+    let branch = crate::core::Repos
+        .chat
+        .core
+        .get_branch(branch_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Branch"))?;
+
+    let _conversation = crate::core::Repos
+        .chat
+        .core
+        .get_conversation(branch.conversation_id, auth.user.id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Branch"))?;
+
     let approvals = crate::core::Repos
         .chat
         .mcp

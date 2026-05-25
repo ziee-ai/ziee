@@ -19,6 +19,7 @@ use super::jwt::{JwtService, TokenPair};
 use super::jwt_extractor::JwtAuth;
 use super::password;
 use super::providers::{create_provider, repository as provider_repo};
+use super::refresh_tokens;
 use super::types::{
     AuthResponse, LoginRequest, MeResponse, OAuthAuthorizeQuery, OAuthCallbackQuery,
     RefreshTokenRequest, RegisterRequest,
@@ -49,19 +50,47 @@ pub async fn register(
             AppError::bad_request("INVALID_EMAIL", "Email cannot be empty"),
         ));
     }
-    if req.password.is_empty() {
+    if let Err(msg) = password::validate_password_strength(&req.password) {
         return Err((
             StatusCode::BAD_REQUEST,
-            AppError::bad_request("INVALID_PASSWORD", "Password cannot be empty"),
+            AppError::bad_request("INVALID_PASSWORD", msg),
         ));
     }
 
-    // Check if username or email already exists
-    if Repos.user.get_by_username(&req.username).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?.is_some() {
-        return Err((StatusCode::CONFLICT, AppError::conflict("Username")));
-    }
-    if Repos.user.get_by_email(&req.email).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?.is_some() {
-        return Err((StatusCode::CONFLICT, AppError::conflict("Email")));
+    // Check if username or email already exists. Closes 01-auth F-13
+    // (Medium): the previous "Username" vs "Email" differential let an
+    // attacker probe which of two values is already registered (user
+    // enumeration). We now collapse both branches into the same
+    // generic "ACCOUNT_EXISTS" response, leaking nothing about which
+    // field collided. Server-side logs still record which one for
+    // operator debugging.
+    let username_taken = Repos
+        .user
+        .get_by_username(&req.username)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .is_some();
+    let email_taken = Repos
+        .user
+        .get_by_email(&req.email)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .is_some();
+    if username_taken || email_taken {
+        if username_taken {
+            tracing::info!("Register conflict on username (logged for ops; client sees generic)");
+        }
+        if email_taken {
+            tracing::info!("Register conflict on email (logged for ops; client sees generic)");
+        }
+        return Err((
+            StatusCode::CONFLICT,
+            AppError::new(
+                StatusCode::CONFLICT,
+                "ACCOUNT_EXISTS",
+                "An account with these details already exists",
+            ),
+        ));
     }
 
     // Hash password
@@ -119,8 +148,8 @@ pub async fn login(
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
     // Check if external provider is specified
-    if let Some(provider_name) = &req.provider {
-        if provider_name != "local" {
+    if let Some(provider_name) = &req.provider
+        && provider_name != "local" {
             // External authentication (LDAP/OAuth)
             return login_with_provider(
                 Repos.pool().clone(),
@@ -131,54 +160,77 @@ pub async fn login(
             )
             .await;
         }
-    }
 
-    // Local password authentication
-    // Get user by username or email
-    let user = Repos
+    // Local password authentication.
+    //
+    // Closes 01-auth F-06 (Medium): the previous flow leaked
+    // existence three ways: (a) returning early with no bcrypt when
+    // the user didn't exist (~10ms timing differential), (b) a
+    // distinct ACCOUNT_DISABLED error for valid-but-disabled accounts,
+    // and (c) a distinct NO_PASSWORD error for OAuth-only accounts.
+    // Combined, an attacker could enumerate registered emails.
+    //
+    // Defense:
+    //   - Always run bcrypt verify against a precomputed dummy hash
+    //     when the user / password is absent, so the timing matches a
+    //     real verification call.
+    //   - Collapse every failure into the same INVALID_CREDENTIALS
+    //     response shape.
+    //   - Log the real reason server-side for operator debugging.
+    //
+    // The dummy hash is precomputed once at first use; the password
+    // input to bcrypt::verify is the user-supplied password (so the
+    // hashing cost matches the input).
+    static DUMMY_PWHASH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let dummy_hash = DUMMY_PWHASH.get_or_init(|| {
+        // Cost matches the application default (bcrypt::DEFAULT_COST).
+        // A random unguessable value so even a length-equal guess
+        // can't match.
+        bcrypt::hash(uuid::Uuid::new_v4().to_string(), bcrypt::DEFAULT_COST)
+            .expect("bcrypt dummy hash")
+    });
+
+    let user_opt = Repos
         .user
         .get_by_username_or_email(&req.username)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
-        .ok_or_else(|| {
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // Pick the hash to verify: real user hash, dummy when missing or
+    // no-password. Both code paths run bcrypt to keep timing flat.
+    let (hash_to_verify, real_user_active, password_was_present) = match &user_opt {
+        Some(u) => match u.password_hash.as_deref() {
+            Some(h) => (h.to_string(), u.is_active, true),
+            None => (dummy_hash.clone(), u.is_active, false),
+        },
+        None => (dummy_hash.clone(), false, false),
+    };
+
+    let verify_result =
+        password::verify_password(&req.password, &hash_to_verify).map_err(|e| {
             (
-                StatusCode::UNAUTHORIZED,
-                AppError::unauthorized("INVALID_CREDENTIALS", "Invalid username or password"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                AppError::internal_error(format!("Password verification error: {}", e)),
             )
         })?;
 
-    // Check if user is active
-    if !user.is_active {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            AppError::unauthorized("ACCOUNT_DISABLED", "User account is disabled"),
-        ));
-    }
-
-    // Verify password
-    let password_hash = user.password_hash.as_ref().ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            AppError::unauthorized(
-                "NO_PASSWORD",
-                "No password set for this user. Please use external authentication.",
-            ),
-        )
-    })?;
-
-    let valid = password::verify_password(&req.password, password_hash).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::internal_error(format!("Password verification error: {}", e)),
-        )
-    })?;
-
-    if !valid {
+    if !verify_result || !real_user_active || !password_was_present {
+        if user_opt.is_none() {
+            tracing::info!("Login failed: user not found");
+        } else if !real_user_active {
+            tracing::info!("Login failed: account disabled");
+        } else if !password_was_present {
+            tracing::info!("Login failed: no password (OAuth-only account)");
+        } else {
+            tracing::info!("Login failed: bad password");
+        }
         return Err((
             StatusCode::UNAUTHORIZED,
             AppError::unauthorized("INVALID_CREDENTIALS", "Invalid username or password"),
         ));
     }
+
+    let user = user_opt.expect("user_opt is Some past timing-equalised checks");
 
     // Update last login
     Repos
@@ -246,7 +298,7 @@ async fn login_with_provider(
                 StatusCode::UNAUTHORIZED,
                 AppError::unauthorized(
                     "INVALID_CREDENTIALS",
-                    format!("Invalid username or password"),
+                    "Invalid username or password".to_string(),
                 ),
             )
         })?;
@@ -330,7 +382,7 @@ pub async fn refresh(
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Json(req): Json<RefreshTokenRequest>,
 ) -> ApiResult<Json<TokenPair>> {
-    // Validate refresh token
+    // Validate refresh token (signature + exp + iss + aud)
     let claims = jwt_service
         .validate_refresh_token(&req.refresh_token)
         .map_err(|e| (StatusCode::UNAUTHORIZED, e))?;
@@ -342,6 +394,42 @@ pub async fn refresh(
             AppError::internal_error(format!("Invalid user ID in token: {}", e)),
         )
     })?;
+
+    // SECURITY: check the refresh token's jti against the whitelist
+    // (refresh_tokens table). Closes 01-auth F-03 (refresh didn't rotate
+    // the presented token — the old one kept minting access tokens for
+    // up to 30 days).
+    //
+    // Tokens minted BEFORE this commit don't carry a jti claim; we let
+    // those through unconditionally so existing sessions don't break on
+    // the upgrade. Within ~30 days every active session is naturally
+    // re-issued through the new code path and gets a jti, after which
+    // unchecked legacy tokens can no longer exist.
+    if let Some(jti_str) = claims.jti.as_deref() {
+        let jti = uuid::Uuid::parse_str(jti_str).map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                AppError::unauthorized("INVALID_TOKEN", "Invalid refresh token jti"),
+            )
+        })?;
+        let active = refresh_tokens::is_active(Repos.pool(), jti)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        if !active {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                AppError::unauthorized(
+                    "REFRESH_TOKEN_REVOKED",
+                    "Refresh token has been revoked or already used",
+                ),
+            ));
+        }
+        // Revoke the presented refresh token NOW so it can't be used a
+        // second time even if the new pair fails to land at the client.
+        refresh_tokens::revoke(Repos.pool(), jti)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    }
 
     // Get user from database
     let user = Repos
@@ -364,12 +452,21 @@ pub async fn refresh(
         ));
     }
 
-    // Generate new tokens
-    let tokens = jwt_service
-        .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
+    // Generate new tokens with jti and register the new refresh token
+    // in the whitelist before returning it.
+    let token_pair_with_jti = jwt_service
+        .generate_tokens_with_jti(user.id, &user.username, &user.email, user.is_admin)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    refresh_tokens::register(
+        Repos.pool(),
+        token_pair_with_jti.refresh_jti,
+        user.id,
+        token_pair_with_jti.refresh_expires_at,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    Ok((StatusCode::OK, Json(tokens)))
+    Ok((StatusCode::OK, Json(token_pair_with_jti.pair)))
 }
 
 /// Documentation for refresh endpoint
@@ -381,12 +478,26 @@ pub fn refresh_docs(op: TransformOperation) -> TransformOperation {
 }
 
 /// POST /api/auth/logout
-/// Logout current user (JWT is stateless, so this is just a placeholder)
-/// Client should discard the token
+/// Logout current user. Revokes all of the user's active refresh tokens
+/// so subsequent calls to /auth/refresh fail with REFRESH_TOKEN_REVOKED.
+/// Closes 01-auth F-02 (logout was a no-op).
+///
+/// The access token itself remains valid for the remainder of its TTL
+/// (typically 24h). Clients must drop it from storage on logout. Server-
+/// side access-token revocation would require either short TTLs (already
+/// the design intent) or a per-request revocation check (deferred — adds
+/// a DB hit to every authenticated request).
 #[debug_handler]
-pub async fn logout(_auth: JwtAuth) -> ApiResult<()> {
-    // JWT is stateless, logout is handled client-side by discarding the token
-    // This endpoint exists for API consistency
+pub async fn logout(auth: JwtAuth) -> ApiResult<()> {
+    let user_id = uuid::Uuid::parse_str(&auth.claims.sub).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::internal_error(format!("Invalid user ID in token: {}", e)),
+        )
+    })?;
+    refresh_tokens::revoke_all_for_user(Repos.pool(), user_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok((StatusCode::NO_CONTENT, ()))
 }
 
@@ -443,6 +554,7 @@ pub fn me_docs(op: TransformOperation) -> TransformOperation {
 /// Initiate OAuth flow for the specified provider
 #[debug_handler]
 pub async fn oauth_authorize(
+    headers: axum::http::HeaderMap,
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthAuthorizeQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
@@ -470,10 +582,38 @@ pub async fn oauth_authorize(
         )
     })?;
 
-    // Build callback URL (should be a full URL in production)
-    let redirect_uri = query
-        .redirect_uri
-        .unwrap_or_else(|| format!("/api/auth/oauth/{}/callback", provider_name));
+    // SECURITY: ignore the user-supplied redirect_uri query parameter
+    // and always use the server's canonical OAuth callback URL. The
+    // original implementation let `?redirect_uri=https://evil.com/` flow
+    // through to the OAuth authorize call; well-configured providers
+    // would reject the mismatch against their registered URI, but
+    // misconfigured ones (which are common with self-hosted IdP setups)
+    // would happily redirect the victim's browser to evil.com WITH the
+    // OAuth `code` in the query string — evil.com can then exchange
+    // the code for the access + ID token. Closes 01-auth F-07 (High).
+    //
+    // The OAuth2 spec requires an absolute URL — derive scheme + host
+    // from the inbound request. Reverse-proxy operators should ensure
+    // their proxy forwards X-Forwarded-Proto so https survives the
+    // hop; otherwise we fall back to http (the dev / tests default).
+    // The path portion is server-controlled (provider_name comes from
+    // URL routing matched against a string we built ourselves, not
+    // user-controlled here).
+    let _ = query;
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "http".to_string());
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost")
+        .to_string();
+    let redirect_uri = format!(
+        "{}://{}/api/auth/oauth/{}/callback",
+        scheme, host, provider_name
+    );
 
     // Initialize OAuth flow
     let oauth_result = provider.init_oauth_flow(&redirect_uri).await.map_err(|e| {
@@ -568,9 +708,21 @@ pub async fn oauth_callback(
             .generate_tokens(user.id, &user.username, &user.email, user.is_admin)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-        // Redirect to success page with token (in a real app, use a more secure method)
+        // SECURITY: return the token in the URL FRAGMENT (#) rather than
+        // the query (?). The fragment is not transmitted to the server,
+        // not written to server access logs, not sent as the Referer on
+        // subsequent navigations, and not indexed by search engines that
+        // crawl the redirect chain. The frontend reads
+        // window.location.hash on landing and immediately calls
+        // history.replaceState to scrub it from browser history.
+        //
+        // Closes 01-auth F-01 (Critical): the previous '/?token=...'
+        // form wrote the bearer token to browser history, Referer
+        // headers, and every reverse-proxy access log on the path —
+        // full account takeover blast radius from a single Referer leak
+        // or shared browser session.
         Ok(Redirect::temporary(&format!(
-            "/?token={}",
+            "/#token={}",
             tokens.access_token
         )))
     } else {

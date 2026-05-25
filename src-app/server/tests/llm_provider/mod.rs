@@ -15,7 +15,7 @@ async fn test_list_providers_requires_read_permission() {
         crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers"))
+        .get(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -35,7 +35,7 @@ async fn test_list_providers_with_read_permission() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers"))
+        .get(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -56,7 +56,7 @@ async fn test_get_provider_requires_read_permission() {
 
     let provider_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .get(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -82,7 +82,7 @@ async fn test_create_provider_requires_create_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -111,7 +111,7 @@ async fn test_update_provider_requires_edit_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider["id"])))
+        .post(server.api_url(&format!("/llm-providers/{}", provider["id"])))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -136,7 +136,7 @@ async fn test_delete_provider_requires_delete_permission() {
 
     // Try to delete without delete permission
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-providers/{}", provider["id"])))
+        .delete(server.api_url(&format!("/llm-providers/{}", provider["id"])))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -161,7 +161,7 @@ async fn test_assign_provider_to_group_requires_assign_groups_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -187,7 +187,7 @@ async fn test_list_providers_with_pagination() {
 
     // Test default pagination
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers"))
+        .get(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -201,7 +201,7 @@ async fn test_list_providers_with_pagination() {
 
     // Test custom pagination
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers?page=1&per_page=3"))
+        .get(server.api_url("/llm-providers?page=1&per_page=3"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -230,7 +230,7 @@ async fn test_get_provider_by_id_success() {
 
     // Get the provider
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .get(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -255,7 +255,7 @@ async fn test_get_provider_not_found() {
 
     let provider_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .get(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -281,7 +281,7 @@ async fn test_create_provider_minimal() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -323,7 +323,7 @@ async fn test_create_provider_with_all_fields() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -333,7 +333,12 @@ async fn test_create_provider_with_all_fields() {
     assert_eq!(response.status(), StatusCode::CREATED);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["name"], "Full Provider");
-    assert_eq!(body["api_key"], "sk-test123");
+    // api_key is write-only post-06-llm-provider-F-01 — must NOT be returned.
+    assert!(
+        body.get("api_key").is_none() || body["api_key"].is_null(),
+        "api_key must not be returned in response (06-llm-provider F-01); got {:?}",
+        body.get("api_key")
+    );
     assert_eq!(body["base_url"], "https://api.openai.com/v1");
     assert_eq!(body["proxy_settings"]["enabled"], true);
     assert_eq!(
@@ -366,7 +371,7 @@ async fn test_update_provider_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -404,7 +409,7 @@ async fn test_update_provider_enabled_and_api_key() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -414,7 +419,11 @@ async fn test_update_provider_enabled_and_api_key() {
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["enabled"], true);
-    assert_eq!(body["api_key"], "sk-newkey456");
+    // api_key is write-only post-06-llm-provider-F-01 — must NOT be returned.
+    assert!(
+        body.get("api_key").is_none() || body["api_key"].is_null(),
+        "api_key must not be returned in response (06-llm-provider F-01)"
+    );
 }
 
 #[tokio::test]
@@ -444,7 +453,7 @@ async fn test_update_provider_proxy_settings() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -476,7 +485,7 @@ async fn test_update_provider_not_found() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -506,7 +515,7 @@ async fn test_delete_custom_provider() {
 
     // Delete it
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .delete(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -516,7 +525,7 @@ async fn test_delete_custom_provider() {
 
     // Verify it's gone
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .get(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -537,7 +546,7 @@ async fn test_delete_built_in_provider_fails() {
 
     // Get a built-in provider (OpenAI)
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers?page=1&per_page=100"))
+        .get(server.api_url("/llm-providers?page=1&per_page=100"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -553,7 +562,7 @@ async fn test_delete_built_in_provider_fails() {
 
     // Try to delete it
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .delete(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -574,7 +583,7 @@ async fn test_delete_provider_not_found() {
 
     let provider_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .delete(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -604,7 +613,7 @@ async fn test_create_provider_invalid_type() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -632,7 +641,7 @@ async fn test_create_provider_empty_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -660,7 +669,7 @@ async fn test_create_provider_invalid_base_url() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -688,7 +697,7 @@ async fn test_create_enabled_remote_provider_requires_api_key() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -717,7 +726,7 @@ async fn test_create_local_provider_no_api_key_required() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -754,7 +763,7 @@ async fn test_update_provider_empty_name() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -788,7 +797,7 @@ async fn test_update_provider_invalid_base_url() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -818,7 +827,7 @@ async fn test_get_provider_groups() {
 
     // Get groups (should be empty initially)
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .get(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -858,7 +867,7 @@ async fn test_assign_provider_to_group() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -869,7 +878,7 @@ async fn test_assign_provider_to_group() {
 
     // Verify assignment
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .get(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -908,7 +917,7 @@ async fn test_assign_provider_to_group_idempotent() {
 
     // Assign twice - should be idempotent
     let response1 = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -918,7 +927,7 @@ async fn test_assign_provider_to_group_idempotent() {
     assert_eq!(response1.status(), StatusCode::NO_CONTENT);
 
     let response2 = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -929,7 +938,7 @@ async fn test_assign_provider_to_group_idempotent() {
 
     // Should still have only one assignment
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .get(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -967,7 +976,7 @@ async fn test_remove_provider_from_group() {
     });
 
     reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -976,7 +985,7 @@ async fn test_remove_provider_from_group() {
 
     // Remove assignment
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!(
+        .delete(server.api_url(&format!(
             "/llm-providers/{}/groups/{}",
             provider_id, admin_group_id
         )))
@@ -989,7 +998,7 @@ async fn test_remove_provider_from_group() {
 
     // Verify it's removed
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
+        .get(server.api_url(&format!("/llm-providers/{}/groups", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1013,7 +1022,7 @@ async fn test_remove_provider_from_group_not_found() {
     let group_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!(
+        .delete(server.api_url(&format!(
             "/llm-providers/{}/groups/{}",
             provider_id, group_id
         )))
@@ -1044,7 +1053,7 @@ async fn test_get_group_providers() {
 
     // Get providers for group (should be empty initially)
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .get(server.api_url(&format!("/groups/{}/providers", admin_group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1089,7 +1098,7 @@ async fn test_update_group_providers_bulk() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .put(server.api_url(&format!("/groups/{}/providers", admin_group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1106,7 +1115,7 @@ async fn test_update_group_providers_bulk() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .put(server.api_url(&format!("/groups/{}/providers", admin_group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1156,7 +1165,7 @@ async fn test_update_group_providers_empty_list() {
     });
 
     reqwest::Client::new()
-        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .put(server.api_url(&format!("/groups/{}/providers", admin_group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1169,7 +1178,7 @@ async fn test_update_group_providers_empty_list() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .put(server.api_url(&format!("/groups/{}/providers", admin_group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1199,7 +1208,7 @@ async fn test_update_group_providers_requires_permission() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/groups/{}/providers", admin_group_id)))
+        .put(server.api_url(&format!("/groups/{}/providers", admin_group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1217,7 +1226,7 @@ async fn test_get_group_providers_requires_permission() {
 
     let group_id = Uuid::new_v4();
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/groups/{}/providers", group_id)))
+        .get(server.api_url(&format!("/groups/{}/providers", group_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1241,7 +1250,7 @@ async fn test_built_in_providers_exist() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers?per_page=100"))
+        .get(server.api_url("/llm-providers?per_page=100"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1283,7 +1292,7 @@ async fn test_update_built_in_provider() {
 
     // Get OpenAI built-in provider
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers?per_page=100"))
+        .get(server.api_url("/llm-providers?per_page=100"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1304,7 +1313,7 @@ async fn test_update_built_in_provider() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-providers/{}", provider_id)))
+        .post(server.api_url(&format!("/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -1314,7 +1323,11 @@ async fn test_update_built_in_provider() {
     assert_eq!(response.status(), StatusCode::OK);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["enabled"], true);
-    assert_eq!(body["api_key"], "sk-testkey");
+    // api_key is write-only post-06-llm-provider-F-01 — must NOT be returned.
+    assert!(
+        body.get("api_key").is_none() || body["api_key"].is_null(),
+        "api_key must not be returned in response (06-llm-provider F-01)"
+    );
     assert_eq!(body["built_in"], true);
 }
 
@@ -1334,7 +1347,7 @@ async fn create_test_provider(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -1347,7 +1360,7 @@ async fn create_test_provider(
 
 async fn get_admin_group_id(server: &crate::common::TestServer, token: &str) -> String {
     let response = reqwest::Client::new()
-        .get(&server.api_url("/groups"))
+        .get(server.api_url("/groups"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -1396,7 +1409,7 @@ async fn create_test_provider_with_key(
     }
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -1450,7 +1463,7 @@ async fn test_get_user_llm_providers_requires_user_llm_providers_read() {
     let user = create_user_without_default_group(&server, "no_perm", &[]).await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/user-llm-providers"))
+        .get(server.api_url("/user-llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1465,7 +1478,7 @@ async fn test_list_user_api_keys_requires_profile_read() {
     let user = create_user_without_default_group(&server, "no_perm", &[]).await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .get(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1480,7 +1493,7 @@ async fn test_save_user_api_key_requires_profile_edit() {
     let user = create_user_without_default_group(&server, "no_perm", &[]).await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "provider_id": Uuid::new_v4(),
@@ -1500,7 +1513,7 @@ async fn test_delete_user_api_key_requires_profile_edit() {
     let provider_id = Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
+        .delete(server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1528,7 +1541,7 @@ async fn test_save_user_api_key_round_trip() {
 
     // Save a key.
     let save_response = reqwest::Client::new()
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "provider_id": provider_id, "api_key": "sk-secret-key-1234" }))
         .send()
@@ -1539,7 +1552,7 @@ async fn test_save_user_api_key_round_trip() {
     // List keys, assert the entry is present and the plaintext is NOT leaked
     // (masked_key = first 4 chars + "***").
     let list_response = reqwest::Client::new()
-        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .get(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1576,7 +1589,7 @@ async fn test_save_user_api_key_upserts_existing() {
     // Save twice — second time with a different key.
     for key in &["aaaa-first", "bbbb-second"] {
         let r = client
-            .post(&server.api_url("/user-llm-providers/api-keys"))
+            .post(server.api_url("/user-llm-providers/api-keys"))
             .header("Authorization", format!("Bearer {}", user.token))
             .json(&json!({ "provider_id": provider_id, "api_key": key }))
             .send()
@@ -1588,7 +1601,7 @@ async fn test_save_user_api_key_upserts_existing() {
     // List — expect exactly one entry (upsert, not duplicate) with the SECOND
     // key's masked prefix.
     let list = client
-        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .get(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1621,7 +1634,7 @@ async fn test_delete_user_api_key_removes_key_and_is_idempotent() {
 
     // Save then delete.
     client
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "provider_id": provider_id, "api_key": "sk-x" }))
         .send()
@@ -1629,7 +1642,7 @@ async fn test_delete_user_api_key_removes_key_and_is_idempotent() {
         .unwrap();
 
     let delete1 = client
-        .delete(&server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
+        .delete(server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1638,7 +1651,7 @@ async fn test_delete_user_api_key_removes_key_and_is_idempotent() {
 
     // List should be empty.
     let list = client
-        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .get(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1648,7 +1661,7 @@ async fn test_delete_user_api_key_removes_key_and_is_idempotent() {
 
     // Second delete must also succeed (idempotent).
     let delete2 = client
-        .delete(&server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
+        .delete(server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1668,7 +1681,7 @@ async fn test_save_user_api_key_rejects_empty_key() {
     let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "provider_id": Uuid::new_v4(), "api_key": "" }))
         .send()
@@ -1689,7 +1702,7 @@ async fn test_save_user_api_key_rejects_oversized_key() {
     let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "provider_id": Uuid::new_v4(),
@@ -1725,7 +1738,7 @@ async fn test_save_user_api_key_control_char_handling() {
 
     // Control char other than \t is rejected.
     let r_bad = client
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "provider_id": provider_id,
@@ -1743,7 +1756,7 @@ async fn test_save_user_api_key_control_char_handling() {
 
     // \t (tab) is the documented allowed exception.
     let r_ok = client
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "provider_id": provider_id,
@@ -1795,7 +1808,7 @@ async fn test_get_user_providers_flag_true_with_system_key() {
     .expect("Failed to assign provider to default group");
 
     let r = reqwest::Client::new()
-        .get(&server.api_url("/user-llm-providers"))
+        .get(server.api_url("/user-llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1853,7 +1866,7 @@ async fn test_get_user_providers_flag_with_and_without_user_key() {
 
     // BEFORE any user key: flag should be false (no system key, no user key).
     let r_before = client
-        .get(&server.api_url("/user-llm-providers"))
+        .get(server.api_url("/user-llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1873,7 +1886,7 @@ async fn test_get_user_providers_flag_with_and_without_user_key() {
 
     // Save a personal key.
     client
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "provider_id": provider_id, "api_key": "sk-mine" }))
         .send()
@@ -1882,7 +1895,7 @@ async fn test_get_user_providers_flag_with_and_without_user_key() {
 
     // AFTER user key: flag must flip to true even though system key remains empty.
     let r_after = client
-        .get(&server.api_url("/user-llm-providers"))
+        .get(server.api_url("/user-llm-providers"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -1927,7 +1940,7 @@ async fn test_user_keys_are_isolated_between_users() {
         (&user_b.token, "bbbb-bob"),
     ] {
         let r = client
-            .post(&server.api_url("/user-llm-providers/api-keys"))
+            .post(server.api_url("/user-llm-providers/api-keys"))
             .header("Authorization", format!("Bearer {}", token))
             .json(&json!({ "provider_id": provider_id, "api_key": key }))
             .send()
@@ -1938,7 +1951,7 @@ async fn test_user_keys_are_isolated_between_users() {
 
     // A sees only A's masked key.
     let list_a: serde_json::Value = client
-        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .get(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user_a.token))
         .send()
         .await
@@ -1952,7 +1965,7 @@ async fn test_user_keys_are_isolated_between_users() {
 
     // B sees only B's masked key.
     let list_b: serde_json::Value = client
-        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .get(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user_b.token))
         .send()
         .await
@@ -1966,14 +1979,14 @@ async fn test_user_keys_are_isolated_between_users() {
 
     // A deletes — must not affect B.
     client
-        .delete(&server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
+        .delete(server.api_url(&format!("/user-llm-providers/api-keys/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", user_a.token))
         .send()
         .await
         .unwrap();
 
     let list_b_after: serde_json::Value = client
-        .get(&server.api_url("/user-llm-providers/api-keys"))
+        .get(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user_b.token))
         .send()
         .await
@@ -2036,7 +2049,7 @@ async fn test_resolve_api_key_user_key_wins_over_system_key() {
 
     // User saves their personal key.
     reqwest::Client::new()
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&serde_json::json!({
             "provider_id": provider_id,
@@ -2111,7 +2124,7 @@ async fn test_resolve_api_key_user_key_used_when_no_system_key() {
     let provider_id = provider["id"].as_str().unwrap();
 
     reqwest::Client::new()
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&serde_json::json!({
             "provider_id": provider_id,
@@ -2178,7 +2191,7 @@ async fn test_resolve_api_key_is_isolated_between_users() {
 
     // Only A saves a key.
     reqwest::Client::new()
-        .post(&server.api_url("/user-llm-providers/api-keys"))
+        .post(server.api_url("/user-llm-providers/api-keys"))
         .header("Authorization", format!("Bearer {}", user_a.token))
         .json(&serde_json::json!({
             "provider_id": provider_id,
@@ -2204,4 +2217,96 @@ async fn test_resolve_api_key_is_isolated_between_users() {
         resolved_for_b, "sk-system",
         "B has no personal key — resolution must fall through to system key"
     );
+}
+
+// =====================================================
+// SSRF regression tests — close 06-llm-provider F-03
+// =====================================================
+
+async fn create_provider_with_base_url(
+    server: &crate::common::TestServer,
+    admin_token: &str,
+    bad_url: &str,
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .post(server.api_url("/llm-providers"))
+        .header("Authorization", format!("Bearer {}", admin_token))
+        .json(&json!({
+            "name": format!("ssrf-test-{}", Uuid::new_v4()),
+            "provider_type": "openai",
+            "base_url": bad_url,
+            "enabled": false,
+        }))
+        .send()
+        .await
+        .expect("request failed")
+}
+
+#[tokio::test]
+async fn test_ssrf_provider_rejects_aws_imds_base_url() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let res = create_provider_with_base_url(
+        &server,
+        &admin.token,
+        "http://169.254.169.254/v1",
+    )
+    .await;
+    assert_eq!(res.status(), 400, "AWS IMDS base_url must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_provider_accepts_loopback_base_url() {
+    // INTENTIONAL: loopback URLs are ALLOWED on provider base_url
+    // because local LLM providers (llama.cpp, mistralrs at
+    // http://localhost:1234/v1) are a legitimate first-class use case.
+    // The validator uses OutboundUrlPolicy::DEV_LOCAL which lets
+    // localhost through but still blocks RFC 1918, link-local (AWS
+    // IMDS), ULA, CGNAT, and non-HTTP schemes. The provider-create
+    // endpoint is admin-only so the "admin probes localhost services"
+    // risk is gated by trust.
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let res = create_provider_with_base_url(&server, &admin.token, "http://127.0.0.1:8000/v1").await;
+    assert!(
+        res.status().is_success(),
+        "loopback base_url must be accepted (local providers); got {}",
+        res.status()
+    );
+}
+
+#[tokio::test]
+async fn test_ssrf_provider_rejects_file_scheme_base_url() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let res = create_provider_with_base_url(&server, &admin.token, "file:///etc/passwd").await;
+    assert_eq!(res.status(), 400, "file:// base_url must be rejected");
+}
+
+#[tokio::test]
+async fn test_ssrf_provider_rejects_rfc1918_base_url() {
+    let server = crate::common::TestServer::start().await;
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "admin",
+        &["llm_providers::create"],
+    )
+    .await;
+    let res = create_provider_with_base_url(&server, &admin.token, "http://192.168.1.1/v1").await;
+    assert_eq!(res.status(), 400, "RFC 1918 base_url must be rejected");
 }

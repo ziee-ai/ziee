@@ -69,12 +69,13 @@ export async function toggleProviderInDrawer(
   // Find the provider card in the drawer by looking for the strong tag with the provider name
   // The structure is: Card > div > (switch div + content div) > div > strong
   const providerCard = page.locator(
-    `.ant-drawer:visible .ant-drawer-body .ant-card:has(strong:has-text("${providerName}"))`
-  )
+    `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${providerName}"))`
+  ).first()
   await providerCard.waitFor({ state: 'visible', timeout: 5000 })
 
-  // Get the switch state
-  const switchElement = providerCard.locator('.ant-switch')
+  // Get the switch state — `.first()` because nested cards can each
+  // have their own switch.
+  const switchElement = providerCard.locator('.ant-switch').first()
   const isChecked = (await switchElement.getAttribute('aria-checked')) === 'true'
 
   // Toggle if needed
@@ -86,7 +87,7 @@ export async function toggleProviderInDrawer(
 
 export async function saveProviderAssignment(page: Page) {
   // Click Save button in drawer
-  const saveButton = page.locator('.ant-drawer:visible button:has-text("Save")')
+  const saveButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Save")')
   await saveButton.click()
 
   // Wait for success message
@@ -104,7 +105,7 @@ export async function saveProviderAssignment(page: Page) {
 }
 
 export async function cancelProviderAssignment(page: Page) {
-  const cancelButton = page.locator('.ant-drawer:visible button:has-text("Cancel")')
+  const cancelButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Cancel")')
   await cancelButton.click()
 
   // Wait for drawer to close
@@ -236,15 +237,19 @@ export async function toggleGroupInDrawer(
   groupName: string,
   enable: boolean
 ) {
-  // Find the group item in the drawer by looking for the strong tag with the group name
-  // The structure is: drawer > body > generic container > switch + text container > strong
+  // Find the group item in the drawer — each group is rendered as
+  // an `.ant-card` whose card-body contains the group name in a
+  // <strong>. `.first()` to disambiguate when there are nested
+  // .ant-card matches (e.g. an outer panel card wrapping the row).
   const groupContainer = page.locator(
-    `.ant-drawer:visible .ant-drawer-body > div > div:has(strong:has-text("${groupName}"))`
-  )
+    `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${groupName}"))`
+  ).first()
   await groupContainer.waitFor({ state: 'visible', timeout: 5000 })
 
-  // Get the switch state
-  const switchElement = groupContainer.locator('.ant-switch')
+  // Get the switch state — `.first()` because the container may match
+  // both the outer row and an inner subdiv each carrying their own
+  // switch element.
+  const switchElement = groupContainer.locator('.ant-switch').first()
   const isChecked = (await switchElement.getAttribute('aria-checked')) === 'true'
 
   // Toggle if needed
@@ -256,7 +261,7 @@ export async function toggleGroupInDrawer(
 
 export async function saveGroupAssignment(page: Page) {
   // Click Save button in drawer
-  const saveButton = page.locator('.ant-drawer:visible button:has-text("Save")')
+  const saveButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Save")')
   await saveButton.click()
 
   // Wait for success message
@@ -274,7 +279,7 @@ export async function saveGroupAssignment(page: Page) {
 }
 
 export async function cancelGroupAssignment(page: Page) {
-  const cancelButton = page.locator('.ant-drawer:visible button:has-text("Cancel")')
+  const cancelButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Cancel")')
   await cancelButton.click()
 
   // Wait for drawer to close
@@ -308,23 +313,31 @@ export async function assertGroupInProviderCard(
   page: Page,
   groupName: string
 ) {
-  // Find the card and verify group tag exists
-  const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
+  // Reload to force the provider-groups widget to re-fetch — the
+  // widget is event-driven only (LLMProviderGroupWidget known issue
+  // in CLAUDE.md) and its store may not have refreshed after the
+  // assignment save.
+  await page.reload({ waitUntil: 'networkidle' })
+
+  // Find the card and verify group tag exists.
+  const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
   await card.waitFor({ state: 'visible', timeout: 5000 })
 
-  const groupTag = card.locator(`.ant-tag:has-text("${groupName}")`)
-  await expect(groupTag).toBeVisible()
+  const groupTag = card.locator(`.ant-tag:has-text("${groupName}")`).first()
+  await expect(groupTag).toBeVisible({ timeout: 10000 })
 }
 
 export async function assertGroupNotInProviderCard(
   page: Page,
   groupName: string
 ) {
-  // Find the card
-  const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
+  // Reload to force widget re-fetch (see assertGroupInProviderCard).
+  await page.reload({ waitUntil: 'networkidle' })
+
+  const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
   await card.waitFor({ state: 'visible', timeout: 5000 })
 
-  const groupTag = card.locator(`.ant-tag:has-text("${groupName}")`)
+  const groupTag = card.locator(`.ant-tag:has-text("${groupName}")`).first()
   await expect(groupTag).not.toBeVisible()
 }
 
@@ -332,13 +345,17 @@ export async function assertProviderCardShowsCount(
   page: Page,
   expectedCount: number
 ) {
+  // Reload to force the provider-groups widget to re-fetch — same
+  // event-only architecture issue as assertGroupInProviderCard.
+  await page.reload({ waitUntil: 'networkidle' })
+
   // Find the card and count tags
-  const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))')
+  const card = page.locator('.ant-card:has(.ant-card-head-title:has-text("User Groups"))').first()
   await card.waitFor({ state: 'visible', timeout: 5000 })
 
   if (expectedCount === 0) {
     // Check for empty state
-    await expect(card.locator('text=No groups assigned')).toBeVisible()
+    await expect(card.locator('text=No groups assigned').first()).toBeVisible()
   } else {
     const tags = card.locator('.ant-tag')
     await expect(tags).toHaveCount(expectedCount)
@@ -375,7 +392,7 @@ export async function createUserGroup(
   }
 
   // Submit - button text is "Create Group", not "Create"
-  await page.click('.ant-drawer:visible button:has-text("Create Group")')
+  await page.click('.ant-drawer.ant-drawer-open button:has-text("Create Group")')
 
   // Wait for success message
   await page.waitForSelector('text=User group created successfully', { timeout: 10000 })

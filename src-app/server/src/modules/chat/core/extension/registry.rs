@@ -292,7 +292,7 @@ impl ExtensionRegistry {
 
     /// Register an extension
     pub fn register(&mut self, extension: Arc<dyn ChatExtension>) {
-        println!("Registering chat extension: {}", extension.name());
+        tracing::info!("Registering chat extension: {}", extension.name());
         self.extensions.push(extension);
     }
 

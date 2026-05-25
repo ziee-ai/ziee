@@ -450,7 +450,7 @@ async fn test_http_concurrent_tool_calls() {
                 .json(&payload)
                 .send()
                 .await
-                .expect(&format!("Request {} failed", i));
+                .unwrap_or_else(|_| panic!("Request {} failed", i));
 
             let status = response.status();
             let body_text = response.text().await.unwrap_or_default();

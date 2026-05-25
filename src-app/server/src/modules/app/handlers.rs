@@ -28,8 +28,6 @@ pub async fn get_setup_status() -> ApiResult<Json<SetupStatusResponse>> {
         StatusCode::OK,
         Json(SetupStatusResponse {
             needs_setup: !has_admin,
-            app_name: "Ziee Chat".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
         }),
     ))
 }

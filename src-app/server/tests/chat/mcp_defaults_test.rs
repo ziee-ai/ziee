@@ -8,7 +8,7 @@
 
 use serde_json::json;
 
-use crate::common::test_helpers::{self, TestUser};
+use crate::common::test_helpers::{self};
 use crate::common::TestServer;
 
 // ============================================================================
@@ -103,12 +103,9 @@ async fn test_get_mcp_defaults_with_defaults_set() {
 #[tokio::test]
 async fn test_get_mcp_defaults_requires_permission() {
     let server = TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(
-        &server,
-        "user",
-        &[], // No permissions
-    )
-    .await;
+    // Must use _with_no_permissions: _with_permissions(_, _, &[]) leaves
+    // the user in the default Users group which grants conversations::read.
+    let user = test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let response = get_mcp_defaults(&server, &user.token).await;
 
@@ -299,7 +296,12 @@ async fn test_update_mcp_defaults_with_disabled_servers() {
 #[tokio::test]
 async fn test_update_mcp_defaults_requires_permission() {
     let server = TestServer::start().await;
-    let user = test_helpers::create_user_with_permissions(
+    // Must use `create_user_with_only_permissions` — the default Users
+    // group grants BOTH conversations::read AND conversations::edit, so
+    // `create_user_with_permissions(_, _, &["conversations::read"])`
+    // would give the user edit via the default group too and the test
+    // would 200 instead of 403.
+    let user = test_helpers::create_user_with_only_permissions(
         &server,
         "user",
         &["conversations::read"], // Only read, not edit

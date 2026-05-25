@@ -22,6 +22,7 @@ static HEALTH_MODULE_REGISTRATION: ModuleEntry = ModuleEntry {
 };
 
 /// Health check module - provides health and readiness endpoints
+#[derive(Default)]
 pub struct HealthModule {
     pool: Option<Arc<PgPool>>,
 }
@@ -55,8 +56,3 @@ impl AppModule for HealthModule {
     }
 }
 
-impl Default for HealthModule {
-    fn default() -> Self {
-        Self { pool: None }
-    }
-}

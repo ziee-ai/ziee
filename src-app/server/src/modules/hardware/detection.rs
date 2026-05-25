@@ -1,5 +1,39 @@
 use super::types::{GPUComputeCapabilities, GPUDevice, GPUUsage};
 
+/// Resolve a vendor binary by name to its absolute path within trusted
+/// system directories. Mirrors the helper in
+/// `llm_local_runtime/utils/gpu_detect.rs`. Closes 12-hardware F-06 (Low):
+/// every `Command::new("nvidia-smi")` etc inherits the server's PATH —
+/// a malicious prefix dir shadows the real binary. We now refuse to
+/// spawn from PATH and only try the well-known absolute locations.
+fn resolve_system_binary(name: &str) -> Option<std::path::PathBuf> {
+    const TRUSTED_DIRS: &[&str] = &[
+        "/usr/bin",
+        "/usr/sbin",
+        "/usr/local/bin",
+        "/usr/local/cuda/bin",
+        "/opt/rocm/bin",
+        "/opt/homebrew/bin",
+        "/sbin",
+    ];
+    for dir in TRUSTED_DIRS {
+        let candidate = std::path::PathBuf::from(dir).join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Build a `std::process::Command` for the absolute path of a trusted
+/// vendor binary, or None when the binary isn't installed under any
+/// known location. Callers that previously did
+/// `Command::new("nvidia-smi")` should switch to
+/// `trusted_command("nvidia-smi")` so PATH isn't consulted.
+fn trusted_command(name: &str) -> Option<std::process::Command> {
+    resolve_system_binary(name).map(std::process::Command::new)
+}
+
 // =====================================================
 // GPU Detection
 // =====================================================
@@ -37,11 +71,10 @@ pub fn detect_gpu_devices() -> Vec<GPUDevice> {
     // 3. Try to detect GPUs using wgpu-hal (cross-platform fallback)
     #[cfg(feature = "gpu-detect")]
     {
-        if gpu_devices.is_empty() {
-            if let Ok(wgpu_gpus) = detect_wgpu_gpus() {
+        if gpu_devices.is_empty()
+            && let Ok(wgpu_gpus) = detect_wgpu_gpus() {
                 gpu_devices.extend(wgpu_gpus);
             }
-        }
     }
 
     // 4. Platform-specific fallbacks if no GPUs detected
@@ -185,32 +218,31 @@ fn detect_nvidia_gpus_nvidia_smi() -> Result<Vec<GPUDevice>, Box<dyn std::error:
 
     // First, get CUDA version from nvidia-smi header
     let mut cuda_version = None;
-    if let Ok(output) = std::process::Command::new("nvidia-smi").output() {
-        if output.status.success() {
+    if let Some(mut cmd) = trusted_command("nvidia-smi")
+    && let Ok(output) = cmd.output()
+        && output.status.success() {
             let output_str = String::from_utf8_lossy(&output.stdout);
             for line in output_str.lines() {
-                if line.contains("CUDA Version:") {
-                    if let Some(version_part) = line.split("CUDA Version:").nth(1) {
+                if line.contains("CUDA Version:")
+                    && let Some(version_part) = line.split("CUDA Version:").nth(1) {
                         cuda_version = version_part
                             .split_whitespace()
                             .next()
                             .map(|v| v.to_string());
                         break;
                     }
-                }
             }
         }
-    }
 
     // Query GPU information
-    if let Ok(output) = std::process::Command::new("nvidia-smi")
-        .args(&[
+    if let Some(mut cmd) = trusted_command("nvidia-smi")
+    && let Ok(output) = cmd
+        .args([
             "--query-gpu=index,name,memory.total,driver_version",
             "--format=csv,noheader,nounits",
         ])
         .output()
-    {
-        if output.status.success() {
+        && output.status.success() {
             let output_str = String::from_utf8_lossy(&output.stdout);
             for line in output_str.lines() {
                 let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
@@ -237,7 +269,6 @@ fn detect_nvidia_gpus_nvidia_smi() -> Result<Vec<GPUDevice>, Box<dyn std::error:
                 }
             }
         }
-    }
 
     Ok(gpu_devices)
 }
@@ -319,11 +350,10 @@ fn detect_wgpu_gpus() -> Result<Vec<GPUDevice>, Box<dyn std::error::Error>> {
 #[cfg(all(feature = "gpu-detect", target_os = "linux"))]
 fn get_amd_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
     // Method 1: Try rocm-smi (ROCm System Management Interface)
-    if let Ok(amd_usage) = get_amd_gpu_usage_rocm_smi() {
-        if !amd_usage.is_empty() {
+    if let Ok(amd_usage) = get_amd_gpu_usage_rocm_smi()
+        && !amd_usage.is_empty() {
             return Ok(amd_usage);
         }
-    }
 
     // Method 2: Fallback to sysfs parsing
     get_amd_gpu_usage_sysfs()
@@ -334,8 +364,11 @@ fn get_amd_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
 fn get_amd_gpu_usage_rocm_smi() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
     let mut gpu_usage = Vec::new();
 
-    let output = std::process::Command::new("rocm-smi")
-        .args(&[
+    let Some(mut cmd) = trusted_command("rocm-smi") else {
+        return Ok(gpu_usage); // rocm-smi not installed
+    };
+    let output = cmd
+        .args([
             "--showuse",
             "--showmeminfo",
             "--showtemp",
@@ -394,13 +427,13 @@ fn get_amd_gpu_usage_sysfs() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>
     if let Ok(entries) = std::fs::read_dir("/sys/class/drm") {
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.starts_with("card") && !name.contains("-") {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && name.starts_with("card") && !name.contains("-") {
                     let device_path = format!("/sys/class/drm/{}/device", name);
 
                     // Check if it's AMD (vendor ID 0x1002)
-                    if let Ok(vendor) = std::fs::read_to_string(format!("{}/vendor", device_path)) {
-                        if vendor.trim() == "0x1002" {
+                    if let Ok(vendor) = std::fs::read_to_string(format!("{}/vendor", device_path))
+                        && vendor.trim() == "0x1002" {
                             let device_name =
                                 std::fs::read_to_string(format!("{}/device", device_path))
                                     .ok()
@@ -446,9 +479,7 @@ fn get_amd_gpu_usage_sysfs() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>
                                 power_usage: None,
                             });
                         }
-                    }
                 }
-            }
         }
     }
 
@@ -471,7 +502,10 @@ fn get_intel_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
     #[cfg(target_os = "linux")]
     {
         // Try using intel_gpu_top for Intel GPU monitoring on Linux
-        match std::process::Command::new("intel_gpu_top")
+        let Some(mut cmd) = trusted_command("intel_gpu_top") else {
+            return Ok(gpu_usage);
+        };
+        match cmd
             .arg("-J") // JSON output
             .arg("-s") // Single sample
             .arg("1000") // 1 second sample
@@ -508,15 +542,14 @@ fn get_intel_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
                 if let Ok(entries) = std::fs::read_dir("/sys/class/drm") {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                            if name.starts_with("card") && !name.contains("-") {
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                            && name.starts_with("card") && !name.contains("-") {
                                 let device_path = format!("/sys/class/drm/{}/device", name);
 
                                 // Check if this is an Intel GPU
                                 if let Ok(vendor) =
                                     std::fs::read_to_string(format!("{}/vendor", device_path))
-                                {
-                                    if vendor.trim() == "0x8086" {
+                                    && vendor.trim() == "0x8086" {
                                         // Intel vendor ID
                                         let device_name = "Intel GPU".to_string();
 
@@ -533,9 +566,7 @@ fn get_intel_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
                                             power_usage: None,
                                         });
                                     }
-                                }
                             }
-                        }
                     }
                 }
             }
@@ -613,8 +644,10 @@ fn get_apple_gpu_usage() -> Result<Vec<GPUUsage>, Box<dyn std::error::Error>> {
 // Use iokit to read GPU usage directly
 #[cfg(all(feature = "gpu-detect", target_os = "macos"))]
 fn get_apple_gpu_usage_iokit() -> Result<AppleGpuMetrics, Box<dyn std::error::Error>> {
-    // Try using ioreg to get GPU usage from IOKit
-    let output = std::process::Command::new("ioreg")
+    // Try using ioreg to get GPU usage from IOKit (absolute path).
+    let mut cmd = trusted_command("ioreg")
+        .ok_or_else(|| "ioreg not found in trusted system directories".to_string())?;
+    let output = cmd
         .args(&["-c", "AGXAccelerator", "-r", "-d1"])
         .output()?;
 
@@ -720,7 +753,8 @@ struct AppleGpuMetrics {
 // Get Apple chip name using sysctl (faster than system_profiler)
 #[cfg(all(feature = "gpu-detect", target_os = "macos"))]
 fn get_apple_chip_name() -> String {
-    if let Ok(output) = std::process::Command::new("sysctl")
+    if let Some(mut cmd) = trusted_command("sysctl") {
+    if let Ok(output) = cmd
         .args(&["-n", "machdep.cpu.brand_string"])
         .output()
     {
@@ -741,6 +775,7 @@ fn get_apple_chip_name() -> String {
                 }
             }
         }
+    }
     }
     "Apple Silicon".to_string()
 }
@@ -779,13 +814,12 @@ fn check_cuda_support() -> bool {
 fn get_cuda_version() -> Option<String> {
     #[cfg(feature = "gpu-detect")]
     {
-        if let Ok(nvml) = nvml_wrapper::Nvml::init() {
-            if let Ok(version) = nvml.sys_cuda_driver_version() {
+        if let Ok(nvml) = nvml_wrapper::Nvml::init()
+            && let Ok(version) = nvml.sys_cuda_driver_version() {
                 let major = version / 1000;
                 let minor = (version % 1000) / 10;
                 return Some(format!("{}.{}", major, minor));
             }
-        }
     }
     None
 }
@@ -815,7 +849,7 @@ fn check_vulkan_support() -> bool {
         };
 
         let app_info = vk::ApplicationInfo::default()
-            .application_name(std::ffi::CStr::from_bytes_with_nul(b"GPU Detection\0").unwrap())
+            .application_name(c"GPU Detection")
             .api_version(vk::make_api_version(0, 1, 0, 0));
 
         let create_info = vk::InstanceCreateInfo::default().application_info(&app_info);
@@ -846,9 +880,8 @@ fn check_vulkan_support() -> bool {
 // Get total system memory on macOS
 #[cfg(target_os = "macos")]
 fn get_system_total_memory() -> Option<u64> {
-    use std::process::Command;
-
-    let output = Command::new("sysctl")
+    let mut cmd = trusted_command("sysctl")?;
+    let output = cmd
         .arg("-n")
         .arg("hw.memsize")
         .output()

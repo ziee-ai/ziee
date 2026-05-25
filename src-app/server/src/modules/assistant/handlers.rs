@@ -26,15 +26,34 @@ use crate::{
 // Query Parameters
 // =====================================================
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PaginationQuery {
-    /// Page number (1-indexed)
-    #[serde(default = "default_page")]
-    pub page: i64,
+/// Maximum page size accepted from the client. Larger values are
+/// clamped silently at deserialize to prevent DoS via unbounded
+/// result-set materialization. Closes 10-assistant F-03 (Medium).
+const ASSISTANT_MAX_LIMIT: i64 = 100;
 
-    /// Items per page
-    #[serde(default = "default_limit")]
+#[derive(Debug, schemars::JsonSchema)]
+pub struct PaginationQuery {
+    /// Page number (1-indexed); clamped to ≥1 at deserialize.
+    pub page: i64,
+    /// Items per page; clamped to [1, ASSISTANT_MAX_LIMIT] at deserialize.
     pub limit: i64,
+}
+
+impl<'de> Deserialize<'de> for PaginationQuery {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(default = "default_page")]
+            page: i64,
+            #[serde(default = "default_limit")]
+            limit: i64,
+        }
+        let raw = Raw::deserialize(d)?;
+        Ok(PaginationQuery {
+            page: raw.page.max(1),
+            limit: raw.limit.max(1).min(ASSISTANT_MAX_LIMIT),
+        })
+    }
 }
 
 fn default_page() -> i64 {
@@ -47,6 +66,43 @@ fn default_limit() -> i64 {
 // =====================================================
 // USER ASSISTANT HANDLERS
 // =====================================================
+
+/// Max length caps for assistant text fields. The same values appear
+/// as `#[schemars(length(max = ...))]` annotations on
+/// CreateAssistantRequest / UpdateAssistantRequest so OpenAPI
+/// consumers see the same numbers. Closes 10-assistant F-02 (Medium):
+/// without these, an authenticated user can store multi-MB
+/// instructions that the chat path then ships to the LLM on every
+/// turn, amplifying token cost.
+const ASSISTANT_MAX_INSTRUCTIONS_BYTES: usize = 65_536;
+const ASSISTANT_MAX_DESCRIPTION_BYTES: usize = 4_096;
+
+fn validate_assistant_text_lengths(
+    description: Option<&str>,
+    instructions: Option<&str>,
+) -> Result<(), AppError> {
+    if let Some(d) = description
+        && d.len() > ASSISTANT_MAX_DESCRIPTION_BYTES {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!(
+                    "description exceeds {} bytes",
+                    ASSISTANT_MAX_DESCRIPTION_BYTES
+                ),
+            ));
+        }
+    if let Some(i) = instructions
+        && i.len() > ASSISTANT_MAX_INSTRUCTIONS_BYTES {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                format!(
+                    "instructions exceeds {} bytes",
+                    ASSISTANT_MAX_INSTRUCTIONS_BYTES
+                ),
+            ));
+        }
+    Ok(())
+}
 
 /// Create a new user assistant
 #[debug_handler]
@@ -61,6 +117,10 @@ pub async fn create_user_assistant(
             AppError::bad_request("VALIDATION_ERROR", "Assistant name cannot be empty").into(),
         );
     }
+    validate_assistant_text_lengths(
+        request.description.as_deref(),
+        request.instructions.as_deref(),
+    )?;
 
     // Force is_template to false for user assistants
     request.is_template = Some(false);
@@ -165,6 +225,11 @@ pub async fn update_user_assistant(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
+    validate_assistant_text_lengths(
+        request.description.as_deref(),
+        request.instructions.as_deref(),
+    )?;
+
     let existing = Repos
         .assistant
         .get(id)
@@ -292,6 +357,10 @@ pub async fn create_template_assistant(
             AppError::bad_request("VALIDATION_ERROR", "Assistant name cannot be empty").into(),
         );
     }
+    validate_assistant_text_lengths(
+        request.description.as_deref(),
+        request.instructions.as_deref(),
+    )?;
 
     // Force is_template to true for template assistants
     request.is_template = Some(true);
@@ -386,6 +455,11 @@ pub async fn update_template_assistant(
     Path(id): Path<Uuid>,
     Json(request): Json<UpdateAssistantRequest>,
 ) -> ApiResult<Json<Assistant>> {
+    validate_assistant_text_lengths(
+        request.description.as_deref(),
+        request.instructions.as_deref(),
+    )?;
+
     let existing = Repos
         .assistant
         .get(id)

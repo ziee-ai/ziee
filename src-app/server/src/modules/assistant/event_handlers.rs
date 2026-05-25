@@ -62,7 +62,15 @@ impl EventHandler for CloneTemplateAssistantsHandler {
                             instructions: template.instructions.clone(),
                             parameters,
                             is_template: Some(false),
-                            is_default: Some(template.is_default),
+                            // Closes 10-assistant F-04 (Medium): the
+                            // original cloned the template's
+                            // is_default=true verbatim, so every new
+                            // user signup minted a forced-default
+                            // assistant the user couldn't opt out of
+                            // at signup time. Default to false; the
+                            // user explicitly picks their default
+                            // post-signup via the UI.
+                            is_default: Some(false),
                             enabled: Some(template.enabled),
                         };
 

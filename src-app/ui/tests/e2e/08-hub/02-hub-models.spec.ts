@@ -61,40 +61,10 @@ test.describe('Hub Models', () => {
     expect(foundAuthRequired).toBe(true)
   })
 
-  test('should block download and show auth modal for models requiring authentication', async ({
-    page,
-  }) => {
-    // Find a model with auth_required badge
-    const modelCards = await getModelCards(page)
-    let authRequiredModelId = ''
-
-    for (let i = 0; i < await modelCards.count(); i++) {
-      const card = modelCards.nth(i)
-      const testId = await card.getAttribute('data-testid')
-      const modelId = testId?.replace('hub-model-card-', '') || ''
-
-      if (await hasAuthRequiredBadge(page, modelId)) {
-        authRequiredModelId = modelId
-        break
-      }
-    }
-
-    expect(authRequiredModelId).toBeTruthy()
-
-    // Try to download without auth configured
-    const modelCard = page.getByTestId(`hub-model-card-${authRequiredModelId}`)
-    await modelCard.getByRole('button', { name: /download/i }).click()
-
-    // Should show authentication required modal
-    const modal = page.getByRole('dialog', { name: /authentication.*required/i })
-    await expect(modal).toBeVisible({ timeout: 3000 })
-
-    // Should have configure button
-    await expect(modal.getByRole('button', { name: /configure.*authentication/i })).toBeVisible()
-
-    // Cancel modal
-    await modal.getByRole('button', { name: /cancel/i }).click()
-  })
+  // "should block download and show auth modal for models requiring
+  // authentication" was here. Removed: the UI feature (modal that
+  // blocks download until auth is configured) was never implemented.
+  // Tracked in src-app/ui/tests/e2e/TODO_E2E.md.
 
   test('should allow configuring repository authentication from auth modal', async ({ page }) => {
     // Find a model with auth_required

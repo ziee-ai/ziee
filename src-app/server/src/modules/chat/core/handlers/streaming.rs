@@ -59,7 +59,7 @@ pub async fn send_message(
     let has_access = Repos.llm_provider
         .user_has_access_to_provider(auth.user.id, model.provider_id)
         .await
-        .map_err(|e| AppError::from(e))?;
+        .map_err(AppError::from)?;
 
     if !has_access {
         return Err(AppError::forbidden(

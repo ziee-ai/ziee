@@ -76,8 +76,17 @@ impl McpChatExtension {
         // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
         let (elicit_notify_tx, mut elicit_notify_rx) =
             tokio::sync::mpsc::unbounded_channel::<ElicitationStartedNotification>();
+        let bind_user_id = context.user_id;
         tokio::spawn(async move {
             while let Some(notif) = elicit_notify_rx.recv().await {
+                // Bind the calling user_id to the elicitation entry so
+                // the /respond handler can verify the responder is the
+                // user who initiated the chat call. Closes
+                // 02-permissions F-04.
+                crate::modules::mcp::elicitation::registry::bind_owner(
+                    notif.elicitation_id,
+                    bind_user_id,
+                );
                 if let Some(msg_id) = notif.message_id {
                     let order = crate::core::Repos.chat.core
                         .get_message_with_content(msg_id).await
@@ -283,9 +292,9 @@ impl McpChatExtension {
             // Exception: is_saved=true links already exist in originals storage — skip all processing.
             let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
             let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
-            if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result {
-                if !is_error.unwrap_or(false) {
-                    if let Some(links) = resource_links {
+            if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
+                && !is_error.unwrap_or(false)
+                    && let Some(links) = resource_links {
                         for link in links {
 
                         // is_saved=true: file already exists in originals storage.
@@ -327,14 +336,13 @@ impl McpChatExtension {
                             }
                         } else if let Some(headers_map) = server.headers.as_object() {
                             for (key, value) in headers_map.iter() {
-                                if let Some(val_str) = value.as_str() {
-                                    if let (Ok(hname), Ok(hval)) = (
+                                if let Some(val_str) = value.as_str()
+                                    && let (Ok(hname), Ok(hval)) = (
                                         reqwest::header::HeaderName::from_bytes(key.as_bytes()),
                                         reqwest::header::HeaderValue::from_str(val_str),
                                     ) {
                                         fetch_headers.insert(hname, hval);
                                     }
-                                }
                             }
                         }
 
@@ -495,13 +503,15 @@ impl McpChatExtension {
                                                                 );
                                                                 let download_url = {
                                                                     use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
-                                                                    use crate::modules::file::types::DownloadTokenClaims;
+                                                                    use crate::modules::file::types::{DownloadTokenClaims, DOWNLOAD_TOKEN_AUDIENCE};
                                                                     let now = chrono::Utc::now().timestamp() as usize;
                                                                     let claims = DownloadTokenClaims {
                                                                         file_id: artifact_id.to_string(),
                                                                         user_id: context.user_id.to_string(),
                                                                         exp: now + 3600,
                                                                         iat: now,
+                                                                        iss: self.config.jwt.issuer.clone(),
+                                                                        aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
                                                                     };
                                                                     encode(
                                                                         &JwtHeader::default(),
@@ -568,15 +578,13 @@ impl McpChatExtension {
                         }
                         } // end for link in links
                     }
-                }
-            }
 
             // Update tool result content with the saved artifact info so the LLM knows the file_ids.
             // Also set hidden_content with token-based download URLs — included in LLM messages
             // but stripped from browser API responses.
             // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
-            if !saved_artifacts.is_empty() || !saved_file_urls.is_empty() {
-                if let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
+            if (!saved_artifacts.is_empty() || !saved_file_urls.is_empty())
+                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
                     if !saved_artifacts.is_empty() {
                         let file_descriptions: Vec<String> = saved_artifacts
                             .iter()
@@ -604,7 +612,6 @@ impl McpChatExtension {
                         ));
                     }
                 }
-            }
 
             // Track executed tool_use_id
             executed_tool_use_ids.push(tool_use_id.clone());
@@ -625,8 +632,8 @@ impl McpChatExtension {
 
             // If this tool returns a final response, capture it and return early.
             // The caller will stream it directly without calling the LLM.
-            if is_final {
-                if let McpContentData::ToolResult { ref content, .. } = result {
+            if is_final
+                && let McpContentData::ToolResult { ref content, .. } = result {
                     tracing::info!(
                         "audience=[\"user\"]: approved tool '{}' marked as final, will bypass LLM",
                         tool_name
@@ -638,7 +645,6 @@ impl McpChatExtension {
                     tool_results.push(result.to_message_content());
                     return Ok((tool_results, executed_tool_use_ids, final_response));
                 }
-            }
 
             // Convert to MessageContentData and add to results
             tool_results.push(result.to_message_content());
@@ -1301,7 +1307,7 @@ impl ChatExtension for McpChatExtension {
             // This is a soft hint — the model can still answer directly if no tool is relevant.
             // Only injected on iteration 1 to avoid redundancy in follow-up tool-calling loops.
             if context.iteration == 1 {
-                let mut system_addition = String::from("\n\nYou have access to tools that can retrieve up-to-date or domain-specific information. When answering questions, prefer using these tools over relying solely on your training knowledge, especially when the tools are clearly relevant to the request.");
+                let system_addition = String::from("\n\nYou have access to tools that can retrieve up-to-date or domain-specific information. When answering questions, prefer using these tools over relying solely on your training knowledge, especially when the tools are clearly relevant to the request.");
 
                 if let Some(sys_msg) = request.messages.iter_mut().find(|m| m.role == ai_providers::Role::System) {
                     if let Some(ai_providers::ContentBlock::Text { text }) = sys_msg.content.first_mut() {
@@ -1362,8 +1368,8 @@ impl ChatExtension for McpChatExtension {
             // Create synthetic error tool_results for every unexecuted tool_use so the
             // DB invariant (each TU has a matching TR) is maintained. Without this,
             // the next user message would trigger an Anthropic "tool_use without tool_result" error.
-            if let Some(message_id) = context.message_id {
-                if let Ok(Some(msg)) = Repos.chat.core.get_message_with_content(message_id).await {
+            if let Some(message_id) = context.message_id
+                && let Ok(Some(msg)) = Repos.chat.core.get_message_with_content(message_id).await {
                     let executed_ids: std::collections::HashSet<String> = msg.contents.iter()
                         .filter_map(|c| c.parse_content().ok())
                         .filter_map(|cd| McpContentData::from_message_content(&cd).ok())
@@ -1408,7 +1414,6 @@ impl ChatExtension for McpChatExtension {
                         }
                     }
                 }
-            }
             return Ok(ExtensionAction::Complete);
         }
 
@@ -1477,21 +1482,19 @@ impl ChatExtension for McpChatExtension {
         let mut executed_tool_use_ids = std::collections::HashSet::new();
 
         // First pass: collect tool_result tool_use_ids from context metadata (executed in before_llm_call)
-        if let Some(context_executed) = context.metadata.get("executed_tool_use_ids") {
-            if let Ok(ids) = serde_json::from_value::<Vec<String>>(context_executed.clone()) {
+        if let Some(context_executed) = context.metadata.get("executed_tool_use_ids")
+            && let Ok(ids) = serde_json::from_value::<Vec<String>>(context_executed.clone()) {
                 tracing::info!("Found {} executed tool_use_ids in context metadata: {:?}", ids.len(), ids);
                 executed_tool_use_ids.extend(ids);
             }
-        }
 
         // Also collect from tool_result blocks in the message (for redundancy/safety)
         for content in &message_with_content.contents {
             let content_data = content.parse_content()?;
-            if let Ok(mcp_content) = McpContentData::from_message_content(&content_data) {
-                if let McpContentData::ToolResult { tool_use_id, .. } = mcp_content {
+            if let Ok(mcp_content) = McpContentData::from_message_content(&content_data)
+                && let McpContentData::ToolResult { tool_use_id, .. } = mcp_content {
                     executed_tool_use_ids.insert(tool_use_id);
                 }
-            }
         }
 
         tracing::info!(
@@ -1708,8 +1711,17 @@ impl ChatExtension for McpChatExtension {
         // Channel for elicitation DB persistence (http.rs → mcp.rs via Repos)
         let (elicit_notify_tx, mut elicit_notify_rx) =
             tokio::sync::mpsc::unbounded_channel::<ElicitationStartedNotification>();
+        let bind_user_id = context.user_id;
         tokio::spawn(async move {
             while let Some(notif) = elicit_notify_rx.recv().await {
+                // Bind the calling user_id to the elicitation entry so
+                // the /respond handler can verify the responder is the
+                // user who initiated the chat call. Closes
+                // 02-permissions F-04.
+                crate::modules::mcp::elicitation::registry::bind_owner(
+                    notif.elicitation_id,
+                    bind_user_id,
+                );
                 if let Some(msg_id) = notif.message_id {
                     let order = crate::core::Repos.chat.core
                         .get_message_with_content(msg_id).await
@@ -1920,9 +1932,9 @@ impl ChatExtension for McpChatExtension {
             // Exception: is_saved=true links already exist in originals storage — skip all processing.
             let mut saved_artifacts: Vec<(Uuid, String, Option<String>)> = Vec::new(); // (artifact_id, display_name, download_url)
             let mut saved_file_urls: Vec<(String, String)> = Vec::new(); // (display_name, download_url) for is_saved links
-            if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result {
-                if !is_error.unwrap_or(false) {
-                    if let Some(links) = resource_links {
+            if let McpContentData::ToolResult { ref resource_links, is_error, .. } = result
+                && !is_error.unwrap_or(false)
+                    && let Some(links) = resource_links {
                         for link in links {
 
                         // is_saved=true: file already exists in originals storage.
@@ -1964,14 +1976,13 @@ impl ChatExtension for McpChatExtension {
                             }
                         } else if let Some(headers_map) = server.headers.as_object() {
                             for (key, value) in headers_map.iter() {
-                                if let Some(val_str) = value.as_str() {
-                                    if let (Ok(hname), Ok(hval)) = (
+                                if let Some(val_str) = value.as_str()
+                                    && let (Ok(hname), Ok(hval)) = (
                                         reqwest::header::HeaderName::from_bytes(key.as_bytes()),
                                         reqwest::header::HeaderValue::from_str(val_str),
                                     ) {
                                         fetch_headers.insert(hname, hval);
                                     }
-                                }
                             }
                         }
 
@@ -2132,13 +2143,15 @@ impl ChatExtension for McpChatExtension {
                                                                 );
                                                                 let download_url = {
                                                                     use jsonwebtoken::{encode, EncodingKey, Header as JwtHeader};
-                                                                    use crate::modules::file::types::DownloadTokenClaims;
+                                                                    use crate::modules::file::types::{DownloadTokenClaims, DOWNLOAD_TOKEN_AUDIENCE};
                                                                     let now = chrono::Utc::now().timestamp() as usize;
                                                                     let claims = DownloadTokenClaims {
                                                                         file_id: artifact_id.to_string(),
                                                                         user_id: context.user_id.to_string(),
                                                                         exp: now + 3600,
                                                                         iat: now,
+                                                                        iss: self.config.jwt.issuer.clone(),
+                                                                        aud: DOWNLOAD_TOKEN_AUDIENCE.to_string(),
                                                                     };
                                                                     encode(
                                                                         &JwtHeader::default(),
@@ -2205,15 +2218,13 @@ impl ChatExtension for McpChatExtension {
                         }
                         } // end for link in links
                     }
-                }
-            }
 
             // Update tool result content with the saved artifact info so the LLM knows the file_ids.
             // Also set hidden_content with token-based download URLs — included in LLM messages
             // but stripped from browser API responses.
             // saved_file_urls holds download-with-token URLs for is_saved=true links (no pipeline needed).
-            if !saved_artifacts.is_empty() || !saved_file_urls.is_empty() {
-                if let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
+            if (!saved_artifacts.is_empty() || !saved_file_urls.is_empty())
+                && let McpContentData::ToolResult { ref mut content, ref mut hidden_content, .. } = result {
                     if !saved_artifacts.is_empty() {
                         let file_descriptions: Vec<String> = saved_artifacts
                             .iter()
@@ -2241,18 +2252,16 @@ impl ChatExtension for McpChatExtension {
                         ));
                     }
                 }
-            }
 
             // Capture user-only-audience text before converting to MessageContentData
-            if is_final {
-                if let McpContentData::ToolResult { ref content, .. } = result {
+            if is_final
+                && let McpContentData::ToolResult { ref content, .. } = result {
                     tracing::info!(
                         "audience=[\"user\"]: tool '{}' on server '{}' marked as final, will bypass LLM",
                         tool_name, server.name
                     );
                     final_response_text = Some(content.clone());
                 }
-            }
 
             // Convert to MessageContentData and add to results
             tool_results.push(result.to_message_content());

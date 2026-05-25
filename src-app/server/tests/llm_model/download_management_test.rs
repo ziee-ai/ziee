@@ -20,7 +20,7 @@ async fn test_list_downloads_requires_permission() {
     .await;
 
     // User without permission
-    let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     let url = server.api_url("/llm-models/downloads");
 
@@ -140,7 +140,7 @@ async fn test_get_download_requires_permission() {
     )
     .await;
 
-    let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     let url = server.api_url("/llm-models/downloads/00000000-0000-0000-0000-000000000000");
 
@@ -184,7 +184,7 @@ async fn test_cancel_download_requires_permission() {
     )
     .await;
 
-    let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     let url = server.api_url("/llm-models/downloads/00000000-0000-0000-0000-000000000000/cancel");
 
@@ -228,7 +228,7 @@ async fn test_delete_download_requires_permission() {
     )
     .await;
 
-    let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     let url = server.api_url("/llm-models/downloads/00000000-0000-0000-0000-000000000000");
 
@@ -274,7 +274,7 @@ async fn test_subscribe_download_progress_requires_permission() {
     .await;
 
     // User without permission
-    let user = test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+    let user = test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     let url = server.api_url("/llm-models/downloads/subscribe");
 
@@ -486,7 +486,7 @@ async fn test_sse_completion_event_structure() {
     });
 
     let download_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -510,7 +510,7 @@ async fn test_sse_completion_event_structure() {
         iterations += 1;
 
         let response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
             .header("Authorization", format!("Bearer {}", user.token))
             .send()
             .await
@@ -627,7 +627,7 @@ async fn test_sse_sends_update_events_during_download() {
     });
 
     let download_response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()

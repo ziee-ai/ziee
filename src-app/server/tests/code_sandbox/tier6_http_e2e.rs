@@ -158,7 +158,7 @@ async fn e2e_execute_command_echo_hello_returns_stdout() {
         "expected echo output. stdout={stdout:?} stderr={stderr:?} exit={exit_code}"
     );
     assert_eq!(structured["exit_code"].as_i64().unwrap(), 0);
-    assert_eq!(structured["timed_out"].as_bool().unwrap(), false);
+    assert!(!structured["timed_out"].as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -176,7 +176,7 @@ async fn e2e_write_file_then_read_file_round_trip() {
     )
     .await;
     let write_structured = write_body["result"]["structuredContent"].clone();
-    assert_eq!(write_structured["success"].as_bool().unwrap(), true);
+    assert!(write_structured["success"].as_bool().unwrap());
     assert_eq!(write_structured["bytes_written"].as_u64().unwrap(), 18);
 
     // Read
@@ -348,7 +348,7 @@ async fn e2e_get_resource_link_for_workspace_artifact_returns_signed_url() {
     assert!(uri.starts_with("http://127.0.0.1"), "uri must be loopback: {uri}");
     assert!(uri.contains("/api/code-sandbox/file/download"), "uri: {uri}");
     assert!(uri.contains("filename=art.txt"), "uri: {uri}");
-    assert_eq!(link["is_saved"].as_bool().unwrap(), false, "workspace artifact is NOT saved");
+    assert!(!link["is_saved"].as_bool().unwrap(), "workspace artifact is NOT saved");
 }
 
 #[tokio::test]

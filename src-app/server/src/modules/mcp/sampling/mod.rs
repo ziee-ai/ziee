@@ -7,5 +7,4 @@ pub mod models;
 pub mod session_counter;
 
 pub use handler::{ChatSamplingHandler, SamplingHandler};
-pub use models::{SamplingContent, SamplingCreateMessageRequest, SamplingCreateMessageResult};
-pub use session_counter::{SessionGuard, acquire_session};
+pub use session_counter::acquire_session;

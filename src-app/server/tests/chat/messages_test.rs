@@ -21,7 +21,7 @@ async fn test_get_conversation_history_empty() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/messages", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -46,7 +46,7 @@ async fn test_get_conversation_history_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/messages", fake_id)))
+        .get(server.api_url(&format!("/conversations/{}/messages", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -72,7 +72,7 @@ async fn test_get_message_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/messages/{}", fake_id)))
+        .get(server.api_url(&format!("/messages/{}", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -92,7 +92,7 @@ async fn test_get_message_invalid_uuid() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/messages/not-a-uuid"))
+        .get(server.api_url("/messages/not-a-uuid"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -123,7 +123,7 @@ async fn test_edit_message_not_found() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!(
+        .put(server.api_url(&format!(
             "/conversations/{}/messages/{}",
             fake_conversation_id, fake_message_id
         )))
@@ -157,7 +157,7 @@ async fn test_edit_message_empty_content() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!(
+        .put(server.api_url(&format!(
             "/conversations/{}/messages/{}",
             conversation_id, fake_message_id
         )))
@@ -188,7 +188,7 @@ async fn test_delete_message_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/messages/{}", fake_id)))
+        .delete(server.api_url(&format!("/messages/{}", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -202,8 +202,7 @@ async fn test_delete_message_not_found() {
 // =====================================================
 
 #[tokio::test]
-#[ignore = "Empty content validation removed to support tool-only calls"]
-async fn test_send_message_empty_content() {
+async fn test_send_message_empty_content_accepted_for_tool_only_calls() {
     let server = crate::common::TestServer::start().await;
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
@@ -234,14 +233,20 @@ async fn test_send_message_empty_content() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    // Empty content is now accepted by design: tool-only calls (a
+    // model that issues only `tool_use` blocks with no preceding text)
+    // are valid in modern LLM APIs. The endpoint returns 200 + an SSE
+    // stream that the model may immediately close or fill with tool
+    // calls. Previously this returned 400; the validation was
+    // removed when tool-only chats became first-class.
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -277,7 +282,7 @@ async fn test_send_message_invalid_branch_id() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -315,7 +320,7 @@ async fn test_send_message_invalid_model_id() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -347,7 +352,7 @@ async fn test_send_message_conversation_not_found() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", fake_conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", fake_conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()

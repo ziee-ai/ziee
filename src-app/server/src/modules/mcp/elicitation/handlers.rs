@@ -22,7 +22,7 @@ use super::{models, registry};
 /// Submit a user's response to an MCP elicitation request
 #[debug_handler]
 pub async fn respond_to_elicitation(
-    _auth: RequirePermissions<(McpServersRead,)>,
+    auth: RequirePermissions<(McpServersRead,)>,
     Path(elicitation_id): Path<Uuid>,
     Json(request): Json<models::RespondToElicitationRequest>,
 ) -> ApiResult<Json<models::RespondToElicitationResponse>> {
@@ -32,6 +32,26 @@ pub async fn respond_to_elicitation(
             "INVALID_ACTION",
             "action must be one of: accept, decline, cancel",
         ).into());
+    }
+
+    // SECURITY: verify the responder owns this elicitation. The chat
+    // extension layer binds the owning user_id via
+    // registry::bind_owner when the elicitation/create notification
+    // fires. Without this check, any holder of mcp_servers::read could
+    // hijack any other user's elicitation by guessing/leaking the
+    // random UUID. Fail-closed: if the binding hasn't happened yet
+    // (race) we 403 rather than allow the response. Closes
+    // 02-permissions F-04.
+    match registry::owner_matches(elicitation_id, auth.user.id) {
+        None => return Err(AppError::not_found("Elicitation request").into()),
+        Some(false) => {
+            return Err(AppError::forbidden(
+                "FORBIDDEN",
+                "Not authorized to respond to this elicitation",
+            )
+            .into());
+        }
+        Some(true) => {}
     }
 
     let action = request.action.clone();
@@ -55,11 +75,10 @@ pub async fn respond_to_elicitation(
             _ => "cancelled",
         };
         let mut patch = serde_json::json!({ "status": new_status });
-        if action == "accept" {
-            if let Some(values) = content {
+        if action == "accept"
+            && let Some(values) = content {
                 patch["response_content"] = values;
             }
-        }
         let _ = crate::core::Repos.chat.core
             .update_content_json(content_id, patch)
             .await;

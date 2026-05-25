@@ -28,7 +28,7 @@ pub async fn get_user_llm_providers(
         .llm_provider
         .get_for_user(auth.user.id)
         .await
-        .map_err(|e| AppError::from(e))?;
+        .map_err(AppError::from)?;
 
     // For each provider, fetch its models and filter to enabled+active
     let mut providers_with_models = Vec::new();
@@ -38,8 +38,7 @@ pub async fn get_user_llm_providers(
         let all_models = Repos
             .llm_model
             .list_by_provider(provider.id)
-            .await
-            .map_err(|e| AppError::from(e))?;
+            .await?;
 
         // Filter to only enabled models
         let enabled_models: Vec<_> = all_models

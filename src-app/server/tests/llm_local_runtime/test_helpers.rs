@@ -77,7 +77,7 @@ pub async fn setup_test_binary(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/local-runtime/versions/download"))
+        .post(server.api_url("/local-runtime/versions/download"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -103,7 +103,7 @@ pub async fn setup_test_binary(
     } else {
         // CONFLICT - need to fetch the existing version
         let list_response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/local-runtime/versions?engine={}", engine)))
+            .get(server.api_url(&format!("/local-runtime/versions?engine={}", engine)))
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await
@@ -151,7 +151,7 @@ pub async fn create_test_provider(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -183,7 +183,7 @@ pub async fn get_or_create_local_provider(
     token: &str,
 ) -> serde_json::Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-providers"))
+        .get(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -240,7 +240,7 @@ pub async fn create_test_model(
     }
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models"))
+        .post(server.api_url("/llm-models"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -264,7 +264,7 @@ pub async fn get_huggingface_repository(
     token: &str,
 ) -> serde_json::Value {
     let response = reqwest::Client::new()
-        .get(&server.api_url("/llm-repositories"))
+        .get(server.api_url("/llm-repositories"))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -300,7 +300,7 @@ pub async fn get_huggingface_repository(
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/llm-repositories/{}", repo_id)))
+        .post(server.api_url(&format!("/llm-repositories/{}", repo_id)))
         .header("Authorization", format!("Bearer {}", token))
         .json(&update_payload)
         .send()
@@ -365,7 +365,7 @@ pub async fn download_test_model(
 
     println!("Starting tiny-random-gpt2 model download...");
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-models/download"))
+        .post(server.api_url("/llm-models/download"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&payload)
         .send()
@@ -396,7 +396,7 @@ pub async fn download_test_model(
         tokio::time::sleep(tokio::time::Duration::from_secs(poll_interval)).await;
 
         let status_response = reqwest::Client::new()
-            .get(&server.api_url(&format!("/llm-models/downloads/{}", download_id)))
+            .get(server.api_url(&format!("/llm-models/downloads/{}", download_id)))
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await
@@ -435,7 +435,7 @@ pub async fn download_test_model(
 
             // Fetch the actual model data
             let model_response = reqwest::Client::new()
-                .get(&server.api_url(&format!("/llm-models/{}", model_id)))
+                .get(server.api_url(&format!("/llm-models/{}", model_id)))
                 .header("Authorization", format!("Bearer {}", token))
                 .send()
                 .await

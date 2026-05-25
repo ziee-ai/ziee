@@ -18,7 +18,6 @@ pub mod utils;
 
 // Re-export main types and router
 pub use binary_manager::BinaryManager;
-pub use events::LlmLocalRuntimeEvent;
 pub use repository::LocalRuntimeRepository;
 pub use routes::llm_local_runtime_router;
 

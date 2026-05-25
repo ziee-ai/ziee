@@ -61,7 +61,7 @@ async fn test_anthropic_image_vision_e2e() {
 
     // Create message with file reference
     let request = ChatRequest {
-        model: "claude-3-5-haiku-20241022".to_string(), // Fast, cheap model
+        model: "claude-haiku-4-5-20251001".to_string(), // Fast, cheap model
         messages: vec![ChatMessage {
             role: Role::User,
             content: vec![
@@ -144,7 +144,7 @@ async fn test_anthropic_pdf_document_qa_e2e() {
 
     // Create message with document reference
     let request = ChatRequest {
-        model: "claude-3-5-haiku-20241022".to_string(),
+        model: "claude-haiku-4-5-20251001".to_string(),
         messages: vec![ChatMessage {
             role: Role::User,
             content: vec![
@@ -307,14 +307,14 @@ async fn test_gemini_image_vision_e2e() {
         let duration = expires_at - chrono::Utc::now();
         let hours = duration.num_hours();
         eprintln!("⏳ Time until expiration: {} hours", hours);
-        assert!(hours >= 47 && hours <= 49, "Should expire in ~48 hours");
+        assert!((47..=49).contains(&hours), "Should expire in ~48 hours");
     } else {
         panic!("Gemini files should have expiration time");
     }
 
     // Create message with file reference
     let request = ChatRequest {
-        model: "gemini-2.0-flash-exp".to_string(), // Fast Gemini model
+        model: "gemini-2.5-flash".to_string(), // Fast Gemini model
         messages: vec![ChatMessage {
             role: Role::User,
             content: vec![
@@ -397,7 +397,7 @@ async fn test_gemini_pdf_document_qa_e2e() {
 
     // Create message with document reference
     let request = ChatRequest {
-        model: "gemini-2.0-flash-exp".to_string(),
+        model: "gemini-2.5-flash".to_string(),
         messages: vec![ChatMessage {
             role: Role::User,
             content: vec![

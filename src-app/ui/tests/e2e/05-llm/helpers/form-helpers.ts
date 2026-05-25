@@ -71,16 +71,24 @@ export async function fillProviderForm(page: Page, data: ProviderFormData) {
 }
 
 export async function submitProviderForm(page: Page) {
-  // Click "Add Provider" button - tests should be explicit about expected button
-  const drawer = page.locator('.ant-drawer:visible').last()
-  await drawer.locator('button:has-text("Add Provider")').click()
+  // Wait for any dropdown overlay to dismiss. AntD's Select dropdowns
+  // can leave invisible overlays that block normal click; submit
+  // via Form's keyboard handler instead — press Enter on the
+  // submit button after focusing.
+  await page.waitForTimeout(500)
+  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+  const submitButton = drawer.locator('button[type="submit"]:has-text("Add Provider")')
+  await submitButton.focus()
+  await submitButton.press('Enter')
   await page.waitForLoadState('networkidle')
 }
 
 export async function updateProviderForm(page: Page) {
-  // Click "Update Provider" button for edit operations
-  const drawer = page.locator('.ant-drawer:visible').last()
-  await drawer.locator('button:has-text("Update Provider")').click()
+  await page.waitForTimeout(500)
+  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+  const submitButton = drawer.locator('button[type="submit"]:has-text("Update Provider")')
+  await submitButton.focus()
+  await submitButton.press('Enter')
   await page.waitForLoadState('networkidle')
 }
 
@@ -281,14 +289,10 @@ export async function fillDownloadForm(page: Page, data: DownloadFormData) {
     await page.fill('#llm-model-download_repository_branch', data.branch)
   }
 
-  // Clear cache switch (optional)
-  if (data.clearCache) {
-    const clearCacheSwitch = page.locator('#llm-model-download_clear_cache')
-    const isChecked = await clearCacheSwitch.isChecked()
-    if (!isChecked) {
-      await clearCacheSwitch.click()
-    }
-  }
+  // Clear-cache field was removed in security remediation (07-llm-model
+  // F-17): the flag allowed any download-permitted user to wipe cache
+  // for any model. Tests passing `clearCache` now no-op.
+  void data.clearCache
 
   // Fill capabilities, parameters, engine settings
   if (data.chat !== undefined || data.textEmbedding !== undefined) {
@@ -397,8 +401,11 @@ export async function fillUploadForm(page: Page, data: UploadFormData) {
 }
 
 export async function submitUploadForm(page: Page) {
-  const drawer = page.locator('.ant-drawer:visible').last()
-  const uploadButton = drawer.locator('button:has-text("Upload")')
+  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+  // Use exact-name match — the dropzone also exposes a button-role
+  // element with "Upload" in its accessible name; `:has-text("Upload")`
+  // matches both the dropzone span and the submit button.
+  const uploadButton = drawer.getByRole('button', { name: 'Upload', exact: true })
 
   // Ensure button is enabled before clicking
   await expect(uploadButton).toBeEnabled()

@@ -1,8 +1,10 @@
 use crate::core::app_builder;
 use crate::core::config::Config;
 use crate::module_api::ModuleContext;
+use sqlx::postgres::PgPoolOptions;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Generate OpenAPI specification in the output directory
 pub async fn generate_openapi_spec(
@@ -14,8 +16,19 @@ pub async fn generate_openapi_spec(
     // Load configuration
     let config = Config::load_from(config_file)?;
 
-    // Initialize database properly (this starts embedded PostgreSQL if use_embedded: true)
-    let pool = crate::core::database::initialize_database(&config).await?;
+    // SECURITY/PERFORMANCE: OpenAPI generation walks the router structure
+    // but never executes handlers. The previous implementation called
+    // initialize_database which boots the full embedded PostgreSQL (10+
+    // seconds, spawn process, wait for ready, run migrations) just to
+    // print a static doc. The fix uses a lazy pool that never actually
+    // connects — the URL is parsed at construction but no socket opens
+    // until first query, and we never issue one. Closes 14-core F-14
+    // (Medium).
+    let pool = Arc::new(
+        PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy(&config.database_url())?,
+    );
 
     // Initialize global repository factory
     crate::core::init_repositories((*pool).clone());

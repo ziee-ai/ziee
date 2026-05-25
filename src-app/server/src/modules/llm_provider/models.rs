@@ -16,7 +16,14 @@ pub struct ProxySettings {
     pub url: String,
     #[serde(default)]
     pub username: String,
-    #[serde(default)]
+    /// Proxy password — write-only.
+    ///
+    /// Accepted from request bodies (Deserialize) so admins can set the
+    /// value, but NEVER serialized into a response. Without this guard
+    /// the field round-tripped verbatim on every GET /llm-providers/{id}
+    /// and /llm-providers, exposing the proxy credential. Closes
+    /// 06-llm-provider F-05 (Medium).
+    #[serde(default, skip_serializing)]
     pub password: String,
     #[serde(default)]
     pub no_proxy: String,
@@ -31,7 +38,15 @@ pub struct LlmProvider {
     pub name: String,
     pub provider_type: String, // local, openai, anthropic, groq, gemini, mistral, deepseek, huggingface, custom
     pub enabled: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// API key for upstream provider — write-only.
+    ///
+    /// Deserialize unchanged so admins can POST/PUT the value; Serialize
+    /// suppressed so GET /llm-providers and /llm-providers/{id} no longer
+    /// return the secret. The previous behavior round-tripped the api_key
+    /// to every user with `llm_providers::read` — closes
+    /// 06-llm-provider F-01 (Critical). The deeper at-rest encryption
+    /// (pgcrypto / SecretView) is the follow-up A5-full work.
+    #[serde(default, skip_serializing)]
     pub api_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,

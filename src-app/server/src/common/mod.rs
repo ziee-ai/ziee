@@ -1,4 +1,5 @@
 pub mod macros;
+pub mod secret;
 pub mod r#type;
 pub mod types;
 

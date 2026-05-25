@@ -10,9 +10,39 @@ mod uv;
 #[path = "build_helper/bun.rs"]
 mod bun;
 
+/// Redact the password portion of a postgres URL for safe logging.
+/// Closes 14-core F-02 (Critical): build.rs previously echoed the raw
+/// DATABASE_URL (including the password) to stderr on connection
+/// failure. Build output is commonly captured in CI logs and developer
+/// terminals, so the password leaked into observable surfaces.
+fn redact_database_url(url: &str) -> String {
+    // postgres://user:PASSWORD@host:port/db — replace the segment
+    // between the first ':' after the scheme and the '@' with '***'.
+    if let Some(scheme_end) = url.find("://") {
+        let after_scheme = &url[scheme_end + 3..];
+        if let Some(at_pos) = after_scheme.find('@') {
+            let userinfo = &after_scheme[..at_pos];
+            if let Some(colon) = userinfo.find(':') {
+                let mut out = String::with_capacity(url.len());
+                out.push_str(&url[..scheme_end + 3]);
+                out.push_str(&userinfo[..colon]);
+                out.push_str(":***");
+                out.push_str(&after_scheme[at_pos..]);
+                return out;
+            }
+        }
+    }
+    url.to_string()
+}
+
 #[tokio::main]
 async fn main() {
-    // Get DATABASE_URL or use default
+    // Get DATABASE_URL or use local dev fallback (build-time only;
+    // the dev fallback's password matches docker-compose.yaml). The
+    // fallback is for ergonomics — developers shouldn't have to set
+    // DATABASE_URL just to run cargo build. The string never reaches
+    // the produced binary; it's used only during the build to verify
+    // SQLx queries compile.
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://postgres:password@127.0.0.1:54321/postgres".to_string());
 
@@ -26,8 +56,11 @@ async fn main() {
     {
         Ok(pool) => pool,
         Err(e) => {
+            // SECURITY: redact the password before printing the URL to
+            // stderr. Build output is commonly captured in CI logs and
+            // developer terminals. Closes 14-core F-02 (Critical).
             eprintln!("\nERROR: Failed to connect to database: {}", e);
-            eprintln!("DATABASE_URL: {}", database_url);
+            eprintln!("DATABASE_URL: {}", redact_database_url(&database_url));
             panic!("Database connection failed");
         }
     };
@@ -129,17 +162,17 @@ fn generate_chat_repository() {
     // Scan for extensions with repository.rs
     if let Ok(entries) = fs::read_dir(&extensions_path) {
         for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() {
-                    let ext_name = entry.file_name();
-                    let ext_name_str = ext_name.to_string_lossy();
+            if let Ok(file_type) = entry.file_type()
+                && file_type.is_dir()
+            {
+                let ext_name = entry.file_name();
+                let ext_name_str = ext_name.to_string_lossy();
 
-                    // Check if repository.rs exists
-                    let repo_file = entry.path().join("repository.rs");
-                    if repo_file.exists() {
-                        println!("Found extension repository: {}", ext_name_str);
-                        extensions.push(ext_name_str.to_string());
-                    }
+                // Check if repository.rs exists
+                let repo_file = entry.path().join("repository.rs");
+                if repo_file.exists() {
+                    println!("Found extension repository: {}", ext_name_str);
+                    extensions.push(ext_name_str.to_string());
                 }
             }
         }

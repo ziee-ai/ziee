@@ -15,26 +15,32 @@ pub static APP_DATA_DIR: Lazy<Mutex<PathBuf>> = Lazy::new(|| {
     Mutex::new(default_path)
 });
 
-/// Set the application data directory
-/// This should be called once during application initialization from the config
+/// Set the application data directory.
+///
+/// Closes 14-core F-25 + F-17 (Info / Low): poison recovery rather than
+/// silent log-and-continue. If a previous holder panicked while
+/// mutating APP_DATA_DIR, recover the inner value and overwrite it.
+/// The data dir is set-once at boot so the recovery branch should
+/// never fire in practice.
 pub fn set_app_data_dir(path: PathBuf) {
-    if let Ok(mut app_data_dir) = APP_DATA_DIR.lock() {
-        *app_data_dir = path;
-        tracing::info!(
-            "Application data directory set to: {}",
-            app_data_dir.display()
-        );
-    } else {
-        tracing::error!("Failed to lock APP_DATA_DIR mutex");
-    }
+    let mut guard = APP_DATA_DIR.lock().unwrap_or_else(|poisoned| {
+        tracing::error!("APP_DATA_DIR mutex poisoned in set_app_data_dir; recovering");
+        poisoned.into_inner()
+    });
+    *guard = path;
+    tracing::info!("Application data directory set to: {}", guard.display());
 }
 
-/// Get the current application data directory
-/// Returns a cloned PathBuf to avoid holding the mutex lock
+/// Get the current application data directory.
+/// Returns a cloned PathBuf to avoid holding the mutex lock.
+/// Poison recovery same as set_app_data_dir (14-core F-17 + F-25).
 pub fn get_app_data_dir() -> PathBuf {
     APP_DATA_DIR
         .lock()
-        .expect("Failed to lock APP_DATA_DIR")
+        .unwrap_or_else(|poisoned| {
+            tracing::error!("APP_DATA_DIR mutex poisoned in get_app_data_dir; recovering");
+            poisoned.into_inner()
+        })
         .clone()
 }
 

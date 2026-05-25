@@ -6,8 +6,13 @@ use aide::axum::{
     ApiRouter,
     routing::{delete_with, get_with, post_with},
 };
+use axum::extract::DefaultBodyLimit;
 
 use super::handlers::*;
+
+/// Per-route body limit for model uploads. Global router cap is 16 MB
+/// (see main.rs); models can be many GB. Closes 14-core F-01.
+const MODEL_UPLOAD_BODY_LIMIT: usize = 16 * 1024 * 1024 * 1024;
 
 /// LLM Model management routes
 pub fn llm_model_router() -> ApiRouter {
@@ -36,10 +41,12 @@ pub fn llm_model_router() -> ApiRouter {
             "/llm-models/{model_id}/disable",
             post_with(disable_model, disable_model_docs),
         )
-        // File upload/download
+        // File upload/download — explicit per-route body limit per
+        // 14-core-infrastructure F-01
         .api_route(
             "/llm-models/upload",
-            post_with(upload_multiple_files_and_commit, upload_files_docs),
+            post_with(upload_multiple_files_and_commit, upload_files_docs)
+                .layer(DefaultBodyLimit::max(MODEL_UPLOAD_BODY_LIMIT)),
         )
         .api_route(
             "/llm-models/download",

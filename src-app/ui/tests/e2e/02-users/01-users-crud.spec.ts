@@ -81,7 +81,7 @@ test.describe('Users CRUD Operations', () => {
 
     // Try to submit without required fields
     const submitButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /create user/i })
     await submitButton.click()
 
@@ -115,12 +115,12 @@ test.describe('Users CRUD Operations', () => {
     await page.getByLabel(/^password/i).fill(duplicateData.password)
 
     const submitButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /create user/i })
     await submitButton.click()
 
     // Verify error message appears
-    await expect(page.locator('.ant-message-error').first()).toBeVisible({
+    await expect(page.locator('.ant-message-error').first().first()).toBeVisible({
       timeout: 5000,
     })
   })
@@ -164,7 +164,7 @@ test.describe('Users CRUD Operations', () => {
 
     // Click cancel button
     const cancelButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /cancel/i })
     await cancelButton.click()
 
@@ -218,7 +218,7 @@ test.describe('Users CRUD Operations', () => {
     await page.getByLabel(/^password/i).fill('123') // Less than 6 characters
 
     const submitButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /create user/i })
     await submitButton.click()
 
@@ -239,7 +239,7 @@ test.describe('Users CRUD Operations', () => {
     await page.getByLabel(/^password/i).fill('password123')
 
     const submitButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /create user/i })
     await submitButton.click()
 

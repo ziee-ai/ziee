@@ -8,6 +8,27 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 use uuid::Uuid;
 
+/// Reject reads that would follow a symlink. If the storage tree
+/// somehow contains a symlink (planted by a co-located process, a
+/// privilege escalation, or a future bug), refuse to read it rather
+/// than silently following to arbitrary host paths. Closes
+/// 05-file F-15 (Medium). NotFound is the same shape callers already
+/// expect, so no surface-level change.
+async fn reject_if_symlink(path: &Path) -> StorageResult<()> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            tracing::error!(
+                path = %path.display(),
+                "Refusing to read storage path that is a symlink"
+            );
+            Err(AppError::not_found("File"))
+        }
+        // ENOENT → propagate as not_found later in the read call.
+        // Other errors (permission denied, etc.) → propagate the same.
+        _ => Ok(()),
+    }
+}
+
 /// Filesystem-based file storage
 #[derive(Debug, Clone)]
 pub struct FilesystemStorage {
@@ -27,7 +48,10 @@ impl FilesystemStorage {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .await
-                .map_err(|e| AppError::internal_error(format!("Failed to create directory: {}", e)))?;
+                .map_err(|e| {
+                tracing::error!(error = %e, "ensure_dir failed");
+                AppError::internal_error("Storage error")
+            })?;
         }
         Ok(())
     }
@@ -52,7 +76,10 @@ impl FileStorage for FilesystemStorage {
 
         fs::write(&path, data)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to write file: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "save_original write failed");
+                AppError::internal_error("Storage error")
+            })?;
 
         Ok(path)
     }
@@ -69,7 +96,10 @@ impl FileStorage for FilesystemStorage {
 
         fs::write(&path, text)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to write text page: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "save_text_page write failed");
+                AppError::internal_error("Storage error")
+            })?;
 
         Ok(path)
     }
@@ -87,7 +117,10 @@ impl FileStorage for FilesystemStorage {
 
         fs::write(&path, data)
             .await
-            .map_err(|e| AppError::internal_error(format!("Failed to write image: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "save_image write failed");
+                AppError::internal_error("Storage error")
+            })?;
 
         Ok(path)
     }
@@ -98,8 +131,27 @@ impl FileStorage for FilesystemStorage {
         file_id: Uuid,
         extension: &str,
     ) -> PathBuf {
+        // SECURITY: the extension flows from user input on upload. Without
+        // sanitization, a value like 'x/../../<victim_uuid>/y.pdf' lets
+        // create_dir_all + fs::write escape the per-user originals
+        // directory and overwrite (or shadow) another user's file. Same
+        // primitive on the read path. Closes 05-file F-03 (High).
+        //
+        // Allow only ASCII alphanumeric extensions (matches every legit
+        // mime-type-derived extension). Anything else is replaced with
+        // 'bin', which keeps the file storable but isolated.
+        let safe_ext: String = if extension
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric())
+            && !extension.is_empty()
+            && extension.len() <= 16
+        {
+            extension.to_ascii_lowercase()
+        } else {
+            "bin".to_string()
+        };
         self.get_user_path(user_id, "originals")
-            .join(format!("{}.{}", file_id, extension))
+            .join(format!("{}.{}", file_id, safe_ext))
     }
 
     fn get_text_path(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> PathBuf {
@@ -134,18 +186,24 @@ impl FileStorage for FilesystemStorage {
         extension: &str,
     ) -> StorageResult<Vec<u8>> {
         let path = self.get_original_path(user_id, file_id, extension);
-
+        reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("File not found: {}", e)))
+            .map_err(|e| {
+                tracing::warn!(error = %e, "load_original failed");
+                AppError::not_found("File")
+            })
     }
 
     async fn load_text_page(&self, user_id: Uuid, file_id: Uuid, page_num: u32) -> StorageResult<String> {
         let path = self.get_text_path(user_id, file_id, page_num);
-
+        reject_if_symlink(&path).await?;
         fs::read_to_string(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("Text page {} not found: {}", page_num, e)))
+            .map_err(|e| {
+                tracing::warn!(error = %e, page = page_num, "load_text_page failed");
+                AppError::not_found("Text page")
+            })
     }
 
     async fn load_preview(
@@ -155,18 +213,24 @@ impl FileStorage for FilesystemStorage {
         page_num: u32,
     ) -> StorageResult<Vec<u8>> {
         let path = self.get_image_path(user_id, file_id, page_num, false);
-
+        reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("Preview image not found: {}", e)))
+            .map_err(|e| {
+                tracing::warn!(error = %e, "load_preview failed");
+                AppError::not_found("Preview")
+            })
     }
 
     async fn load_thumbnail(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<Vec<u8>> {
         let path = self.get_image_path(user_id, file_id, 1, true);
-
+        reject_if_symlink(&path).await?;
         fs::read(&path)
             .await
-            .map_err(|e| AppError::not_found(&format!("Thumbnail not found: {}", e)))
+            .map_err(|e| {
+                tracing::warn!(error = %e, "load_thumbnail failed");
+                AppError::not_found("Thumbnail")
+            })
     }
 
     async fn delete_all(&self, user_id: Uuid, file_id: Uuid) -> StorageResult<()> {
@@ -189,11 +253,10 @@ impl FileStorage for FilesystemStorage {
                 // Delete files matching pattern
                 if let Ok(mut entries) = fs::read_dir(&path).await {
                     while let Ok(Some(entry)) = entries.next_entry().await {
-                        if let Some(name) = entry.file_name().to_str() {
-                            if name.starts_with(&file_id.to_string()) {
+                        if let Some(name) = entry.file_name().to_str()
+                            && name.starts_with(&file_id.to_string()) {
                                 let _ = fs::remove_file(entry.path()).await;
                             }
-                        }
                     }
                 }
             }

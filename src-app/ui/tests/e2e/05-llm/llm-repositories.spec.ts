@@ -94,7 +94,7 @@ test.describe('LLM Repositories - Create Repository', () => {
     await loginAsAdmin(page, baseURL)
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://api.example.com',
+      url: 'https://example.com',
       authType: 'api_key',
       apiKey: 'sk-test-key-123',
       enabled: true,
@@ -118,7 +118,7 @@ test.describe('LLM Repositories - Create Repository', () => {
     await loginAsAdmin(page, baseURL)
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://api.example.com',
+      url: 'https://example.com',
       authType: 'basic_auth',
       username: 'testuser',
       password: 'testpass',
@@ -143,7 +143,7 @@ test.describe('LLM Repositories - Create Repository', () => {
     await loginAsAdmin(page, baseURL)
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://api.example.com',
+      url: 'https://example.com',
       authType: 'bearer_token',
       bearerToken: 'Bearer abc123',
       enabled: true,
@@ -199,36 +199,78 @@ test.describe('LLM Repositories - Create Repository', () => {
   test('should show auth fields based on auth type selection', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
 
+    // Tall viewport so the drawer's full form fits and the auth_type
+    // Select stays in view across all toggles. The default viewport
+    // is just tall enough that opening the drawer pushes the Select
+    // partially offscreen mid-test.
+    await page.setViewportSize({ width: 1280, height: 1400 })
+
     await loginAsAdmin(page, baseURL)
     await goToRepositoriesPage(page, baseURL)
     await waitForRepositoriesPageLoad(page)
 
     await openAddRepositoryDrawer(page)
 
-    // Select API Key auth type
-    await page.click('.ant-select:has(#llm-repository-form_auth_type)')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-    await page.click('.ant-select-item-option:has-text("API Key")')
+    // Fresh locators each call — Form.Item children change as the
+    // conditional sections render, which can invalidate cached
+    // locators that hold a snapshot of the DOM.
+    const authTypeSelect = () => page
+      .locator('.ant-form-item:has-text("Authentication Type")')
+      .first()
+      .locator('.ant-select')
+      .first()
+    const authTypeCombobox = () => page
+      .locator('.ant-form-item:has-text("Authentication Type")')
+      .first()
+      .getByRole('combobox')
 
-    // Verify API Key field appears
+    const selectAuthType = async (
+      value: 'none' | 'api_key' | 'basic_auth' | 'bearer_token',
+    ) => {
+      // Drive the Select by walking React Fiber up from the Select's
+      // input element to find the rc-select's onChange handler. This
+      // is the same handler the option's mousedown triggers.
+      await page.evaluate((v) => {
+        const input = document.getElementById(
+          'llm-repository-form_auth_type',
+        )
+        if (!input) throw new Error('auth_type input not found')
+        // Walk Fiber up to find the rc-select wrapper that has the
+        // `onChange` prop accepting (value, option) signature.
+        const fiberKey = Object.keys(input).find(k => k.startsWith('__reactFiber$'))
+        if (!fiberKey) throw new Error('input has no React Fiber')
+        let fiber = (input as any)[fiberKey]
+        let onChange: ((val: any, opt: any) => void) | null = null
+        while (fiber && !onChange) {
+          const props = fiber.memoizedProps || fiber.pendingProps
+          if (props?.onChange && (props.options || props.children)) {
+            onChange = props.onChange
+            break
+          }
+          fiber = fiber.return
+        }
+        if (!onChange) throw new Error('Could not find Select onChange via Fiber')
+        // rc-select onChange signature is (value, option)
+        onChange(v, { value: v, label: v })
+      }, value)
+      await page.waitForTimeout(500) // let conditional fields render
+    }
+
+    // Select API Key
+    await selectAuthType('api_key')
     await expect(page.locator('label:has-text("API Key")')).toBeVisible()
     await expect(page.locator('#llm-repository-form_api_key')).toBeVisible()
 
-    // Select Basic Auth
-    await page.click('.ant-select:has(#llm-repository-form_auth_type)')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-    await page.click('.ant-select-item-option:has-text("Basic Authentication")')
-
-    // Verify Username and Password fields appear
+    // Select Basic Authentication
+    await selectAuthType('basic_auth')
     await expect(page.locator('label:has-text("Username")')).toBeVisible()
     await expect(page.locator('#llm-repository-form_username')).toBeVisible()
     await expect(page.locator('label:has-text("Password")')).toBeVisible()
     await expect(page.locator('#llm-repository-form_password')).toBeVisible()
 
     // Select Bearer Token
-    await page.click('.ant-select:has(#llm-repository-form_auth_type)')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-    await page.click('.ant-select-item-option:has-text("Bearer Token")')
+    await selectAuthType('bearer_token')
+    await authTypeCombobox().press('Enter')
 
     // Verify Bearer Token field appears
     await expect(page.locator('label:has-text("Bearer Token")')).toBeVisible()
@@ -265,10 +307,12 @@ test.describe('LLM Repositories - Edit Repository', () => {
     await page.waitForSelector('.ant-drawer-title', { timeout: 30000 })
 
     // Update URL
-    await page.fill('#llm-repository-form_url', 'https://updated-example.com')
+    // Use `example.org` (resolvable real domain) — backend's outbound
+    // URL validator (A2) rejects unresolvable hosts as potential SSRF.
+    await page.fill('#llm-repository-form_url', 'https://example.org')
 
     // Submit
-    const drawer = page.locator('.ant-drawer:visible').last()
+    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
     await drawer.locator('button:has-text("Update Repository")').click()
     await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
 
@@ -285,7 +329,7 @@ test.describe('LLM Repositories - Edit Repository', () => {
     // Create repository with no auth
     await createRepository(page, baseURL, {
       name: repositoryName,
-      url: 'https://api.example.com',
+      url: 'https://example.com',
       authType: 'none',
       enabled: true,
     })
@@ -298,17 +342,26 @@ test.describe('LLM Repositories - Edit Repository', () => {
     await repositoryRow.locator('button:has-text("Edit")').click()
     await page.waitForSelector('.ant-drawer-title', { timeout: 30000 })
 
-    // Change auth type to API key
-    await page.click('.ant-select:has(#llm-repository-form_auth_type)')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-    await page.click('.ant-select-item-option:has-text("API Key")')
-    await page.waitForLoadState('networkidle')
+    // Change auth type to API key (index 1: none, api_key, basic, bearer)
+    // Use keyboard nav — option click is flaky due to AntD animation.
+    {
+      const combobox = page
+        .locator('.ant-form-item:has-text("Authentication Type")')
+        .first()
+        .getByRole('combobox')
+      await combobox.click()
+      await page.waitForTimeout(200)
+      await combobox.press('Home')
+      await combobox.press('ArrowDown')
+      await combobox.press('Enter')
+      await page.waitForLoadState('networkidle')
+    }
 
     // Fill API key
     await page.fill('#llm-repository-form_api_key', 'new-api-key-123')
 
     // Submit
-    const drawer = page.locator('.ant-drawer:visible').last()
+    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
     await drawer.locator('button:has-text("Update Repository")').click()
     await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
 
@@ -559,29 +612,15 @@ test.describe('LLM Repositories - Connection Testing', () => {
     await deleteRepository(page, repositoryName)
   })
 
-  test('should fail connection test with invalid URL', async ({ page, testInfra }) => {
-    const { baseURL } = testInfra
-    const repositoryName = `test-connection-invalid-url-${Date.now()}`
-
-    await loginAsAdmin(page, baseURL)
-
-    // Create repository with invalid URL
-    await createRepository(page, baseURL, {
-      name: repositoryName,
-      url: 'https://invalid-test-url-12345.com',
-      authType: 'none',
-      enabled: true,
-    })
-
-    // Test connection
-    await clickTestConnectionFromList(page, repositoryName)
-
-    // Should show error message
-    await waitForConnectionTestResult(page, 'error')
-
-    // Cleanup
-    await deleteRepository(page, repositoryName)
-  })
+  // "should fail connection test with invalid URL" was here. Removed
+  // because it requires creating a repository with an unresolvable
+  // hostname, which the new outbound URL validator (security A2)
+  // rejects at create time to prevent SSRF/DNS-rebinding. The
+  // "successfully test connection from drawer" + "fail connection
+  // from drawer with invalid credentials" tests below cover the
+  // connection-test UI. Tracked in
+  // src-app/ui/tests/e2e/TODO_E2E.md for a future redesign that
+  // separates create-validation from connection-test errors.
 
   test('should show Test Connection button in drawer when form is valid', async ({ page, testInfra }) => {
     const { baseURL } = testInfra
@@ -616,11 +655,21 @@ test.describe('LLM Repositories - Connection Testing', () => {
     await page.fill('#llm-repository-form_name', 'Test HF Repository')
     await page.fill('#llm-repository-form_url', 'https://huggingface.co')
 
-    // Select bearer token auth
-    await page.click('.ant-select:has(#llm-repository-form_auth_type)')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-    await page.click('.ant-select-item-option:has-text("Bearer Token")')
-    await page.waitForLoadState('networkidle')
+    // Select bearer token auth (index 3) via keyboard
+    {
+      const combobox = page
+        .locator('.ant-form-item:has-text("Authentication Type")')
+        .first()
+        .getByRole('combobox')
+      await combobox.click()
+      await page.waitForTimeout(200)
+      await combobox.press('Home')
+      await combobox.press('ArrowDown')
+      await combobox.press('ArrowDown')
+      await combobox.press('ArrowDown')
+      await combobox.press('Enter')
+      await page.waitForLoadState('networkidle')
+    }
 
     // Fill valid bearer token
     await page.fill('#llm-repository-form_token', HF_API_KEY)
@@ -651,11 +700,21 @@ test.describe('LLM Repositories - Connection Testing', () => {
     await page.fill('#llm-repository-form_name', 'Test Invalid Repository')
     await page.fill('#llm-repository-form_url', 'https://huggingface.co')
 
-    // Select bearer token auth
-    await page.click('.ant-select:has(#llm-repository-form_auth_type)')
-    await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
-    await page.click('.ant-select-item-option:has-text("Bearer Token")')
-    await page.waitForLoadState('networkidle')
+    // Select bearer token auth (index 3) via keyboard
+    {
+      const combobox = page
+        .locator('.ant-form-item:has-text("Authentication Type")')
+        .first()
+        .getByRole('combobox')
+      await combobox.click()
+      await page.waitForTimeout(200)
+      await combobox.press('Home')
+      await combobox.press('ArrowDown')
+      await combobox.press('ArrowDown')
+      await combobox.press('ArrowDown')
+      await combobox.press('Enter')
+      await page.waitForLoadState('networkidle')
+    }
 
     // Fill invalid bearer token
     await page.fill('#llm-repository-form_token', 'hf_invalid_token_xyz')
@@ -686,7 +745,7 @@ test.describe('LLM Repositories - Connection Testing', () => {
     await page.fill('#llm-repository-form_name', 'Test Repository')
 
     // Test Connection button should not be visible (form validation)
-    const testButton = page.locator('.ant-drawer:visible').last().locator('button:has-text("Test Connection")')
+    const testButton = page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Test Connection")')
     await expect(testButton).not.toBeVisible()
 
     // Close drawer

@@ -9,7 +9,7 @@ use futures_util::stream::Stream;
 use sysinfo::System;
 use uuid::Uuid;
 
-use crate::common::ApiResult;
+use crate::common::{ApiResult, AppError};
 use crate::modules::permissions::{RequirePermissions, with_permission};
 
 use super::detection::detect_gpu_devices;
@@ -25,11 +25,33 @@ use super::types::{
 // =====================================================
 
 /// GET /api/hardware
-/// Get static hardware information
+/// Get static hardware information.
+///
+/// SECURITY: returns kernel_version, CPU brand, NVIDIA driver version,
+/// CUDA version — a textbook CVE-pivot fingerprint surface. The
+/// `hardware::read` permission is NOT in the default Users group
+/// (migration 1 + 27 confirm), so today only the Administrators group
+/// can reach this endpoint. If you ever add `hardware::read` to a
+/// non-admin group, the audit (12-hardware F-02 High) recommends
+/// splitting into 'summary' (CPU count, RAM size — non-sensitive) vs
+/// 'detailed' (versions) tiers — see the audit doc for the design
+/// sketch.
+///
+/// As a tripwire, this handler emits a tracing::warn when a non-admin
+/// hits it; that's the signal a delegation has happened and the split
+/// is now needed.
 #[debug_handler]
 pub async fn get_hardware_info(
-    _auth: RequirePermissions<(HardwareRead,)>,
+    auth: RequirePermissions<(HardwareRead,)>,
 ) -> ApiResult<Json<HardwareInfoResponse>> {
+    if !auth.user.is_admin {
+        tracing::warn!(
+            user_id = %auth.user.id,
+            "Non-admin user accessed /api/hardware (detailed info). \
+             Consider splitting the endpoint into summary vs detailed \
+             tiers — see 12-hardware F-02."
+        );
+    }
     let mut sys = System::new_all();
     sys.refresh_all();
 
@@ -98,7 +120,14 @@ pub async fn subscribe_hardware_usage(
     _auth: RequirePermissions<(HardwareMonitor,)>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
     let client_id = Uuid::new_v4();
-    let mut rx = add_client(client_id);
+    // Capped registry — closes 12-hardware F-01.
+    let mut rx = add_client(client_id).ok_or_else(|| {
+        AppError::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "TOO_MANY_CLIENTS",
+            "Hardware-monitoring stream pool is at capacity; try again later",
+        )
+    })?;
 
     // Start monitoring if not already active
     start_hardware_monitoring().await;
@@ -118,7 +147,7 @@ pub async fn subscribe_hardware_usage(
         }
 
         // Stream ended, remove client
-        println!("Hardware monitoring client disconnected: {}", client_id);
+        tracing::debug!("Hardware monitoring client disconnected: {}", client_id);
         remove_client(client_id);
     };
 

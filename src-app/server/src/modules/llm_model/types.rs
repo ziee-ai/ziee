@@ -37,6 +37,7 @@ pub struct CreateLlmModelRequest {
 
 /// Request to update an existing LLM model
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Default)]
 pub struct UpdateLlmModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -61,22 +62,6 @@ pub struct UpdateLlmModelRequest {
 }
 
 // Default implementation for UpdateLlmModelRequest
-impl Default for UpdateLlmModelRequest {
-    fn default() -> Self {
-        Self {
-            name: None,
-            display_name: None,
-            description: None,
-            enabled: None,
-            is_active: None,
-            capabilities: None,
-            parameters: None,
-            engine_type: None,
-            engine_settings: None,
-            file_format: None,
-        }
-    }
-}
 
 // =====================================================
 // RESPONSE TYPES

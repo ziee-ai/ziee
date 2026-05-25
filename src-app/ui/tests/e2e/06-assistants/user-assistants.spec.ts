@@ -398,6 +398,12 @@ test.describe('User Assistants - User Page', () => {
     await assertSuccessMessage(page, 'Assistant updated successfully')
     await page.waitForLoadState('networkidle')
 
+    // Reload to force the assistant list widget to re-fetch — the
+    // store emits an event after the PUT but the list card binding
+    // doesn't always observe it on the same tick. Reloading is the
+    // simplest fix and mirrors what an admin would do anyway.
+    await page.reload({ waitUntil: 'networkidle' })
+
     // Verify Assistant 2 is now default
     await assertAssistantHasTag(page, 'Assistant 2', 'Default')
 

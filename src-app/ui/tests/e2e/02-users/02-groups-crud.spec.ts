@@ -23,12 +23,16 @@ test.describe('User Groups CRUD Operations', () => {
   })
 
   test('should display user groups list page', async ({ page }) => {
-    // Check page title
-    await expect(page.locator('h1', { hasText: /user groups/i })).toBeVisible()
-
-    // Check create group button exists
+    // Check page title — the page renders an h4 (level=4), not h1.
     await expect(
-      page.getByRole('button', { name: /create group/i })
+      page.getByRole('heading', { name: /user groups/i, level: 4 })
+    ).toBeVisible()
+
+    // Check create group button exists (multiple matching buttons may
+    // exist if a closed drawer's submit button is still in the DOM —
+    // `.first()` grabs the trigger in document order).
+    await expect(
+      page.getByRole('button', { name: /create group/i }).first()
     ).toBeVisible()
   })
 
@@ -78,7 +82,7 @@ test.describe('User Groups CRUD Operations', () => {
 
     // Try to submit without required fields
     const submitButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /create group/i })
     await submitButton.click()
 
@@ -98,7 +102,7 @@ test.describe('User Groups CRUD Operations', () => {
       .fill('invalid json') // Invalid JSON
 
     const submitButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /create group/i })
     await submitButton.click()
 
@@ -120,7 +124,7 @@ test.describe('User Groups CRUD Operations', () => {
       .fill('["invalid::permission"]') // Invalid permission
 
     const submitButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /create group/i })
     await submitButton.click()
 
@@ -197,7 +201,7 @@ test.describe('User Groups CRUD Operations', () => {
 
     // Click cancel button
     const cancelButton = page
-      .locator('.ant-drawer:visible')
+      .locator('.ant-drawer.ant-drawer-open')
       .getByRole('button', { name: /cancel/i })
     await cancelButton.click()
 
@@ -249,11 +253,11 @@ test.describe('User Groups CRUD Operations', () => {
       await expect(systemTag).toBeVisible()
 
       // System groups typically include admin group
-      const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+      const adminGroup = page.locator('.ant-card', { hasText: /admin/i }).first()
       if (await adminGroup.isVisible()) {
         const adminSystemTag = adminGroup.locator('.ant-tag', {
           hasText: /system/i,
-        })
+        }).first()
         await expect(adminSystemTag).toBeVisible()
       }
     }

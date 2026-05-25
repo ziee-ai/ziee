@@ -112,6 +112,16 @@ pub fn setup_pdfium(
         let pdfium_temp_dir = Path::new(out_dir).join("pdfium-download");
         fs::create_dir_all(&pdfium_temp_dir)?;
 
+        // SECURITY GAP: 14-core F-16 (Medium) — `releases/latest`
+        // is a moving target; an upstream repo hijack silently
+        // changes what every fresh build downloads. The correct
+        // fix is to pin to a specific tag AND verify SHA-256 of
+        // the archive against a hardcoded expected hash per
+        // (platform, arch). Doing the pin alone without a tested
+        // shipping version risks breaking the build for everyone
+        // — tracked as a follow-up that publishes the pin +
+        // expected hashes together (see RELEASE-RUNBOOK pattern in
+        // sandbox-rootfs/ for the model).
         let pdfium_archive_name = format!("pdfium-{}-{}.tgz", pdfium_platform, pdfium_arch);
         let pdfium_download_url = format!(
             "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/{}",

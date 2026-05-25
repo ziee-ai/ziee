@@ -14,14 +14,40 @@ use uuid::Uuid;
 pub struct OfficeProcessor;
 
 impl OfficeProcessor {
-    /// Write bytes to a temporary file for processing
+    /// Write bytes to a temporary file for processing.
+    ///
+    /// SECURITY: writes the file with owner-only permissions (mode 0600)
+    /// so other local users / processes on the host can't read the
+    /// in-flight upload while we're processing it. The previous
+    /// `fs::write` used the umask-default mode (typically 0644 → world-
+    /// readable on Linux). Closes 05-file F-10 + F-11 (Medium).
     fn write_temp_file(data: &[u8], extension: &str) -> Result<PathBuf, AppError> {
         let temp_dir = std::env::temp_dir();
         let filename = format!("{}.{}", Uuid::new_v4(), extension);
         let temp_path = temp_dir.join(filename);
 
-        fs::write(&temp_path, data)
-            .map_err(|e| AppError::internal_error(format!("Failed to write temp file: {}", e)))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&temp_path)
+                .map_err(|e| {
+                    AppError::internal_error(format!("Failed to create temp file: {}", e))
+                })?;
+            use std::io::Write;
+            file.write_all(data).map_err(|e| {
+                AppError::internal_error(format!("Failed to write temp file: {}", e))
+            })?;
+        }
+        #[cfg(not(unix))]
+        {
+            fs::write(&temp_path, data).map_err(|e| {
+                AppError::internal_error(format!("Failed to write temp file: {}", e))
+            })?;
+        }
 
         Ok(temp_path)
     }

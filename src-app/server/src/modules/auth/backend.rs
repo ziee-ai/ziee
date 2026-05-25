@@ -230,32 +230,4 @@ impl AuthBackend {
         Ok(permissions.into_iter().collect())
     }
 
-    pub async fn has_permission(&self, user: &User, permission: &str) -> Result<bool, AppError> {
-        // Quick admin check
-        if user.is_admin {
-            return Ok(true);
-        }
-
-        let permissions = self.get_all_permissions(user).await?;
-
-        // Check for wildcard
-        if permissions.contains("*") {
-            return Ok(true);
-        }
-
-        // Check exact match
-        if permissions.contains(permission) {
-            return Ok(true);
-        }
-
-        // Check resource wildcard (e.g., "chat:*" matches "chat:read")
-        if let Some((resource, _)) = permission.split_once(':') {
-            let wildcard = format!("{}:*", resource);
-            if permissions.contains(&wildcard) {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
 }

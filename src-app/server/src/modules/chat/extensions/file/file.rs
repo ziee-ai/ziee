@@ -97,12 +97,15 @@ impl FileExtension {
             _ => &ai_providers::OpenAIProvider,
         };
 
-        // Upload to provider or get cached file ID
+        // Upload to provider or get cached file ID. user_id is threaded
+        // through for the user-scoped JOIN in get_provider_file_mapping
+        // — closes 06-llm-provider F-04.
         let provider_file_id = llm_provider_files::service::get_or_upload_provider_file(
             &self.pool,
             file_repo,
             &file_storage,
             file_id,
+            _user_id,
             &provider,
             ai_provider,
         )
@@ -206,7 +209,7 @@ impl ChatExtension for FileExtension {
             if file.user_id != context.user_id {
                 return Err(AppError::forbidden(
                     "FILE_ACCESS_DENIED",
-                    &format!("You don't have access to file {}", file_id),
+                    format!("You don't have access to file {}", file_id),
                 ));
             }
 
@@ -262,11 +265,10 @@ impl ChatExtension for FileExtension {
             }
 
             // Add file blocks to the user's message
-            if let Some(last_message) = request.messages.last_mut() {
-                if last_message.role == Role::User {
+            if let Some(last_message) = request.messages.last_mut()
+                && last_message.role == Role::User {
                     last_message.content.extend(file_blocks);
                 }
-            }
         }
 
         Ok(BeforeLlmAction::Continue)

@@ -12,14 +12,14 @@ use serde_json::json;
 #[tokio::test]
 async fn test_create_conversation_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let payload = json!({
         "title": "Test Conversation"
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/conversations"))
+        .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -32,10 +32,10 @@ async fn test_create_conversation_requires_permission() {
 #[tokio::test]
 async fn test_list_conversations_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -53,7 +53,7 @@ async fn test_get_conversation_requires_permission() {
         &["conversations::create", "conversations::read"],
     )
     .await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Admin creates a conversation
     let conversation = super::helpers::create_conversation(&server, &admin.token, None, Some("Test")).await;
@@ -61,7 +61,7 @@ async fn test_get_conversation_requires_permission() {
 
     // User without permission tries to get it (will fail on ownership anyway, but permission check comes first)
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -79,7 +79,7 @@ async fn test_update_conversation_requires_permission() {
         &["conversations::create", "conversations::read"],
     )
     .await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Admin creates a conversation
     let conversation = super::helpers::create_conversation(&server, &admin.token, None, Some("Test")).await;
@@ -91,7 +91,7 @@ async fn test_update_conversation_requires_permission() {
 
     // User without permission tries to update it
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -110,7 +110,7 @@ async fn test_delete_conversation_requires_permission() {
         &["conversations::create", "conversations::read"],
     )
     .await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Admin creates a conversation
     let conversation = super::helpers::create_conversation(&server, &admin.token, None, Some("Test")).await;
@@ -118,7 +118,7 @@ async fn test_delete_conversation_requires_permission() {
 
     // User without permission tries to delete it
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .delete(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -140,7 +140,7 @@ async fn test_get_conversation_history_requires_permission() {
         &["conversations::create"],
     )
     .await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Admin creates a conversation
     let conversation = super::helpers::create_conversation(&server, &admin.token, None, Some("Test")).await;
@@ -148,7 +148,7 @@ async fn test_get_conversation_history_requires_permission() {
 
     // User without permission tries to get history
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/messages", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -172,7 +172,7 @@ async fn test_send_message_requires_permission() {
         ],
     )
     .await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Admin creates a conversation
     let conversation = super::helpers::create_conversation(&server, &admin.token, None, Some("Test")).await;
@@ -191,7 +191,7 @@ async fn test_send_message_requires_permission() {
 
     // User without permission tries to send message
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/messages/stream", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -204,13 +204,13 @@ async fn test_send_message_requires_permission() {
 #[tokio::test]
 async fn test_get_message_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Use a random UUID (permission check happens before existence check)
     let fake_message_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/messages/{}", fake_message_id)))
+        .get(server.api_url(&format!("/messages/{}", fake_message_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -222,7 +222,7 @@ async fn test_get_message_requires_permission() {
 #[tokio::test]
 async fn test_edit_message_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Use random UUIDs (permission check happens before existence check)
     let fake_conversation_id = uuid::Uuid::new_v4();
@@ -233,7 +233,7 @@ async fn test_edit_message_requires_permission() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!(
+        .put(server.api_url(&format!(
             "/conversations/{}/messages/{}",
             fake_conversation_id, fake_message_id
         )))
@@ -249,13 +249,13 @@ async fn test_edit_message_requires_permission() {
 #[tokio::test]
 async fn test_delete_message_requires_permission() {
     let server = crate::common::TestServer::start().await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Use a random UUID (permission check happens before existence check)
     let fake_message_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/messages/{}", fake_message_id)))
+        .delete(server.api_url(&format!("/messages/{}", fake_message_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -277,7 +277,7 @@ async fn test_create_branch_requires_permission() {
         &["conversations::create"],
     )
     .await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Admin creates a conversation
     let conversation = super::helpers::create_conversation(&server, &admin.token, None, Some("Test")).await;
@@ -287,7 +287,7 @@ async fn test_create_branch_requires_permission() {
 
     // User without permission tries to create branch
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .post(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -306,7 +306,7 @@ async fn test_list_branches_requires_permission() {
         &["conversations::create"],
     )
     .await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Admin creates a conversation
     let conversation = super::helpers::create_conversation(&server, &admin.token, None, Some("Test")).await;
@@ -315,7 +315,7 @@ async fn test_list_branches_requires_permission() {
     // User without permission tries to list branches
     // Note: list_branches uses conversations::read permission
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/branches", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/branches", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -333,7 +333,7 @@ async fn test_activate_branch_requires_permission() {
         &["conversations::create"],
     )
     .await;
-    let user = crate::common::test_helpers::create_user_with_permissions(&server, "user", &[]).await;
+    let user = crate::common::test_helpers::create_user_with_no_permissions(&server, "user").await;
 
     // Admin creates a conversation
     let conversation = super::helpers::create_conversation(&server, &admin.token, None, Some("Test")).await;
@@ -342,7 +342,7 @@ async fn test_activate_branch_requires_permission() {
 
     // User without permission tries to activate branch
     let response = reqwest::Client::new()
-        .post(&server.api_url(&format!(
+        .post(server.api_url(&format!(
             "/conversations/{}/branches/{}/activate",
             conversation_id, branch_id
         )))
@@ -373,7 +373,7 @@ async fn test_create_conversation_succeeds_with_permission() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/conversations"))
+        .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -394,7 +394,7 @@ async fn test_list_conversations_succeeds_with_permission() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -419,7 +419,7 @@ async fn test_get_conversation_succeeds_with_permission() {
 
     // Get it back
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -448,7 +448,7 @@ async fn test_update_conversation_succeeds_with_permission() {
 
     // Update it
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -474,7 +474,7 @@ async fn test_delete_conversation_succeeds_with_permission() {
 
     // Delete it
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .delete(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -499,7 +499,7 @@ async fn test_get_conversation_history_succeeds_with_permission() {
 
     // Get history
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}/messages", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}/messages", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

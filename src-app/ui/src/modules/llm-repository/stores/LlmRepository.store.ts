@@ -253,41 +253,24 @@ export const useLlmRepositoryStore = create<LlmRepositoryState>()(
       },
 
       llmRepositoryHasCredentials: (repository: LlmRepository) => {
-        // If auth type is none, no credentials are needed
+        // 09-llm-repository F-02 closure made api_key / password /
+        // token write-only — they're never returned by the server.
+        // We can't introspect them from the response anymore. The
+        // server-side validate_auth_config_for_create/update already
+        // refuses to persist an api_key auth_type with an empty
+        // api_key, so if a repo exists with auth_type != 'none' we
+        // can trust the credentials are set.
+        //
+        // The basic_auth case is partially checkable client-side
+        // because username (non-secret) still rides along — but
+        // password is hidden, so we treat the same way for
+        // consistency.
         if (repository.auth_type === 'none') {
           return true
         }
-
-        // Check if auth_config exists
-        if (!repository.auth_config) {
-          return false
-        }
-
-        // Check credentials based on auth type
-        switch (repository.auth_type) {
-          case 'api_key':
-            return !!(
-              repository.auth_config.api_key &&
-              repository.auth_config.api_key.trim()
-            )
-
-          case 'basic_auth':
-            return !!(
-              repository.auth_config.username &&
-              repository.auth_config.username.trim() &&
-              repository.auth_config.password &&
-              repository.auth_config.password.trim()
-            )
-
-          case 'bearer_token':
-            return !!(
-              repository.auth_config.token &&
-              repository.auth_config.token.trim()
-            )
-
-          default:
-            return false
-        }
+        // auth_type is api_key / basic_auth / bearer_token — server
+        // guarantees credentials are populated.
+        return true
       },
 
       __init__: {

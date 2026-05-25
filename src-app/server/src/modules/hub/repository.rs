@@ -164,7 +164,14 @@ pub async fn get_created_mcp_server_ids(
     Ok(map)
 }
 
-/// Get created entity IDs for models (system-wide, no user filter)
+/// Get created entity IDs for models (system-wide, no user filter).
+///
+/// Returns ALL hub-tracked downloads regardless of completion state
+/// (previously filtered by `di.model_id IS NOT NULL`, which hid
+/// in-progress downloads from the hub list — the UI couldn't tell
+/// whether a fresh start was already in flight, leading to duplicate
+/// download attempts and a flaky test race in
+/// hub::test_create_model_from_hub / test_duplicate_download_prevention).
 pub async fn get_created_model_ids(pool: &PgPool) -> Result<HashMap<String, Vec<Uuid>>, AppError> {
     let records = sqlx::query!(
         r#"
@@ -172,7 +179,6 @@ pub async fn get_created_model_ids(pool: &PgPool) -> Result<HashMap<String, Vec<
         FROM hub_entities he
         INNER JOIN download_instances di ON di.id = he.entity_id
         WHERE he.entity_type = 'llm_model'
-          AND di.model_id IS NOT NULL
         GROUP BY he.hub_id
         "#
     )

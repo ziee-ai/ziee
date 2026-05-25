@@ -18,7 +18,7 @@ async fn test_auth_registration() {
 
     let client = reqwest::Client::new();
     let response = client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -64,7 +64,7 @@ async fn test_auth_registration_duplicate_username() {
     });
 
     client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -78,7 +78,7 @@ async fn test_auth_registration_duplicate_username() {
     });
 
     let response = client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&duplicate_body)
         .send()
         .await
@@ -105,7 +105,7 @@ async fn test_auth_registration_duplicate_email() {
     });
 
     client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -119,7 +119,7 @@ async fn test_auth_registration_duplicate_email() {
     });
 
     let response = client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&duplicate_body)
         .send()
         .await
@@ -146,7 +146,7 @@ async fn test_auth_login_and_jwt() {
     });
 
     client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -159,7 +159,7 @@ async fn test_auth_login_and_jwt() {
     });
 
     let login_response = client
-        .post(&server.api_url("/auth/login"))
+        .post(server.api_url("/auth/login"))
         .json(&login_body)
         .send()
         .await
@@ -186,7 +186,7 @@ async fn test_auth_login_and_jwt() {
 
     // Test accessing /me endpoint with JWT token
     let me_response = client
-        .get(&server.api_url("/auth/me"))
+        .get(server.api_url("/auth/me"))
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await
@@ -238,7 +238,7 @@ async fn test_auth_login_invalid_credentials() {
     });
 
     client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -251,7 +251,7 @@ async fn test_auth_login_invalid_credentials() {
     });
 
     let response = client
-        .post(&server.api_url("/auth/login"))
+        .post(server.api_url("/auth/login"))
         .json(&login_body)
         .send()
         .await
@@ -266,7 +266,7 @@ async fn test_auth_login_invalid_credentials() {
     });
 
     let response = client
-        .post(&server.api_url("/auth/login"))
+        .post(server.api_url("/auth/login"))
         .json(&login_body)
         .send()
         .await
@@ -288,7 +288,7 @@ async fn test_auth_logout() {
     });
 
     let register_response = client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -299,7 +299,7 @@ async fn test_auth_logout() {
 
     // Verify token works by accessing /me
     let me_response = client
-        .get(&server.api_url("/auth/me"))
+        .get(server.api_url("/auth/me"))
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await
@@ -309,7 +309,7 @@ async fn test_auth_logout() {
 
     // Logout
     let logout_response = client
-        .post(&server.api_url("/auth/logout"))
+        .post(server.api_url("/auth/logout"))
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await
@@ -329,7 +329,7 @@ async fn test_auth_me_without_token() {
 
     // Try to access /me without token
     let response = client
-        .get(&server.api_url("/auth/me"))
+        .get(server.api_url("/auth/me"))
         .send()
         .await
         .expect("Request failed");
@@ -353,7 +353,7 @@ async fn test_auth_me_with_invalid_token() {
 
     // Try to access /me with invalid token
     let response = client
-        .get(&server.api_url("/auth/me"))
+        .get(server.api_url("/auth/me"))
         .header("Authorization", "Bearer invalid.token.here")
         .send()
         .await
@@ -384,7 +384,7 @@ async fn test_auth_login_with_email() {
     });
 
     client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -397,7 +397,7 @@ async fn test_auth_login_with_email() {
     });
 
     let response = client
-        .post(&server.api_url("/auth/login"))
+        .post(server.api_url("/auth/login"))
         .json(&login_body)
         .send()
         .await
@@ -427,7 +427,7 @@ async fn test_auth_token_persistence() {
     });
 
     let register_response = client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -439,7 +439,7 @@ async fn test_auth_token_persistence() {
     // Make multiple requests to verify token works across requests
     for _ in 0..3 {
         let response = client
-            .get(&server.api_url("/auth/me"))
+            .get(server.api_url("/auth/me"))
             .header("Authorization", format!("Bearer {}", access_token))
             .send()
             .await
@@ -465,7 +465,7 @@ async fn test_auth_refresh_token() {
     });
 
     let register_response = client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&register_body)
         .send()
         .await
@@ -484,7 +484,7 @@ async fn test_auth_refresh_token() {
     });
 
     let refresh_response = client
-        .post(&server.api_url("/auth/refresh"))
+        .post(server.api_url("/auth/refresh"))
         .json(&refresh_body)
         .send()
         .await
@@ -509,7 +509,7 @@ async fn test_auth_refresh_token() {
         .as_str()
         .unwrap();
     let me_response = client
-        .get(&server.api_url("/auth/me"))
+        .get(server.api_url("/auth/me"))
         .header("Authorization", format!("Bearer {}", new_access_token))
         .send()
         .await
@@ -530,7 +530,7 @@ async fn test_auth_registration_validation() {
     });
 
     let response = client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&invalid_body)
         .send()
         .await
@@ -549,7 +549,7 @@ async fn test_auth_registration_validation() {
     });
 
     let response = client
-        .post(&server.api_url("/auth/register"))
+        .post(server.api_url("/auth/register"))
         .json(&empty_username)
         .send()
         .await
@@ -572,7 +572,7 @@ async fn test_setup_status_needs_setup() {
 
     // Check setup status when no admin exists
     let response = client
-        .get(&server.api_url("/app/setup/status"))
+        .get(server.api_url("/app/setup/status"))
         .send()
         .await
         .expect("Setup status request failed");
@@ -583,8 +583,17 @@ async fn test_setup_status_needs_setup() {
 
     // Should need setup since no admin exists
     assert_eq!(body.get("needs_setup").unwrap(), true, "Should need setup");
-    assert_eq!(body.get("app_name").unwrap(), "Ziee Chat");
-    assert!(body.get("version").is_some());
+    // 13-misc F-02 (Medium): app_name + version no longer leaked to
+    // unauthenticated callers (fingerprint surface for CVE matrix
+    // matching). The response now contains only `needs_setup`.
+    assert!(
+        body.get("app_name").is_none(),
+        "app_name should not be exposed to unauthenticated callers (13-misc F-02)"
+    );
+    assert!(
+        body.get("version").is_none(),
+        "version should not be exposed to unauthenticated callers (13-misc F-02)"
+    );
 }
 
 #[tokio::test]
@@ -601,7 +610,7 @@ async fn test_setup_status_no_setup_needed() {
     });
 
     client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&setup_body)
         .send()
         .await
@@ -609,7 +618,7 @@ async fn test_setup_status_no_setup_needed() {
 
     // Now check setup status
     let response = client
-        .get(&server.api_url("/app/setup/status"))
+        .get(server.api_url("/app/setup/status"))
         .send()
         .await
         .expect("Setup status request failed");
@@ -639,7 +648,7 @@ async fn test_setup_admin_success() {
     });
 
     let response = client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&setup_body)
         .send()
         .await
@@ -675,7 +684,7 @@ async fn test_setup_admin_already_exists() {
     });
 
     client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&setup_body)
         .send()
         .await
@@ -689,7 +698,7 @@ async fn test_setup_admin_already_exists() {
     });
 
     let response = client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&second_setup)
         .send()
         .await
@@ -720,7 +729,7 @@ async fn test_setup_admin_weak_password() {
     });
 
     let response = client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&setup_body)
         .send()
         .await
@@ -748,7 +757,7 @@ async fn test_setup_admin_invalid_email() {
     });
 
     let response = client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&setup_body)
         .send()
         .await
@@ -777,7 +786,7 @@ async fn test_setup_admin_invalid_username() {
     });
 
     let response = client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&setup_body)
         .send()
         .await
@@ -806,7 +815,7 @@ async fn test_setup_admin_assigns_to_administrators_group() {
     });
 
     let response = client
-        .post(&server.api_url("/app/setup/admin"))
+        .post(server.api_url("/app/setup/admin"))
         .json(&setup_body)
         .send()
         .await
@@ -821,7 +830,7 @@ async fn test_setup_admin_assigns_to_administrators_group() {
 
     // Check user's permissions (should have admin permissions from Administrators group)
     let me_response = client
-        .get(&server.api_url("/auth/me"))
+        .get(server.api_url("/auth/me"))
         .header("Authorization", format!("Bearer {}", access_token))
         .send()
         .await

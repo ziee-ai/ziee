@@ -124,11 +124,35 @@ impl ModelStorage {
             })?;
         }
 
-        // Sanitize filename to prevent path traversal
-        let safe_filename = filename
-            .replace('/', "_")
-            .replace('\\', "_")
-            .replace("..", "_");
+        // Sanitize filename to prevent path traversal. The previous
+        // `replace("..", "_")` was trivially bypassable via
+        // URL-encoded `%2e%2e`, unicode look-alikes (`\u{ff0e}\u{ff0e}`),
+        // and overlapping replacements (e.g. `....` → `__`). Closes
+        // 07-llm-model F-08 (Medium).
+        //
+        // Strategy: take only the basename (drops any path component),
+        // then keep ONLY alphanumeric + `.` + `-` + `_`, then strip
+        // leading dots (no hidden / dotfile creation). Empty result is
+        // replaced with a stable placeholder so the join never produces
+        // an empty path.
+        let basename = std::path::Path::new(filename)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("upload");
+        let mut safe_filename: String = basename
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        safe_filename = safe_filename.trim_start_matches('.').to_string();
+        if safe_filename.is_empty() {
+            safe_filename = "upload".to_string();
+        }
 
         let file_path = session_dir.join(&safe_filename);
         tracing::debug!(

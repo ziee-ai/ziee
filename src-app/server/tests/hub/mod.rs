@@ -20,7 +20,7 @@ async fn test_get_hub_models_requires_permission() {
 
     // Create user without permission
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed
     let url = server.api_url("/hub/models?lang=en");
@@ -40,7 +40,7 @@ async fn test_get_hub_models_requires_permission() {
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(body.is_array(), "Response should be an array of models");
     assert!(
-        body.as_array().unwrap().len() > 0,
+        !body.as_array().unwrap().is_empty(),
         "Should have at least one model"
     );
 
@@ -218,7 +218,7 @@ async fn test_get_hub_models_version_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed
     let url = server.api_url("/hub/models/version");
@@ -268,7 +268,7 @@ async fn test_refresh_hub_models_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed (though may fail due to GitHub)
     let url = server.api_url("/hub/models/refresh");
@@ -279,10 +279,14 @@ async fn test_refresh_hub_models_requires_permission() {
         .await
         .expect("Request failed");
 
-    // Could be 200 (success) or 500 (GitHub fetch failed), both acceptable
+    // Refresh against the placeholder GITHUB_HUB_REPO is now blocked
+    // pre-network with 400 HUB_NOT_CONFIGURED (closes 11-hub F-01).
+    // 200 (success) and 500 (network failure against a real URL) remain
+    // acceptable for configured deployments.
     assert!(
-        response.status() == 200 || response.status() == 500,
-        "Should return 200 or 500 for refresh attempt"
+        response.status() == 200 || response.status() == 400 || response.status() == 500,
+        "Should return 200 / 400 / 500 for refresh attempt, got {}",
+        response.status()
     );
 
     // User without permission should get 403
@@ -335,7 +339,7 @@ async fn test_hub_models_have_auth_required_field() {
     assert!(models.is_array(), "Response should be an array");
 
     let models_array = models.as_array().unwrap();
-    assert!(models_array.len() > 0, "Should have at least one model");
+    assert!(!models_array.is_empty(), "Should have at least one model");
 
     // Verify all models have auth_required field
     for model in models_array {
@@ -504,7 +508,7 @@ async fn test_get_hub_assistants_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed
     let url = server.api_url("/hub/assistants?lang=en");
@@ -524,7 +528,7 @@ async fn test_get_hub_assistants_requires_permission() {
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(body.is_array(), "Response should be an array of assistants");
     assert!(
-        body.as_array().unwrap().len() > 0,
+        !body.as_array().unwrap().is_empty(),
         "Should have at least one assistant"
     );
 
@@ -634,7 +638,7 @@ async fn test_get_hub_assistants_with_locale() {
     let body_zh: serde_json::Value = response_zh.json().await.expect("Failed to parse JSON");
     assert!(body_zh.is_array(), "Response should be an array");
     assert!(
-        body_zh.as_array().unwrap().len() > 0,
+        !body_zh.as_array().unwrap().is_empty(),
         "Should have assistants"
     );
 }
@@ -683,7 +687,7 @@ async fn test_refresh_hub_assistants_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed (though may fail due to GitHub)
     let url = server.api_url("/hub/assistants/refresh");
@@ -694,9 +698,12 @@ async fn test_refresh_hub_assistants_requires_permission() {
         .await
         .expect("Request failed");
 
+    // Refresh against the placeholder GITHUB_HUB_REPO is blocked
+    // pre-network with 400 HUB_NOT_CONFIGURED (closes 11-hub F-01).
     assert!(
-        response.status() == 200 || response.status() == 500,
-        "Should return 200 or 500 for refresh attempt"
+        response.status() == 200 || response.status() == 400 || response.status() == 500,
+        "Should return 200 / 400 / 500 for refresh attempt, got {}",
+        response.status()
     );
 
     // User without permission should get 403
@@ -730,7 +737,7 @@ async fn test_get_hub_mcp_servers_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed
     let url = server.api_url("/hub/mcp-servers?lang=en");
@@ -753,7 +760,7 @@ async fn test_get_hub_mcp_servers_requires_permission() {
         "Response should be an array of MCP servers"
     );
     assert!(
-        body.as_array().unwrap().len() > 0,
+        !body.as_array().unwrap().is_empty(),
         "Should have at least one MCP server"
     );
 
@@ -878,7 +885,7 @@ async fn test_refresh_hub_mcp_servers_requires_permission() {
     .await;
 
     let no_perm_user =
-        crate::common::test_helpers::create_user_with_permissions(&server, "regular", &[]).await;
+        crate::common::test_helpers::create_user_with_no_permissions(&server, "regular").await;
 
     // User with permission should succeed (though may fail due to GitHub)
     let url = server.api_url("/hub/mcp-servers/refresh");
@@ -889,9 +896,12 @@ async fn test_refresh_hub_mcp_servers_requires_permission() {
         .await
         .expect("Request failed");
 
+    // Refresh against the placeholder GITHUB_HUB_REPO is blocked
+    // pre-network with 400 HUB_NOT_CONFIGURED (closes 11-hub F-01).
     assert!(
-        response.status() == 200 || response.status() == 500,
-        "Should return 200 or 500 for refresh attempt"
+        response.status() == 200 || response.status() == 400 || response.status() == 500,
+        "Should return 200 / 400 / 500 for refresh attempt, got {}",
+        response.status()
     );
 
     // User without permission should get 403
@@ -995,7 +1005,7 @@ async fn test_create_assistant_from_hub() {
     assert_eq!(response.status(), 200);
     let assistants: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(
-        assistants.as_array().unwrap().len() > 0,
+        !assistants.as_array().unwrap().is_empty(),
         "Should have at least one hub assistant"
     );
 
@@ -1129,7 +1139,7 @@ async fn test_create_mcp_server_from_hub() {
     assert_eq!(response.status(), 200);
     let servers: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(
-        servers.as_array().unwrap().len() > 0,
+        !servers.as_array().unwrap().is_empty(),
         "Should have at least one hub MCP server"
     );
 
@@ -1971,7 +1981,7 @@ async fn test_create_model_from_hub() {
     assert_eq!(response.status(), 200);
     let models: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert!(
-        models.as_array().unwrap().len() > 0,
+        !models.as_array().unwrap().is_empty(),
         "Should have at least one hub model"
     );
 
@@ -2151,11 +2161,15 @@ async fn test_create_model_from_hub_requires_permission() {
 async fn test_create_model_from_hub_invalid_hub_id() {
     let server = crate::common::TestServer::start().await;
 
+    // Endpoint requires hub::models::download (the HubModelsCreate
+    // permission resolves to that string per modules/hub/permissions.rs)
+    // AND llm_models::create (11-hub F-05 closure — back-door defense).
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
         "hub_user",
         &[
             "hub::models::download",
+            "llm_models::create",
             "llm_providers::read",
             "llm_providers::create",
         ],
@@ -2464,7 +2478,7 @@ async fn create_enabled_provider(
     provider_type: &str,
 ) -> serde_json::Value {
     let response = reqwest::Client::new()
-        .post(&server.api_url("/llm-providers"))
+        .post(server.api_url("/llm-providers"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&serde_json::json!({
             "name": name,

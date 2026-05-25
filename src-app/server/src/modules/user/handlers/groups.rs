@@ -126,7 +126,7 @@ pub fn create_group_docs(op: TransformOperation) -> TransformOperation {
 /// Update group (requires groups::edit permission)
 #[debug_handler]
 pub async fn update_group(
-    _auth: RequirePermissions<(GroupsEdit,)>,
+    auth: RequirePermissions<(GroupsEdit,)>,
     Path(group_id): Path<Uuid>,
 
     Json(request): Json<UpdateGroupRequest>,
@@ -138,25 +138,54 @@ pub async fn update_group(
         .await?
         .ok_or_else(|| AppError::not_found("Group"))?;
 
-    // Prevent modification of system groups' core attributes
-    if existing_group.is_system {
-        if request.name.is_some() || request.is_active == Some(false) {
+    // Prevent modification of system groups' core attributes — including
+    // `permissions`. The original guard only covered name and is_active,
+    // letting any groups::edit holder rewrite the default Users group's
+    // permissions to ['*'] and cascade wildcard to every user (group
+    // permissions union via check_permission_union). 02-permissions F-02
+    // (High).
+    if existing_group.is_system
+        && (request.name.is_some()
+            || request.is_active == Some(false)
+            || request.permissions.is_some())
+        {
             return Err(AppError::bad_request(
                 "SYSTEM_GROUP",
-                "Cannot modify name or deactivate system groups",
+                "Cannot modify name, deactivate, or change permissions of system groups",
             )
             .into());
         }
-    }
 
-    // Check if new name already exists
-    if let Some(ref name) = request.name {
-        if let Some(existing) = Repos.group.get_by_name(name).await? {
-            if existing.id != group_id {
-                return Err(AppError::conflict("Group name").into());
+    // Prevent self-escalation: caller must hold every permission they're
+    // trying to grant via this group (admins bypass). Same pattern as
+    // create_user (03-user F-04). Closes the second half of 02-permissions
+    // F-02.
+    if let Some(ref requested_perms) = request.permissions
+        && !auth.user.is_admin {
+            for perm in requested_perms {
+                if !crate::modules::permissions::checker::check_permission_union(
+                    &auth.user,
+                    &auth.groups,
+                    perm,
+                ) {
+                    return Err(AppError::forbidden(
+                        "CANNOT_GRANT_PERMISSION",
+                        format!(
+                            "Cannot grant permission '{}' that you do not hold yourself",
+                            perm
+                        ),
+                    )
+                    .into());
+                }
             }
         }
-    }
+
+    // Check if new name already exists
+    if let Some(ref name) = request.name
+        && let Some(existing) = Repos.group.get_by_name(name).await?
+            && existing.id != group_id {
+                return Err(AppError::conflict("Group name").into());
+            }
 
     // Update group
     let group = Repos

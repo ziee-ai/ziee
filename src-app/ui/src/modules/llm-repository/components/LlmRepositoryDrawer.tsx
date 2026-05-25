@@ -22,17 +22,21 @@ export function LlmRepositoryDrawer() {
   const { creating, updating, testing } = Stores.LlmRepository
   const { open, editingRepository: repository } = Stores.LlmRepositoryDrawer
 
-  // Update form when editing repository
+  // Update form when editing repository.
+  //
+  // NOTE: api_key / password / token are no longer returned in GET
+  // responses (09-llm-repository F-02 closure — credentials were
+  // exposed to every user with read access). They're write-only:
+  // empty in the form means "keep existing"; the user enters a new
+  // value to replace. Username + auth_test_api_endpoint remain
+  // visible (non-secret).
   useEffect(() => {
     if (repository && open) {
       form.setFieldsValue({
         name: repository.name,
         url: repository.url,
         auth_type: repository.auth_type,
-        api_key: repository.auth_config?.api_key,
         username: repository.auth_config?.username,
-        password: repository.auth_config?.password,
-        token: repository.auth_config?.token,
         auth_test_api_endpoint: repository.auth_config?.auth_test_api_endpoint,
         enabled: repository.enabled,
       })

@@ -40,18 +40,18 @@ pub async fn list_runtime_versions(
 ) -> ApiResult<Json<RuntimeVersionListResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::new(pool.clone())
-        .map_err(|e| AppError::internal_error(&format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     let versions = if let Some(engine) = params.engine {
         binary_manager
             .list_versions_for_engine(&engine)
             .await
-            .map_err(|e| AppError::internal_error(&format!("Database error: {}", e)))?
+            .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
     } else {
         binary_manager
             .list_versions()
             .await
-            .map_err(|e| AppError::internal_error(&format!("Database error: {}", e)))?
+            .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
     };
 
     let response = RuntimeVersionListResponse {
@@ -68,7 +68,7 @@ pub async fn get_runtime_version(
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::new(pool.clone())
-        .map_err(|e| AppError::internal_error(&format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     // Verify binary exists (result is the path, but we only need to check existence)
     let _version = binary_manager
@@ -78,14 +78,14 @@ pub async fn get_runtime_version(
             if e.to_string().contains("not found") {
                 AppError::not_found("Runtime version")
             } else {
-                AppError::internal_error(&format!("Database error: {}", e))
+                AppError::internal_error(format!("Database error: {}", e))
             }
         })?;
 
     // Get the version record from database
     let version_record = crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
         .await
-        .map_err(|e| AppError::internal_error(&format!("Database error: {}", e)))?
+        .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
         .ok_or_else(|| AppError::not_found("Runtime version"))?;
 
     Ok((StatusCode::OK, Json(RuntimeVersionResponse::from(version_record))))
@@ -99,7 +99,7 @@ pub async fn download_runtime_version(
 ) -> ApiResult<Json<DownloadVersionResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::new(pool.clone())
-        .map_err(|e| AppError::internal_error(&format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     // Parse engine type
     let engine = match req.engine.as_str() {
@@ -119,7 +119,7 @@ pub async fn download_runtime_version(
         .await
         .map_err(|e| {
             tracing::error!("Failed to download runtime version: {}", e);
-            AppError::internal_error(&format!("Failed to download runtime version: {}", e))
+            AppError::internal_error(format!("Failed to download runtime version: {}", e))
         })?;
 
     // Emit event for cache invalidation
@@ -151,14 +151,14 @@ pub async fn delete_runtime_version(
 ) -> ApiResult<impl IntoApiResponse> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::new(pool.clone())
-        .map_err(|e| AppError::internal_error(&format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     let remove_binary = params.remove_binary.unwrap_or(false);
 
     // Get version info before deletion for event
     let version_record = crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
         .await
-        .map_err(|e| AppError::internal_error(&format!("Database error: {}", e)))?
+        .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
         .ok_or_else(|| AppError::not_found("Runtime version"))?;
 
     binary_manager
@@ -169,7 +169,7 @@ pub async fn delete_runtime_version(
             if e.to_string().contains("not found") {
                 AppError::not_found("Runtime version")
             } else {
-                AppError::internal_error(&format!("Failed to delete runtime version: {}", e))
+                AppError::internal_error(format!("Failed to delete runtime version: {}", e))
             }
         })?;
 
@@ -194,7 +194,7 @@ pub async fn set_system_default(
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::new(pool.clone())
-        .map_err(|e| AppError::internal_error(&format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     binary_manager
         .set_system_default(version_id)
@@ -204,14 +204,14 @@ pub async fn set_system_default(
             if e.to_string().contains("not found") {
                 AppError::not_found("Runtime version")
             } else {
-                AppError::internal_error(&format!("Failed to set system default: {}", e))
+                AppError::internal_error(format!("Failed to set system default: {}", e))
             }
         })?;
 
     // Get the updated version record
     let version_record = crate::modules::llm_local_runtime::runtime_version::repository::get_by_id(pool, version_id)
         .await
-        .map_err(|e| AppError::internal_error(&format!("Database error: {}", e)))?
+        .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
         .ok_or_else(|| AppError::not_found("Runtime version"))?;
 
     // Emit event for cache invalidation
@@ -234,14 +234,14 @@ pub async fn check_for_updates(
 ) -> ApiResult<Json<AvailableUpdatesResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::new(pool.clone())
-        .map_err(|e| AppError::internal_error(&format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     let available_versions = binary_manager
         .check_for_updates(&engine)
         .await
         .map_err(|e| {
             tracing::error!("Failed to check for updates: {}", e);
-            AppError::internal_error(&format!("Failed to check for updates: {}", e))
+            AppError::internal_error(format!("Failed to check for updates: {}", e))
         })?;
 
     let response = AvailableUpdatesResponse {
@@ -258,14 +258,14 @@ pub async fn sync_cache(
 ) -> ApiResult<Json<SyncCacheResponse>> {
     let pool = Repos.pool();
     let binary_manager = BinaryManager::new(pool.clone())
-        .map_err(|e| AppError::internal_error(&format!("Failed to initialize BinaryManager: {}", e)))?;
+        .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     let synced_count = binary_manager
         .sync_cache()
         .await
         .map_err(|e| {
             tracing::error!("Failed to sync cache: {}", e);
-            AppError::internal_error(&format!("Failed to sync cache: {}", e))
+            AppError::internal_error(format!("Failed to sync cache: {}", e))
         })?;
 
     let response = SyncCacheResponse {

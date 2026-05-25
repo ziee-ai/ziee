@@ -202,7 +202,18 @@ async fn try_initialize_database_once(
         postgresql.start().await?;
 
         let database_url = postgresql.settings().url("postgres");
-        println!("Generated database_url: {:?}", database_url);
+        // Log only the host:port + db name; the embedded URL contains
+        // the auto-generated password. Closes 14-core F-12 (Medium).
+        match url::Url::parse(&database_url) {
+            Ok(u) => println!(
+                "Embedded PostgreSQL ready: {}://{}:{}{}",
+                u.scheme(),
+                u.host_str().unwrap_or("?"),
+                u.port().map(|p| p.to_string()).unwrap_or_else(|| "?".to_string()),
+                u.path()
+            ),
+            Err(_) => println!("Embedded PostgreSQL ready (URL not loggable)"),
+        }
 
         // Store the PostgreSQL instance to keep it alive
         POSTGRESQL_INSTANCE
@@ -237,9 +248,17 @@ async fn try_initialize_database_once(
     println!("Testing database connection...");
     sqlx::query("SELECT 1").execute(&pool).await?;
 
-    // Run migrations
-    // Use set_ignore_missing(true) to allow desktop app to have its own migrations
-    // that are tracked in the same _sqlx_migrations table
+    // Run migrations.
+    //
+    // `set_ignore_missing(true)` tells sqlx to NOT panic when the
+    // _sqlx_migrations table contains entries this binary doesn't
+    // recognise (those are the desktop app's own migrations applied
+    // against the shared DB — see src-app/desktop/). It does NOT
+    // apply external/untrusted migrations, which is what the
+    // 14-core F-21 audit-finding implicitly assumed. The desktop +
+    // server share `_sqlx_migrations` and each binary owns its own
+    // subset; ignore_missing is the supported sqlx pattern for that
+    // setup.
     println!("Running database migrations...");
     sqlx::migrate!("./migrations")
         .set_ignore_missing(true)
@@ -372,14 +391,47 @@ fn register_cleanup_handlers() {
         return;
     }
 
-    // Register cleanup on panic
+    // Register cleanup on panic.
+    //
+    // SECURITY/CORRECTNESS: 14-core F-09 (Medium). The previous
+    // implementation called `tokio::runtime::Runtime::new().unwrap()`
+    // from inside the panic hook, but the hook commonly fires while a
+    // tokio runtime is already on the stack (any handler panic). Tokio
+    // refuses to start a new runtime nested inside an existing one
+    // ('Cannot start a runtime from within a runtime'), so the cleanup
+    // hook double-faulted and left the embedded PostgreSQL data dir
+    // unstopped. Same bug in the Drop impl below.
+    //
+    // The fix uses `tokio::runtime::Handle::try_current()` to detect
+    // whether we're already on a tokio runtime; if so, schedule the
+    // cleanup on that runtime via `block_in_place` + `block_on`; if not,
+    // spin up a fresh runtime (the original behavior, now only on the
+    // path where it's safe).
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        println!("Panic detected, cleaning up database...");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(cleanup_database());
+        tracing::error!("Panic detected, cleaning up database");
+        run_cleanup_blocking();
         orig_hook(panic_info);
     }));
+}
+
+/// Run `cleanup_database` synchronously from a context that may or may
+/// not be on a tokio runtime. Detects the runtime via Handle::try_current
+/// and uses block_in_place to avoid the 'Cannot start a runtime from
+/// within a runtime' double-fault when called from the panic hook
+/// during an async-handler panic. 14-core F-09 (Medium).
+fn run_cleanup_blocking() {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            tokio::task::block_in_place(|| handle.block_on(cleanup_database()));
+        }
+        Err(_) => match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt.block_on(cleanup_database()),
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to create runtime for cleanup");
+            }
+        },
+    }
 }
 
 // Drop implementation for graceful shutdown
@@ -387,9 +439,8 @@ struct DatabaseCleanup;
 
 impl Drop for DatabaseCleanup {
     fn drop(&mut self) {
-        println!("DatabaseCleanup Drop called, cleaning up database...");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(cleanup_database());
+        tracing::info!("DatabaseCleanup Drop called, cleaning up database");
+        run_cleanup_blocking();
     }
 }
 

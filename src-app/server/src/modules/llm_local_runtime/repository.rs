@@ -51,12 +51,11 @@ impl LocalRuntimeRepository {
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
-            if let sqlx::Error::Database(db_err) = &e {
-                if db_err.is_unique_violation() {
+            if let sqlx::Error::Database(db_err) = &e
+                && db_err.is_unique_violation() {
                     return AppError::conflict("Runtime instance");
                 }
-            }
-            AppError::internal_error(&format!("Failed to create runtime instance: {}", e))
+            AppError::internal_error(format!("Failed to create runtime instance: {}", e))
         })?;
 
         Ok(record.id)
@@ -83,7 +82,7 @@ impl LocalRuntimeRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
-            AppError::internal_error(&format!("Failed to get runtime instance: {}", e))
+            AppError::internal_error(format!("Failed to get runtime instance: {}", e))
         })?;
 
         Ok(instance)
@@ -114,7 +113,7 @@ impl LocalRuntimeRepository {
             .execute(&self.pool)
             .await
             .map_err(|e| {
-                AppError::internal_error(&format!("Failed to update instance status: {}", e))
+                AppError::internal_error(format!("Failed to update instance status: {}", e))
             })?;
 
             if result.rows_affected() == 0 {
@@ -139,7 +138,7 @@ impl LocalRuntimeRepository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            AppError::internal_error(&format!("Failed to update instance status: {}", e))
+            AppError::internal_error(format!("Failed to update instance status: {}", e))
         })?;
 
         if result.rows_affected() == 0 {
@@ -164,7 +163,7 @@ impl LocalRuntimeRepository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            AppError::internal_error(&format!("Failed to delete runtime instance: {}", e))
+            AppError::internal_error(format!("Failed to delete runtime instance: {}", e))
         })?;
 
         if result.rows_affected() == 0 {
@@ -196,7 +195,7 @@ impl LocalRuntimeRepository {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| {
-            AppError::internal_error(&format!("Failed to get provider instances: {}", e))
+            AppError::internal_error(format!("Failed to get provider instances: {}", e))
         })?;
 
         Ok(instances)

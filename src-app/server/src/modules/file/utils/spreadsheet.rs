@@ -4,11 +4,23 @@ use calamine::{open_workbook, Ods, Reader, Xls, Xlsx};
 use std::path::Path;
 
 fn escape_csv_cell(cell_str: &str) -> String {
+    // Defuse CSV-injection / formula-injection: when the cell starts
+    // with `=`, `+`, `-`, `@`, TAB, or CR, prepend a single quote so
+    // downstream spreadsheet apps (Excel / LibreOffice / Sheets)
+    // render it as text instead of evaluating it as a formula like
+    // `=cmd|"/c calc"!A1`. Closes 05-file F-21 (Low).
+    let neutralised = match cell_str.chars().next() {
+        Some('=') | Some('+') | Some('-') | Some('@') | Some('\t') | Some('\r') => {
+            format!("'{}", cell_str)
+        }
+        _ => cell_str.to_string(),
+    };
+
     // Escape CSV special characters
-    if cell_str.contains(',') || cell_str.contains('"') || cell_str.contains('\n') {
-        format!("\"{}\"", cell_str.replace("\"", "\"\""))
+    if neutralised.contains(',') || neutralised.contains('"') || neutralised.contains('\n') {
+        format!("\"{}\"", neutralised.replace("\"", "\"\""))
     } else {
-        cell_str.to_string()
+        neutralised
     }
 }
 

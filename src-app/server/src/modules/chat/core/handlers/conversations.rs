@@ -57,11 +57,10 @@ pub async fn create_conversation(
     Json(request): Json<CreateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
     // Validate title length if provided
-    if let Some(title) = &request.title {
-        if title.len() > 500 {
+    if let Some(title) = &request.title
+        && title.len() > 500 {
             return Err(AppError::bad_request("VALIDATION_ERROR", "Title must not exceed 500 characters").into());
         }
-    }
 
     let conversation =
         Repos.chat.core.create_conversation( auth.user.id, request.model_id, request.title)
@@ -142,11 +141,10 @@ pub async fn update_conversation(
     Json(request): Json<UpdateConversationRequest>,
 ) -> ApiResult<Json<Conversation>> {
     // Validate title length if provided
-    if let Some(Some(title)) = &request.title {
-        if title.len() > 500 {
+    if let Some(Some(title)) = &request.title
+        && title.len() > 500 {
             return Err(AppError::bad_request("VALIDATION_ERROR", "Title must not exceed 500 characters").into());
         }
-    }
 
     let conversation = Repos.chat.core.update_conversation( id, auth.user.id, request.title)
         .await?

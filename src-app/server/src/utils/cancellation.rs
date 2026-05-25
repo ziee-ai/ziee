@@ -79,7 +79,7 @@ impl CancellationTracker {
 
 // Global instance
 pub static CANCELLATION_TRACKER: once_cell::sync::Lazy<CancellationTracker> =
-    once_cell::sync::Lazy::new(|| CancellationTracker::new());
+    once_cell::sync::Lazy::new(CancellationTracker::new);
 
 /// Convenience function to create a cancellation token
 pub async fn create_cancellation_token(download_id: Uuid) -> CancellationToken {

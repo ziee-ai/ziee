@@ -76,12 +76,14 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Click the switch
-    const userRow = page.locator(`text="${userData.username}"`).locator('..')
-    const statusSwitch = userRow
-      .locator('button.ant-switch')
-      .or(userRow.locator('.ant-switch'))
-    await statusSwitch.first().click()
+    // Click the switch — anchor on the typography span and walk up 3
+    // levels to the row container (same as toggleUserStatus helper).
+    const usernameEl = page
+      .locator('.ant-typography.font-medium', { hasText: userData.username })
+      .first()
+    const userRow = usernameEl.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
+    const statusSwitch = userRow.locator('button.ant-switch').first()
+    await statusSwitch.click()
 
     // Verify popconfirm appears
     const popconfirm = page.locator('.ant-popconfirm:visible')
@@ -118,7 +120,7 @@ test.describe('User Status Management', () => {
     await resetUserPassword(page, userData.username, newPassword)
 
     // Verify success message
-    await expect(page.locator('.ant-message-success')).toBeVisible({
+    await expect(page.locator('.ant-message-success').first()).toBeVisible({
       timeout: 5000,
     })
 
@@ -137,27 +139,28 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Open reset password drawer
+    // Open reset password drawer (anchor on username span and walk
+    // up 3 levels to the row container; one-level-up missed the
+    // sibling button section).
+    const usernameEl = page
+      .locator('.ant-typography.font-medium', { hasText: userData.username })
+      .first()
+    const userRow = usernameEl.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
     const resetButton = page
       .getByRole('button', {
         name: new RegExp(`reset password.*${userData.username}`, 'i'),
       })
-      .or(
-        page
-          .locator(`text="${userData.username}"`)
-          .locator('..')
-          .getByRole('button', { name: /reset password/i })
-      )
+      .or(userRow.getByRole('button', { name: /reset password/i }))
     await resetButton.first().click()
 
     // Wait for drawer
-    const drawer = page.locator('.ant-drawer:visible', {
+    const drawer = page.locator('.ant-drawer.ant-drawer-open', {
       hasText: /reset password/i,
     })
     await drawer.waitFor({ state: 'visible' })
 
-    // Fill in short password
-    await page.getByLabel(/new password/i).fill('123') // Less than 6 characters
+    // Fill in short password (scope to drawer)
+    await drawer.getByLabel(/new password/i).fill('123') // Less than 6 characters
 
     // Try to submit
     const submitButton = drawer.getByRole('button', {
@@ -176,13 +179,17 @@ test.describe('User Status Management', () => {
   test('should not toggle admin user status (if protected)', async ({
     page,
   }) => {
-    // Find admin user if it exists
-    const adminUser = page.locator('text=admin')
+    // Find admin user if it exists (use the typography span to avoid
+    // matching the nav menu or breadcrumb).
+    const adminUser = page
+      .locator('.ant-typography.font-medium', { hasText: 'admin' })
+      .first()
     const adminExists = await adminUser.isVisible()
 
     if (adminExists) {
-      // Check if admin user switch is disabled
-      const adminRow = page.locator('text="admin"').locator('..')
+      // Walk up 3 levels to the row container (same shape as
+      // toggleUserStatus helper).
+      const adminRow = adminUser.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
       const statusSwitch = adminRow
         .locator('button.ant-switch')
         .or(adminRow.locator('.ant-switch'))
@@ -199,7 +206,7 @@ test.describe('User Status Management', () => {
         await confirmButton.click()
 
         // Should show error message about protected user
-        const errorMessage = page.locator('.ant-message-error')
+        const errorMessage = page.locator('.ant-message-error').first()
         const errorExists = await errorMessage.isVisible()
 
         if (errorExists) {
@@ -224,16 +231,20 @@ test.describe('User Status Management', () => {
     }
     await createUser(page, userData)
 
-    // Check active status badge (green/success)
-    const userRow = page.locator(`text="${userData.username}"`).locator('..')
-    const activeBadge = userRow.locator('.ant-badge-status-success')
+    // Check active status badge (green/success) — anchor on
+    // typography span and walk up 3 levels to the row container.
+    const usernameEl = page
+      .locator('.ant-typography.font-medium', { hasText: userData.username })
+      .first()
+    const userRow = usernameEl.locator('xpath=ancestor::div[contains(@class, "mb-2")][1]')
+    const activeBadge = userRow.locator('.ant-badge-status-success').first()
     await expect(activeBadge).toBeVisible()
 
     // Toggle to inactive
     await toggleUserStatus(page, userData.username)
 
     // Check inactive status badge (red/error)
-    const inactiveBadge = userRow.locator('.ant-badge-status-error')
+    const inactiveBadge = userRow.locator('.ant-badge-status-error').first()
     await expect(inactiveBadge).toBeVisible()
   })
 })

@@ -36,7 +36,7 @@ async fn test_complete_guide_marks_guide_completed() {
         crate::common::test_helpers::create_user_with_permissions(&server, "onb_guide", &[]).await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/onboarding/getting-started/complete"))
+        .post(server.api_url("/onboarding/getting-started/complete"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -84,7 +84,7 @@ async fn test_complete_guide_empty_id_is_rejected() {
 
     // %20 decodes to a single space → trims to empty → validation error.
     let response = reqwest::Client::new()
-        .post(&server.api_url("/onboarding/%20/complete"))
+        .post(server.api_url("/onboarding/%20/complete"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -100,7 +100,7 @@ async fn test_complete_guide_step_marks_step_completed() {
         crate::common::test_helpers::create_user_with_permissions(&server, "onb_step", &[]).await;
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/onboarding/getting-started/steps/welcome/complete"))
+        .post(server.api_url("/onboarding/getting-started/steps/welcome/complete"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -140,7 +140,7 @@ async fn test_complete_guide_step_idempotent_and_validates() {
 
     // Empty step id → 400.
     let response = reqwest::Client::new()
-        .post(&server.api_url("/onboarding/getting-started/steps/%20/complete"))
+        .post(server.api_url("/onboarding/getting-started/steps/%20/complete"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

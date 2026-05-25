@@ -20,7 +20,7 @@ async fn test_create_conversation_minimal() {
     let payload = json!({});
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/conversations"))
+        .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -55,7 +55,7 @@ async fn test_create_conversation_with_title() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/conversations"))
+        .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -93,7 +93,7 @@ async fn test_create_conversation_with_model() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/conversations"))
+        .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -132,7 +132,7 @@ async fn test_create_conversation_with_title_and_model() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/conversations"))
+        .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -220,7 +220,7 @@ async fn test_create_conversation_invalid_model_id() {
     });
 
     let response = reqwest::Client::new()
-        .post(&server.api_url("/conversations"))
+        .post(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -250,7 +250,7 @@ async fn test_list_conversations_empty() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -275,7 +275,7 @@ async fn test_list_conversations_single() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -305,7 +305,7 @@ async fn test_list_conversations_multiple_ordered_by_created_at() {
     let conv3 = super::helpers::create_conversation(&server, &user.token, None, Some("Third")).await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -343,7 +343,7 @@ async fn test_list_conversations_pagination() {
 
     // Get first page (limit 2)
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations?per_page=2&page=1"))
+        .get(server.api_url("/conversations?per_page=2&page=1"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -355,7 +355,7 @@ async fn test_list_conversations_pagination() {
 
     // Get second page
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations?per_page=2&page=2"))
+        .get(server.api_url("/conversations?per_page=2&page=2"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -379,7 +379,7 @@ async fn test_list_conversations_message_count() {
     let conversation = super::helpers::create_conversation(&server, &user.token, None, Some("Test")).await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -418,7 +418,7 @@ async fn test_list_conversations_only_shows_own() {
 
     // User1 should only see their own 2 conversations
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user1.token))
         .send()
         .await
@@ -430,7 +430,7 @@ async fn test_list_conversations_only_shows_own() {
 
     // User2 should only see their own 1 conversation
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations"))
+        .get(server.api_url("/conversations"))
         .header("Authorization", format!("Bearer {}", user2.token))
         .send()
         .await
@@ -459,7 +459,7 @@ async fn test_get_conversation_by_id() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -485,7 +485,7 @@ async fn test_get_conversation_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}", fake_id)))
+        .get(server.api_url(&format!("/conversations/{}", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -505,7 +505,7 @@ async fn test_get_conversation_invalid_uuid() {
     .await;
 
     let response = reqwest::Client::new()
-        .get(&server.api_url("/conversations/not-a-uuid"))
+        .get(server.api_url("/conversations/not-a-uuid"))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -536,7 +536,7 @@ async fn test_update_conversation_title() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -567,7 +567,7 @@ async fn test_update_conversation_clear_title() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -600,7 +600,7 @@ async fn test_update_conversation_title_max_length() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -616,7 +616,7 @@ async fn test_update_conversation_title_max_length() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .put(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -642,7 +642,7 @@ async fn test_update_conversation_not_found() {
     });
 
     let response = reqwest::Client::new()
-        .put(&server.api_url(&format!("/conversations/{}", fake_id)))
+        .put(server.api_url(&format!("/conversations/{}", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&payload)
         .send()
@@ -670,7 +670,7 @@ async fn test_delete_conversation_successfully() {
     let conversation_id = super::helpers::parse_uuid(&conversation["id"]);
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .delete(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -698,7 +698,7 @@ async fn test_delete_conversation_verifies_deletion() {
 
     // Delete it
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .delete(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -708,7 +708,7 @@ async fn test_delete_conversation_verifies_deletion() {
 
     // Try to get it - should be 404
     let response = reqwest::Client::new()
-        .get(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .get(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -733,7 +733,7 @@ async fn test_delete_conversation_cascades_to_branches() {
 
     // Delete conversation
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", conversation_id)))
+        .delete(server.api_url(&format!("/conversations/{}", conversation_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await
@@ -771,7 +771,7 @@ async fn test_delete_conversation_not_found() {
     let fake_id = uuid::Uuid::new_v4();
 
     let response = reqwest::Client::new()
-        .delete(&server.api_url(&format!("/conversations/{}", fake_id)))
+        .delete(server.api_url(&format!("/conversations/{}", fake_id)))
         .header("Authorization", format!("Bearer {}", user.token))
         .send()
         .await

@@ -50,7 +50,7 @@ pub async fn start_model_instance(
         .llm_provider
         .get_by_id(model.provider_id)
         .await
-        .map_err(|e| AppError::internal_error(&format!("Database error: {}", e)))?
+        .map_err(|e| AppError::internal_error(format!("Database error: {}", e)))?
         .ok_or_else(|| AppError::not_found("Provider"))?;
 
     // Get deployment strategy (always local)
@@ -332,7 +332,7 @@ pub fn get_model_instance_docs(op: aide::transform::TransformOperation) -> aide:
 }
 
 pub async fn get_model_status(
-    _auth: RequirePermissions<(LocalRuntimeRead,)>,
+    auth: RequirePermissions<(LocalRuntimeRead,)>,
     Path(model_id): Path<Uuid>,
 ) -> ApiResult<Json<InstanceStatusResponse>> {
     let instance = Repos
@@ -346,12 +346,23 @@ pub async fn get_model_status(
         let deployment = deployment_manager.get_deployment(&DeploymentConfig::Local { binary_path: None }).await?;
         let status = deployment.status(model_id).await?;
 
+        // Redact base_url (which includes the local port) for
+        // non-admin callers. Closes 08-llm-local-runtime F-13 (Low).
+        // With F-04's per-instance bearer token in place, knowing the
+        // port is no longer sufficient to reach the engine, but the
+        // info-disclosure is still avoidable.
+        let base_url = if auth.user.is_admin {
+            Some(inst.base_url)
+        } else {
+            None
+        };
+
         Ok((
             StatusCode::OK,
             Json(InstanceStatusResponse {
                 model_id,
                 status: if status.running { "running" } else { "stopped" }.to_string(),
-                base_url: Some(inst.base_url),
+                base_url,
                 uptime_seconds: status.uptime_seconds,
             }),
         ))

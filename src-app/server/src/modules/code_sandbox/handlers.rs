@@ -858,11 +858,10 @@ pub(crate) fn mcp_content_blocks(result: &Value) -> Vec<Value> {
         "resource_link",
         "resource",
     ];
-    if let Some(t) = result.get("type").and_then(|v| v.as_str()) {
-        if KNOWN_CONTENT_TYPES.contains(&t) {
+    if let Some(t) = result.get("type").and_then(|v| v.as_str())
+        && KNOWN_CONTENT_TYPES.contains(&t) {
             return vec![result.clone()];
         }
-    }
     vec![json!({
         "type": "text",
         "text": serde_json::to_string(result).unwrap_or_default(),

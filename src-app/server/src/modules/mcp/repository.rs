@@ -295,11 +295,10 @@ pub async fn create_user_mcp_server(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(db_err) = &e {
-            if db_err.is_unique_violation() {
+        if let sqlx::Error::Database(db_err) = &e
+            && db_err.is_unique_violation() {
                 return AppError::conflict("Server name");
             }
-        }
         AppError::from(e)
     })?;
 
@@ -466,15 +465,13 @@ pub async fn update_user_mcp_server(
     // Validate transport-specific updates
     validate_transport_update(&existing.transport_type, &request)?;
 
-    let args = request.args.map(|a| serde_json::to_value(a).ok()).flatten();
+    let args = request.args.and_then(|a| serde_json::to_value(a).ok());
     let env_vars = request
         .environment_variables
-        .map(|e| serde_json::to_value(e).ok())
-        .flatten();
+        .and_then(|e| serde_json::to_value(e).ok());
     let headers = request
         .headers
-        .map(|h| serde_json::to_value(h).ok())
-        .flatten();
+        .and_then(|h| serde_json::to_value(h).ok());
 
     let row = sqlx::query!(
         r#"
@@ -520,11 +517,10 @@ pub async fn update_user_mcp_server(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(db_err) = &e {
-            if db_err.is_unique_violation() {
+        if let sqlx::Error::Database(db_err) = &e
+            && db_err.is_unique_violation() {
                 return AppError::conflict("Server name");
             }
-        }
         if let sqlx::Error::RowNotFound = e {
             return AppError::not_found("Server");
         }
@@ -643,11 +639,10 @@ pub async fn create_system_mcp_server(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(db_err) = &e {
-            if db_err.is_unique_violation() {
+        if let sqlx::Error::Database(db_err) = &e
+            && db_err.is_unique_violation() {
                 return AppError::conflict("Server name");
             }
-        }
         AppError::from(e)
     })?;
 
@@ -681,7 +676,6 @@ pub async fn create_system_mcp_server(
     Ok(server)
 }
 
-/// Get system MCP server by ID
 // ─── OAuth client_credentials config (Phase 4) ───────────────────────────────
 
 fn oauth_row_to_model(
@@ -935,15 +929,13 @@ pub async fn update_system_mcp_server(
     // Validate transport-specific updates
     validate_transport_update(&existing.transport_type, &request)?;
 
-    let args = request.args.map(|a| serde_json::to_value(a).ok()).flatten();
+    let args = request.args.and_then(|a| serde_json::to_value(a).ok());
     let env_vars = request
         .environment_variables
-        .map(|e| serde_json::to_value(e).ok())
-        .flatten();
+        .and_then(|e| serde_json::to_value(e).ok());
     let headers = request
         .headers
-        .map(|h| serde_json::to_value(h).ok())
-        .flatten();
+        .and_then(|h| serde_json::to_value(h).ok());
 
     let row = sqlx::query!(
         r#"
@@ -988,11 +980,10 @@ pub async fn update_system_mcp_server(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(db_err) = &e {
-            if db_err.is_unique_violation() {
+        if let sqlx::Error::Database(db_err) = &e
+            && db_err.is_unique_violation() {
                 return AppError::conflict("Server name");
             }
-        }
         if let sqlx::Error::RowNotFound = e {
             return AppError::not_found("Server");
         }
@@ -1420,14 +1411,13 @@ fn validate_transport_update(
 ) -> Result<(), AppError> {
     match transport_type {
         TransportType::Stdio => {
-            if let Some(command) = &request.command {
-                if command.is_empty() {
+            if let Some(command) = &request.command
+                && command.is_empty() {
                     return Err(AppError::bad_request(
                         "INVALID_TRANSPORT",
                         "command cannot be empty for stdio transport",
                     ));
                 }
-            }
         }
         TransportType::Http | TransportType::Sse => {
             if let Some(url) = &request.url {

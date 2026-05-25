@@ -37,16 +37,46 @@ import * as os from 'os'
 async function createTestModelFolder(format: 'safetensors' | 'gguf' | 'pytorch'): Promise<string> {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-model-'))
 
-  // Create dummy model files based on format
-  const modelFiles = {
-    safetensors: ['model.safetensors', 'config.json', 'tokenizer.json'],
-    gguf: ['model.gguf', 'config.json'],
-    pytorch: ['pytorch_model.bin', 'config.json', 'tokenizer.json'],
+  // Backend's upload validator rejects:
+  //   - weight files < 1KB ("suspiciously small")
+  //   - config.json / tokenizer.json that aren't valid JSON
+  // Pad weight files to 2KB+ and write minimal valid JSON for the
+  // config/tokenizer files so the validator passes.
+  const validJsonContent = JSON.stringify({
+    model_type: 'test',
+    architectures: ['TestModel'],
+    hidden_size: 4,
+    num_attention_heads: 1,
+    num_hidden_layers: 1,
+  })
+  const validTokenizerJson = JSON.stringify({
+    version: '1.0',
+    truncation: null,
+    padding: null,
+    added_tokens: [],
+    model: { type: 'BPE', vocab: { '<unk>': 0 }, merges: [] },
+  })
+  const weightPayload = Buffer.alloc(2048, 'A')
+
+  const modelFiles: Record<string, { name: string; content: string | Buffer }[]> = {
+    safetensors: [
+      { name: 'model.safetensors', content: weightPayload },
+      { name: 'config.json', content: validJsonContent },
+      { name: 'tokenizer.json', content: validTokenizerJson },
+    ],
+    gguf: [
+      { name: 'model.gguf', content: weightPayload },
+      { name: 'config.json', content: validJsonContent },
+    ],
+    pytorch: [
+      { name: 'pytorch_model.bin', content: weightPayload },
+      { name: 'config.json', content: validJsonContent },
+      { name: 'tokenizer.json', content: validTokenizerJson },
+    ],
   }
 
-  for (const filename of modelFiles[format]) {
-    // Create dummy files with some content
-    fs.writeFileSync(path.join(tempDir, filename), `Dummy ${filename} content for testing`)
+  for (const file of modelFiles[format]) {
+    fs.writeFileSync(path.join(tempDir, file.name), file.content)
   }
 
   return tempDir
@@ -83,7 +113,7 @@ test.describe('LLM Models - Local Upload - UI Structure', () => {
     await openUploadDrawer(page)
 
     // Scope to the upload drawer
-    const uploadDrawer = page.locator('.ant-drawer:visible:has(.ant-drawer-title:has-text("Upload Local Model"))')
+    const uploadDrawer = page.locator('.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Upload Local Model"))')
 
     // Verify drawer title
     await expect(uploadDrawer.locator('.ant-drawer-title:has-text("Upload Local Model")')).toBeVisible()
@@ -112,7 +142,7 @@ test.describe('LLM Models - Local Upload - UI Structure', () => {
     await openUploadDrawer(page)
 
     // Click file format dropdown - find the form item with "File Format" label, then click its select
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select-selector').click()
+    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
     await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
 
     // Verify format options
@@ -122,7 +152,7 @@ test.describe('LLM Models - Local Upload - UI Structure', () => {
 
     // Close dropdown
     await page.keyboard.press('Escape')
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 })
 
@@ -168,7 +198,7 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await expect(page.locator('.ant-list-item:has-text("tokenizer.json")')).toBeVisible()
 
     // Close drawer
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should classify files by purpose', async ({ page }) => {
@@ -187,7 +217,7 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await expect(configTag).toBeVisible()
     await expect(tokenizerTag).toBeVisible()
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should auto-detect main model file', async ({ page }) => {
@@ -198,10 +228,10 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await page.waitForTimeout(500)
 
     // Verify main filename dropdown is populated
-    const mainFilenameSelect = page.locator('.ant-form-item:has-text("Main Model File") .ant-select-selection-item')
+    const mainFilenameSelect = page.locator('.ant-form-item:has-text("Main Model File") .ant-select-content-value, .ant-select-selection-item')
     await expect(mainFilenameSelect).toContainText('model.gguf')
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should allow selecting different main file', async ({ page }) => {
@@ -212,7 +242,7 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await page.waitForTimeout(500)
 
     // Click main filename dropdown
-    await page.locator('.ant-form-item:has-text("Main Model File") .ant-select-selector').click()
+    await page.locator('.ant-form-item:has-text("Main Model File") .ant-select').click()
     await page.waitForSelector('.ant-select-dropdown', { state: 'visible' })
 
     // Verify only model files are in dropdown (not config or tokenizer)
@@ -220,7 +250,7 @@ test.describe('LLM Models - Local Upload - File Selection', () => {
     await expect(page.locator('.ant-select-item-option:has-text("config.json")')).not.toBeVisible()
 
     await page.keyboard.press('Escape')
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 })
 
@@ -255,7 +285,7 @@ test.describe('LLM Models - Local Upload - Validation', () => {
     // Should show validation errors
     await expect(page.locator('.ant-form-item-explain-error').first()).toBeVisible({ timeout: 5000 })
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should validate display name is required', async ({ page }) => {
@@ -266,7 +296,7 @@ test.describe('LLM Models - Local Upload - Validation', () => {
     await page.waitForTimeout(500)
 
     // Wait for Main Model File to be populated (indicates upload processing is done)
-    await expect(page.locator('.ant-form-item:has-text("Main Model File") .ant-select-selection-item')).toContainText('model.safetensors', { timeout: 5000 })
+    await expect(page.locator('.ant-form-item:has-text("Main Model File") .ant-select-content-value, .ant-select-selection-item')).toContainText('model.safetensors', { timeout: 5000 })
 
     // Clear the display name field using fill (more reliable than clear)
     await page.fill('#llm-model-upload_display_name', '')
@@ -277,7 +307,7 @@ test.describe('LLM Models - Local Upload - Validation', () => {
     // Check for inline error message on the display name field
     await expect(page.locator('.ant-form-item-explain-error:has-text("Display Name is required")')).toBeVisible({ timeout: 5000 })
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should validate model folder is required', async ({ page }) => {
@@ -292,7 +322,7 @@ test.describe('LLM Models - Local Upload - Validation', () => {
     // Should show error message
     await page.waitForSelector('text=Please select a model folder', { timeout: 5000 })
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should validate main filename is required', async ({ page }) => {
@@ -324,19 +354,20 @@ test.describe('LLM Models - Local Upload - Validation', () => {
     // Check for inline error message on the main file field
     await expect(page.locator('.ant-form-item-explain-error:has-text("Please select the main model file")')).toBeVisible({ timeout: 5000 })
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should warn if no tokenizer files detected', async ({ page }) => {
-    // Create folder with only model file (no tokenizer)
+    // Create folder with only model file (no tokenizer). Pad to 2KB+
+    // so the backend's "suspiciously small weight file" validator passes.
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-model-no-tokenizer-'))
-    fs.writeFileSync(path.join(tempDir, 'model.safetensors'), 'Dummy model content')
+    fs.writeFileSync(path.join(tempDir, 'model.safetensors'), Buffer.alloc(2048, 'A'))
     testModelFolder = tempDir
 
     await openUploadDrawer(page)
 
     // Select safetensors format
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select-selector').click()
+    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
     await page.click('.ant-select-item-option:has-text("SafeTensors")')
 
     // Fill form
@@ -393,7 +424,7 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     await openUploadDrawer(page)
 
     // Select safetensors format
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select-selector').click()
+    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
     await page.click('.ant-select-item-option:has-text("SafeTensors")')
 
     // Upload folder
@@ -404,7 +435,7 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     const modelFile = page.locator('.ant-list-item:has-text("model.safetensors")')
     await expect(modelFile.locator('.ant-tag:has-text("model")')).toBeVisible()
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should handle gguf format', async ({ page }) => {
@@ -413,7 +444,7 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     await openUploadDrawer(page)
 
     // Select gguf format
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select-selector').click()
+    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
     await page.click('.ant-select-item-option:has-text("GGUF")')
 
     // Upload folder
@@ -424,7 +455,7 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     const modelFile = page.locator('.ant-list-item:has-text("model.gguf")')
     await expect(modelFile.locator('.ant-tag:has-text("model")')).toBeVisible()
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should handle pytorch format', async ({ page }) => {
@@ -433,7 +464,7 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     await openUploadDrawer(page)
 
     // Select pytorch format
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select-selector').click()
+    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
     await page.click('.ant-select-item-option:has-text("PyTorch Binary")')
 
     // Upload folder
@@ -444,7 +475,7 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     const modelFile = page.locator('.ant-list-item:has-text("pytorch_model.bin")')
     await expect(modelFile.locator('.ant-tag:has-text("model")')).toBeVisible()
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 
   test('should re-filter files when format changes', async ({ page }) => {
@@ -463,7 +494,7 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     await page.locator('.ant-form-item:has-text("File Format")').scrollIntoViewIfNeeded()
 
     // Change format to gguf
-    await page.locator('.ant-form-item:has-text("File Format") .ant-select-selector').click()
+    await page.locator('.ant-form-item:has-text("File Format") .ant-select').click()
     await page.click('.ant-select-item-option:has-text("GGUF")')
     await page.waitForTimeout(500)
 
@@ -474,13 +505,13 @@ test.describe('LLM Models - Local Upload - File Formats', () => {
     // Now safetensors file should NOT be classified as model (no .gguf files present)
     // The file list should update based on new format
     // After changing to GGUF format with no GGUF files, the dropdown should be empty or show placeholder
-    const mainFilenameSelector = page.locator('.ant-form-item:has-text("Main Model File") .ant-select-selector')
+    const mainFilenameSelector = page.locator('.ant-form-item:has-text("Main Model File") .ant-select')
 
     // Check that either the dropdown shows placeholder or doesn't have model.safetensors selected
     const dropdownText = await mainFilenameSelector.textContent()
     expect(dropdownText).not.toContain('model.safetensors')
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
   })
 })
 
@@ -646,8 +677,20 @@ test.describe('LLM Models - Local Upload - Success Flow', () => {
     await page.waitForTimeout(500)
     await submitUploadForm(page)
 
-    // Wait for success
+    // Wait for success + drawer close animation to finish AND the
+    // toast to disappear before reopening (the toast can intercept
+    // pointer events on the page-level dropdown trigger).
     await page.waitForSelector('text=Model uploaded successfully', { timeout: 30000 })
+    await page
+      .locator('.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Upload Local Model"))')
+      .waitFor({ state: 'hidden', timeout: 5000 })
+      .catch(() => {})
+    // AntD message toasts auto-dismiss in 3s — wait for them to clear.
+    await page
+      .locator('text=Model uploaded successfully')
+      .waitFor({ state: 'hidden', timeout: 10000 })
+      .catch(() => {})
+    await page.waitForTimeout(500)
 
     // Open drawer again
     await openUploadDrawer(page)
@@ -659,7 +702,7 @@ test.describe('LLM Models - Local Upload - Success Flow', () => {
     const fileList = page.locator('.ant-card-head-title:has-text("Selected Files")')
     await expect(fileList).not.toBeVisible()
 
-    await page.locator('.ant-drawer:visible').last().locator('button:has-text("Cancel")').click()
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('button:has-text("Cancel")').click()
 
     // Cleanup
     await deleteModel(page, modelName)

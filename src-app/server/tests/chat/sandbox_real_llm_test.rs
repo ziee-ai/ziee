@@ -261,13 +261,13 @@ async fn list_files_via_llm_is_auto_approved() {
         .filter_map(|e| e.data["tool_name"].as_str())
         .collect();
     assert!(
-        names.iter().any(|n| *n == "list_files"),
+        names.contains(&"list_files"),
         "LLM called other tools but not list_files: {names:?}"
     );
 
     // KEY assertion 2: auto-approved → no mcpApprovalRequired event.
     assert!(
-        !event_names.iter().any(|e| *e == "mcpApprovalRequired"),
+        !event_names.contains(&"mcpApprovalRequired"),
         "list_files is auto-approved by migration 36; \
          mcpApprovalRequired MUST NOT appear. events: {event_names:?}"
     );
@@ -321,11 +321,11 @@ async fn read_file_via_llm_is_auto_approved() {
         .filter_map(|e| e.data["tool_name"].as_str())
         .collect();
     assert!(
-        names.iter().any(|n| *n == "read_file"),
+        names.contains(&"read_file"),
         "LLM called other tools but not read_file: {names:?}"
     );
     assert!(
-        !event_names.iter().any(|e| *e == "mcpApprovalRequired"),
+        !event_names.contains(&"mcpApprovalRequired"),
         "read_file is auto-approved by migration 36; \
          mcpApprovalRequired MUST NOT appear. events: {event_names:?}"
     );
@@ -367,7 +367,7 @@ async fn execute_command_emits_approval_required_sse_event() {
     // to the approval (mcpToolStart will NOT fire). Full approval-
     // response flow is covered by mcp_approval_workflow_test.rs.
     assert!(
-        event_names.iter().any(|e| *e == "mcpApprovalRequired"),
+        event_names.contains(&"mcpApprovalRequired"),
         "execute_command MUST require approval but no mcpApprovalRequired \
          event seen — Claude may have refused to call the destructive tool. \
          events={event_names:?}"

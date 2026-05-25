@@ -705,7 +705,7 @@ async fn test_concurrent_tool_calls() {
                 .json(&payload)
                 .send()
                 .await
-                .expect(&format!("Request {} failed", i));
+                .unwrap_or_else(|_| panic!("Request {} failed", i));
 
             (i, response.status())
         });

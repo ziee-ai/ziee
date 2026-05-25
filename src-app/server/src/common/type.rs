@@ -6,6 +6,7 @@ use axum::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use uuid::Uuid;
 
 // =====================================================
 // API Result Type
@@ -106,12 +107,44 @@ impl AppError {
         )
     }
 
-    pub fn database_error(err: impl std::error::Error) -> Self {
+    /// Convert a database error into a client-safe AppError.
+    ///
+    /// The inner error's Display (and Debug) text — which frequently contains
+    /// SQL constraint names, column values, or bound parameters from sqlx —
+    /// is NEVER returned to the client. The full error is logged server-side
+    /// via `tracing::error!` with a UUID trace_id; the same trace_id is
+    /// embedded in the response's `details.trace_id` so support can grep the
+    /// log to find the original error.
+    pub fn database_error(err: impl std::fmt::Display) -> Self {
+        let trace_id = Uuid::new_v4();
+        tracing::error!(%trace_id, error = %err, "Database error");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "SYSTEM_DATABASE_ERROR",
-            format!("Database error: {}", err),
+            "An internal database error occurred",
         )
+        .with_details(serde_json::json!({ "trace_id": trace_id.to_string() }))
+    }
+
+    /// Convert a non-database error into a client-safe AppError.
+    ///
+    /// Use this for any error chain you DON'T want surfaced to the client
+    /// (filesystem errors, third-party library errors, deserialization
+    /// internals). The inner error is logged with a UUID trace_id; the
+    /// client sees only a generic message + the trace_id for correlation.
+    ///
+    /// For developer-curated safe messages (\"resource not ready\",
+    /// \"feature not enabled\"), use [`AppError::internal_error`] instead —
+    /// it does no logging and embeds the supplied string verbatim.
+    pub fn internal_with_id<E: std::fmt::Display>(err: E) -> Self {
+        let trace_id = Uuid::new_v4();
+        tracing::error!(%trace_id, error = %err, "Internal server error");
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "SYSTEM_INTERNAL_ERROR",
+            "An internal error occurred",
+        )
+        .with_details(serde_json::json!({ "trace_id": trace_id.to_string() }))
     }
 }
 
@@ -149,7 +182,7 @@ impl From<sqlx::Error> for AppError {
 
 impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
     fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
-        AppError::internal_error(err.to_string())
+        AppError::internal_with_id(err)
     }
 }
 
@@ -175,12 +208,64 @@ impl AppError {
 // Common Types
 // =====================================================
 
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+/// Maximum page size accepted from the client. Larger values are clamped
+/// silently at deserialization to prevent DoS via unbounded result-set
+/// materialization (listing every user / file / message in one request).
+/// Closes 03-user F-06 (Medium).
+pub const PAGINATION_MAX_PER_PAGE: i32 = 100;
+
+/// Pagination query that clamps at deserialize time so every existing
+/// handler that consumes `params.page` and `params.per_page` is safe
+/// without touching its body.
+///
+/// - `page < 1` → 1 (prevents `(page-1)*per_page` underflow / negative offset)
+/// - `per_page < 1` → 1 (prevents divide-by-zero in callers like
+///   `total / per_page`)
+/// - `per_page > PAGINATION_MAX_PER_PAGE` → PAGINATION_MAX_PER_PAGE
+///   (prevents DoS)
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct PaginationQuery {
     #[serde(default = "default_page")]
     pub page: i32,
     #[serde(default = "default_per_page")]
     pub per_page: i32,
+}
+
+impl<'de> Deserialize<'de> for PaginationQuery {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(default = "default_page")]
+            page: i32,
+            #[serde(default = "default_per_page")]
+            per_page: i32,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        Ok(PaginationQuery {
+            page: if raw.page < 1 { 1 } else { raw.page },
+            per_page: if raw.per_page < 1 {
+                1
+            } else if raw.per_page > PAGINATION_MAX_PER_PAGE {
+                PAGINATION_MAX_PER_PAGE
+            } else {
+                raw.per_page
+            },
+        })
+    }
+}
+
+impl PaginationQuery {
+    /// `page` is already clamped on deserialize; this method is kept as
+    /// an explicit no-op for callers built before the deserializer change.
+    pub fn page_clamped(&self) -> i32 {
+        self.page
+    }
+
+    /// `per_page` is already clamped on deserialize; this method is kept
+    /// as an explicit no-op for callers built before the deserializer change.
+    pub fn per_page_clamped(&self) -> i32 {
+        self.per_page
+    }
 }
 
 fn default_page() -> i32 {
@@ -197,5 +282,165 @@ impl Default for PaginationQuery {
             page: 1,
             per_page: 20,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    /// Regression test for the 2026-05 audit cross-cutting finding:
+    /// `AppError::database_error` MUST NOT include the inner error's Display
+    /// (or Debug) text in the response body — that text often contains SQL
+    /// constraint names, table names, columns, or even bound parameter values
+    /// from `sqlx` and similar libraries. The real error stays in the server
+    /// log via `tracing::error!`; the client gets only a correlation id.
+    #[test]
+    fn database_error_does_not_leak_inner_error_display() {
+        let inner = io::Error::other(
+            "secret_constraint_uq_users_email_AT_user_a@example.com",
+        );
+        let err = AppError::database_error(&inner);
+        let body = serde_json::to_string(&err).expect("serialize AppError");
+        assert!(
+            !body.contains("secret_constraint_uq_users_email"),
+            "AppError::database_error leaked inner error to response body: {}",
+            body
+        );
+        assert!(
+            !body.contains("user_a@example.com"),
+            "AppError::database_error leaked sensitive value to response body: {}",
+            body
+        );
+    }
+
+    /// `internal_with_id` (the redacted boxed-error path) must not leak its
+    /// inner error to the response body either.
+    #[test]
+    fn internal_with_id_does_not_leak_inner_error_display() {
+        let inner: Box<dyn std::error::Error + Send + Sync> =
+            "leaked_sentinel_internal_error_text".into();
+        let err = AppError::internal_with_id(&*inner);
+        let body = serde_json::to_string(&err).expect("serialize AppError");
+        assert!(
+            !body.contains("leaked_sentinel_internal_error_text"),
+            "AppError::internal_with_id leaked inner error to response body: {}",
+            body
+        );
+    }
+
+    /// `From<sqlx::Error>` is invoked implicitly via `?` across the codebase.
+    /// It MUST route through `database_error` so the inner SQL details never
+    /// reach the client. Use `Encode` so we get a deterministic Display that
+    /// would obviously be a leak.
+    #[test]
+    fn from_sqlx_error_does_not_leak_inner_error_display() {
+        let inner = sqlx::Error::Configuration(
+            "sentinel_pgpassword=hunter2_LEAKED".into(),
+        );
+        let err: AppError = inner.into();
+        let body = serde_json::to_string(&err).expect("serialize AppError");
+        assert!(
+            !body.contains("hunter2_LEAKED"),
+            "From<sqlx::Error> leaked inner to response body: {}",
+            body
+        );
+        assert!(
+            !body.contains("sentinel_pgpassword"),
+            "From<sqlx::Error> leaked inner to response body: {}",
+            body
+        );
+    }
+
+    /// `From<Box<dyn Error>>` must also not leak — historically it called
+    /// `internal_error(err.to_string())` which embedded the chain verbatim.
+    #[test]
+    fn from_boxed_error_does_not_leak_inner_error_display() {
+        let inner: Box<dyn std::error::Error + Send + Sync> =
+            "boxed_sentinel_LEAKED_secret_path=/etc/shadow".into();
+        let err: AppError = inner.into();
+        let body = serde_json::to_string(&err).expect("serialize AppError");
+        assert!(
+            !body.contains("boxed_sentinel_LEAKED"),
+            "From<Box<dyn Error>> leaked inner to response body: {}",
+            body
+        );
+    }
+
+    /// Redacted errors should include a trace_id in `details` so support can
+    /// grep the server log for the matching tracing event.
+    #[test]
+    fn database_error_includes_trace_id_for_correlation() {
+        let inner = io::Error::other("x");
+        let err = AppError::database_error(&inner);
+        let body = serde_json::to_value(&err).expect("serialize AppError");
+        let trace_id = body
+            .get("details")
+            .and_then(|d| d.get("trace_id"))
+            .and_then(|t| t.as_str())
+            .expect("AppError::database_error must embed trace_id in details");
+        assert_eq!(
+            trace_id.len(),
+            36,
+            "trace_id should be a UUID v4 ({} chars), got: {}",
+            36,
+            trace_id
+        );
+    }
+
+    /// The static-message convenience constructors (`not_found`, `forbidden`,
+    /// etc.) are explicitly safe — keep behavior so callers don't have to
+    /// switch to a different API.
+    #[test]
+    fn not_found_does_not_route_through_redaction() {
+        let err = AppError::not_found("Conversation");
+        let body = serde_json::to_value(&err).expect("serialize AppError");
+        assert_eq!(body["error_code"], "RESOURCE_NOT_FOUND");
+        // No trace_id for safe constructors — they aren't logging anything
+        // sensitive that a developer would need to correlate.
+        assert!(body.get("details").is_none() || body["details"].is_null());
+    }
+
+    // =====================================================
+    // PaginationQuery clamping — close 03-user F-06
+    // =====================================================
+
+    #[test]
+    fn pagination_clamps_per_page_zero_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":1,"per_page":0}"#).unwrap();
+        assert_eq!(q.per_page, 1, "per_page=0 must clamp to 1 to prevent /0");
+    }
+
+    #[test]
+    fn pagination_clamps_per_page_negative_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":1,"per_page":-5}"#).unwrap();
+        assert_eq!(q.per_page, 1);
+    }
+
+    #[test]
+    fn pagination_clamps_per_page_oversized_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":1,"per_page":10000}"#).unwrap();
+        assert_eq!(q.per_page, PAGINATION_MAX_PER_PAGE);
+    }
+
+    #[test]
+    fn pagination_clamps_page_negative_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":-1,"per_page":20}"#).unwrap();
+        assert_eq!(q.page, 1);
+    }
+
+    #[test]
+    fn pagination_passes_through_valid_values_on_deserialize() {
+        let q: PaginationQuery = serde_json::from_str(r#"{"page":5,"per_page":50}"#).unwrap();
+        assert_eq!(q.page, 5);
+        assert_eq!(q.per_page, 50);
+    }
+
+    #[test]
+    fn pagination_defaults_when_fields_missing() {
+        let q: PaginationQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(q.page, 1);
+        assert_eq!(q.per_page, 20);
     }
 }

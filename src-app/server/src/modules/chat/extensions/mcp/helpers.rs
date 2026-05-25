@@ -188,13 +188,18 @@ pub async fn execute_tool(
 
             let content_text = text_parts.join("\n");
 
-            // Truncate if too large (100KB limit)
+            // Truncate if too large (100KB limit). Walk back to the
+            // nearest UTF-8 char boundary so we never split a
+            // multi-byte sequence — closes 04-chat F-12 (Low).
             let final_content = if content_text.len() > 100_000 {
-                let truncated = &content_text[..100_000];
+                let mut cut = 100_000;
+                while cut > 0 && !content_text.is_char_boundary(cut) {
+                    cut -= 1;
+                }
                 format!(
                     "{}\n\n[... truncated {} bytes ...]",
-                    truncated,
-                    content_text.len() - 100_000
+                    &content_text[..cut],
+                    content_text.len() - cut
                 )
             } else {
                 content_text

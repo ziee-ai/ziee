@@ -1,4 +1,3 @@
-use rand::Rng;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::fs;
@@ -62,10 +61,29 @@ impl TestServer {
     /// Start a TestServer with the given options. Use this when a test
     /// needs the code_sandbox enabled or wants to inject extra env.
     pub async fn start_with_options(opts: TestServerOptions) -> Self {
+        // Initialise the at-rest secret storage_key in the *test* process
+        // too. The spawned server process initialises its own key from
+        // the YAML config, but tests that construct repositories
+        // directly against the test DB pool (UserKeyRepository,
+        // LlmRepositoryRepository) decrypt rows in-process and need the
+        // key to be available via ziee_chat::storage_key(). Idempotent —
+        // OnceCell::set after first call is a noop.
+        ziee_chat::init_storage_key(Some(
+            "test-storage-key-for-pgcrypto-min-32-chars-long".to_string(),
+        ));
+
         // Generate unique identifiers
         let test_id = Uuid::new_v4().to_string();
         let database_name = format!("test_db_{}", test_id.replace("-", "_"));
-        let server_port = rand::rng().random_range(10000..60000);
+        // Use OS-aware port reservation instead of a random pick.
+        // The previous `rand::rng().random_range(10000..60000)`
+        // collided with OTHER listeners (system services, prior
+        // TestServers in TIME_WAIT, parallel test harnesses) and the
+        // resulting "Address already in use" left the server unable
+        // to bind → health-poll timeout → TestServer panicked. Closes
+        // the 19-of-29 boot-timeout cluster in the diagnostic run.
+        let server_port = portpicker::pick_unused_port()
+            .expect("No free TCP port available for TestServer");
 
         // Parse DATABASE_URL to extract connection details
         let db_url = database_url();
@@ -100,6 +118,15 @@ server:
   host: "127.0.0.1"
   port: {}
   api_prefix: "/api"
+  # Tests run many sequential requests against a single peer IP
+  # (127.0.0.1), so they share one tower-governor bucket. The
+  # production default (5 req/s, burst 60) self-429s under sustained
+  # test load. Set extremely high caps here — the global cap is
+  # still exercised via the dedicated A3 rate-limit regression test
+  # which sets its own low values.
+  rate_limit:
+    per_second: 10000
+    burst_size: 10000
 
 jwt:
   # Must match the production issuer/audience because the MCP client
@@ -113,6 +140,12 @@ jwt:
   audience: "ziee-chat-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
+
+# At-rest secret storage key — enables pgcrypto encryption on api_key /
+# token / password columns. See common/secret.rs. Closes 06-llm-provider
+# F-02 once the repository wiring lands.
+secrets:
+  storage_key: "test-storage-key-for-pgcrypto-min-32-chars-long"
 "#,
             host, port, username, password, database_name, server_port
         );
@@ -176,17 +209,30 @@ jwt:
             username, password, host, port, database_name
         );
 
-        // Wait for server to be ready
+        // Wait for server to be ready. Bumped from 30 × 200ms = 6s to
+        // 150 × 200ms = 30s after observing test failures where the
+        // server boot ran past 6s on a busy CI/dev box. The added
+        // security middleware stack (rate-limit init, security
+        // headers, etc) + module registration + migration apply +
+        // external Postgres connect all add up — 30s is a safe
+        // ceiling that still surfaces a genuinely-hung server.
         let client = reqwest::Client::new();
         let health_url = format!("{}/api/health", base_url);
 
-        for _ in 0..30 {
-            if let Ok(response) = client.get(&health_url).send().await {
-                if response.status().is_success() {
+        let mut ready = false;
+        for _ in 0..150 {
+            if let Ok(response) = client.get(&health_url).send().await
+                && response.status().is_success() {
+                    ready = true;
                     break;
                 }
-            }
             tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        if !ready {
+            panic!(
+                "TestServer at {} did not become healthy within 30s",
+                base_url
+            );
         }
 
         TestServer {
@@ -267,7 +313,7 @@ pub mod test_helpers {
 
         // Register user via API
         let register_response = reqwest::Client::new()
-            .post(&server.api_url("/auth/register"))
+            .post(server.api_url("/auth/register"))
             .json(&json!({
                 "username": &unique_username,
                 "email": format!("{}@example.com", unique_username),
@@ -385,6 +431,43 @@ pub mod test_helpers {
             .execute(&pool)
             .await
             .expect("Failed to strip user from groups");
+
+        pool.close().await;
+        user
+    }
+
+    /// Create a user with EXACTLY the listed permissions — no default-group
+    /// inheritance. Use when a test needs to prove "X works with perm A,
+    /// fails without perm B" but B is in the default Users group too.
+    /// `create_user_with_permissions(_, _, &["A"])` would leave the user
+    /// in default + add a separate group with [A], giving them both A
+    /// AND every default permission.
+    pub async fn create_user_with_only_permissions(
+        server: &TestServer,
+        username: &str,
+        permissions: &[&str],
+    ) -> TestUser {
+        let user = create_user_with_permissions(server, username, permissions).await;
+
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&server.database_url)
+            .await
+            .expect("Failed to connect to test database");
+
+        let user_uuid = Uuid::parse_str(&user.user_id).expect("Invalid user ID");
+        // Drop user from the system default group; leave them in the
+        // per-test group created above (which carries the explicit
+        // permission list).
+        sqlx::query(
+            "DELETE FROM user_groups WHERE user_id = $1 AND group_id IN (\
+                SELECT id FROM groups WHERE is_default = true\
+             )",
+        )
+        .bind(user_uuid)
+        .execute(&pool)
+        .await
+        .expect("Failed to strip user from default group");
 
         pool.close().await;
         user

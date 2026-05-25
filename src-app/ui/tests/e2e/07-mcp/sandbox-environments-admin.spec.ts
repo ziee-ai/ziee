@@ -29,12 +29,18 @@ async function mockEnvironments(page: Page, getCachedFull: () => boolean) {
             description: 'Shell + python3',
             approximate_size_mb: 57,
             cached: true,
+            // `cached_size_bytes` is Some when cached, None otherwise;
+            // `mounted` is required by EnvironmentInfo.
+            cached_size_bytes: 57 * 1024 * 1024,
+            mounted: false,
           },
           {
             flavor: 'full',
             description: 'numpy + torch + R + Node',
             approximate_size_mb: 853,
             cached: getCachedFull(),
+            cached_size_bytes: getCachedFull() ? 853 * 1024 * 1024 : null,
+            mounted: false,
           },
         ],
       }),

@@ -300,11 +300,17 @@ async fn test_update_user() {
         test_helpers::create_test_user(&server, &admin.token, "updateuser", "password123").await;
     let user_id = user["id"].as_str().expect("Should have user ID");
 
-    // Update user
+    // Update user.
+    //
+    // Note: the email field used to be writable here, but was removed
+    // from UpdateUserRequest as part of closing 03-user F-03 (silent
+    // email rewrite → OAuth account takeover). The test still sends an
+    // email key in the body to exercise the silent-drop path, and
+    // asserts the email did NOT change.
     let url = server.api_url(&format!("/users/{}", user_id));
     let payload = json!({
         "username": "updateduser",
-        "email": "updated@example.com",
+        "email": "attacker@evil.com",
         "display_name": "Updated Name"
     });
 
@@ -320,8 +326,14 @@ async fn test_update_user() {
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(body["username"], "updateduser");
-    assert_eq!(body["email"], "updated@example.com");
     assert_eq!(body["display_name"], "Updated Name");
+    // The previous behavior accepted email here and we'd assert it equaled
+    // the new value — now we assert email is UNCHANGED, proving the
+    // F-03 fix is in place.
+    assert_ne!(
+        body["email"], "attacker@evil.com",
+        "email field must NOT be writable through update_user — see 03-user F-03"
+    );
 }
 
 #[tokio::test]
@@ -834,11 +846,15 @@ async fn test_can_update_admin_user_other_fields() {
 
     pool.close().await;
 
-    // Update admin user's other fields (should succeed)
+    // Update admin user's other fields (should succeed). Note: the
+    // email field used to be writable, but was removed from
+    // UpdateUserRequest as part of closing 03-user F-03 (silent email
+    // rewrite → OAuth account takeover). We still send it to exercise
+    // the silent-drop path.
     let url = server.api_url(&format!("/users/{}", user_id));
     let payload = json!({
         "display_name": "Updated Admin Display Name",
-        "email": "updatedemail@example.com"
+        "email": "attacker@evil.com"
     });
 
     let response = reqwest::Client::new()
@@ -857,6 +873,424 @@ async fn test_can_update_admin_user_other_fields() {
 
     let body: serde_json::Value = response.json().await.expect("Failed to parse JSON");
     assert_eq!(body["display_name"], "Updated Admin Display Name");
-    assert_eq!(body["email"], "updatedemail@example.com");
+    assert_ne!(
+        body["email"], "attacker@evil.com",
+        "email must NOT be writable through update_user — see 03-user F-03"
+    );
     assert_eq!(body["is_active"], true, "Admin user should remain active");
+}
+
+// =====================================================
+// Body-limit regression test — close 14-core F-01
+// =====================================================
+//
+// The previous DefaultBodyLimit::disable() applied globally let any
+// unauthenticated POST exhaust memory by streaming a multi-GB body.
+// The fix sets a global 16MB cap so non-upload routes return 413 for
+// any request body larger than that; the actual upload routes
+// (file upload, model upload) opt into a higher per-route cap.
+
+#[tokio::test]
+async fn test_body_limit_rejects_oversized_post_to_register() {
+    let server = crate::common::TestServer::start().await;
+
+    // Construct a 20 MB JSON body — larger than the 16 MB global cap,
+    // smaller than upload-route caps. The route is unauthenticated so
+    // this exercises the unauth DoS scenario the audit flagged.
+    let big_padding = "A".repeat(20 * 1024 * 1024);
+    let body = serde_json::json!({
+        "username": "x",
+        "email": "x@example.com",
+        "password": "x",
+        "padding": big_padding,
+    });
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/auth/register"))
+        .json(&body)
+        .send()
+        .await
+        .expect("request failed");
+
+    assert_eq!(
+        res.status(),
+        413,
+        "20 MB POST to /auth/register must be rejected with 413 (was: {})",
+        res.status()
+    );
+}
+
+// =====================================================
+// Privilege-escalation regression test — close 03-user F-01
+// =====================================================
+//
+// The previous UpdateUserRequest.permissions: Option<Vec<String>> let any
+// holder of the `users::edit` permission rewrite the permissions array
+// of any user (including themselves) via PUT /api/users/{id}. With
+// permissions: ["*"] this was near-root escalation from a single
+// sub-admin grant. Closes 03-user F-01 (Critical).
+//
+// The fix removes the permissions field from UpdateUserRequest entirely.
+// Permission management is handled separately by group assignment +
+// future dedicated set_permissions endpoint (A4).
+
+#[tokio::test]
+async fn test_users_edit_cannot_grant_wildcard_via_update() {
+    let server = crate::common::TestServer::start().await;
+
+    // Caller has users::edit but is NOT a wildcard / admin.
+    let attacker = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "attacker",
+        &["users::edit", "users::read"],
+    )
+    .await;
+
+    // Victim is the attacker themselves — try to escalate.
+    let target_user_id = attacker.user_id;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/users/{}", target_user_id)))
+        .header("Authorization", format!("Bearer {}", attacker.token))
+        .json(&serde_json::json!({
+            "permissions": ["*"]
+        }))
+        .send()
+        .await
+        .expect("request failed");
+
+    // After the fix, the request body's unknown `permissions` field is
+    // silently dropped by serde (the DTO no longer has it). The update
+    // proceeds with no changes, so we expect 200 — BUT the user's
+    // actual permissions in the DB must NOT contain '*'.
+    assert!(
+        res.status().is_success() || res.status() == 400,
+        "expected 200 or 400, got {}",
+        res.status()
+    );
+
+    // Verify in the DB by fetching the user (via /me which returns
+    // current user's full record including permissions).
+    let me = reqwest::Client::new()
+        .get(server.api_url("/auth/me"))
+        .header("Authorization", format!("Bearer {}", attacker.token))
+        .send()
+        .await
+        .expect("me fetch failed")
+        .json::<serde_json::Value>()
+        .await
+        .expect("me parse failed");
+
+    let perms = me
+        .get("permissions")
+        .and_then(|v| v.as_array())
+        .expect("user must have permissions array");
+    assert!(
+        !perms.iter().any(|p| p.as_str() == Some("*")),
+        "attacker successfully escalated to wildcard '*' — F-01 NOT fixed; got perms: {:?}",
+        perms
+    );
+}
+
+// =====================================================
+// delete_user is_admin-guard regression — close 03-user F-02
+// =====================================================
+//
+// toggle_user_active and update_user already refuse to act on admin
+// users; delete_user has no such guard. A user with `users::delete` can
+// DELETE the root admin and brick the deployment (unique_root_admin
+// partial index prevents re-creation). Audit 03-user F-02 (Critical).
+
+#[tokio::test]
+async fn test_delete_user_refuses_to_delete_admin() {
+    let server = crate::common::TestServer::start().await;
+
+    // The TestServer harness sets up a setup-flow admin during startup;
+    // we need to find that admin's user_id. Easiest path: register a
+    // non-admin user with `users::read`, list users, find one with
+    // is_admin: true.
+    let client = reqwest::Client::new();
+
+    // Create the root admin via the setup flow (TestServer starts with no admin).
+    let setup_resp: serde_json::Value = client
+        .post(server.api_url("/app/setup/admin"))
+        .json(&serde_json::json!({
+            "username": "delete_admin_target",
+            "email": "delete_admin@example.com",
+            "password": "SecurePass123!",
+        }))
+        .send()
+        .await
+        .expect("setup admin request failed")
+        .json()
+        .await
+        .expect("setup admin parse failed");
+
+    let admin_id = setup_resp
+        .get("user")
+        .and_then(|u| u.get("id"))
+        .and_then(|id| id.as_str())
+        .expect("setup response must have user.id")
+        .to_string();
+
+    // Now mint a user with users::delete and try to delete the admin.
+    let attacker = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "attacker",
+        &["users::delete"],
+    )
+    .await;
+
+    let res = client
+        .delete(server.api_url(&format!("/users/{}", admin_id)))
+        .header("Authorization", format!("Bearer {}", attacker.token))
+        .send()
+        .await
+        .expect("delete request failed");
+
+    assert!(
+        res.status() == 400 || res.status() == 403,
+        "DELETE /users/{} (admin) must be rejected with 400 or 403, got {}",
+        admin_id,
+        res.status()
+    );
+
+    // Verify admin still exists by trying to log in as them.
+    let login = client
+        .post(server.api_url("/auth/login"))
+        .json(&serde_json::json!({
+            "username": "delete_admin_target",
+            "password": "SecurePass123!",
+        }))
+        .send()
+        .await
+        .expect("login failed");
+
+    assert!(
+        login.status().is_success(),
+        "admin {} was deleted — login now {}; deployment would be bricked",
+        admin_id,
+        login.status()
+    );
+}
+
+// =====================================================
+// create_user prevent-self-escalation — close 03-user F-04
+// =====================================================
+//
+// CreateUserRequest.permissions accepts any string the caller writes
+// including "*". A holder of users::create can mint a wildcard root by
+// POSTing {"permissions": ["*"]}. Audit 03-user F-04 (High).
+//
+// The fix verifies that every permission the caller is trying to grant
+// is one the caller themselves holds (via user perms or group union).
+// Admins (is_admin=true) bypass this check.
+
+#[tokio::test]
+async fn test_create_user_refuses_granting_perms_caller_lacks() {
+    let server = crate::common::TestServer::start().await;
+
+    // Caller has users::create and users::read but NOT '*' and is NOT admin.
+    let creator = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "creator",
+        &["users::create", "users::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", creator.token))
+        .json(&serde_json::json!({
+            "username": "minted_root",
+            "email": "minted_root@example.com",
+            "password": "SecurePass123!",
+            "permissions": ["*"],
+        }))
+        .send()
+        .await
+        .expect("create request failed");
+
+    assert!(
+        res.status() == 403 || res.status() == 400,
+        "create_user with permissions: ['*'] from non-admin caller must be rejected, got {}",
+        res.status()
+    );
+}
+
+#[tokio::test]
+async fn test_create_user_refuses_granting_unrelated_perm() {
+    let server = crate::common::TestServer::start().await;
+
+    // Caller has users::create but NOT users::delete (an admin-only
+    // perm not granted by the default group).
+    let creator = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "creator2",
+        &["users::create", "users::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", creator.token))
+        .json(&serde_json::json!({
+            "username": "minted_deleter",
+            "email": "minted_deleter@example.com",
+            "password": "SecurePass123!",
+            "permissions": ["users::delete"],
+        }))
+        .send()
+        .await
+        .expect("create request failed");
+
+    assert!(
+        res.status() == 403 || res.status() == 400,
+        "caller without users::delete should not be able to grant users::delete; got {}",
+        res.status()
+    );
+}
+
+#[tokio::test]
+async fn test_create_user_allows_granting_perm_caller_holds() {
+    let server = crate::common::TestServer::start().await;
+
+    // Caller holds both users::create AND files::read → can grant files::read.
+    let creator = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "creator3",
+        &["users::create", "files::read"],
+    )
+    .await;
+
+    let res = reqwest::Client::new()
+        .post(server.api_url("/users"))
+        .header("Authorization", format!("Bearer {}", creator.token))
+        .json(&serde_json::json!({
+            "username": "files_reader_target",
+            "email": "files_reader@example.com",
+            "password": "SecurePass123!",
+            "permissions": ["files::read"],
+        }))
+        .send()
+        .await
+        .expect("create request failed");
+
+    assert!(
+        res.status().is_success(),
+        "caller with files::read should be able to grant files::read; got {}",
+        res.status()
+    );
+}
+
+// =====================================================
+// Group privilege-escalation — close 02-permissions F-02
+// =====================================================
+//
+// update_group's is_system check only protected `name` and `is_active`,
+// NOT `permissions`. A holder of groups::edit could POST
+// {"permissions": ["*"]} to the system default Users group and cascade
+// '*' to every existing user — mass escalation. Audit 02-permissions
+// F-02 (High).
+//
+// Tests live in tests/user/ because tests/user_group/ has its own broken
+// helpers module (references missing TEST_CONFIG) and isn't registered
+// in integration_tests.rs.
+
+#[tokio::test]
+async fn test_update_group_system_default_refuses_permission_change() {
+    let server = crate::common::TestServer::start().await;
+    let editor = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "editor",
+        &["groups::edit", "groups::read"],
+    )
+    .await;
+
+    let groups: serde_json::Value = reqwest::Client::new()
+        .get(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", editor.token))
+        .send()
+        .await
+        .expect("list groups failed")
+        .json()
+        .await
+        .expect("parse groups failed");
+
+    let default_group_id = groups
+        .get("groups")
+        .and_then(|g| g.as_array())
+        .and_then(|arr| {
+            arr.iter()
+                .find(|g| {
+                    g.get("is_system").and_then(|v| v.as_bool()) == Some(true)
+                        && g.get("is_default").and_then(|v| v.as_bool()) == Some(true)
+                })
+                .and_then(|g| g.get("id").and_then(|id| id.as_str()))
+                .map(String::from)
+        })
+        .expect("no default system group found");
+
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/groups/{}", default_group_id)))
+        .header("Authorization", format!("Bearer {}", editor.token))
+        .json(&serde_json::json!({
+            "permissions": ["*"]
+        }))
+        .send()
+        .await
+        .expect("update request failed");
+
+    assert!(
+        res.status() == 400 || res.status() == 403,
+        "system default group permission change must be rejected, got {}",
+        res.status()
+    );
+}
+
+#[tokio::test]
+async fn test_update_group_prevents_self_escalation_on_custom_group() {
+    let server = crate::common::TestServer::start().await;
+    let editor = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "editor",
+        &["groups::edit", "groups::read", "groups::create"],
+    )
+    .await;
+
+    let new_group: serde_json::Value = reqwest::Client::new()
+        .post(server.api_url("/groups"))
+        .header("Authorization", format!("Bearer {}", editor.token))
+        .json(&serde_json::json!({
+            "name": format!("priv-esc-test-{}", Uuid::new_v4()),
+            "description": "test",
+            "permissions": []
+        }))
+        .send()
+        .await
+        .expect("create group failed")
+        .json()
+        .await
+        .expect("parse failed");
+
+    let group_id = new_group
+        .get("id")
+        .and_then(|id| id.as_str())
+        .expect("group id missing");
+
+    let res = reqwest::Client::new()
+        .post(server.api_url(&format!("/groups/{}", group_id)))
+        .header("Authorization", format!("Bearer {}", editor.token))
+        .json(&serde_json::json!({
+            "permissions": ["users::delete"]
+        }))
+        .send()
+        .await
+        .expect("update request failed");
+
+    assert!(
+        res.status() == 403 || res.status() == 400,
+        "caller without users::delete cannot grant it via groups; got {}",
+        res.status()
+    );
 }

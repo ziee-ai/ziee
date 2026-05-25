@@ -67,7 +67,7 @@ export async function toggleServerInDrawer(
 ) {
   // Find the server card in the drawer by looking for the strong tag with the server name
   const serverCard = page.locator(
-    `.ant-drawer:visible .ant-drawer-body .ant-card:has(strong:has-text("${serverName}"))`
+    `.ant-drawer.ant-drawer-open .ant-drawer-body .ant-card:has(strong:has-text("${serverName}"))`
   )
   await serverCard.waitFor({ state: 'visible', timeout: 5000 })
 
@@ -84,7 +84,7 @@ export async function toggleServerInDrawer(
 
 export async function saveServerAssignment(page: Page) {
   // Click Save button in drawer
-  const saveButton = page.locator('.ant-drawer:visible button:has-text("Save")')
+  const saveButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Save")')
   await saveButton.click()
 
   // Wait for success message
@@ -102,7 +102,7 @@ export async function saveServerAssignment(page: Page) {
 }
 
 export async function cancelServerAssignment(page: Page) {
-  const cancelButton = page.locator('.ant-drawer:visible button:has-text("Cancel")')
+  const cancelButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Cancel")')
   await cancelButton.click()
 
   // Wait for drawer to close
@@ -265,7 +265,7 @@ export async function toggleGroupInDrawer(
 ) {
   // Find the group card in the drawer
   const groupCard = page.locator(
-    `.ant-drawer:visible .ant-card:has(strong:has-text("${groupName}"))`
+    `.ant-drawer.ant-drawer-open .ant-card:has(strong:has-text("${groupName}"))`
   )
   await groupCard.waitFor({ state: 'visible', timeout: 5000 })
 
@@ -282,7 +282,7 @@ export async function toggleGroupInDrawer(
 
 export async function saveGroupAssignment(page: Page) {
   // Click Save button in drawer
-  const saveButton = page.locator('.ant-drawer:visible button:has-text("Save")')
+  const saveButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Save")')
   await saveButton.click()
 
   // Wait for success message
@@ -299,7 +299,7 @@ export async function saveGroupAssignment(page: Page) {
 }
 
 export async function cancelGroupAssignment(page: Page) {
-  const cancelButton = page.locator('.ant-drawer:visible button:has-text("Cancel")')
+  const cancelButton = page.locator('.ant-drawer.ant-drawer-open button:has-text("Cancel")')
   await cancelButton.click()
 
   // Wait for drawer to close
@@ -401,7 +401,7 @@ export async function createUserGroup(
   }
 
   // Submit
-  await page.click('.ant-drawer:visible button:has-text("Create Group")')
+  await page.click('.ant-drawer.ant-drawer-open button:has-text("Create Group")')
 
   // Wait for success message
   await page.waitForSelector('text=User group created successfully', { timeout: 10000 })

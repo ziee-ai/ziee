@@ -34,6 +34,24 @@ pub enum GitError {
     Io(#[from] std::io::Error),
     #[error("Operation was cancelled")]
     Cancelled,
+    #[error("Invalid repository URL: {0}")]
+    InvalidUrl(String),
+}
+
+/// Per-cache-key serialization to prevent two concurrent clones of the
+/// same repo from racing each other through `open_existing_repo` (each
+/// would think the other's partial checkout is corrupt + retry from
+/// scratch). Closes 09-llm-repository F-09 (Medium). The map is
+/// process-global because cache directories are process-global.
+static CLONE_LOCKS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn lock_for(cache_key: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    let mut map = CLONE_LOCKS.lock().unwrap_or_else(|p| p.into_inner());
+    map.entry(cache_key.to_string())
+        .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
 }
 
 pub struct GitService {
@@ -102,12 +120,42 @@ impl GitService {
         progress_tx: mpsc::UnboundedSender<GitProgress>,
         cancellation_token: Option<CancellationToken>,
     ) -> Result<std::path::PathBuf, GitError> {
+        // SECURITY: validate the repository URL against the SSRF policy
+        // BEFORE any DNS / network activity. The URL flows from admin
+        // input (llm_repository or hub config); the upstream validate_url
+        // in modules/llm_repository/utils.rs already screens this at
+        // insert time, but this is the defense-in-depth check at the
+        // git-level entry point so any future caller path (e.g., direct
+        // git clone calls bypassing the repository module) is also
+        // covered. Closes 07-llm-model F-01 (Critical) clone-side.
+        if let Err(e) = crate::utils::url_validator::validate_outbound_url(
+            repository_url,
+            &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        ) {
+            return Err(GitError::InvalidUrl(format!(
+                "repository URL rejected by SSRF policy: {}",
+                e
+            )));
+        }
+
+        // Serialize concurrent clones of the same (repo_id, url, branch).
+        // Closes 09-llm-repository F-09 (Medium): two callers used to
+        // race the cache directory open + partial checkout, each
+        // seeing the other's in-progress state as corrupt and
+        // retrying from scratch. The async Mutex held for the entire
+        // clone is fine because clones are minutes-scale operations
+        // anyway; the contention window matches the natural
+        // sequential ordering callers would want.
+        let cache_key_lock_str =
+            Self::generate_cache_key(repository_id, repository_url, branch);
+        let clone_lock = lock_for(&cache_key_lock_str);
+        let _clone_guard = clone_lock.lock().await;
+
         // Check for cancellation before starting
-        if let Some(ref token) = cancellation_token {
-            if token.is_cancelled().await {
+        if let Some(ref token) = cancellation_token
+            && token.is_cancelled().await {
                 return Err(GitError::Cancelled);
             }
-        }
 
         // Generate cache key based on repository_id, URL, and branch
         let cache_key = Self::generate_cache_key(repository_id, repository_url, branch);
@@ -191,8 +239,31 @@ impl GitService {
                 // Set up callbacks for fetch operation
                 let mut callbacks = RemoteCallbacks::new();
 
-                // Set up authentication
-                callbacks.credentials(|_url, username_from_url, _allowed_types| {
+                // SECURITY: only return credentials when libgit2 calls
+                // the callback for the ORIGINAL repository host. Without
+                // this pin, a server-controlled redirect or hostname
+                // alias would receive the auth token. Closes
+                // 09-llm-repository F-12 (Medium).
+                let original_host =
+                    reqwest::Url::parse(&repository_url).ok().and_then(|u| {
+                        u.host_str().map(|h| h.to_lowercase())
+                    });
+                callbacks.credentials(move |url, username_from_url, _allowed_types| {
+                    // Compare the callback's URL host to the original;
+                    // refuse credentials on mismatch.
+                    let cb_host = reqwest::Url::parse(url)
+                        .ok()
+                        .and_then(|u| u.host_str().map(|h| h.to_lowercase()));
+                    if original_host.is_some() && cb_host != original_host {
+                        tracing::warn!(
+                            original = ?original_host,
+                            callback = ?cb_host,
+                            "git credential callback fired for a different host; refusing token"
+                        );
+                        return Err(git2::Error::from_str(
+                            "credentials refused: callback host doesn't match original",
+                        ));
+                    }
                     if let Some(token) = auth_token.as_deref() {
                         Cred::userpass_plaintext(username_from_url.unwrap_or(""), token)
                     } else {
@@ -206,7 +277,7 @@ impl GitService {
                 callbacks.transfer_progress(move |progress| {
                     // Check for cancellation using atomic flag
                     if cancelled_flag_callback.load(std::sync::atomic::Ordering::Relaxed) {
-                        println!("Git fetch cancelled by user");
+                        tracing::info!("Git fetch cancelled by user");
                         return false;
                     }
 
@@ -278,7 +349,7 @@ impl GitService {
                                 // Reset HEAD to the remote branch
                                 let target_commit_obj = repo.find_commit(target_commit).unwrap();
                                 match repo.reset(
-                                    &target_commit_obj.as_object(),
+                                    target_commit_obj.as_object(),
                                     git2::ResetType::Hard,
                                     None,
                                 ) {
@@ -304,7 +375,7 @@ impl GitService {
                                         let target_commit_obj =
                                             repo.find_commit(target_commit).unwrap();
                                         match repo.reset(
-                                            &target_commit_obj.as_object(),
+                                            target_commit_obj.as_object(),
                                             git2::ResetType::Hard,
                                             None,
                                         ) {
@@ -337,8 +408,8 @@ impl GitService {
                         }
                     }
                     Err(e) => {
-                        if e.code() == git2::ErrorCode::User {
-                            if let Some(ref token) = cancellation_token {
+                        if e.code() == git2::ErrorCode::User
+                            && let Some(ref token) = cancellation_token {
                                 let rt = tokio::runtime::Handle::try_current();
                                 if let Ok(handle) = rt {
                                     let token_clone = token.clone();
@@ -349,7 +420,6 @@ impl GitService {
                                     }
                                 }
                             }
-                        }
 
                         let _ = progress_tx_clone.send(GitProgress {
                             phase: GitPhase::Error,
@@ -364,8 +434,26 @@ impl GitService {
                 // Repository doesn't exist, perform initial clone
                 let mut callbacks = RemoteCallbacks::new();
 
-                // Set up authentication
-                callbacks.credentials(|_url, username_from_url, _allowed_types| {
+                // SECURITY: pin credentials to the original repository
+                // host — see fetch path above. Closes 09-llm-repository F-12.
+                let original_host_clone =
+                    reqwest::Url::parse(&repository_url).ok().and_then(|u| {
+                        u.host_str().map(|h| h.to_lowercase())
+                    });
+                callbacks.credentials(move |url, username_from_url, _allowed_types| {
+                    let cb_host = reqwest::Url::parse(url)
+                        .ok()
+                        .and_then(|u| u.host_str().map(|h| h.to_lowercase()));
+                    if original_host_clone.is_some() && cb_host != original_host_clone {
+                        tracing::warn!(
+                            original = ?original_host_clone,
+                            callback = ?cb_host,
+                            "git credential callback fired for a different host; refusing token"
+                        );
+                        return Err(git2::Error::from_str(
+                            "credentials refused: callback host doesn't match original",
+                        ));
+                    }
                     if let Some(token) = auth_token.as_deref() {
                         // For GitHub and similar, use token as password with empty username
                         Cred::userpass_plaintext(username_from_url.unwrap_or(""), token)
@@ -378,11 +466,39 @@ impl GitService {
                 // Set up progress callback with cancellation check
                 let cancelled_flag_callback = cancelled_flag_task.clone();
                 let progress_tx_callback = progress_tx_clone.clone();
+                // 09-llm-repository F-05 (High): cap total clone bytes.
+                // Without this, an attacker who controls the repo URL
+                // (or even a benign mis-sized HF repo) can fill the host
+                // disk. 10 GB cap matches the largest legitimate model
+                // weights (Llama-70B + LFS pointers); operators with
+                // genuine larger needs can override via config in a
+                // follow-up. The transfer_progress callback returns
+                // false to cancel; libgit2 surfaces that as
+                // ErrorCode::User.
+                const MAX_CLONE_BYTES: u64 = 10 * 1024 * 1024 * 1024; // 10 GiB
                 callbacks.transfer_progress(move |progress| {
                     // Check for cancellation using atomic flag
                     if cancelled_flag_callback.load(std::sync::atomic::Ordering::Relaxed) {
-                        println!("Git clone cancelled by user");
+                        tracing::info!("Git clone cancelled by user");
                         return false; // Cancel the operation
+                    }
+
+                    // Enforce clone size cap. Use received_bytes when
+                    // available (libgit2 ≥ 0.99); otherwise estimate at
+                    // 10KB/object to fail-closed on object-count
+                    // explosion.
+                    let bytes_seen = if progress.received_bytes() > 0 {
+                        progress.received_bytes() as u64
+                    } else {
+                        progress.received_objects() as u64 * 10240
+                    };
+                    if bytes_seen > MAX_CLONE_BYTES {
+                        tracing::error!(
+                            received = bytes_seen,
+                            cap = MAX_CLONE_BYTES,
+                            "Git clone exceeded size cap; aborting"
+                        );
+                        return false;
                     }
 
                     let phase = if progress.received_objects() == progress.total_objects() {
@@ -575,7 +691,7 @@ impl GitService {
         // Create a channel to receive LFS progress updates
         let (lfs_progress_tx, mut lfs_progress_rx) = mpsc::unbounded_channel::<LfsProgress>();
 
-        println!(
+        tracing::info!(
             "Pulling LFS files from repository: {} with paths: {:?}",
             repo_path.display(),
             file_paths

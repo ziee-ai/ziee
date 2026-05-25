@@ -42,7 +42,7 @@ test.describe('Group Membership Management', () => {
     await assertDrawerOpen(page, /members of/i)
 
     // Verify group name is in drawer title
-    const drawer = page.locator('.ant-drawer:visible')
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
     await expect(drawer.locator('.ant-drawer-title')).toContainText(
       groupData.name
     )
@@ -71,7 +71,7 @@ test.describe('Group Membership Management', () => {
     await viewGroupMembers(page, groupData.name)
 
     // Verify empty state or no items message
-    const drawer = page.locator('.ant-drawer:visible')
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
     const membersList = drawer.locator('.ant-list')
 
     // Either no items or empty state should be shown
@@ -103,7 +103,7 @@ test.describe('Group Membership Management', () => {
     await openUserGroupsDrawer(page, userData.username)
 
     // Verify drawer opened
-    const drawer = page.locator('.ant-drawer:visible')
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
     await expect(drawer).toBeVisible()
   })
 
@@ -115,12 +115,12 @@ test.describe('Group Membership Management', () => {
     await navigateToUserGroups(page, baseURL)
 
     // Check if admin group exists (it's typically a system group)
-    const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+    const adminGroup = page.locator('.ant-card', { hasText: /admin/i }).first()
     const adminExists = await adminGroup.isVisible()
 
     if (adminExists) {
       // Verify it has system tag
-      const systemTag = adminGroup.locator('.ant-tag', { hasText: /system/i })
+      const systemTag = adminGroup.locator('.ant-tag', { hasText: /system/i }).first()
       await expect(systemTag).toBeVisible()
 
       // View members
@@ -130,7 +130,7 @@ test.describe('Group Membership Management', () => {
       await assertDrawerOpen(page, /members of/i)
 
       // Admin group should have at least one member
-      const drawer = page.locator('.ant-drawer:visible')
+      const drawer = page.locator('.ant-drawer.ant-drawer-open')
       const membersList = drawer.locator('.ant-list-item')
       await expect(membersList.first()).toBeVisible()
     }
@@ -144,7 +144,7 @@ test.describe('Group Membership Management', () => {
     await navigateToUserGroups(page, baseURL)
 
     // Find admin group (it typically has members)
-    const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+    const adminGroup = page.locator('.ant-card', { hasText: /admin/i }).first()
     const adminExists = await adminGroup.isVisible()
 
     if (adminExists) {
@@ -152,7 +152,7 @@ test.describe('Group Membership Management', () => {
       await viewGroupMembers(page, 'admin')
 
       // Verify drawer shows member information
-      const drawer = page.locator('.ant-drawer:visible')
+      const drawer = page.locator('.ant-drawer.ant-drawer-open')
       const firstMember = drawer.locator('.ant-list-item').first()
 
       if (await firstMember.isVisible()) {
@@ -180,13 +180,13 @@ test.describe('Group Membership Management', () => {
     await navigateToUserGroups(page, baseURL)
 
     // Find admin group
-    const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+    const adminGroup = page.locator('.ant-card', { hasText: /admin/i }).first()
     const adminExists = await adminGroup.isVisible()
 
     if (adminExists) {
       await viewGroupMembers(page, 'admin')
 
-      const drawer = page.locator('.ant-drawer:visible')
+      const drawer = page.locator('.ant-drawer.ant-drawer-open')
       const firstMember = drawer.locator('.ant-list-item').first()
 
       if (await firstMember.isVisible()) {
@@ -223,13 +223,16 @@ test.describe('Group Membership Management', () => {
     await viewGroupMembers(page, groupData.name)
     await assertDrawerOpen(page, /members of/i)
 
-    // Close drawer
-    const closeButton = page.locator('.ant-drawer:visible .ant-drawer-close')
+    // Close drawer — the custom Drawer wrapper renders an aria-labelled
+    // button in the title slot instead of the default .ant-drawer-close.
+    const closeButton = page
+      .locator('.ant-drawer.ant-drawer-open')
+      .getByRole('button', { name: 'Close drawer' })
     await closeButton.click()
 
     // Verify drawer closed
     await page.waitForTimeout(300)
-    const drawer = page.locator('.ant-drawer:visible')
+    const drawer = page.locator('.ant-drawer.ant-drawer-open')
     await expect(drawer).not.toBeVisible()
   })
 
@@ -244,18 +247,19 @@ test.describe('Group Membership Management', () => {
     await navigateToUserGroups(page, baseURL)
 
     // Find admin group
-    const adminGroup = page.locator('.ant-card', { hasText: /admin/i })
+    const adminGroup = page.locator('.ant-card', { hasText: /admin/i }).first()
     const adminExists = await adminGroup.isVisible()
 
     if (adminExists) {
-      // Click members button
+      // Click members button (admin card contains a nested card so
+      // members buttons can appear at multiple depths — take first).
       const membersButton = adminGroup.getByRole('button', {
         name: /members/i,
-      })
+      }).first()
       await membersButton.click()
 
       // Wait for drawer to appear
-      const drawer = page.locator('.ant-drawer:visible')
+      const drawer = page.locator('.ant-drawer.ant-drawer-open')
       await drawer.waitFor({ state: 'visible' })
 
       // Loading spinner should appear briefly (or list loads quickly)
@@ -273,18 +277,22 @@ test.describe('Group Membership Management', () => {
     const { baseURL } = testInfra
     await loginAsAdmin(page, baseURL)
 
-    // Start on users page
+    // Start on users page — page heading is level 4, not h1.
     await navigateToUsers(page, baseURL)
-    await expect(page.locator('h1', { hasText: /^users$/i })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /^users$/i, level: 4 })
+    ).toBeVisible()
 
     // Navigate to groups page
     await navigateToUserGroups(page, baseURL)
     await expect(
-      page.locator('h1', { hasText: /user groups/i })
+      page.getByRole('heading', { name: /user groups/i, level: 4 })
     ).toBeVisible()
 
     // Navigate back to users page
     await navigateToUsers(page, baseURL)
-    await expect(page.locator('h1', { hasText: /^users$/i })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /^users$/i, level: 4 })
+    ).toBeVisible()
   })
 })

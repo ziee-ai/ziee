@@ -98,7 +98,7 @@ export async function fillRepositoryForm(page: Page, data: RepositoryFormData) {
 }
 
 export async function submitRepositoryForm(page: Page) {
-  const drawer = page.locator('.ant-drawer:visible').last()
+  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
   await drawer.locator('button:has-text("Add Repository")').click()
   await page.waitForLoadState('networkidle')
 }
@@ -138,7 +138,7 @@ export async function openEditRepositoryDrawer(page: Page, repositoryName: strin
 }
 
 export async function updateRepositoryForm(page: Page) {
-  const drawer = page.locator('.ant-drawer:visible').last()
+  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
   await drawer.locator('button:has-text("Update Repository")').click()
   await page.waitForLoadState('networkidle')
 }
@@ -259,7 +259,7 @@ export async function clickTestConnectionFromList(page: Page, repositoryName: st
 }
 
 export async function clickTestConnectionFromDrawer(page: Page): Promise<void> {
-  const drawer = page.locator('.ant-drawer:visible').last()
+  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
   const testButton = drawer.locator('button:has-text("Test Connection")')
   await testButton.click()
 }
@@ -282,7 +282,7 @@ export async function assertTestConnectionButtonVisible(page: Page, repositoryNa
 }
 
 export async function assertTestConnectionButtonInDrawerVisible(page: Page): Promise<void> {
-  const drawer = page.locator('.ant-drawer:visible').last()
+  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
   const testButton = drawer.locator('button:has-text("Test Connection")')
   await expect(testButton).toBeVisible()
 }

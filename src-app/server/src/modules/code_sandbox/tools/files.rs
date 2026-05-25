@@ -269,7 +269,7 @@ pub async fn edit_file(
     let mut new_lines: Vec<String> =
         new_content.lines().map(String::from).collect();
     if append_mode {
-        lines.extend(new_lines.drain(..));
+        lines.append(&mut new_lines);
     } else {
         let real_end = end_line.min(len);
         let _: Vec<String> = lines.drain((start_line - 1)..real_end).collect();
@@ -450,6 +450,8 @@ fn sign_download_token(file_id: Uuid, user_id: Uuid) -> Result<String, AppError>
         user_id: user_id.to_string(),
         exp,
         iat: now.timestamp() as usize,
+        iss: jwt_cfg.issuer.clone(),
+        aud: crate::modules::file::types::DOWNLOAD_TOKEN_AUDIENCE.to_string(),
     };
     encode(
         &Header::default(),

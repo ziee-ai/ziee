@@ -136,7 +136,7 @@ mod tests {
         // Verify the server is responding
         let client = reqwest::Client::new();
         let response = client
-            .get(&server.well_known_url())
+            .get(server.well_known_url())
             .send()
             .await
             .expect("Failed to connect to OAuth mock server");

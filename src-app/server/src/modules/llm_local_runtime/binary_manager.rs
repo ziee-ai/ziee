@@ -241,8 +241,14 @@ impl BinaryManager {
             _ => return Err(format!("Unknown engine: {}", engine).into()),
         };
 
-        // Query GitHub API for releases
-        let client = reqwest::Client::new();
+        // Query GitHub API for releases. Bound the client with explicit
+        // timeouts so a slow/hung response can't tie up the worker
+        // forever. Closes a piece of 08-llm-local-runtime F-09 (Medium).
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .https_only(true)
+            .build()?;
         let url = format!("https://api.github.com/repos/{}/releases", repo);
 
         let response = client
@@ -343,9 +349,9 @@ impl BinaryManager {
             .fetch_optional(&self.pool)
             .await?;
 
-            if let Some(record) = model_version {
-                if let Some(version_id) = record.required_runtime_version_id {
-                    if let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
+            if let Some(record) = model_version
+                && let Some(version_id) = record.required_runtime_version_id
+                    && let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
                         tracing::debug!(
                             "Selected runtime version from model: {} {}",
                             version.engine,
@@ -353,8 +359,6 @@ impl BinaryManager {
                         );
                         return Ok(Some(version));
                     }
-                }
-            }
         }
 
         // Step 2: Check provider's default version
@@ -366,9 +370,9 @@ impl BinaryManager {
             .fetch_optional(&self.pool)
             .await?;
 
-            if let Some(record) = provider_version {
-                if let Some(version_id) = record.default_runtime_version_id {
-                    if let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
+            if let Some(record) = provider_version
+                && let Some(version_id) = record.default_runtime_version_id
+                    && let Some(version) = version_repo::get_by_id(&self.pool, version_id).await? {
                         tracing::debug!(
                             "Selected runtime version from provider: {} {}",
                             version.engine,
@@ -376,8 +380,6 @@ impl BinaryManager {
                         );
                         return Ok(Some(version));
                     }
-                }
-            }
         }
 
         // Step 3: Check system default
@@ -407,7 +409,7 @@ impl BinaryManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
     // Tests would go here, but require database setup
     // These would be integration tests in tests/integration_tests/

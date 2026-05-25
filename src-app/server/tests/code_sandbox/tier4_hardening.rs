@@ -152,7 +152,7 @@ fn argument_injection_after_dashdash_is_inert() {
     assert!(out.status.success(), "exit: {}, stderr: {}", out.status, String::from_utf8_lossy(&out.stderr));
     assert!(stdout.contains(&format!("received: {evil}")), "stdout: {stdout}");
     // Split on the SEP marker — only the second half is the `ls /` output.
-    let listing = stdout.splitn(2, "SEP").nth(1).unwrap_or("");
+    let listing = stdout.split_once("SEP").map(|x| x.1).unwrap_or("");
     assert!(
         !listing.contains("escape-attempt"),
         "escape-attempt directory leaked into sandbox /: listing={listing}"

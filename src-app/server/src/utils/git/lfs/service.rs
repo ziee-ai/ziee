@@ -113,7 +113,7 @@ impl LfsService {
                 ".git/config contains no remote url",
             ))?
             .split('=')
-            .last()
+            .next_back()
             .ok_or(LfsError::InvalidFormat(".git/config url line malformed"))?
             .trim();
         Ok(remote_url.to_owned())
@@ -207,7 +207,16 @@ impl LfsService {
         total_size_all_files: u64,
     ) -> Result<NamedTempFile, LfsError> {
         const MEDIA_TYPE: &str = "application/vnd.git-lfs+json";
-        let client = Client::builder().build()?;
+        // SECURITY: bound the HTTP client with explicit timeouts and a
+        // redirect cap. The previous `Client::builder().build()` used
+        // reqwest defaults (no overall timeout, no per-request budget,
+        // up to 10 redirects with no per-host filter). Closes
+        // 07-llm-model F-07 (Medium).
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(60 * 30)) // 30-min absolute cap (LFS blobs can be GB)
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build()?;
 
         if meta_data.hash != Some(super::metadata::Hash::SHA256) {
             return Err(LfsError::InvalidFormat("Only SHA256 hash is supported"));
@@ -280,6 +289,20 @@ impl LfsService {
             "No action received from LFS server",
         ))?;
 
+        // SECURITY: validate the action.download.href against the SSRF
+        // policy before fetching. The href is server-controlled by the
+        // LFS server we just talked to; a malicious or compromised repo
+        // could return an action pointing at AWS IMDS / RFC 1918 / a
+        // file:// path, and we'd happily fetch it WITH the auth token
+        // attached. Closes 07-llm-model F-01 (Critical) LFS-side.
+        if let Err(e) = crate::utils::url_validator::validate_outbound_url(
+            &action.download.href,
+            &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        ) {
+            return Err(LfsError::InvalidFormat(Box::leak(
+                format!("LFS download URL rejected by SSRF policy: {}", e).into_boxed_str(),
+            )));
+        }
         let url = Self::url_with_auth(&action.download.href, access_token)?;
         let headers: http::HeaderMap = (&action.download.header).try_into()?;
         let download_request_builder = client.get(url).headers(headers);
@@ -469,7 +492,7 @@ impl LfsService {
         fs::remove_file(&lfs_file).await?;
         fs::hard_link(&file_name_cached, lfs_file)
             .await
-            .map_err(|e| LfsError::Io(e))?;
+            .map_err(LfsError::Io)?;
 
         Ok(origin)
     }
@@ -505,11 +528,10 @@ impl LfsService {
         }
 
         // Check for cancellation before starting
-        if let Some(ref token) = cancellation_token {
-            if token.is_cancelled().await {
+        if let Some(ref token) = cancellation_token
+            && token.is_cancelled().await {
                 return Err(LfsError::Cancelled);
             }
-        }
 
         // First scan which of the requested files are LFS pointers
         let mut lfs_files = Vec::new();
@@ -517,29 +539,26 @@ impl LfsService {
 
         for file_path in file_paths {
             // Check for cancellation during scan
-            if let Some(ref token) = cancellation_token {
-                if token.is_cancelled().await {
+            if let Some(ref token) = cancellation_token
+                && token.is_cancelled().await {
                     return Err(LfsError::Cancelled);
                 }
-            }
 
             let full_path = repo_path.join(file_path);
 
             // Use the existing is_lfs_pointer_file function to check if file is an LFS pointer
-            if let Ok(is_lfs) = is_lfs_pointer_file(&full_path).await {
-                if is_lfs {
+            if let Ok(is_lfs) = is_lfs_pointer_file(&full_path).await
+                && is_lfs {
                     // Read the file content to get metadata
-                    if let Ok(content) = fs::read_to_string(&full_path).await {
-                        if let Some((_oid, size)) = parse_lfs_pointer_content(&content) {
+                    if let Ok(content) = fs::read_to_string(&full_path).await
+                        && let Some((_oid, size)) = parse_lfs_pointer_content(&content) {
                             lfs_files.push(LfsPointer {
                                 size,
                                 path: PathBuf::from(file_path),
                             });
                             total_size += size;
                         }
-                    }
                 }
-            }
         }
 
         info!(
@@ -564,11 +583,10 @@ impl LfsService {
 
         for (index, lfs_pointer) in lfs_files.iter().enumerate() {
             // Check for cancellation before each file
-            if let Some(ref token) = cancellation_token {
-                if token.is_cancelled().await {
+            if let Some(ref token) = cancellation_token
+                && token.is_cancelled().await {
                     return Err(LfsError::Cancelled);
                 }
-            }
 
             let file_name = lfs_pointer
                 .path
@@ -634,11 +652,10 @@ impl LfsService {
         }
 
         // Check for cancellation one final time
-        if let Some(ref token) = cancellation_token {
-            if token.is_cancelled().await {
+        if let Some(ref token) = cancellation_token
+            && token.is_cancelled().await {
                 return Err(LfsError::Cancelled);
             }
-        }
 
         // All files downloaded successfully
         let _ = progress_tx.send(LfsProgress {

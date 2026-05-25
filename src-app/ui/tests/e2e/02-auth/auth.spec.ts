@@ -14,7 +14,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -41,7 +44,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
     await page.evaluate(() => {
@@ -76,7 +82,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
     await page.evaluate(() => {
@@ -111,7 +120,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
     await page.evaluate(() => {
@@ -142,7 +154,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
     await page.evaluate(() => {
@@ -175,7 +190,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -215,7 +233,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -252,7 +273,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -289,7 +313,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -327,7 +354,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -365,7 +395,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -398,7 +431,9 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // First-time admin lands on the onboarding wizard, not the chat
+    // home page. Accept either URL pattern.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -421,8 +456,9 @@ test.describe('Authentication', () => {
     // Submit form
     await page.getByRole('button', { name: /^sign up$/i }).click()
 
-    // Should redirect to home page after successful registration
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // New users land on the onboarding wizard; accept either home or
+    // onboarding URL.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
   })
 
   test('should login with valid credentials', async ({ page, testInfra }) => {
@@ -436,7 +472,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -454,7 +493,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /^sign up$/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out after registration and navigate directly to auth
     await page.evaluate(() => {
@@ -474,7 +516,10 @@ test.describe('Authentication', () => {
     await page.getByRole('button', { name: /^sign in$/i }).click()
 
     // Should redirect to home page after successful login
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
   })
 
   test('should login with email instead of username', async ({ page, testInfra }) => {
@@ -488,7 +533,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out and navigate directly to auth
     await page.evaluate(() => {
@@ -506,7 +554,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /^sign up$/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Clear localStorage/sessionStorage to log out
     await page.evaluate(() => {
@@ -526,7 +577,10 @@ test.describe('Authentication', () => {
     await page.getByRole('button', { name: /^sign in$/i }).click()
 
     // Should redirect to home page after successful login
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
   })
 
   test('should validate all required fields on registration', async ({ page, testInfra }) => {
@@ -540,7 +594,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password').fill('password123')
     await page.getByRole('button', { name: /create admin account/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 15000 })
+    // After login/registration, new users are redirected to the
+    // onboarding wizard (`/onboarding?id=getting-started`); existing
+    // users to the home page. Accept either.
+    await expect(page).toHaveURL(/\/(onboarding|$)/, { timeout: 15000 })
 
     // Wait for authentication token to be stored
     await page.waitForFunction(

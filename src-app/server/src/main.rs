@@ -63,36 +63,43 @@ async fn main() {
         }
     };
 
-    // Initialize tracing for logging based on config
-    if let Some(ref logging_config) = config.logging {
-        let level = logging_config
-            .level
-            .parse::<tracing_subscriber::filter::LevelFilter>()
-            .unwrap_or(tracing_subscriber::filter::LevelFilter::INFO);
+    // Initialize tracing for logging based on config.
+    //
+    // Uses EnvFilter so operators can do `RUST_LOG=ziee_chat=debug,sqlx=warn`
+    // for module-level filtering. Closes 14-core F-23 (Info). Falls back
+    // to the config-file level when RUST_LOG is unset.
+    use tracing_subscriber::filter::EnvFilter;
+    let config_level = config
+        .logging
+        .as_ref()
+        .map(|l| l.level.as_str())
+        .unwrap_or("info");
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(config_level));
 
-        match logging_config.format.as_str() {
-            "compact" => {
-                tracing_subscriber::fmt()
-                    .compact()
-                    .with_max_level(level)
-                    .init();
-            }
-            "pretty" => {
-                tracing_subscriber::fmt()
-                    .pretty()
-                    .with_max_level(level)
-                    .init();
-            }
-            _ => {
-                // Default format
-                tracing_subscriber::fmt().with_max_level(level).init();
-            }
+    let format = config
+        .logging
+        .as_ref()
+        .map(|l| l.format.as_str())
+        .unwrap_or("default");
+    match format {
+        "compact" => {
+            tracing_subscriber::fmt()
+                .compact()
+                .with_env_filter(env_filter)
+                .init();
         }
-    } else {
-        // Default logging if not configured
-        tracing_subscriber::fmt()
-            .with_max_level(tracing_subscriber::filter::LevelFilter::INFO)
-            .init();
+        "pretty" => {
+            tracing_subscriber::fmt()
+                .pretty()
+                .with_env_filter(env_filter)
+                .init();
+        }
+        _ => {
+            tracing_subscriber::fmt()
+                .with_env_filter(env_filter)
+                .init();
+        }
     }
 
     tracing::info!("Starting Ziee Chat backend server");
@@ -125,6 +132,16 @@ async fn main() {
     core::init_repositories((*pool).clone());
     tracing::info!("Global repository factory initialized");
 
+    // Initialize at-rest secret storage key from config. Closes
+    // 06-llm-provider F-02 (Critical) once configured; compat mode if
+    // secrets.storage_key is absent.
+    core::secrets::init_storage_key(
+        config
+            .secrets
+            .as_ref()
+            .and_then(|s| s.storage_key.clone()),
+    );
+
     // Initialize modules
     let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
     let mut modules = core::app_builder::create_modules();
@@ -148,8 +165,16 @@ async fn main() {
     // Setup CORS from config
     let cors = core::app_builder::create_cors_layer(&config);
 
-    // Set up JWT service
-    let jwt_service = std::sync::Arc::new(modules::auth::JwtService::new(config.jwt.clone()));
+    // Set up JWT service. try_new refuses weak/placeholder secrets so
+    // the server never boots with a known signer. Closes 01-auth F-10
+    // + 14-core F-03.
+    let jwt_service = match modules::auth::JwtService::try_new(config.jwt.clone()) {
+        Ok(svc) => std::sync::Arc::new(svc),
+        Err(e) => {
+            tracing::error!("Failed to initialize JWT service: {}", e);
+            std::process::exit(1);
+        }
+    };
     tracing::info!("JWT service initialized");
 
     // Set up MCP session manager
@@ -165,11 +190,79 @@ async fn main() {
         (*module_context.db_pool).clone(),
     );
 
-    // Convert ApiRouter to Router and add JWT service and CORS layers
-    // Disable body size limit for model uploads (models can be very large)
+    // Convert ApiRouter to Router and add JWT service and CORS layers.
+    //
+    // SECURITY: the global body limit is set to 16 MB here. Upload routes
+    // that legitimately need more (file upload, model upload, etc.) opt
+    // into a higher per-route limit via `.layer(DefaultBodyLimit::max(N))`
+    // on their handler. The previous `disable()` here let unauthenticated
+    // POSTs to ANY endpoint stream multi-GB bodies and OOM the server —
+    // see 14-core-infrastructure F-01.
+    // SECURITY: middleware stack (A3). Layers wrap from bottom-up so
+    // a request flows through cors → headers → timeout → body-limit
+    // before reaching the handler.
+    //
+    // - DefaultBodyLimit::max — 16 MB cap (per-route upload routes raise this).
+    // - TimeoutLayer 60s — request hard-deadline. SSE/streaming routes that
+    //   need longer override per-route; this is the global default.
+    //   Closes 05-file F-09 generalization + similar.
+    // - Security headers (X-Content-Type-Options, X-Frame-Options,
+    //   Referrer-Policy, Permissions-Policy, Strict-Transport-Security).
+    //   These are response-only defenses but cheap and audit-recommended.
+    // Rate limiter: 5 req/sec per peer IP, burst-able to 60.
+    // PeerIpKeyExtractor uses the TCP peer address (not X-Forwarded-For)
+    // — appropriate for direct-connect deployments and TestServer.
+    // Production behind a reverse proxy should swap for
+    // SmartIpKeyExtractor and configure trusted-forwarded-for sources.
+    // Closes a substantial chunk of the auth/file/chat rate-limit
+    // findings (01-auth F-05, 03-user F-12, 04-chat F-04 message-stream
+    // rate, 06-llm-provider F-13, 08-llm-local-runtime F-06).
+    // Config-driven rate limits — defaults to the A3 production
+    // posture (5 req/s, 60-burst). Tests bump these so a sequential
+    // test sweep against a single peer-IP bucket doesn't 429 itself.
+    let (rl_per_sec, rl_burst) = config
+        .server
+        .rate_limit
+        .as_ref()
+        .map(|r| (r.per_second, r.burst_size))
+        .unwrap_or((5, 60));
+    let governor_conf = std::sync::Arc::new(
+        tower_governor::governor::GovernorConfigBuilder::default()
+            .per_second(rl_per_sec)
+            .burst_size(rl_burst)
+            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
+            .finish()
+            .expect("Failed to build governor config"),
+    );
+    let governor_layer = tower_governor::GovernorLayer {
+        config: governor_conf,
+    };
+
     let app = api_router
         .finish_api(&mut api_doc)
-        .layer(axum::extract::DefaultBodyLimit::disable())
+        .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
+        .layer(governor_layer)
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-content-type-options"),
+            axum::http::HeaderValue::from_static("nosniff"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("x-frame-options"),
+            axum::http::HeaderValue::from_static("DENY"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("referrer-policy"),
+            axum::http::HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("permissions-policy"),
+            axum::http::HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
+        ))
+        .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+            axum::http::header::HeaderName::from_static("strict-transport-security"),
+            axum::http::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ))
         .layer(axum::Extension(event_bus))
         .layer(axum::Extension(jwt_service))
         .layer(axum::Extension(mcp_session_manager.clone()))
@@ -190,8 +283,14 @@ async fn main() {
 
     tracing::info!("Ziee Chat backend server started successfully on {}", addr);
 
-    // Run server with graceful shutdown
-    axum::serve(listener, app.into_make_service())
+    // Run server with graceful shutdown. into_make_service_with_connect_info
+    // surfaces the TCP peer address so tower_governor's PeerIpKeyExtractor
+    // can read it (otherwise rate-limiting fails with HTTP 500 because the
+    // extractor can't find the peer IP). Closes A3 rate-limit wiring.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("Failed to start server");
@@ -207,18 +306,29 @@ async fn main() {
 }
 
 async fn shutdown_signal() {
+    // Graceful-with-warning instead of panicking. Closes 14-core F-19
+    // (Low): a container that strips signal-handler installation
+    // (e.g. unusual seccomp profile) used to crash here; now it
+    // logs + falls back to "never returns", which lets the runtime's
+    // normal shutdown path take over.
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
+        if let Err(e) = signal::ctrl_c().await {
+            tracing::warn!("Failed to install Ctrl+C handler: {}", e);
+            std::future::pending::<()>().await;
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to install signal handler")
-            .recv()
-            .await;
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to install SIGTERM handler: {}", e);
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]

@@ -38,25 +38,22 @@ pub fn validate_create_request(request: &CreateLlmModelRequest) -> Result<(), Ap
     }
 
     // Validate parameters if provided
-    if let Some(ref params) = request.parameters {
-        if let Err(e) = params.validate() {
+    if let Some(ref params) = request.parameters
+        && let Err(e) = params.validate() {
             return Err(AppError::unprocessable_entity("INVALID_PARAMETERS", e));
         }
-    }
 
     // Validate engine settings if provided
     if let Some(ref settings) = request.engine_settings {
-        if let Some(ref mistralrs) = settings.mistralrs {
-            if let Err(e) = mistralrs.validate() {
+        if let Some(ref mistralrs) = settings.mistralrs
+            && let Err(e) = mistralrs.validate() {
                 return Err(AppError::unprocessable_entity("INVALID_ENGINE_SETTINGS", e));
             }
-        }
 
-        if let Some(ref llamacpp) = settings.llamacpp {
-            if let Err(e) = llamacpp.validate() {
+        if let Some(ref llamacpp) = settings.llamacpp
+            && let Err(e) = llamacpp.validate() {
                 return Err(AppError::unprocessable_entity("INVALID_ENGINE_SETTINGS", e));
             }
-        }
     }
 
     Ok(())
@@ -99,25 +96,22 @@ pub fn validate_update_request(request: &UpdateLlmModelRequest) -> Result<(), Ap
     }
 
     // Validate parameters if provided
-    if let Some(ref params) = request.parameters {
-        if let Err(e) = params.validate() {
+    if let Some(ref params) = request.parameters
+        && let Err(e) = params.validate() {
             return Err(AppError::unprocessable_entity("INVALID_PARAMETERS", e));
         }
-    }
 
     // Validate engine settings if provided
     if let Some(ref settings) = request.engine_settings {
-        if let Some(ref mistralrs) = settings.mistralrs {
-            if let Err(e) = mistralrs.validate() {
+        if let Some(ref mistralrs) = settings.mistralrs
+            && let Err(e) = mistralrs.validate() {
                 return Err(AppError::unprocessable_entity("INVALID_ENGINE_SETTINGS", e));
             }
-        }
 
-        if let Some(ref llamacpp) = settings.llamacpp {
-            if let Err(e) = llamacpp.validate() {
+        if let Some(ref llamacpp) = settings.llamacpp
+            && let Err(e) = llamacpp.validate() {
                 return Err(AppError::unprocessable_entity("INVALID_ENGINE_SETTINGS", e));
             }
-        }
     }
 
     Ok(())

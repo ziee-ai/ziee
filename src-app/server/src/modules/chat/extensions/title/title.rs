@@ -117,7 +117,7 @@ impl TitleGenerationExtension {
             });
 
             if let Err(e) = tx.send(Ok(event.into())) {
-                eprintln!("ERROR: Failed to send titleUpdated event: {:?}", e);
+                tracing::error!("ERROR: Failed to send titleUpdated event: {:?}", e);
             }
         }
     }
@@ -130,7 +130,7 @@ impl ChatExtension for TitleGenerationExtension {
     }
 
     async fn initialize(&self, _pool: &PgPool) -> Result<(), AppError> {
-        println!("Title generation extension initialized");
+        tracing::info!("Title generation extension initialized");
         Ok(())
     }
 
@@ -238,7 +238,7 @@ impl ChatExtension for TitleGenerationExtension {
         {
             Ok(title) => title,
             Err(e) => {
-                eprintln!("Error generating title with AI: {}", e);
+                tracing::error!("Error generating title with AI: {}", e);
                 // Fallback to simple title
                 self.generate_simple_title(&user_content)
             }

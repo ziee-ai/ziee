@@ -31,14 +31,34 @@ use super::super::{
 // Helper Functions
 // =====================================================
 
-/// Check if user has admin permissions for MCP servers
-/// Admins can access all servers for administrative/debugging purposes
-fn has_admin_access(groups: &[Group]) -> bool {
-    groups.iter().any(|group| {
-        group.permissions.iter().any(|perm| {
-            perm.starts_with("mcp_servers_admin::")
-        })
-    })
+/// Check if user has admin-level access to MCP servers.
+///
+/// Admins (`user.is_admin = true`) always pass. Group membership
+/// passes ONLY for the four defined `mcp_servers_admin::*` permissions
+/// (read/create/edit/delete) via `check_permission_union`, which
+/// already understands wildcard `*` and hierarchical `mcp_servers_admin::*`.
+///
+/// The previous implementation used `starts_with("mcp_servers_admin::")`
+/// which:
+///   1. Missed root admins because the extractor returns `groups: vec![]`
+///      for `is_admin` users — closes 02-permissions F-06.
+///   2. Was overly broad — any future permission named
+///      `mcp_servers_admin::foo` (e.g. a low-priv `dry_run`) would
+///      silently grant full admin bypass — closes 02-permissions F-07.
+fn has_admin_access(user: &crate::modules::user::models::User, groups: &[Group]) -> bool {
+    use crate::modules::permissions::checker::check_permission_union;
+    if user.is_admin {
+        return true;
+    }
+    const MCP_ADMIN_PERMISSIONS: &[&str] = &[
+        "mcp_servers_admin::read",
+        "mcp_servers_admin::create",
+        "mcp_servers_admin::edit",
+        "mcp_servers_admin::delete",
+    ];
+    MCP_ADMIN_PERMISSIONS
+        .iter()
+        .any(|p| check_permission_union(user, groups, p))
 }
 
 // =====================================================
@@ -53,7 +73,7 @@ pub async fn list_server_tools(
 ) -> ApiResult<Json<ListToolsResponse>> {
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
-    if !has_admin_access(&auth.groups) {
+    if !has_admin_access(&auth.user, &auth.groups) {
         let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
@@ -84,7 +104,7 @@ pub async fn call_server_tool(
 ) -> ApiResult<Json<CallToolResponse>> {
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
-    if !has_admin_access(&auth.groups) {
+    if !has_admin_access(&auth.user, &auth.groups) {
         let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
@@ -120,7 +140,7 @@ pub async fn list_server_resources(
 ) -> ApiResult<Json<ListResourcesResponse>> {
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
-    if !has_admin_access(&auth.groups) {
+    if !has_admin_access(&auth.user, &auth.groups) {
         let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
@@ -151,7 +171,7 @@ pub async fn read_server_resource(
 ) -> ApiResult<Json<ReadResourceResponse>> {
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
-    if !has_admin_access(&auth.groups) {
+    if !has_admin_access(&auth.user, &auth.groups) {
         let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
@@ -181,7 +201,7 @@ pub async fn disconnect_server(
 ) -> ApiResult<Json<()>> {
     // Check if user has access to this server
     // Admins with mcp_servers_admin::* permissions bypass access control
-    if !has_admin_access(&auth.groups) {
+    if !has_admin_access(&auth.user, &auth.groups) {
         let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
 
         if !has_access {
@@ -280,7 +300,7 @@ pub async fn list_server_prompts(
     Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Path(server_id): Path<Uuid>,
 ) -> ApiResult<Json<ListPromptsResponse>> {
-    if !has_admin_access(&auth.groups) {
+    if !has_admin_access(&auth.user, &auth.groups) {
         let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
         if !has_access {
             return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
@@ -301,7 +321,7 @@ pub async fn get_server_prompt(
     Path(server_id): Path<Uuid>,
     Json(request): Json<GetPromptRequest>,
 ) -> ApiResult<Json<GetPromptResponse>> {
-    if !has_admin_access(&auth.groups) {
+    if !has_admin_access(&auth.user, &auth.groups) {
         let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
         if !has_access {
             return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
@@ -347,7 +367,7 @@ pub async fn ping_server(
     Extension(session_manager): Extension<Arc<McpSessionManager>>,
     Path(server_id): Path<Uuid>,
 ) -> ApiResult<Json<PingResponse>> {
-    if !has_admin_access(&auth.groups) {
+    if !has_admin_access(&auth.user, &auth.groups) {
         let has_access = Repos.mcp.can_user_access_server(auth.user.id, server_id).await?;
         if !has_access {
             return Err(AppError::forbidden("USER_NO_ACCESS", "You do not have access to this server").into());
