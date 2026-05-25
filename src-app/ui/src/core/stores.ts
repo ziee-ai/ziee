@@ -45,6 +45,44 @@ type ExtractZustandState<T> = T extends UseBoundStore<infer Store>
       : never
   : never
 
+/**
+ * Wraps a Zustand store in a Proxy that gives consumers four distinct
+ * access patterns — picked by what `state[prop]` IS at the time of
+ * access, not by where the access happens at runtime:
+ *
+ *   1. **Special properties** (`__state`, `__setState`, `__refCount`,
+ *      `__refTracker`, `__destroyed`) — return synchronously, no hooks.
+ *      Safe to read anywhere.
+ *   2. **Function values (actions)** — return the function as-is, no
+ *      hooks. Safe to call anywhere: event handlers, async callbacks,
+ *      module-init code.
+ *   3. **Nested store proxies** (objects with `__refTracker`) — return
+ *      directly, no hooks. Safe to read anywhere. (The nested proxy
+ *      handles its own reactivity.)
+ *   4. **Plain state values** — call `useEffect` + `useStore(useShallow(...))`
+ *      under the hood. The return value is reactive: the component
+ *      re-renders when the value changes.
+ *
+ * The implicit contract: **path 4 must only be entered from inside a
+ * React component render** (same rule that applies to any custom hook).
+ * Whether path 4 is taken is determined by the property's TYPE, which
+ * is stable across renders for any given `(store, prop)` pair, so hook
+ * order is preserved per-component the same way it is for `useState` /
+ * `useEffect`.
+ *
+ * In practice:
+ *   - `Stores.Auth.login()` — function, safe anywhere.
+ *   - `const { user } = Stores.Auth` — state read, MUST be inside a
+ *     component / `use*` hook. Reactive.
+ *   - `Stores.Auth.__state.user` — snapshot read, safe anywhere.
+ *
+ * Reading a non-special, non-action state value from non-component
+ * code throws React's `Invalid hook call` at runtime. There's no
+ * static lint rule today; a `ts-morph` AST walker (`scripts/
+ * lint-stores.ts`) is planned for follow-up to catch this at CI time.
+ *
+ * (audit 01 B-1)
+ */
 export const createStoreProxy = <T extends UseBoundStore<StoreApi<any>>>(
   useStore: T,
 ): Readonly<ExtractZustandState<T>> => {
