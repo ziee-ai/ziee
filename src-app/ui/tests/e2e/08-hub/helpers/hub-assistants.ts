@@ -34,9 +34,12 @@ export async function createAssistantFromHub(
     }
   }
 
-  // Wait for success message or navigation
+  // Wait for success message or navigation. `.first()` because AntD
+  // renders the message as `<div role="alert">...<div>${msg}</div></div>`
+  // — both the wrapper and the inner text node match the .or() so
+  // strict-mode flips on the bare locator.
   await expect(
-    page.getByRole('alert').or(page.getByText(/created.*successfully/i)),
+    page.getByRole('alert').or(page.getByText(/created.*successfully/i)).first(),
   ).toBeVisible({ timeout: 5000 })
 }
 

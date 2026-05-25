@@ -183,7 +183,11 @@ export async function startModelDownload(
 
   await fillDownloadForm(page, data)
 
-  const downloadButton = page.getByRole('button', { name: /start download/i })
+  // Submit label was standardised to verb-only ("Start Download" →
+  // "Download", audit I-2). Scope to the open drawer's primary button
+  // so the locator survives any future label tweaks.
+  const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+  const downloadButton = drawer.locator('.ant-btn-primary')
   await expect(downloadButton).toBeEnabled()
   await downloadButton.click()
 
