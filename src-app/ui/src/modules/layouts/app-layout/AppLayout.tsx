@@ -150,28 +150,43 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [token.colorBgContainer])
 
   // Visual viewport listener for mobile keyboard adjustments
+  //
+  // The previous version wrote `document.body.style.height` AND forced
+  // `document.documentElement.scrollTop = 0` on EVERY resize event.
+  // iOS Safari fires `resize` continuously while the keyboard is
+  // animating in/out, so:
+  //   * the unconditional scrollTop reset yanked the user to the top
+  //     mid-conversation every time they tapped an input;
+  //   * the body height write competed with `.ant-app { height: 100dvh }`
+  //     in index.css, causing layout thrash.
+  //
+  // Fix (audit 02 B-4): only write body height when the viewport has
+  // actually shrunk by more than ~100px from window.innerHeight (a
+  // keyboard-open heuristic). Skip the scrollTop reset entirely —
+  // there's no UX justification for forcing scroll position on
+  // keyboard show, and the cost (lost scroll position) is real.
   useEffect(() => {
-    const updateBodyHeight = () => {
-      if (window.visualViewport) {
-        const height = window.visualViewport.height
-        document.body.style.height = `${height}px`
+    if (!window.visualViewport) return
 
-        // Automatically scroll to top when viewport changes
-        document.documentElement.scrollTop = 0
+    const KEYBOARD_HEURISTIC_PX = 100
+    const updateBodyHeight = () => {
+      if (!window.visualViewport) return
+      const vv = window.visualViewport
+      const keyboardOpen = window.innerHeight - vv.height > KEYBOARD_HEURISTIC_PX
+      if (keyboardOpen) {
+        // Tell the layout to fit the visible area above the keyboard.
+        document.body.style.height = `${vv.height}px`
+      } else {
+        // Keyboard is closed; let CSS (100dvh) take over again.
+        document.body.style.height = ''
       }
     }
 
-    // Check if visual viewport is supported (mainly mobile devices)
-    if (window.visualViewport) {
-      // Set initial height
-      updateBodyHeight()
+    updateBodyHeight()
+    window.visualViewport.addEventListener('resize', updateBodyHeight)
 
-      // Listen for viewport changes (keyboard show/hide)
-      window.visualViewport.addEventListener('resize', updateBodyHeight)
-
-      return () => {
-        window.visualViewport?.removeEventListener('resize', updateBodyHeight)
-      }
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateBodyHeight)
     }
   }, [])
 
