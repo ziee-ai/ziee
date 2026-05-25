@@ -264,6 +264,13 @@ export interface CreateMcpServerRequest {
   usage_mode?: UsageMode
 }
 
+export interface CreateMemoryRequest {
+  content: string
+  importance?: number
+  kind?: string
+  metadata?: any
+}
+
 export interface CreateModelFromHubRequest {
   display_name?: string
   enabled?: boolean
@@ -278,6 +285,10 @@ export interface CreateUserRequest {
   password: string
   permissions?: string[]
   username: string
+}
+
+export interface DeleteAllResponse {
+  deleted: number
 }
 
 export interface DeleteVersionQuery {
@@ -708,6 +719,11 @@ export interface InstanceStatusResponse {
   uptime_seconds?: number
 }
 
+export interface ListMemoriesQuery {
+  limit?: number
+  offset?: number
+}
+
 export interface ListModelsQuery {
   page?: number
   perPage?: number
@@ -914,6 +930,17 @@ export interface McpSettingsResponse {
 export interface MeResponse {
   permissions: string[]
   user: User
+}
+
+export interface MemoryAdminSettings {
+  cosine_threshold: number
+  default_extraction_model_id?: string
+  default_top_k: number
+  embedding_dimensions: number
+  embedding_model_id?: string
+  enabled: boolean
+  id: number
+  updated_at: string
 }
 
 export interface MemoryInfo {
@@ -1641,6 +1668,29 @@ export interface UpdateMcpServerRequest {
   usage_mode?: UsageMode
 }
 
+export interface UpdateMemoryAdminSettingsRequest {
+  cosine_threshold?: number
+  default_extraction_model_id?: string
+  default_top_k?: number
+  embedding_model_id?: string
+  enabled?: boolean
+}
+
+export interface UpdateMemoryRequest {
+  content?: string
+  importance?: number
+  kind?: string
+  metadata?: any
+}
+
+export interface UpdateUserMemorySettingsRequest {
+  extraction_enabled?: boolean
+  extraction_model_id?: string
+  max_memories?: number
+  retention_days?: number
+  retrieval_enabled?: boolean
+}
+
 export interface UpdateUserRequest {
   display_name?: string
   is_active?: boolean
@@ -1722,6 +1772,34 @@ export interface UserMcpDefaultsResponse {
   user_id: string
 }
 
+export interface UserMemory {
+  confidence: number
+  content: string
+  created_at: string
+  embedding_model?: string
+  id: string
+  importance: number
+  kind: string
+  last_recalled_at?: string
+  metadata: any
+  recall_count: number
+  source: string
+  source_message_id?: string
+  updated_at: string
+  user_id: string
+}
+
+export interface UserMemorySettings {
+  created_at: string
+  extraction_enabled: boolean
+  extraction_model_id?: string
+  max_memories: number
+  retention_days?: number
+  retrieval_enabled: boolean
+  updated_at: string
+  user_id: string
+}
+
 // =============================================================================
 // PERMISSIONS
 // =============================================================================
@@ -1797,6 +1875,10 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  MemoryAdminManage = 'memory::admin::manage',
+  MemoryAdminRead = 'memory::admin::read',
+  MemoryRead = 'memory::read',
+  MemoryWrite = 'memory::write',
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
@@ -1886,6 +1968,10 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
+  MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
+  MemoryRead: 'List and read own memories.',
+  MemoryWrite: 'Create, edit, and delete own memories.',
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
@@ -2045,6 +2131,16 @@ export const ApiEndpoints = {
   'McpServerSystem.list': 'GET /api/mcp/system-servers',
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'Memory.admin.get': 'GET /api/admin/memory-settings',
+  'Memory.admin.update': 'PUT /api/admin/memory-settings',
+  'Memory.create': 'POST /api/memories',
+  'Memory.delete': 'DELETE /api/memories/{id}',
+  'Memory.deleteAll': 'DELETE /api/memories/all',
+  'Memory.get': 'GET /api/memories/{id}',
+  'Memory.list': 'GET /api/memories',
+  'Memory.settings.get': 'GET /api/memory/settings',
+  'Memory.settings.update': 'PUT /api/memory/settings',
+  'Memory.update': 'PATCH /api/memories/{id}',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
@@ -2213,6 +2309,16 @@ export type ApiEndpointParameters = {
   'McpServerSystem.list': PaginationQuery
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'Memory.admin.get': void
+  'Memory.admin.update': UpdateMemoryAdminSettingsRequest
+  'Memory.create': CreateMemoryRequest
+  'Memory.delete': { id: string }
+  'Memory.deleteAll': void
+  'Memory.get': { id: string }
+  'Memory.list': { limit?: number; offset?: number }
+  'Memory.settings.get': void
+  'Memory.settings.update': UpdateUserMemorySettingsRequest
+  'Memory.update': { id: string } & UpdateMemoryRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
@@ -2381,6 +2487,16 @@ export type ApiEndpointResponses = {
   'McpServerSystem.list': McpServerListResponse
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.update': McpServer
+  'Memory.admin.get': MemoryAdminSettings
+  'Memory.admin.update': MemoryAdminSettings
+  'Memory.create': UserMemory
+  'Memory.delete': void
+  'Memory.deleteAll': DeleteAllResponse
+  'Memory.get': UserMemory
+  'Memory.list': UserMemory[]
+  'Memory.settings.get': UserMemorySettings
+  'Memory.settings.update': UserMemorySettings
+  'Memory.update': UserMemory
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent

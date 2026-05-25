@@ -1,0 +1,359 @@
+//! REST handlers for `/api/memories` and `/api/admin/memory-settings`.
+
+use aide::transform::TransformOperation;
+use axum::{
+    Json, debug_handler,
+    extract::{Path, Query},
+    http::StatusCode,
+};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use uuid::Uuid;
+
+use crate::{
+    common::{ApiResult, AppError},
+    core::Repos,
+    modules::{
+        memory::{
+            models::{
+                CreateMemoryRequest, MemoryAdminSettings, UpdateMemoryAdminSettingsRequest,
+                UpdateMemoryRequest, UpdateUserMemorySettingsRequest, UserMemory,
+                UserMemorySettings, is_valid_kind,
+            },
+            permissions::{MemoryAdminManage, MemoryAdminRead, MemoryRead, MemoryWrite},
+        },
+        permissions::{RequirePermissions, with_permission},
+    },
+};
+
+/// Hard cap on memory content length — defends against pathological writes.
+const MAX_CONTENT_LEN: usize = 4_000;
+
+/// List/page query params.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListMemoriesQuery {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+fn default_limit() -> i64 {
+    50
+}
+
+#[debug_handler]
+pub async fn list_memories(
+    auth: RequirePermissions<(MemoryRead,)>,
+    Query(q): Query<ListMemoriesQuery>,
+) -> ApiResult<Json<Vec<UserMemory>>> {
+    // Clamp page size to defend against runaway scans.
+    let limit = q.limit.clamp(1, 200);
+    let offset = q.offset.max(0);
+    let rows = Repos
+        .memory
+        .list_for_user(auth.user.id, limit, offset)
+        .await?;
+    Ok((StatusCode::OK, Json(rows)))
+}
+
+pub fn list_memories_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryRead,)>(op)
+        .id("Memory.list")
+        .tag("Memory")
+        .summary("List the caller's own memories")
+        .response::<200, Json<Vec<UserMemory>>>()
+}
+
+#[debug_handler]
+pub async fn get_memory(
+    auth: RequirePermissions<(MemoryRead,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<UserMemory>> {
+    let row = Repos
+        .memory
+        .get_owned(auth.user.id, id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Memory"))?;
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn get_memory_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryRead,)>(op)
+        .id("Memory.get")
+        .tag("Memory")
+        .summary("Fetch a single owned memory")
+        .response::<200, Json<UserMemory>>()
+        .response_with::<404, (), _>(|r| r.description("Not found or not owned"))
+}
+
+#[debug_handler]
+pub async fn create_memory(
+    auth: RequirePermissions<(MemoryWrite,)>,
+    Json(body): Json<CreateMemoryRequest>,
+) -> ApiResult<Json<UserMemory>> {
+    let content = body.content.trim();
+    if content.is_empty() {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "content must not be empty").into());
+    }
+    if content.len() > MAX_CONTENT_LEN {
+        return Err(AppError::bad_request(
+            "VALIDATION_ERROR",
+            "content exceeds 4000 char limit",
+        )
+        .into());
+    }
+    if !is_valid_kind(&body.kind) {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "invalid kind").into());
+    }
+    if !(0..=100).contains(&body.importance) {
+        return Err(AppError::bad_request("VALIDATION_ERROR", "importance must be 0..=100").into());
+    }
+    // Enforce per-user cap; Phase 5 wires `user_memory_settings.max_memories`.
+    let row = Repos
+        .memory
+        .insert(
+            auth.user.id,
+            content,
+            "manual",
+            body.importance,
+            &body.kind,
+            &body.metadata,
+            None,
+        )
+        .await?;
+    Ok((StatusCode::CREATED, Json(row)))
+}
+
+pub fn create_memory_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryWrite,)>(op)
+        .id("Memory.create")
+        .tag("Memory")
+        .summary("Manually create a memory")
+        .response::<201, Json<UserMemory>>()
+        .response_with::<400, (), _>(|r| r.description("Validation error"))
+}
+
+#[debug_handler]
+pub async fn update_memory(
+    auth: RequirePermissions<(MemoryWrite,)>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateMemoryRequest>,
+) -> ApiResult<Json<UserMemory>> {
+    if let Some(c) = &body.content {
+        if c.trim().is_empty() {
+            return Err(
+                AppError::bad_request("VALIDATION_ERROR", "content must not be empty").into(),
+            );
+        }
+        if c.len() > MAX_CONTENT_LEN {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "content exceeds 4000 char limit",
+            )
+            .into());
+        }
+    }
+    if let Some(k) = &body.kind {
+        if !is_valid_kind(k) {
+            return Err(AppError::bad_request("VALIDATION_ERROR", "invalid kind").into());
+        }
+    }
+    if let Some(i) = body.importance {
+        if !(0..=100).contains(&i) {
+            return Err(
+                AppError::bad_request("VALIDATION_ERROR", "importance must be 0..=100").into(),
+            );
+        }
+    }
+    let row = Repos
+        .memory
+        .update_owned(
+            auth.user.id,
+            id,
+            body.content.as_deref(),
+            body.importance,
+            body.kind.as_deref(),
+            body.metadata.as_ref(),
+        )
+        .await?
+        .ok_or_else(|| AppError::not_found("Memory"))?;
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn update_memory_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryWrite,)>(op)
+        .id("Memory.update")
+        .tag("Memory")
+        .summary("Edit an owned memory")
+        .response::<200, Json<UserMemory>>()
+        .response_with::<404, (), _>(|r| r.description("Not found or not owned"))
+}
+
+#[debug_handler]
+pub async fn delete_memory(
+    auth: RequirePermissions<(MemoryWrite,)>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    let deleted = Repos.memory.soft_delete_owned(auth.user.id, id).await?;
+    if !deleted {
+        return Err(AppError::not_found("Memory").into());
+    }
+    Ok((StatusCode::NO_CONTENT, StatusCode::NO_CONTENT))
+}
+
+pub fn delete_memory_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryWrite,)>(op)
+        .id("Memory.delete")
+        .tag("Memory")
+        .summary("Delete an owned memory (soft delete)")
+        .response_with::<204, (), _>(|r| r.description("Deleted"))
+        .response_with::<404, (), _>(|r| r.description("Not found or not owned"))
+}
+
+#[debug_handler]
+pub async fn delete_all_memories(
+    auth: RequirePermissions<(MemoryWrite,)>,
+) -> ApiResult<Json<DeleteAllResponse>> {
+    let n = Repos.memory.hard_delete_all_for_user(auth.user.id).await?;
+    Ok((
+        StatusCode::OK,
+        Json(DeleteAllResponse { deleted: n as i64 }),
+    ))
+}
+
+#[derive(Debug, serde::Serialize, JsonSchema)]
+pub struct DeleteAllResponse {
+    pub deleted: i64,
+}
+
+pub fn delete_all_memories_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryWrite,)>(op)
+        .id("Memory.deleteAll")
+        .tag("Memory")
+        .summary("Hard-delete every memory for the caller")
+        .response::<200, Json<DeleteAllResponse>>()
+}
+
+// ── user memory settings ────────────────────────────────────────────
+
+#[debug_handler]
+pub async fn get_user_settings(
+    auth: RequirePermissions<(MemoryRead,)>,
+) -> ApiResult<Json<UserMemorySettings>> {
+    let row = Repos.memory.get_or_init_user_settings(auth.user.id).await?;
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn get_user_settings_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryRead,)>(op)
+        .id("Memory.settings.get")
+        .tag("Memory")
+        .summary("Fetch the caller's memory settings")
+        .response::<200, Json<UserMemorySettings>>()
+}
+
+#[debug_handler]
+pub async fn update_user_settings(
+    auth: RequirePermissions<(MemoryWrite,)>,
+    Json(body): Json<UpdateUserMemorySettingsRequest>,
+) -> ApiResult<Json<UserMemorySettings>> {
+    if let Some(n) = body.max_memories {
+        if !(1..=100_000).contains(&n) {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "max_memories out of range",
+            )
+            .into());
+        }
+    }
+    if let Some(Some(d)) = body.retention_days {
+        if !(1..=3_650).contains(&d) {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "retention_days out of range (1..=3650)",
+            )
+            .into());
+        }
+    }
+    let row = Repos
+        .memory
+        .update_user_settings(
+            auth.user.id,
+            body.extraction_enabled,
+            body.retrieval_enabled,
+            body.max_memories,
+            body.retention_days,
+            body.extraction_model_id,
+        )
+        .await?;
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn update_user_settings_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryWrite,)>(op)
+        .id("Memory.settings.update")
+        .tag("Memory")
+        .summary("Update the caller's memory settings")
+        .response::<200, Json<UserMemorySettings>>()
+}
+
+// ── admin settings ──────────────────────────────────────────────────
+
+#[debug_handler]
+pub async fn get_admin_settings(
+    _auth: RequirePermissions<(MemoryAdminRead,)>,
+) -> ApiResult<Json<MemoryAdminSettings>> {
+    let row = Repos.memory.get_admin_settings().await?;
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn get_admin_settings_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryAdminRead,)>(op)
+        .id("Memory.admin.get")
+        .tag("Memory")
+        .summary("Read admin memory settings")
+        .response::<200, Json<MemoryAdminSettings>>()
+}
+
+#[debug_handler]
+pub async fn update_admin_settings(
+    _auth: RequirePermissions<(MemoryAdminManage,)>,
+    Json(body): Json<UpdateMemoryAdminSettingsRequest>,
+) -> ApiResult<Json<MemoryAdminSettings>> {
+    if let Some(k) = body.default_top_k {
+        if !(1..=100).contains(&k) {
+            return Err(
+                AppError::bad_request("VALIDATION_ERROR", "default_top_k out of range").into(),
+            );
+        }
+    }
+    if let Some(t) = body.cosine_threshold {
+        if !(0.0..=2.0).contains(&t) {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "cosine_threshold out of range (0.0..=2.0)",
+            )
+            .into());
+        }
+    }
+    let row = Repos
+        .memory
+        .update_admin_settings(
+            body.embedding_model_id,
+            body.default_extraction_model_id,
+            body.default_top_k,
+            body.cosine_threshold,
+            body.enabled,
+        )
+        .await?;
+    Ok((StatusCode::OK, Json(row)))
+}
+
+pub fn update_admin_settings_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryAdminManage,)>(op)
+        .id("Memory.admin.update")
+        .tag("Memory")
+        .summary("Update admin memory settings")
+        .response::<200, Json<MemoryAdminSettings>>()
+}
