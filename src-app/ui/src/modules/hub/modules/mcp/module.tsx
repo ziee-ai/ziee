@@ -36,7 +36,10 @@ export default createModule({
         icon: <ApiOutlined />,
         component: McpServersHubTab,
         order: 30,
-        permission: 'hub::mcp_servers::read',
+        permissions: {
+          read: 'hub::mcp_servers::read',
+          refresh: 'hub::mcp_servers::refresh',
+        },
         refresh: async () => {
           await useHubMcpServersStore.getState().refreshFromGitHub()
         },

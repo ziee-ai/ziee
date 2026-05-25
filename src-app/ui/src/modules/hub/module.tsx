@@ -33,6 +33,16 @@ export default createModule({
         label: 'Hub',
         path: '/hub',
         order: 30,
+        // When adding a new hub submodule, list its ::read here so
+        // the sidebar entry only appears for users with access to at
+        // least one tab.
+        permission: {
+          anyOf: [
+            'hub::models::read',
+            'hub::assistants::read',
+            'hub::mcp_servers::read',
+          ],
+        },
       },
     ],
   },

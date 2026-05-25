@@ -8,6 +8,7 @@ import type { HubAssistant } from '@/api-client/types'
 import { useState } from 'react'
 import { AssistantDetailsDrawer } from '@/modules/hub/modules/assistants/components/AssistantDetailsDrawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 import { useNavigate } from 'react-router-dom'
 
 const { Text } = Typography
@@ -21,6 +22,7 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
   const navigate = useNavigate()
   const [showDetails, setShowDetails] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const canCreate = usePermission('hub::assistants::create')
 
   // Check if assistant was already created from this hub assistant
   const isAlreadyCreated =
@@ -94,22 +96,30 @@ export function AssistantHubCard({ assistant }: AssistantHubCardProps) {
                 >
                   Details
                 </Button>
-                <Button
-                  type={isAlreadyCreated ? undefined : 'primary'}
-                  icon={isAlreadyCreated ? <EyeOutlined /> : <RobotOutlined />}
-                  onClick={e => {
-                    e.stopPropagation()
-                    if (isAlreadyCreated) {
+                {isAlreadyCreated ? (
+                  <Button
+                    icon={<EyeOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
                       navigate('/assistants')
-                    } else {
+                    }}
+                  >
+                    View Assistant
+                  </Button>
+                ) : canCreate ? (
+                  <Button
+                    type="primary"
+                    icon={<RobotOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
                       handleUseAssistant()
-                    }
-                  }}
-                  loading={isCreating}
-                  disabled={isCreating}
-                >
-                  {isAlreadyCreated ? 'View Assistant' : 'Use Assistant'}
-                </Button>
+                    }}
+                    loading={isCreating}
+                    disabled={isCreating}
+                  >
+                    Use Assistant
+                  </Button>
+                ) : null}
               </div>
             </div>
 

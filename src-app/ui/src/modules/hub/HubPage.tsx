@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Button, Dropdown, Flex, Segmented, theme, Typography } from 'antd'
+import { Button, Dropdown, Flex, Result, Segmented, theme, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { IoIosArrowDown, IoIosArrowForward } from 'react-icons/io'
 import { Stores } from '@/core/stores'
+import { evaluatePermission } from '@/core/permissions'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
@@ -14,32 +15,57 @@ export function HubPage() {
   const { activeTab: urlActiveTab } = useParams()
   const navigate = useNavigate()
   const { slots } = Stores.ModuleSystem
+  const { user, permissions } = Stores.Auth
   const windowMinSize = useWindowMinSize()
   const { token } = theme.useToken()
   const [refreshing, setRefreshing] = useState(false)
 
-  // Get hub tabs from slot system
+  // Get hub tabs from slot system, sorted
   const hubTabs = useMemo(() => {
     return (slots.get('hubTabs') || []).sort((a, b) => a.order - b.order)
   }, [slots])
 
-  // Filter by permissions (TODO: integrate permission check)
-  const visibleTabs = hubTabs
+  // Filter to tabs the current user has read permission on
+  const visibleTabs = useMemo(
+    () =>
+      hubTabs.filter(t =>
+        evaluatePermission(user, permissions, t.permissions.read),
+      ),
+    [hubTabs, user, permissions],
+  )
 
   // Default to first tab if none selected
   const activeTab = urlActiveTab || visibleTabs[0]?.id
 
-  // Redirect to valid tab if needed
+  // Redirect to first visible tab if at /hub with no segment. Skip the
+  // redirect when the user has no visible tabs OR when they've
+  // explicitly navigated to a tab they don't have access to — in both
+  // cases we render an inline 403 instead.
+  const hasUrlSegment = !!urlActiveTab
+  const urlSegmentIsRegistered =
+    hasUrlSegment && hubTabs.some(t => t.id === urlActiveTab)
+  const urlSegmentIsForbidden =
+    urlSegmentIsRegistered &&
+    !visibleTabs.some(t => t.id === urlActiveTab)
+
   useEffect(() => {
-    if (!urlActiveTab && visibleTabs.length > 0) {
+    if (
+      !hasUrlSegment &&
+      visibleTabs.length > 0 &&
+      !urlSegmentIsForbidden
+    ) {
       navigate(`/hub/${visibleTabs[0].id}`, { replace: true })
     }
-  }, [urlActiveTab, visibleTabs, navigate])
+  }, [hasUrlSegment, visibleTabs, navigate, urlSegmentIsForbidden])
+
+  const currentTabSlot = visibleTabs.find(t => t.id === activeTab)
+  const canRefresh = currentTabSlot?.permissions.refresh
+    ? evaluatePermission(user, permissions, currentTabSlot.permissions.refresh)
+    : true
 
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      const currentTabSlot = visibleTabs.find(t => t.id === activeTab)
       if (currentTabSlot?.refresh) {
         await currentTabSlot.refresh()
         message.success('Hub data refreshed successfully')
@@ -51,8 +77,6 @@ export function HubPage() {
       setRefreshing(false)
     }
   }
-
-  const currentTabSlot = visibleTabs.find(t => t.id === activeTab)
 
   // Segmented options for desktop
   const segmentedOptions = visibleTabs.map(tab => ({
@@ -130,14 +154,16 @@ export function HubPage() {
             </div>
           )}
 
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={handleRefresh}
-            loading={refreshing}
-            type="text"
-          >
-            {windowMinSize.xs ? null : 'Refresh'}
-          </Button>
+          {canRefresh && (
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleRefresh}
+              loading={refreshing}
+              type="text"
+            >
+              {windowMinSize.xs ? null : 'Refresh'}
+            </Button>
+          )}
         </div>
       </HeaderBarContainer>
 
@@ -146,11 +172,25 @@ export function HubPage() {
           <div className="max-w-4xl w-full flex flex-col self-center">
             <div className="flex-1 h-full w-full overflow-y-auto">
               <div className="flex flex-col py-3 w-full">
-                {currentTabSlot && (
-                  <LazyComponentRenderer
-                    component={currentTabSlot.component}
-                    fallback={<div>Loading...</div>}
+                {visibleTabs.length === 0 ? (
+                  <Result
+                    status="403"
+                    title="Not authorized"
+                    subTitle="You don't have permission to view any Hub catalog."
                   />
+                ) : urlSegmentIsForbidden ? (
+                  <Result
+                    status="403"
+                    title="Not authorized"
+                    subTitle="You don't have permission to view this Hub tab."
+                  />
+                ) : (
+                  currentTabSlot && (
+                    <LazyComponentRenderer
+                      component={currentTabSlot.component}
+                      fallback={<div>Loading...</div>}
+                    />
+                  )
                 )}
               </div>
             </div>

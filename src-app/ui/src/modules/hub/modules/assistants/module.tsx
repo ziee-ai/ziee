@@ -31,7 +31,10 @@ export default createModule({
         icon: <RobotOutlined />,
         component: AssistantsHubTab,
         order: 20,
-        permission: 'hub::assistants::read',
+        permissions: {
+          read: 'hub::assistants::read',
+          refresh: 'hub::assistants::refresh',
+        },
         refresh: async () => {
           await useHubAssistantsStore.getState().refreshFromGitHub()
         },

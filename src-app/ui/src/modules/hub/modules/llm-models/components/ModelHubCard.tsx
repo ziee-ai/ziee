@@ -15,6 +15,7 @@ import type { HubLocalProvider, HubModel, HubModelQuantizationOption } from '@/a
 import { useState } from 'react'
 import { ModelDetailsDrawer } from '@/modules/hub/modules/llm-models/components/ModelDetailsDrawer'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
 
 const { Text } = Typography
 
@@ -25,6 +26,7 @@ interface ModelHubCardProps {
 export function ModelHubCard({ model }: ModelHubCardProps) {
   const { message, modal } = App.useApp()
   const [showDetails, setShowDetails] = useState(false)
+  const canDownload = usePermission('hub::models::download')
 
   const { localProviders } = Stores.HubModels
   const { downloads } = Stores.LlmModelDownload
@@ -263,18 +265,20 @@ export function ModelHubCard({ model }: ModelHubCardProps) {
                 >
                   README
                 </Button>
-                <Button
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  onClick={e => {
-                    e.stopPropagation()
-                    handleDownload()
-                  }}
-                  disabled={isModelBeingDownloaded}
-                  loading={isModelBeingDownloaded}
-                >
-                  Download
-                </Button>
+                {canDownload && (
+                  <Button
+                    type="primary"
+                    icon={<DownloadOutlined />}
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleDownload()
+                    }}
+                    disabled={isModelBeingDownloaded}
+                    loading={isModelBeingDownloaded}
+                  >
+                    Download
+                  </Button>
+                )}
               </div>
             </div>
 

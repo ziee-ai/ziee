@@ -34,7 +34,10 @@ export default createModule({
         icon: <CloudServerOutlined />,
         component: ModelsHubTab,
         order: 10,
-        permission: 'hub::models::read',
+        permissions: {
+          read: 'hub::models::read',
+          refresh: 'hub::models::refresh',
+        },
         refresh: async () => {
           await useHubModelsStore.getState().refreshFromGitHub()
         },
