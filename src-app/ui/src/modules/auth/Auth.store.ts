@@ -10,7 +10,11 @@ import { Stores, type StoreProxy } from '@/core/stores'
 import '@/modules/onboarding/events/types'
 
 export interface AutoLoginResponse {
-  user: User
+  // Nullable: the OAuth callback path passes `null` because the
+  // server is the truth (initAuth() re-fetches /me right after).
+  // The store handles the null case by holding isAuthenticated=false
+  // + isLoading=true until /me resolves.
+  user: User | null
   access_token: string
   refresh_token: string
   expires_in?: number // Seconds until token expires (optional for backward compatibility)
@@ -160,6 +164,30 @@ export const useAuthStore = create<AuthState>()(
         },
 
         setAuthFromAutoLogin: (response: AutoLoginResponse) => {
+          // The OAuth callback flow passes a null user (the server is
+          // the source of truth; initAuth() re-fetches /me right
+          // after). During the gap between this set() and the
+          // initAuth resolve, code that reads `user.something`
+          // would crash on null. Hold isAuthenticated=false until
+          // we have a real user.
+          //
+          // CRITICAL: use `isInitializing`, NOT `isLoading`. initAuth
+          // early-returns when isLoading is already true — setting it
+          // here would silently skip the /me fetch and the user gets
+          // bounced back to /auth by AuthGuard. AuthGuard already
+          // gates its spinner on isInitializing during the bootstrap
+          // path, so the UX (spinner instead of login flash) is
+          // identical. (round-5 audit finding.)
+          if (response.user == null) {
+            set({
+              user: null,
+              token: response.access_token,
+              isAuthenticated: false,
+              isInitializing: true,
+              error: null,
+            })
+            return
+          }
           set({
             user: response.user,
             token: response.access_token,

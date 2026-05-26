@@ -161,6 +161,20 @@ pub struct ServerConfig {
     /// sequential requests against 127.0.0.1 (single peer-IP bucket).
     #[serde(default)]
     pub rate_limit: Option<RateLimitConfig>,
+    /// Honor X-Forwarded-Host / X-Forwarded-Proto in OAuth
+    /// redirect_uri derivation.
+    ///
+    /// **Default false.** Only set true when the server is behind a
+    /// reverse proxy that STRIPS inbound X-Forwarded-* headers and
+    /// sets them itself (nginx `proxy_set_header`, Caddy `header_up`,
+    /// Cloudflare / Vercel / Fly defaults, the Vite dev proxy in
+    /// this repo's vite.config.ts). When the server is exposed
+    /// directly, this MUST stay false — otherwise an attacker can
+    /// send `X-Forwarded-Host: evil.com` to the backend and a
+    /// permissive IdP (Keycloak wildcard, Dex, Authentik) will hand
+    /// the OAuth `code` to evil.com. F-07 attack class.
+    #[serde(default)]
+    pub trust_forwarded_headers: bool,
 }
 
 #[derive(Debug, Deserialize, Clone)]

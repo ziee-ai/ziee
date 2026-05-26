@@ -133,6 +133,387 @@
         }
       }
     },
+    "/api/auth/providers": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "description": "List enabled third-party auth providers for the login page. Public endpoint; returns only display fields, never config or secrets.",
+        "operationId": "Auth.listProviders",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProvidersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/link-account": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "description": "Confirm a First-Broker-Login pending link by proving ownership of the existing local account with its password. Returns a fresh JWT pair on success.",
+        "operationId": "Auth.linkAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/auth-providers": {
+      "get": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "List all configured auth providers (secrets masked)",
+        "description": "\n\n**Required Permission:** `auth_providers::read`\n\nList configured auth providers and view their (masked) config.",
+        "operationId": "AuthProviders.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List configured auth providers and view their (masked) config.",
+                        "name": "AuthProvidersRead",
+                        "value": "auth_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuthProviderResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Create a new auth provider",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAuthProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Admin-view summary of an auth provider. The `config` JSONB is\n returned with `client_secret` and any sensitive key contents\n MASKED — see handlers.rs::mask_provider_config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/auth-providers/{id}": {
+      "put": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Update an auth provider (empty client_secret preserves existing)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAuthProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Admin-view summary of an auth provider. The `config` JSONB is\n returned with `client_secret` and any sensitive key contents\n MASKED — see handlers.rs::mask_provider_config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Delete an auth provider (cascades user_auth_links)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/auth-providers/{id}/test": {
+      "post": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Test the auth provider's connection (probes discovery + credentials)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.test",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/auth-providers/test-config": {
+      "post": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Test a provider config without saving (used by the EditDrawer)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.testConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAuthProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/users": {
       "get": {
         "tags": [
@@ -9624,6 +10005,65 @@
           "total"
         ]
       },
+      "AuthProviderResponse": {
+        "description": "Admin-view summary of an auth provider. The `config` JSONB is\n returned with `client_secret` and any sensitive key contents\n MASKED — see handlers.rs::mask_provider_config.",
+        "type": "object",
+        "properties": {
+          "config": true,
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_test_at": {
+            "description": "When the admin last clicked Test on this row (null = never).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_test_message": {
+            "description": "Human-readable detail from the last test.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_test_ok": {
+            "description": "Outcome of the last test (null = never tested).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "enabled",
+          "config",
+          "created_at",
+          "updated_at"
+        ]
+      },
       "AuthResponse": {
         "description": "JWT token pair (access + refresh)",
         "type": "object",
@@ -10372,6 +10812,28 @@
           }
         }
       },
+      "CreateAuthProviderRequest": {
+        "type": "object",
+        "properties": {
+          "config": true,
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "description": "One of: `oidc`, `oauth2`, `apple`, `ldap`, `local`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "provider_type",
+          "config"
+        ]
+      },
       "CreateBranchRequest": {
         "description": "Request to create a new branch (for edit/regenerate)\n Both parent_branch_id (from conversation's active branch) and from_message_id are required",
         "type": "object",
@@ -10788,6 +11250,22 @@
           "username",
           "email",
           "password"
+        ]
+      },
+      "DeleteProviderResponse": {
+        "type": "object",
+        "properties": {
+          "affected_user_links": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted",
+          "affected_user_links"
         ]
       },
       "DeleteVersionQuery": {
@@ -12766,6 +13244,23 @@
           {
             "type": "null"
           }
+        ]
+      },
+      "LinkAccountRequest": {
+        "type": "object",
+        "properties": {
+          "link_token": {
+            "description": "Single-use token from /auth/link-account?token=...",
+            "type": "string"
+          },
+          "password": {
+            "description": "User's existing local password — the auth proof for binding\n the social identity.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_token",
+          "password"
         ]
       },
       "ListModelsQuery": {
@@ -15196,6 +15691,40 @@
           }
         }
       },
+      "PublicProvider": {
+        "description": "Public-safe summary of an enabled auth provider — what the login\n page needs to render a provider button. NEVER includes client_id,\n client_secret, or any other config.",
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "provider_type",
+          "display_name"
+        ]
+      },
+      "PublicProvidersResponse": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicProvider"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ]
+      },
       "ReadResourceRequest": {
         "type": "object",
         "properties": {
@@ -16404,6 +16933,21 @@
           "message"
         ]
       },
+      "TestProviderResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "message"
+        ]
+      },
       "TestRepositoryConnectionRequest": {
         "type": "object",
         "properties": {
@@ -16721,6 +17265,29 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "UpdateAuthProviderRequest": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "description": "Patch the provider's JSONB config. Empty `client_secret`\n field is treated as \"leave the existing value unchanged\" so\n admins can edit other fields without re-entering secrets.",
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         }
       },

@@ -1,6 +1,8 @@
 use serde_json::json;
 
 // OAuth and LDAP provider integration tests (require Docker)
+mod admin_providers_test;
+mod apple_test;
 mod ldap_test;
 mod oauth_test;
 

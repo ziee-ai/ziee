@@ -357,6 +357,12 @@ export default defineConfig({
       '/api/': {
         target: 'http://localhost:${backendPort}',
         changeOrigin: true,
+        // xfwd: forward X-Forwarded-* headers so the backend's
+        // OAuth handler can build redirect_uris that point back
+        // through this Vite proxy (which serves the SPA), not the
+        // backend port directly. Required for the social-login E2E
+        // parity test against navikt.
+        xfwd: true,
       },
     },
   },
