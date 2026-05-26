@@ -40,13 +40,7 @@ export function MemoryStatusPill() {
     if (!conversation?.id) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/conversations/${conversation.id}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memory_mode: next }),
-      })
-      if (!res.ok) throw new Error(`Failed: ${res.status}`)
+      await Stores.Chat.updateConversation({ memory_mode: next })
       setMode(next)
       message.success(`Memory: ${next} for this conversation`)
     } catch (e: any) {

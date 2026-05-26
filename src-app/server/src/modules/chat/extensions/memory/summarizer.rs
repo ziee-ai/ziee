@@ -1,14 +1,13 @@
 //! Conversation summarizer — when a branch exceeds N messages the
 //! summarizer condenses the oldest messages into a single text block
-//! stored in `conversation_summaries`. The retriever then replaces
-//! those summarized messages with the summary when assembling the
-//! prompt, freeing context budget.
+//! stored in `conversation_summaries`. `apply_summary_to_history`
+//! (called from `MemoryExtension::before_llm_call`) replaces those
+//! summarized messages in the LLM request with the summary block,
+//! freeing real prompt-side budget.
 //!
-//! Phase 6 scaffold. The trigger logic + DB shape are wired up here;
-//! actual integration with `convert_history_to_messages_with_extensions`
-//! is gated behind `apply_summary_to_history` which callers invoke
-//! with the freshly-loaded conversation history. The full integration
-//! sits in the chat streaming path; this module exposes the primitives.
+//! Trigger lives in `MemoryExtension::after_llm_call` (fire-and-forget
+//! spawn). Threshold + keep-recent come from `memory_admin_settings`
+//! (admin-tunable, no restart needed).
 
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Provider, Role};
 use chrono::{DateTime, Utc};
@@ -67,9 +66,29 @@ pub async fn fetch_summary(
     Ok(row)
 }
 
-/// Replace summarized messages in `chat_request` with the persisted
-/// summary block. Idempotent — if no summary exists for this branch,
-/// the request is left untouched.
+/// Replace the summarized prefix of `chat_request.messages` with the
+/// persisted summary block. Idempotent — if no summary exists for this
+/// branch, the request is left untouched.
+///
+/// Pruning algorithm: chat_request.messages is built as
+///   [System*, User|Assistant*]
+/// where the leading System block is the assistant's instructions
+/// (and any other extension-injected system context that has ALREADY
+/// run before us — the retriever's memory-block comes AFTER summary
+/// per the call order in `MemoryExtension::before_llm_call`).
+///
+/// We:
+///   1. Count the leading System prefix length → `system_prefix_len`.
+///   2. Drop the next `summary.message_count` messages — these are the
+///      user/assistant turns the summary condenses. Clamp to the
+///      available range so a shorter-than-expected history doesn't
+///      panic.
+///   3. Insert the summary as a single System message at
+///      `system_prefix_len` (where the dropped block used to start).
+///
+/// Net effect: the LLM sees `[System*, SummaryBlock, RecentTurns]`
+/// instead of `[System*, AllOldTurns, RecentTurns]`. Context budget
+/// gets freed proportionally to `summary.message_count`.
 pub async fn apply_summary_to_history(
     branch_id: Uuid,
     chat_request: &mut ChatRequest,
@@ -80,23 +99,32 @@ pub async fn apply_summary_to_history(
         None => return Ok(()),
     };
 
-    // Insert the summary AFTER any existing system messages (typically
-    // the assistant extension's primary system prompt). Audit R7-#6:
-    // putting the summary at index 0 buried explicit instructions
-    // beneath supplementary context. Placing summary right after the
-    // last leading system message keeps the LLM's attention on
-    // instructions while still giving it the condensed history early.
-    let block = format!(
-        "## Earlier conversation summary ({} messages condensed):\n\n{}",
-        summary.message_count, summary.summary_text
-    );
-    let insert_at = chat_request
+    let system_prefix_len = chat_request
         .messages
         .iter()
         .take_while(|m| matches!(m.role, Role::System))
         .count();
+
+    // Clamp to the actual length so we never drain past the end. In
+    // normal operation the history has at least keep_recent verbatim
+    // messages remaining; the clamp guards pathological cases (race
+    // between summary write and history truncation, history rebuilt
+    // smaller than at summarization time, etc.).
+    let raw_drop_until = system_prefix_len.saturating_add(summary.message_count as usize);
+    let drop_until = raw_drop_until.min(chat_request.messages.len());
+
+    if drop_until > system_prefix_len {
+        chat_request
+            .messages
+            .drain(system_prefix_len..drop_until);
+    }
+
+    let block = format!(
+        "## Earlier conversation summary ({} messages condensed):\n\n{}",
+        summary.message_count, summary.summary_text
+    );
     chat_request.messages.insert(
-        insert_at,
+        system_prefix_len,
         ChatMessage {
             role: Role::System,
             content: vec![ContentBlock::Text { text: block }],

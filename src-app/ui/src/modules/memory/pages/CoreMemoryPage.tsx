@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Typography, Select, Spin, Empty } from 'antd'
 import { Stores } from '@/core/stores'
 import { CoreMemoryBlocksEditor } from '@/modules/memory/components/CoreMemoryBlocksEditor'
@@ -16,34 +16,16 @@ const { Title, Paragraph } = Typography
  */
 export function CoreMemoryPage() {
   const [assistantId, setAssistantId] = useState<string | null>(null)
-  const [assistants, setAssistants] = useState<
-    { id: string; name: string; display_name?: string | null }[]
-  >([])
-  const [loading, setLoading] = useState(false)
+  const { assistants: assistantsMap, loading } = Stores.UserAssistants
 
   useEffect(() => {
-    setLoading(true)
-    fetch('/api/assistants?page=1&per_page=200', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((body: any) => {
-        const rows = body?.assistants ?? body ?? []
-        setAssistants(
-          rows.map((a: any) => ({
-            id: a.id,
-            name: a.name,
-            display_name: a.display_name,
-          })),
-        )
-      })
-      .catch(() => {
-        // Non-fatal: editor stays empty and user can't pick. The
-        // empty state below explains why.
-      })
-      .finally(() => setLoading(false))
-    // Touch the memories store to keep parity with the other memory
-    // pages' init pattern.
-    Stores.Memories
+    Stores.UserAssistants.loadUserAssistants()
   }, [])
+
+  const assistants = useMemo(
+    () => Array.from(assistantsMap.values()),
+    [assistantsMap],
+  )
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -71,7 +53,7 @@ export function CoreMemoryPage() {
             onChange={(v) => setAssistantId(v ?? null)}
             options={assistants.map((a) => ({
               value: a.id,
-              label: a.display_name || a.name,
+              label: a.name,
             }))}
             showSearch={{ optionFilterProp: 'label' }}
             allowClear

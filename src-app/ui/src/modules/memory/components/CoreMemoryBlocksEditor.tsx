@@ -13,19 +13,10 @@ import {
   Empty,
 } from 'antd'
 import { DeleteOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
+import { ApiClient } from '@/api-client'
+import type { CoreMemoryBlock } from '@/api-client/types'
 
 const { Title, Paragraph, Text } = Typography
-
-interface CoreMemoryBlock {
-  id: string
-  assistant_id: string
-  user_id: string
-  block_label: string
-  content: string
-  char_limit: number
-  created_at: string
-  updated_at: string
-}
 
 /**
  * Letta-style core-memory block editor for an assistant. Renders below
@@ -45,11 +36,8 @@ export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string })
   async function load() {
     setLoading(true)
     try {
-      const res = await fetch(`/api/assistants/${assistantId}/core-memory`, {
-        credentials: 'include',
-      })
-      if (!res.ok) throw new Error(`Load failed: ${res.status}`)
-      setBlocks(await res.json())
+      const rows = await ApiClient.CoreMemory.list({ assistant_id: assistantId })
+      setBlocks(rows)
     } catch (e: any) {
       message.error(e?.message || 'Failed to load core memory blocks')
     } finally {
@@ -121,15 +109,15 @@ export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string })
                     okText="Delete"
                     okButtonProps={{ danger: true }}
                     onConfirm={async () => {
-                      const res = await fetch(
-                        `/api/assistants/${assistantId}/core-memory/${b.block_label}`,
-                        { method: 'DELETE', credentials: 'include' },
-                      )
-                      if (res.ok || res.status === 204) {
+                      try {
+                        await ApiClient.CoreMemory.delete({
+                          assistant_id: assistantId,
+                          block_label: b.block_label,
+                        })
                         message.success('Block deleted')
                         await load()
-                      } else {
-                        message.error('Delete failed')
+                      } catch (e: any) {
+                        message.error(e?.message || 'Delete failed')
                       }
                     }}
                   >
@@ -195,21 +183,12 @@ function BlockFormModal({
   }) => {
     setSaving(true)
     try {
-      const res = await fetch('/api/assistants/core-memory', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assistant_id: assistantId,
-          block_label: values.block_label,
-          content: values.content,
-          char_limit: values.char_limit,
-        }),
+      await ApiClient.CoreMemory.upsert({
+        assistant_id: assistantId,
+        block_label: values.block_label,
+        content: values.content,
+        char_limit: values.char_limit,
       })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Save failed: ${res.status}`)
-      }
       message.success(existing ? 'Block updated' : 'Block added')
       onClose()
       await onSaved()

@@ -56,15 +56,11 @@ impl ChatExtension for MemoryExtension {
             .and_then(|v| v.as_str())
             .and_then(|s| uuid::Uuid::parse_str(s).ok());
 
-        // Summarizer: if this branch has a persisted summary, prepend
-        // it as a system block. Plan §6 Phase 6: "summary replaces old
-        // turns in convert_history_to_messages_with_extensions()". We
-        // can't rewrite the history at this hook (it's already in
-        // chat_request.messages), but we CAN prepend a summary block
-        // so the LLM has condensed context for older turns. The same
-        // ChatRequest still carries verbatim recent messages, so the
-        // LLM gets summary + recent — context budget freed without
-        // dropping any recent turn.
+        // Summarizer: drop the summarized prefix of chat_request.messages
+        // and replace it with the persisted summary block. Net effect on
+        // the LLM call: [System*, SummaryBlock, RecentTurns] instead of
+        // [System*, AllOldTurns, RecentTurns]. Real prompt-side budget
+        // freed proportionally to summary.message_count. Plan §6 Phase 6.
         if let Err(e) =
             super::summarizer::apply_summary_to_history(context.branch_id, request).await
         {
