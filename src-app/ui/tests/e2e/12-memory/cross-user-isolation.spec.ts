@@ -3,7 +3,7 @@ import {
   loginAsAdmin,
   getAdminToken,
   createTestUser,
-  loginAs,
+  login,
 } from '../../common/auth-helpers'
 
 /**
@@ -37,7 +37,7 @@ test.describe('Memory — cross-user isolation', () => {
     const bob = await memoryUser(apiURL, 'iso_bob')
 
     // Alice logs in, adds a memory.
-    await loginAs(page, baseURL, alice, 'password123')
+    await login(page, baseURL, alice, 'password123')
     await page.goto(`${baseURL}/memories`)
     await page.getByRole('button', { name: /Add memory/ }).click()
     await page
@@ -51,7 +51,7 @@ test.describe('Memory — cross-user isolation', () => {
     // Log out and back in as Bob.
     await page.context().clearCookies()
     await page.goto(`${baseURL}/login`)
-    await loginAs(page, baseURL, bob, 'password123')
+    await login(page, baseURL, bob, 'password123')
     await page.goto(`${baseURL}/memories`)
 
     // Bob's list must NOT contain Alice's secret.

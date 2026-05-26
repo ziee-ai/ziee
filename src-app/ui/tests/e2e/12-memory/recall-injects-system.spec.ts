@@ -3,7 +3,7 @@ import {
   loginAsAdmin,
   getAdminToken,
   createTestUser,
-  loginAs,
+  login,
 } from '../../common/auth-helpers'
 
 /**
@@ -36,7 +36,7 @@ test.describe('Memory — retrieval injects system block', () => {
       'memory::read',
       'memory::write',
     ])
-    await loginAs(page, baseURL, username, 'password123')
+    await login(page, baseURL, username, 'password123')
 
     // Seed a known memory directly via the REST API (faster than UI).
     await page.request.post(`${apiURL}/api/memories`, {

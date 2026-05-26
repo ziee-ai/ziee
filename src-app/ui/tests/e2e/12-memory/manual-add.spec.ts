@@ -3,7 +3,7 @@ import {
   loginAsAdmin,
   getAdminToken,
   createTestUser,
-  loginAs,
+  login,
 } from '../../common/auth-helpers'
 
 /**
@@ -34,7 +34,7 @@ test.describe('Memory — manual add', () => {
   test('add → list → delete', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     const username = await memoryUser(apiURL, 'mem_add')
-    await loginAs(page, baseURL, username, 'password123')
+    await login(page, baseURL, username, 'password123')
 
     await page.goto(`${baseURL}/memories`)
     await expect(page.getByRole('heading', { name: 'My Memories' })).toBeVisible()

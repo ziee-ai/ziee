@@ -146,9 +146,39 @@ pub async fn update_conversation(
             return Err(AppError::bad_request("VALIDATION_ERROR", "Title must not exceed 500 characters").into());
         }
 
-    let conversation = Repos.chat.core.update_conversation( id, auth.user.id, request.title)
+    // Validate memory_mode if provided
+    if let Some(ref mode) = request.memory_mode {
+        if !matches!(mode.as_str(), "inherit" | "on" | "off") {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "memory_mode must be one of: inherit, on, off",
+            )
+            .into());
+        }
+    }
+
+    let mut conversation = Repos.chat.core.update_conversation( id, auth.user.id, request.title)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
+
+    // Memory mode is on a separate column not covered by the generic
+    // update_conversation repo method; one-shot SQL keeps the diff small.
+    if let Some(mode) = request.memory_mode {
+        let pool = crate::core::Repos.memory.pool_clone();
+        sqlx::query(
+            "UPDATE conversations SET memory_mode = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3",
+        )
+        .bind(&mode)
+        .bind(id)
+        .bind(auth.user.id)
+        .execute(&pool)
+        .await
+        .map_err(AppError::database_error)?;
+        // Re-fetch to keep response in sync.
+        conversation = Repos.chat.core.get_conversation(id, auth.user.id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Conversation"))?;
+    }
 
     Ok((StatusCode::OK, Json(conversation)))
 }

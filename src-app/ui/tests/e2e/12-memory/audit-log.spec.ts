@@ -3,7 +3,7 @@ import {
   loginAsAdmin,
   getAdminToken,
   createTestUser,
-  loginAs,
+  login,
 } from '../../common/auth-helpers'
 
 /**
@@ -33,7 +33,7 @@ test.describe('Memory — audit log', () => {
   test('add+update+delete each record an audit entry', async ({ page, testInfra }) => {
     const { baseURL, apiURL } = testInfra
     const username = await memoryUser(apiURL, 'audit')
-    await loginAs(page, baseURL, username, 'password123')
+    await login(page, baseURL, username, 'password123')
 
     // Drive memory ops via REST (faster than UI) but assert via the
     // public audit-log endpoint we just shipped.
