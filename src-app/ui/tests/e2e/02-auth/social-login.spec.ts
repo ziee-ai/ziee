@@ -192,6 +192,19 @@ test.describe('Social login — provider buttons + callback flow', () => {
       return raw ? JSON.parse(raw).state?.token : null
     })
     expect(tokenInStore).toBe(adminToken)
+
+    // CRITICAL: assert the post-callback navigate produced an
+    // AUTHENTICATED landing — not the login flash. Round-5 audit
+    // caught a regression where setAuthFromAutoLogin set isLoading
+    // to true, causing initAuth to early-return, leaving the user
+    // unauthenticated → AuthGuard bounced them to /auth even though
+    // the URL was "/". The token-in-localStorage check above is
+    // insufficient (token survives even when initAuth silently
+    // skipped). Wait briefly then assert we did NOT end up back at
+    // /auth, which is what AuthGuard renders for unauthenticated
+    // users.
+    await page.waitForLoadState('networkidle', { timeout: 10_000 })
+    await expect(page).not.toHaveURL(/\/auth(\?|$)/)
   })
 
   test('/auth/callback with no token shows the error UI', async ({

@@ -168,14 +168,22 @@ export const useAuthStore = create<AuthState>()(
           // the source of truth; initAuth() re-fetches /me right
           // after). During the gap between this set() and the
           // initAuth resolve, code that reads `user.something`
-          // would crash on null. Hold isAuthenticated=false +
-          // isLoading=true until we have a real user.
+          // would crash on null. Hold isAuthenticated=false until
+          // we have a real user.
+          //
+          // CRITICAL: use `isInitializing`, NOT `isLoading`. initAuth
+          // early-returns when isLoading is already true — setting it
+          // here would silently skip the /me fetch and the user gets
+          // bounced back to /auth by AuthGuard. AuthGuard already
+          // gates its spinner on isInitializing during the bootstrap
+          // path, so the UX (spinner instead of login flash) is
+          // identical. (round-5 audit finding.)
           if (response.user == null) {
             set({
               user: null,
               token: response.access_token,
               isAuthenticated: false,
-              isLoading: true,
+              isInitializing: true,
               error: null,
             })
             return
