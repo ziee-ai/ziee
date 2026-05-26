@@ -16,7 +16,7 @@ BEGIN
       AND is_system = TRUE;
 
     IF target_rows = 0 THEN
-        RAISE WARNING 'migration 49: no group matches (name=Administrators, is_system=true); projects::* will NOT be granted. Check that the initial Administrators group was created by migration 1.';
+        RAISE WARNING 'migration 54: no group matches (name=Administrators, is_system=true); projects::* will NOT be granted. Check that the initial Administrators group was created by migration 1.';
     END IF;
 
     UPDATE groups

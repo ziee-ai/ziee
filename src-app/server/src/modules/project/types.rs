@@ -82,7 +82,7 @@ pub struct CreateProjectRequest {
     pub default_model_id: Option<Uuid>,
 
     /// MCP defaults. If omitted, the project gets the standard defaults
-    /// from migration 46 (manual_approve, empty allowlist, empty
+    /// from migration 51 (manual_approve, empty allowlist, empty
     /// blocklist). Conversations created in the project receive a
     /// snapshot of these settings at creation time.
     pub mcp_approval_mode: Option<String>,

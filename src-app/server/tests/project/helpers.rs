@@ -9,7 +9,7 @@ use crate::common::TestServer;
 use crate::common::test_helpers::TestUser;
 
 /// Default permission bundle for "a user who can use Projects".
-/// Matches the v1 grant in migration 49 (Administrators) — for tests we
+/// Matches the v1 grant in migration 54 (Administrators) — for tests we
 /// grant directly to keep the harness minimal.
 pub fn full_project_permissions() -> &'static [&'static str] {
     &[

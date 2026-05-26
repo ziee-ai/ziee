@@ -44,7 +44,7 @@ mod tests {
     use super::*;
 
     /// The four permission constants must match the strings used in
-    /// migration 49 (the Administrators grant). Drift here would
+    /// migration 54 (the Administrators grant). Drift here would
     /// leave the migration granting strings nobody checks for.
     #[test]
     fn permission_strings_match_migration() {

@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// Project entity. One row per personal project.
 ///
-/// MCP defaults are inline (mcp_*) — see migration 46 for the rationale
+/// MCP defaults are inline (mcp_*) — see migration 51 for the rationale
 /// (no sibling project_mcp_settings table; 1:1 sync hazard).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, FromRow)]
 pub struct Project {
