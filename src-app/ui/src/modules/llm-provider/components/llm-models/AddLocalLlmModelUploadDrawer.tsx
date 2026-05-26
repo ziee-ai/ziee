@@ -452,8 +452,7 @@ export function AddLocalLlmModelUploadDrawer() {
         >
           <Select
             placeholder="Select the main model file"
-            showSearch
-            optionFilterProp="children"
+            showSearch={{ optionFilterProp: 'children' }}
             disabled={uploading}
             options={filteredFiles
               .filter(item => item.purpose === 'model')

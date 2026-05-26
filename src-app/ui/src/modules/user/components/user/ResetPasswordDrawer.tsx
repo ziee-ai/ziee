@@ -71,12 +71,7 @@ export function ResetPasswordDrawer() {
           <Input.Password placeholder="Confirm new password" />
         </Form.Item>
         <Form.Item className="mb-0">
-          <Flex className="gap-2">
-            {canReset && (
-              <Button type="primary" htmlType="submit">
-                Reset Password
-              </Button>
-            )}
+          <Flex className="justify-end gap-2">
             <Button
               onClick={() => {
                 Stores.ResetPasswordDrawer.closeResetPasswordDrawer()
@@ -85,6 +80,11 @@ export function ResetPasswordDrawer() {
             >
               {canReset ? 'Cancel' : 'Close'}
             </Button>
+            {canReset && (
+              <Button type="primary" htmlType="submit">
+                Reset
+              </Button>
+            )}
           </Flex>
         </Form.Item>
       </Form>

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Button, Collapse, Empty, Space, Spin, Tag, Typography } from 'antd'
+import { Button, Collapse, Empty, Flex, Space, Spin, Tag, Typography } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -66,7 +66,7 @@ export function McpServerGroupsAssignmentCard({
                 className="!my-2"
               />
             ) : (
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Flex vertical gap="small" style={{ width: '100%' }}>
                 <Text type="secondary" className="text-xs">
                   User groups that have access to this MCP server
                 </Text>
@@ -81,7 +81,7 @@ export function McpServerGroupsAssignmentCard({
                     </Tag>
                   ))}
                 </Space>
-              </Space>
+              </Flex>
             ),
           },
         ]}

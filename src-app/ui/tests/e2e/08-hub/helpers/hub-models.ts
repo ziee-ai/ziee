@@ -25,7 +25,7 @@ export async function downloadModelFromHub(
 
   // Wait for download to start
   await expect(
-    page.getByRole('alert').or(page.getByText(/download.*started|downloading/i)),
+    page.getByRole('alert').or(page.getByText(/download.*started|downloading/i)).first(),
   ).toBeVisible({ timeout: 5000 })
 
   // Optionally wait for download to complete

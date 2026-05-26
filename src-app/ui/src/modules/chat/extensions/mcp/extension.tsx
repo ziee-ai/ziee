@@ -128,7 +128,7 @@ function McpToolCallUI({ toolCall }: { toolCall: McpToolCall }) {
           {toolCall.error && (
             <Alert
               type="error"
-              message="Error"
+              title="Error"
               description={toolCall.error}
               showIcon
             />
@@ -216,7 +216,7 @@ function McpToolUseRenderer({ content: data }: ContentRendererProps) {
             <div className="mb-2">
               <Text strong>Result:</Text>
               {toolResultData.is_error ? (
-                <Alert type="error" message="Error" description={toolResultData.content} showIcon className="mt-1" />
+                <Alert type="error" title="Error" description={toolResultData.content} showIcon className="mt-1" />
               ) : (
                 <pre className="p-2 rounded mt-1 overflow-auto max-h-40">{toolResultData.content}</pre>
               )}

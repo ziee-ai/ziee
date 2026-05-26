@@ -31,6 +31,7 @@ interface HubModelsState {
     localProviders: () => Promise<void>
     __store__?: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useHubModelsStore = create<HubModelsState>()(
@@ -136,6 +137,13 @@ export const useHubModelsStore = create<HubModelsState>()(
           },
           models: () => get().loadModels(),
           localProviders: () => get().loadLocalProviders(),
+        },
+
+        // Unsubscribe from EventBus on store destroy so listener slots
+        // don't accumulate per destroy/re-init cycle. Mirrors the
+        // pattern in ChatHistory.store.ts. (audit 09 B-9)
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('HubModelsStore')
         },
       }),
     ),

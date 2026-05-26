@@ -13,9 +13,19 @@ export function WebBody({ file }: FileViewerSlotProps) {
   if (mode === 'raw') {
     return <RawCodeView text={content} />
   }
+  // sandbox WITHOUT allow-scripts. Both file types (HTML and SVG) render
+  // their visual content declaratively; script execution would be a real
+  // XSS vector since file content comes from messageFilesCache, which
+  // includes files from OTHER users in shared conversations. An attacker-
+  // crafted SVG or HTML could phish or fetch external endpoints from the
+  // viewer's same-origin context.
+  //
+  // If a future tool needs to render interactive HTML, gate that behind
+  // an explicit "I trust this content" user action rather than letting
+  // every uploaded file execute by default.
   return (
     <iframe
-      sandbox="allow-scripts"
+      sandbox=""
       srcDoc={content}
       style={{ width: '100%', height: '100%', border: 'none', minHeight: 400 }}
       title="preview"

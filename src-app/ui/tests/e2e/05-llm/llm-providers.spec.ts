@@ -106,9 +106,12 @@ test.describe('LLM Providers - Local Provider CRUD', () => {
     await expect(page.locator('label:has-text("Enable Provider")')).toBeVisible()
     await expect(page.locator('#llm-provider-form_enabled')).toBeVisible()
 
-    // Verify buttons
-    await expect(page.locator('button:has-text("Cancel")')).toBeVisible()
-    await expect(page.locator('button:has-text("Add Provider")')).toBeVisible()
+    // Verify buttons. Drawer submit label was standardised to verb-only
+    // (audit I-2): "Add Provider" → "Add". Scope by primary-button
+    // class to keep the assertion stable across naming changes.
+    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+    await expect(drawer.locator('button:has-text("Cancel")')).toBeVisible()
+    await expect(drawer.locator('.ant-btn-primary[type="submit"]')).toBeVisible()
 
     // Close drawer
     await page.click('button:has-text("Cancel")')

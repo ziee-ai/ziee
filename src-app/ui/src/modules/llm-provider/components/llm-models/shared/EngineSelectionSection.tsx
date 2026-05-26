@@ -8,7 +8,7 @@ export const EngineSelectionSection: React.FC = () => {
   return (
     <Alert
       type="info"
-      message="Engine Selection Coming Soon"
+      title="Engine Selection Coming Soon"
       description="Engine selection will be available once store integration is complete."
       style={{ marginBottom: 16 }}
     />

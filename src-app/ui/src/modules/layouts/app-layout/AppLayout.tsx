@@ -150,30 +150,67 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, [token.colorBgContainer])
 
   // Visual viewport listener for mobile keyboard adjustments
+  //
+  // The previous version wrote `document.body.style.height` AND forced
+  // `document.documentElement.scrollTop = 0` on EVERY resize event.
+  // iOS Safari fires `resize` continuously while the keyboard is
+  // animating in/out, so:
+  //   * the unconditional scrollTop reset yanked the user to the top
+  //     mid-conversation every time they tapped an input;
+  //   * the body height write competed with `.ant-app { height: 100dvh }`
+  //     in index.css, causing layout thrash.
+  //
+  // Fix (audit 02 B-4): only write body height when the viewport has
+  // actually shrunk by more than ~100px from window.innerHeight (a
+  // keyboard-open heuristic). Skip the scrollTop reset entirely —
+  // there's no UX justification for forcing scroll position on
+  // keyboard show, and the cost (lost scroll position) is real.
   useEffect(() => {
-    const updateBodyHeight = () => {
-      if (window.visualViewport) {
-        const height = window.visualViewport.height
-        document.body.style.height = `${height}px`
+    if (!window.visualViewport) return
 
-        // Automatically scroll to top when viewport changes
-        document.documentElement.scrollTop = 0
+    const KEYBOARD_HEURISTIC_PX = 100
+    const updateBodyHeight = () => {
+      if (!window.visualViewport) return
+      const vv = window.visualViewport
+      const keyboardOpen = window.innerHeight - vv.height > KEYBOARD_HEURISTIC_PX
+      if (keyboardOpen) {
+        // Tell the layout to fit the visible area above the keyboard.
+        document.body.style.height = `${vv.height}px`
+      } else {
+        // Keyboard is closed; let CSS (100dvh) take over again.
+        document.body.style.height = ''
       }
     }
 
-    // Check if visual viewport is supported (mainly mobile devices)
-    if (window.visualViewport) {
-      // Set initial height
-      updateBodyHeight()
+    updateBodyHeight()
+    window.visualViewport.addEventListener('resize', updateBodyHeight)
 
-      // Listen for viewport changes (keyboard show/hide)
-      window.visualViewport.addEventListener('resize', updateBodyHeight)
-
-      return () => {
-        window.visualViewport?.removeEventListener('resize', updateBodyHeight)
-      }
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateBodyHeight)
     }
   }, [])
+
+  // Mobile sidebar a11y: when the overlay is open (xs viewport AND not
+  // collapsed), trap focus + scroll inside the dialog and let Escape
+  // close it. Modeled on standard dialog semantics. (audit 02 R-1)
+  useEffect(() => {
+    if (!windowMinSize.xs || isSidebarCollapsed) return
+
+    const previousBodyOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        Stores.AppLayout.setSidebarCollapsed(true)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [windowMinSize.xs, isSidebarCollapsed])
 
   const handleMaskClick = () => {
     if (sidebarRef.current) {
@@ -195,7 +232,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       }}
     >
       {/* Sidebar - Always visible, width controlled by container */}
-      {/* Mask for Left Sidebar */}
+      {/* Mask for Left Sidebar (mobile only). Single onClick is enough;
+        * the prior triple-fire (onClick + onMouseDown + onTouchStart)
+        * caused the close handler to fire 2-3 times for any tap,
+        * which interacted badly with the closing animation. (audit 02 R-1) */}
       {windowMinSize.xs && (
         <div
           className={
@@ -208,14 +248,27 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             pointerEvents: isSidebarCollapsed ? 'none' : 'auto',
           }}
           onClick={handleMaskClick}
-          onMouseDown={handleMaskClick}
-          onTouchStart={handleMaskClick}
+          aria-hidden="true"
         />
       )}
 
       <div
         ref={sidebarRef}
+        id="app-sidebar"
         className="absolute h-full z-1 overflow-hidden"
+        // Mobile-only dialog semantics: when the sidebar is acting as
+        // an overlay (xs viewport), expose it to assistive tech as a
+        // dialog so screen readers announce its open/close state and
+        // focus is constrained to it. On desktop the sidebar is a
+        // permanent fixture, so no dialog role. (audit 02 R-1)
+        {...(windowMinSize.xs
+          ? {
+              role: 'dialog' as const,
+              'aria-modal': true,
+              'aria-label': 'Navigation menu',
+              'aria-hidden': isSidebarCollapsed,
+            }
+          : {})}
         style={{
           width: isSidebarCollapsed
             ? `${ICON_ONLY_WIDTH}px`

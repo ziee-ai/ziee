@@ -496,6 +496,13 @@ cargo test --test integration_tests project:: -- --test-threads=1 \
 - Checklist for adding a new feature
 - Anti-patterns to avoid
 
+**[Frontend Dependency Hygiene](./.claude/FRONTEND_DEPS.md)**
+- `npm run check` gate (tsc + antd doctor + antd lint)
+- `@ant-design/cli` workflow + `just antd-check`
+- Within-major vs cross-major bump cadence
+- Common antd v6 deprecation fixes
+- Deferred major bumps + why
+
 **[Backend Architecture](./.claude/BACKEND_ARCHITECTURE.md)**
 - Rust module system
 - Permission system (RBAC)

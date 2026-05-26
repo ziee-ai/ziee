@@ -59,7 +59,7 @@ export function DelimitedTable({ text, delimiter }: { text: string; delimiter: s
     <div className="px-2">
       {truncated && (
         <Alert
-          message={`Showing first ${MAX_ROWS} rows. Download the file to view all data.`}
+          title={`Showing first ${MAX_ROWS} rows. Download the file to view all data.`}
           type="warning"
           showIcon
           className="mb-2"

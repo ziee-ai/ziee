@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
+import { App, Button, Card, Flex, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 
@@ -98,7 +98,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
           <Spin />
         </div>
       ) : (
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Flex vertical gap="large" style={{ width: '100%' }}>
           <div>
             <Title level={5} style={{ marginBottom: '8px' }}>
               Available Providers
@@ -113,7 +113,7 @@ export function GroupLlmProvidersAssignmentDrawer() {
               <Text type="secondary">No providers available</Text>
             </div>
           ) : (
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Flex vertical gap="middle" style={{ width: '100%' }}>
               {providers.map(provider => {
                 const isChecked = assignedIds.includes(provider.id)
                 return (
@@ -169,9 +169,9 @@ export function GroupLlmProvidersAssignmentDrawer() {
                   </Card>
                 )
               })}
-            </Space>
+            </Flex>
           )}
-        </Space>
+        </Flex>
       )}
     </Drawer>
   )

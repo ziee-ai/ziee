@@ -251,7 +251,7 @@ export function AddLocalLlmModelDownloadDrawer() {
                   loading={loading}
                   onClick={handleSubmit}
                 >
-                  Start Download
+                  Download
                 </Button>
               ),
             ]
@@ -346,8 +346,7 @@ export function AddLocalLlmModelDownloadDrawer() {
             <Select
               placeholder="Select repository"
               loading={loadingRepositories}
-              showSearch
-              optionFilterProp="children"
+              showSearch={{ optionFilterProp: 'children' }}
               options={repositories.map(repo => ({
                 value: repo.id,
                 label: `${repo.name} (${repo.url})`,
@@ -367,7 +366,7 @@ export function AddLocalLlmModelDownloadDrawer() {
           >
             <Input
               placeholder="microsoft/DialoGPT-medium"
-              addonBefore={
+              prefix={
                 selectedRepository
                   ? repositories.find(r => r.id === selectedRepository)?.url ||
                     'Repository'

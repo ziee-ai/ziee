@@ -188,9 +188,12 @@ test.describe('LLM Repositories - Create Repository', () => {
     await expect(page.locator('label:has-text("Enable Repository")')).toBeVisible()
     await expect(page.locator('#llm-repository-form_enabled')).toBeVisible()
 
-    // Verify buttons
-    await expect(page.locator('button:has-text("Cancel")')).toBeVisible()
-    await expect(page.locator('button:has-text("Add Repository")')).toBeVisible()
+    // Verify buttons. Drawer submit label was standardised to verb-only
+    // (audit I-2): "Add Repository" → "Add". Scope by primary-button
+    // class to keep the assertion stable across naming changes.
+    const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
+    await expect(drawer.locator('button:has-text("Cancel")')).toBeVisible()
+    await expect(drawer.locator('.ant-btn-primary[type="submit"]')).toBeVisible()
 
     // Close drawer
     await page.click('button:has-text("Cancel")')
@@ -214,11 +217,6 @@ test.describe('LLM Repositories - Create Repository', () => {
     // Fresh locators each call — Form.Item children change as the
     // conditional sections render, which can invalidate cached
     // locators that hold a snapshot of the DOM.
-    const authTypeSelect = () => page
-      .locator('.ant-form-item:has-text("Authentication Type")')
-      .first()
-      .locator('.ant-select')
-      .first()
     const authTypeCombobox = () => page
       .locator('.ant-form-item:has-text("Authentication Type")')
       .first()
@@ -313,7 +311,7 @@ test.describe('LLM Repositories - Edit Repository', () => {
 
     // Submit
     const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await drawer.locator('button:has-text("Update Repository")').click()
+    await drawer.locator('.ant-btn-primary[type="submit"]').click()
     await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
 
     // Cleanup
@@ -362,7 +360,7 @@ test.describe('LLM Repositories - Edit Repository', () => {
 
     // Submit
     const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-    await drawer.locator('button:has-text("Update Repository")').click()
+    await drawer.locator('.ant-btn-primary[type="submit"]').click()
     await page.waitForSelector('text=Repository updated successfully', { timeout: 15000 })
 
     // Verify auth type changed

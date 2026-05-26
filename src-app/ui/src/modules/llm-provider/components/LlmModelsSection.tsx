@@ -259,7 +259,7 @@ export function LlmModelsSection() {
         </div>
       ) : llmModels.length === 0 ? (
         <div>
-          <Empty description="No models added yet" />
+          <Empty description="No models yet" />
         </div>
       ) : (
         <div>

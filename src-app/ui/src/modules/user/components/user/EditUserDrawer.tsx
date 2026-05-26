@@ -92,12 +92,7 @@ export function EditUserDrawer() {
          *   assignment (POST /api/groups/{id}/users) instead.
          */}
         <Form.Item className="mb-0">
-          <Flex className="gap-2">
-            {canEdit && (
-              <Button type="primary" htmlType="submit">
-                Update User
-              </Button>
-            )}
+          <Flex className="justify-end gap-2">
             <Button
               onClick={() => {
                 Stores.EditUserDrawer.closeEditUserDrawer()
@@ -106,6 +101,11 @@ export function EditUserDrawer() {
             >
               {canEdit ? 'Cancel' : 'Close'}
             </Button>
+            {canEdit && (
+              <Button type="primary" htmlType="submit">
+                Save
+              </Button>
+            )}
           </Flex>
         </Form.Item>
       </Form>

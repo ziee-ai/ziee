@@ -128,7 +128,7 @@ export function SandboxResourceLimitsSection() {
         <Alert
           type="warning"
           showIcon
-          message="You don't have permission to view sandbox resource limits."
+          title="You don't have permission to view sandbox resource limits."
         />
       </Card>
     )
@@ -139,7 +139,7 @@ export function SandboxResourceLimitsSection() {
       {error && (
         <Alert
           type="error"
-          message="Failed to load resource limits"
+          title="Failed to load resource limits"
           description={error}
           showIcon
           style={{ marginBottom: 16 }}
@@ -147,7 +147,7 @@ export function SandboxResourceLimitsSection() {
       )}
 
       {loading && !limits ? (
-        <Spin tip="Loading resource limits…" />
+        <Spin description="Loading resource limits…" />
       ) : (
         <Card title="Resource limits" style={{ marginBottom: 16 }}>
         <Form
@@ -160,7 +160,7 @@ export function SandboxResourceLimitsSection() {
           {!canManage && (
             <Alert
               type="info"
-              message="Read-only view"
+              title="Read-only view"
               description="You have read permission for resource limits but not manage. Save is disabled."
               showIcon
               style={{ marginBottom: 16 }}
@@ -183,7 +183,7 @@ export function SandboxResourceLimitsSection() {
                     },
                   ]}
                 >
-                  <InputNumber min={16} addonAfter="MiB" style={{ width: '100%' }} />
+                  <InputNumber min={16} suffix="MiB" style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={8}>
@@ -192,7 +192,7 @@ export function SandboxResourceLimitsSection() {
                   label="memory.swap.max"
                   tooltip="cgroup v2 swap cap (MiB). 0 disables swap."
                 >
-                  <InputNumber min={0} addonAfter="MiB" style={{ width: '100%' }} />
+                  <InputNumber min={0} suffix="MiB" style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={8}>
@@ -209,7 +209,7 @@ export function SandboxResourceLimitsSection() {
                     },
                   ]}
                 >
-                  <InputNumber min={16} addonAfter="MiB" style={{ width: '100%' }} />
+                  <InputNumber min={16} suffix="MiB" style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>
@@ -280,7 +280,7 @@ export function SandboxResourceLimitsSection() {
                     },
                   ]}
                 >
-                  <InputNumber min={10} max={86_400} addonAfter="s" style={{ width: '100%' }} />
+                  <InputNumber min={10} max={86_400} suffix="s" style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -297,7 +297,7 @@ export function SandboxResourceLimitsSection() {
                     },
                   ]}
                 >
-                  <InputNumber min={5} max={86_400} addonAfter="s" style={{ width: '100%' }} />
+                  <InputNumber min={5} max={86_400} suffix="s" style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>
@@ -318,7 +318,7 @@ export function SandboxResourceLimitsSection() {
                     },
                   ]}
                 >
-                  <InputNumber min={1} addonAfter="MiB" style={{ width: '100%' }} />
+                  <InputNumber min={1} suffix="MiB" style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -356,7 +356,7 @@ export function SandboxResourceLimitsSection() {
                     },
                   ]}
                 >
-                  <InputNumber min={0} addonAfter="s (0 = never)" style={{ width: '100%' }} />
+                  <InputNumber min={0} suffix="s (0 = never)" style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>
@@ -414,7 +414,7 @@ export function SandboxResourceLimitsSection() {
                     },
                   ]}
                 >
-                  <InputNumber min={256} max={262_144} addonAfter="MiB" style={{ width: '100%' }} />
+                  <InputNumber min={256} max={262_144} suffix="MiB" style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>

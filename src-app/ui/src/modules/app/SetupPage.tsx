@@ -68,10 +68,9 @@ export default function SetupPage() {
         {setupError && (
           <Alert
             type="error"
-            message={setupError}
+            title={setupError}
             className="mb-4"
-            closable
-            onClose={Stores.App.clearSetupError}
+            closable={{ onClose: Stores.App.clearSetupError }}
           />
         )}
 

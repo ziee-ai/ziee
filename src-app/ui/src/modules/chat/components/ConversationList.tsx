@@ -160,8 +160,8 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                       title="Delete selected conversations"
                       description={`Are you sure you want to delete ${selectedIds.size} conversation${selectedIds.size > 1 ? 's' : ''}?`}
                       onConfirm={handleDeleteSelected}
-                      okText="Yes"
-                      cancelText="No"
+                      okText="Delete"
+                      cancelText="Cancel"
                       okType="danger"
                       okButtonProps={{ loading: deleting }}
                     >

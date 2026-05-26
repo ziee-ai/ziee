@@ -98,8 +98,10 @@ export async function fillRepositoryForm(page: Page, data: RepositoryFormData) {
 }
 
 export async function submitRepositoryForm(page: Page) {
+  // Submit label was standardised to verb-only ("Add Repository" →
+  // "Add", audit I-2). Scope by primary-button class.
   const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  await drawer.locator('button:has-text("Add Repository")').click()
+  await drawer.locator('.ant-btn-primary[type="submit"]').click()
   await page.waitForLoadState('networkidle')
 }
 
@@ -138,8 +140,10 @@ export async function openEditRepositoryDrawer(page: Page, repositoryName: strin
 }
 
 export async function updateRepositoryForm(page: Page) {
+  // Submit label was standardised to verb-only ("Update Repository" →
+  // "Save", audit I-2). Scope by primary-button class.
   const drawer = page.locator('.ant-drawer.ant-drawer-open').last()
-  await drawer.locator('button:has-text("Update Repository")').click()
+  await drawer.locator('.ant-btn-primary[type="submit"]').click()
   await page.waitForLoadState('networkidle')
 }
 

@@ -90,7 +90,7 @@ export function XlsxBody({ file }: FileViewerSlotProps) {
       <div className="px-2">
         {sheet.truncated && (
           <Alert
-            message={`Showing first ${MAX_ROWS} rows. Download the file to view all data.`}
+            title={`Showing first ${MAX_ROWS} rows. Download the file to view all data.`}
             type="warning"
             showIcon
             className="mb-2"
