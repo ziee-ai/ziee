@@ -9,7 +9,7 @@ use tokio::sync::OnceCell;
 
 pub mod pgvector_install;
 
-const POSTGRES_VERSION: &str = "17.5.0";
+const POSTGRES_VERSION: &str = env!("ZIEE_POSTGRES_VERSION");
 
 static DATABASE_POOL: OnceCell<Arc<PgPool>> = OnceCell::const_new();
 static POSTGRESQL_INSTANCE: OnceCell<Arc<Mutex<PostgreSQL>>> = OnceCell::const_new();

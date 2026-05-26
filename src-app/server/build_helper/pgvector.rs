@@ -1,11 +1,12 @@
 //! pgvector extension build helper.
 //!
-//! Downloads matching Postgres 18.3.0 binaries from theseus-rs, builds
-//! the vendored pgvector source via `make`, and stages the resulting
-//! `vector.{so|dylib|dll}` + `vector.control` + `sql/vector--*.sql`
-//! into `OUT_DIR/pgvector/` so the server can embed them via
-//! `include_bytes!` and write them into the embedded-PG install dir
-//! at runtime.
+//! Downloads matching Postgres binaries (version pinned via
+//! `ZIEE_POSTGRES_VERSION` in `.cargo/config.toml`) from theseus-rs,
+//! builds the vendored pgvector source via `make`, and stages the
+//! resulting `vector.{so|dylib|dll}` + `vector.control` +
+//! `sql/vector--*.sql` into `OUT_DIR/pgvector/` so the server can
+//! embed them via `include_bytes!` and write them into the
+//! embedded-PG install dir at runtime.
 //!
 //! Ported from
 //! /home/pbya/projects/ziee-chat-ref/build-helpers/src/pgvector.rs but
@@ -19,6 +20,12 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Source-of-truth PG version, set in `.cargo/config.toml`'s `[env]`
+/// table. Bumping this is the single change needed to track a new PG
+/// release across the build_helper, the bundled archive, and the
+/// runtime VersionReq.
+const POSTGRES_VERSION: &str = env!("ZIEE_POSTGRES_VERSION");
 
 /// Build pgvector for the current target. Returns `Ok(())` on success.
 /// On failure, the caller should write stub files to OUT_DIR so the
@@ -125,13 +132,13 @@ fn stub_lib_filename() -> &'static str {
     }
 }
 
-/// Download + extract Postgres 18.3.0 binaries from theseus-rs into
-/// pgvector_src.join("postgresql-18.3.0"). Skips if already present.
+/// Download + extract matching Postgres binaries from theseus-rs into
+/// `pgvector_src.join("postgresql-<VERSION>")`. Skips if already present.
 fn setup_postgresql_binaries(
     pgvector_dir: &Path,
     target: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let postgres_dir = pgvector_dir.join("postgresql-18.3.0");
+    let postgres_dir = pgvector_dir.join(format!("postgresql-{POSTGRES_VERSION}"));
     if postgres_dir.exists() && postgres_dir.join("bin").exists() {
         return Ok(postgres_dir);
     }
@@ -139,7 +146,7 @@ fn setup_postgresql_binaries(
     let pkg = postgres_package_for_target(target)
         .ok_or_else(|| format!("unsupported target for theseus-rs binaries: {target}"))?;
     let url = format!(
-        "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.3.0/{pkg}"
+        "https://github.com/theseus-rs/postgresql-binaries/releases/download/{POSTGRES_VERSION}/{pkg}"
     );
 
     let archive_path = pgvector_dir.join(pkg);
@@ -149,22 +156,23 @@ fn setup_postgresql_binaries(
     Ok(postgres_dir)
 }
 
-fn postgres_package_for_target(target: &str) -> Option<&'static str> {
+fn postgres_package_for_target(target: &str) -> Option<String> {
+    let v = POSTGRES_VERSION;
     match () {
         _ if target.contains("aarch64") && target.contains("apple") => {
-            Some("postgresql-18.3.0-aarch64-apple-darwin.tar.gz")
+            Some(format!("postgresql-{v}-aarch64-apple-darwin.tar.gz"))
         }
         _ if target.contains("x86_64") && target.contains("apple") => {
-            Some("postgresql-18.3.0-x86_64-apple-darwin.tar.gz")
+            Some(format!("postgresql-{v}-x86_64-apple-darwin.tar.gz"))
         }
         _ if target.contains("x86_64") && target.contains("linux") => {
-            Some("postgresql-18.3.0-x86_64-unknown-linux-gnu.tar.gz")
+            Some(format!("postgresql-{v}-x86_64-unknown-linux-gnu.tar.gz"))
         }
         _ if target.contains("aarch64") && target.contains("linux") => {
-            Some("postgresql-18.3.0-aarch64-unknown-linux-gnu.tar.gz")
+            Some(format!("postgresql-{v}-aarch64-unknown-linux-gnu.tar.gz"))
         }
         _ if target.contains("x86_64") && target.contains("windows") => {
-            Some("postgresql-18.3.0-x86_64-pc-windows-msvc.zip")
+            Some(format!("postgresql-{v}-x86_64-pc-windows-msvc.zip"))
         }
         _ => None,
     }
