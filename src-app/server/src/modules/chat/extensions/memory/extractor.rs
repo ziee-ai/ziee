@@ -84,6 +84,14 @@ async fn run(
     // Counts memories CREATED via extraction in the trailing 24h —
     // covers spam-via-many-short-conversations evasion since memories
     // accumulate globally per user, not per conversation. Plan §11.
+    //
+    // SOFT-CAP (audit R7-#3): the count-then-insert window means two
+    // concurrent extractions can each see today_count = 199 and both
+    // insert (total = 201). Acceptable — the quota is a brake against
+    // casual spam, not a determined-attacker hard ceiling. The real
+    // cost gate is the LLM API spend, not the row count. A hard-
+    // enforce variant would need a BEFORE INSERT trigger or
+    // SELECT FOR UPDATE NOWAIT; both add cost for marginal benefit.
     const DAILY_EXTRACTION_QUOTA: i64 = 200;
     let pool = Repos.memory.pool_clone();
     let today_count = sqlx::query_scalar!(

@@ -21,6 +21,9 @@ const MemoryAdminPage = lazyWithPreload(() =>
 const CoreMemoryPage = lazyWithPreload(() =>
   import('./pages/CoreMemoryPage').then((m) => ({ default: m.CoreMemoryPage })),
 )
+const AuditLogPage = lazyWithPreload(() =>
+  import('./pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })),
+)
 
 export default createModule({
   metadata: {
@@ -56,6 +59,13 @@ export default createModule({
       element: CoreMemoryPage,
       requiresAuth: true,
       permission: Permissions.CoreMemoryRead,
+      layout: AppLayoutDef,
+    },
+    {
+      path: '/memories/audit-log',
+      element: AuditLogPage,
+      requiresAuth: true,
+      permission: Permissions.MemoryRead,
       layout: AppLayoutDef,
     },
   ],
@@ -97,6 +107,13 @@ export default createModule({
     ],
   },
   initialize: () => {
-    console.log('Memory module initialized')
+    // Pre-fetch admin settings so MemoryStatusPill renders correctly
+    // on first paint (audit R7-#10). Without this, the chat composer
+    // briefly shows the pill before discovering memory is admin-
+    // disabled. Non-admin 403s are intentionally swallowed: pill
+    // visibility falls back to "shown" (settings undefined ≠ disabled).
+    import('@/core/stores').then(({ Stores }) => {
+      Stores.MemoryAdmin.load().catch(() => {})
+    })
   },
 })

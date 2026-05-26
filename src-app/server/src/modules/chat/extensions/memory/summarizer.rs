@@ -78,17 +78,23 @@ pub async fn apply_summary_to_history(
         None => return Ok(()),
     };
 
-    // Prepend the summary as a system message. Old messages are still
-    // in the request — callers that want a hard truncation should
-    // filter chat_request.messages by message id <= summarized_up_to_id
-    // BEFORE calling this function. The summary supplements; it does
-    // not replace by default.
+    // Insert the summary AFTER any existing system messages (typically
+    // the assistant extension's primary system prompt). Audit R7-#6:
+    // putting the summary at index 0 buried explicit instructions
+    // beneath supplementary context. Placing summary right after the
+    // last leading system message keeps the LLM's attention on
+    // instructions while still giving it the condensed history early.
     let block = format!(
         "## Earlier conversation summary ({} messages condensed):\n\n{}",
         summary.message_count, summary.summary_text
     );
+    let insert_at = chat_request
+        .messages
+        .iter()
+        .take_while(|m| matches!(m.role, Role::System))
+        .count();
     chat_request.messages.insert(
-        0,
+        insert_at,
         ChatMessage {
             role: Role::System,
             content: vec![ContentBlock::Text { text: block }],

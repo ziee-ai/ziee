@@ -253,7 +253,9 @@ function exportMemories(rows: UserMemoryRow[], format: 'json' | 'csv') {
     ].join(',')
     const escape = (v: unknown): string => {
       const s = String(v ?? '')
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      // RFC-4180: quote if cell contains comma, quote, or any line
+      // ending (LF, CR, or CRLF). Audit R7-#1.
+      if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
         return `"${s.replace(/"/g, '""')}"`
       }
       return s

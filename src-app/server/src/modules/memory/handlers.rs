@@ -26,8 +26,9 @@ use crate::{
     },
 };
 
-/// Hard cap on memory content length — defends against pathological writes.
-const MAX_CONTENT_LEN: usize = 4_000;
+// Hard cap on memory content length — defends against pathological writes.
+// Shared with memory_mcp/handlers.rs (audit R7-#8 dedup).
+use crate::modules::memory::models::MAX_MEMORY_CONTENT_LEN as MAX_CONTENT_LEN;
 
 /// List/page query params.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -237,11 +238,23 @@ pub fn delete_all_memories_docs(op: TransformOperation) -> TransformOperation {
 
 // ── audit log ───────────────────────────────────────────────────────
 
+/// Optional `?limit=N` query param for the audit-log endpoint.
+/// Clamp 1..=500 happens in the repo. Audit R7-#2.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListAuditLogQuery {
+    #[serde(default = "default_audit_limit")]
+    pub limit: i64,
+}
+fn default_audit_limit() -> i64 {
+    100
+}
+
 #[debug_handler]
 pub async fn list_audit_log(
     auth: RequirePermissions<(MemoryRead,)>,
+    Query(q): Query<ListAuditLogQuery>,
 ) -> ApiResult<Json<Vec<MemoryAuditEntry>>> {
-    let rows = Repos.memory.list_audit_log(auth.user.id, 100).await?;
+    let rows = Repos.memory.list_audit_log(auth.user.id, q.limit).await?;
     Ok((StatusCode::OK, Json(rows)))
 }
 

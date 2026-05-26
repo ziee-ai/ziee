@@ -24,7 +24,8 @@ use crate::modules::code_sandbox::types::{JsonRpcError, JsonRpcRequest, JsonRpcR
 use crate::modules::memory::permissions::MemoryWrite;
 use crate::modules::permissions::RequirePermissions;
 
-const MAX_CONTENT_LEN: usize = 4_000;
+// Shared between memory + memory_mcp handlers (see memory/models.rs).
+use crate::modules::memory::models::MAX_MEMORY_CONTENT_LEN as MAX_CONTENT_LEN;
 
 #[debug_handler]
 pub async fn jsonrpc_handler(

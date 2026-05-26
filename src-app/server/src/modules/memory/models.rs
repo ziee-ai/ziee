@@ -116,6 +116,13 @@ pub struct UpdateMemoryAdminSettingsRequest {
     pub enabled: Option<bool>,
 }
 
+/// Max length of a single memory `content` row. Shared between
+/// `memory/handlers.rs` (REST POST/PATCH) and `memory_mcp/handlers.rs`
+/// (MCP remember tool) so both surfaces enforce the same cap.
+/// Audit R7-#8 — was previously duplicated as a private const in both
+/// handler files; now a single source of truth.
+pub const MAX_MEMORY_CONTENT_LEN: usize = 4_000;
+
 /// Allowed values for `source` — guards against arbitrary writes.
 pub const VALID_SOURCES: &[&str] = &["extraction", "mcp_tool", "manual"];
 
