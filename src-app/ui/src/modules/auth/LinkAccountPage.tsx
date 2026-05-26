@@ -82,8 +82,7 @@ export const LinkAccountPage: React.FC = () => {
                 title={error}
                 type="error"
                 showIcon
-                closable
-                onClose={() => setError(null)}
+                closable={{ onClose: () => setError(null) }}
                 className="mb-4"
               />
             )}

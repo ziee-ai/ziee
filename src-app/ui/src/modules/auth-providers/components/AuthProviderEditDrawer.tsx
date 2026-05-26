@@ -203,8 +203,7 @@ export function AuthProviderEditDrawer({
             title={testResult.ok ? 'Configuration OK' : 'Configuration issues'}
             description={testResult.message}
             showIcon
-            closable
-            onClose={() => setTestResult(null)}
+            closable={{ onClose: () => setTestResult(null) }}
             className="mb-4"
           />
         )}
