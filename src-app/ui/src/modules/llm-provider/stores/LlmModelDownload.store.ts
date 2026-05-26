@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
-import type {
-  DownloadFromRepositoryRequest,
-  DownloadInstance,
+import {
+  Permissions,
+  type DownloadFromRepositoryRequest,
+  type DownloadInstance,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { useLlmProviderStore } from '@/modules/llm-provider/stores/LlmProvider.store'
 
 interface LlmModelDownloadState {
@@ -47,6 +49,12 @@ let isSubscriptionSetup = false
 
 // Load existing downloads from server
 const loadExistingDownloads = async (set: any): Promise<void> => {
+  // Permission-gate the shell-eager-load fetch (audit follow-up):
+  // the downloads section is mounted as part of the LLM-providers
+  // admin surface but the store __init__ fires for every authenticated
+  // user. Without the gate, non-admin users 403 on every page render.
+  if (!hasPermissionNow(Permissions.LlmModelsDownloadsRead)) return
+
   try {
     const response = await ApiClient.LlmModel.listDownloads({
       page: 1,

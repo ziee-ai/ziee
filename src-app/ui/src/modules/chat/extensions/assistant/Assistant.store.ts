@@ -1,6 +1,7 @@
 import { createExtensionStore } from '@/modules/chat/core/extensions'
 import { ApiClient } from '@/api-client'
-import type { Assistant } from '@/api-client/types'
+import { Permissions, type Assistant } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 
 /**
  * Assistant extension store
@@ -45,6 +46,11 @@ export const createAssistantStore = () =>
      * Called once globally, not per-conversation
      */
     loadAssistants: async () => {
+      // Permission-gate the shell-eager-load fetch (audit
+      // follow-up): the chat shell loads the assistant picker
+      // regardless of route. Without assistants::read it 403s.
+      if (!hasPermissionNow(Permissions.AssistantsRead)) return
+
       // Only load if not already loaded
       const state = get()
       if (state.availableAssistants.length > 0) return
