@@ -1,8 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Typography, Table, Tag, Spin, Empty, InputNumber, Space } from 'antd'
-import { Stores } from '@/core/stores'
+import {
+  Card,
+  Empty,
+  InputNumber,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Typography,
+} from 'antd'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
-const { Title, Paragraph, Text } = Typography
+const { Text, Paragraph } = Typography
+
+const READ_PERM = Permissions.MemoryRead
 
 interface AuditEntry {
   id: number
@@ -17,42 +29,43 @@ interface AuditEntry {
 }
 
 /**
- * /memories/audit-log — surfaces the user's append-only audit log.
- *
- * Closes audit R7-#5: the /api/memory/audit-log endpoint existed but
- * was orphaned with no UI consumer. This page exposes the user's
- * ADD/UPDATE/DELETE/BULK_DELETE history so they can audit what was
- * captured (especially auto-extracted memories) and when.
+ * Append-only audit log of memory operations on the viewing user's
+ * account. Read-only; hidden if no `memory::read`.
  */
-export function AuditLogPage() {
+export function AuditLogSection() {
+  const canRead = usePermission(READ_PERM)
   const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [limit, setLimit] = useState<number>(100)
 
-  async function load() {
-    setLoading(true)
-    try {
-      const res = await fetch(
-        `/api/memory/audit-log?limit=${limit}`,
-        { credentials: 'include' },
-      )
-      if (!res.ok) throw new Error(`Failed: ${res.status}`)
-      setEntries(await res.json())
-    } catch {
-      // surface as empty list; user can refetch
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
-    load()
-  }, [limit])
+    if (!canRead) return
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/memory/audit-log?limit=${limit}`, {
+          credentials: 'include',
+        })
+        if (!res.ok) throw new Error(`Failed: ${res.status}`)
+        const rows: AuditEntry[] = await res.json()
+        if (!cancelled) setEntries(rows)
+      } catch {
+        if (!cancelled) setEntries([])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [canRead, limit])
+
+  if (!canRead) return null
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <Title level={3}>Memory audit log</Title>
-      <Paragraph type="secondary">
+    <Card title="Audit log">
+      <Paragraph type="secondary" className="!mb-3 text-sm">
         Append-only record of every memory operation on your account.
         Use this to audit what the auto-extractor captured, what the
         assistant&rsquo;s tools added, and what you deleted (and when).
@@ -70,7 +83,7 @@ export function AuditLogPage() {
       </Space>
 
       {loading ? (
-        <div className="flex justify-center mt-8">
+        <div className="flex justify-center py-6">
           <Spin />
         </div>
       ) : entries.length === 0 ? (
@@ -111,7 +124,15 @@ export function AuditLogPage() {
               dataIndex: 'source',
               width: 120,
               render: (v: string) => (
-                <Tag color={v === 'manual' ? 'blue' : v === 'extraction' ? 'green' : 'purple'}>
+                <Tag
+                  color={
+                    v === 'manual'
+                      ? 'blue'
+                      : v === 'extraction'
+                        ? 'green'
+                        : 'purple'
+                  }
+                >
                   {v === 'mcp_tool' ? 'tool' : v}
                 </Tag>
               ),
@@ -132,10 +153,6 @@ export function AuditLogPage() {
           ]}
         />
       )}
-      {/* Touch the Memories store to ensure event-bus subscribers
-          stay live (memory.created / memory.deleted events fire and
-          this page can refetch). */}
-      {Stores.Memories.memories.length >= 0 && null}
-    </div>
+    </Card>
   )
 }

@@ -57,8 +57,8 @@ test.describe('Memory MCP — remember/forget tools', () => {
     const body = await res.json()
     expect(body.result?.structuredContent?.memory_id).toBeTruthy()
 
-    // Now visit /memories and confirm it shows up.
-    await page.goto(`${baseURL}/memories`)
+    // Now visit /settings/memory and confirm it shows up.
+    await page.goto(`${baseURL}/settings/memory`)
     await expect(
       page.getByText('User uses Linux on a ThinkPad'),
     ).toBeVisible({ timeout: 5000 })

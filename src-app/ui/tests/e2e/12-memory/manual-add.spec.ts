@@ -7,7 +7,7 @@ import {
 } from '../../common/auth-helpers'
 
 /**
- * E2E — manual memory add + list + delete on the /memories page.
+ * E2E — manual memory add + list + delete on the /settings/memory page.
  *
  * Phase 1 plan §9: "MemoriesPage.tsx with manual add/list/edit/delete
  * (no embedding, no AI; pure text storage)". This spec exercises that
@@ -36,7 +36,7 @@ test.describe('Memory — manual add', () => {
     const username = await memoryUser(apiURL, 'mem_add')
     await login(page, baseURL, username, 'password123')
 
-    await page.goto(`${baseURL}/memories`)
+    await page.goto(`${baseURL}/settings/memory`)
     await expect(page.getByRole('heading', { name: 'My Memories' })).toBeVisible()
 
     // Add

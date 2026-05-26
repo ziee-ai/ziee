@@ -1,6 +1,5 @@
 import { createModule } from '@/core'
 import { BulbOutlined } from '@ant-design/icons'
-import { AppLayoutDef } from '@/modules/layouts/app-layout'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/types'
 import { useMemoriesStore } from './stores/Memories.store'
@@ -9,42 +8,34 @@ import { useMemoryAdminStore } from './stores/MemoryAdmin.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
 
-const MemoriesPage = lazyWithPreload(() =>
-  import('./pages/MemoriesPage').then((m) => ({ default: m.MemoriesPage })),
-)
+// The user page renders sections for each memory mechanism. A user
+// with EITHER MemoryRead or CoreMemoryRead should reach the page —
+// the missing section is hidden inside, but the page itself is
+// accessible. Mirrors the `anyOf` pattern used by code-sandbox.
+const MEMORY_USER_READ_PERM = {
+  anyOf: [Permissions.MemoryRead, Permissions.CoreMemoryRead],
+}
+
 const MemorySettingsPage = lazyWithPreload(() =>
   import('./pages/MemorySettingsPage').then((m) => ({ default: m.MemorySettingsPage })),
 )
 const MemoryAdminPage = lazyWithPreload(() =>
   import('./pages/MemoryAdminPage').then((m) => ({ default: m.MemoryAdminPage })),
 )
-const CoreMemoryPage = lazyWithPreload(() =>
-  import('./pages/CoreMemoryPage').then((m) => ({ default: m.CoreMemoryPage })),
-)
-const AuditLogPage = lazyWithPreload(() =>
-  import('./pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })),
-)
 
 export default createModule({
   metadata: {
     name: 'memory',
     version: '1.0.0',
-    description: 'Per-user persistent memory: list, settings, admin.',
+    description: 'Per-user persistent memory: settings + admin.',
   },
   dependencies: ['router'],
   routes: [
     {
-      path: '/memories',
-      element: MemoriesPage,
-      requiresAuth: true,
-      permission: Permissions.MemoryRead,
-      layout: AppLayoutDef,
-    },
-    {
       path: '/settings/memory',
       element: MemorySettingsPage,
       requiresAuth: true,
-      permission: Permissions.MemoryRead,
+      permission: MEMORY_USER_READ_PERM,
       layout: SettingsLayoutDef,
     },
     {
@@ -54,20 +45,6 @@ export default createModule({
       permission: Permissions.MemoryAdminRead,
       layout: SettingsLayoutDef,
     },
-    {
-      path: '/memories/core-memory',
-      element: CoreMemoryPage,
-      requiresAuth: true,
-      permission: Permissions.CoreMemoryRead,
-      layout: AppLayoutDef,
-    },
-    {
-      path: '/memories/audit-log',
-      element: AuditLogPage,
-      requiresAuth: true,
-      permission: Permissions.MemoryRead,
-      layout: AppLayoutDef,
-    },
   ],
   stores: [
     { name: 'Memories', store: useMemoriesStore },
@@ -75,16 +52,6 @@ export default createModule({
     { name: 'MemoryAdmin', store: useMemoryAdminStore },
   ],
   slots: {
-    sidebarTools: [
-      {
-        id: 'memories',
-        icon: <BulbOutlined />,
-        label: 'Memories',
-        path: '/memories',
-        order: 30,
-        permission: Permissions.MemoryRead,
-      },
-    ],
     settingsUserPages: [
       {
         id: 'memory',
@@ -92,7 +59,7 @@ export default createModule({
         label: 'Memory',
         path: 'memory',
         order: 30,
-        permission: Permissions.MemoryRead,
+        permission: MEMORY_USER_READ_PERM,
       },
     ],
     settingsAdminPages: [

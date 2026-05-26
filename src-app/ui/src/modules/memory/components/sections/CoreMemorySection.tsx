@@ -1,36 +1,40 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Typography, Select, Spin, Empty } from 'antd'
+import { Card, Empty, Select, Spin, Typography } from 'antd'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { CoreMemoryBlocksEditor } from '@/modules/memory/components/CoreMemoryBlocksEditor'
 
-const { Title, Paragraph } = Typography
+const { Paragraph } = Typography
+
+const READ_PERM = Permissions.CoreMemoryRead
 
 /**
- * /memories/core-memory — pick an assistant, manage your per-assistant
- * core-memory blocks for it. The CoreMemoryBlocksEditor component
- * does the actual CRUD; this page is the host that lets the user
- * choose which assistant to edit.
- *
- * Closes audit R6-#11 — CoreMemoryBlocksEditor was orphaned (no
- * imports), now it's the body of this route.
+ * Per-assistant core memory editor. Lets the user pick which assistant
+ * to manage core-memory blocks for, then renders the editor for that
+ * assistant. Hidden entirely if no `memory::core::read`.
  */
-export function CoreMemoryPage() {
-  const [assistantId, setAssistantId] = useState<string | null>(null)
+export function CoreMemorySection() {
+  const canRead = usePermission(READ_PERM)
   const { assistants: assistantsMap, loading } = Stores.UserAssistants
+  const [assistantId, setAssistantId] = useState<string | null>(null)
 
   useEffect(() => {
-    Stores.UserAssistants.loadUserAssistants()
-  }, [])
+    if (canRead) {
+      Stores.UserAssistants.loadUserAssistants()
+    }
+  }, [canRead])
 
   const assistants = useMemo(
     () => Array.from(assistantsMap.values()),
     [assistantsMap],
   )
 
+  if (!canRead) return null
+
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <Title level={3}>Assistant core memory</Title>
-      <Paragraph type="secondary">
+    <Card title="Per-assistant core memory">
+      <Paragraph type="secondary" className="!mb-3 text-sm">
         Core-memory blocks (Letta-style) are prepended to a specific
         assistant&rsquo;s system prompt on every turn. Use them for
         persona, standing instructions, or context you want the
@@ -38,13 +42,13 @@ export function CoreMemoryPage() {
       </Paragraph>
 
       <div className="mb-4">
-        <Paragraph strong className="!mb-2">
-          Choose an assistant
-        </Paragraph>
         {loading ? (
           <Spin />
         ) : assistants.length === 0 ? (
-          <Empty description="No assistants yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty
+            description="No assistants yet"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
         ) : (
           <Select
             className="w-full"
@@ -62,6 +66,6 @@ export function CoreMemoryPage() {
       </div>
 
       {assistantId && <CoreMemoryBlocksEditor assistantId={assistantId} />}
-    </div>
+    </Card>
   )
 }

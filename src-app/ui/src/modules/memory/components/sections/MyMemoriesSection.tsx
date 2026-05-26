@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Typography,
-  Table,
-  Input,
-  Select,
   Button,
-  Tag,
-  Modal,
-  Form,
-  InputNumber,
+  Card,
   Drawer,
-  Space,
+  Dropdown,
   Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
   Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
   message,
 } from 'antd'
 import {
@@ -21,41 +23,58 @@ import {
   EditOutlined,
   PlusOutlined,
 } from '@ant-design/icons'
-import { Dropdown } from 'antd'
 import { Stores } from '@/core/stores'
-import { AppLayout } from '@/modules/layouts/app-layout'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import type { UserMemoryRow } from '@/modules/memory/stores/Memories.store'
 
-const { Title, Paragraph, Text } = Typography
+const { Text } = Typography
 const { Search } = Input
 
-export function MemoriesPage() {
+const READ_PERM = Permissions.MemoryRead
+const WRITE_PERM = Permissions.MemoryWrite
+
+/**
+ * Per-user memory list with CRUD + filters + export.
+ *
+ * Hidden if no `memory::read`. Write controls (Add, Edit, Delete,
+ * Delete-all) hidden if no `memory::write`. Read-only viewers see
+ * the table + filters + export but no mutation affordances.
+ */
+export function MyMemoriesSection() {
+  const canRead = usePermission(READ_PERM)
+  const canWrite = usePermission(WRITE_PERM)
   const { memories, loading, searchQuery, kindFilter, sourceFilter } =
     Stores.Memories
   const [editing, setEditing] = useState<UserMemoryRow | null>(null)
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    Stores.Memories.load()
-  }, [])
+    if (canRead) {
+      Stores.Memories.load()
+    }
+  }, [canRead])
 
   const filtered = useMemo(() => {
     return memories.filter((m) => {
       if (kindFilter && m.kind !== kindFilter) return false
       if (sourceFilter && m.source !== sourceFilter) return false
-      if (searchQuery && !m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+      if (
+        searchQuery &&
+        !m.content.toLowerCase().includes(searchQuery.toLowerCase())
+      )
         return false
       return true
     })
   }, [memories, kindFilter, sourceFilter, searchQuery])
 
+  if (!canRead) return null
+
   return (
-    <AppLayout>
-      <div className="max-w-5xl mx-auto p-6">
-        <div className="flex items-center justify-between mb-4">
-          <Title level={3} className="!mb-0">
-            My Memories
-          </Title>
+    <Card
+      title="My memories"
+      extra={
+        canWrite ? (
           <Space>
             <Button
               type="primary"
@@ -95,142 +114,164 @@ export function MemoriesPage() {
               <Button danger>Delete all</Button>
             </Popconfirm>
           </Space>
-        </div>
-
-        <Paragraph type="secondary">
-          The assistant uses these facts to personalize responses across
-          conversations. You can add memories manually here, or let the
-          assistant capture them automatically (turn that on in Memory
-          settings).
-        </Paragraph>
-
-        <div className="flex gap-2 mb-4">
-          <Search
-            placeholder="Search content"
-            allowClear
-            onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
-            style={{ maxWidth: 300 }}
-          />
-          <Select
-            placeholder="Kind"
-            allowClear
-            value={kindFilter ?? undefined}
-            onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
-            style={{ minWidth: 140 }}
-            options={[
-              { value: 'preference', label: 'Preference' },
-              { value: 'fact', label: 'Fact' },
-              { value: 'goal', label: 'Goal' },
-              { value: 'relationship', label: 'Relationship' },
-              { value: 'other', label: 'Other' },
-            ]}
-          />
-          <Select
-            placeholder="Source"
-            allowClear
-            value={sourceFilter ?? undefined}
-            onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
-            style={{ minWidth: 140 }}
-            options={[
-              { value: 'manual', label: 'Manual' },
-              { value: 'extraction', label: 'Auto-extracted' },
-              { value: 'mcp_tool', label: 'Assistant tool' },
-            ]}
-          />
-        </div>
-
-        {filtered.length === 0 && !loading ? (
-          <Empty description="No memories yet" />
         ) : (
-          <Table<UserMemoryRow>
-            dataSource={filtered}
-            rowKey="id"
-            loading={loading}
-            pagination={{ pageSize: 25 }}
-            columns={[
-              {
-                title: 'Content',
-                dataIndex: 'content',
-                ellipsis: true,
-              },
-              {
-                title: 'Kind',
-                dataIndex: 'kind',
-                width: 110,
-                render: (v: string) => <Tag>{v}</Tag>,
-              },
-              {
-                title: 'Source',
-                dataIndex: 'source',
-                width: 120,
-                render: (v: string) => (
-                  <Tag color={v === 'manual' ? 'blue' : v === 'extraction' ? 'green' : 'purple'}>
-                    {v === 'mcp_tool' ? 'tool' : v}
-                  </Tag>
-                ),
-              },
-              {
-                title: 'Importance',
-                dataIndex: 'importance',
-                width: 100,
-              },
-              {
-                title: 'Recalls',
-                dataIndex: 'recall_count',
-                width: 90,
-              },
-              {
-                title: 'Updated',
-                dataIndex: 'updated_at',
-                width: 170,
-                render: (v: string) => (
-                  <Text type="secondary">{new Date(v).toLocaleString()}</Text>
-                ),
-              },
-              {
-                title: '',
-                key: 'actions',
-                width: 100,
-                render: (_, row) => (
-                  <Space>
-                    <Button
-                      icon={<EditOutlined />}
-                      size="small"
-                      onClick={() => setEditing(row)}
-                    />
-                    <Popconfirm
-                      title="Delete this memory?"
-                      okText="Delete"
-                      okButtonProps={{ danger: true }}
-                      onConfirm={async () => {
-                        const ok = await Stores.Memories.remove(row.id)
-                        if (ok) message.success('Memory deleted')
-                      }}
-                    >
-                      <Button
-                        icon={<DeleteOutlined />}
-                        size="small"
-                        danger
-                        aria-label={`Delete memory ${row.id}`}
-                      />
-                    </Popconfirm>
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        )}
-
-        <CreateMemoryModal
-          open={creating}
-          onClose={() => setCreating(false)}
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'json',
+                  label: 'Export as JSON',
+                  onClick: () => exportMemories(memories, 'json'),
+                },
+                {
+                  key: 'csv',
+                  label: 'Export as CSV',
+                  onClick: () => exportMemories(memories, 'csv'),
+                },
+              ],
+            }}
+          >
+            <Button icon={<DownloadOutlined />}>Export</Button>
+          </Dropdown>
+        )
+      }
+    >
+      <div className="flex gap-2 mb-4">
+        <Search
+          placeholder="Search content"
+          allowClear
+          onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
+          style={{ maxWidth: 300 }}
         />
-        <EditMemoryDrawer
-          row={editing}
-          onClose={() => setEditing(null)}
+        <Select
+          placeholder="Kind"
+          allowClear
+          value={kindFilter ?? undefined}
+          onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
+          style={{ minWidth: 140 }}
+          options={[
+            { value: 'preference', label: 'Preference' },
+            { value: 'fact', label: 'Fact' },
+            { value: 'goal', label: 'Goal' },
+            { value: 'relationship', label: 'Relationship' },
+            { value: 'other', label: 'Other' },
+          ]}
+        />
+        <Select
+          placeholder="Source"
+          allowClear
+          value={sourceFilter ?? undefined}
+          onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
+          style={{ minWidth: 140 }}
+          options={[
+            { value: 'manual', label: 'Manual' },
+            { value: 'extraction', label: 'Auto-extracted' },
+            { value: 'mcp_tool', label: 'Assistant tool' },
+          ]}
         />
       </div>
-    </AppLayout>
+
+      {filtered.length === 0 && !loading ? (
+        <Empty description="No memories yet" />
+      ) : (
+        <Table<UserMemoryRow>
+          dataSource={filtered}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 25 }}
+          columns={[
+            {
+              title: 'Content',
+              dataIndex: 'content',
+              ellipsis: true,
+            },
+            {
+              title: 'Kind',
+              dataIndex: 'kind',
+              width: 110,
+              render: (v: string) => <Tag>{v}</Tag>,
+            },
+            {
+              title: 'Source',
+              dataIndex: 'source',
+              width: 120,
+              render: (v: string) => (
+                <Tag
+                  color={
+                    v === 'manual'
+                      ? 'blue'
+                      : v === 'extraction'
+                        ? 'green'
+                        : 'purple'
+                  }
+                >
+                  {v === 'mcp_tool' ? 'tool' : v}
+                </Tag>
+              ),
+            },
+            {
+              title: 'Importance',
+              dataIndex: 'importance',
+              width: 100,
+            },
+            {
+              title: 'Recalls',
+              dataIndex: 'recall_count',
+              width: 90,
+            },
+            {
+              title: 'Updated',
+              dataIndex: 'updated_at',
+              width: 170,
+              render: (v: string) => (
+                <Text type="secondary">{new Date(v).toLocaleString()}</Text>
+              ),
+            },
+            ...(canWrite
+              ? [
+                  {
+                    title: '',
+                    key: 'actions',
+                    width: 100,
+                    render: (_: unknown, row: UserMemoryRow) => (
+                      <Space>
+                        <Button
+                          icon={<EditOutlined />}
+                          size="small"
+                          onClick={() => setEditing(row)}
+                        />
+                        <Popconfirm
+                          title="Delete this memory?"
+                          okText="Delete"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={async () => {
+                            const ok = await Stores.Memories.remove(row.id)
+                            if (ok) message.success('Memory deleted')
+                          }}
+                        >
+                          <Button
+                            icon={<DeleteOutlined />}
+                            size="small"
+                            danger
+                            aria-label={`Delete memory ${row.id}`}
+                          />
+                        </Popconfirm>
+                      </Space>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      )}
+
+      {canWrite && (
+        <>
+          <CreateMemoryModal open={creating} onClose={() => setCreating(false)} />
+          <EditMemoryDrawer row={editing} onClose={() => setEditing(null)} />
+        </>
+      )}
+    </Card>
   )
 }
 
@@ -238,7 +279,9 @@ function exportMemories(rows: UserMemoryRow[], format: 'json' | 'csv') {
   const filename = `ziee-memories-${new Date().toISOString().slice(0, 10)}.${format}`
   let blob: Blob
   if (format === 'json') {
-    blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
+    blob = new Blob([JSON.stringify(rows, null, 2)], {
+      type: 'application/json',
+    })
   } else {
     const header = [
       'id',
@@ -255,7 +298,12 @@ function exportMemories(rows: UserMemoryRow[], format: 'json' | 'csv') {
       const s = String(v ?? '')
       // RFC-4180: quote if cell contains comma, quote, or any line
       // ending (LF, CR, or CRLF). Audit R7-#1.
-      if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+      if (
+        s.includes(',') ||
+        s.includes('"') ||
+        s.includes('\n') ||
+        s.includes('\r')
+      ) {
         return `"${s.replace(/"/g, '""')}"`
       }
       return s
@@ -292,7 +340,11 @@ function CreateMemoryModal({
   open: boolean
   onClose: () => void
 }) {
-  const [form] = Form.useForm<{ content: string; importance: number; kind: string }>()
+  const [form] = Form.useForm<{
+    content: string
+    importance: number
+    kind: string
+  }>()
   const { saving } = Stores.Memories
 
   const handleSubmit = async (values: {
@@ -335,7 +387,10 @@ function CreateMemoryModal({
             { max: 4000, message: 'Max 4000 chars' },
           ]}
         >
-          <Input.TextArea rows={4} placeholder="One sentence, third-person about you" />
+          <Input.TextArea
+            rows={4}
+            placeholder="One sentence, third-person about you"
+          />
         </Form.Item>
         <Form.Item name="kind" label="Kind">
           <Select
@@ -363,7 +418,11 @@ function EditMemoryDrawer({
   row: UserMemoryRow | null
   onClose: () => void
 }) {
-  const [form] = Form.useForm<{ content: string; importance: number; kind: string }>()
+  const [form] = Form.useForm<{
+    content: string
+    importance: number
+    kind: string
+  }>()
   const { saving } = Stores.Memories
 
   useEffect(() => {

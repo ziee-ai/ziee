@@ -10,7 +10,7 @@ import {
  * E2E — cross-user isolation regression.
  *
  * Plan §10 mandatory regression: user A creates a memory; user B
- * logging in and visiting /memories must not see it. This guards the
+ * logging in and visiting /settings/memory must not see it. This guards the
  * SQL filter at the repository layer end-to-end through the UI.
  */
 
@@ -38,7 +38,7 @@ test.describe('Memory — cross-user isolation', () => {
 
     // Alice logs in, adds a memory.
     await login(page, baseURL, alice, 'password123')
-    await page.goto(`${baseURL}/memories`)
+    await page.goto(`${baseURL}/settings/memory`)
     await page.getByRole('button', { name: /Add memory/ }).click()
     await page
       .getByRole('dialog')
@@ -52,7 +52,7 @@ test.describe('Memory — cross-user isolation', () => {
     await page.context().clearCookies()
     await page.goto(`${baseURL}/login`)
     await login(page, baseURL, bob, 'password123')
-    await page.goto(`${baseURL}/memories`)
+    await page.goto(`${baseURL}/settings/memory`)
 
     // Bob's list must NOT contain Alice's secret.
     await expect(page.getByText('Alice is a secret agent')).not.toBeVisible()
