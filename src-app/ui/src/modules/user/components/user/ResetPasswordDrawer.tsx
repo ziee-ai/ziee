@@ -34,7 +34,7 @@ export function ResetPasswordDrawer() {
         passwordForm.resetFields()
       }}
       footer={null}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form
         form={passwordForm}

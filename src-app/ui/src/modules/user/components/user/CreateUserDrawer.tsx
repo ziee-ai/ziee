@@ -75,7 +75,7 @@ export function CreateUserDrawer() {
       }}
       footer={null}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form
         name="create-user"

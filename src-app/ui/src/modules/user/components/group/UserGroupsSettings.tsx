@@ -184,8 +184,8 @@ export function UserGroupsSettings() {
             createForm.resetFields()
           }}
           footer={null}
-          width={600}
-          maskClosable={false}
+          size={600}
+          mask={{ closable: false }}
         >
           <Form
             form={createForm}
