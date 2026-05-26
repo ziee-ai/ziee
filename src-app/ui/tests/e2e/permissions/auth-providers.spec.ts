@@ -75,9 +75,14 @@ test.describe('auth-providers — permission gating', () => {
     await expect(
       page.getByRole('button', { name: /add provider/i }),
     ).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^edit$/i })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^delete$/i })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /^test$/i })).toHaveCount(0)
+    // Match the per-row aria-label pattern (`Edit ${name}` etc.) so
+    // the negative assertion is meaningful — the bare /^edit$/i
+    // regex never matched any rendered button anyway, so the
+    // toHaveCount(0) was vacuously passing and providing zero
+    // permission-gating coverage (round-4 finding N-1).
+    await expect(page.getByRole('button', { name: /^Edit \w+/i })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Delete \w+/i })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Test \w+/i })).toHaveCount(0)
     // The per-row Switch is also inside <Can> — Antd renders it as
     // a switch role.
     await expect(page.getByRole('switch')).toHaveCount(0)
