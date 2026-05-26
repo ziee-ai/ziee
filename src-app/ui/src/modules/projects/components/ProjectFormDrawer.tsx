@@ -323,8 +323,7 @@ export function ProjectFormDrawer() {
               }
               return opts
             })()}
-            showSearch
-            optionFilterProp="label"
+            showSearch={{ optionFilterProp: 'label' }}
           />
         </Form.Item>
 
@@ -348,8 +347,7 @@ export function ProjectFormDrawer() {
               }
               return opts
             })()}
-            showSearch
-            optionFilterProp="label"
+            showSearch={{ optionFilterProp: 'label' }}
           />
         </Form.Item>
       </Form>
