@@ -13,6 +13,7 @@
 pub mod handlers;
 pub mod models;
 pub mod permissions;
+pub mod reaper;
 pub mod repository;
 pub mod routes;
 
@@ -56,7 +57,11 @@ impl AppModule for MemoryModule {
         "Per-user memory store"
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
+    fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
+        // Spawn the retention reaper (24h tick). Best-effort: a panic
+        // would just stop reaping; chat continues to work.
+        let pool = (*ctx.db_pool).clone();
+        tokio::spawn(async move { reaper::run_reaper_loop(pool).await });
         Ok(())
     }
 

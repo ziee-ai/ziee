@@ -174,6 +174,17 @@ export interface ConversationResponse {
   user_id: string
 }
 
+export interface CoreMemoryBlock {
+  assistant_id: string
+  block_label: string
+  char_limit: number
+  content: string
+  created_at: string
+  id: string
+  updated_at: string
+  user_id: string
+}
+
 export interface CreateAssistantFromHubRequest {
   description?: string
   enabled?: boolean
@@ -1697,6 +1708,13 @@ export interface UpdateUserRequest {
   username?: string
 }
 
+export interface UpsertCoreMemoryBlockRequest {
+  assistant_id: string
+  block_label: string
+  char_limit?: number
+  content: string
+}
+
 export interface UpsertMcpSettingsRequest {
   approval_mode: ApprovalMode
   auto_approved_tools?: AutoApprovedServer[]
@@ -1823,6 +1841,8 @@ export enum Permissions {
   ConversationsDelete = 'conversations::delete',
   ConversationsEdit = 'conversations::edit',
   ConversationsRead = 'conversations::read',
+  CoreMemoryRead = 'memory::core::read',
+  CoreMemoryWrite = 'memory::core::write',
   FilesDelete = 'files::delete',
   FilesDownload = 'files::download',
   FilesGenerateToken = 'files::generate_token',
@@ -1916,6 +1936,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ConversationsDelete: 'Delete chat conversations',
   ConversationsEdit: 'Edit conversation titles and metadata',
   ConversationsRead: 'View chat conversations',
+  CoreMemoryRead: 'Read own assistant core memory blocks.',
+  CoreMemoryWrite: 'Upsert / delete own assistant core memory blocks.',
   FilesDelete: 'Delete files',
   FilesDownload: 'Download file content',
   FilesGenerateToken: 'Generate download tokens',
@@ -2034,6 +2056,9 @@ export const ApiEndpoints = {
   'Conversation.list': 'GET /api/conversations',
   'Conversation.update': 'PUT /api/conversations/{id}',
   'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
+  'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
+  'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
+  'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
   'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
@@ -2212,6 +2237,9 @@ export type ApiEndpointParameters = {
   'Conversation.list': { limit?: number; page?: number }
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
+  'CoreMemory.delete': { assistant_id: string; block_label: string }
+  'CoreMemory.list': { assistant_id: string }
+  'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
   'File.downloadWithToken': { file_id: string; token: string }
@@ -2390,6 +2418,9 @@ export type ApiEndpointResponses = {
   'Conversation.list': ConversationResponse[]
   'Conversation.update': Conversation
   'Conversation.updateMcpSettings': ConversationMcpSettingsResponse
+  'CoreMemory.delete': void
+  'CoreMemory.list': CoreMemoryBlock[]
+  'CoreMemory.upsert': CoreMemoryBlock
   'File.delete': void
   'File.download': Blob
   'File.downloadWithToken': Blob

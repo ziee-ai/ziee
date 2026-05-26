@@ -21,6 +21,13 @@ impl MemoryRepository {
         Self { pool }
     }
 
+    /// Cheap clone of the underlying pool for callers that need to run
+    /// dynamic SQL (e.g., the retriever's vector top-K, the extractor's
+    /// embedding write-back) without going through a typed repo method.
+    pub fn pool_clone(&self) -> PgPool {
+        self.pool.clone()
+    }
+
     // ── user_memories CRUD ──────────────────────────────────────────
 
     /// List own memories. Soft-deleted rows excluded.

@@ -1,0 +1,346 @@
+//! Background memory extraction — fires from `after_llm_call` via
+//! `tokio::spawn` so the user-facing chat stream is never blocked.
+//!
+//! Pipeline:
+//!   1. Gate checks (admin enabled + user extraction_enabled).
+//!   2. Load the last user + last assistant message text.
+//!   3. Load the user's 20 most-recent memories (for dedup bias).
+//!   4. Call the extraction LLM (admin default or user override).
+//!   5. Parse strict JSON; for each entry: ADD / UPDATE / DELETE / NOOP.
+//!   6. ADD/UPDATE re-embed via the dispatcher and persist via repo.
+
+use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Provider, Role};
+use futures_util::StreamExt;
+use pgvector::Vector;
+use serde::Deserialize;
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::common::AppError;
+use crate::core::Repos;
+
+/// One extraction op emitted by the LLM.
+#[derive(Debug, Deserialize)]
+struct ExtractionOp {
+    op: String,
+    #[serde(default)]
+    memory_id: Option<Uuid>,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default = "default_importance_op")]
+    importance: i16,
+    #[serde(default = "default_confidence_op")]
+    confidence: i16,
+    #[serde(default = "default_kind_op")]
+    kind: String,
+}
+
+fn default_importance_op() -> i16 {
+    50
+}
+fn default_confidence_op() -> i16 {
+    80
+}
+fn default_kind_op() -> String {
+    "fact".to_string()
+}
+
+/// Entry point — called from `after_llm_call`'s spawned task.
+pub async fn extract_and_persist(
+    user_id: Uuid,
+    user_message_text: String,
+    assistant_message_text: String,
+    source_message_id: Option<Uuid>,
+) {
+    if let Err(e) =
+        run(user_id, user_message_text, assistant_message_text, source_message_id).await
+    {
+        tracing::warn!("memory.extract: pipeline error: {e}");
+    }
+}
+
+async fn run(
+    user_id: Uuid,
+    user_message: String,
+    assistant_message: String,
+    source_message_id: Option<Uuid>,
+) -> Result<(), AppError> {
+    // ── 1. Gate ────────────────────────────────────────────────────
+    let admin = Repos.memory.get_admin_settings().await?;
+    if !admin.enabled {
+        return Ok(());
+    }
+    let Some(embedding_model_id) = admin.embedding_model_id else {
+        return Ok(());
+    };
+
+    let user_settings = Repos.memory.get_or_init_user_settings(user_id).await?;
+    if !user_settings.extraction_enabled {
+        return Ok(());
+    }
+
+    // The extraction model can be the user's override or the admin default.
+    let Some(extraction_model_id) = user_settings
+        .extraction_model_id
+        .or(admin.default_extraction_model_id)
+    else {
+        tracing::info!(
+            "memory.extract: no extraction model configured (admin default or user override) — skipping"
+        );
+        return Ok(());
+    };
+
+    // ── 2. Load existing memories for dedup bias ───────────────────
+    let existing = Repos.memory.list_for_user(user_id, 20, 0).await?;
+    let existing_block = if existing.is_empty() {
+        "(no existing memories)".to_string()
+    } else {
+        existing
+            .iter()
+            .map(|m| format!("- {}  [id: {}]", m.content, m.id))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    // ── 3. Build extraction prompt ─────────────────────────────────
+    let prompt = super::prompts::EXTRACTION_PROMPT
+        .replace("{existing_memories_with_ids}", &existing_block)
+        .replace("{user_message}", &user_message)
+        .replace("{assistant_message}", &assistant_message);
+
+    // ── 4. Call extraction LLM ─────────────────────────────────────
+    let json_text = call_extraction_llm(extraction_model_id, prompt).await?;
+
+    // ── 5. Parse ops ───────────────────────────────────────────────
+    let ops: Vec<ExtractionOp> = match parse_extraction_json(&json_text) {
+        Some(o) => o,
+        None => {
+            tracing::warn!("memory.extract: extraction LLM returned malformed JSON; no writes");
+            return Ok(());
+        }
+    };
+
+    if ops.is_empty() {
+        return Ok(());
+    }
+
+    let pool = Repos.memory.pool_clone();
+
+    // ── 6. Apply each op ───────────────────────────────────────────
+    for op in ops {
+        let outcome = match op.op.to_ascii_uppercase().as_str() {
+            "NOOP" => Ok(()),
+            "ADD" => apply_add(
+                &pool,
+                user_id,
+                op.content,
+                op.importance,
+                op.kind,
+                source_message_id,
+                embedding_model_id,
+            )
+            .await,
+            "UPDATE" => apply_update(
+                &pool,
+                user_id,
+                op.memory_id,
+                op.content,
+                op.importance,
+                op.kind,
+                embedding_model_id,
+            )
+            .await,
+            "DELETE" => apply_delete(user_id, op.memory_id).await,
+            other => {
+                tracing::warn!("memory.extract: unknown op {other:?}; ignoring");
+                Ok(())
+            }
+        };
+        if let Err(e) = outcome {
+            tracing::warn!("memory.extract: op apply failed: {e}");
+            // Continue with remaining ops — one bad op shouldn't kill
+            // the rest of the batch.
+        }
+    }
+
+    Ok(())
+}
+
+async fn apply_add(
+    pool: &PgPool,
+    user_id: Uuid,
+    content: Option<String>,
+    importance: i16,
+    kind: String,
+    source_message_id: Option<Uuid>,
+    embedding_model_id: Uuid,
+) -> Result<(), AppError> {
+    let content = match content {
+        Some(c) if !c.trim().is_empty() => c,
+        _ => return Ok(()),
+    };
+    let new_row = Repos
+        .memory
+        .insert(
+            user_id,
+            &content,
+            "extraction",
+            importance.clamp(0, 100),
+            &kind,
+            &serde_json::json!({}),
+            source_message_id,
+        )
+        .await?;
+
+    // Embed + write back.
+    if let Ok(vec) = super::dispatch::embed(embedding_model_id, &content).await {
+        let v = Vector::from(vec);
+        let _ = sqlx::query(
+            "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
+        )
+        .bind(&v)
+        .bind(format!("model_id:{embedding_model_id}"))
+        .bind(new_row.id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+    Ok(())
+}
+
+async fn apply_update(
+    pool: &PgPool,
+    user_id: Uuid,
+    memory_id: Option<Uuid>,
+    content: Option<String>,
+    importance: i16,
+    kind: String,
+    embedding_model_id: Uuid,
+) -> Result<(), AppError> {
+    let Some(id) = memory_id else {
+        return Ok(());
+    };
+    let updated = Repos
+        .memory
+        .update_owned(
+            user_id,
+            id,
+            content.as_deref(),
+            Some(importance.clamp(0, 100)),
+            Some(kind.as_str()),
+            None,
+        )
+        .await?;
+    let Some(row) = updated else {
+        return Ok(());
+    };
+
+    if let Ok(vec) = super::dispatch::embed(embedding_model_id, &row.content).await {
+        let v = Vector::from(vec);
+        let _ = sqlx::query(
+            "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
+        )
+        .bind(&v)
+        .bind(format!("model_id:{embedding_model_id}"))
+        .bind(row.id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(AppError::database_error)?;
+    }
+    Ok(())
+}
+
+async fn apply_delete(user_id: Uuid, memory_id: Option<Uuid>) -> Result<(), AppError> {
+    let Some(id) = memory_id else {
+        return Ok(());
+    };
+    let _ = Repos.memory.soft_delete_owned(user_id, id).await?;
+    Ok(())
+}
+
+/// Call the extraction LLM. Single non-streaming completion accumulated
+/// from the stream.
+async fn call_extraction_llm(model_id: Uuid, prompt: String) -> Result<String, AppError> {
+    let model = Repos
+        .llm_model
+        .get_by_id(model_id)
+        .await
+        .map_err(AppError::database_error)?
+        .ok_or_else(|| AppError::not_found("LlmModel"))?;
+    let provider = Repos
+        .llm_provider
+        .get_by_id(model.provider_id)
+        .await
+        .map_err(AppError::database_error)?
+        .ok_or_else(|| AppError::internal_error("Extraction provider not found"))?;
+
+    let api_key = provider.api_key.as_deref().unwrap_or("");
+    let base_url = provider.base_url.as_deref().ok_or_else(|| {
+        AppError::internal_error(format!("Provider '{}' has no base_url", provider.name))
+    })?;
+
+    let ai_provider = Provider::new(&provider.provider_type, api_key, base_url)
+        .map_err(|e| AppError::internal_error(format!("create extraction provider: {e}")))?;
+
+    let request = ChatRequest {
+        model: model.name.clone(),
+        messages: vec![ChatMessage {
+            role: Role::User,
+            content: vec![ContentBlock::Text { text: prompt }],
+        }],
+        temperature: Some(0.2),
+        max_tokens: Some(2048),
+        ..Default::default()
+    };
+
+    let mut stream = ai_provider
+        .chat_stream(request)
+        .await
+        .map_err(|e| AppError::internal_error(format!("extraction stream: {e}")))?;
+
+    let mut buf = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| AppError::internal_error(format!("stream chunk: {e}")))?;
+        for delta in &chunk.content {
+            if let ai_providers::ContentBlockDelta::TextDelta { delta, .. } = delta {
+                buf.push_str(delta);
+            }
+        }
+    }
+    Ok(buf)
+}
+
+/// Parse the extraction LLM's response into ops. Tolerates wrapping
+/// prose / markdown by extracting the first `[...]` JSON array.
+fn parse_extraction_json(raw: &str) -> Option<Vec<ExtractionOp>> {
+    let trimmed = raw.trim();
+    // Strip ```json ... ``` fences if present.
+    let stripped = trimmed
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    // Locate the first array.
+    let start = stripped.find('[')?;
+    let mut depth = 0i32;
+    let mut end = None;
+    for (i, ch) in stripped[start..].char_indices() {
+        match ch {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(start + i + 1);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let end = end?;
+    let array_text = &stripped[start..end];
+    serde_json::from_str::<Vec<ExtractionOp>>(array_text).ok()
+}
