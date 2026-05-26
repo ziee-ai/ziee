@@ -956,7 +956,9 @@ export interface MemoryAdminSettings {
   embedding_dimensions: number
   embedding_model_id?: string
   enabled: boolean
+  full_summary_prompt?: string
   id: number
+  incremental_summary_prompt?: string
   soft_delete_grace_days: number
   summarize_after_n_messages: number
   summarizer_keep_recent: number
@@ -1708,6 +1710,8 @@ export interface UpdateMemoryAdminSettingsRequest {
   default_top_k?: number
   embedding_model_id?: string
   enabled?: boolean
+  full_summary_prompt?: string
+  incremental_summary_prompt?: string
   soft_delete_grace_days?: number
   summarize_after_n_messages?: number
   summarizer_keep_recent?: number

@@ -9963,7 +9963,7 @@
         "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
         "operationId": "Memory.admin.update",
         "requestBody": {
-          "description": "Admin settings update body.",
+          "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default), `Some(Some(x))` = set to `x`.",
           "content": {
             "application/json": {
               "schema": {
@@ -14670,11 +14670,25 @@
           "enabled": {
             "type": "boolean"
           },
+          "full_summary_prompt": {
+            "description": "Override for the full-resummarize LLM prompt. NULL = use the\n compiled-in default. Must contain `{transcript}` if set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "type": "integer",
             "format": "int16",
             "maximum": 32767,
             "minimum": -32768
+          },
+          "incremental_summary_prompt": {
+            "description": "Override for the incremental-refresh LLM prompt. NULL = use the\n compiled-in default. Must contain `{previous_summary}` and\n `{new_transcript}` if set.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "soft_delete_grace_days": {
             "description": "Reaper hard-delete grace period for soft-deleted memories (days).",
@@ -18218,7 +18232,7 @@
         }
       },
       "UpdateMemoryAdminSettingsRequest": {
-        "description": "Admin settings update body.",
+        "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default), `Some(Some(x))` = set to `x`.",
         "type": "object",
         "properties": {
           "cosine_threshold": {
@@ -18261,6 +18275,18 @@
           "enabled": {
             "type": [
               "boolean",
+              "null"
+            ]
+          },
+          "full_summary_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "incremental_summary_prompt": {
+            "type": [
+              "string",
               "null"
             ]
           },

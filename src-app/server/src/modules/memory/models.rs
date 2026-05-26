@@ -72,6 +72,13 @@ pub struct MemoryAdminSettings {
     pub summarize_after_n_messages: i32,
     /// Summarizer messages kept verbatim alongside the summary.
     pub summarizer_keep_recent: i32,
+    /// Override for the full-resummarize LLM prompt. NULL = use the
+    /// compiled-in default. Must contain `{transcript}` if set.
+    pub full_summary_prompt: Option<String>,
+    /// Override for the incremental-refresh LLM prompt. NULL = use the
+    /// compiled-in default. Must contain `{previous_summary}` and
+    /// `{new_transcript}` if set.
+    pub incremental_summary_prompt: Option<String>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -115,9 +122,21 @@ pub struct UpdateUserMemorySettingsRequest {
 }
 
 /// Admin settings update body.
+///
+/// The `Option<Option<T>>` pattern on nullable columns means: outer
+/// `None` = leave the field unchanged, `Some(None)` = clear to NULL
+/// (use the compiled-in default for prompts, or "no default" for
+/// embedding/extraction models), `Some(Some(x))` = set to `x`.
+///
+/// Serde's default `Option<T>` deserialization collapses `null` and
+/// "absent" to the same `None`, so the discriminating "Some(None)"
+/// state requires a custom deserializer — see
+/// `deserialize_nullable_field` below.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct UpdateMemoryAdminSettingsRequest {
+    #[serde(default, deserialize_with = "deserialize_nullable_field")]
     pub embedding_model_id: Option<Option<Uuid>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_field")]
     pub default_extraction_model_id: Option<Option<Uuid>>,
     pub default_top_k: Option<i16>,
     pub cosine_threshold: Option<f32>,
@@ -126,6 +145,25 @@ pub struct UpdateMemoryAdminSettingsRequest {
     pub daily_extraction_quota: Option<i32>,
     pub summarize_after_n_messages: Option<i32>,
     pub summarizer_keep_recent: Option<i32>,
+    #[serde(default, deserialize_with = "deserialize_nullable_field")]
+    pub full_summary_prompt: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_field")]
+    pub incremental_summary_prompt: Option<Option<String>>,
+}
+
+/// Distinguish JSON `null` from absent field for `Option<Option<T>>`.
+///   absent       → outer None  ("leave unchanged")
+///   "field": null → Some(None) ("clear to NULL")
+///   "field": v    → Some(Some(v))
+/// Mirrors `chat::core::types::deserialize_nullable_field`.
+fn deserialize_nullable_field<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
 }
 
 /// Max length of a single memory `content` row. Shared between

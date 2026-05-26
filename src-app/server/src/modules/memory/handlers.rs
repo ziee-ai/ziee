@@ -369,6 +369,43 @@ pub async fn update_admin_settings(
         }
     }
 
+    // Prompt-template validation: a non-empty override MUST contain
+    // the placeholders the summarizer interpolates. Otherwise
+    // summarization would silently produce broken prompts.
+    // `Some(None)` (clear back to default) and `Some(Some(""))`
+    // (clear-via-empty) both skip validation — those reset to the
+    // compiled-in default, which is always valid.
+    if let Some(Some(s)) = body.full_summary_prompt.as_ref() {
+        if !s.is_empty() && !s.contains("{transcript}") {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "full_summary_prompt must contain the {transcript} placeholder",
+            )
+            .into());
+        }
+    }
+    if let Some(Some(s)) = body.incremental_summary_prompt.as_ref() {
+        if !s.is_empty()
+            && (!s.contains("{previous_summary}") || !s.contains("{new_transcript}"))
+        {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "incremental_summary_prompt must contain both {previous_summary} and {new_transcript} placeholders",
+            )
+            .into());
+        }
+    }
+    // Normalize: treat Some(Some("")) as Some(None) (clear). Otherwise
+    // the empty string would be written verbatim and the summarizer
+    // would short-circuit to "empty prompt" without falling back to
+    // the default.
+    let full_summary_prompt = body.full_summary_prompt.map(|outer| {
+        outer.and_then(|s| if s.is_empty() { None } else { Some(s) })
+    });
+    let incremental_summary_prompt = body.incremental_summary_prompt.map(|outer| {
+        outer.and_then(|s| if s.is_empty() { None } else { Some(s) })
+    });
+
     // Snapshot the current embedding model id so we can detect a swap
     // and trigger the re-embed worker if it changed.
     let prior = Repos.memory.get_admin_settings().await?;
@@ -386,6 +423,8 @@ pub async fn update_admin_settings(
             body.daily_extraction_quota,
             body.summarize_after_n_messages,
             body.summarizer_keep_recent,
+            full_summary_prompt,
+            incremental_summary_prompt,
         )
         .await?;
 

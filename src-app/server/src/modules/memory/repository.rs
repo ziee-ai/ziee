@@ -492,6 +492,8 @@ impl MemoryRepository {
                 daily_extraction_quota,
                 summarize_after_n_messages,
                 summarizer_keep_recent,
+                full_summary_prompt,
+                incremental_summary_prompt,
                 updated_at as "updated_at: _"
             FROM memory_admin_settings
             WHERE id = 1
@@ -515,12 +517,18 @@ impl MemoryRepository {
         daily_extraction_quota: Option<i32>,
         summarize_after_n_messages: Option<i32>,
         summarizer_keep_recent: Option<i32>,
+        full_summary_prompt: Option<Option<String>>,
+        incremental_summary_prompt: Option<Option<String>>,
     ) -> Result<MemoryAdminSettings, AppError> {
         // Same Option<Option<T>> split as update_user_settings.
         let embedding_set = embedding_model_id.is_some();
         let embedding_val = embedding_model_id.flatten();
         let extraction_set = default_extraction_model_id.is_some();
         let extraction_val = default_extraction_model_id.flatten();
+        let full_prompt_set = full_summary_prompt.is_some();
+        let full_prompt_val = full_summary_prompt.flatten();
+        let inc_prompt_set = incremental_summary_prompt.is_some();
+        let inc_prompt_val = incremental_summary_prompt.flatten();
 
         let row = sqlx::query_as!(
             MemoryAdminSettings,
@@ -535,6 +543,8 @@ impl MemoryRepository {
                 daily_extraction_quota      = COALESCE($9, daily_extraction_quota),
                 summarize_after_n_messages  = COALESCE($10, summarize_after_n_messages),
                 summarizer_keep_recent      = COALESCE($11, summarizer_keep_recent),
+                full_summary_prompt         = CASE WHEN $12::bool THEN $13 ELSE full_summary_prompt END,
+                incremental_summary_prompt  = CASE WHEN $14::bool THEN $15 ELSE incremental_summary_prompt END,
                 updated_at                  = NOW()
             WHERE id = 1
             RETURNING
@@ -549,6 +559,8 @@ impl MemoryRepository {
                 daily_extraction_quota,
                 summarize_after_n_messages,
                 summarizer_keep_recent,
+                full_summary_prompt,
+                incremental_summary_prompt,
                 updated_at as "updated_at: _"
             "#,
             embedding_set,
@@ -561,7 +573,11 @@ impl MemoryRepository {
             soft_delete_grace_days,
             daily_extraction_quota,
             summarize_after_n_messages,
-            summarizer_keep_recent
+            summarizer_keep_recent,
+            full_prompt_set,
+            full_prompt_val,
+            inc_prompt_set,
+            inc_prompt_val
         )
         .fetch_one(&self.pool)
         .await

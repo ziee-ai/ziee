@@ -16,6 +16,8 @@ export interface MemoryAdminSettingsRow {
   daily_extraction_quota: number
   summarize_after_n_messages: number
   summarizer_keep_recent: number
+  full_summary_prompt: string | null
+  incremental_summary_prompt: string | null
   updated_at: string
 }
 
@@ -47,6 +49,8 @@ interface MemoryAdminStore {
       daily_extraction_quota: number
       summarize_after_n_messages: number
       summarizer_keep_recent: number
+      full_summary_prompt: string | null
+      incremental_summary_prompt: string | null
     }>,
   ) => Promise<MemoryAdminSettingsRow | null>
 }

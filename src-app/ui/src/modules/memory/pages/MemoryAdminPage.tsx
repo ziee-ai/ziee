@@ -3,6 +3,7 @@ import {
   Typography,
   Switch,
   Form,
+  Input,
   InputNumber,
   Select,
   Alert,
@@ -30,6 +31,8 @@ interface AdminFormValues {
   daily_extraction_quota: number
   summarize_after_n_messages: number
   summarizer_keep_recent: number
+  full_summary_prompt?: string
+  incremental_summary_prompt?: string
 }
 
 export function MemoryAdminPage() {
@@ -52,7 +55,11 @@ export function MemoryAdminPage() {
   }, [])
 
   // Populate form when settings arrive (or change externally via the
-  // re-embed button). Matches the LlmProviderDrawer pattern.
+  // re-embed button). Matches the LlmProviderDrawer pattern. The
+  // prompt fields are NULL when using the compiled-in default — we
+  // surface them as empty strings in the form (placeholder shows the
+  // default text), and the submit handler converts "" back to null
+  // for the backend.
   useEffect(() => {
     if (settings) {
       form.setFieldsValue({
@@ -65,6 +72,8 @@ export function MemoryAdminPage() {
         daily_extraction_quota: settings.daily_extraction_quota,
         summarize_after_n_messages: settings.summarize_after_n_messages,
         summarizer_keep_recent: settings.summarizer_keep_recent,
+        full_summary_prompt: settings.full_summary_prompt ?? '',
+        incremental_summary_prompt: settings.incremental_summary_prompt ?? '',
       })
     }
   }, [settings, form])
@@ -93,6 +102,12 @@ export function MemoryAdminPage() {
         daily_extraction_quota: values.daily_extraction_quota,
         summarize_after_n_messages: values.summarize_after_n_messages,
         summarizer_keep_recent: values.summarizer_keep_recent,
+        full_summary_prompt: values.full_summary_prompt?.trim()
+          ? values.full_summary_prompt
+          : null,
+        incremental_summary_prompt: values.incremental_summary_prompt?.trim()
+          ? values.incremental_summary_prompt
+          : null,
       })
       if ((values.embedding_model_id ?? null) !== priorEmbeddingId) {
         message.success(
@@ -302,6 +317,75 @@ export function MemoryAdminPage() {
             ]}
           >
             <InputNumber min={2} max={999} />
+          </Form.Item>
+
+          <Form.Item
+            name="full_summary_prompt"
+            label="Full-summarize LLM prompt"
+            extra={
+              <>
+                Prompt sent to the summarization LLM the first time a
+                branch is summarized (or when the incremental anchor is
+                lost). Must contain the <code>{'{transcript}'}</code>{' '}
+                placeholder. Leave empty to use the built-in default.
+              </>
+            }
+            rules={[
+              {
+                validator(_, value: string | undefined) {
+                  const v = value?.trim() ?? ''
+                  if (v === '' || v.includes('{transcript}')) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(
+                    new Error('Must contain the {transcript} placeholder.'),
+                  )
+                },
+              },
+            ]}
+          >
+            <Input.TextArea
+              autoSize={{ minRows: 4, maxRows: 14 }}
+              placeholder="Leave empty to use the built-in default (recommended unless you have a specific reason to tune)."
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="incremental_summary_prompt"
+            label="Incremental-refresh LLM prompt"
+            extra={
+              <>
+                Prompt for the incremental refresh path (every
+                subsequent summarization fold-in). Must contain both{' '}
+                <code>{'{previous_summary}'}</code> and{' '}
+                <code>{'{new_transcript}'}</code> placeholders. Leave
+                empty to use the built-in default.
+              </>
+            }
+            rules={[
+              {
+                validator(_, value: string | undefined) {
+                  const v = value?.trim() ?? ''
+                  if (
+                    v === '' ||
+                    (v.includes('{previous_summary}') &&
+                      v.includes('{new_transcript}'))
+                  ) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(
+                    new Error(
+                      'Must contain both {previous_summary} and {new_transcript} placeholders.',
+                    ),
+                  )
+                },
+              },
+            ]}
+          >
+            <Input.TextArea
+              autoSize={{ minRows: 4, maxRows: 14 }}
+              placeholder="Leave empty to use the built-in default."
+            />
           </Form.Item>
         </Card>
 
