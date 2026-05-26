@@ -1,6 +1,6 @@
 import { enableMapSet } from 'immer'
 import { createExtensionStore } from '@/modules/chat/core/extensions'
-import { Permissions, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
+import { Permissions, type Project, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { hasPermissionNow } from '@/core/permissions'
 
@@ -76,6 +76,36 @@ interface ConversationMcpConfig {
 /** Special key for pending (new conversation) config */
 export const PENDING_CONVERSATION_KEY = '__pending__'
 
+/** Build a config-map key for a project (so the same conversationConfigs
+ *  Map can hold both conversation- and project-scoped configs without a
+ *  parallel collection). Conversation ids are raw UUIDs; project keys
+ *  carry a `project:` prefix so they can't collide. */
+export const projectConfigKey = (projectId: string) => `project:${projectId}`
+
+/**
+ * Resolve which config-map key an action should read/write based on
+ * the currently-active scope (chat vs project). Centralizing this
+ * keeps the precedence rule honest at every call site:
+ *
+ *   1. If `currentProjectId` is set AND `currentConversationId` is null,
+ *      the modal was opened in project scope — route to the project key.
+ *   2. Otherwise, route to the conversation id (or PENDING_CONVERSATION_KEY
+ *      when null, i.e. the pending-buffer for new chats).
+ *
+ * Conversation always wins when present — even on a conversation that
+ * belongs to a project. Editing from the chat surface edits conversation
+ * overrides, never project defaults.
+ */
+function resolveConfigKey(
+  state: { currentProjectId: string | null; currentConversationId: string | null },
+  conversationId: string | null,
+): string {
+  if (state.currentProjectId !== null && state.currentConversationId === null) {
+    return projectConfigKey(state.currentProjectId)
+  }
+  return conversationId || PENDING_CONVERSATION_KEY
+}
+
 /**
  * MCP extension store
  * Combines state and actions
@@ -90,6 +120,12 @@ interface McpStore {
   conversationConfigs: Map<string, ConversationMcpConfig>
   /** Current conversation ID (null for new conversations) */
   currentConversationId: string | null
+  /** Current project ID — set only when the modal was opened from the
+   *  project detail page to edit project MCP defaults. Dispatch rule:
+   *  `currentProjectId !== null && currentConversationId === null` →
+   *  project scope; everything else → conversation scope. Both set is
+   *  treated as conversation-wins (defensive). */
+  currentProjectId: string | null
   /** Selected servers and their tools (computed from current conversation config) */
   selectedServers: Map<string, ServerSelection>
   /** User's default MCP settings (loaded on init) */
@@ -185,10 +221,21 @@ interface McpStore {
   applyUserDefaultsToPending: (availableServerIds: string[]) => void
 
   // Config modal actions
-  /** Open the config modal */
+  /** Open the config modal (conversation scope — uses currentConversationId
+   *  or pending). */
   openConfigModal: () => void
-  /** Close the config modal */
+  /** Open the config modal for editing a project's MCP defaults. Sets
+   *  currentProjectId, clears currentConversationId, seeds the project's
+   *  current settings into the per-key config map. */
+  openConfigModalForProject: (project: Project) => void
+  /** Close the config modal (also clears currentProjectId). */
   closeConfigModal: () => void
+  /** Save the project's MCP defaults to /projects/{id}/mcp-settings. */
+  saveProjectConfig: (
+    projectId: string,
+    availableServerIds?: string[],
+    serverToolsMap?: Map<string, string[]>,
+  ) => Promise<void>
 
   // Elicitation actions
   /** Add a new elicitation request (called when mcpElicitationRequired SSE event arrives) */
@@ -209,6 +256,7 @@ export const createMcpStore = () =>
     approvalDecisions: [],
     conversationConfigs: new Map<string, ConversationMcpConfig>(),
     currentConversationId: null,
+    currentProjectId: null,
     selectedServers: new Map<string, ServerSelection>(),
     userDefaults: null,
     userDefaultsLoaded: false,
@@ -330,7 +378,7 @@ export const createMcpStore = () =>
         state.currentConversationId = conversationId
 
         // Determine which config key to use
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
 
         // Load selected servers from conversation config (or pending)
         if (state.conversationConfigs.has(configKey)) {
@@ -455,6 +503,87 @@ export const createMcpStore = () =>
     },
 
     /**
+     * Save the project's MCP defaults. Mirrors saveConversationConfig
+     * (disabled_servers computed as the inverse of selectedServers
+     * against availableServerIds + partial-tool disable from
+     * serverToolsMap) but targets PUT /projects/{id}/mcp-settings.
+     *
+     * Kept as a separate action rather than a branch inside
+     * saveConversationConfig — the two are conceptually different
+     * (chat has the pending-buffer flow; project is direct) and
+     * sharing the disabled-server derivation is a refactor we can
+     * lift later if a third scope appears.
+     */
+    saveProjectConfig: async (
+      projectId: string,
+      availableServerIds?: string[],
+      serverToolsMap?: Map<string, string[]>,
+    ) => {
+      const key = projectConfigKey(projectId)
+      const state = get()
+      const config = state.conversationConfigs.get(key)
+      if (!config) {
+        console.warn('[MCP Store] No project config to save for:', projectId)
+        return
+      }
+
+      // Disabled-server derivation, identical to saveConversationConfig.
+      let disabledServers: DisabledServer[] = []
+      if (availableServerIds && availableServerIds.length > 0) {
+        const selectedServerIds = new Set(config.selectedServers.keys())
+        disabledServers = availableServerIds
+          .filter(id => !selectedServerIds.has(id))
+          .map(id => ({ server_id: id, tools: [] }))
+      }
+      if (serverToolsMap) {
+        for (const [serverId, selection] of config.selectedServers.entries()) {
+          if (selection.tools.length > 0) {
+            const allTools = serverToolsMap.get(serverId) || []
+            const disabledTools = allTools.filter(t => !selection.tools.includes(t))
+            if (disabledTools.length > 0) {
+              disabledServers.push({ server_id: serverId, tools: disabledTools })
+            }
+          }
+        }
+      }
+      const existingDisabled = config.disabledServers || []
+      const availableSet = new Set(availableServerIds || [])
+      const unavailableDisabled = existingDisabled.filter(d => !availableSet.has(d.server_id))
+      disabledServers = [...disabledServers, ...unavailableDisabled]
+
+      const updated = await ApiClient.Project.updateMcpSettings({
+        id: projectId,
+        approval_mode: config.approvalMode || 'manual_approve',
+        auto_approved_tools: config.autoApprovedTools || [],
+        disabled_servers: disabledServers,
+        // loop_settings: opaque pass-through. The project table now
+        // mirrors the conversation column (migration 50).
+        loop_settings: config.loopSettings as unknown,
+      })
+
+      set(state => {
+        const existing = state.conversationConfigs.get(key)
+        if (existing) {
+          state.conversationConfigs.set(key, { ...existing, disabledServers })
+        }
+      })
+
+      // Mirror the saved row into ProjectDetail store so any open
+      // ProjectDetailPage reflects the change without a refetch.
+      // Dynamic import to avoid module cycle with @/core/stores.
+      const { Stores } = await import('@/core/stores')
+      if (Stores.ProjectDetail.project?.id === projectId) {
+        Stores.ProjectDetail.__setState({ project: updated })
+      }
+
+      console.log('[MCP Store] Saved project config:', projectId, {
+        approvalMode: config.approvalMode,
+        autoApprovedTools: config.autoApprovedTools?.length || 0,
+        disabledServers: disabledServers.length,
+      })
+    },
+
+    /**
      * Get or create pending config for new conversations
      */
     getOrCreatePendingConfig: (): ConversationMcpConfig => {
@@ -498,7 +627,7 @@ export const createMcpStore = () =>
      */
     setApprovalMode: (conversationId: string | null, mode: 'disabled' | 'auto_approve' | 'manual_approve') => {
       set(state => {
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
         let config = state.conversationConfigs.get(configKey)
 
         // Create pending config if it doesn't exist (for new conversations)
@@ -525,7 +654,7 @@ export const createMcpStore = () =>
      */
     toggleAutoApprovedTool: (conversationId: string | null, serverId: string, toolName: string) => {
       set(state => {
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
         let config = state.conversationConfigs.get(configKey)
 
         // Create pending config if it doesn't exist (for new conversations)
@@ -581,7 +710,7 @@ export const createMcpStore = () =>
      */
     isToolAutoApproved: (serverId: string, toolName: string) => {
       const state = get()
-      const configKey = state.currentConversationId || PENDING_CONVERSATION_KEY
+      const configKey = resolveConfigKey(state, state.currentConversationId)
 
       const config = state.conversationConfigs.get(configKey)
       if (!config || !config.autoApprovedTools) return false
@@ -597,7 +726,7 @@ export const createMcpStore = () =>
      */
     setLoopSettings: (conversationId: string | null, settings: Partial<LoopSettings>) => {
       set(state => {
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
         let config = state.conversationConfigs.get(configKey)
 
         // Create config if it doesn't exist (for both new and existing conversations)
@@ -621,7 +750,7 @@ export const createMcpStore = () =>
      */
     addStopWhenToolCalled: (conversationId: string | null, tool: ToolIdentifier) => {
       set(state => {
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
         let config = state.conversationConfigs.get(configKey)
 
         // Create config if it doesn't exist (for both new and existing conversations)
@@ -652,7 +781,7 @@ export const createMcpStore = () =>
      */
     removeStopWhenToolCalled: (conversationId: string | null, serverId: string, toolName: string) => {
       set(state => {
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
         const config = state.conversationConfigs.get(configKey)
 
         if (config && config.loopSettings?.stop_when_tools_called) {
@@ -671,7 +800,7 @@ export const createMcpStore = () =>
      */
     addPerToolLimit: (conversationId: string | null, limit: PerToolLimit) => {
       set(state => {
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
         let config = state.conversationConfigs.get(configKey)
 
         // Create config if it doesn't exist (for both new and existing conversations)
@@ -714,7 +843,7 @@ export const createMcpStore = () =>
      */
     removePerToolLimit: (conversationId: string | null, serverId: string, toolName: string) => {
       set(state => {
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
         const config = state.conversationConfigs.get(configKey)
 
         if (config && config.loopSettings?.per_tool_max_iteration) {
@@ -733,7 +862,7 @@ export const createMcpStore = () =>
      */
     updatePerToolLimit: (conversationId: string | null, serverId: string, toolName: string, maxIteration: number) => {
       set(state => {
-        const configKey = conversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, conversationId)
         const config = state.conversationConfigs.get(configKey)
 
         if (config && config.loopSettings?.per_tool_max_iteration) {
@@ -761,7 +890,7 @@ export const createMcpStore = () =>
         })
 
         // Update conversation config (or pending config)
-        const configKey = state.currentConversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, state.currentConversationId)
         const config = state.conversationConfigs.get(configKey)
         if (config) {
           config.selectedServers.set(serverId, { server_id: serverId, tools })
@@ -778,7 +907,7 @@ export const createMcpStore = () =>
         state.selectedServers.delete(serverId)
 
         // Update conversation config (or pending config)
-        const configKey = state.currentConversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, state.currentConversationId)
         const config = state.conversationConfigs.get(configKey)
         if (config) {
           config.selectedServers.delete(serverId)
@@ -814,7 +943,7 @@ export const createMcpStore = () =>
         state.selectedServers.set(serverId, newSelection)
 
         // Update conversation config (or pending config)
-        const configKey = state.currentConversationId || PENDING_CONVERSATION_KEY
+        const configKey = resolveConfigKey(state, state.currentConversationId)
         const config = state.conversationConfigs.get(configKey)
         if (config) {
           config.selectedServers.set(serverId, newSelection)
@@ -891,7 +1020,7 @@ export const createMcpStore = () =>
      */
     saveUserDefaults: async (conversationId: string | null, availableServerIds: string[], updateAutoApproved?: boolean) => {
       const state = get()
-      const configKey = conversationId || PENDING_CONVERSATION_KEY
+      const configKey = resolveConfigKey(state, conversationId)
       const config = state.conversationConfigs.get(configKey)
 
       // Use state.selectedServers directly (always available)
@@ -974,16 +1103,78 @@ export const createMcpStore = () =>
      */
     openConfigModal: () => {
       set(state => {
+        // Conversation-scoped open: clear any stale project scope so
+        // the dispatch rule routes the save to the conversation path.
+        state.currentProjectId = null
         state.configModalVisible = true
       })
     },
 
     /**
-     * Close the config modal
+     * Open the config modal in PROJECT scope. Seeds a config under
+     * `projectConfigKey(project.id)` from the project's stored MCP
+     * fields and clears currentConversationId so the save dispatch
+     * routes to /projects/{id}/mcp-settings.
+     */
+    openConfigModalForProject: (project: Project) => {
+      const key = projectConfigKey(project.id)
+      set(state => {
+        const autoApprovedRaw = (project.mcp_auto_approved_tools as
+          | AutoApprovedServer[]
+          | null
+          | undefined) ?? []
+        const disabledRaw = (project.mcp_disabled_servers as
+          | DisabledServer[]
+          | null
+          | undefined) ?? []
+        const loop = (project.mcp_loop_settings as
+          | LoopSettings
+          | null
+          | undefined) ?? undefined
+
+        // selectedServers seeding: the modal renders enabled MCP
+        // servers and lets the user toggle them. The persisted shape
+        // is the INVERSE (disabled_servers). We don't know the
+        // accessible-server list here; the modal's render logic
+        // displays each enabled server with its current selection
+        // (`selection = !disabledServers.find(d => d.id === server.id)`).
+        // Leaving selectedServers empty here means the modal initially
+        // shows nothing selected — so we synthesize selections for
+        // every server that is NOT in disabledRaw. The full accessible
+        // list isn't reachable from here, so we add all server_ids
+        // from autoApprovedRaw + a wildcard "not-disabled" marker.
+        // Simpler heuristic: seed selectedServers as the union of
+        // disabled-list complements is impossible without the list.
+        // Instead, we leave selectedServers empty here and let the
+        // modal's render compute selection from disabledRaw + the
+        // enabled-server list it already has access to.
+        const selectedServers = new Map<string, ServerSelection>()
+
+        state.conversationConfigs.set(key, {
+          selectedServers,
+          disabledServers: disabledRaw,
+          approvalMode: (project.mcp_approval_mode as
+            | 'disabled'
+            | 'auto_approve'
+            | 'manual_approve') || 'manual_approve',
+          autoApprovedTools: autoApprovedRaw,
+          loopSettings: loop,
+        })
+
+        state.currentProjectId = project.id
+        state.currentConversationId = null
+        state.configModalVisible = true
+      })
+    },
+
+    /**
+     * Close the config modal. Clears project scope so reopening from
+     * chat doesn't accidentally route via stale state.
      */
     closeConfigModal: () => {
       set(state => {
         state.configModalVisible = false
+        state.currentProjectId = null
       })
     },
 

@@ -424,6 +424,7 @@ pub async fn verify_message_ownership(
         crate::modules::chat::core::models::Conversation,
         r#"
         SELECT DISTINCT c.id, c.user_id, c.model_id as "model_id: _", c.title, c.active_branch_id,
+               c.project_id as "project_id: _",
                c.created_at as "created_at: _", c.updated_at as "updated_at: _"
         FROM conversations c
         INNER JOIN branches b ON b.conversation_id = c.id

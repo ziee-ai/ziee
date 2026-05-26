@@ -104,7 +104,7 @@ export function EditUserGroupDrawer() {
       onClose={handleClose}
       footer={null}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form
         name="edit-user-group-form"

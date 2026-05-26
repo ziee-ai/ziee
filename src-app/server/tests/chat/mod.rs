@@ -10,8 +10,11 @@
 //!
 //! Total: ~95 integration tests
 
-// Helper functions used across all test files
-mod helpers;
+// Helper functions used across all test files.
+// `pub(crate)` so the project test module can reuse get_test_model_configs +
+// create_test_model_with_config + parse_sse_stream for its Tier-3
+// real-LLM tests (project/injection_test.rs).
+pub(crate) mod helpers;
 
 // Test modules
 mod permissions_test;

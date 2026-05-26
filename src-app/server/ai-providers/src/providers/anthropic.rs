@@ -179,7 +179,20 @@ impl AnthropicProvider {
                         .collect::<Vec<_>>()
                         .join("\n");
                     if !text.is_empty() {
-                        system_message = Some(text);
+                        // CONCATENATE multiple Role::System messages
+                        // instead of overwriting. Anthropic's API has
+                        // a single `system` field, so when the caller
+                        // supplies multiple system messages (e.g. the
+                        // assistant extension + the project extension
+                        // both inject — Plan 5 §4 stacking) we need
+                        // to merge them. Without this, the LAST system
+                        // message would silently clobber earlier ones,
+                        // and the assistant's persona instructions
+                        // would never reach the model.
+                        system_message = Some(match system_message {
+                            Some(prev) => format!("{prev}\n\n{text}"),
+                            None => text,
+                        });
                     }
                 }
                 Role::User | Role::Tool => {

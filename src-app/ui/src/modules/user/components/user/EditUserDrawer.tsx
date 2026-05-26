@@ -60,7 +60,7 @@ export function EditUserDrawer() {
       }}
       footer={null}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form
         name="edit-user-form"

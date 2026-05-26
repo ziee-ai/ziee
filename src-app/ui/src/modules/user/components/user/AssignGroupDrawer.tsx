@@ -36,7 +36,7 @@ export function AssignGroupDrawer() {
         assignGroupForm.resetFields()
       }}
       footer={null}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form
         form={assignGroupForm}

@@ -201,7 +201,7 @@ export function LlmRepositoryDrawer() {
       onClose={handleClose}
       footer={null}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form
         name="llm-repository-form"

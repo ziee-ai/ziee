@@ -184,6 +184,17 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
             draft.total = draft.conversations.length
             draft.deleting = false
           })
+
+          // Broadcast deletion so other widgets (e.g.
+          // RecentConversationsWidget in filtered mode, project
+          // conversations panel) drop the row from their local state
+          // without a manual refetch. Closes audit F5. Import-late to
+          // avoid a cycle through `@/core/stores`.
+          const { Stores } = await import('@/core/stores')
+          await Stores.EventBus.emit({
+            type: 'conversation.deleted',
+            data: { conversationId: id },
+          })
         } catch (error) {
           console.error('[ChatHistory] Failed to delete conversation:', error)
           set({

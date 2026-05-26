@@ -424,34 +424,44 @@ impl GeminiProvider {
         contents
     }
 
-    /// Extracts system instruction from messages
+    /// Extracts system instruction from messages.
+    ///
+    /// Concatenates ALL Role::System messages with a blank-line
+    /// separator. Gemini's API has a single `system_instruction` field,
+    /// so when the caller supplies multiple system messages (assistant
+    /// extension + project extension stacking, per Plan 5 §4) we need
+    /// to merge them. The previous `find` (one-shot) silently dropped
+    /// the second-and-later system messages.
     fn extract_system_instruction(msgs: &[crate::models::ChatMessage]) -> Option<GeminiSystemInstruction> {
         use crate::models::ContentBlock;
 
-        msgs.iter()
-            .find(|m| m.role == crate::models::Role::System)
-            .and_then(|m| {
-                let text = m
-                    .content
+        let combined = msgs
+            .iter()
+            .filter(|m| m.role == crate::models::Role::System)
+            .map(|m| {
+                m.content
                     .iter()
                     .filter_map(|block| match block {
                         ContentBlock::Text { text } => Some(text.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()
-                    .join("\n");
-
-                if text.is_empty() {
-                    None
-                } else {
-                    Some(GeminiSystemInstruction {
-                        parts: vec![GeminiPart::Text {
-                            text,
-                            thought: None,
-                        }],
-                    })
-                }
+                    .join("\n")
             })
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        if combined.is_empty() {
+            None
+        } else {
+            Some(GeminiSystemInstruction {
+                parts: vec![GeminiPart::Text {
+                    text: combined,
+                    thought: None,
+                }],
+            })
+        }
     }
 
     /// Converts our tools to Gemini format
