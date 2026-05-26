@@ -158,13 +158,22 @@ impl AuthRepository {
     /// registered as `Bob@corp.com` is matched when an OAuth provider
     /// hands back the canonical `bob@corp.com`. Without this, FBL is
     /// bypassed silently and the user gets a duplicate account.
+    ///
+    /// SECURITY: filters on `is_active = true`. A disabled user's
+    /// email would otherwise trigger the FBL flow → /auth/link-account
+    /// page renders → attacker learns the email is registered. The
+    /// auto-provision branch creates a fresh account instead (which
+    /// can later be reconciled if/when the original account is
+    /// reactivated).
     pub async fn find_user_by_email_for_linking(
         &self,
         email: &str,
     ) -> Result<Option<Uuid>, AppError> {
         let row = sqlx::query!(
             r#"
-            SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1
+            SELECT id FROM users
+            WHERE LOWER(email) = LOWER($1) AND is_active = true
+            LIMIT 1
             "#,
             email
         )
@@ -469,30 +478,6 @@ impl AuthRepository {
         .await
         .map_err(AppError::database_error)?;
         Ok(link_token)
-    }
-
-    /// Atomically read + delete a pending link by token. Returns
-    /// None if the token is unknown or expired. Single-use: a
-    /// subsequent call with the same token returns None.
-    pub async fn consume_pending_link(
-        &self,
-        link_token: &str,
-    ) -> Result<Option<PendingAccountLink>, AppError> {
-        sqlx::query_as!(
-            PendingAccountLink,
-            r#"
-            DELETE FROM pending_account_links
-            WHERE link_token = $1 AND expires_at > NOW()
-            RETURNING link_token, provider_id, target_user_id, external_id,
-                      external_email, external_data, attempts,
-                      created_at as "created_at: _",
-                      expires_at as "expires_at: _"
-            "#,
-            link_token
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(AppError::database_error)
     }
 
     /// Best-effort cleanup of expired oauth_sessions + pending_account_links

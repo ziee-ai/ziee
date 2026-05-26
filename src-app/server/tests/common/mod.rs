@@ -128,6 +128,11 @@ server:
   rate_limit:
     per_second: 10000
     burst_size: 10000
+  # OAuth tests drive flows against the testcontainer mock; the
+  # reqwest client doesn't set X-Forwarded-* so the backend derives
+  # redirect_uri from HOST. The flag's value doesn't matter for
+  # tests except that we want to exercise the default-safe path.
+  trust_forwarded_headers: false
 
 jwt:
   # Must match the production issuer/audience because the MCP client

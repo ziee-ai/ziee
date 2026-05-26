@@ -100,11 +100,15 @@ test.describe('Auth providers — admin CRUD UI', () => {
 
     // -------------------- EDIT drawer briefly --------------------
     // Verify drawer opens with name disabled (edit mode). Then close.
-    await row.getByRole('button', { name: /^Edit$/ }).click()
+    // Buttons use aria-label="Edit ${providerName}" — anchor the
+    // selector or it won't match (round-3 audit finding N-1).
+    await row
+      .getByRole('button', { name: new RegExp(`^Edit ${providerName}$`) })
+      .click()
     await expect(page.getByLabel(/Name \(URL slug\)/i)).toBeDisabled({
       timeout: 5_000,
     })
-    await page.getByRole('button', { name: /Cancel/i }).click()
+    await page.getByRole('button', { name: /^Cancel$/ }).click()
 
     // -------------------- DELETE --------------------
     // Round-1 audit fix swapped DeleteProviderModal for an inline
@@ -159,6 +163,6 @@ test.describe('Auth providers — admin CRUD UI', () => {
     await expect(page.getByRole('button', { name: /^Create$/ })).toBeVisible()
 
     // Cleanup: close without saving.
-    await page.getByRole('button', { name: /Cancel/i }).click()
+    await page.getByRole('button', { name: /^Cancel$/ }).click()
   })
 })

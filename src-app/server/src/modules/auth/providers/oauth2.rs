@@ -776,8 +776,13 @@ impl AuthProviderTrait for OAuth2Provider {
                 // alphanumeric + hyphen — anything with a slash or
                 // dot could path-inject into the substituted URL
                 // (`a/../../evil`) and bend discovery toward a
-                // different host after url normalization.
-                if !tid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                // different host after url normalization. Reject
+                // empty tids too: `"".chars().all(...)` is vacuously
+                // true and would let `issuer_url.replace("{tenantid}", "")`
+                // produce a `//` URL that may normalize unexpectedly.
+                if tid.is_empty()
+                    || !tid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                {
                     return Err(AuthError::InvalidCredentials(
                         "Tenant ID contains invalid characters".to_string(),
                     ));

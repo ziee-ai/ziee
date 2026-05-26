@@ -101,14 +101,16 @@ test.describe('auth-providers — permission gating', () => {
     ).toBeVisible()
 
     // Per-row controls — at least one of each on the pre-seeded rows.
+    // Buttons carry aria-label="<Action> <provider-name>" so we match
+    // by prefix rather than the bare action verb (round-3 N-2).
     await expect(
-      page.getByRole('button', { name: /^edit$/i }).first(),
+      page.getByRole('button', { name: /^Edit \w+/ }).first(),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: /^test$/i }).first(),
+      page.getByRole('button', { name: /^Test \w+/ }).first(),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: /^delete$/i }).first(),
+      page.getByRole('button', { name: /^Delete \w+/ }).first(),
     ).toBeVisible()
     // 3 pre-seeded rows × 1 switch each = at least 3.
     expect(await page.getByRole('switch').count()).toBeGreaterThanOrEqual(3)
@@ -129,7 +131,7 @@ test.describe('auth-providers — permission gating', () => {
       page.getByRole('button', { name: /add provider/i }),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: /^edit$/i }).first(),
+      page.getByRole('button', { name: /^Edit \w+/ }).first(),
     ).toBeVisible()
   })
 })

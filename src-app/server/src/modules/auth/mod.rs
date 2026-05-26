@@ -21,11 +21,27 @@ pub use types::AuthResponse;
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;
+use once_cell::sync::OnceCell;
 use sqlx::PgPool;
 use std::error::Error;
 use std::sync::Arc;
 
 use crate::module_api::{AppModule, MODULE_ENTRIES, ModuleContext, ModuleEntry};
+
+/// Set at module init from `config.server.trust_forwarded_headers`.
+/// When false, the OAuth-authorize handler derives redirect_uri from
+/// the HOST header only — defending self-hosted-direct deployments
+/// against attacker-supplied X-Forwarded-Host headers.
+static TRUST_FORWARDED_HEADERS: OnceCell<bool> = OnceCell::new();
+
+/// Returns true if the deployment configured a trusted reverse proxy
+/// in front of the server. Handlers use this to decide whether to
+/// honor X-Forwarded-Host / X-Forwarded-Proto. Defaults to `false`
+/// (the safer self-hosted-direct posture) when init() hasn't run
+/// (e.g. in unit tests that bypass the module loader).
+pub fn trust_forwarded_headers() -> bool {
+    TRUST_FORWARDED_HEADERS.get().copied().unwrap_or(false)
+}
 
 /// Register auth module
 #[distributed_slice(MODULE_ENTRIES)]
@@ -63,6 +79,13 @@ impl AppModule for AuthModule {
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
+
+        // Cache the reverse-proxy trust flag in a static so the
+        // free-function OAuth handlers can read it without threading
+        // Arc<Config> through every Axum extension layer. OnceCell::set
+        // is idempotent on second-call (returns Err which we ignore —
+        // module re-init isn't expected but isn't an error condition).
+        let _ = TRUST_FORWARDED_HEADERS.set(ctx.config.server.trust_forwarded_headers);
 
         // Spawn a periodic cleanup task: prune expired oauth_sessions
         // and pending_account_links rows. Both have TTL columns, but

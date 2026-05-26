@@ -603,44 +603,58 @@ pub async fn oauth_authorize(
     // The path portion is server-controlled (provider_name comes from
     // URL routing matched against a string we built ourselves, not
     // user-controlled here).
-    // SECURITY: derive redirect_uri from PROXY-SET headers only
-    // (X-Forwarded-Host / X-Forwarded-Proto / HOST). Never trust
-    // Referer — that's attacker-controllable. A victim clicking
-    // `<a href="https://app/api/auth/oauth/google/authorize">` on
-    // evil.com sends `Referer: https://evil.com/`, and a permissive
-    // IdP (Keycloak wildcard, Dex, Authentik) would happily redirect
-    // back to evil.com WITH the OAuth code attached — exactly the
-    // F-07 attack class the redirect_uri-query-param fix closed.
+    // SECURITY: derive redirect_uri from PROXY-SET headers ONLY when
+    // the operator explicitly opted into trusting them via
+    // `server.trust_forwarded_headers: true` (default false). When
+    // the server is exposed directly (no reverse proxy), an attacker
+    // can send `X-Forwarded-Host: evil.com` straight to the backend
+    // and a permissive IdP (Keycloak wildcard, Dex, Authentik) will
+    // happily hand the OAuth `code` to evil.com — same F-07 attack
+    // class as the dropped Referer-derivation, just shifted to a
+    // different header. With the flag off, derive from HOST only
+    // (set by the client but only routable to OUR origin's IP).
     //
-    // Production: terminate TLS at a reverse proxy that forwards
-    // X-Forwarded-Host + X-Forwarded-Proto. Dev: the Vite proxy is
-    // configured to forward X-Forwarded-Host explicitly (see
-    // src-app/ui/vite.config.ts `configure: proxyReq.setHeader`).
-    // If neither is set we fall back to HOST (works for a direct-to-
-    // backend connection without proxy), and only in release-build
-    // strict mode do we refuse.
+    // Never trust Referer in either mode — Referer is unconditionally
+    // attacker-controllable.
+    //
+    // Dev: the Vite proxy is configured to forward X-Forwarded-Host
+    // explicitly (see src-app/ui/vite.config.ts), so dev mode runs
+    // with trust_forwarded_headers=true by setting it in
+    // config/dev.yaml.
     fn safe_scheme(s: &str) -> Option<&str> {
         match s {
             "http" | "https" => Some(s),
             _ => None,
         }
     }
-    let scheme = headers
-        .get("x-forwarded-proto")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| safe_scheme(s))
-        .unwrap_or("http")
-        .to_string();
-    let host = headers
-        .get("x-forwarded-host")
-        .and_then(|v| v.to_str().ok())
-        .or_else(|| {
+    let trust_proxy = super::trust_forwarded_headers();
+    let scheme = if trust_proxy {
+        headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| safe_scheme(s))
+            .unwrap_or("http")
+            .to_string()
+    } else {
+        "http".to_string()
+    };
+    let host = {
+        let from_proxy = if trust_proxy {
             headers
-                .get(axum::http::header::HOST)
+                .get("x-forwarded-host")
                 .and_then(|v| v.to_str().ok())
-        })
-        .filter(|h| !h.is_empty())
-        .map(|s| s.to_string());
+        } else {
+            None
+        };
+        from_proxy
+            .or_else(|| {
+                headers
+                    .get(axum::http::header::HOST)
+                    .and_then(|v| v.to_str().ok())
+            })
+            .filter(|h| !h.is_empty())
+            .map(|s| s.to_string())
+    };
     let origin = match host {
         Some(h) => format!("{}://{}", scheme, h),
         None => {
@@ -709,6 +723,51 @@ pub async fn oauth_callback(
     Path(provider_name): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
+    // SECURITY: same enumeration concern as oauth_callback_post —
+    // looking up the provider by name first would expose distinct
+    // 404 (unknown name) vs 401 (known name, bad state) statuses,
+    // letting an attacker probe which provider names exist. Validate
+    // the state first via oauth_sessions (which proves the request
+    // was solicited AND tells us the provider via provider_id), and
+    // collapse failure modes into a single neutral 400.
+    let session = Repos
+        .auth
+        .get_oauth_session_by_state(&query.state)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let session = match session {
+        Some(s) => s,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "INVALID_STATE",
+                    "Callback state is invalid or expired",
+                ),
+            ));
+        }
+    };
+    let provider_config = provider_repo::get_provider_by_id(Repos.pool(), session.provider_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "INVALID_STATE",
+                    "Callback state is invalid or expired",
+                ),
+            )
+        })?;
+    if provider_config.name != provider_name {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "INVALID_STATE",
+                "Callback state is invalid or expired",
+            ),
+        ));
+    }
     oauth_complete(jwt_service, provider_name, query.code, query.state, None).await
 }
 

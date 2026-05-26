@@ -68,7 +68,14 @@ export default defineConfig(async () => {
         xfwd: true,
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req) => {
-            const host = req.headers.host
+            // Node's IncomingMessage typing allows `host` to be
+            // string | string[] | undefined (multiple Host headers
+            // arrive as an array — RFC 7230 §5.4 forbids this but
+            // Node still parses them). Use the first value; if it
+            // somehow stringified to "a,b" the backend's URL parse
+            // would fail and 500.
+            const raw = req.headers.host
+            const host = Array.isArray(raw) ? raw[0] : raw
             if (host) {
               proxyReq.setHeader('X-Forwarded-Host', host)
             }

@@ -62,7 +62,7 @@ test.describe('Auth providers — visual smoke', () => {
     })
 
     // 6. Cancel back to the list.
-    await page.getByRole('button', { name: /cancel/i }).click()
+    await page.getByRole('button', { name: /^Cancel$/ }).click()
     await page.waitForTimeout(300)
 
     // 7. Open delete popconfirm for the apple row (was a Modal in
