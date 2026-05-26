@@ -15,6 +15,10 @@ export const viewers: FileViewerModule[] = [
       headerActions: MarkdownHeader,
       label: 'Markdown',
       icon: <FileMarkdownOutlined />,
+      // Markdown rendering reuses streamdown's defaults (GFM tables, fenced
+      // code, mermaid). Same path as assistant message text rendering —
+      // visually consistent across both contexts.
+      inline: true,
     },
   },
 ]

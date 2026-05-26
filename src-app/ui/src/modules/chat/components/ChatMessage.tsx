@@ -68,6 +68,10 @@ export const ChatMessage = memo(function ChatMessage({
 
       {/* Core components + extension slots rendered outside the bubble */}
       <MessageContext.Provider value={message}>
+        {/* Files view: inline previews of every resource_link carried by
+            any tool_result block in this message. Renders nothing when
+            no tool_result has resource_links. */}
+        <ExtensionSlot name="message_footer" />
         <div className="flex flex-row items-center gap-1 mt-1">
           <BranchNavigator />
           <MessageActions />
