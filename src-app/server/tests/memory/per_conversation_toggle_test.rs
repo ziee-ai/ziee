@@ -44,7 +44,7 @@ async fn test_memory_mode_accepts_valid_values() {
 
     for mode in ["inherit", "on", "off"] {
         let res = reqwest::Client::new()
-            .patch(server.api_url(&format!("/conversations/{conv_id}")))
+            .put(server.api_url(&format!("/conversations/{conv_id}")))
             .header("Authorization", format!("Bearer {token}"))
             .json(&json!({ "memory_mode": mode }))
             .send()
@@ -70,7 +70,7 @@ async fn test_memory_mode_rejects_invalid_value() {
     let conv_id = create_conversation(&server, &user.token).await;
 
     let res = reqwest::Client::new()
-        .patch(server.api_url(&format!("/conversations/{conv_id}")))
+        .put(server.api_url(&format!("/conversations/{conv_id}")))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "memory_mode": "maybe" }))
         .send()

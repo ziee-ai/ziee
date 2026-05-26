@@ -47,7 +47,7 @@ export function ConversationMemoryToggle({ conversationId }: { conversationId: s
     setLoading(true)
     try {
       const res = await fetch(`/api/conversations/${conversationId}`, {
-        method: 'PATCH',
+        method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memory_mode: next }),

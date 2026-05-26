@@ -51,14 +51,14 @@ test.describe('Memory — per-conversation override', () => {
     expect(((await initial.json()) as any).memory_mode).toBe('inherit')
 
     // Flip to 'off'.
-    const off = await page.request.patch(`${apiURL}/api/conversations/${conv.id}`, {
+    const off = await page.request.put(`${apiURL}/api/conversations/${conv.id}`, {
       data: { memory_mode: 'off' },
     })
     expect(off.ok()).toBe(true)
     expect(((await off.json()) as any).memory_mode).toBe('off')
 
     // Invalid value rejected.
-    const bad = await page.request.patch(`${apiURL}/api/conversations/${conv.id}`, {
+    const bad = await page.request.put(`${apiURL}/api/conversations/${conv.id}`, {
       data: { memory_mode: 'maybe' },
     })
     expect(bad.status()).toBe(400)

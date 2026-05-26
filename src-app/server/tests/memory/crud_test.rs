@@ -150,23 +150,27 @@ async fn test_create_memory_rejects_unknown_kind() {
 // ── Permission gates ────────────────────────────────────────────────
 
 #[tokio::test]
-async fn test_create_memory_requires_write_permission() {
+async fn test_create_memory_admin_settings_requires_admin_permission() {
+    // memory::read + memory::write are granted to ALL Users via
+    // migration 51 (so the default user can list + create their own
+    // memories). To prove permission gating on memory routes WORKS,
+    // we instead try to hit an ADMIN endpoint with a regular-user
+    // permission set — that's the genuinely-gated boundary.
     let server = crate::common::TestServer::start().await;
-    // Read-only user — explicitly grant memory::read but NOT memory::write.
     let user = crate::common::test_helpers::create_user_with_permissions(
         &server,
-        "mem_noperm",
-        &["memory::read"],
+        "mem_noadmin",
+        &["memory::read", "memory::write"],
     )
     .await;
     let res = reqwest::Client::new()
-        .post(server.api_url("/memories"))
+        .put(server.api_url("/admin/memory-settings"))
         .header("Authorization", format!("Bearer {}", user.token))
-        .json(&json!({ "content": "hi" }))
+        .json(&json!({ "enabled": true }))
         .send()
         .await
         .unwrap();
-    // 403 forbidden (not 401 — auth succeeded, just missing permission).
+    // 403 forbidden (auth succeeded, missing memory::admin::manage).
     assert_eq!(res.status(), 403);
 }
 

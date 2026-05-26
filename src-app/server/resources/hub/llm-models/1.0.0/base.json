@@ -877,7 +877,7 @@
       "normalize_embeddings": true,
       "dimension": 768
     },
-    "auth_required": false
+    "auth_required": true
   },
   {
     "id": "bge-small-en-v1-5-gguf",
@@ -931,7 +931,7 @@
       "normalize_embeddings": true,
       "dimension": 384
     },
-    "auth_required": false
+    "auth_required": true
   },
   {
     "id": "mxbai-embed-large-v1-gguf",
@@ -985,6 +985,6 @@
       "normalize_embeddings": true,
       "dimension": 1024
     },
-    "auth_required": false
+    "auth_required": true
   }
 ]
