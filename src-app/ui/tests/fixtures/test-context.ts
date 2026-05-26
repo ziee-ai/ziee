@@ -337,6 +337,14 @@ export default defineConfig({
       '@': path.resolve('${projectRoot}', './src'),
     },
   },
+  // Pre-bundle streamdown including its internal hashed chunks
+  // (highlighted-body-XXX.js for Shiki, mermaid-XXX.js, etc.) so
+  // the first chat code-block render doesn't trigger an on-the-fly
+  // optimizer 504 that crashes the React tree. Vite 8 supports glob
+  // patterns in optimizeDeps.include for exactly this case.
+  optimizeDeps: {
+    include: ['streamdown', 'streamdown/dist/*.js'],
+  },
   server: {
     port: ${vitePort},
     strictPort: true,

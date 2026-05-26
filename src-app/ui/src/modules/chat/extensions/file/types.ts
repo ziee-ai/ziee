@@ -1,8 +1,46 @@
 import type { File as FileEntity } from '@/api-client/types'
 import type { ComponentType, ReactNode } from 'react'
 
-export interface FileViewerSlotProps {
-  file: FileEntity
+/**
+ * Slot props passed to a viewer's `body` / `headerActions`.
+ *
+ * Discriminated by which shape is present:
+ *
+ *  - `{ file: FileEntity }` — the existing right-panel context. The
+ *    viewer can use `file.id` to fetch from the FileStore caches
+ *    (`thumbnailUrls`, `fileTextContents`, `messageFilesCache`).
+ *
+ *  - `{ source: { url, name, mimeType?, size? } }` — the new
+ *    inline-in-chat context. The file is a tool-result `resource_link`
+ *    that has no FileEntity / UUID. The viewer fetches directly from
+ *    `source.url` (using `useResourceLinkContent` for text-based bodies).
+ *
+ * Viewers that only ever render in the right panel can keep handling
+ * `{file}` only. Viewers that opt in to `inline` rendering (see
+ * `FileViewerEntry.inline`) must handle both shapes — the small
+ * `getSource(props)` helper in `file-viewers/shared/source.ts`
+ * normalises them.
+ */
+export type FileViewerSlotProps =
+  | { file: FileEntity }
+  | { source: InlineFileSource }
+
+/**
+ * URL-addressable file passed by the chat-inline render context.
+ * Mirrors the fields a tool-result `resource_link` carries.
+ */
+export interface InlineFileSource {
+  /** Download URL — relative `/api/...` for backend-owned artifacts or
+   *  an absolute URL for external MCP servers. The chat dispatcher
+   *  rejects non-`/api/` URLs as a security guard. */
+  url: string
+  /** Display name (filename, typically). */
+  name: string
+  /** Best-known MIME type. May be omitted by some MCP servers — the
+   *  viewer-registry's `getViewer` falls back to extension matching. */
+  mimeType?: string
+  /** File size in bytes, if known. */
+  size?: number
 }
 
 /**
@@ -20,7 +58,9 @@ export interface FileViewerSlotProps {
  * than threading props through the panel.
  */
 export interface FileViewerEntry {
-  /** Body content — required. Receives the resolved File entity. */
+  /** Body content — required. Receives EITHER `{file}` or `{source}`
+   *  (discriminated union). Viewers that opt in to `inline` must
+   *  handle both; viewers that don't only ever see `{file}`. */
   body: ComponentType<FileViewerSlotProps>
   /**
    * Optional header chrome rendered to the right of the panel title.
@@ -32,6 +72,26 @@ export interface FileViewerEntry {
   label: string
   /** Icon for FileCard. Optional — FileCard falls back to FileTextOutlined. */
   icon?: ReactNode
+
+  /**
+   * Opt in to inline-in-chat rendering. When set, the chat dispatcher
+   * (`MessageFilesView`) will call this viewer's `body` /
+   * `headerActions` with the `{source}` variant of `FileViewerSlotProps`
+   * whenever a tool-result `resource_link` matches one of this viewer's
+   * `supportedTypes`.
+   *
+   *  - `false` / undefined: not inline-capable (chat renders a
+   *    header-only file card with an "Open in new tab" link as fallback).
+   *  - `true`: inline-capable for ALL of this viewer's supportedTypes.
+   *  - `FileSupportEntry[]`: inline-capable only for these MIME/ext
+   *    rules (must be a subset of supportedTypes). Useful when one
+   *    viewer handles multiple types and only some should inline
+   *    (e.g., tabular: csv/tsv inline yes, xlsx no).
+   *
+   *  The decision is owned by the viewer module, never by the chat
+   *  side — keeping MIME dispatch in one place.
+   */
+  inline?: boolean | FileSupportEntry[]
 }
 
 /**

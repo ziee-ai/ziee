@@ -1,6 +1,7 @@
 import { DownloadButton } from '../shared/chrome'
 import type { FileViewerSlotProps } from '../../types'
 
-export function PdfHeader({ file }: FileViewerSlotProps) {
-  return <DownloadButton file={file} />
+export function PdfHeader(props: FileViewerSlotProps) {
+  if (!('file' in props)) return null
+  return <DownloadButton file={props.file} />
 }

@@ -14,6 +14,8 @@ export const viewers: FileViewerModule[] = [
       headerActions: DelimitedHeader,
       label: 'CSV',
       icon: <FileExcelOutlined />,
+      // Text-based delimited format; renders inline as a DelimitedTable.
+      inline: true,
     },
   },
   {
@@ -26,6 +28,7 @@ export const viewers: FileViewerModule[] = [
       headerActions: DelimitedHeader,
       label: 'TSV',
       icon: <FileExcelOutlined />,
+      inline: true,
     },
   },
   {
@@ -41,6 +44,9 @@ export const viewers: FileViewerModule[] = [
       headerActions: XlsxHeader,
       label: 'Spreadsheet',
       icon: <FileExcelOutlined />,
+      // No `inline` — XLSX needs binary parsing + the xlsx library
+      // (heavy dynamic import) + FileStore.fileBinaryContents. The
+      // inline-context path doesn't have any of that. Defer.
     },
   },
 ]

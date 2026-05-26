@@ -76,6 +76,14 @@ export const CHAT_SLOTS = {
     description: 'Message-level actions',
     component: 'ChatMessage',
   },
+  /** Message-level footer — aggregated extension content rendered AFTER
+   *  all content blocks but still inside the same MessageContext.Provider.
+   *  Used by the file extension to render `MessageFilesView` (inline
+   *  previews of every `resource_link` carried in any tool_result block). */
+  message_footer: {
+    description: 'Message-level footer rendered after content blocks',
+    component: 'ChatMessage',
+  },
   /** Model selector rendered in the toolbar, left of the Send button */
   toolbar_model: {
     description: 'Model selector rendered in the toolbar, left of the Send button',
