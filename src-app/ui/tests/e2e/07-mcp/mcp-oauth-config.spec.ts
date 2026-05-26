@@ -130,8 +130,11 @@ test.describe('MCP - OAuth config', () => {
     // Client id but no secret, and no existing config → must be rejected.
     await page.getByLabel('OAuth Client ID').fill('mcp-client')
     // Click directly (not the submit helper, which waits for the drawer to
-    // close — here the OAuth step errors and the drawer deliberately stays open).
-    await page.click('button:has-text("Create Server")')
+    // close — here the OAuth step errors and the drawer deliberately stays
+    // open). Submit label was standardised to verb-only "Create" (audit
+    // I-2, commit b40cd8d) — scope to the open drawer's primary button.
+    await page.locator('.ant-drawer.ant-drawer-open').last()
+      .locator('.ant-btn-primary').click()
 
     await expect(
       page.locator('.ant-message-error:has-text("client secret")'),
