@@ -12,11 +12,14 @@ import {
   Typography,
 } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
-import { Permissions } from '@/api-client/types'
+import {
+  Permissions,
+  type AuthProviderResponse,
+  type TestProviderResponse,
+} from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
 import { usePermission } from '@/core/permissions/usePermission'
-import type { AuthProviderResponse, TestProviderResponse } from '@/api-client/types'
 import type { ProviderTemplate } from '../types'
 
 const { Title, Paragraph } = Typography
@@ -156,7 +159,7 @@ export function AuthProviderEditDrawer({
       onClose={onClose}
       size={600}
       maskClosable={false}
-      destroyOnClose
+      destroyOnHidden
       footer={
         // Cancel/Close → Save, right-aligned. Matches the dominant
         // convention from 08-cross-cutting-consistency I-1 (every
@@ -168,6 +171,10 @@ export function AuthProviderEditDrawer({
             {canManage ? 'Cancel' : 'Close'}
           </Button>
           <Can permission={Permissions.AuthProvidersManage}>
+            {/* Footer button lives OUTSIDE the form (project Drawer
+                convention), so htmlType="submit" wouldn't work
+                here — Enter-to-submit is handled by Form's
+                `onFinish={onSubmit}` instead. */}
             <Button type="primary" loading={saving} onClick={onSubmit}>
               {existing ? 'Save' : 'Create'}
             </Button>
@@ -183,7 +190,7 @@ export function AuthProviderEditDrawer({
           drawer body. */}
       <div className="flex flex-col w-full">
         {error && (
-          <Alert type="error" message={error} showIcon className="mb-4" />
+          <Alert type="error" title={error} showIcon className="mb-4" />
         )}
         {testing && (
           <div className="text-center py-3 mb-4">
@@ -193,7 +200,7 @@ export function AuthProviderEditDrawer({
         {testResult && !testing && (
           <Alert
             type={testResult.ok ? 'success' : 'warning'}
-            message={testResult.ok ? 'Configuration OK' : 'Configuration issues'}
+            title={testResult.ok ? 'Configuration OK' : 'Configuration issues'}
             description={testResult.message}
             showIcon
             closable
@@ -297,6 +304,31 @@ function OidcFields() {
         tooltip="Comma-separated list of tenant IDs (the `tid` claim). REQUIRED when issuer is the Microsoft `common` endpoint."
         getValueFromEvent={parseScopeInput}
         normalize={normalizeScopeArray}
+        dependencies={[['config', 'issuer_url']]}
+        rules={[
+          ({ getFieldValue }) => ({
+            validator(_, value) {
+              const issuer = getFieldValue(['config', 'issuer_url']) ?? ''
+              // Microsoft's `common` / templated-issuer flow refuses
+              // to operate without an allowlist (backend enforces;
+              // surface earlier in the UI).
+              const needsAllowlist =
+                /\/(common|organizations|consumers)(\/|$)/.test(issuer) ||
+                issuer.includes('{tenantid}')
+              if (
+                needsAllowlist &&
+                (!Array.isArray(value) || value.length === 0)
+              ) {
+                return Promise.reject(
+                  new Error(
+                    'At least one tenant ID is required for the Microsoft `common` endpoint',
+                  ),
+                )
+              }
+              return Promise.resolve()
+            },
+          }),
+        ]}
       >
         <Input placeholder="comma-separated UUIDs (leave blank for non-MS)" />
       </Form.Item>
@@ -386,7 +418,18 @@ function AppleFields() {
       <Form.Item
         name={['config', 'private_key_path']}
         label="Private key path on disk"
-        rules={[{ required: true }]}
+        rules={[
+          { required: true },
+          {
+            // Absolute filesystem path (must start with `/`).
+            // Catches obviously-bad input early; the server's
+            // file-read fires a separate error if the path is
+            // wrong but unreachable filesystem doesn't surface
+            // until first login.
+            pattern: /^\/.+/,
+            message: 'Use an absolute filesystem path (must start with `/`)',
+          },
+        ]}
         tooltip="Filesystem path to the AuthKey_<KEY_ID>.p8 file. The file itself stays on disk with proper permissions — it is not uploaded through the UI."
       >
         <Input placeholder="/var/lib/ziee/apple/AuthKey_XXXXXXXXXX.p8" />

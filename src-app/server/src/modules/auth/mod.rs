@@ -68,8 +68,11 @@ impl AppModule for AuthModule {
         // and pending_account_links rows. Both have TTL columns, but
         // rows that are never re-touched (abandoned OAuth dances,
         // unused link tokens) would accumulate indefinitely. Runs
-        // every 5 minutes; failure is logged and ignored — next tick
-        // tries again.
+        // every 5 minutes; tick failures are logged and the loop
+        // continues. The whole loop body runs inside an
+        // AssertUnwindSafe::catch_unwind so a panic in one tick
+        // (e.g. pool dropped) doesn't silently kill the task —
+        // it logs, waits a tick, and tries again.
         let pool = ctx.db_pool.clone();
         tokio::spawn(async move {
             let repo = crate::modules::auth::repository::AuthRepository::new((*pool).clone());
@@ -77,17 +80,31 @@ impl AppModule for AuthModule {
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 ticker.tick().await;
-                match repo.cleanup_expired_auth_rows().await {
-                    Ok((s, p)) if s > 0 || p > 0 => {
+                let outcome = std::panic::AssertUnwindSafe(repo.cleanup_expired_auth_rows());
+                let result = futures::FutureExt::catch_unwind(outcome).await;
+                match result {
+                    Ok(Ok((s, p))) if s > 0 || p > 0 => {
                         tracing::debug!(
                             sessions_pruned = s,
                             pending_links_pruned = p,
                             "auth cleanup tick"
                         );
                     }
-                    Ok(_) => {}
-                    Err(e) => {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => {
                         tracing::warn!(error = ?e, "auth cleanup tick failed");
+                    }
+                    Err(panic_payload) => {
+                        let msg = panic_payload
+                            .downcast_ref::<&'static str>()
+                            .copied()
+                            .or_else(|| {
+                                panic_payload
+                                    .downcast_ref::<String>()
+                                    .map(String::as_str)
+                            })
+                            .unwrap_or("<non-string panic>");
+                        tracing::error!(panic = msg, "auth cleanup tick PANICKED — task will retry next interval");
                     }
                 }
             }

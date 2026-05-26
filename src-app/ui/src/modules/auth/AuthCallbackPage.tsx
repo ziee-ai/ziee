@@ -92,8 +92,11 @@ export const AuthCallbackPage: React.FC = () => {
       }
 
       // Hydrate the auth store + re-fetch profile.
+      // user=null: server is the truth — initAuth() right below
+      // re-fetches /me. The store keeps isAuthenticated=false until
+      // /me resolves so consumers don't see a half-hydrated state.
       Stores.Auth.setAuthFromAutoLogin({
-        user: null as any, // server will be the truth — see initAuth below
+        user: null,
         access_token: token,
         refresh_token: '',
       })
@@ -153,7 +156,7 @@ export const AuthCallbackPage: React.FC = () => {
             {error ? (
               <>
                 <Title level={4}>Sign-in failed</Title>
-                <Alert type="error" message={error} showIcon className="my-3" />
+                <Alert type="error" title={error} showIcon className="my-3" />
                 <a href="/auth">Return to login</a>
               </>
             ) : (

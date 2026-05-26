@@ -107,12 +107,17 @@ test.describe('Auth providers — admin CRUD UI', () => {
     await page.getByRole('button', { name: /Cancel/i }).click()
 
     // -------------------- DELETE --------------------
-    await row.getByRole('button', { name: /^Delete$/ }).click()
-    const deleteDialog = page.getByRole('dialog', {
-      name: /Delete auth provider/i,
-    })
-    await expect(deleteDialog).toBeVisible({ timeout: 5_000 })
-    await deleteDialog.getByRole('button', { name: /^Delete$/ }).click()
+    // Round-1 audit fix swapped DeleteProviderModal for an inline
+    // AntD Popconfirm. The popover doesn't use role=dialog — scope
+    // the confirm by `.ant-popover` and click its primary danger
+    // button (the Popconfirm primary-button class is stable across
+    // okText changes per project_ui_e2e_drawer_selectors memory).
+    await row
+      .getByRole('button', { name: new RegExp(`^Delete ${providerName}$`) })
+      .click()
+    const popover = page.locator('.ant-popover:visible').last()
+    await expect(popover).toBeVisible({ timeout: 5_000 })
+    await popover.locator('.ant-btn-primary').click()
 
     // Row gone (generous timeout — delete includes DB write + reload).
     await expect(

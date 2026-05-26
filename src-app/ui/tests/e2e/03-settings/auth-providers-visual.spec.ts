@@ -12,7 +12,7 @@ import { test } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 
 test.describe('Auth providers — visual smoke', () => {
-  test('list page + edit drawer + delete modal', async ({
+  test('list page + edit drawer + delete popconfirm', async ({
     page,
     testInfra,
   }) => {
@@ -65,12 +65,13 @@ test.describe('Auth providers — visual smoke', () => {
     await page.getByRole('button', { name: /cancel/i }).click()
     await page.waitForTimeout(300)
 
-    // 7. Open delete modal for the apple row.
+    // 7. Open delete popconfirm for the apple row (was a Modal in
+    // an earlier revision; now an inline Popconfirm).
     const appleRow = page.getByRole('row').filter({ hasText: 'apple' }).first()
-    await appleRow.getByRole('button', { name: /^delete$/i }).click()
+    await appleRow.getByRole('button', { name: /^Delete apple$/i }).click()
     await page.waitForTimeout(300)
     await page.screenshot({
-      path: 'test-results/visual-delete-modal.png',
+      path: 'test-results/visual-delete-popconfirm.png',
       fullPage: true,
     })
   })

@@ -56,13 +56,24 @@ export default defineConfig(async () => {
       '/api/': {
         target: 'http://localhost:3000/',
         changeOrigin: true,
-        // xfwd: forward X-Forwarded-* headers so the backend can
-        // build absolute URLs (OAuth redirect_uri, callback hops)
-        // that point back through the Vite proxy rather than at the
-        // backend's internal port. Without this, post-OAuth redirects
-        // land on the backend's port and 404 (the SPA isn't served
-        // there in dev).
+        // xfwd: http-proxy sets X-Forwarded-For/Port/Proto but NOT
+        // X-Forwarded-Host. The backend's OAuth-authorize handler
+        // derives redirect_uri from X-Forwarded-Host (the
+        // user-facing origin); without it, Vite would proxy with
+        // its target's HOST (the backend's internal port) and the
+        // post-OAuth redirect would 404 against the backend port
+        // instead of the SPA's port. We set X-Forwarded-Host
+        // explicitly from the original request's Host header so
+        // the backend always sees the user-facing origin.
         xfwd: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const host = req.headers.host
+            if (host) {
+              proxyReq.setHeader('X-Forwarded-Host', host)
+            }
+          })
+        },
       },
     },
     allowedHosts: true

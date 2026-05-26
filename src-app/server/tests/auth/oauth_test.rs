@@ -922,6 +922,149 @@ async fn test_oauth_unverified_email_is_rejected_at_provider_layer() {
     );
 }
 
+/// Audit fix: 5-attempt brute-force cap on link_account.
+/// 5 wrong-password attempts on the same link_token should return
+/// TOO_MANY_ATTEMPTS on the 6th and the token must be deleted.
+#[tokio::test]
+async fn test_link_account_brute_force_blocked_at_5_attempts() {
+    let test_server = crate::common::TestServer::start().await;
+    let oauth_server = OAuthMockServer::start()
+        .await
+        .expect("Failed to start OAuth mock server");
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+    let provider_id = seed_oidc_provider(&pool, "test-oauth", &oauth_server, json!({})).await;
+
+    // Pre-create the local account that owns the email.
+    let pw = bcrypt::hash("correct-horse", bcrypt::DEFAULT_COST).unwrap();
+    sqlx::query!(
+        r#"
+        INSERT INTO users (id, username, email, password_hash, is_active, is_admin, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, true, false, NOW(), NOW())
+        "#,
+        "victim", "victim@example.com", pw,
+    ).execute(&pool).await.unwrap();
+
+    // Drive OAuth → /auth/link-account?link_token=...
+    let (_, location) = drive_oauth_flow(
+        &test_server,
+        "test-oauth",
+        "social-sub",
+        json!({"email":"victim@example.com","email_verified":true,"preferred_username":"victim-social"}),
+        None,
+    ).await;
+    let loc = location.unwrap();
+    let link_token = loc
+        .split_once("link_token=")
+        .map(|(_, t)| t.split('&').next().unwrap_or(t).to_string())
+        .unwrap();
+    let client = reqwest::Client::new();
+    let endpoint = format!("{}/api/auth/link-account", test_server.base_url);
+
+    // 5 wrong-password attempts: each returns 401.
+    for i in 1..=5 {
+        let resp = client
+            .post(&endpoint)
+            .json(&json!({"link_token": &link_token, "password": "wrong"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 401, "attempt {} expected 401", i);
+    }
+
+    // 6th attempt: 429 TOO_MANY_ATTEMPTS, and the token is deleted.
+    let resp6 = client
+        .post(&endpoint)
+        .json(&json!({"link_token": &link_token, "password": "wrong"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp6.status(), 429, "6th attempt must be throttled");
+
+    // 7th attempt with the CORRECT password: token is gone → 401.
+    let resp7 = client
+        .post(&endpoint)
+        .json(&json!({"link_token": &link_token, "password": "correct-horse"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp7.status(), 401, "deleted token must reject even correct password");
+    let _ = provider_id;
+}
+
+/// Audit fix: POST callback refused for non-Apple providers (CSRF
+/// + cross-origin form_post attack surface).
+#[tokio::test]
+async fn test_oauth_post_callback_refused_for_non_apple_providers() {
+    let test_server = crate::common::TestServer::start().await;
+    let oauth_server = OAuthMockServer::start()
+        .await
+        .expect("Failed to start OAuth mock server");
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+    let _ = seed_oidc_provider(&pool, "test-oauth", &oauth_server, json!({})).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "{}/api/auth/oauth/test-oauth/callback",
+            test_server.base_url
+        ))
+        .form(&[("code", "x"), ("state", "y")])
+        .send()
+        .await
+        .unwrap();
+    // Round-2 audit fix: collapse 404/405/307 enumeration into a
+    // single 400 INVALID_STATE so attackers can't fingerprint which
+    // providers are Apple.
+    assert_eq!(resp.status(), 400, "POST against non-Apple must be 400");
+}
+
+/// Audit fix: "local" provider type is explicitly forbidden from
+/// admin create — having two "local" providers leaves login routing
+/// in undefined state.
+#[tokio::test]
+async fn test_admin_create_provider_refuses_local_type() {
+    let test_server = crate::common::TestServer::start().await;
+    // Bootstrap an admin via /app/setup/admin (matches the pattern
+    // in admin_providers_test::make_admin).
+    let client = reqwest::Client::new();
+    let setup = client
+        .post(test_server.api_url("/app/setup/admin"))
+        .json(&json!({
+            "username": "rootadmin",
+            "email": "root@example.com",
+            "password": "ComplexPass1!",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(setup.status(), 201);
+    let token = setup
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()["access_token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let resp = client
+        .post(test_server.api_url("/admin/auth-providers"))
+        .bearer_auth(&token)
+        .json(&json!({
+            "name": "evil-local",
+            "provider_type": "local",
+            "enabled": true,
+            "config": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "local provider creation must be refused");
+}
+
 /// Test that OAuth provider configuration validation works
 #[tokio::test]
 async fn test_oauth_provider_validation() {

@@ -10,7 +10,11 @@ import { Stores, type StoreProxy } from '@/core/stores'
 import '@/modules/onboarding/events/types'
 
 export interface AutoLoginResponse {
-  user: User
+  // Nullable: the OAuth callback path passes `null` because the
+  // server is the truth (initAuth() re-fetches /me right after).
+  // The store handles the null case by holding isAuthenticated=false
+  // + isLoading=true until /me resolves.
+  user: User | null
   access_token: string
   refresh_token: string
   expires_in?: number // Seconds until token expires (optional for backward compatibility)

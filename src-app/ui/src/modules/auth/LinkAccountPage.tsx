@@ -79,7 +79,7 @@ export const LinkAccountPage: React.FC = () => {
             </Paragraph>
             {error && (
               <Alert
-                message={error}
+                title={error}
                 type="error"
                 showIcon
                 closable

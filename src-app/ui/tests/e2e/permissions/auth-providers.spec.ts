@@ -31,7 +31,7 @@ test.describe('auth-providers — permission gating', () => {
     // Menu entry hidden.
     await page.goto(`${testInfra.baseURL}/settings`)
     await expect(
-      page.getByRole('menuitem', { name: /^Auth providers$/ }),
+      page.getByRole('menuitem', { name: /^Auth Providers$/ }),
     ).toHaveCount(0)
 
     // Deep-link → inline 403, URL preserved.

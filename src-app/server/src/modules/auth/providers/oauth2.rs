@@ -26,29 +26,58 @@ use super::{
     UserAttributes,
 };
 
+/// Reject an issuer URL that points at a private/loopback IP or
+/// non-http(s) scheme BEFORE the openidconnect crate fires its
+/// discovery GET. `build_validated_client` validates redirect
+/// *targets*, but the initial URL is never checked — without this,
+/// an admin with manage permission could set
+/// `issuer_url=http://10.0.0.5:8200/v1/identity/oidc` and observe
+/// the response via the 5xx/error surface.
+///
+/// DEV_LOCAL in debug builds so the testcontainer mock at 127.0.0.1
+/// works; PUBLIC_HTTP_OR_HTTPS in release (loopback blocked).
+fn validate_issuer_url(url: &str) -> Result<(), AuthError> {
+    let policy = if cfg!(debug_assertions) {
+        crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+    } else {
+        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+    };
+    crate::utils::url_validator::validate_outbound_url(url, &policy)
+        .map(|_| ())
+        .map_err(|e| {
+            AuthError::ConfigurationError(format!(
+                "issuer_url failed safety check: {}",
+                e
+            ))
+        })
+}
+
 /// Create an HTTP client for OAuth2/OIDC requests.
 ///
-/// SECURITY: this routes through `build_validated_client(PUBLIC_HTTP_OR_HTTPS)`
-/// so every outbound URL — issuer discovery, token exchange, userinfo, JWKS
-/// fetch — is checked against the IP allowlist (no loopback, no RFC 1918,
-/// no link-local) AT REQUEST TIME, *including* redirect targets. Without
-/// this, an admin who configures `issuer_url=http://internal-vault:8200`
-/// could turn the OIDC discovery into a confused-deputy probe of our
-/// internal network.
+/// SECURITY: this routes through `build_validated_client` so every
+/// outbound URL — issuer discovery, token exchange, userinfo, JWKS
+/// fetch — is checked against the IP allowlist (no RFC 1918, no
+/// link-local) AT REQUEST TIME, *including* redirect targets.
+/// Policy is DEV_LOCAL in debug builds (loopback allowed — the
+/// testcontainer mock binds 127.0.0.1) and PUBLIC_HTTP_OR_HTTPS in
+/// release (loopback blocked). Matches `validate_issuer_url` so the
+/// pre-flight check and the actual request use the same policy.
 ///
 /// Falls back to the redirect-disabled bare client only if
-/// `build_validated_client` somehow fails (TLS config error) — in practice
-/// the unwrap path is unreachable in correctly-built binaries.
+/// `build_validated_client` somehow fails (TLS config error).
 fn create_http_client() -> reqwest::Client {
-    crate::utils::url_validator::build_validated_client(
-        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
-    )
-    .unwrap_or_else(|_| {
-        reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .expect("Failed to create HTTP client")
-    })
+    let policy = if cfg!(debug_assertions) {
+        crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+    } else {
+        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+    };
+    crate::utils::url_validator::build_validated_client(policy)
+        .unwrap_or_else(|_| {
+            reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("Failed to create HTTP client")
+        })
 }
 
 /// Async HTTP client implementation for openidconnect
@@ -347,16 +376,18 @@ impl OAuth2Provider {
         //   2) validate_outbound_url on the URL itself catches an admin
         //      who configures `userinfo_url=http://internal-vault:8200`
         //      at provider-create time.
-        crate::utils::url_validator::validate_outbound_url(
-            userinfo_url,
-            &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
-        )
-        .map_err(|e| {
-            AuthError::ConfigurationError(format!(
-                "userinfo_url failed safety check: {}",
-                e
-            ))
-        })?;
+        let policy = if cfg!(debug_assertions) {
+            crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+        } else {
+            crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+        };
+        crate::utils::url_validator::validate_outbound_url(userinfo_url, &policy)
+            .map_err(|e| {
+                AuthError::ConfigurationError(format!(
+                    "userinfo_url failed safety check: {}",
+                    e
+                ))
+            })?;
         let client = create_http_client();
         let response = client
             .get(userinfo_url)
@@ -489,6 +520,10 @@ impl AuthProviderTrait for OAuth2Provider {
         // Build authorization URL
         let auth_url = if let Some(issuer_url) = &self.config.issuer_url {
             // OIDC flow - create client inline to avoid type parameter issues
+            // SSRF: validate the issuer URL BEFORE handing it to
+            // discover_async (closes the gap where build_validated_client
+            // only checks redirects, not the initial GET).
+            validate_issuer_url(issuer_url)?;
             let issuer = IssuerUrl::new(issuer_url.clone())
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e)))?;
 
@@ -627,6 +662,7 @@ impl AuthProviderTrait for OAuth2Provider {
         // Exchange code for token
         let (_access_token, user_info) = if let Some(issuer_url) = &self.config.issuer_url {
             // OIDC flow - create client inline to avoid type parameter issues
+            validate_issuer_url(issuer_url)?;
             let issuer = IssuerUrl::new(issuer_url.clone())
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e)))?;
 
@@ -736,7 +772,22 @@ impl AuthProviderTrait for OAuth2Provider {
                         preview, self.name
                     )));
                 }
+                // SECURITY: refuse tid values that aren't strictly
+                // alphanumeric + hyphen — anything with a slash or
+                // dot could path-inject into the substituted URL
+                // (`a/../../evil`) and bend discovery toward a
+                // different host after url normalization.
+                if !tid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                    return Err(AuthError::InvalidCredentials(
+                        "Tenant ID contains invalid characters".to_string(),
+                    ));
+                }
                 let substituted = issuer_url.replace("{tenantid}", tid);
+                // SSRF: validate the substituted URL before discovery
+                // (issuer_url itself was checked at config time, but
+                // an attacker-controlled tid could in theory redirect
+                // through different DNS).
+                validate_issuer_url(&substituted)?;
                 let sub_issuer = IssuerUrl::new(substituted).map_err(|e| {
                     AuthError::ConfigurationError(format!(
                         "Invalid substituted issuer URL: {}",
@@ -902,6 +953,7 @@ impl AuthProviderTrait for OAuth2Provider {
                 // qualified issuer. Substitute with a benign placeholder
                 // (matches `common` itself, which is what's reachable).
                 let probe_issuer_url = issuer_url.replace("{tenantid}", "common");
+                validate_issuer_url(&probe_issuer_url)?;
                 let issuer = IssuerUrl::new(probe_issuer_url.clone()).map_err(|e| {
                     AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e))
                 })?;

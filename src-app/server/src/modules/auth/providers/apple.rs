@@ -224,6 +224,14 @@ impl AppleProvider {
         // create/update) is acceptable because admin already knows
         // it; the bigger concern was the original code leaking it on
         // EVERY login failure via `Debug` of PathBuf.
+        //
+        // NOTE: std::fs::read is blocking, and AppleProvider::new is
+        // sync, called from async handlers via create_provider. The
+        // .p8 file is ~300 bytes and OS-cached after the first read,
+        // so the block is microseconds in practice and acceptable.
+        // If we ever need to support remote-mounted key paths
+        // (NFS, SMB, /run/secrets/...) this should move to
+        // spawn_blocking or a process-wide cache keyed by provider_id.
         let pem = std::fs::read(&config.private_key_path).map_err(|e| {
             AuthError::ConfigurationError(format!(
                 "Apple private key unreadable at the configured path: {}",
@@ -237,11 +245,26 @@ impl AppleProvider {
             ))
         })?;
 
-        // SSRF hardening: disable redirects on the HTTP client used to
-        // talk to Apple endpoints.
-        let http = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
+        // SSRF: route through build_validated_client so the IP
+        // allowlist (no RFC1918, no link-local) is enforced AT
+        // REQUEST TIME including redirect targets. The previous
+        // reqwest::Client::builder() + Policy::none() only disabled
+        // redirects — it did not block an admin's `base_url`
+        // override from pointing at internal infra. The policy is
+        // DEV_LOCAL only in debug builds (the wiremock-based tests
+        // bind loopback); in release we use PUBLIC_HTTP_OR_HTTPS
+        // (loopback blocked).
+        let policy = if cfg!(debug_assertions) {
+            crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+        } else {
+            crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+        };
+        let http = crate::utils::url_validator::build_validated_client(policy)
+            .or_else(|_| {
+                reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+            })
             .map_err(|e| {
                 AuthError::ConfigurationError(format!("Failed to create HTTP client: {}", e))
             })?;
@@ -306,7 +329,12 @@ impl AppleProvider {
             .into_iter()
             .filter(|k| {
                 k.kty.eq_ignore_ascii_case("RSA")
-                    && k.alg.as_deref().map(|a| a.eq_ignore_ascii_case("RS256")).unwrap_or(true)
+                    // Require an explicit RS256 alg — Apple always
+                    // sets it. unwrap_or(false): defense in depth
+                    // against a confused-deputy JWKS-substitution
+                    // where keys lack alg and could be reinterpreted
+                    // as HS256 (n as MAC secret).
+                    && k.alg.as_deref().map(|a| a.eq_ignore_ascii_case("RS256")).unwrap_or(false)
             })
             .collect();
         if filtered.is_empty() {
@@ -357,10 +385,23 @@ impl AppleProvider {
             }
         }
 
+        // SECURITY: bump fetched_at BEFORE awaiting the fetch so the
+        // min-interval gate applies even if Apple is unreachable
+        // (timeout / 5xx / DNS). Otherwise an Apple outage turns
+        // every login into an Apple retry — exactly the storm the
+        // gate was meant to prevent, just shifted from "wrong kid"
+        // to "Apple down."
+        {
+            let mut cache = self.jwks_cache.write().await;
+            cache.fetched_at = Some(Utc::now());
+        }
         let fresh = self.fetch_jwks().await?;
         let found = fresh.iter().find(|j| j.kid == kid).cloned();
         let mut cache = self.jwks_cache.write().await;
         cache.keys = fresh;
+        // fetched_at was already updated above; re-stamp on success
+        // so the throttle starts from "successful refresh," not
+        // "attempted refresh."
         cache.fetched_at = Some(Utc::now());
         found.ok_or_else(|| {
             AuthError::InvalidCredentials(format!("Apple kid '{}' not found in JWKS", kid))

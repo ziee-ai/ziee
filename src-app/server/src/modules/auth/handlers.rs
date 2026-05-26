@@ -603,47 +603,35 @@ pub async fn oauth_authorize(
     // The path portion is server-controlled (provider_name comes from
     // URL routing matched against a string we built ourselves, not
     // user-controlled here).
-    // The redirect_uri sent to the OAuth provider must point at an
-    // origin where the SPA is reachable (so the post-OAuth callback
-    // can flow through the SPA's router to /auth/callback). In dev /
-    // E2E with a Vite proxy, the BACKEND's HOST is the proxy's
-    // internal target (a different port than the user-facing one).
-    // The Referer header (sent on the browser's same-origin
-    // navigation to /api/auth/oauth/.../authorize) carries the right
-    // origin, so we prefer it over HOST. Fallbacks ordered by
-    // reliability: Referer > X-Forwarded-* > HOST.
+    // SECURITY: derive redirect_uri from PROXY-SET headers only
+    // (X-Forwarded-Host / X-Forwarded-Proto / HOST). Never trust
+    // Referer — that's attacker-controllable. A victim clicking
+    // `<a href="https://app/api/auth/oauth/google/authorize">` on
+    // evil.com sends `Referer: https://evil.com/`, and a permissive
+    // IdP (Keycloak wildcard, Dex, Authentik) would happily redirect
+    // back to evil.com WITH the OAuth code attached — exactly the
+    // F-07 attack class the redirect_uri-query-param fix closed.
     //
-    // SECURITY: the scheme MUST be http or https. The host MUST NOT
-    // be empty. In release builds we refuse the "localhost" default
-    // — production deployments must terminate TLS at a known origin
-    // and forward X-Forwarded-Host (or set HOST correctly) so we
-    // never accidentally hand the provider a redirect_uri that
-    // points back to itself.
+    // Production: terminate TLS at a reverse proxy that forwards
+    // X-Forwarded-Host + X-Forwarded-Proto. Dev: the Vite proxy is
+    // configured to forward X-Forwarded-Host explicitly (see
+    // src-app/ui/vite.config.ts `configure: proxyReq.setHeader`).
+    // If neither is set we fall back to HOST (works for a direct-to-
+    // backend connection without proxy), and only in release-build
+    // strict mode do we refuse.
     fn safe_scheme(s: &str) -> Option<&str> {
         match s {
             "http" | "https" => Some(s),
             _ => None,
         }
     }
-    let referer_origin = headers
-        .get(axum::http::header::REFERER)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|r| url::Url::parse(r).ok())
-        .and_then(|u| {
-            let scheme = safe_scheme(u.scheme())?.to_string();
-            let host = u.host_str().filter(|h| !h.is_empty())?.to_string();
-            Some(match u.port_or_known_default() {
-                Some(p) => format!("{}://{}:{}", scheme, host, p),
-                None => format!("{}://{}", scheme, host),
-            })
-        });
-    let fallback_scheme = headers
+    let scheme = headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| safe_scheme(s))
         .unwrap_or("http")
         .to_string();
-    let fallback_host = headers
+    let host = headers
         .get("x-forwarded-host")
         .and_then(|v| v.to_str().ok())
         .or_else(|| {
@@ -651,29 +639,23 @@ pub async fn oauth_authorize(
                 .get(axum::http::header::HOST)
                 .and_then(|v| v.to_str().ok())
         })
+        .filter(|h| !h.is_empty())
         .map(|s| s.to_string());
-    let origin = match referer_origin {
-        Some(o) => o,
-        None => match fallback_host {
-            Some(h) if !h.is_empty() => format!("{}://{}", fallback_scheme, h),
-            _ => {
-                // No usable Referer, no X-Forwarded-Host, no HOST
-                // header. In dev we tolerate this with a localhost
-                // default; in release we refuse so we never hand the
-                // provider a bogus redirect_uri.
-                if cfg!(debug_assertions) {
-                    "http://localhost".to_string()
-                } else {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        AppError::bad_request(
-                            "MISSING_ORIGIN",
-                            "OAuth authorize request lacked a usable Referer / X-Forwarded-Host / Host header; cannot derive redirect_uri",
-                        ),
-                    ));
-                }
+    let origin = match host {
+        Some(h) => format!("{}://{}", scheme, h),
+        None => {
+            if cfg!(debug_assertions) {
+                "http://localhost".to_string()
+            } else {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    AppError::bad_request(
+                        "OAUTH_MISCONFIGURED",
+                        "Server cannot derive redirect URL",
+                    ),
+                ));
             }
-        },
+        }
     };
     let redirect_uri = format!(
         "{}/api/auth/oauth/{}/callback",
@@ -746,26 +728,53 @@ pub async fn oauth_callback_post(
     // cross-origin form could submit `(code, state)` against
     // /oauth/google/callback (cookie-less endpoint with no other
     // protection) and trigger an account-binding flow as if Google
-    // had posted form_post. The state nonce already protects against
-    // unsolicited callbacks, but accepting POST for non-Apple
-    // providers also widens the surface for clickjacking-style POSTs
-    // and weakens the SameSite protections browsers apply to GETs.
-    let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
+    // had posted form_post.
+    //
+    // SECURITY: also single-flatten the error responses. Looking up
+    // the provider by NAME then returning distinct 404/405/307s
+    // would let an attacker enumerate which provider names exist
+    // and which are Apple (migration 47 pre-seeds google/microsoft/
+    // apple rows even when disabled). Instead: validate the state
+    // first via the oauth_sessions row (which proves the request
+    // was solicited and tells us the provider via provider_id), and
+    // collapse all failure modes into a single neutral 400.
+    let session = Repos
+        .auth
+        .get_oauth_session_by_state(&form.state)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let session = match session {
+        Some(s) => s,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "INVALID_STATE",
+                    "Callback state is invalid or expired",
+                ),
+            ));
+        }
+    };
+    let provider_config = provider_repo::get_provider_by_id(Repos.pool(), session.provider_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| {
             (
-                StatusCode::NOT_FOUND,
-                AppError::not_found("Authentication provider"),
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "INVALID_STATE",
+                    "Callback state is invalid or expired",
+                ),
             )
         })?;
-    if provider_config.provider_type != "apple" {
+    if provider_config.provider_type != "apple"
+        || provider_config.name != provider_name
+    {
         return Err((
-            StatusCode::METHOD_NOT_ALLOWED,
-            AppError::new(
-                StatusCode::METHOD_NOT_ALLOWED,
-                "POST_NOT_SUPPORTED",
-                "This provider does not support form_post callbacks. Use the GET callback URL.",
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "INVALID_STATE",
+                "Callback state is invalid or expired",
             ),
         ));
     }
@@ -1188,29 +1197,9 @@ pub async fn link_account(
             )
         })?;
 
-    // SECURITY: per-token brute-force gate. The global rate limiter
-    // caps requests per IP; this caps requests per token, defeating
-    // distributed brute-force. Hard ceiling 5 attempts — past that
-    // the token is invalidated.
-    const LINK_TOKEN_MAX_ATTEMPTS: i32 = 5;
-    let attempt_n = Repos
-        .auth
-        .bump_pending_link_attempts(&req.link_token)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
-        .unwrap_or(LINK_TOKEN_MAX_ATTEMPTS + 1);
-    if attempt_n > LINK_TOKEN_MAX_ATTEMPTS {
-        let _ = Repos.auth.delete_pending_link(&req.link_token).await;
-        return Err((
-            StatusCode::TOO_MANY_REQUESTS,
-            AppError::new(
-                StatusCode::TOO_MANY_REQUESTS,
-                "TOO_MANY_ATTEMPTS",
-                "Too many failed attempts. Restart the sign-in flow.",
-            ),
-        ));
-    }
-
+    // Authorization checks BEFORE bumping the attempts counter so
+    // an OAuth-only target account (no password_hash) doesn't burn
+    // 5 attempts before the user sees a useful error.
     let user = Repos
         .user
         .get_by_id(pending.target_user_id)
@@ -1231,6 +1220,44 @@ pub async fn link_account(
             AppError::unauthorized("INVALID_CREDENTIALS", "Invalid credentials"),
         )
     })?;
+
+    // SECURITY: per-token brute-force gate. The global rate limiter
+    // caps requests per IP; this caps requests per token, defeating
+    // distributed brute-force. Hard ceiling 5 attempts — past that
+    // the token is invalidated. Runs after the is_active +
+    // password_hash checks so legitimate misuse-detection errors
+    // don't burn attempts.
+    const LINK_TOKEN_MAX_ATTEMPTS: i32 = 5;
+    let attempt_n = Repos
+        .auth
+        .bump_pending_link_attempts(&req.link_token)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        // None means the row was concurrently consumed or just
+        // expired between our peek and our bump. Surface as the
+        // honest "this token is no longer valid" rather than
+        // masquerading as a brute-force throttle.
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                AppError::unauthorized(
+                    "INVALID_LINK_TOKEN",
+                    "Link token is invalid, already used, or expired",
+                ),
+            )
+        })?;
+    if attempt_n > LINK_TOKEN_MAX_ATTEMPTS {
+        let _ = Repos.auth.delete_pending_link(&req.link_token).await;
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            AppError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "TOO_MANY_ATTEMPTS",
+                "Too many failed attempts. Restart the sign-in flow.",
+            ),
+        ));
+    }
+
     let ok = password::verify_password(&req.password, pw_hash).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,

@@ -42,10 +42,12 @@ function iconFor(p: PublicProvider) {
  * password form is the only login option.
  */
 export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) => {
-  // Store auto-loads via __init__; we just consume.
-  const { providers, error, hasLoaded } = Stores.AuthProviders
+  // Store auto-loads via __init__; we just consume. Use BOTH
+  // `isLoading` and `hasLoaded` so a future loadProviders() call
+  // from outside __init__ also shows the spinner.
+  const { providers, error, isLoading, hasLoaded } = Stores.AuthProviders
 
-  if (!hasLoaded) {
+  if (isLoading || !hasLoaded) {
     return (
       <div className="text-center py-2">
         <Spin size="small" />
@@ -57,7 +59,7 @@ export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) =
     return (
       <Alert
         type="warning"
-        message="Unable to load sign-in options"
+        title="Unable to load sign-in options"
         description={error}
         showIcon
         className="my-2"
