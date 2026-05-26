@@ -182,6 +182,15 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       },
 
       loadModelsForProvider: async (providerId: string) => {
+        // Concurrent-load dedup: if a load is already in flight for this
+        // provider, skip the new call. Prevents the same-provider race
+        // where SSE handler + user click both fire `loadModelsForProvider`
+        // in flight; without dedup, both responses race to set state.
+        // (audit 05 H-4)
+        if (get().llmModelsLoading[providerId]) {
+          return
+        }
+
         try {
           set(state => ({
             llmModelsLoading: { ...state.llmModelsLoading, [providerId]: true },

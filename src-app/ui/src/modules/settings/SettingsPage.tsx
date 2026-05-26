@@ -144,12 +144,16 @@ export default function SettingsPage() {
           {windowMinSize.xs && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
-                overlayStyle={{
-                  border: '1px solid ' + token.colorBorderSecondary,
+                styles={{
+                  root: {
+                    border: '1px solid ' + token.colorBorderSecondary,
+                  },
                 }}
-                overlayClassName={`
+                classNames={{
+                  root: `
                   rounded-md
-                  `}
+                  `,
+                }}
                 menu={{
                   items: menuItems.map((item: any) => {
                     if ('type' in item && item.type === 'divider') {

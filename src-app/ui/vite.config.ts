@@ -65,5 +65,14 @@ export default defineConfig(async () => {
     outDir: '../../dist/ui',
   },
 
+  // NOTE: stripping `console.log` from prod bundles is deferred. Vite 8
+  // uses Rolldown's Oxc minifier by default, which doesn't honor the
+  // esbuild `pure` config. Forcing `build.minify: 'esbuild'` errors
+  // out on Vite 8. The Biome `noConsole` rule (biome.json) prevents
+  // NEW console.log/debug additions; pre-existing 173 calls remain in
+  // the bundle as verbose noise but no security/correctness impact.
+  // Follow-up: install vite-plugin-remove-console or pin Rolldown's
+  // minifier options. (audit 09 B-15)
+
   }
 })

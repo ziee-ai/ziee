@@ -80,9 +80,11 @@ test.describe('Users CRUD Operations', () => {
     await openCreateUserDrawer(page)
 
     // Try to submit without required fields
+    // Drawer submit label was standardised to "Create" (audit I-2);
+    // scope by primary-button class to avoid colliding with the list
+    // CTA which still carries aria-label="Create user".
     const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open')
-      .getByRole('button', { name: /create user/i })
+      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Check for validation errors
@@ -114,9 +116,11 @@ test.describe('Users CRUD Operations', () => {
     await page.getByLabel(/email/i).fill(duplicateData.email)
     await page.getByLabel(/^password/i).fill(duplicateData.password)
 
+    // Drawer submit label was standardised to "Create" (audit I-2);
+    // scope by primary-button class to avoid colliding with the list
+    // CTA which still carries aria-label="Create user".
     const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open')
-      .getByRole('button', { name: /create user/i })
+      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Verify error message appears
@@ -217,9 +221,11 @@ test.describe('Users CRUD Operations', () => {
       .fill(`testuser${timestamp}@example.com`)
     await page.getByLabel(/^password/i).fill('123') // Less than 6 characters
 
+    // Drawer submit label was standardised to "Create" (audit I-2);
+    // scope by primary-button class to avoid colliding with the list
+    // CTA which still carries aria-label="Create user".
     const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open')
-      .getByRole('button', { name: /create user/i })
+      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Check for validation error
@@ -238,9 +244,11 @@ test.describe('Users CRUD Operations', () => {
     await page.getByLabel(/email/i).fill('invalid-email') // Invalid email
     await page.getByLabel(/^password/i).fill('password123')
 
+    // Drawer submit label was standardised to "Create" (audit I-2);
+    // scope by primary-button class to avoid colliding with the list
+    // CTA which still carries aria-label="Create user".
     const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open')
-      .getByRole('button', { name: /create user/i })
+      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Check for validation error

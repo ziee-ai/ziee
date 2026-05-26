@@ -97,7 +97,7 @@ export function EditLlmModelDrawer() {
           loading={loading}
           onClick={handleSubmit}
         >
-          Save Changes
+          Save
         </Button>,
       ]}
       size={600}

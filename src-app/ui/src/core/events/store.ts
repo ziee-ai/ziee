@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
+import { enableMapSet } from 'immer'
 import type { EventHandler, Unsubscribe, AppEvents, BaseEvent } from '@/core/events/types'
+
+// Enable immer support for Map/Set drafts — the store's `handlers` and
+// `groupHandlers` are Maps mutated inside immer set() callbacks. Without
+// this, immer's auto-freeze turns those mutations into silent no-ops in
+// dev and throws in prod.
+enableMapSet()
 
 interface EventBusState {
   // Map of event type to set of handlers (use any for storage, type-safe at call site)
@@ -94,15 +101,21 @@ export const useEventBusStore = create<EventBusState>()(
             return
           }
 
-          // Execute all handlers (non-blocking)
-          const promises = Array.from(eventHandlers).map(handler => {
-            try {
-              return Promise.resolve(handler(fullEvent))
-            } catch (error) {
-              console.error(`[EventBus] Handler error for ${eventType}:`, error)
-              return Promise.resolve()
-            }
-          })
+          // Execute all handlers (non-blocking). Each handler is isolated:
+          // a sync throw OR an async rejection from one handler is logged
+          // and swallowed so it can't bubble up through Promise.all and
+          // reject the emit() caller (which is usually a mutation that
+          // shouldn't fail because a listener has a bug).
+          const promises = Array.from(eventHandlers).map(handler =>
+            Promise.resolve()
+              .then(() => handler(fullEvent))
+              .catch(error => {
+                console.error(
+                  `[EventBus] Handler error for ${eventType}:`,
+                  error,
+                )
+              }),
+          )
 
           await Promise.all(promises)
         },

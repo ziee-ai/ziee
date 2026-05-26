@@ -89,16 +89,18 @@ test.describe('User Status Management', () => {
     const popconfirm = page.locator('.ant-popconfirm:visible')
     await expect(popconfirm).toBeVisible()
 
-    // Verify confirmation buttons exist
+    // Verify confirmation buttons exist (target by role/class instead
+    // of label text — okText now reflects the action verb per audit I-4,
+    // not generic "Yes/No").
     await expect(
-      popconfirm.getByRole('button', { name: /yes/i })
+      popconfirm.locator('.ant-btn-primary')
     ).toBeVisible()
     await expect(
-      popconfirm.getByRole('button', { name: /no/i })
+      popconfirm.locator('.ant-btn').filter({ hasNotText: /^(Delete|Remove|Activate|Deactivate|Confirm)$/i })
     ).toBeVisible()
 
     // Cancel the action
-    await popconfirm.getByRole('button', { name: /no/i }).click()
+    await popconfirm.getByRole('button', { name: /^Cancel$/i }).click()
 
     // Verify status didn't change
     await assertUserStatus(page, userData.username, 'active')
@@ -162,10 +164,9 @@ test.describe('User Status Management', () => {
     // Fill in short password (scope to drawer)
     await drawer.getByLabel(/new password/i).fill('123') // Less than 6 characters
 
-    // Try to submit
-    const submitButton = drawer.getByRole('button', {
-      name: /reset password/i,
-    })
+    // Try to submit. Drawer submit label was standardised to "Reset"
+    // (audit I-2); scope by primary-button class.
+    const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Check for validation error

@@ -84,7 +84,7 @@ export default function HardwareSettings() {
     return (
       <SettingsPageContainer title="Hardware">
         <Alert
-          message="Hardware Information Unavailable"
+          title="Hardware Information Unavailable"
           description={hardwareError}
           type="error"
           showIcon

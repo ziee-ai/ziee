@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type JSX } from 'react'
 
 /**
  * Returns Streamdown component overrides shared by all markdown renderers in the chat module.

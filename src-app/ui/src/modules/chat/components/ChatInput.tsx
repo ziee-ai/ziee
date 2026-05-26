@@ -91,7 +91,7 @@ export function ChatInput({
               open={plusOpen}
               onOpenChange={setPlusOpen}
               trigger={['click']}
-              dropdownRender={() => (
+              popupRender={() => (
                 <PlusDropdownContext.Provider value={{ close: () => setPlusOpen(false) }}>
                   <div
                     style={{

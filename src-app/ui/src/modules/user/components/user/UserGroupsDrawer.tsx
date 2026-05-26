@@ -94,7 +94,7 @@ export function UserGroupsDrawer() {
         setUserGroupIds(new Set())
       }}
       open={isOpen}
-      size={400}
+      size={600}
       extra={
         canAssign && (
           <Button
@@ -114,10 +114,10 @@ export function UserGroupsDrawer() {
     >
       {loadingUserGroups ? (
         <div className="flex justify-center py-8">
-          <Spin size="large" tip="Loading group memberships..." />
+          <Spin size="large" description="Loading group memberships..." />
         </div>
       ) : groups.length === 0 ? (
-        <Empty description="No groups available" />
+        <Empty description="No groups yet" />
       ) : (
         <List
           dataSource={groups}
@@ -130,8 +130,8 @@ export function UserGroupsDrawer() {
                       key="remove"
                       title="Remove user from this group?"
                       onConfirm={() => handleRemoveFromGroup(group.id)}
-                      okText="Yes"
-                      cancelText="No"
+                      okText="Remove"
+                      cancelText="Cancel"
                     >
                       <Button type="link" danger size="small">
                         Remove

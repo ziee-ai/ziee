@@ -26,7 +26,8 @@ import { Stores } from '@/core/stores'
 import { Can, usePermission } from '@/core/permissions'
 import { Permissions, type User } from '@/api-client/types'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer.tsx'
-import { UserRegistrationSettings } from '@/modules/user/components/user/UserRegistrationSettings.tsx'
+// UserRegistrationSettings — temporarily un-imported; see comment in JSX.
+// import { UserRegistrationSettings } from '@/modules/user/components/user/UserRegistrationSettings.tsx'
 import { CreateUserDrawer } from '@/modules/user/components/user/CreateUserDrawer.tsx'
 import { EditUserDrawer } from '@/modules/user/components/user/EditUserDrawer.tsx'
 import { ResetPasswordDrawer } from '@/modules/user/components/user/ResetPasswordDrawer.tsx'
@@ -105,8 +106,8 @@ export function UsersSettings() {
           key="active-confirm"
           title={`${user.is_active ? 'Deactivate' : 'Activate'} this user?`}
           onConfirm={() => handleToggleActive(user.id)}
-          okText="Yes"
-          cancelText="No"
+          okText={user.is_active ? 'Deactivate' : 'Activate'}
+          cancelText="Cancel"
         >
           <Switch className={'mr-2!'} checked={user.is_active} />
         </Popconfirm>,
@@ -160,8 +161,8 @@ export function UsersSettings() {
           key="delete"
           title="Are you sure you want to delete this user?"
           onConfirm={() => handleDelete(user.id)}
-          okText="Yes"
-          cancelText="No"
+          okText="Delete"
+          cancelText="Cancel"
         >
           <Button
             type="text"
@@ -188,9 +189,15 @@ export function UsersSettings() {
   return (
     <SettingsPageContainer title="Users">
       <div>
-        {/* User Registration Settings */}
         <Flex vertical className="gap-3">
-          <UserRegistrationSettings />
+          {/* User Registration Settings — hidden until the backend
+            * endpoint exists. The store (Users.loadUserRegistrationSettings
+            * / updateUserRegistrationSettings) is a TODO stub that hard-
+            * codes `true` and never calls the server; rendering the
+            * toggle here was a UI lie (audit 03 B-4). Re-enable when
+            * `GET/POST /api/users/registration-settings` ships
+            * server-side. */}
+          {/* <UserRegistrationSettings /> */}
 
           <Card
             title="Users"
@@ -211,7 +218,7 @@ export function UsersSettings() {
               </div>
             ) : users.length === 0 ? (
               <div>
-                <Empty description="No users found" />
+                <Empty description="No users yet" />
               </div>
             ) : (
               <div>

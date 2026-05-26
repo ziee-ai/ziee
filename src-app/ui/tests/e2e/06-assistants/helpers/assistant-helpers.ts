@@ -118,14 +118,9 @@ export async function getAssistantCard(page: Page, assistantName: string) {
 export async function editAssistantFromCard(page: Page, assistantName: string) {
   const card = await getAssistantCard(page, assistantName)
 
-  // Click the menu button (last button with an SVG)
-  await card.locator('button:has(svg)').last().click()
-
-  // Wait for dropdown menu
-  await page.locator('.ant-dropdown-menu').waitFor({ state: 'visible' })
-
-  // Click Edit
-  await page.locator('.ant-dropdown-menu').getByText('Edit', { exact: true }).click()
+  // Click the Edit icon button on the card (audit I-4: the kebab
+  // dropdown was replaced with inline Edit/Delete icon buttons).
+  await card.getByRole('button', { name: `Edit ${assistantName}` }).click()
 
   // Wait for drawer to open
   await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
@@ -137,21 +132,18 @@ export async function editAssistantFromCard(page: Page, assistantName: string) {
 export async function deleteAssistantFromCard(page: Page, assistantName: string) {
   const card = await getAssistantCard(page, assistantName)
 
-  // Click the menu button
-  await card.locator('button:has(svg)').last().click()
+  // Click the Delete icon button on the card (audit I-4: the dropdown
+  // menu + Modal.confirm pattern was replaced with inline Edit/Delete
+  // icon buttons + a Popconfirm on Delete).
+  await card.getByRole('button', { name: `Delete ${assistantName}` }).click()
 
-  // Wait for dropdown menu
-  await page.locator('.ant-dropdown-menu').waitFor({ state: 'visible' })
+  // Confirm deletion in popconfirm. Scope by primary-button class so
+  // okText changes don't break the helper.
+  await page.locator('.ant-popconfirm').waitFor({ state: 'visible' })
+  await page.locator('.ant-popconfirm .ant-btn-primary').click()
 
-  // Click Delete
-  await page.locator('.ant-dropdown-menu').getByText('Delete', { exact: true }).click()
-
-  // Confirm deletion in modal
-  await page.locator('.ant-modal').waitFor({ state: 'visible' })
-  await page.locator('.ant-modal').getByRole('button', { name: 'Delete' }).click()
-
-  // Wait for modal to close
-  await page.locator('.ant-modal').waitFor({ state: 'hidden' })
+  // Wait for popconfirm to close
+  await page.locator('.ant-popconfirm').waitFor({ state: 'hidden' })
 }
 
 export async function clickAssistantCard(page: Page, assistantName: string) {
@@ -181,9 +173,10 @@ export async function deleteTemplateAssistant(page: Page, assistantName: string)
   const row = await getTemplateAssistantRow(page, assistantName)
   await row.getByRole('button', { name: 'Delete' }).click()
 
-  // Confirm in popconfirm
+  // Confirm in popconfirm. Primary-button class is stable across
+  // okText variations ("Yes" → "Delete" per audit I-4).
   await page.locator('.ant-popconfirm').waitFor({ state: 'visible' })
-  await page.locator('.ant-popconfirm').getByRole('button', { name: 'Yes' }).click()
+  await page.locator('.ant-popconfirm .ant-btn-primary').click()
 
   // Wait for popconfirm to close
   await page.locator('.ant-popconfirm').waitFor({ state: 'hidden' })
@@ -199,9 +192,14 @@ export async function searchAssistants(page: Page, query: string) {
 }
 
 export async function clearSearch(page: Page) {
-  const clearButton = page.getByRole('button', { name: /clear.*search/i })
-    .or(page.locator('input[placeholder="Search assistants"]').locator('..').locator('.ant-input-clear-icon'))
-  await clearButton.click()
+  // AntD's Input clear-icon is the canonical target; the broader
+  // /clear.*search/i regex was fragile and now collides with assistant
+  // card aria-labels containing "Clear" or "Search" (audit I-4
+  // refactored AssistantCard to surface Edit/Delete icon buttons with
+  // `aria-label="Edit ${name}"` / `Delete ${name}`, where {name}
+  // tests can include "Clear Search Test").
+  const searchWrapper = page.locator('input[placeholder="Search assistants"]').locator('..')
+  await searchWrapper.locator('.ant-input-clear-icon').click()
 }
 
 export async function sortAssistantsBy(page: Page, sortType: 'Activity' | 'Name' | 'Created') {

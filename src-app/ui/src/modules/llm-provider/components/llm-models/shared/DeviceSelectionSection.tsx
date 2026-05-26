@@ -9,7 +9,7 @@ export const DeviceSelectionSection: React.FC = () => {
   return (
     <Alert
       type="info"
-      message="Device Selection Coming Soon"
+      title="Device Selection Coming Soon"
       description="Device selection will be implemented once the Hardware API is fully integrated."
       style={{ marginBottom: 16 }}
     />

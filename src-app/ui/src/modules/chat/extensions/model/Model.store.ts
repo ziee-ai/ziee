@@ -1,7 +1,8 @@
 import { createExtensionStore } from '@/modules/chat/core/extensions'
-import type { ProviderWithModels } from '@/api-client/types'
+import { Permissions, type ProviderWithModels } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
+import { hasPermissionNow } from '@/core/permissions'
 
 /**
  * ModelStore
@@ -179,6 +180,12 @@ export const createModelStore = () =>
 
     // Load user-accessible providers (merged from ChatLlmProvider)
     loadProviders: async () => {
+      // Permission-gate the shell-eager-load fetch (audit
+      // follow-up): the chat model picker accesses this on every
+      // chat render. The endpoint is gated on user_llm_providers::
+      // read; without it the call 403s.
+      if (!hasPermissionNow(Permissions.UserLlmProvidersRead)) return
+
       set(state => {
         state.loading = true
         state.error = null

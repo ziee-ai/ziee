@@ -51,7 +51,7 @@ export function ProviderApiKeyModal({
       okText="Save & Select Model"
       cancelText="Cancel"
       confirmLoading={saving}
-      destroyOnClose
+      destroyOnHidden
     >
       <Typography.Paragraph type="secondary">
         This provider doesn&apos;t have a system API key configured. Enter your
@@ -67,7 +67,7 @@ export function ProviderApiKeyModal({
             onPressEnter={handleOk}
           />
         </Form.Item>
-        {error && <Alert type="error" message={error} showIcon />}
+        {error && <Alert type="error" title={error} showIcon />}
       </Form>
       <Typography.Text type="secondary" className="text-xs">
         Your key is stored securely and only used for inference. You can manage

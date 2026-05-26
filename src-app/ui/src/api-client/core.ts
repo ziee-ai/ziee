@@ -10,11 +10,17 @@ import { getBaseUrl } from '@/api-client/getBaseURL'
 export const getAuthToken = () => {
   // eslint-disable-next-line no-undef
   const authData = localStorage.getItem('auth-storage')
-  if (authData) {
+  if (!authData) return null
+  try {
     const parsed = JSON.parse(authData)
     return parsed.state?.token || null
+  } catch (error) {
+    // Corrupt localStorage (manual edit, power-loss mid-write, schema
+    // change from an older app version). Don't crash every API call —
+    // treat as logged-out; user will be redirected to login.
+    console.error('[getAuthToken] Failed to parse auth-storage:', error)
+    return null
   }
-  return null
 }
 
 export { getBaseUrl }

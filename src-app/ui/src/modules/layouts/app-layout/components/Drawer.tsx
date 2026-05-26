@@ -153,10 +153,11 @@ export const Drawer: React.FC<DrawerProps> = props => {
       <DivScrollY className={'flex w-full h-full'}>
         <div className={'flex w-full h-full pr-3'}>
           {React.Children.map(children, child => {
-            if (React.isValidElement(child)) {
+            if (React.isValidElement<{ className?: string }>(child)) {
               return React.cloneElement(child, {
                 ...child.props,
-                className: `w-full ${child.props.className || ''}`.trim(),
+                className:
+                  `w-full ${child.props.className || ''}`.trim(),
               })
             }
             return child

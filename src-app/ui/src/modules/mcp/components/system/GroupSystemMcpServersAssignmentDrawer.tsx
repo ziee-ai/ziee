@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Space, Spin, Switch, Tag, Typography } from 'antd'
+import { App, Button, Card, Flex, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -103,7 +103,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
           <Spin />
         </div>
       ) : (
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Flex vertical gap="large" style={{ width: '100%' }}>
           <div>
             <Title level={5} style={{ marginBottom: '8px' }}>
               Available Servers
@@ -118,7 +118,7 @@ export function GroupSystemMcpServersAssignmentDrawer() {
               <Text type="secondary">No system servers available</Text>
             </div>
           ) : (
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Flex vertical gap="middle" style={{ width: '100%' }}>
               {systemServers.map((server: McpServer) => {
                 const isChecked = assignedIds.includes(server.id)
                 return (
@@ -175,9 +175,9 @@ export function GroupSystemMcpServersAssignmentDrawer() {
                   </Card>
                 )
               })}
-            </Space>
+            </Flex>
           )}
-        </Space>
+        </Flex>
       )}
     </Drawer>
   )

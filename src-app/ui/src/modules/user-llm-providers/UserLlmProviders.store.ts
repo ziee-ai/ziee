@@ -4,7 +4,8 @@ import { immer } from 'zustand/middleware/immer'
 import { createStoreProxy } from '@/core/stores'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
-import type { ProviderWithModels } from '@/api-client/types'
+import { Permissions, type ProviderWithModels } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 
 interface UserLlmProvidersStore {
   providers: ProviderWithModels[]
@@ -50,6 +51,13 @@ export const useUserLlmProvidersStore = create<UserLlmProvidersStore>()(
       },
 
       load: async () => {
+        // Permission-gate the shell-eager-load fetch (audit
+        // follow-up): the chat model selector accesses this store
+        // on every chat render. Without user_llm_providers::read
+        // the parallel GETs (/api/user-llm-providers + /api-keys)
+        // 403 for restricted users.
+        if (!hasPermissionNow(Permissions.UserLlmProvidersRead)) return
+
         set(state => {
           state.loading = true
           state.error = null

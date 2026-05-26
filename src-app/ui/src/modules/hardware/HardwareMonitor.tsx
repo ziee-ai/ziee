@@ -160,7 +160,7 @@ export function HardwareMonitor() {
     return (
       <div className="p-3">
         <Alert
-          message="Hardware Monitor Unavailable"
+          title="Hardware Monitor Unavailable"
           description={hardwareError}
           type="error"
           showIcon

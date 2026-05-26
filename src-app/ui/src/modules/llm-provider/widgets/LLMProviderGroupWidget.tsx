@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Button, Card, Space, Tag, Typography, Spin } from 'antd'
+import { Button, Card, Flex, Space, Tag, Typography, Spin } from 'antd'
 import { DatabaseOutlined, EditOutlined } from '@ant-design/icons'
 import type { GroupWidgetProps } from '@/modules/user/types/GroupWidget'
 import { Stores } from '@/core/stores'
@@ -33,7 +33,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
 
   return (
     <Card data-widget="llm-providers" data-group-id={group.id}>
-      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      <Flex vertical gap="small" style={{ width: '100%' }}>
         {/* Header */}
         <div className="flex items-center justify-between">
           <Space size="small">
@@ -83,7 +83,7 @@ export function LLMProviderGroupWidget({ group }: GroupWidgetProps) {
             ))}
           </Space>
         )}
-      </Space>
+      </Flex>
     </Card>
   )
 }

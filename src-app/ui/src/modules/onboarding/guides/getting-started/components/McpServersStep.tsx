@@ -58,7 +58,7 @@ export default function McpServersStep({ registerBeforeNext }: OnboardingStepPro
       </Paragraph>
 
       {serversError && canSeeAdminControls && (
-        <Alert type="error" message={serversError} showIcon className="mb-4" />
+        <Alert type="error" title={serversError} showIcon className="mb-4" />
       )}
 
       {canManageSystemMcp && systemServers.length > 0 && (

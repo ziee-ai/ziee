@@ -388,7 +388,7 @@ export function LlmRepositoryDrawer() {
               htmlType="submit"
               loading={loading || creating || updating}
             >
-              {repository ? 'Update' : 'Add'} Repository
+              {repository ? 'Save' : 'Add'}
             </Button>
           )}
         </div>
