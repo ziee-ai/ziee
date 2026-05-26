@@ -2,6 +2,12 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { createStoreProxy } from '@/core/stores'
+import {
+  emitMemoryAllCleared,
+  emitMemoryCreated,
+  emitMemoryDeleted,
+  emitMemoryUpdated,
+} from '@/modules/memory/events'
 
 export interface UserMemoryRow {
   id: string
@@ -104,6 +110,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
             d.memories.unshift(row)
             d.saving = false
           })
+          emitMemoryCreated(row).catch(() => {})
           return row
         } catch (e: any) {
           set((d) => {
@@ -133,6 +140,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
             if (idx >= 0) d.memories[idx] = row
             d.saving = false
           })
+          emitMemoryUpdated(row).catch(() => {})
           return row
         } catch (e: any) {
           set((d) => {
@@ -155,6 +163,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
           set((d) => {
             d.memories = d.memories.filter((m: UserMemoryRow) => m.id !== id)
           })
+          emitMemoryDeleted(id).catch(() => {})
           return true
         } catch (e: any) {
           set((d) => {
@@ -175,6 +184,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
           set((d) => {
             d.memories = []
           })
+          emitMemoryAllCleared(body.deleted).catch(() => {})
           return body.deleted
         } catch (e: any) {
           set((d) => {

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { createStoreProxy } from '@/core/stores'
+import { emitMemoryAdminSettingsUpdated } from '@/modules/memory/events'
 
 export interface MemoryAdminSettingsRow {
   id: number
@@ -126,6 +127,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
             d.settings = row
             d.saving = false
           })
+          emitMemoryAdminSettingsUpdated(row).catch(() => {})
           return row
         } catch (e: any) {
           set((d) => {

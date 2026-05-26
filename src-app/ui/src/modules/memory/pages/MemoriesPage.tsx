@@ -15,7 +15,13 @@ import {
   Popconfirm,
   message,
 } from 'antd'
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import {
+  DeleteOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  PlusOutlined,
+} from '@ant-design/icons'
+import { Dropdown } from 'antd'
 import { Stores } from '@/core/stores'
 import { AppLayout } from '@/modules/layouts/app-layout'
 import type { UserMemoryRow } from '@/modules/memory/stores/Memories.store'
@@ -58,6 +64,24 @@ export function MemoriesPage() {
             >
               Add memory
             </Button>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'json',
+                    label: 'Export as JSON',
+                    onClick: () => exportMemories(memories, 'json'),
+                  },
+                  {
+                    key: 'csv',
+                    label: 'Export as CSV',
+                    onClick: () => exportMemories(memories, 'csv'),
+                  },
+                ],
+              }}
+            >
+              <Button icon={<DownloadOutlined />}>Export</Button>
+            </Dropdown>
             <Popconfirm
               title="Delete all memories?"
               description="This is permanent and cannot be undone."
@@ -202,6 +226,55 @@ export function MemoriesPage() {
       </div>
     </AppLayout>
   )
+}
+
+function exportMemories(rows: UserMemoryRow[], format: 'json' | 'csv') {
+  const filename = `ziee-memories-${new Date().toISOString().slice(0, 10)}.${format}`
+  let blob: Blob
+  if (format === 'json') {
+    blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
+  } else {
+    const header = [
+      'id',
+      'content',
+      'kind',
+      'source',
+      'importance',
+      'confidence',
+      'recall_count',
+      'created_at',
+      'updated_at',
+    ].join(',')
+    const escape = (v: unknown): string => {
+      const s = String(v ?? '')
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`
+      }
+      return s
+    }
+    const lines = rows.map((r) =>
+      [
+        r.id,
+        r.content,
+        r.kind,
+        r.source,
+        r.importance,
+        r.confidence,
+        r.recall_count,
+        r.created_at,
+        r.updated_at,
+      ]
+        .map(escape)
+        .join(','),
+    )
+    blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
+  }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function CreateMemoryModal({

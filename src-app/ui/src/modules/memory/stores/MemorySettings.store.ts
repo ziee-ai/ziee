@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { createStoreProxy } from '@/core/stores'
+import { emitMemorySettingsUpdated } from '@/modules/memory/events'
 
 export interface UserMemorySettingsRow {
   user_id: string
@@ -81,6 +82,7 @@ export const useMemorySettingsStore = create<MemorySettingsStore>()(
             d.settings = row
             d.saving = false
           })
+          emitMemorySettingsUpdated(row).catch(() => {})
           return row
         } catch (e: any) {
           set((d) => {

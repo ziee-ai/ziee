@@ -40,6 +40,20 @@ pub struct UserMemorySettings {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Append-only audit entry for memory operations.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
+pub struct MemoryAuditEntry {
+    pub id: i64,
+    pub user_id: Uuid,
+    pub memory_id: Option<Uuid>,
+    pub op: String,
+    pub source: String,
+    pub content_snapshot: Option<String>,
+    pub actor_kind: String,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Deployment-wide memory admin settings (single row, id=1).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, sqlx::FromRow)]
 pub struct MemoryAdminSettings {

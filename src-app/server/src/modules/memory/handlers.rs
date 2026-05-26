@@ -16,9 +16,9 @@ use crate::{
     modules::{
         memory::{
             models::{
-                CreateMemoryRequest, MemoryAdminSettings, UpdateMemoryAdminSettingsRequest,
-                UpdateMemoryRequest, UpdateUserMemorySettingsRequest, UserMemory,
-                UserMemorySettings, is_valid_kind,
+                CreateMemoryRequest, MemoryAdminSettings, MemoryAuditEntry,
+                UpdateMemoryAdminSettingsRequest, UpdateMemoryRequest,
+                UpdateUserMemorySettingsRequest, UserMemory, UserMemorySettings, is_valid_kind,
             },
             permissions::{MemoryAdminManage, MemoryAdminRead, MemoryRead, MemoryWrite},
         },
@@ -233,6 +233,24 @@ pub fn delete_all_memories_docs(op: TransformOperation) -> TransformOperation {
         .tag("Memory")
         .summary("Hard-delete every memory for the caller")
         .response::<200, Json<DeleteAllResponse>>()
+}
+
+// ── audit log ───────────────────────────────────────────────────────
+
+#[debug_handler]
+pub async fn list_audit_log(
+    auth: RequirePermissions<(MemoryRead,)>,
+) -> ApiResult<Json<Vec<MemoryAuditEntry>>> {
+    let rows = Repos.memory.list_audit_log(auth.user.id, 100).await?;
+    Ok((StatusCode::OK, Json(rows)))
+}
+
+pub fn list_audit_log_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryRead,)>(op)
+        .id("Memory.audit.list")
+        .tag("Memory")
+        .summary("List the caller's memory audit log entries")
+        .response::<200, Json<Vec<MemoryAuditEntry>>>()
 }
 
 // ── user memory settings ────────────────────────────────────────────

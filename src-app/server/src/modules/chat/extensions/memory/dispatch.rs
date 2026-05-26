@@ -59,10 +59,57 @@ pub async fn embed_batch(
         .map_err(AppError::database_error)?
         .ok_or_else(|| AppError::internal_error("Provider for embedding model not found"))?;
 
-    match provider.provider_type.as_str() {
-        "local" => embed_local(&model, texts).await,
-        _ => embed_remote(&provider, &model, texts).await,
+    let vectors = match provider.provider_type.as_str() {
+        "local" => embed_local(&model, texts).await?,
+        _ => embed_remote(&provider, &model, texts).await?,
+    };
+
+    // Capability-tag honesty (plan §11). The model row claimed
+    // `text_embedding=true` but the engine returned something that
+    // isn't a usable embedding (empty / all-zero / NaN). Loudly log
+    // so the admin sees memory-related health issues in server logs.
+    // We don't mutate the row (that would race with admin edits) —
+    // logging is sufficient and matches the audit-log surface
+    // introduced by migration 50.
+    for (i, v) in vectors.iter().enumerate() {
+        if v.is_empty() {
+            tracing::error!(
+                "memory.dispatch: model {} ({}) returned an empty embedding for input #{} — \
+                 the model is mis-tagged or not actually an embedder. Memory features will \
+                 silently fail until the admin corrects capabilities.text_embedding.",
+                model.id,
+                model.name,
+                i
+            );
+            return Err(AppError::internal_error(format!(
+                "model '{}' is mis-tagged as text_embedding — engine returned empty vector",
+                model.name
+            )));
+        }
+        if v.iter().any(|f| !f.is_finite()) {
+            tracing::error!(
+                "memory.dispatch: model {} ({}) returned NaN/Inf in embedding for input #{} — \
+                 likely a broken local engine instance.",
+                model.id,
+                model.name,
+                i
+            );
+            return Err(AppError::internal_error(format!(
+                "model '{}' returned a non-finite embedding component",
+                model.name
+            )));
+        }
+        if v.iter().all(|f| *f == 0.0) {
+            tracing::warn!(
+                "memory.dispatch: model {} ({}) returned an all-zero embedding — \
+                 cosine similarity will be undefined; check engine readiness.",
+                model.id,
+                model.name
+            );
+        }
     }
+
+    Ok(vectors)
 }
 
 /// Local engine — POST to the running llama-server `/embedding` route.

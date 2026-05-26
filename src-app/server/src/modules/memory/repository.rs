@@ -8,7 +8,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::models::{MemoryAdminSettings, UserMemory, UserMemorySettings};
+use super::models::{MemoryAdminSettings, MemoryAuditEntry, UserMemory, UserMemorySettings};
 use crate::common::AppError;
 
 #[derive(Clone, Debug)]
@@ -94,6 +94,8 @@ impl MemoryRepository {
 
     /// Insert a new memory. Embedding is computed asynchronously by a
     /// background worker; this method writes `embedding=NULL`.
+    /// Emits a memory_audit_log row in the same transaction so the
+    /// audit trail is consistent with the data.
     pub async fn insert(
         &self,
         user_id: Uuid,
@@ -104,6 +106,7 @@ impl MemoryRepository {
         metadata: &serde_json::Value,
         source_message_id: Option<Uuid>,
     ) -> Result<UserMemory, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
         let row = sqlx::query_as::<_, UserMemory>(
             r#"
             INSERT INTO user_memories
@@ -121,14 +124,35 @@ impl MemoryRepository {
         .bind(importance)
         .bind(kind)
         .bind(metadata)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(AppError::database_error)?;
+
+        let actor_kind = match source {
+            "manual" => "user",
+            "mcp_tool" => "assistant",
+            "extraction" => "system",
+            _ => "system",
+        };
+        sqlx::query(
+            "INSERT INTO memory_audit_log (user_id, memory_id, op, source, content_snapshot, actor_kind) VALUES ($1, $2, 'ADD', $3, $4, $5)",
+        )
+        .bind(user_id)
+        .bind(row.id)
+        .bind(source)
+        .bind(content)
+        .bind(actor_kind)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        tx.commit().await.map_err(AppError::database_error)?;
         Ok(row)
     }
 
     /// Update content/importance/kind/metadata on an owned memory.
     /// `WHERE user_id = $1` prevents cross-user modification.
+    /// Emits an audit-log row when the row was actually updated.
     pub async fn update_owned(
         &self,
         user_id: Uuid,
@@ -138,6 +162,7 @@ impl MemoryRepository {
         kind: Option<&str>,
         metadata: Option<&serde_json::Value>,
     ) -> Result<Option<UserMemory>, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
         let row = sqlx::query_as::<_, UserMemory>(
             r#"
             UPDATE user_memories
@@ -145,7 +170,6 @@ impl MemoryRepository {
                 importance = COALESCE($4, importance),
                 kind       = COALESCE($5, kind),
                 metadata   = COALESCE($6, metadata),
-                -- If content changes the embedding must be recomputed.
                 embedding  = CASE WHEN $3 IS NOT NULL THEN NULL ELSE embedding END,
                 updated_at = NOW()
             WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
@@ -160,9 +184,24 @@ impl MemoryRepository {
         .bind(importance)
         .bind(kind)
         .bind(metadata)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(AppError::database_error)?;
+
+        if let Some(ref r) = row {
+            sqlx::query(
+                "INSERT INTO memory_audit_log (user_id, memory_id, op, source, content_snapshot, actor_kind) VALUES ($1, $2, 'UPDATE', $3, $4, 'user')",
+            )
+            .bind(user_id)
+            .bind(r.id)
+            .bind(&r.source)
+            .bind(&r.content)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+
+        tx.commit().await.map_err(AppError::database_error)?;
         Ok(row)
     }
 
@@ -172,6 +211,7 @@ impl MemoryRepository {
         user_id: Uuid,
         memory_id: Uuid,
     ) -> Result<bool, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
         let n = sqlx::query(
             r#"
             UPDATE user_memories
@@ -181,20 +221,73 @@ impl MemoryRepository {
         )
         .bind(memory_id)
         .bind(user_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(AppError::database_error)?;
-        Ok(n.rows_affected() == 1)
+
+        let deleted = n.rows_affected() == 1;
+        if deleted {
+            sqlx::query(
+                "INSERT INTO memory_audit_log (user_id, memory_id, op, source, actor_kind) VALUES ($1, $2, 'DELETE', 'manual', 'user')",
+            )
+            .bind(user_id)
+            .bind(memory_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(deleted)
     }
 
     /// Hard-delete all own memories (the "forget everything" button).
     pub async fn hard_delete_all_for_user(&self, user_id: Uuid) -> Result<u64, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
         let n = sqlx::query("DELETE FROM user_memories WHERE user_id = $1")
             .bind(user_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(AppError::database_error)?;
-        Ok(n.rows_affected())
+
+        let count = n.rows_affected();
+        if count > 0 {
+            sqlx::query(
+                "INSERT INTO memory_audit_log (user_id, op, source, actor_kind, metadata) VALUES ($1, 'BULK_DELETE', 'manual', 'user', $2)",
+            )
+            .bind(user_id)
+            .bind(serde_json::json!({ "deleted_count": count }))
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(count)
+    }
+
+    /// List audit-log entries for the caller. Most recent first.
+    pub async fn list_audit_log(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<MemoryAuditEntry>, AppError> {
+        let rows = sqlx::query_as::<_, MemoryAuditEntry>(
+            r#"
+            SELECT id, user_id, memory_id, op, source, content_snapshot,
+                   actor_kind, metadata, created_at
+            FROM memory_audit_log
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(user_id)
+        .bind(limit.clamp(1, 500))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(rows)
     }
 
     // ── user_memory_settings ────────────────────────────────────────

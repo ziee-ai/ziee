@@ -55,6 +55,22 @@ impl ChatExtension for MemoryExtension {
             .get("assistant_id")
             .and_then(|v| v.as_str())
             .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+        // Summarizer: if this branch has a persisted summary, prepend
+        // it as a system block. Plan §6 Phase 6: "summary replaces old
+        // turns in convert_history_to_messages_with_extensions()". We
+        // can't rewrite the history at this hook (it's already in
+        // chat_request.messages), but we CAN prepend a summary block
+        // so the LLM has condensed context for older turns. The same
+        // ChatRequest still carries verbatim recent messages, so the
+        // LLM gets summary + recent — context budget freed without
+        // dropping any recent turn.
+        if let Err(e) =
+            super::summarizer::apply_summary_to_history(context.branch_id, request).await
+        {
+            tracing::warn!("memory.before_llm_call: summary apply failed: {e}");
+        }
+
         if let Err(e) = super::retriever::retrieve_and_inject(
             context.user_id,
             Some(context.conversation_id),
@@ -103,6 +119,33 @@ impl ChatExtension for MemoryExtension {
                 source_message_id,
             )
             .await;
+        });
+
+        // Auto-refresh the summarizer when the branch crosses the
+        // threshold. Fire-and-forget (separate spawn so it can run
+        // concurrently with extraction). Plan §6 Phase 6.
+        let branch_id = context.branch_id;
+        let message_count = history.len();
+        tokio::spawn(async move {
+            if message_count < super::summarizer::SUMMARIZE_AFTER_N_MESSAGES {
+                return;
+            }
+            // Use the admin's configured default_extraction_model_id as
+            // the summarization model (separate column would be nicer
+            // but the plan's schema only ships one).
+            let admin = match crate::core::Repos.memory.get_admin_settings().await {
+                Ok(a) => a,
+                Err(_) => return,
+            };
+            if !admin.enabled {
+                return;
+            }
+            let Some(model_id) = admin.default_extraction_model_id else {
+                return;
+            };
+            if let Err(e) = super::summarizer::refresh_summary(branch_id, model_id).await {
+                tracing::warn!("memory.summarizer: refresh failed for branch {branch_id}: {e}");
+            }
         });
 
         Ok(ExtensionAction::Complete)

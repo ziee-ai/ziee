@@ -1,6 +1,6 @@
 //! pgvector extension build helper.
 //!
-//! Downloads matching Postgres 17.5.0 binaries from theseus-rs, builds
+//! Downloads matching Postgres 18.3.0 binaries from theseus-rs, builds
 //! the vendored pgvector source via `make`, and stages the resulting
 //! `vector.{so|dylib|dll}` + `vector.control` + `sql/vector--*.sql`
 //! into `OUT_DIR/pgvector/` so the server can embed them via
@@ -125,13 +125,13 @@ fn stub_lib_filename() -> &'static str {
     }
 }
 
-/// Download + extract Postgres 17.5.0 binaries from theseus-rs into
-/// pgvector_src.join("postgresql-17.5.0"). Skips if already present.
+/// Download + extract Postgres 18.3.0 binaries from theseus-rs into
+/// pgvector_src.join("postgresql-18.3.0"). Skips if already present.
 fn setup_postgresql_binaries(
     pgvector_dir: &Path,
     target: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let postgres_dir = pgvector_dir.join("postgresql-17.5.0");
+    let postgres_dir = pgvector_dir.join("postgresql-18.3.0");
     if postgres_dir.exists() && postgres_dir.join("bin").exists() {
         return Ok(postgres_dir);
     }
@@ -139,7 +139,7 @@ fn setup_postgresql_binaries(
     let pkg = postgres_package_for_target(target)
         .ok_or_else(|| format!("unsupported target for theseus-rs binaries: {target}"))?;
     let url = format!(
-        "https://github.com/theseus-rs/postgresql-binaries/releases/download/17.5.0/{pkg}"
+        "https://github.com/theseus-rs/postgresql-binaries/releases/download/18.3.0/{pkg}"
     );
 
     let archive_path = pgvector_dir.join(pkg);
@@ -152,19 +152,19 @@ fn setup_postgresql_binaries(
 fn postgres_package_for_target(target: &str) -> Option<&'static str> {
     match () {
         _ if target.contains("aarch64") && target.contains("apple") => {
-            Some("postgresql-17.5.0-aarch64-apple-darwin.tar.gz")
+            Some("postgresql-18.3.0-aarch64-apple-darwin.tar.gz")
         }
         _ if target.contains("x86_64") && target.contains("apple") => {
-            Some("postgresql-17.5.0-x86_64-apple-darwin.tar.gz")
+            Some("postgresql-18.3.0-x86_64-apple-darwin.tar.gz")
         }
         _ if target.contains("x86_64") && target.contains("linux") => {
-            Some("postgresql-17.5.0-x86_64-unknown-linux-gnu.tar.gz")
+            Some("postgresql-18.3.0-x86_64-unknown-linux-gnu.tar.gz")
         }
         _ if target.contains("aarch64") && target.contains("linux") => {
-            Some("postgresql-17.5.0-aarch64-unknown-linux-gnu.tar.gz")
+            Some("postgresql-18.3.0-aarch64-unknown-linux-gnu.tar.gz")
         }
         _ if target.contains("x86_64") && target.contains("windows") => {
-            Some("postgresql-17.5.0-x86_64-pc-windows-msvc.zip")
+            Some("postgresql-18.3.0-x86_64-pc-windows-msvc.zip")
         }
         _ => None,
     }

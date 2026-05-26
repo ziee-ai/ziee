@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Typography,
   Switch,
@@ -8,8 +8,11 @@ import {
   Alert,
   Card,
   Spin,
+  Button,
+  Modal,
   message,
 } from 'antd'
+import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 
 const { Title, Paragraph } = Typography
@@ -22,6 +25,7 @@ export function MemoryAdminPage() {
     saving,
     loadingModels,
   } = Stores.MemoryAdmin
+  const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
 
   useEffect(() => {
     Stores.MemoryAdmin.load()
@@ -96,6 +100,26 @@ export function MemoryAdminPage() {
               </Paragraph>
             </Form.Item>
 
+            <Form.Item
+              label="Default extraction model"
+              extra="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
+            >
+              <Select
+                placeholder="Select an extraction model (optional)"
+                value={settings.default_extraction_model_id ?? undefined}
+                onChange={async (v) => {
+                  await Stores.MemoryAdmin.update({ default_extraction_model_id: v ?? null })
+                }}
+                options={availableModels.map((m) => ({
+                  value: m.id,
+                  label: m.display_name || m.name,
+                }))}
+                showSearch
+                optionFilterProp="label"
+                allowClear
+              />
+            </Form.Item>
+
             <Form.Item label="Enable memory deployment-wide" extra="When off, all memory hooks no-op silently. Per-user toggles are unaffected but have no effect until this is on.">
               <Switch
                 checked={settings.enabled}
@@ -104,6 +128,42 @@ export function MemoryAdminPage() {
                   await Stores.MemoryAdmin.update({ enabled: v })
                 }}
               />
+            </Form.Item>
+
+            <Form.Item label="Force re-embed all memories" extra="Triggers the same worker that fires when the embedding model is switched. Useful after an embedder upgrade or to recover from a stale embedding_model column.">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => setReembedConfirmOpen(true)}
+                disabled={!settings.embedding_model_id}
+              >
+                Re-embed now
+              </Button>
+              <Modal
+                open={reembedConfirmOpen}
+                title="Re-embed every memory?"
+                okText="Re-embed"
+                okType="primary"
+                onCancel={() => setReembedConfirmOpen(false)}
+                onOk={async () => {
+                  // Re-PUT with the SAME embedding_model_id triggers
+                  // the dim-probe + worker path in the backend, which
+                  // detects the change-or-not and re-embeds rows with
+                  // a stale embedding_model name.
+                  if (!settings.embedding_model_id) return
+                  await Stores.MemoryAdmin.update({
+                    embedding_model_id: settings.embedding_model_id,
+                  })
+                  setReembedConfirmOpen(false)
+                  message.info(
+                    'Re-embed job dispatched in background. Retrieval temporarily reduced until complete.',
+                  )
+                }}
+              >
+                This runs in the background. Retrieval will skip
+                rows with NULL embeddings (i.e., not-yet-rebuilt) and
+                gradually catch up as the worker fills them in. For
+                large memory stores this can take several minutes.
+              </Modal>
             </Form.Item>
           </Form>
         </Card>

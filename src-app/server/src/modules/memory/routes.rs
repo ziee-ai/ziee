@@ -30,6 +30,10 @@ pub fn memory_router() -> ApiRouter {
                 .put_with(update_user_settings, update_user_settings_docs),
         )
         .api_route(
+            "/memory/audit-log",
+            get_with(list_audit_log, list_audit_log_docs),
+        )
+        .api_route(
             "/admin/memory-settings",
             get_with(get_admin_settings, get_admin_settings_docs)
                 .put_with(update_admin_settings, update_admin_settings_docs),

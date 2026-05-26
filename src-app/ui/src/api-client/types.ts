@@ -736,6 +736,7 @@ export interface ListMemoriesQuery {
 }
 
 export interface ListModelsQuery {
+  capability?: string
   page?: number
   perPage?: number
   providerId?: string
@@ -952,6 +953,18 @@ export interface MemoryAdminSettings {
   enabled: boolean
   id: number
   updated_at: string
+}
+
+export interface MemoryAuditEntry {
+  actor_kind: string
+  content_snapshot?: string
+  created_at: string
+  id: number
+  memory_id?: string
+  metadata: any
+  op: string
+  source: string
+  user_id: string
 }
 
 export interface MemoryInfo {
@@ -2158,6 +2171,7 @@ export const ApiEndpoints = {
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
   'Memory.admin.get': 'GET /api/admin/memory-settings',
   'Memory.admin.update': 'PUT /api/admin/memory-settings',
+  'Memory.audit.list': 'GET /api/memory/audit-log',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
   'Memory.deleteAll': 'DELETE /api/memories/all',
@@ -2279,7 +2293,7 @@ export type ApiEndpointParameters = {
   'LlmModel.enable': { model_id: string }
   'LlmModel.get': { model_id: string }
   'LlmModel.getDownload': { download_id: string }
-  'LlmModel.list': { page?: number; perPage?: number; providerId?: string }
+  'LlmModel.list': { capability?: string; page?: number; perPage?: number; providerId?: string }
   'LlmModel.listDownloads': { page?: number; per_page?: number; status?: string }
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
@@ -2339,6 +2353,7 @@ export type ApiEndpointParameters = {
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
   'Memory.admin.get': void
   'Memory.admin.update': UpdateMemoryAdminSettingsRequest
+  'Memory.audit.list': void
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void
@@ -2520,6 +2535,7 @@ export type ApiEndpointResponses = {
   'McpServerSystem.update': McpServer
   'Memory.admin.get': MemoryAdminSettings
   'Memory.admin.update': MemoryAdminSettings
+  'Memory.audit.list': MemoryAuditEntry[]
   'Memory.create': UserMemory
   'Memory.delete': void
   'Memory.deleteAll': DeleteAllResponse
