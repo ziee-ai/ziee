@@ -176,26 +176,33 @@ export function AuthProviderEditDrawer({
         </Flex>
       }
     >
-      {error && (
-        <Alert type="error" message={error} showIcon className="mb-4" />
-      )}
-      {testing && (
-        <div className="text-center py-3 mb-4">
-          <Spin /> <Typography.Text type="secondary">Testing…</Typography.Text>
-        </div>
-      )}
-      {testResult && !testing && (
-        <Alert
-          type={testResult.ok ? 'success' : 'warning'}
-          message={testResult.ok ? 'Configuration OK' : 'Configuration issues'}
-          description={testResult.message}
-          showIcon
-          closable
-          onClose={() => setTestResult(null)}
-          className="mb-4"
-        />
-      )}
-      <Form form={form} layout="vertical" disabled={!canManage}>
+      {/* The project's <Drawer> wrapper applies `flex w-full` to its
+          children container, so multiple top-level children get laid
+          out as a flex ROW (alert sits left of the form, breaking
+          the layout — see visual smoke test). Wrap in a single column
+          container so everything stacks vertically inside the
+          drawer body. */}
+      <div className="flex flex-col w-full">
+        {error && (
+          <Alert type="error" message={error} showIcon className="mb-4" />
+        )}
+        {testing && (
+          <div className="text-center py-3 mb-4">
+            <Spin /> <Typography.Text type="secondary">Testing…</Typography.Text>
+          </div>
+        )}
+        {testResult && !testing && (
+          <Alert
+            type={testResult.ok ? 'success' : 'warning'}
+            message={testResult.ok ? 'Configuration OK' : 'Configuration issues'}
+            description={testResult.message}
+            showIcon
+            closable
+            onClose={() => setTestResult(null)}
+            className="mb-4"
+          />
+        )}
+        <Form form={form} layout="vertical" disabled={!canManage}>
         <Form.Item
           name="name"
           label="Name (URL slug)"
@@ -237,7 +244,8 @@ export function AuthProviderEditDrawer({
             Leave <code>client_secret</code> empty to keep the existing value.
           </Paragraph>
         )}
-      </Form>
+        </Form>
+      </div>
     </Drawer>
   )
 }

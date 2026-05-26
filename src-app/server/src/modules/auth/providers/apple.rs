@@ -138,9 +138,16 @@ impl StringOrBool {
 }
 
 pub struct AppleProvider {
+    // Used via the `AuthProviderTrait::name()` method — dyn-dispatched
+    // through `Box<dyn AuthProviderTrait>`, so the dead-code analyzer
+    // can't see the use-site.
+    #[allow(dead_code)]
     name: String,
     provider_id: Uuid,
     config: AppleConfig,
+    // Used via the `AuthProviderTrait::get_config()` method (same
+    // dyn-dispatch story as `name`).
+    #[allow(dead_code)]
     raw_config: serde_json::Value,
     #[allow(dead_code)]
     pool: PgPool,

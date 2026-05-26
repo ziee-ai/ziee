@@ -38,6 +38,7 @@ pub struct OAuthAuthorizeQuery {
     /// server-side — the handler derives the canonical callback URI
     /// from the inbound request to prevent open-redirect attacks.
     /// Kept on the schema for back-compat with clients that send it.
+    #[allow(dead_code)]
     pub redirect_uri: Option<String>,
     /// Same-origin SPA path the user wants to land on after a
     /// successful login. Validated server-side as a same-origin path
@@ -60,7 +61,12 @@ pub struct OAuthCallbackQuery {
 pub struct AppleCallbackForm {
     pub code: String,
     pub state: String,
+    /// Apple sends the id_token in the form_post too, but we ignore
+    /// it — the server-side flow exchanges `code` for a token via
+    /// Apple's /auth/token endpoint and verifies that token against
+    /// the JWKS. Field is captured for schema completeness.
     #[serde(default)]
+    #[allow(dead_code)]
     pub id_token: Option<String>,
     /// First-auth-only JSON blob: `{"name":{"firstName":..,"lastName":..},"email":..}`.
     /// Apple sends this exactly ONCE, in the POST body, the very
