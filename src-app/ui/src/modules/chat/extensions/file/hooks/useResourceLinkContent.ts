@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Stores } from '@/core/stores'
 
 /**
  * URL-keyed cache for fetched resource_link text contents.
@@ -70,11 +71,13 @@ export function useResourceLinkContent(
     let cancelled = false
     let promise = inFlight.get(url)
     if (!promise) {
-      promise = fetch(url)
-        .then(async res => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          return res.text()
-        })
+      // Delegate the actual fetch to the file extension store so the
+      // request carries the bearer token (the previous inline `fetch`
+      // was unauthenticated). The hook keeps the module-scope text +
+      // error caches because they outlive both the store __destroy__
+      // and individual component unmounts in a way that matches user
+      // expectations (collapse-then-expand should not re-fetch).
+      promise = Stores.Chat.FileStore.fetchResourceLinkText(url)
         .then(text => {
           textCache.set(url, text)
           inFlight.delete(url)

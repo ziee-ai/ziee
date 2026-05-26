@@ -3,7 +3,9 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
   LlmProvider as BaseLlmProvider,
+  CreateLlmModelRequest,
   CreateLlmProviderRequest,
+  UpdateLlmModelRequest,
   UpdateLlmProviderRequest,
   LlmModel,
   Group,
@@ -63,6 +65,14 @@ interface LlmProviderState {
   ) => boolean
 
   // LLM Model actions
+  createLlmModel: (
+    providerId: string,
+    data: Omit<CreateLlmModelRequest, 'provider_id'>,
+  ) => Promise<LlmModel>
+  updateLlmModel: (
+    modelId: string,
+    data: UpdateLlmModelRequest,
+  ) => Promise<LlmModel>
   enableLlmModel: (modelId: string) => Promise<LlmModel>
   disableLlmModel: (modelId: string) => Promise<LlmModel>
   deleteLlmModel: (modelId: string) => Promise<void>
@@ -370,6 +380,38 @@ export const useLlmProviderStore = create<LlmProviderState>()(
       },
 
       // LLM Model actions
+      createLlmModel: async (
+        providerId: string,
+        data: Omit<CreateLlmModelRequest, 'provider_id'>,
+      ) => {
+        const model = await ApiClient.LlmModel.create({
+          ...data,
+          provider_id: providerId,
+        })
+        // Optimistically append to in-store provider, then refresh
+        // so any backend-side enrichment (e.g. derived fields) shows.
+        get().addLlmModelToProvider(providerId, model)
+        await get().loadLlmProviders()
+        return model
+      },
+
+      updateLlmModel: async (
+        modelId: string,
+        data: UpdateLlmModelRequest,
+      ) => {
+        const updated = await ApiClient.LlmModel.update({
+          model_id: modelId,
+          ...data,
+        })
+        const providerId = get().providers.find(p =>
+          p.llm_models?.some(m => m.id === modelId),
+        )?.id
+        if (providerId) {
+          get().updateLlmModelInProvider(providerId, modelId, updated)
+        }
+        return updated
+      },
+
       enableLlmModel: async (modelId: string) => {
         try {
           set(state => ({

@@ -8,6 +8,8 @@ import {
   type McpServer,
   type CreateMcpServerRequest,
   type UpdateMcpServerRequest,
+  type McpServerOAuthConfigResponse,
+  type SetMcpServerOAuthConfigRequest,
 } from '@/api-client/types'
 import { hasPermissionNow } from '@/core/permissions'
 import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
@@ -55,6 +57,14 @@ interface McpState {
   ) => Promise<McpServer>
   deleteMcpServer: (serverId: string) => Promise<void>
   getMcpServer: (serverId: string) => Promise<McpServer>
+  getMcpServerOAuthConfig: (
+    serverId: string,
+  ) => Promise<McpServerOAuthConfigResponse | null>
+  setMcpServerOAuthConfig: (
+    serverId: string,
+    config: SetMcpServerOAuthConfigRequest,
+  ) => Promise<void>
+  deleteMcpServerOAuthConfig: (serverId: string) => Promise<void>
   clearMcpError: () => void
   getUserServers: (servers: McpServer[]) => McpServer[]
   getSystemServers: (servers: McpServer[]) => McpServer[]
@@ -395,6 +405,24 @@ export const useMcpStore = create<McpState>()(
             console.error('Failed to get MCP server:', error)
             throw error
           }
+        },
+
+        getMcpServerOAuthConfig: async (serverId: string) => {
+          return await ApiClient.McpServer.getOAuthConfig({ id: serverId })
+        },
+
+        setMcpServerOAuthConfig: async (
+          serverId: string,
+          config: SetMcpServerOAuthConfigRequest,
+        ) => {
+          await ApiClient.McpServer.setOAuthConfig({
+            id: serverId,
+            ...config,
+          })
+        },
+
+        deleteMcpServerOAuthConfig: async (serverId: string) => {
+          await ApiClient.McpServer.deleteOAuthConfig({ id: serverId })
         },
 
         clearMcpError: () => {

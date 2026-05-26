@@ -3,7 +3,6 @@ import { Modal, Collapse, Switch, Tag, Typography, Empty, Checkbox, Select, Divi
 import type { CollapseProps } from 'antd'
 import { ToolOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
-import { ApiClient } from '@/api-client'
 import type { Tool } from '@/api-client/types'
 import { PENDING_CONVERSATION_KEY } from '@/modules/chat/extensions/mcp/Mcp.store'
 
@@ -97,7 +96,7 @@ export function McpConfigModal() {
           setLoadingTools(prev => new Set(prev).add(server.id))
 
           try {
-            const response = await ApiClient.McpServerRuntime.listTools({ id: server.id })
+            const response = await Stores.Chat.McpStore.listServerTools(server.id)
             setServerTools(prev => new Map(prev).set(server.id, response.tools))
           } catch (error) {
             console.error('[MCP Config Modal] Failed to load tools for server:', server.id, error)
