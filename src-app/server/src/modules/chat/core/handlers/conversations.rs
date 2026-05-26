@@ -165,12 +165,12 @@ pub async fn update_conversation(
     // update_conversation repo method; one-shot SQL keeps the diff small.
     if let Some(mode) = request.memory_mode {
         let pool = crate::core::Repos.memory.pool_clone();
-        sqlx::query(
+        sqlx::query!(
             "UPDATE conversations SET memory_mode = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3",
+            mode,
+            id,
+            auth.user.id
         )
-        .bind(&mode)
-        .bind(id)
-        .bind(auth.user.id)
         .execute(&pool)
         .await
         .map_err(AppError::database_error)?;

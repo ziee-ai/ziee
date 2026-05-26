@@ -86,23 +86,23 @@ async fn run(
     // accumulate globally per user, not per conversation. Plan §11.
     const DAILY_EXTRACTION_QUOTA: i64 = 200;
     let pool = Repos.memory.pool_clone();
-    let today_count: (i64,) = sqlx::query_as(
+    let today_count = sqlx::query_scalar!(
         r#"
-        SELECT COUNT(*)
+        SELECT COUNT(*) as "count!"
         FROM user_memories
         WHERE user_id = $1
           AND source = 'extraction'
           AND created_at > NOW() - INTERVAL '24 hours'
         "#,
+        user_id
     )
-    .bind(user_id)
     .fetch_one(&pool)
     .await?;
-    if today_count.0 >= DAILY_EXTRACTION_QUOTA {
+    if today_count >= DAILY_EXTRACTION_QUOTA {
         tracing::info!(
             "memory.extract: user {} hit daily extraction quota ({}/{}) — skipping",
             user_id,
-            today_count.0,
+            today_count,
             DAILY_EXTRACTION_QUOTA
         );
         return Ok(());

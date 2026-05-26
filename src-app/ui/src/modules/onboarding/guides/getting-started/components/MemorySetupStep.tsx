@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Typography,
   Switch,
@@ -6,8 +6,16 @@ import {
   Alert,
   Spin,
   Tag,
+  Button,
+  Space,
 } from 'antd'
-import { BulbOutlined, InfoCircleOutlined } from '@ant-design/icons'
+import {
+  BulbOutlined,
+  InfoCircleOutlined,
+  ArrowLeftOutlined,
+  ReloadOutlined,
+  PlusOutlined,
+} from '@ant-design/icons'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -15,6 +23,19 @@ import { Permissions } from '@/api-client/types'
 
 const { Title, Paragraph, Text } = Typography
 
+/**
+ * MemorySetupStep — Plan §8 two-screen flow.
+ *
+ *   Screen 1: "Enable persistent memory?" with Yes / Skip.
+ *   Screen 2 (only if Yes): "Pick an embedding model" with a dropdown
+ *                           filtered to text_embedding=true models,
+ *                           plus inline "Add embedding model" launcher
+ *                           when none exist.
+ *
+ * The wizard's Next button calls registerBeforeNext which persists
+ * settings via PUT /api/admin/memory-settings. Skip + Next leaves
+ * memory disabled (enabled=false, embedding_model_id=NULL).
+ */
 export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepProps) {
   const {
     enableMemory,
@@ -25,21 +46,18 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
     error,
   } = Stores.MemorySetupStep
 
+  const [screen, setScreen] = useState<'enable' | 'pick'>('enable')
+
   // Only root admin / memory-admin-capable users see the controls.
-  // Non-admins get a brief intro and continue.
   const canManageMemory = usePermission(Permissions.MemoryAdminManage)
 
   useEffect(() => {
     Stores.Onboarding.setReady(true)
 
-    // Save on Next: if memory is being enabled, the save call validates
-    // a model is picked. Errors are surfaced via the in-component
-    // Alert (set on the store) so the user can act before clicking
-    // Next again.
+    // Save on Next: returns void; saveSettings updates the store's
+    // error state which is surfaced via the in-component Alert.
     registerBeforeNext(async () => {
-      if (!canManageMemory) {
-        return
-      }
+      if (!canManageMemory) return
       await Stores.MemorySetupStep.saveSettings()
     })
 
@@ -47,6 +65,13 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
       Stores.MemorySetupStep.loadEmbeddingCapableModels()
     }
   }, [canManageMemory])
+
+  // Auto-advance to screen 2 when the user toggles memory on (and back
+  // when they toggle off).
+  useEffect(() => {
+    if (enableMemory && screen === 'enable') setScreen('pick')
+    if (!enableMemory && screen === 'pick') setScreen('enable')
+  }, [enableMemory])
 
   if (!canManageMemory) {
     return (
@@ -75,8 +100,23 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
     )
   }
 
-  const noModelsAvailable = availableModels.length === 0
+  // ── Screen 2: pick the embedding model ────────────────────────────
+  if (screen === 'pick' && enableMemory) {
+    return (
+      <PickModelScreen
+        embeddingModelId={embeddingModelId}
+        availableModels={availableModels}
+        error={error}
+        saving={saving}
+        onBack={() => {
+          Stores.MemorySetupStep.setEnableMemory(false)
+          setScreen('enable')
+        }}
+      />
+    )
+  }
 
+  // ── Screen 1: enable choice ───────────────────────────────────────
   return (
     <div className="max-w-xl">
       <div className="flex items-center gap-3 mb-4">
@@ -88,10 +128,9 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
 
       <Paragraph type="secondary">
         Memory lets the assistant remember facts about each user across
-        conversations — preferences, goals, recurring topics — using a
-        vector retrieval layer over Postgres. It&rsquo;s off by default
-        for privacy. You can enable it deployment-wide here, or skip
-        and revisit later from the Memory admin page.
+        conversations &mdash; preferences, goals, recurring topics
+        &mdash; using a vector retrieval layer over Postgres.
+        It&rsquo;s off by default for privacy.
       </Paragraph>
 
       {error && (
@@ -101,10 +140,11 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
       <div className="border rounded-lg p-4 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <Text strong>Enable persistent memory</Text>
+            <Text strong>Enable persistent memory?</Text>
             <div>
               <Text type="secondary" className="text-sm">
                 Turn on memory extraction and retrieval for this deployment.
+                Skip if you want to revisit later from the Memory admin page.
               </Text>
             </div>
           </div>
@@ -115,61 +155,131 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
         </div>
       </div>
 
-      {enableMemory && (
-        <>
-          <div className="mb-2 flex items-center gap-2">
-            <Text strong>Embedding model</Text>
-            {noModelsAvailable && (
-              <Tag color="orange">No embedding-capable models</Tag>
-            )}
-          </div>
-
-          {noModelsAvailable ? (
-            <Alert
-              type="info"
-              showIcon
-              icon={<InfoCircleOutlined />}
-              message="No embedding-capable models found."
-              description={
-                <div>
-                  <div>
-                    Add a model with the <code>text_embedding</code>{' '}
-                    capability from the LLM Providers page — either
-                    upload a GGUF, download from HuggingFace
-                    (e.g. <code>nomic-embed-text-v1.5</code>), or add a
-                    remote API model.
-                  </div>
-                  <div className="mt-2">
-                    You can return to this step from the Memory admin
-                    page after adding one.
-                  </div>
-                </div>
-              }
-              className="mb-4"
-            />
-          ) : (
-            <Select
-              className="w-full mb-4"
-              placeholder="Select an embedding model"
-              value={embeddingModelId ?? undefined}
-              onChange={(v) => Stores.MemorySetupStep.setEmbeddingModelId(v ?? null)}
-              options={availableModels.map((m) => ({
-                value: m.id,
-                label: m.display_name || m.name,
-              }))}
-              showSearch
-              optionFilterProp="label"
-            />
-          )}
-        </>
-      )}
-
-      {/* No in-page Save button — registerBeforeNext fires on the
-          wizard's Next click and persists the toggle + model id.
-          Avoids gap #30: double-save when both buttons exist. */}
       {saving && (
         <Paragraph type="secondary" className="text-right">
-          Saving…
+          Saving&hellip;
+        </Paragraph>
+      )}
+    </div>
+  )
+}
+
+function PickModelScreen({
+  embeddingModelId,
+  availableModels,
+  error,
+  saving,
+  onBack,
+}: {
+  embeddingModelId: string | null
+  availableModels: { id: string; name: string; display_name: string | null; provider_id: string }[]
+  error: string | null
+  saving: boolean
+  onBack: () => void
+}) {
+  const noModelsAvailable = availableModels.length === 0
+  const [refreshing, setRefreshing] = useState(false)
+
+  return (
+    <div className="max-w-xl">
+      <div className="flex items-center gap-3 mb-4">
+        <Button
+          icon={<ArrowLeftOutlined />}
+          size="small"
+          onClick={onBack}
+          aria-label="Back"
+        />
+        <BulbOutlined className="text-3xl text-amber-500" />
+        <Title level={3} className="!mb-0">
+          Pick an embedding model
+        </Title>
+      </div>
+
+      <Paragraph type="secondary">
+        Memory needs a model to compute vector embeddings. Local GGUF
+        models (e.g. <code>nomic-embed-text-v1.5</code>) work fully
+        offline; remote API models (OpenAI / Gemini) work without a
+        bundled GPU. Either option is fine.
+      </Paragraph>
+
+      {error && (
+        <Alert type="error" message={error} showIcon className="mb-4" />
+      )}
+
+      <div className="mb-2 flex items-center gap-2">
+        <Text strong>Embedding model</Text>
+        {noModelsAvailable && (
+          <Tag color="orange">No embedding-capable models</Tag>
+        )}
+      </div>
+
+      {noModelsAvailable ? (
+        <Alert
+          type="info"
+          showIcon
+          icon={<InfoCircleOutlined />}
+          message="No embedding-capable models found."
+          description={
+            <Space direction="vertical" className="w-full">
+              <Text>
+                Add one from the LLM Providers page. The Hub catalog
+                ships curated entries (<code>nomic-embed-text-v1.5</code>,
+                <code>bge-small-en-v1.5</code>,{' '}
+                <code>mxbai-embed-large-v1</code>) one-click installable;
+                or upload a GGUF; or register a remote API model. Tick the
+                {' '}<strong>text_embedding</strong>{' '}capability before
+                saving.
+              </Text>
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    // Open the LLM Providers page in a NEW tab so the
+                    // wizard state is preserved. The admin adds the
+                    // model, comes back, hits Refresh.
+                    window.open('/llm-providers', '_blank', 'noopener')
+                  }}
+                >
+                  Add embedding model
+                </Button>
+                <Button
+                  icon={<ReloadOutlined />}
+                  loading={refreshing}
+                  onClick={async () => {
+                    setRefreshing(true)
+                    try {
+                      await Stores.MemorySetupStep.loadEmbeddingCapableModels()
+                    } finally {
+                      setRefreshing(false)
+                    }
+                  }}
+                >
+                  Refresh
+                </Button>
+              </Space>
+            </Space>
+          }
+          className="mb-4"
+        />
+      ) : (
+        <Select
+          className="w-full mb-4"
+          placeholder="Select an embedding model"
+          value={embeddingModelId ?? undefined}
+          onChange={(v) => Stores.MemorySetupStep.setEmbeddingModelId(v ?? null)}
+          options={availableModels.map((m) => ({
+            value: m.id,
+            label: m.display_name || m.name,
+          }))}
+          showSearch
+          optionFilterProp="label"
+        />
+      )}
+
+      {saving && (
+        <Paragraph type="secondary" className="text-right">
+          Saving&hellip;
         </Paragraph>
       )}
     </div>

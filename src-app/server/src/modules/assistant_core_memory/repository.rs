@@ -22,17 +22,25 @@ impl AssistantCoreMemoryRepository {
         user_id: Uuid,
         assistant_id: Uuid,
     ) -> Result<Vec<CoreMemoryBlock>, AppError> {
-        let rows = sqlx::query_as::<_, CoreMemoryBlock>(
+        let rows = sqlx::query_as!(
+            CoreMemoryBlock,
             r#"
-            SELECT id, assistant_id, user_id, block_label, content, char_limit,
-                   created_at, updated_at
+            SELECT
+                id,
+                assistant_id,
+                user_id,
+                block_label,
+                content,
+                char_limit,
+                created_at as "created_at: _",
+                updated_at as "updated_at: _"
             FROM assistant_core_memory
             WHERE user_id = $1 AND assistant_id = $2
             ORDER BY block_label
             "#,
+            user_id,
+            assistant_id
         )
-        .bind(user_id)
-        .bind(assistant_id)
         .fetch_all(&self.pool)
         .await
         .map_err(AppError::database_error)?;
@@ -47,7 +55,8 @@ impl AssistantCoreMemoryRepository {
         content: &str,
         char_limit: i32,
     ) -> Result<CoreMemoryBlock, AppError> {
-        let row = sqlx::query_as::<_, CoreMemoryBlock>(
+        let row = sqlx::query_as!(
+            CoreMemoryBlock,
             r#"
             INSERT INTO assistant_core_memory
                 (assistant_id, user_id, block_label, content, char_limit)
@@ -56,15 +65,22 @@ impl AssistantCoreMemoryRepository {
             SET content    = EXCLUDED.content,
                 char_limit = EXCLUDED.char_limit,
                 updated_at = NOW()
-            RETURNING id, assistant_id, user_id, block_label, content, char_limit,
-                      created_at, updated_at
+            RETURNING
+                id,
+                assistant_id,
+                user_id,
+                block_label,
+                content,
+                char_limit,
+                created_at as "created_at: _",
+                updated_at as "updated_at: _"
             "#,
+            assistant_id,
+            user_id,
+            block_label,
+            content,
+            char_limit
         )
-        .bind(assistant_id)
-        .bind(user_id)
-        .bind(block_label)
-        .bind(content)
-        .bind(char_limit)
         .fetch_one(&self.pool)
         .await
         .map_err(AppError::database_error)?;
@@ -77,12 +93,12 @@ impl AssistantCoreMemoryRepository {
         assistant_id: Uuid,
         block_label: &str,
     ) -> Result<bool, AppError> {
-        let n = sqlx::query(
+        let n = sqlx::query!(
             "DELETE FROM assistant_core_memory WHERE user_id = $1 AND assistant_id = $2 AND block_label = $3",
+            user_id,
+            assistant_id,
+            block_label
         )
-        .bind(user_id)
-        .bind(assistant_id)
-        .bind(block_label)
         .execute(&self.pool)
         .await
         .map_err(AppError::database_error)?;

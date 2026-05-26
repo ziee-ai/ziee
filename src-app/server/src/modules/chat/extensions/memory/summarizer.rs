@@ -43,15 +43,22 @@ pub async fn fetch_summary(
     pool: &PgPool,
     branch_id: Uuid,
 ) -> Result<Option<ConversationSummary>, AppError> {
-    let row = sqlx::query_as::<_, ConversationSummary>(
+    let row = sqlx::query_as!(
+        ConversationSummary,
         r#"
-        SELECT branch_id, summary_text, summarized_up_to_id, message_count,
-               model_used, created_at, updated_at
+        SELECT
+            branch_id,
+            summary_text,
+            summarized_up_to_id,
+            message_count,
+            model_used,
+            created_at as "created_at: _",
+            updated_at as "updated_at: _"
         FROM conversation_summaries
         WHERE branch_id = $1
         "#,
+        branch_id
     )
-    .bind(branch_id)
     .fetch_optional(pool)
     .await
     .map_err(AppError::database_error)?;
@@ -200,7 +207,8 @@ Conversation:
     }
 
     let pool = Repos.memory.pool_clone();
-    sqlx::query(
+    let message_count_i32 = to_summarize.len() as i32;
+    sqlx::query!(
         r#"
         INSERT INTO conversation_summaries
             (branch_id, summary_text, summarized_up_to_id, message_count, model_used)
@@ -212,12 +220,12 @@ Conversation:
             model_used = EXCLUDED.model_used,
             updated_at = NOW()
         "#,
+        branch_id,
+        summary_text,
+        summarized_up_to_id,
+        message_count_i32,
+        model.name
     )
-    .bind(branch_id)
-    .bind(&summary_text)
-    .bind(summarized_up_to_id)
-    .bind(to_summarize.len() as i32)
-    .bind(&model.name)
     .execute(&pool)
     .await
     .map_err(AppError::database_error)?;

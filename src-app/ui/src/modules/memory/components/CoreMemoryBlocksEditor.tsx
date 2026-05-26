@@ -117,7 +117,8 @@ export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string })
                   />
                   <Popconfirm
                     title="Delete this block?"
-                    okType="danger"
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
                     onConfirm={async () => {
                       const res = await fetch(
                         `/api/assistants/${assistantId}/core-memory/${b.block_label}`,
@@ -131,7 +132,12 @@ export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string })
                       }
                     }}
                   >
-                    <Button icon={<DeleteOutlined />} size="small" danger />
+                    <Button
+                      icon={<DeleteOutlined />}
+                      size="small"
+                      danger
+                      aria-label={`Delete block ${b.block_label}`}
+                    />
                   </Popconfirm>
                 </Space>
               </div>

@@ -14,6 +14,8 @@ import {
 } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 const { Title, Paragraph } = Typography
 
@@ -26,6 +28,9 @@ export function MemoryAdminPage() {
     loadingModels,
   } = Stores.MemoryAdmin
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
+  // Form goes read-only mid-session if permission is revoked. Mirrors
+  // project pattern from code_sandbox/SandboxResourceLimitsSection.
+  const canManage = usePermission(Permissions.MemoryAdminManage)
 
   useEffect(() => {
     Stores.MemoryAdmin.load()
@@ -71,7 +76,7 @@ export function MemoryAdminPage() {
         )}
 
         <Card title="Engine" className="mb-4">
-          <Form layout="vertical">
+          <Form layout="vertical" disabled={!canManage}>
             <Form.Item
               label="Embedding model"
               extra="The model used to compute vectors for both retrieval and extraction. Switching dimension triggers a re-embed of all stored memories."
@@ -169,7 +174,7 @@ export function MemoryAdminPage() {
         </Card>
 
         <Card title="Retrieval tuning" className="mb-4">
-          <Form layout="vertical">
+          <Form layout="vertical" disabled={!canManage}>
             <Form.Item
               label="Default top-K"
               extra="How many memories to inject per turn (per user can be overridden later)."

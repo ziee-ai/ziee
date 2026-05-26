@@ -85,8 +85,8 @@ export function MemoriesPage() {
             <Popconfirm
               title="Delete all memories?"
               description="This is permanent and cannot be undone."
-              okType="danger"
               okText="Delete all"
+              okButtonProps={{ danger: true }}
               onConfirm={async () => {
                 const n = await Stores.Memories.removeAll()
                 message.success(`Deleted ${n} memories`)
@@ -200,13 +200,19 @@ export function MemoriesPage() {
                     />
                     <Popconfirm
                       title="Delete this memory?"
-                      okType="danger"
+                      okText="Delete"
+                      okButtonProps={{ danger: true }}
                       onConfirm={async () => {
                         const ok = await Stores.Memories.remove(row.id)
                         if (ok) message.success('Memory deleted')
                       }}
                     >
-                      <Button icon={<DeleteOutlined />} size="small" danger />
+                      <Button
+                        icon={<DeleteOutlined />}
+                        size="small"
+                        danger
+                        aria-label={`Delete memory ${row.id}`}
+                      />
                     </Popconfirm>
                   </Space>
                 ),
@@ -362,7 +368,7 @@ function EditMemoryDrawer({
       open={!!row}
       title="Edit memory"
       onClose={onClose}
-      width={500}
+      width={600}
       extra={
         <Button
           type="primary"

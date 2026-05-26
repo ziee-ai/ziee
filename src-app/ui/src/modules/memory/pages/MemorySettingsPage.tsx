@@ -12,12 +12,16 @@ import {
   message,
 } from 'antd'
 import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 
 const { Title, Paragraph } = Typography
 
 export function MemorySettingsPage() {
   const { settings, loading, saving } = Stores.MemorySettings
   const { settings: adminSettings } = Stores.MemoryAdmin
+  // Per-user toggles read-only mid-session if permission is revoked.
+  const canWrite = usePermission(Permissions.MemoryWrite)
 
   useEffect(() => {
     Stores.MemorySettings.load()
@@ -57,7 +61,7 @@ export function MemorySettingsPage() {
         )}
 
         <Card title="Toggles" className="mb-4">
-          <Form layout="horizontal" labelCol={{ span: 10 }}>
+          <Form layout="horizontal" labelCol={{ span: 10 }} disabled={!canWrite}>
             <Form.Item label="Auto-extract memories">
               <Switch
                 checked={settings.extraction_enabled}
@@ -89,7 +93,7 @@ export function MemorySettingsPage() {
         </Card>
 
         <Card title="Limits" className="mb-4">
-          <Form layout="vertical">
+          <Form layout="vertical" disabled={!canWrite}>
             <Form.Item label="Max memories stored" extra="When this cap is reached the reaper soft-deletes the oldest.">
               <InputNumber
                 min={1}

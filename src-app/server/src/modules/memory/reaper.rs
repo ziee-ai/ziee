@@ -12,14 +12,15 @@ use sqlx::PgPool;
 use std::time::Duration;
 
 const TICK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
-const SOFT_DELETE_GRACE_DAYS: i32 = 30;
+// f64 because the SQL multiplies by INTERVAL '1 day' which is numeric.
+const SOFT_DELETE_GRACE_DAYS: f64 = 30.0;
 
 /// Spawned at module init by `MemoryModule::init`.
 pub async fn run_reaper_loop(pool: PgPool) {
     tracing::info!(
         "memory.reaper: started; tick={}s, soft-delete grace={}d",
         TICK_INTERVAL.as_secs(),
-        SOFT_DELETE_GRACE_DAYS
+        SOFT_DELETE_GRACE_DAYS as i64
     );
     loop {
         if let Err(e) = run_once(&pool).await {
@@ -31,10 +32,10 @@ pub async fn run_reaper_loop(pool: PgPool) {
 
 async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
     // 1. Hard-delete grace-period-expired soft-deletes.
-    let hard_deleted = sqlx::query(
+    let hard_deleted = sqlx::query!(
         "DELETE FROM user_memories WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - ($1 * INTERVAL '1 day')",
+        SOFT_DELETE_GRACE_DAYS
     )
-    .bind(SOFT_DELETE_GRACE_DAYS)
     .execute(pool)
     .await?;
     if hard_deleted.rows_affected() > 0 {
@@ -45,7 +46,7 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
     }
 
     // 2. Per-user retention_days enforcement.
-    let retention_deleted = sqlx::query(
+    let retention_deleted = sqlx::query!(
         r#"
         UPDATE user_memories um
         SET deleted_at = NOW()
@@ -54,7 +55,7 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
           AND ums.retention_days IS NOT NULL
           AND um.deleted_at IS NULL
           AND um.updated_at < NOW() - (ums.retention_days * INTERVAL '1 day')
-        "#,
+        "#
     )
     .execute(pool)
     .await?;
@@ -65,12 +66,9 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
         );
     }
 
-    // 3. Per-user max_memories cap. For each user over the cap,
-    // soft-delete the oldest `updated_at` rows down to the cap.
-    //
-    // Uses a window function so this is one round-trip per global
-    // sweep instead of one per user.
-    let cap_deleted = sqlx::query(
+    // 3. Per-user max_memories cap. Window function: one round-trip
+    // per global sweep instead of one per user.
+    let cap_deleted = sqlx::query!(
         r#"
         WITH ranked AS (
             SELECT um.id,
@@ -83,7 +81,7 @@ async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
         UPDATE user_memories
         SET deleted_at = NOW()
         WHERE id IN (SELECT id FROM ranked WHERE rn > cap)
-        "#,
+        "#
     )
     .execute(pool)
     .await?;

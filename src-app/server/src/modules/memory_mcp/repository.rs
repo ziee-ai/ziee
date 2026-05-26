@@ -21,7 +21,7 @@ impl MemoryMcpRepository {
         loopback_url: &str,
     ) -> Result<(), AppError> {
         let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
-        sqlx::query(
+        sqlx::query!(
             r#"
             INSERT INTO mcp_servers (
                 id, user_id, name, display_name, description,
@@ -44,9 +44,9 @@ impl MemoryMcpRepository {
                 url = EXCLUDED.url,
                 updated_at = NOW()
             "#,
+            server_id,
+            loopback_url
         )
-        .bind(server_id)
-        .bind(loopback_url)
         .execute(&mut *tx)
         .await
         .map_err(AppError::database_error)?;

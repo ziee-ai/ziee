@@ -150,10 +150,10 @@ pub async fn retrieve_and_inject(
     let ids: Vec<Uuid> = hits.iter().map(|(id, _)| *id).collect();
     let pool = Repos.memory.pool_clone();
     tokio::spawn(async move {
-        let _ = sqlx::query(
+        let _ = sqlx::query!(
             "UPDATE user_memories SET last_recalled_at = NOW(), recall_count = recall_count + 1 WHERE id = ANY($1)",
+            &ids
         )
-        .bind(&ids)
         .execute(&pool)
         .await;
     });
@@ -186,10 +186,10 @@ fn latest_user_text(req: &ChatRequest) -> Option<String> {
 /// user-level setting.
 async fn fetch_conversation_memory_mode(conversation_id: Uuid) -> Option<String> {
     let pool = Repos.memory.pool_clone();
-    sqlx::query_scalar::<_, String>(
-        "SELECT memory_mode FROM conversations WHERE id = $1",
+    sqlx::query_scalar!(
+        r#"SELECT memory_mode FROM conversations WHERE id = $1"#,
+        conversation_id
     )
-    .bind(conversation_id)
     .fetch_one(&pool)
     .await
     .ok()

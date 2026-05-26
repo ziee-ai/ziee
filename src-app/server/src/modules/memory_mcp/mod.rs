@@ -69,7 +69,7 @@ impl AppModule for MemoryMcpModule {
     }
 
     fn description(&self) -> &'static str {
-        "Built-in MCP server exposing memory tools"
+        "Built-in MCP server exposing memory tools (remember/recall/forget)"
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
