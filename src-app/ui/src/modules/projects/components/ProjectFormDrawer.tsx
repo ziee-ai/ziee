@@ -221,7 +221,7 @@ export function ProjectFormDrawer() {
       open={open}
       onClose={handleClose}
       size={600}
-      destroyOnClose
+      destroyOnHidden
       footer={
         // Cancel-before-Submit, right-aligned via Flex per
         // ui-consistency-patterns.md. Cancel→Close label switches on
