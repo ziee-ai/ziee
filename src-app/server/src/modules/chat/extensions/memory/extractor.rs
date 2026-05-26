@@ -86,13 +86,13 @@ async fn run(
     // accumulate globally per user, not per conversation. Plan §11.
     //
     // SOFT-CAP (audit R7-#3): the count-then-insert window means two
-    // concurrent extractions can each see today_count = 199 and both
-    // insert (total = 201). Acceptable — the quota is a brake against
+    // concurrent extractions can each see today_count = quota-1 and both
+    // insert (total = quota+1). Acceptable — the quota is a brake against
     // casual spam, not a determined-attacker hard ceiling. The real
     // cost gate is the LLM API spend, not the row count. A hard-
     // enforce variant would need a BEFORE INSERT trigger or
     // SELECT FOR UPDATE NOWAIT; both add cost for marginal benefit.
-    const DAILY_EXTRACTION_QUOTA: i64 = 200;
+    let daily_quota = i64::from(admin.daily_extraction_quota);
     let pool = Repos.memory.pool_clone();
     let today_count = sqlx::query_scalar!(
         r#"
@@ -106,12 +106,12 @@ async fn run(
     )
     .fetch_one(&pool)
     .await?;
-    if today_count >= DAILY_EXTRACTION_QUOTA {
+    if today_count >= daily_quota {
         tracing::info!(
             "memory.extract: user {} hit daily extraction quota ({}/{}) — skipping",
             user_id,
             today_count,
-            DAILY_EXTRACTION_QUOTA
+            daily_quota
         );
         return Ok(());
     }

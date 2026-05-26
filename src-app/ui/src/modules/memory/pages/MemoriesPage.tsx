@@ -292,30 +292,41 @@ function CreateMemoryModal({
   open: boolean
   onClose: () => void
 }) {
-  const [form] = Form.useForm()
+  const [form] = Form.useForm<{ content: string; importance: number; kind: string }>()
   const { saving } = Stores.Memories
+
+  const handleSubmit = async (values: {
+    content: string
+    importance: number
+    kind: string
+  }) => {
+    const row = await Stores.Memories.create(
+      values.content,
+      values.importance,
+      values.kind,
+    )
+    if (row) {
+      form.resetFields()
+      onClose()
+      message.success('Memory added')
+    }
+  }
+
   return (
     <Modal
       open={open}
       title="Add memory"
       onCancel={onClose}
-      onOk={async () => {
-        const values = await form.validateFields()
-        const row = await Stores.Memories.create(
-          values.content,
-          values.importance,
-          values.kind,
-        )
-        if (row) {
-          form.resetFields()
-          onClose()
-          message.success('Memory added')
-        }
-      }}
+      onOk={() => form.submit()}
       confirmLoading={saving}
       okText="Add"
     >
-      <Form form={form} layout="vertical" initialValues={{ importance: 50, kind: 'fact' }}>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{ importance: 50, kind: 'fact' }}
+        onFinish={handleSubmit}
+      >
         <Form.Item
           name="content"
           label="Content"
@@ -352,7 +363,7 @@ function EditMemoryDrawer({
   row: UserMemoryRow | null
   onClose: () => void
 }) {
-  const [form] = Form.useForm()
+  const [form] = Form.useForm<{ content: string; importance: number; kind: string }>()
   const { saving } = Stores.Memories
 
   useEffect(() => {
@@ -365,6 +376,19 @@ function EditMemoryDrawer({
     }
   }, [row])
 
+  const handleSubmit = async (values: {
+    content: string
+    importance: number
+    kind: string
+  }) => {
+    if (!row) return
+    const updated = await Stores.Memories.update(row.id, values)
+    if (updated) {
+      onClose()
+      message.success('Memory updated')
+    }
+  }
+
   return (
     <Drawer
       open={!!row}
@@ -372,24 +396,12 @@ function EditMemoryDrawer({
       onClose={onClose}
       size={600}
       extra={
-        <Button
-          type="primary"
-          loading={saving}
-          onClick={async () => {
-            if (!row) return
-            const values = await form.validateFields()
-            const updated = await Stores.Memories.update(row.id, values)
-            if (updated) {
-              onClose()
-              message.success('Memory updated')
-            }
-          }}
-        >
+        <Button type="primary" loading={saving} onClick={() => form.submit()}>
           Save
         </Button>
       }
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item
           name="content"
           label="Content"

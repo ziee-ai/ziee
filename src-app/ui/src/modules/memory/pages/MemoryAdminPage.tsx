@@ -10,6 +10,7 @@ import {
   Spin,
   Button,
   Modal,
+  Flex,
   message,
 } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
@@ -19,6 +20,18 @@ import { Permissions } from '@/api-client/types'
 
 const { Title, Paragraph } = Typography
 
+interface AdminFormValues {
+  embedding_model_id?: string | null
+  default_extraction_model_id?: string | null
+  enabled: boolean
+  default_top_k: number
+  cosine_threshold: number
+  soft_delete_grace_days: number
+  daily_extraction_quota: number
+  summarize_after_n_messages: number
+  summarizer_keep_recent: number
+}
+
 export function MemoryAdminPage() {
   const {
     settings,
@@ -27,6 +40,7 @@ export function MemoryAdminPage() {
     saving,
     loadingModels,
   } = Stores.MemoryAdmin
+  const [form] = Form.useForm<AdminFormValues>()
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
   // Form goes read-only mid-session if permission is revoked. Mirrors
   // project pattern from code_sandbox/SandboxResourceLimitsSection.
@@ -36,6 +50,24 @@ export function MemoryAdminPage() {
     Stores.MemoryAdmin.load()
     Stores.MemoryAdmin.loadEmbeddingCapableModels()
   }, [])
+
+  // Populate form when settings arrive (or change externally via the
+  // re-embed button). Matches the LlmProviderDrawer pattern.
+  useEffect(() => {
+    if (settings) {
+      form.setFieldsValue({
+        embedding_model_id: settings.embedding_model_id,
+        default_extraction_model_id: settings.default_extraction_model_id,
+        enabled: settings.enabled,
+        default_top_k: settings.default_top_k,
+        cosine_threshold: settings.cosine_threshold,
+        soft_delete_grace_days: settings.soft_delete_grace_days,
+        daily_extraction_quota: settings.daily_extraction_quota,
+        summarize_after_n_messages: settings.summarize_after_n_messages,
+        summarizer_keep_recent: settings.summarizer_keep_recent,
+      })
+    }
+  }, [settings, form])
 
   if (loading || !settings) {
     return (
@@ -47,165 +79,238 @@ export function MemoryAdminPage() {
 
   const noModelsAvailable = availableModels.length === 0
 
+  const handleSubmit = async (values: AdminFormValues) => {
+    const priorEmbeddingId = settings.embedding_model_id
+    try {
+      await Stores.MemoryAdmin.update({
+        embedding_model_id: values.embedding_model_id ?? null,
+        default_extraction_model_id:
+          values.default_extraction_model_id ?? null,
+        enabled: values.enabled,
+        default_top_k: values.default_top_k,
+        cosine_threshold: values.cosine_threshold,
+        soft_delete_grace_days: values.soft_delete_grace_days,
+        daily_extraction_quota: values.daily_extraction_quota,
+        summarize_after_n_messages: values.summarize_after_n_messages,
+        summarizer_keep_recent: values.summarizer_keep_recent,
+      })
+      if ((values.embedding_model_id ?? null) !== priorEmbeddingId) {
+        message.success(
+          'Settings saved. Embedding model changed — re-embed running in background.',
+        )
+      } else {
+        message.success('Settings saved.')
+      }
+    } catch (e: any) {
+      message.error(e?.message ?? 'Failed to save settings.')
+    }
+  }
+
+  const handleReembed = async () => {
+    if (!settings.embedding_model_id) return
+    // Re-PUT with the SAME embedding_model_id triggers the dim-probe +
+    // worker path in the backend, which detects the change-or-not and
+    // re-embeds rows with a stale embedding_model name.
+    await Stores.MemoryAdmin.update({
+      embedding_model_id: settings.embedding_model_id,
+    })
+    setReembedConfirmOpen(false)
+    message.info(
+      'Re-embed job dispatched in background. Retrieval temporarily reduced until complete.',
+    )
+  }
+
   return (
     <div className="max-w-2xl mx-auto p-6">
-        <Title level={3}>Memory (admin)</Title>
-        <Paragraph type="secondary">
-          Configure deployment-wide memory: pick the embedding model
-          that powers vector retrieval, set retrieval thresholds, and
-          turn memory on or off for everyone.
-        </Paragraph>
+      <Title level={3}>Memory (admin)</Title>
+      <Paragraph type="secondary">
+        Configure deployment-wide memory: pick the embedding model that
+        powers vector retrieval, set retrieval thresholds, and turn
+        memory on or off for everyone.
+      </Paragraph>
 
-        {noModelsAvailable && (
-          <Alert
-            type="info"
-            showIcon
-            title="No embedding-capable models found."
-            description={
-              <span>
-                Add one from the LLM Providers page — either upload a
-                GGUF (e.g. <code>nomic-embed-text-v1.5</code>), download
-                it from HuggingFace, or register a remote API model
-                like <code>text-embedding-3-small</code>. Tick the{' '}
-                <strong>text_embedding</strong> capability on the model
-                form. Then return here and select it below.
-              </span>
-            }
-            className="mb-4"
-          />
-        )}
+      {noModelsAvailable && (
+        <Alert
+          type="info"
+          showIcon
+          title="No embedding-capable models found."
+          description={
+            <span>
+              Add one from the LLM Providers page — either upload a GGUF
+              (e.g. <code>nomic-embed-text-v1.5</code>), download it
+              from HuggingFace, or register a remote API model like{' '}
+              <code>text-embedding-3-small</code>. Tick the{' '}
+              <strong>text_embedding</strong> capability on the model
+              form. Then return here and select it below.
+            </span>
+          }
+          className="mb-4"
+        />
+      )}
 
+      <Form
+        name="memory-admin-form"
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+        disabled={!canManage}
+      >
         <Card title="Engine" className="mb-4">
-          <Form layout="vertical" disabled={!canManage}>
-            <Form.Item
-              label="Embedding model"
-              extra="The model used to compute vectors for both retrieval and extraction. Switching dimension triggers a re-embed of all stored memories."
-            >
-              <Select
-                placeholder={
-                  noModelsAvailable ? 'No embedding-capable models' : 'Select an embedding model'
-                }
-                value={settings.embedding_model_id ?? undefined}
-                loading={loadingModels}
-                disabled={noModelsAvailable}
-                onChange={async (v) => {
-                  await Stores.MemoryAdmin.update({ embedding_model_id: v ?? null })
-                  message.success('Embedding model updated. Re-embed running in background.')
-                }}
-                options={availableModels.map((m) => ({
-                  value: m.id,
-                  label: m.display_name || m.name,
-                }))}
-                showSearch={{ optionFilterProp: 'label' }}
-                allowClear
-              />
-              <Paragraph type="secondary" className="!mt-1 !mb-0 text-xs">
+          <Form.Item
+            name="embedding_model_id"
+            label="Embedding model"
+            extra={
+              <>
+                The model used to compute vectors for both retrieval and
+                extraction. Switching dimension triggers a re-embed of
+                all stored memories.
+                <br />
                 Current vector dimension: {settings.embedding_dimensions}
-              </Paragraph>
-            </Form.Item>
+              </>
+            }
+          >
+            <Select
+              placeholder={
+                noModelsAvailable
+                  ? 'No embedding-capable models'
+                  : 'Select an embedding model'
+              }
+              loading={loadingModels}
+              disabled={noModelsAvailable}
+              options={availableModels.map((m) => ({
+                value: m.id,
+                label: m.display_name || m.name,
+              }))}
+              showSearch={{ optionFilterProp: 'label' }}
+              allowClear
+            />
+          </Form.Item>
 
-            <Form.Item
-              label="Default extraction model"
-              extra="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
+          <Form.Item
+            name="default_extraction_model_id"
+            label="Default extraction model"
+            extra="LLM used by the silent extraction pipeline. Users can override per-account. Cheap models (Haiku-class, Gemini Flash) are ideal here."
+          >
+            <Select
+              placeholder="Select an extraction model (optional)"
+              options={availableModels.map((m) => ({
+                value: m.id,
+                label: m.display_name || m.name,
+              }))}
+              showSearch={{ optionFilterProp: 'label' }}
+              allowClear
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="enabled"
+            label="Enable memory deployment-wide"
+            extra="When off, all memory hooks no-op silently. Per-user toggles are unaffected but have no effect until this is on."
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            label="Force re-embed all memories"
+            extra="Triggers the same worker that fires when the embedding model is switched. Useful after an embedder upgrade or to recover from a stale embedding_model column."
+          >
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => setReembedConfirmOpen(true)}
+              disabled={!settings.embedding_model_id}
             >
-              <Select
-                placeholder="Select an extraction model (optional)"
-                value={settings.default_extraction_model_id ?? undefined}
-                onChange={async (v) => {
-                  await Stores.MemoryAdmin.update({ default_extraction_model_id: v ?? null })
-                }}
-                options={availableModels.map((m) => ({
-                  value: m.id,
-                  label: m.display_name || m.name,
-                }))}
-                showSearch={{ optionFilterProp: 'label' }}
-                allowClear
-              />
-            </Form.Item>
-
-            <Form.Item label="Enable memory deployment-wide" extra="When off, all memory hooks no-op silently. Per-user toggles are unaffected but have no effect until this is on.">
-              <Switch
-                checked={settings.enabled}
-                loading={saving}
-                onChange={async (v) => {
-                  await Stores.MemoryAdmin.update({ enabled: v })
-                }}
-              />
-            </Form.Item>
-
-            <Form.Item label="Force re-embed all memories" extra="Triggers the same worker that fires when the embedding model is switched. Useful after an embedder upgrade or to recover from a stale embedding_model column.">
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={() => setReembedConfirmOpen(true)}
-                disabled={!settings.embedding_model_id}
-              >
-                Re-embed now
-              </Button>
-              <Modal
-                open={reembedConfirmOpen}
-                title="Re-embed every memory?"
-                okText="Re-embed"
-                okType="primary"
-                onCancel={() => setReembedConfirmOpen(false)}
-                onOk={async () => {
-                  // Re-PUT with the SAME embedding_model_id triggers
-                  // the dim-probe + worker path in the backend, which
-                  // detects the change-or-not and re-embeds rows with
-                  // a stale embedding_model name.
-                  if (!settings.embedding_model_id) return
-                  await Stores.MemoryAdmin.update({
-                    embedding_model_id: settings.embedding_model_id,
-                  })
-                  setReembedConfirmOpen(false)
-                  message.info(
-                    'Re-embed job dispatched in background. Retrieval temporarily reduced until complete.',
-                  )
-                }}
-              >
-                This runs in the background. Retrieval will skip
-                rows with NULL embeddings (i.e., not-yet-rebuilt) and
-                gradually catch up as the worker fills them in. For
-                large memory stores this can take several minutes.
-              </Modal>
-            </Form.Item>
-          </Form>
+              Re-embed now
+            </Button>
+            <Modal
+              open={reembedConfirmOpen}
+              title="Re-embed every memory?"
+              okText="Re-embed"
+              okType="primary"
+              onCancel={() => setReembedConfirmOpen(false)}
+              onOk={handleReembed}
+            >
+              This runs in the background. Retrieval will skip rows
+              with NULL embeddings (i.e., not-yet-rebuilt) and
+              gradually catch up as the worker fills them in. For
+              large memory stores this can take several minutes.
+            </Modal>
+          </Form.Item>
         </Card>
 
         <Card title="Retrieval tuning" className="mb-4">
-          <Form layout="vertical" disabled={!canManage}>
-            <Form.Item
-              label="Default top-K"
-              extra="How many memories to inject per turn (per user can be overridden later)."
-            >
-              <InputNumber
-                min={1}
-                max={100}
-                value={settings.default_top_k}
-                onChange={async (v) => {
-                  if (v != null) {
-                    await Stores.MemoryAdmin.update({ default_top_k: v })
-                  }
-                }}
-              />
-            </Form.Item>
-            <Form.Item
-              label="Cosine distance threshold"
-              extra="Memories with distance ≥ this value are filtered out. Lower = stricter (fewer false-positives, more misses)."
-            >
-              <InputNumber
-                min={0}
-                max={2}
-                step={0.05}
-                value={settings.cosine_threshold}
-                onChange={async (v) => {
-                  if (v != null) {
-                    await Stores.MemoryAdmin.update({ cosine_threshold: v })
-                  }
-                }}
-              />
-            </Form.Item>
-          </Form>
+          <Form.Item
+            name="default_top_k"
+            label="Default top-K"
+            extra="How many memories to inject per turn (per user can be overridden later)."
+          >
+            <InputNumber min={1} max={100} />
+          </Form.Item>
+          <Form.Item
+            name="cosine_threshold"
+            label="Cosine distance threshold"
+            extra="Memories with distance ≥ this value are filtered out. Lower = stricter (fewer false-positives, more misses)."
+          >
+            <InputNumber min={0} max={2} step={0.05} />
+          </Form.Item>
         </Card>
-      </div>
+
+        <Card title="Retention &amp; extraction limits" className="mb-4">
+          <Form.Item
+            name="soft_delete_grace_days"
+            label="Soft-delete grace days"
+            extra="How long soft-deleted memories stick around before the nightly reaper hard-deletes them. Lower = faster GDPR/erasure compliance; higher = longer audit window for user-initiated undeletes."
+          >
+            <InputNumber min={1} max={365} />
+          </Form.Item>
+          <Form.Item
+            name="daily_extraction_quota"
+            label="Daily extraction quota (per user)"
+            extra="Brake against extraction-spam loops. When a user hits this many extraction-sourced memories in a 24h window, further extraction is skipped silently. The hard cost gate is your LLM API spend; this is the secondary brake on row count."
+          >
+            <InputNumber min={1} max={10000} />
+          </Form.Item>
+        </Card>
+
+        <Card title="Conversation summarizer" className="mb-4">
+          <Form.Item
+            name="summarize_after_n_messages"
+            label="Summarize after N messages"
+            extra="When a conversation branch exceeds this many user/assistant messages, the summarizer condenses the earliest ones into a single system block. Lower = sooner summarization (smaller prompts, more LLM cost); higher = longer verbatim history."
+          >
+            <InputNumber min={10} max={1000} />
+          </Form.Item>
+          <Form.Item
+            name="summarizer_keep_recent"
+            label="Keep recent messages verbatim"
+            extra="How many of the most-recent messages stay unsummarized alongside the summary block. Must stay below the trigger above (DB-enforced)."
+            dependencies={['summarize_after_n_messages']}
+            rules={[
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  const trigger = getFieldValue('summarize_after_n_messages')
+                  if (value == null || trigger == null || value < trigger) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(
+                    new Error(
+                      `Keep-recent (${value}) must be less than the trigger (${trigger}).`,
+                    ),
+                  )
+                },
+              }),
+            ]}
+          >
+            <InputNumber min={2} max={999} />
+          </Form.Item>
+        </Card>
+
+        <Flex justify="end" className="mt-4">
+          <Button type="primary" htmlType="submit" loading={saving}>
+            Save
+          </Button>
+        </Flex>
+      </Form>
+    </div>
   )
 }

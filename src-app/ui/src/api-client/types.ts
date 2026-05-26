@@ -730,6 +730,10 @@ export interface InstanceStatusResponse {
   uptime_seconds?: number
 }
 
+export interface ListAuditLogQuery {
+  limit?: number
+}
+
 export interface ListMemoriesQuery {
   limit?: number
   offset?: number
@@ -946,12 +950,16 @@ export interface MeResponse {
 
 export interface MemoryAdminSettings {
   cosine_threshold: number
+  daily_extraction_quota: number
   default_extraction_model_id?: string
   default_top_k: number
   embedding_dimensions: number
   embedding_model_id?: string
   enabled: boolean
   id: number
+  soft_delete_grace_days: number
+  summarize_after_n_messages: number
+  summarizer_keep_recent: number
   updated_at: string
 }
 
@@ -1695,10 +1703,14 @@ export interface UpdateMcpServerRequest {
 
 export interface UpdateMemoryAdminSettingsRequest {
   cosine_threshold?: number
+  daily_extraction_quota?: number
   default_extraction_model_id?: string
   default_top_k?: number
   embedding_model_id?: string
   enabled?: boolean
+  soft_delete_grace_days?: number
+  summarize_after_n_messages?: number
+  summarizer_keep_recent?: number
 }
 
 export interface UpdateMemoryRequest {
@@ -2170,8 +2182,8 @@ export const ApiEndpoints = {
   'McpServerSystem.list': 'GET /api/mcp/system-servers',
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
-  'Memory.admin.get': 'GET /api/admin/memory-settings',
-  'Memory.admin.update': 'PUT /api/admin/memory-settings',
+  'Memory.admin.get': 'GET /api/memory/admin-settings',
+  'Memory.admin.update': 'PUT /api/memory/admin-settings',
   'Memory.audit.list': 'GET /api/memory/audit-log',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
@@ -2354,7 +2366,7 @@ export type ApiEndpointParameters = {
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
   'Memory.admin.get': void
   'Memory.admin.update': UpdateMemoryAdminSettingsRequest
-  'Memory.audit.list': void
+  'Memory.audit.list': { limit?: number }
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void

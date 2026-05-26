@@ -488,6 +488,10 @@ impl MemoryRepository {
                 default_top_k,
                 cosine_threshold,
                 enabled,
+                soft_delete_grace_days,
+                daily_extraction_quota,
+                summarize_after_n_messages,
+                summarizer_keep_recent,
                 updated_at as "updated_at: _"
             FROM memory_admin_settings
             WHERE id = 1
@@ -499,6 +503,7 @@ impl MemoryRepository {
         Ok(row)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_admin_settings(
         &self,
         embedding_model_id: Option<Option<Uuid>>,
@@ -506,6 +511,10 @@ impl MemoryRepository {
         default_top_k: Option<i16>,
         cosine_threshold: Option<f32>,
         enabled: Option<bool>,
+        soft_delete_grace_days: Option<i32>,
+        daily_extraction_quota: Option<i32>,
+        summarize_after_n_messages: Option<i32>,
+        summarizer_keep_recent: Option<i32>,
     ) -> Result<MemoryAdminSettings, AppError> {
         // Same Option<Option<T>> split as update_user_settings.
         let embedding_set = embedding_model_id.is_some();
@@ -522,6 +531,10 @@ impl MemoryRepository {
                 default_top_k               = COALESCE($5, default_top_k),
                 cosine_threshold            = COALESCE($6, cosine_threshold),
                 enabled                     = COALESCE($7, enabled),
+                soft_delete_grace_days      = COALESCE($8, soft_delete_grace_days),
+                daily_extraction_quota      = COALESCE($9, daily_extraction_quota),
+                summarize_after_n_messages  = COALESCE($10, summarize_after_n_messages),
+                summarizer_keep_recent      = COALESCE($11, summarizer_keep_recent),
                 updated_at                  = NOW()
             WHERE id = 1
             RETURNING
@@ -532,6 +545,10 @@ impl MemoryRepository {
                 default_top_k,
                 cosine_threshold,
                 enabled,
+                soft_delete_grace_days,
+                daily_extraction_quota,
+                summarize_after_n_messages,
+                summarizer_keep_recent,
                 updated_at as "updated_at: _"
             "#,
             embedding_set,
@@ -540,7 +557,11 @@ impl MemoryRepository {
             extraction_val,
             default_top_k,
             cosine_threshold,
-            enabled
+            enabled,
+            soft_delete_grace_days,
+            daily_extraction_quota,
+            summarize_after_n_messages,
+            summarizer_keep_recent
         )
         .fetch_one(&self.pool)
         .await

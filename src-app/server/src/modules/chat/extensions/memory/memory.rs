@@ -127,19 +127,21 @@ impl ChatExtension for MemoryExtension {
         let branch_id = context.branch_id;
         let message_count = history.len();
         tokio::spawn(async move {
-            if message_count < super::summarizer::SUMMARIZE_AFTER_N_MESSAGES {
+            // Load admin once — we need both the trigger threshold and
+            // the model id from the same row.
+            let admin = match crate::core::Repos.memory.get_admin_settings().await {
+                Ok(a) => a,
+                Err(_) => return,
+            };
+            if message_count < admin.summarize_after_n_messages as usize {
+                return;
+            }
+            if !admin.enabled {
                 return;
             }
             // Use the admin's configured default_extraction_model_id as
             // the summarization model (separate column would be nicer
             // but the plan's schema only ships one).
-            let admin = match crate::core::Repos.memory.get_admin_settings().await {
-                Ok(a) => a,
-                Err(_) => return,
-            };
-            if !admin.enabled {
-                return;
-            }
             let Some(model_id) = admin.default_extraction_model_id else {
                 return;
             };

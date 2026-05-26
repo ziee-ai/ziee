@@ -20,12 +20,14 @@ use uuid::Uuid;
 use crate::common::AppError;
 use crate::core::Repos;
 
-/// Trigger threshold — branches with more than this many user/assistant
-/// messages get summarized. Set conservatively; raising costs nothing
-/// but lowering risks losing too much context.
-pub const SUMMARIZE_AFTER_N_MESSAGES: usize = 50;
-/// How many recent messages we KEEP verbatim when summarizing.
-pub const KEEP_RECENT: usize = 10;
+/// Fallback summarizer thresholds — used only if the admin settings
+/// row can't be read on a given call (transient DB blip). Match the
+/// column DEFAULTs in migration 52. The runtime values come from
+/// `memory_admin_settings.summarize_after_n_messages` /
+/// `.summarizer_keep_recent` and can be tuned per-deployment from the
+/// admin UI without a redeploy.
+const FALLBACK_SUMMARIZE_AFTER_N_MESSAGES: usize = 50;
+const FALLBACK_KEEP_RECENT: usize = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ConversationSummary {
@@ -117,11 +119,23 @@ pub async fn refresh_summary(
         .filter(|m| m.message.role == "user" || m.message.role == "assistant")
         .collect();
 
-    if conv_msgs.len() <= SUMMARIZE_AFTER_N_MESSAGES {
+    // Read thresholds fresh — admin tuning takes effect on the next
+    // summarization without a restart.
+    let (trigger, keep_recent) = match Repos.memory.get_admin_settings().await {
+        Ok(s) => (s.summarize_after_n_messages as usize, s.summarizer_keep_recent as usize),
+        Err(e) => {
+            tracing::warn!(
+                "memory.summarizer: get_admin_settings failed ({e}); using fallback thresholds"
+            );
+            (FALLBACK_SUMMARIZE_AFTER_N_MESSAGES, FALLBACK_KEEP_RECENT)
+        }
+    };
+
+    if conv_msgs.len() <= trigger {
         return Ok(()); // Nothing to summarize.
     }
 
-    let cutoff = conv_msgs.len().saturating_sub(KEEP_RECENT);
+    let cutoff = conv_msgs.len().saturating_sub(keep_recent);
     let to_summarize: Vec<_> = conv_msgs.iter().take(cutoff).collect();
     if to_summarize.is_empty() {
         return Ok(());

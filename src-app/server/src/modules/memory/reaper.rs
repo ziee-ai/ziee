@@ -1,26 +1,33 @@
 //! Periodic memory-retention reaper.
 //!
-//! Runs every 24 hours (configurable in code) and:
-//!   1. Hard-deletes rows where `deleted_at < NOW() - INTERVAL '30 days'`
-//!      (soft-deletes get a 30-day grace period for user audit).
+//! Runs every 24 hours and:
+//!   1. Hard-deletes rows where `deleted_at` is older than the
+//!      admin-configured `soft_delete_grace_days` window (default 30d).
 //!   2. Enforces per-user `max_memories` by soft-deleting the oldest
 //!      `updated_at` rows when the live count exceeds the cap.
 //!   3. Enforces `retention_days` per user — soft-deletes rows where
 //!      `updated_at < NOW() - retention_days days`.
+//!
+//! The grace window is read fresh on every tick so admin changes via
+//! `PUT /api/memory/admin-settings` take effect on the next sweep
+//! without restarting the server.
 
 use sqlx::PgPool;
 use std::time::Duration;
 
+use crate::core::Repos;
+
 const TICK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
-// f64 because the SQL multiplies by INTERVAL '1 day' which is numeric.
-const SOFT_DELETE_GRACE_DAYS: f64 = 30.0;
+/// Fallback grace days if the admin settings row can't be read (DB
+/// transient error, fresh deployment racing). Matches the column
+/// DEFAULT in migration 52.
+const FALLBACK_GRACE_DAYS: f64 = 30.0;
 
 /// Spawned at module init by `MemoryModule::init`.
 pub async fn run_reaper_loop(pool: PgPool) {
     tracing::info!(
-        "memory.reaper: started; tick={}s, soft-delete grace={}d",
+        "memory.reaper: started; tick={}s, soft-delete grace read from admin settings each tick",
         TICK_INTERVAL.as_secs(),
-        SOFT_DELETE_GRACE_DAYS as i64
     );
     loop {
         if let Err(e) = run_once(&pool).await {
@@ -31,10 +38,24 @@ pub async fn run_reaper_loop(pool: PgPool) {
 }
 
 async fn run_once(pool: &PgPool) -> Result<(), sqlx::Error> {
+    // Read the live grace window. On error (transient DB blip), fall
+    // back to the previous default so a sweep is never silently
+    // skipped — better to delete on the conservative 30d window than
+    // to leak stale soft-deletes indefinitely.
+    let grace_days = match Repos.memory.get_admin_settings().await {
+        Ok(s) => f64::from(s.soft_delete_grace_days),
+        Err(e) => {
+            tracing::warn!(
+                "memory.reaper: get_admin_settings failed ({e}); falling back to {FALLBACK_GRACE_DAYS}d"
+            );
+            FALLBACK_GRACE_DAYS
+        }
+    };
+
     // 1. Hard-delete grace-period-expired soft-deletes.
     let hard_deleted = sqlx::query!(
         "DELETE FROM user_memories WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - ($1 * INTERVAL '1 day')",
-        SOFT_DELETE_GRACE_DAYS
+        grace_days
     )
     .execute(pool)
     .await?;

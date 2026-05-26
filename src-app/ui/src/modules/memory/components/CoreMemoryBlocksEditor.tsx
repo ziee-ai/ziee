@@ -177,7 +177,7 @@ function BlockFormModal({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
-  const [form] = Form.useForm()
+  const [form] = Form.useForm<{ block_label: string; content: string; char_limit: number }>()
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -188,43 +188,48 @@ function BlockFormModal({
     }
   }, [open, existing])
 
+  const handleSubmit = async (values: {
+    block_label: string
+    content: string
+    char_limit: number
+  }) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/assistants/core-memory', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assistant_id: assistantId,
+          block_label: values.block_label,
+          content: values.content,
+          char_limit: values.char_limit,
+        }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `Save failed: ${res.status}`)
+      }
+      message.success(existing ? 'Block updated' : 'Block added')
+      onClose()
+      await onSaved()
+    } catch (e: any) {
+      message.error(e?.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Modal
       open={open}
       title={existing ? `Edit "${existing.block_label}"` : 'Add core memory block'}
       onCancel={onClose}
       confirmLoading={saving}
-      onOk={async () => {
-        const values = await form.validateFields()
-        setSaving(true)
-        try {
-          const res = await fetch('/api/assistants/core-memory', {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              assistant_id: assistantId,
-              block_label: values.block_label,
-              content: values.content,
-              char_limit: values.char_limit,
-            }),
-          })
-          if (!res.ok) {
-            const text = await res.text()
-            throw new Error(text || `Save failed: ${res.status}`)
-          }
-          message.success(existing ? 'Block updated' : 'Block added')
-          onClose()
-          await onSaved()
-        } catch (e: any) {
-          message.error(e?.message || 'Save failed')
-        } finally {
-          setSaving(false)
-        }
-      }}
+      onOk={() => form.submit()}
       okText={existing ? 'Save' : 'Add'}
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item
           name="block_label"
           label="Label"

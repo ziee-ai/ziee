@@ -64,6 +64,14 @@ pub struct MemoryAdminSettings {
     pub default_top_k: i16,
     pub cosine_threshold: f32,
     pub enabled: bool,
+    /// Reaper hard-delete grace period for soft-deleted memories (days).
+    pub soft_delete_grace_days: i32,
+    /// Per-user/day extraction quota (rows created via extraction).
+    pub daily_extraction_quota: i32,
+    /// Summarizer trigger threshold (branch message count).
+    pub summarize_after_n_messages: i32,
+    /// Summarizer messages kept verbatim alongside the summary.
+    pub summarizer_keep_recent: i32,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -114,6 +122,10 @@ pub struct UpdateMemoryAdminSettingsRequest {
     pub default_top_k: Option<i16>,
     pub cosine_threshold: Option<f32>,
     pub enabled: Option<bool>,
+    pub soft_delete_grace_days: Option<i32>,
+    pub daily_extraction_quota: Option<i32>,
+    pub summarize_after_n_messages: Option<i32>,
+    pub summarizer_keep_recent: Option<i32>,
 }
 
 /// Max length of a single memory `content` row. Shared between
