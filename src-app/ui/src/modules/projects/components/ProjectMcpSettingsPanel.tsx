@@ -1,12 +1,9 @@
-import { useEffect, useState } from 'react'
-import { App, Button, Flex, Form, Input, Radio, Typography } from 'antd'
+import { Button, Tag, Typography } from 'antd'
+import { ToolOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import {
-  Permissions,
-  type Project,
-  type UpdateProjectMcpSettingsRequest,
-} from '@/api-client/types'
+import { Permissions, type Project } from '@/api-client/types'
+import { McpConfigModal } from '@/modules/chat/extensions/mcp/components/McpConfigModal'
 
 const { Text } = Typography
 
@@ -14,122 +11,47 @@ interface ProjectMcpSettingsPanelProps {
   project: Project
 }
 
-type ApprovalMode = 'disabled' | 'auto_approve' | 'manual_approve'
-
 /**
- * Editor for a project's MCP defaults. The settings are SNAPSHOTTED onto
- * every conversation created in this project — changes here do NOT
- * propagate to existing conversations (matches Plan 5 §4 precedence).
+ * Project MCP defaults editor. Round-4 redesign: instead of a
+ * standalone raw-JSON form, this panel opens the SAME `McpConfigModal`
+ * used in chat — driven by `Stores.Chat.McpStore.openConfigModalForProject`.
  *
- * For v1 the auto_approved_tools and disabled_servers JSONB columns are
- * edited as raw JSON. A richer per-server tool-toggle UI lives on the
- * conversation MCP panel today and can be ported as a v1.1 polish if
- * users need it on the project level.
+ * The modal's dispatch rule is:
+ *   currentProjectId != null && currentConversationId == null  →  project scope
  *
- * Permission gating (audit Q3): Form is `disabled={!canEdit}` so users
- * without `ProjectsEdit` see the panel in read-only mode; Save is
- * GATED (hidden, not just disabled); footer follows the canonical
- * Cancel-before-Submit + Flex layout.
+ * So opening from here saves to `PUT /projects/{id}/mcp-settings`
+ * (via `saveProjectConfig`); opening from chat continues to save to
+ * the conversation row. Settings are snapshotted onto every NEW
+ * conversation created in this project — changes here do NOT
+ * propagate to existing conversations.
+ *
+ * Permission gating (audit Q3): the configure button is hidden when
+ * the user lacks `ProjectsEdit`; a read-only summary is shown
+ * instead. Admins see both.
  */
 export function ProjectMcpSettingsPanel({
   project,
 }: ProjectMcpSettingsPanelProps) {
-  const { message } = App.useApp()
   const canEdit = usePermission(Permissions.ProjectsEdit)
-  const [form] = Form.useForm<{
-    approval_mode: ApprovalMode
-    auto_approved_tools_json: string
-    disabled_servers_json: string
-  }>()
-  const [saving, setSaving] = useState(false)
 
-  const populateFromProject = () => {
-    form.setFieldsValue({
-      approval_mode: (project.mcp_approval_mode as ApprovalMode) ?? 'manual_approve',
-      auto_approved_tools_json: JSON.stringify(
-        project.mcp_auto_approved_tools ?? [],
-        null,
-        2,
-      ),
-      disabled_servers_json: JSON.stringify(
-        project.mcp_disabled_servers ?? [],
-        null,
-        2,
-      ),
-    })
+  const handleConfigure = () => {
+    Stores.Chat.McpStore.openConfigModalForProject(project)
   }
 
-  useEffect(() => {
-    populateFromProject()
-    // `form` is intentionally omitted from the dep array: Form.useForm()
-    // returns a STABLE instance for the life of the component (antd
-    // contract), so adding it would never change behavior but would
-    // trick a reader into thinking it might. `populateFromProject`
-    // closes over `form` + `project` only — both covered.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project])
+  const approvalMode = project.mcp_approval_mode || 'manual_approve'
+  const approvalLabel =
+    approvalMode === 'auto_approve'
+      ? 'Auto approve'
+      : approvalMode === 'disabled'
+      ? 'Disabled'
+      : 'Manual approve'
 
-  // Hard cap so an accidental 100MB paste doesn't freeze the tab on
-  // JSON.parse. Backend per-list cap is 256 entries × 256 tools ×
-  // 256-byte names ≈ 16.8 MB worst case, but the strict shape makes
-  // anything beyond ~64 KB pure noise.
-  const MAX_JSON_BYTES = 65_536
-
-  const handleSave = async () => {
-    let values
-    try {
-      values = await form.validateFields()
-    } catch {
-      return
-    }
-
-    if (
-      values.auto_approved_tools_json.length > MAX_JSON_BYTES ||
-      values.disabled_servers_json.length > MAX_JSON_BYTES
-    ) {
-      message.error(
-        `JSON fields are limited to ${MAX_JSON_BYTES.toLocaleString()} characters`,
-      )
-      return
-    }
-
-    let autoApproved: unknown
-    let disabledServers: unknown
-    try {
-      autoApproved = JSON.parse(values.auto_approved_tools_json)
-      disabledServers = JSON.parse(values.disabled_servers_json)
-    } catch {
-      message.error('Invalid JSON in one of the array fields')
-      return
-    }
-
-    if (!Array.isArray(autoApproved) || !Array.isArray(disabledServers)) {
-      message.error('Auto-approved tools and disabled servers must be JSON arrays')
-      return
-    }
-
-    const req: UpdateProjectMcpSettingsRequest = {
-      approval_mode: values.approval_mode,
-      auto_approved_tools: autoApproved,
-      disabled_servers: disabledServers,
-    }
-
-    try {
-      setSaving(true)
-      await Stores.ProjectDetail.updateMcpSettings(project.id, req)
-      message.success('MCP settings saved')
-    } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : 'Failed to save MCP settings',
-      )
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleReset = () => {
-    populateFromProject()
-  }
+  const autoApprovedCount = Array.isArray(project.mcp_auto_approved_tools)
+    ? (project.mcp_auto_approved_tools as unknown[]).length
+    : 0
+  const disabledCount = Array.isArray(project.mcp_disabled_servers)
+    ? (project.mcp_disabled_servers as unknown[]).length
+    : 0
 
   return (
     <div>
@@ -139,68 +61,44 @@ export function ProjectMcpSettingsPanel({
         settings — changes here do not retroactively apply.
       </Text>
 
-      <Form
-        form={form}
-        layout="vertical"
-        disabled={!canEdit}
-        initialValues={{
-          approval_mode: 'manual_approve',
-          auto_approved_tools_json: '[]',
-          disabled_servers_json: '[]',
-        }}
-      >
-        <Form.Item
-          name="approval_mode"
-          label="Approval mode"
-          tooltip="manual_approve = ask before each tool call; auto_approve = run all; disabled = block tool calls."
-          rules={[{ required: true }]}
-        >
-          <Radio.Group>
-            <Radio value="manual_approve">Manual approve</Radio>
-            <Radio value="auto_approve">Auto approve</Radio>
-            <Radio value="disabled">Disabled</Radio>
-          </Radio.Group>
-        </Form.Item>
+      <div className="flex flex-col gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <Text strong>Approval mode:</Text>
+          <Tag>{approvalLabel}</Tag>
+        </div>
+        <div className="flex items-center gap-2">
+          <Text strong>Auto-approved server rules:</Text>
+          <Tag color={autoApprovedCount > 0 ? 'blue' : 'default'}>
+            {autoApprovedCount}
+          </Tag>
+        </div>
+        <div className="flex items-center gap-2">
+          <Text strong>Disabled server rules:</Text>
+          <Tag color={disabledCount > 0 ? 'warning' : 'default'}>
+            {disabledCount}
+          </Tag>
+        </div>
+      </div>
 
-        <Form.Item
-          name="auto_approved_tools_json"
-          label="Auto-approved tools (JSON)"
-          tooltip='Array of {"server_id": "uuid", "tools": ["tool1"]} entries. Max 64 KiB.'
+      {canEdit && (
+        <Button
+          type="primary"
+          icon={<ToolOutlined />}
+          onClick={handleConfigure}
         >
-          <Input.TextArea
-            rows={6}
-            spellCheck={false}
-            placeholder="[]"
-            className="font-mono"
-            maxLength={MAX_JSON_BYTES}
-          />
-        </Form.Item>
+          Configure MCP
+        </Button>
+      )}
 
-        <Form.Item
-          name="disabled_servers_json"
-          label="Disabled servers (JSON)"
-          tooltip='Array of {"server_id": "uuid", "tools": []} entries. Empty `tools` = whole server disabled; non-empty = those tools disabled. Max 64 KiB.'
-        >
-          <Input.TextArea
-            rows={6}
-            spellCheck={false}
-            placeholder="[]"
-            className="font-mono"
-            maxLength={MAX_JSON_BYTES}
-          />
-        </Form.Item>
-
-        <Flex className="justify-end gap-2 pt-2">
-          <Button onClick={handleReset} disabled={saving || !canEdit}>
-            {canEdit ? 'Reset' : 'Close'}
-          </Button>
-          {canEdit && (
-            <Button type="primary" onClick={handleSave} loading={saving}>
-              Save
-            </Button>
-          )}
-        </Flex>
-      </Form>
+      {/* Mount the shared modal here. It controls its own visibility
+          via the chat MCP store. Mounting on the chat surface AND here
+          would render two instances — but the modal is render-once
+          per visible container in practice (this panel is only on the
+          project detail page; the chat surface mounts via McpMenuItem,
+          which renders null when the panel mounts a different one).
+          To be safe both renderers gate on the same store flag, so
+          the worst case is two empty <Modal> wrappers — harmless. */}
+      <McpConfigModal />
     </div>
   )
 }

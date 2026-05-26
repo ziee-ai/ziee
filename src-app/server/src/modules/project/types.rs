@@ -116,11 +116,19 @@ pub struct UpdateProjectRequest {
 
 /// MCP-only update endpoint payload (sibling to UpdateProjectRequest so
 /// the MCP panel can PUT without sending the rest of the project fields).
+///
+/// `loop_settings` is `Option<Value>` (not a strict struct) for symmetry
+/// with the conversation_mcp_settings schema (migration 19) — keeping
+/// the project shape JSONB-flexible avoids a separate Rust struct that
+/// would need to stay in lockstep with the chat-side type. The chat
+/// extension consumes the snapshot opaquely.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UpdateProjectMcpSettingsRequest {
     pub approval_mode: String,
     pub auto_approved_tools: Vec<McpServerToolEntry>,
     pub disabled_servers: Vec<McpServerToolEntry>,
+    #[serde(default)]
+    pub loop_settings: Option<serde_json::Value>,
 }
 
 /// Accepted values for `approval_mode`. Matches the strings the chat

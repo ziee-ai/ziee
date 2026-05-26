@@ -127,10 +127,11 @@ pub async fn create_conversation(
             r#"
             INSERT INTO conversation_mcp_settings (
                 conversation_id, user_id,
-                approval_mode, auto_approved_tools, disabled_servers
+                approval_mode, auto_approved_tools, disabled_servers, loop_settings
             )
             SELECT $1, $2,
-                   p.mcp_approval_mode, p.mcp_auto_approved_tools, p.mcp_disabled_servers
+                   p.mcp_approval_mode, p.mcp_auto_approved_tools, p.mcp_disabled_servers,
+                   p.mcp_loop_settings
             FROM projects p
             WHERE p.id = $3 AND p.user_id = $2
             ON CONFLICT (conversation_id) DO NOTHING

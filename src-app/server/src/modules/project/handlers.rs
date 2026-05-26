@@ -869,6 +869,10 @@ pub async fn get_project_mcp_settings(
         approval_mode: project.mcp_approval_mode,
         auto_approved_tools,
         disabled_servers,
+        // loop_settings is JSONB-flexible (Option<Value>) — pass
+        // through opaquely. Caller (the modal) parses the standard
+        // shape; NULL means "use defaults".
+        loop_settings: project.mcp_loop_settings,
     };
     Ok((StatusCode::OK, Json(settings)))
 }

@@ -62,15 +62,23 @@ impl ProjectRepository {
             None => serde_json::json!([]),
         };
 
+        // loop_settings: NULL at create time means "use application
+        // defaults" — same convention as conversation_mcp_settings.
+        // CreateProjectRequest doesn't expose loop_settings (the
+        // dedicated MCP-settings PUT endpoint sets it later), but we
+        // pass NULL explicitly so the bind position is unambiguous.
+        let loop_settings: Option<serde_json::Value> = None;
+
         let project = sqlx::query_as!(
             Project,
             r#"
             INSERT INTO projects (
                 user_id, name, description, instructions,
                 default_assistant_id, default_model_id,
-                mcp_approval_mode, mcp_auto_approved_tools, mcp_disabled_servers
+                mcp_approval_mode, mcp_auto_approved_tools, mcp_disabled_servers,
+                mcp_loop_settings
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING
                 id, user_id, name, description, instructions,
                 default_assistant_id as "default_assistant_id: _",
@@ -78,6 +86,7 @@ impl ProjectRepository {
                 mcp_approval_mode,
                 mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
                 mcp_disabled_servers as "mcp_disabled_servers!: _",
+                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             "#,
@@ -90,6 +99,7 @@ impl ProjectRepository {
             approval_mode,
             auto_approved,
             disabled_servers,
+            loop_settings,
         )
         .fetch_one(&self.pool)
         .await
@@ -115,6 +125,7 @@ impl ProjectRepository {
                 mcp_approval_mode,
                 mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
                 mcp_disabled_servers as "mcp_disabled_servers!: _",
+                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             FROM projects
@@ -150,6 +161,7 @@ impl ProjectRepository {
                 mcp_approval_mode,
                 mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
                 mcp_disabled_servers as "mcp_disabled_servers!: _",
+                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             FROM projects
@@ -262,6 +274,7 @@ impl ProjectRepository {
                 mcp_approval_mode,
                 mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
                 mcp_disabled_servers as "mcp_disabled_servers!: _",
+                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             FROM projects WHERE id = $1
@@ -293,6 +306,13 @@ impl ProjectRepository {
             AppError::internal_error("Failed to serialize MCP settings")
         })?;
 
+        // loop_settings: pass Option<Value> straight through. NULL is a
+        // first-class value here ("not configured — use defaults"); a
+        // None on the request preserves any existing row value via the
+        // explicit binding below (we still set it — `None` writes NULL,
+        // which is the documented "use defaults" semantic).
+        let loop_settings = req.loop_settings.clone();
+
         let project = sqlx::query_as!(
             Project,
             r#"
@@ -300,6 +320,7 @@ impl ProjectRepository {
             SET mcp_approval_mode = $3,
                 mcp_auto_approved_tools = $4,
                 mcp_disabled_servers = $5,
+                mcp_loop_settings = $6,
                 updated_at = NOW()
             WHERE id = $1 AND user_id = $2
             RETURNING
@@ -309,6 +330,7 @@ impl ProjectRepository {
                 mcp_approval_mode,
                 mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
                 mcp_disabled_servers as "mcp_disabled_servers!: _",
+                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             "#,
@@ -317,6 +339,7 @@ impl ProjectRepository {
             req.approval_mode,
             auto_approved,
             disabled_servers,
+            loop_settings,
         )
         .fetch_optional(&self.pool)
         .await
@@ -550,6 +573,7 @@ impl ProjectRepository {
                 p.mcp_approval_mode,
                 p.mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
                 p.mcp_disabled_servers as "mcp_disabled_servers!: _",
+                p.mcp_loop_settings,
                 p.created_at as "created_at: _",
                 p.updated_at as "updated_at: _"
             FROM conversations c
@@ -591,6 +615,7 @@ impl ProjectRepository {
                 mcp_approval_mode,
                 mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
                 mcp_disabled_servers as "mcp_disabled_servers!: _",
+                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             FROM projects
@@ -659,9 +684,10 @@ impl ProjectRepository {
             INSERT INTO projects (
                 user_id, name, description, instructions,
                 default_assistant_id, default_model_id,
-                mcp_approval_mode, mcp_auto_approved_tools, mcp_disabled_servers
+                mcp_approval_mode, mcp_auto_approved_tools, mcp_disabled_servers,
+                mcp_loop_settings
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING
                 id, user_id, name, description, instructions,
                 default_assistant_id as "default_assistant_id: _",
@@ -669,6 +695,7 @@ impl ProjectRepository {
                 mcp_approval_mode,
                 mcp_auto_approved_tools as "mcp_auto_approved_tools!: _",
                 mcp_disabled_servers as "mcp_disabled_servers!: _",
+                mcp_loop_settings,
                 created_at as "created_at: _",
                 updated_at as "updated_at: _"
             "#,
@@ -681,6 +708,7 @@ impl ProjectRepository {
             original.mcp_approval_mode,
             original.mcp_auto_approved_tools,
             original.mcp_disabled_servers,
+            original.mcp_loop_settings,
         )
         .fetch_one(&mut *tx)
         .await
@@ -725,10 +753,11 @@ impl ProjectRepository {
             r#"
             INSERT INTO conversation_mcp_settings (
                 conversation_id, user_id,
-                approval_mode, auto_approved_tools, disabled_servers
+                approval_mode, auto_approved_tools, disabled_servers, loop_settings
             )
             SELECT $1, $2,
-                   p.mcp_approval_mode, p.mcp_auto_approved_tools, p.mcp_disabled_servers
+                   p.mcp_approval_mode, p.mcp_auto_approved_tools, p.mcp_disabled_servers,
+                   p.mcp_loop_settings
             FROM projects p
             WHERE p.id = $3
             ON CONFLICT (conversation_id) DO NOTHING

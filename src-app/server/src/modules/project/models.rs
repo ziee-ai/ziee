@@ -30,6 +30,15 @@ pub struct Project {
     /// JSONB: `[{"server_id": "uuid", "tools": []}, ...]`
     #[serde(default)]
     pub mcp_disabled_servers: serde_json::Value,
+    /// JSONB; nullable. Same shape + NULL convention as
+    /// `conversation_mcp_settings.loop_settings` (migration 19).
+    /// NULL means "not configured — application supplies the default":
+    ///   { stop_when_no_tool_calling: true, max_iteration: 10,
+    ///     stop_when_tools_called: [], force_final_answer: false,
+    ///     per_tool_max_iteration: [] }
+    /// Snapshotted into conversation_mcp_settings.loop_settings at
+    /// conversation create time.
+    pub mcp_loop_settings: Option<serde_json::Value>,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

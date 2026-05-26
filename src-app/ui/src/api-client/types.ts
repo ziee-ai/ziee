@@ -1142,8 +1142,8 @@ export interface PaginationQuery3 {
 }
 
 export interface PaginationQuery4 {
-  limit: number
-  page: number
+  limit?: number
+  page?: number
 }
 
 export interface PaginationQuery5 {
@@ -1208,6 +1208,7 @@ export interface Project {
   mcp_approval_mode: string
   mcp_auto_approved_tools?: any
   mcp_disabled_servers?: any
+  mcp_loop_settings?: any
   name: string
   updated_at: string
   user_id: string
@@ -1700,6 +1701,7 @@ export interface UpdateProjectMcpSettingsRequest {
   approval_mode: string
   auto_approved_tools: McpServerToolEntry[]
   disabled_servers: McpServerToolEntry[]
+  loop_settings?: any
 }
 
 export interface UpdateProjectRequest {
@@ -2317,8 +2319,8 @@ export type ApiEndpointParameters = {
   'Project.duplicate': { id: string }
   'Project.get': { id: string }
   'Project.getMcpSettings': { id: string }
-  'Project.list': { limit: number; page: number }
-  'Project.listConversations': { id: string; limit: number; page: number }
+  'Project.list': { limit?: number; page?: number }
+  'Project.listConversations': { id: string; limit?: number; page?: number }
   'Project.listFiles': { id: string }
   'Project.update': { id: string } & UpdateProjectRequest
   'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
