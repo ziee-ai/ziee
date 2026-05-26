@@ -42,7 +42,7 @@ test.describe('Memory MCP — remember/forget tools', () => {
     await login(page, baseURL, username, 'password123')
 
     // Call the remember tool via JSON-RPC.
-    const res = await page.request.post(`${apiURL}/api/memory-mcp`, {
+    const res = await page.request.post(`${apiURL}/api/memories/mcp`, {
       data: {
         jsonrpc: '2.0',
         id: 1,

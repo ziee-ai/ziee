@@ -34,7 +34,7 @@ const { Title, Paragraph, Text } = Typography
  *                           when none exist.
  *
  * The wizard's Next button calls registerBeforeNext which persists
- * settings via PUT /api/admin/memory-settings. Skip + Next leaves
+ * settings via PUT /api/memory/admin-settings. Skip + Next leaves
  * memory disabled (enabled=false, embedding_model_id=NULL).
  */
 export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepProps) {

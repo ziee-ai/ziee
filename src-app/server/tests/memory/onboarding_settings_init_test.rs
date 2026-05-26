@@ -2,7 +2,7 @@
 // Onboarding-driven admin settings initialization (plan §9 Phase 1).
 //
 // The MemorySetupStep posts the admin's choice to
-// `PUT /api/admin/memory-settings`. This test asserts the happy path:
+// `PUT /api/memory/admin-settings`. This test asserts the happy path:
 // an admin user sends the request; the row is updated; subsequent
 // GETs reflect the new state.
 // ============================================================================
@@ -24,7 +24,7 @@ async fn test_admin_can_set_enabled_via_onboarding_flow() {
 
     // Sanity: starts disabled.
     let res = client
-        .get(server.api_url("/admin/memory-settings"))
+        .get(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .await
@@ -34,7 +34,7 @@ async fn test_admin_can_set_enabled_via_onboarding_flow() {
 
     // Apply onboarding choice (Skip → still disabled).
     let res = client
-        .put(server.api_url("/admin/memory-settings"))
+        .put(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {token}"))
         .json(&serde_json::json!({ "enabled": false }))
         .send()
@@ -46,7 +46,7 @@ async fn test_admin_can_set_enabled_via_onboarding_flow() {
 
     // Apply onboarding choice (Enable → now enabled).
     let res = client
-        .put(server.api_url("/admin/memory-settings"))
+        .put(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {token}"))
         .json(&serde_json::json!({ "enabled": true }))
         .send()
@@ -67,7 +67,7 @@ async fn test_non_admin_cannot_change_admin_settings() {
     )
     .await;
     let res = reqwest::Client::new()
-        .put(server.api_url("/admin/memory-settings"))
+        .put(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&serde_json::json!({ "enabled": true }))
         .send()

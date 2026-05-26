@@ -3,7 +3,7 @@
 //! Registers `memory.ziee.internal` as a regular row in `mcp_servers`
 //! with `is_built_in=true` + `transport_type='http'`, points at a
 //! loopback URL on the same axum app, and serves JSON-RPC at
-//! `/api/memory-mcp`. The MCP client at `mcp/client/manager.rs`
+//! `/api/memories/mcp`. The MCP client at `mcp/client/manager.rs`
 //! already handles JWT injection for built-in servers — auth flows
 //! through there.
 //!
@@ -83,7 +83,7 @@ impl AppModule for MemoryMcpModule {
         // would ship JWT-signed bearer tokens to the wrong place.
         let host = crate::modules::code_sandbox::loopback_host(&ctx.config.server.host);
         let loopback_url = format!(
-            "http://{host}:{port}/api/memory-mcp",
+            "http://{host}:{port}/api/memories/mcp",
             port = ctx.config.server.port,
         );
 

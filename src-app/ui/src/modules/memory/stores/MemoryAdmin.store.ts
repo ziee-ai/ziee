@@ -12,6 +12,10 @@ export interface MemoryAdminSettingsRow {
   default_top_k: number
   cosine_threshold: number
   enabled: boolean
+  soft_delete_grace_days: number
+  daily_extraction_quota: number
+  summarize_after_n_messages: number
+  summarizer_keep_recent: number
   updated_at: string
 }
 
@@ -39,6 +43,10 @@ interface MemoryAdminStore {
       default_top_k: number
       cosine_threshold: number
       enabled: boolean
+      soft_delete_grace_days: number
+      daily_extraction_quota: number
+      summarize_after_n_messages: number
+      summarizer_keep_recent: number
     }>,
   ) => Promise<MemoryAdminSettingsRow | null>
 }
@@ -59,7 +67,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
           d.error = null
         })
         try {
-          const res = await fetch('/api/admin/memory-settings', {
+          const res = await fetch('/api/memory/admin-settings', {
             credentials: 'include',
           })
           if (!res.ok) throw new Error(`Failed to load admin settings: ${res.status}`)
@@ -115,7 +123,7 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
           d.error = null
         })
         try {
-          const res = await fetch('/api/admin/memory-settings', {
+          const res = await fetch('/api/memory/admin-settings', {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },

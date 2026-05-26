@@ -60,7 +60,7 @@ test.describe('Memory — onboarding skip', () => {
     await page.getByRole('button', { name: /Finish|Done/ }).click()
 
     // Admin settings page reachable; memory still disabled.
-    const adminRes = await page.request.get(`${apiURL}/api/admin/memory-settings`)
+    const adminRes = await page.request.get(`${apiURL}/api/memory/admin-settings`)
     expect(adminRes.status()).toBe(200)
     const settings = await adminRes.json()
     expect(settings.enabled).toBe(false)

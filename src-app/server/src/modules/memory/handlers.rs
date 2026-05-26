@@ -1,4 +1,4 @@
-//! REST handlers for `/api/memories` and `/api/admin/memory-settings`.
+//! REST handlers for `/api/memories` and `/api/memory/admin-settings`.
 
 use aide::transform::TransformOperation;
 use axum::{
@@ -382,6 +382,10 @@ pub async fn update_admin_settings(
             body.default_top_k,
             body.cosine_threshold,
             body.enabled,
+            body.soft_delete_grace_days,
+            body.daily_extraction_quota,
+            body.summarize_after_n_messages,
+            body.summarizer_keep_recent,
         )
         .await?;
 

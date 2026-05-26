@@ -21,7 +21,7 @@ async fn test_admin_settings_default_is_disabled() {
     )
     .await;
     let res = reqwest::Client::new()
-        .get(server.api_url("/admin/memory-settings"))
+        .get(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await
@@ -65,7 +65,7 @@ async fn test_memory_disabled_mcp_recall_rejects() {
     .await;
     // With memory disabled (default), recall must refuse.
     let res = reqwest::Client::new()
-        .post(server.api_url("/memory-mcp"))
+        .post(server.api_url("/memories/mcp"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",

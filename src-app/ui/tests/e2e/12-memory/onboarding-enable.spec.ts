@@ -65,7 +65,7 @@ test.describe('Memory — onboarding enable', () => {
     await page.getByRole('button', { name: /Finish|Done/ }).click()
 
     // Verify settings now enabled.
-    const adminRes = await page.request.get(`${apiURL}/api/admin/memory-settings`)
+    const adminRes = await page.request.get(`${apiURL}/api/memory/admin-settings`)
     const settings = await adminRes.json()
     expect(settings.enabled).toBe(true)
     expect(settings.embedding_model_id).not.toBeNull()

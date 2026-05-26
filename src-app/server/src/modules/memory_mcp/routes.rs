@@ -1,4 +1,4 @@
-//! memory_mcp routes — single JSON-RPC endpoint at /api/memory-mcp.
+//! memory_mcp routes — single JSON-RPC endpoint at /api/memories/mcp.
 
 use aide::axum::ApiRouter;
 use axum::routing::post;
@@ -11,5 +11,5 @@ pub fn memory_mcp_router() -> ApiRouter {
         // JSON-RPC handler dispatches multiple methods over the same
         // path and isn't a typed REST endpoint suitable for OpenAPI
         // docs.
-        .route("/memory-mcp", post(handlers::jsonrpc_handler))
+        .route("/memories/mcp", post(handlers::jsonrpc_handler))
 }

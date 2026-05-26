@@ -34,7 +34,7 @@ pub fn memory_router() -> ApiRouter {
             get_with(list_audit_log, list_audit_log_docs),
         )
         .api_route(
-            "/admin/memory-settings",
+            "/memory/admin-settings",
             get_with(get_admin_settings, get_admin_settings_docs)
                 .put_with(update_admin_settings, update_admin_settings_docs),
         )

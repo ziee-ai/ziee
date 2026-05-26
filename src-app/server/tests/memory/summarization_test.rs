@@ -9,7 +9,7 @@
 // The full E2E lives in a Tier-5 manual exercise. This unit-style
 // scaffold drives just the public surface: the `apply_summary_to_history`
 // helper is exposed via the memory chat extension; we assert the
-// /api/admin/memory-settings.default_extraction_model_id round-trips
+// /api/memory/admin-settings.default_extraction_model_id round-trips
 // (used by the summarizer's auto-refresh path).
 // ============================================================================
 
@@ -29,7 +29,7 @@ async fn test_default_extraction_model_round_trip() {
     // — the schema allows NULL, so we test the round-trip with NULL
     // (no real models seeded in this lightweight test).
     let res = reqwest::Client::new()
-        .put(server.api_url("/admin/memory-settings"))
+        .put(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .json(&json!({ "default_extraction_model_id": null }))
         .send()

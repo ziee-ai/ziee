@@ -21,7 +21,7 @@ use pgvector::Vector;
 const REBUILD_BATCH_SIZE: i64 = 100;
 
 /// Process-global in-progress flag. Closes audit finding R5-#1: two
-/// concurrent admin PUTs to /api/admin/memory-settings each spawn a
+/// concurrent admin PUTs to /api/memory/admin-settings each spawn a
 /// worker; without this guard, both can interleave NULL+ALTER+re-embed
 /// against the same `user_memories.embedding` column. The flag is
 /// best-effort (process-local, not cluster-wide) — for single-server

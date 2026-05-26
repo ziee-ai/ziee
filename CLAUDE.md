@@ -118,8 +118,8 @@ The vendored pgvector source is a git submodule at
 ### Surfaces
 
 - REST CRUD at `/api/memories`, `/api/memory/settings`,
-  `/api/admin/memory-settings`.
-- Built-in MCP server at `/api/memory-mcp` exposing
+  `/api/memory/admin-settings`.
+- Built-in MCP server at `/api/memories/mcp` exposing
   `remember` / `recall` / `forget` tools (deterministic UUID via
   `Uuid::new_v5(NAMESPACE_URL, "memory.ziee.internal")`).
 - Chat extension `chat::extensions::memory` injects retrieved

@@ -99,7 +99,7 @@ export const useMemorySetupStepStore = create<MemorySetupStepStore>()(
           if (enableMemory && embeddingModelId) {
             body.embedding_model_id = embeddingModelId
           }
-          const res = await fetch('/api/admin/memory-settings', {
+          const res = await fetch('/api/memory/admin-settings', {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },

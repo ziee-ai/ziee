@@ -85,7 +85,7 @@ async fn test_mcp_forget_requires_memory_id() {
     )
     .await;
     let res = reqwest::Client::new()
-        .post(server.api_url("/memory-mcp"))
+        .post(server.api_url("/memories/mcp"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({
             "jsonrpc": "2.0",

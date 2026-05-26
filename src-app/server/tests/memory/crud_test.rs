@@ -3,7 +3,7 @@
 //
 //   /api/memories             (REST CRUD; MemoryRead / MemoryWrite)
 //   /api/memory/settings      (per-user settings; MemoryRead / MemoryWrite)
-//   /api/admin/memory-settings (admin; MemoryAdminRead / MemoryAdminManage)
+//   /api/memory/admin-settings (admin; MemoryAdminRead / MemoryAdminManage)
 //
 // Plan §10 mandatory regressions are exercised here:
 //   - cross-user isolation (user A cannot read/write/delete user B's memory)
@@ -164,7 +164,7 @@ async fn test_create_memory_admin_settings_requires_admin_permission() {
     )
     .await;
     let res = reqwest::Client::new()
-        .put(server.api_url("/admin/memory-settings"))
+        .put(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", user.token))
         .json(&json!({ "enabled": true }))
         .send()
@@ -317,7 +317,7 @@ async fn test_admin_settings_defaults_to_disabled() {
     )
     .await;
     let res = reqwest::Client::new()
-        .get(server.api_url("/admin/memory-settings"))
+        .get(server.api_url("/memory/admin-settings"))
         .header("Authorization", format!("Bearer {}", admin.token))
         .send()
         .await

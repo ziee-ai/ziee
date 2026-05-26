@@ -1,7 +1,7 @@
 // ============================================================================
 // memory_mcp built-in MCP server tests.
 //
-// Tests the JSON-RPC handler at /api/memory-mcp:
+// Tests the JSON-RPC handler at /api/memories/mcp:
 //   - initialize / tools/list / ping return expected metadata.
 //   - tools/call dispatches to remember / recall / forget with JWT
 //     user_id scoping.
@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 
 fn jsonrpc_call(server: &crate::common::TestServer, token: &str, method: &str, params: Value) -> reqwest::RequestBuilder {
     reqwest::Client::new()
-        .post(server.api_url("/memory-mcp"))
+        .post(server.api_url("/memories/mcp"))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
             "jsonrpc": "2.0",
