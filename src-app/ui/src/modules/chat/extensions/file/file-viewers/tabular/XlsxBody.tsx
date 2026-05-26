@@ -8,7 +8,11 @@ const { Text } = Typography
 
 const MAX_ROWS = 100
 
-export function XlsxBody({ file }: FileViewerSlotProps) {
+export function XlsxBody(props: FileViewerSlotProps) {
+  // XLSX is not inline-capable (binary parse + heavy bundle). Guard for
+  // type-narrowing; chat dispatcher won't reach here for source-shaped props.
+  if (!('file' in props)) return null
+  const { file } = props
   const { fileBinaryContents } = Stores.Chat.FileStore
   const fileBinaryContent = fileBinaryContents.get(file.id) ?? null
   if (fileBinaryContent === null) Stores.Chat.FileStore.getFileBinaryContent(file.id, file)

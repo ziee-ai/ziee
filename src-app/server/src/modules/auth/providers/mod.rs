@@ -3,6 +3,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+pub mod apple;
 pub mod ldap;
 pub mod local;
 pub mod models;
@@ -57,8 +58,16 @@ pub trait AuthProviderTrait: Send + Sync {
     /// Authenticate user with username and password (for password-based providers)
     async fn authenticate(&self, username: &str, password: &str) -> Result<AuthResult, AuthError>;
 
-    /// Initialize OAuth/OIDC authentication flow (returns redirect URL)
-    async fn init_oauth_flow(&self, _redirect_uri: &str) -> Result<OAuthResult, AuthError> {
+    /// Initialize OAuth/OIDC authentication flow (returns redirect URL).
+    /// `return_to` is the same-origin SPA path the user wants to land
+    /// on after a successful login — already validated by the
+    /// handler. Providers store it on the OAuthSession so the
+    /// callback can redirect appropriately.
+    async fn init_oauth_flow(
+        &self,
+        _redirect_uri: &str,
+        _return_to: Option<&str>,
+    ) -> Result<OAuthResult, AuthError> {
         Err(AuthError::NotSupported(
             "OAuth not supported by this provider".to_string(),
         ))
@@ -76,8 +85,14 @@ pub trait AuthProviderTrait: Send + Sync {
         ))
     }
 
-    /// Test provider connection (for admin testing)
-    async fn test_connection(&self) -> Result<(), AuthError>;
+    /// Test provider connection (for admin testing). Returns a
+    /// human-readable success message describing what was verified
+    /// — e.g. "OIDC discovery succeeded; credentials accepted (token
+    /// endpoint returned invalid_grant for our dummy probe, which
+    /// proves client_id/secret are recognized)". On failure, the
+    /// AuthError carries an actionable message ("client_id or
+    /// client_secret rejected", "issuer URL unreachable", etc.).
+    async fn test_connection(&self) -> Result<String, AuthError>;
 
     /// Get provider configuration as JSON
     fn get_config(&self) -> &serde_json::Value;
@@ -127,6 +142,7 @@ pub fn create_provider(
         "local" => Ok(Box::new(local::LocalAuthProvider::new(config, pool)?)),
         "ldap" => Ok(Box::new(ldap::LdapAuthProvider::new(config, pool)?)),
         "oauth2" | "oidc" => Ok(Box::new(oauth2::OAuth2Provider::new(config, pool)?)),
+        "apple" => Ok(Box::new(apple::AppleProvider::new(config, pool)?)),
         _ => Err(AuthError::ConfigurationError(format!(
             "Unknown provider type: {}",
             config.provider_type

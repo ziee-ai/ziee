@@ -14,6 +14,10 @@ export const viewers: FileViewerModule[] = [
       headerActions: ImageHeader,
       label: 'Image',
       icon: <PictureOutlined />,
+      // Images are the headline inline-render use case (plots, heatmaps).
+      // `image/*` wildcard covers png/jpeg/webp/gif/svg+xml — anything the
+      // browser can <img>.
+      inline: true,
     },
   },
 ]

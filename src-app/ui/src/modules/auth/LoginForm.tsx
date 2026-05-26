@@ -3,6 +3,7 @@ import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import type { LoginRequest } from '@/api-client/types'
+import { ProviderButtons } from './ProviderButtons'
 
 const { Text } = Typography
 
@@ -96,6 +97,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
           </div>
         )}
       </Form>
+
+      <ProviderButtons />
     </Card>
   )
 }

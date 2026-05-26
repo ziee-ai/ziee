@@ -3,7 +3,11 @@ import type { FileViewerSlotProps } from '../../types'
 import { useFileTextContent, useFileViewMode } from '../shared/hooks'
 import { RawCodeView } from '../shared/RawCodeView'
 
-export function WebBody({ file }: FileViewerSlotProps) {
+export function WebBody(props: FileViewerSlotProps) {
+  // Web viewer is not inline-capable (XSS surface; deferred). Type guard
+  // only — chat dispatcher won't reach here for source-shaped props.
+  if (!('file' in props)) return null
+  const { file } = props
   const content = useFileTextContent(file)
   const mode = useFileViewMode(file.id)
 

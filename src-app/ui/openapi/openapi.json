@@ -133,6 +133,387 @@
         }
       }
     },
+    "/api/auth/providers": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "description": "List enabled third-party auth providers for the login page. Public endpoint; returns only display fields, never config or secrets.",
+        "operationId": "Auth.listProviders",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProvidersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/link-account": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "description": "Confirm a First-Broker-Login pending link by proving ownership of the existing local account with its password. Returns a fresh JWT pair on success.",
+        "operationId": "Auth.linkAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "JWT token pair (access + refresh)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/auth-providers": {
+      "get": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "List all configured auth providers (secrets masked)",
+        "description": "\n\n**Required Permission:** `auth_providers::read`\n\nList configured auth providers and view their (masked) config.",
+        "operationId": "AuthProviders.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List configured auth providers and view their (masked) config.",
+                        "name": "AuthProvidersRead",
+                        "value": "auth_providers::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuthProviderResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Create a new auth provider",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAuthProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Admin-view summary of an auth provider. The `config` JSONB is\n returned with `client_secret` and any sensitive key contents\n MASKED — see handlers.rs::mask_provider_config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/auth-providers/{id}": {
+      "put": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Update an auth provider (empty client_secret preserves existing)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAuthProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Admin-view summary of an auth provider. The `config` JSONB is\n returned with `client_secret` and any sensitive key contents\n MASKED — see handlers.rs::mask_provider_config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Delete an auth provider (cascades user_auth_links)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/auth-providers/{id}/test": {
+      "post": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Test the auth provider's connection (probes discovery + credentials)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.test",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/auth-providers/test-config": {
+      "post": {
+        "tags": [
+          "auth-providers"
+        ],
+        "summary": "Test a provider config without saving (used by the EditDrawer)",
+        "description": "\n\n**Required Permission:** `auth_providers::manage`\n\nCreate, update, delete, enable/disable, and test auth providers.",
+        "operationId": "AuthProviders.testConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAuthProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, update, delete, enable/disable, and test auth providers.",
+                        "name": "AuthProvidersManage",
+                        "value": "auth_providers::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: auth_providers::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/users": {
       "get": {
         "tags": [
@@ -5430,7 +5811,7 @@
             }
           },
           "201": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 46 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5486,7 +5867,7 @@
             }
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 46 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5548,7 +5929,7 @@
             }
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 46 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5653,7 +6034,7 @@
             }
           },
           "201": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 46 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
             "content": {
               "application/json": {
                 "schema": {
@@ -6089,7 +6470,7 @@
             }
           },
           "200": {
-            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 46 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+            "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
             "content": {
               "application/json": {
                 "schema": {
@@ -8862,406 +9243,6 @@
         ]
       }
     },
-    "/api/code-sandbox/environments": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List available sandbox environments",
-        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
-        "operationId": "CodeSandbox.listEnvironments",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/environments/{flavor}": {
-      "delete": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Evict a flavor's cached rootfs",
-        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
-        "operationId": "CodeSandbox.evictEnvironment",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Unknown flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List known prefetch tasks",
-        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
-        "operationId": "CodeSandbox.listPrefetchTasks",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Start (or join) a rootfs prefetch task",
-        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
-        "operationId": "CodeSandbox.startPrefetch",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartPrefetchBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StartPrefetchResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Unknown flavor"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch/{flavor}/events": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Subscribe to prefetch progress via SSE",
-        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
-        "operationId": "CodeSandbox.subscribePrefetchEvents",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SSEPrefetchEvent"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "No task for this flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/resource-limits": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Read the singleton sandbox resource-limits configuration",
-        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
-        "operationId": "CodeSandbox.getResourceLimits",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the sandbox resource limits configuration.",
-                        "name": "CodeSandboxResourceLimitsRead",
-                        "value": "code_sandbox::resource_limits::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Update the singleton sandbox resource-limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
-        "operationId": "CodeSandbox.updateResourceLimits",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
-                        "name": "CodeSandboxResourceLimitsManage",
-                        "value": "code_sandbox::resource_limits::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -10058,6 +10039,406 @@
         ]
       }
     },
+    "/api/code-sandbox/environments": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List available sandbox environments",
+        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
+        "operationId": "CodeSandbox.listEnvironments",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/environments/{flavor}": {
+      "delete": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Evict a flavor's cached rootfs",
+        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
+        "operationId": "CodeSandbox.evictEnvironment",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Unknown flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List known prefetch tasks",
+        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
+        "operationId": "CodeSandbox.listPrefetchTasks",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Start (or join) a rootfs prefetch task",
+        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
+        "operationId": "CodeSandbox.startPrefetch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPrefetchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartPrefetchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown flavor"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch/{flavor}/events": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to prefetch progress via SSE",
+        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
+        "operationId": "CodeSandbox.subscribePrefetchEvents",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEPrefetchEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "No task for this flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/resource-limits": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Read the singleton sandbox resource-limits configuration",
+        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
+        "operationId": "CodeSandbox.getResourceLimits",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the sandbox resource limits configuration.",
+                        "name": "CodeSandboxResourceLimitsRead",
+                        "value": "code_sandbox::resource_limits::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Update the singleton sandbox resource-limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
+        "operationId": "CodeSandbox.updateResourceLimits",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
+                        "name": "CodeSandboxResourceLimitsManage",
+                        "value": "code_sandbox::resource_limits::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hardware": {
       "get": {
         "tags": [
@@ -10453,6 +10834,65 @@
         },
         "required": [
           "file_id"
+        ]
+      },
+      "AuthProviderResponse": {
+        "description": "Admin-view summary of an auth provider. The `config` JSONB is\n returned with `client_secret` and any sensitive key contents\n MASKED — see handlers.rs::mask_provider_config.",
+        "type": "object",
+        "properties": {
+          "config": true,
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_test_at": {
+            "description": "When the admin last clicked Test on this row (null = never).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_test_message": {
+            "description": "Human-readable detail from the last test.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_test_ok": {
+            "description": "Outcome of the last test (null = never tested).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "enabled",
+          "config",
+          "created_at",
+          "updated_at"
         ]
       },
       "AuthResponse": {
@@ -11219,6 +11659,28 @@
           }
         }
       },
+      "CreateAuthProviderRequest": {
+        "type": "object",
+        "properties": {
+          "config": true,
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "description": "One of: `oidc`, `oauth2`, `apple`, `ldap`, `local`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "provider_type",
+          "config"
+        ]
+      },
       "CreateBranchRequest": {
         "description": "Request to create a new branch (for edit/regenerate)\n Both parent_branch_id (from conversation's active branch) and from_message_id are required",
         "type": "object",
@@ -11646,7 +12108,7 @@
             "maxLength": 65536
           },
           "mcp_approval_mode": {
-            "description": "MCP defaults. If omitted, the project gets the standard defaults\n from migration 46 (manual_approve, empty allowlist, empty\n blocklist). Conversations created in the project receive a\n snapshot of these settings at creation time.",
+            "description": "MCP defaults. If omitted, the project gets the standard defaults\n from migration 51 (manual_approve, empty allowlist, empty\n blocklist). Conversations created in the project receive a\n snapshot of these settings at creation time.",
             "type": [
               "string",
               "null"
@@ -11710,6 +12172,22 @@
           "username",
           "email",
           "password"
+        ]
+      },
+      "DeleteProviderResponse": {
+        "type": "object",
+        "properties": {
+          "affected_user_links": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted",
+          "affected_user_links"
         ]
       },
       "DeleteVersionQuery": {
@@ -13688,6 +14166,23 @@
           {
             "type": "null"
           }
+        ]
+      },
+      "LinkAccountRequest": {
+        "type": "object",
+        "properties": {
+          "link_token": {
+            "description": "Single-use token from /auth/link-account?token=...",
+            "type": "string"
+          },
+          "password": {
+            "description": "User's existing local password — the auth proof for binding\n the social identity.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_token",
+          "password"
         ]
       },
       "ListModelsQuery": {
@@ -15924,7 +16419,7 @@
         }
       },
       "Project": {
-        "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 46 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
+        "description": "Project entity. One row per personal project.\n\n MCP defaults are inline (mcp_*) — see migration 51 for the rationale\n (no sibling project_mcp_settings table; 1:1 sync hazard).",
         "type": "object",
         "properties": {
           "description": {
@@ -16280,6 +16775,40 @@
             "default": ""
           }
         }
+      },
+      "PublicProvider": {
+        "description": "Public-safe summary of an enabled auth provider — what the login\n page needs to render a provider button. NEVER includes client_id,\n client_secret, or any other config.",
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provider_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "provider_type",
+          "display_name"
+        ]
+      },
+      "PublicProvidersResponse": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicProvider"
+            }
+          }
+        },
+        "required": [
+          "providers"
+        ]
       },
       "ReadResourceRequest": {
         "type": "object",
@@ -17489,6 +18018,21 @@
           "message"
         ]
       },
+      "TestProviderResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "message"
+        ]
+      },
       "TestRepositoryConnectionRequest": {
         "type": "object",
         "properties": {
@@ -17806,6 +18350,29 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "UpdateAuthProviderRequest": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "description": "Patch the provider's JSONB config. Empty `client_secret`\n field is treated as \"leave the existing value unchanged\" so\n admins can edit other fields without re-entering secrets.",
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "default": null
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         }
       },

@@ -1,8 +1,29 @@
 import { Spin } from 'antd'
 import { Stores } from '@/core/stores'
 import type { FileViewerSlotProps } from '../../types'
+import { getSource } from '../shared/source'
 
-export function ImageBody({ file }: FileViewerSlotProps) {
+export function ImageBody(props: FileViewerSlotProps) {
+  const { file, url, name } = getSource(props)
+
+  // ── Inline-in-chat context: no FileEntity, no thumbnail cache.
+  // Just render the image directly from the resource_link URL. The
+  // collapse wrapper handles size clamping (max-width: 100%,
+  // max-height: 400px) at the preview-card level; we still set
+  // object-contain so a wide image scales correctly inside it.
+  if (!file) {
+    return (
+      <div className="flex items-center justify-center p-4">
+        <img
+          src={url}
+          alt={name}
+          className="max-w-full max-h-[400px] object-contain"
+        />
+      </div>
+    )
+  }
+
+  // ── Right-panel context (existing behaviour).
   // Subscribe to the thumbnailUrls Map by accessing it directly during
   // render — calling the `getThumbnailUrl()` action instead would only
   // subscribe to the function reference, not the Map's contents, so we
