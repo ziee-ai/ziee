@@ -214,11 +214,6 @@ test.describe('LLM Repositories - Create Repository', () => {
     // Fresh locators each call — Form.Item children change as the
     // conditional sections render, which can invalidate cached
     // locators that hold a snapshot of the DOM.
-    const authTypeSelect = () => page
-      .locator('.ant-form-item:has-text("Authentication Type")')
-      .first()
-      .locator('.ant-select')
-      .first()
     const authTypeCombobox = () => page
       .locator('.ant-form-item:has-text("Authentication Type")')
       .first()
