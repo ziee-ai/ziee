@@ -182,8 +182,14 @@ export async function loginAsHubMcpOnly(
   baseURL: string,
   apiURL: string,
 ) {
+  // Hub MCP tab loads server cards which fetch per-server version
+  // detail (hub::mcp_servers::read_version). Granting only ::read
+  // makes the tab body render the inline "Missing required
+  // permission" error instead of the catalog. The fixture name is
+  // descriptive of intent ("can see the MCP tab"), so include both.
   return createAndLoginAs(page, baseURL, apiURL, 'hub-mcp-only-test', [
     Permissions.HubMCPServersRead,
+    Permissions.HubMCPServersVersionRead,
   ])
 }
 

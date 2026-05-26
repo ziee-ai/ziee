@@ -3,11 +3,13 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { ApiClient } from '@/api-client'
-import type {
-  McpServer,
-  CreateMcpServerRequest,
-  UpdateMcpServerRequest,
+import {
+  Permissions,
+  type McpServer,
+  type CreateMcpServerRequest,
+  type UpdateMcpServerRequest,
 } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 import { useSystemMcpServersStore } from '@/modules/mcp/stores/SystemMcpServer.store'
 import {
   emitMcpServerCreated,
@@ -173,6 +175,14 @@ export const useMcpStore = create<McpState>()(
 
         // Actions
         loadMcpServers: async (): Promise<void> => {
+          // Permission-gate the shell-eager-load fetch (audit
+          // follow-up): AppLayout triggers this store's __init__ on
+          // every render regardless of route, and for users without
+          // mcp_servers::read the request 403s. Silently skip
+          // instead — the rest of the app shell shouldn't show
+          // a corresponding UI surface for these users anyway.
+          if (!hasPermissionNow(Permissions.McpServersRead)) return
+
           const state = get()
 
           // Only prevent concurrent loads, not repeated ones

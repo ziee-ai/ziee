@@ -54,6 +54,7 @@ function SidebarItem({ icon, label, isActive, to, onClick, collapsed }: SidebarI
         style={{
           fontSize: 18,
         }}
+        aria-hidden="true"
       >
         {icon}
       </div>

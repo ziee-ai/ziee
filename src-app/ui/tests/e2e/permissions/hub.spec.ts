@@ -2,17 +2,6 @@ import { test, expect } from './no-403'
 import { loginAsHubMcpOnly, loginAsMember, loginWithPerms } from './fixtures'
 import { Permissions } from '../../../src/api-client/types'
 
-// The no-403 fixture is too strict for these tests. AppLayout loads
-// chat/mcp/conversations/llm-models data on every page render
-// regardless of which page the user is on. When the test user lacks
-// permissions on those resources, the app shell 403s on its own
-// background fetches — none of which the *hub* gating is responsible
-// for. Opt this whole describe out and audit the broader fetch-on-
-// shell-load pattern as a follow-up. (The existing users.spec.ts
-// hits the same issue but masks it by using only toHaveCount(0)
-// assertions that finish before the background fetches complete.)
-test.use({ allow403: true })
-
 test.describe('hub module — permission gating', () => {
   test('non-admin without any hub::*::read: sidebar entry hidden + /hub renders inline 403', async ({
     page,
@@ -34,15 +23,7 @@ test.describe('hub module — permission gating', () => {
     expect(page.url()).toContain('/hub')
   })
 
-  // Skipped: the sidebar Hub link doesn't render reliably for users
-  // with only HubMCPServersRead. The current AppLayout shows the
-  // sidebar based on the route, but for a hub-mcp-only user
-  // navigating directly to /hub, the SidebarItem appears late or
-  // not at all in test runs. The hub-tab filtering logic itself is
-  // covered by the route-gate test above (line 17) + the
-  // forbidden-tab test below (line 64). Unblock once the shell-
-  // eager-load + sidebar-render-order coupling is untangled.
-  test.skip('hub-mcp-only user: MCP Servers tab visible, Models + Assistants tabs absent', async ({
+  test('hub-mcp-only user: MCP Servers tab visible, Models + Assistants tabs absent', async ({
     page,
     testInfra,
   }) => {
@@ -61,12 +42,13 @@ test.describe('hub module — permission gating', () => {
     ).toBeVisible()
 
     // The Segmented control inside the Hub renders one item per
-    // visible tab. Assert that the MCP Servers label is visible and
-    // that Models + Assistants are not — those tabs filter out via
-    // `evaluatePermission(...) === false` in HubPage's `visibleTabs`.
-    await expect(page.getByText('MCP Servers').first()).toBeVisible()
-    await expect(page.getByText('Models', { exact: true })).toHaveCount(0)
-    await expect(page.getByText('Assistants', { exact: true })).toHaveCount(0)
+    // visible tab. Scope assertions to the radiogroup so a sidebar
+    // entry with the same label (e.g. "Assistants") can't satisfy
+    // the count-0 checks for absent tabs.
+    const tabs = page.getByRole('radiogroup', { name: /segmented control/i })
+    await expect(tabs.getByText(/MCP Servers/i)).toBeVisible()
+    await expect(tabs.getByText('Models', { exact: true })).toHaveCount(0)
+    await expect(tabs.getByText('Assistants', { exact: true })).toHaveCount(0)
   })
 
   test('hub-models-only user accessing forbidden tab via URL: inline 403 (URL preserved)', async ({
