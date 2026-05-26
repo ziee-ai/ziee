@@ -26,6 +26,7 @@ interface HubMcpServersState {
     servers: () => Promise<void>
     __store__?: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useHubMcpServersStore = create<HubMcpServersState>()(
@@ -132,6 +133,12 @@ export const useHubMcpServersStore = create<HubMcpServersState>()(
             )
           },
           servers: () => get().loadServers(),
+        },
+
+        // Unsubscribe from EventBus on store destroy so listener slots
+        // don't accumulate per destroy/re-init cycle. (audit 09 B-9)
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('HubMcpServersStore')
         },
       }),
     ),

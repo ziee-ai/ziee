@@ -108,14 +108,14 @@ export default function UserLlmProvidersPage() {
   }
 
   if (error) {
-    return <Alert type="error" message={error} showIcon className="m-6" />
+    return <Alert type="error" title={error} showIcon className="m-6" />
   }
 
   const renderContent = () => {
     if (providers.length === 0) {
       return (
         <Empty
-          description="No LLM providers are available."
+          description="No LLM providers yet"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       )

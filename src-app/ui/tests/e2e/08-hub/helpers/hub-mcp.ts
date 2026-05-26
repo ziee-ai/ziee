@@ -32,7 +32,7 @@ export async function installMcpServerFromHub(
 
   // Wait for success message or navigation
   await expect(
-    page.getByRole('alert').or(page.getByText(/installed.*successfully/i)),
+    page.getByRole('alert').or(page.getByText(/installed.*successfully/i)).first(),
   ).toBeVisible({ timeout: 5000 })
 }
 

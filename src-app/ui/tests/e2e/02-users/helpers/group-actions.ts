@@ -36,8 +36,9 @@ export async function createGroup(page: Page, groupData: CreateGroupData) {
     await permissionsField.fill(JSON.stringify(groupData.permissions))
   }
 
-  // Submit the form
-  const submitButton = drawer.getByRole('button', { name: /create group/i })
+  // Submit the form. Label is now "Create" (verb-only per audit I-2);
+  // target by primary-button class instead.
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.click()
 
   // Wait for success message
@@ -88,8 +89,9 @@ export async function updateGroup(page: Page, groupData: UpdateGroupData) {
     }
   }
 
-  // Submit the form
-  const submitButton = drawer.getByRole('button', { name: /update group/i })
+  // Submit the form. Label is now "Save" (verb-only per audit I-2);
+  // target by primary-button class instead.
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.click()
 
   // Wait for success message
@@ -110,8 +112,10 @@ export async function deleteGroup(page: Page, groupName: string) {
 
   await deleteButton.first().click()
 
-  // Confirm the deletion in the popconfirm
-  const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
+  // Confirm the deletion in the popconfirm. Target the primary button
+  // by class so the locator survives okText standardisation
+  // ("Yes" → "Delete" / "Remove" per audit I-4).
+  const confirmButton = page.locator('.ant-popconfirm:visible .ant-btn-primary')
   await confirmButton.click()
 
   // Wait for success message
@@ -145,8 +149,9 @@ export async function removeUserFromGroup(page: Page, username: string) {
 
   await removeButton.click()
 
-  // Confirm if popconfirm appears
-  const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
+  // Confirm if popconfirm appears. Primary-button class is stable
+  // across okText variations.
+  const confirmButton = page.locator('.ant-popconfirm:visible .ant-btn-primary')
   if (await confirmButton.isVisible()) {
     await confirmButton.click()
   }

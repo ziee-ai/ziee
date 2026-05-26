@@ -400,8 +400,9 @@ export async function createUserGroup(
     await page.fill('textarea[placeholder="Enter group description"]', description)
   }
 
-  // Submit
-  await page.click('.ant-drawer.ant-drawer-open button:has-text("Create Group")')
+  // Submit — label was standardised to verb-only ("Create Group" →
+  // "Create", audit I-2). Scope by primary-button class.
+  await page.locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]').click()
 
   // Wait for success message
   await page.waitForSelector('text=User group created successfully', { timeout: 10000 })
@@ -430,7 +431,7 @@ export async function deleteUserGroup(
 
   // Confirm deletion
   await page.waitForSelector('.ant-popconfirm', { state: 'visible', timeout: 5000 })
-  await page.click('.ant-popconfirm button:has-text("Yes")')
+  await page.click('.ant-popconfirm .ant-btn-primary')
 
   // Wait for success message
   await page.waitForSelector('text=User group deleted successfully', { timeout: 10000 })

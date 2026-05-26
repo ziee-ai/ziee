@@ -80,18 +80,27 @@ export function RemoteProviderSettings() {
     }
   }, [error, message])
 
-  // Update forms when provider changes
+  // Initialise / re-initialise the form ONLY when the user navigates to
+  // a different provider (the id changes). Previously this depended on
+  // `currentProvider` itself — a recomputed object reference from
+  // `providers.find(...)` on every render — so any unrelated store
+  // mutation (e.g., an SSE update from another tab) would re-fire this
+  // effect and overwrite the user's mid-edit input. Guarded by the
+  // explicit `providerId` from useParams instead.
   useEffect(() => {
-    if (currentProvider) {
-      form.setFieldsValue({
-        api_key: currentProvider.api_key,
-        base_url: currentProvider.base_url,
-      })
-      // Clear unsaved changes when switching providers
-      setHasUnsavedChanges(false)
-      setPendingSettings(null)
-    }
-  }, [currentProvider, form])
+    if (!currentProvider) return
+    form.setFieldsValue({
+      api_key: currentProvider.api_key,
+      base_url: currentProvider.base_url,
+    })
+    setHasUnsavedChanges(false)
+    setPendingSettings(null)
+    // Intentionally exclude `currentProvider` from deps — re-init is
+    // keyed on provider-id, not on any store mutation that produces a
+    // new object reference. Reading `currentProvider` here is safe
+    // because we just confirmed the id matches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerId, form])
 
   // Return early if no provider or not remote
   if (!currentProvider || currentProvider.provider_type === 'local') {

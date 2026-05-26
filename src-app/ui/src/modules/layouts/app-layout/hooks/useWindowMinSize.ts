@@ -34,31 +34,31 @@ export type MinSize = {
   '3xl': boolean
 }
 
+// Each breakpoint key X is true when the viewport width is AT MOST
+// breakpointValues[X] — i.e., `minSize.sm === true` means "viewport
+// is at most 640px wide (small phone / small tablet portrait)".
+//
+// Prior to 2026-05 this table was misaligned: every key compared
+// against the next-larger threshold (xs ≤ 640 instead of ≤ 480),
+// duplicating xl/2xl at 1280 and flipping `3xl` to `>`. Consumers
+// believed they were checking ≤ 480 for mobile and were actually
+// catching 640px tablets too. Fixed: each key now uses its own
+// threshold consistently with the names above.
+const calculateMinSize = (width: number): MinSize => ({
+  xxs: width <= breakpointValues.xxs,
+  xs: width <= breakpointValues.xs,
+  sm: width <= breakpointValues.sm,
+  md: width <= breakpointValues.md,
+  lg: width <= breakpointValues.lg,
+  xl: width <= breakpointValues.xl,
+  '2xl': width <= breakpointValues['2xl'],
+  '3xl': width <= breakpointValues['3xl'],
+})
+
 export const useWindowMinSize = (): MinSize => {
   const { width } = useWindowSize()
-
-  return {
-    xxs: width <= breakpointValues.xs,
-    xs: width <= breakpointValues.sm,
-    sm: width <= breakpointValues.md,
-    md: width <= breakpointValues.lg,
-    lg: width <= breakpointValues.xl,
-    xl: width <= breakpointValues.xl,
-    '2xl': width <= breakpointValues['xl'],
-    '3xl': width <= breakpointValues['2xl'],
-  }
+  return calculateMinSize(width)
 }
-
-const calculateMinSize = (width: number): MinSize => ({
-  xxs: width <= breakpointValues.xs,
-  xs: width <= breakpointValues.sm,
-  sm: width <= breakpointValues.md,
-  md: width <= breakpointValues.lg,
-  lg: width <= breakpointValues.xl,
-  xl: width <= breakpointValues['2xl'],
-  '2xl': width <= breakpointValues['3xl'],
-  '3xl': width > breakpointValues['3xl'],
-})
 
 export const useMainContentMinSize = (): MinSize => {
   const [minSize, setMinSize] = useState<MinSize>(() => {

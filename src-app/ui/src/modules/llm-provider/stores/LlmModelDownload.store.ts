@@ -21,6 +21,7 @@ interface LlmModelDownloadState {
   __init__: {
     downloads: () => Promise<void>
   }
+  __destroy__?: () => void
 
   // Actions
   downloadLlmModelFromRepository: (
@@ -390,6 +391,14 @@ export const useLlmModelDownloadStore = create<LlmModelDownloadState>()(
           set({ isInitialized: true })
         } catch (error) {
           console.error('Failed to initialize download tracking:', error)
+        }
+      },
+
+      // Abort the module-scope SSE controller on store destroy. (audit 09 B-8)
+      __destroy__: () => {
+        if (sseAbortController) {
+          sseAbortController.abort()
+          sseAbortController = null
         }
       },
     }),

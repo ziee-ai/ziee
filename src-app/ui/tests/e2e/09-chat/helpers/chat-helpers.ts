@@ -100,8 +100,16 @@ export async function selectModelInDropdown(
   page: Page,
   modelName: string
 ): Promise<void> {
-  // Check if the model is already selected
-  const currentSelection = await page.locator('.ant-select-content-value').textContent()
+  // Check if the model is already selected. The selected-value
+  // element only exists once the user has picked a model — in fresh
+  // chat views the element is absent. `textContent()` without a
+  // short timeout would block for the full default (10s), so we
+  // catch + fall through to the open-dropdown flow.
+  const currentSelection = await page
+    .locator('.ant-select-content-value')
+    .first()
+    .textContent({ timeout: 1000 })
+    .catch(() => null)
 
   if (currentSelection === modelName) {
     // Model already selected, nothing to do

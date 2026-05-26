@@ -62,7 +62,7 @@ test.describe('Conversation deletion', () => {
 
     const popconfirm = page.locator('.ant-popover').filter({ hasText: 'Delete conversation?' })
     await expect(popconfirm).toBeVisible()
-    await popconfirm.getByRole('button', { name: 'Yes' }).click()
+    await popconfirm.getByRole('button', { name: 'Delete', exact: true }).click()
 
     await expect(cardByTitle(page, 'E2E Delete Me')).toHaveCount(0, { timeout: 10000 })
     // The other conversation is untouched.
@@ -95,7 +95,7 @@ test.describe('Conversation deletion', () => {
       .locator('.ant-popover')
       .filter({ hasText: 'Delete selected conversations' })
     await expect(popconfirm).toBeVisible()
-    await popconfirm.getByRole('button', { name: 'Yes' }).click()
+    await popconfirm.getByRole('button', { name: 'Delete', exact: true }).click()
 
     await expect(cardByTitle(page, 'E2E Bulk One')).toHaveCount(0, { timeout: 10000 })
     await expect(cardByTitle(page, 'E2E Bulk Two')).toHaveCount(0)

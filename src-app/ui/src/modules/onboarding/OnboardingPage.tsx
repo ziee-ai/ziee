@@ -195,10 +195,9 @@ export default function OnboardingPage() {
           {nextError && (
             <Alert
               type="error"
-              message={nextError}
+              title={nextError}
               showIcon
-              closable
-              onClose={() => Stores.Onboarding.setNextError(null)}
+              closable={{ onClose: () => Stores.Onboarding.setNextError(null) }}
               className="mb-4"
             />
           )}

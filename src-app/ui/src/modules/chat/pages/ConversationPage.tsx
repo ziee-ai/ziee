@@ -21,10 +21,35 @@ export default function ConversationPage() {
     }
   }, [conversationId])
 
-  // Scroll to bottom when new messages arrive
+  // Auto-scroll to bottom on new messages, but ONLY if the user is
+  // already near the bottom. Previously this scrolled unconditionally
+  // on every message-map change, yanking the user back to the bottom
+  // whenever they scrolled up to read history mid-stream. (audit 04 HIGH-3)
+  //
+  // Implementation: an IntersectionObserver watches the messagesEnd
+  // sentinel. When it intersects the viewport (i.e., the user is at
+  // the bottom), we set isAtBottomRef = true; when it leaves, false.
+  // The scroll effect only fires when isAtBottomRef is true.
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const isAtBottomRef = useRef(true)
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const sentinel = messagesEndRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      entries => {
+        isAtBottomRef.current = entries[0]?.isIntersecting ?? false
+      },
+      { root: null, threshold: 0 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
   // Loading state
@@ -62,7 +87,7 @@ export default function ConversationPage() {
       {/* Error banner */}
       {error && (
         <div className="w-full max-w-4xl mx-auto px-4 pt-4">
-          <Alert type="error" title={error} closable onClose={Stores.Chat.clearError} />
+          <Alert type="error" title={error} closable={{ onClose: Stores.Chat.clearError }} />
         </div>
       )}
 

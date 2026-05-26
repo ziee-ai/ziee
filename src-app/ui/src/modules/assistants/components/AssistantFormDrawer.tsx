@@ -262,7 +262,7 @@ export function AssistantFormDrawer() {
           </Button>
           {canSave && (
             <Button type="primary" htmlType="submit" loading={loading}>
-              {editingAssistant ? 'Update' : 'Create'}
+              {editingAssistant ? 'Save' : 'Create'}
             </Button>
           )}
         </div>
