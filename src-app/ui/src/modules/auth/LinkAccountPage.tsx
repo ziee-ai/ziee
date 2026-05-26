@@ -120,7 +120,7 @@ export const LinkAccountPage: React.FC = () => {
                 </Button>
               </Form.Item>
               <div className="text-center">
-                <a href="/login">Cancel</a>
+                <a href="/auth">Cancel</a>
               </div>
             </Form>
           </Card>

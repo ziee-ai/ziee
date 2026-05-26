@@ -604,19 +604,47 @@ pub async fn oauth_authorize(
     // URL routing matched against a string we built ourselves, not
     // user-controlled here).
     let _ = query;
-    let scheme = headers
+    // The redirect_uri sent to the OAuth provider must point at an
+    // origin where the SPA is reachable (so the post-OAuth callback
+    // can flow through the SPA's router to /auth/callback). In dev /
+    // E2E with a Vite proxy, the BACKEND's HOST is the proxy's
+    // internal target (a different port than the user-facing one).
+    // The Referer header (sent on the browser's same-origin
+    // navigation to /api/auth/oauth/.../authorize) carries the right
+    // origin, so we prefer it over HOST. Fallbacks ordered by
+    // reliability: Referer > X-Forwarded-* > HOST.
+    let referer_origin = headers
+        .get(axum::http::header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|r| url::Url::parse(r).ok())
+        .map(|u| {
+            let scheme = u.scheme().to_string();
+            let host = u.host_str().unwrap_or("localhost").to_string();
+            match u.port_or_known_default() {
+                Some(p) => format!("{}://{}:{}", scheme, host, p),
+                None => format!("{}://{}", scheme, host),
+            }
+        });
+    let fallback_scheme = headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "http".to_string());
-    let host = headers
-        .get(axum::http::header::HOST)
+        .unwrap_or("http")
+        .to_string();
+    let fallback_host = headers
+        .get("x-forwarded-host")
         .and_then(|v| v.to_str().ok())
+        .or_else(|| {
+            headers
+                .get(axum::http::header::HOST)
+                .and_then(|v| v.to_str().ok())
+        })
         .unwrap_or("localhost")
         .to_string();
+    let origin = referer_origin
+        .unwrap_or_else(|| format!("{}://{}", fallback_scheme, fallback_host));
     let redirect_uri = format!(
-        "{}://{}/api/auth/oauth/{}/callback",
-        scheme, host, provider_name
+        "{}/api/auth/oauth/{}/callback",
+        origin, provider_name
     );
 
     // Validate + capture return_to. We never round-trip it through

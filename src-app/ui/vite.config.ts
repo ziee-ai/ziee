@@ -56,6 +56,13 @@ export default defineConfig(async () => {
       '/api/': {
         target: 'http://localhost:3000/',
         changeOrigin: true,
+        // xfwd: forward X-Forwarded-* headers so the backend can
+        // build absolute URLs (OAuth redirect_uri, callback hops)
+        // that point back through the Vite proxy rather than at the
+        // backend's internal port. Without this, post-OAuth redirects
+        // land on the backend's port and 404 (the SPA isn't served
+        // there in dev).
+        xfwd: true,
       },
     },
     allowedHosts: true

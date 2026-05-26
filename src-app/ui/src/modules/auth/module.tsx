@@ -22,7 +22,7 @@ export default createModule({
   dependencies: ['router'],
   routes: [
     {
-      path: '/login',
+      path: '/auth',
       element: AuthPage,
     },
     {

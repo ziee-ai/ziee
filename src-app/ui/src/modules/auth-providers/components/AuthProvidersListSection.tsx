@@ -16,7 +16,6 @@ import type { ColumnsType } from 'antd/es/table'
 import { Permissions, type AuthProviderResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
-import { usePermission } from '@/core/permissions/usePermission'
 import { AddProviderMenu } from './AddProviderMenu'
 import { AuthProviderEditDrawer } from './AuthProviderEditDrawer'
 import { DeleteProviderModal } from './DeleteProviderModal'
@@ -45,7 +44,6 @@ function relativeTime(iso: string | null | undefined): string {
 export function AuthProvidersListSection() {
   const { message } = App.useApp()
   const { providers, loading, error, testingIds } = Stores.AuthProvidersAdmin
-  const canManage = usePermission(Permissions.AuthProvidersManage)
   const [drawer, setDrawer] = useState<DrawerState>({ mode: 'closed' })
   const [toDelete, setToDelete] = useState<AuthProviderResponse | null>(null)
 
@@ -151,11 +149,12 @@ export function AuthProvidersListSection() {
       <Card
         title="Configured providers"
         extra={
-          <AddProviderMenu
-            disabled={!canManage}
-            existingNames={providers.map(p => p.name)}
-            onPick={template => setDrawer({ mode: 'create', template })}
-          />
+          <Can permission={Permissions.AuthProvidersManage}>
+            <AddProviderMenu
+              existingNames={providers.map(p => p.name)}
+              onPick={template => setDrawer({ mode: 'create', template })}
+            />
+          </Can>
         }
       >
         {error && (

@@ -194,6 +194,44 @@ export async function loginAsHubMcpOnly(
 }
 
 /**
+ * Read-only auth-providers user. Sees `/settings/auth-providers`
+ * (list rendered) but no Add/Edit/Switch/Delete/Test controls.
+ * Tests the gate-by-Can wrapping pattern in
+ * `modules/auth-providers/components/AuthProvidersListSection.tsx`.
+ */
+export async function loginAsAuthProvidersReader(
+  page: Page,
+  baseURL: string,
+  apiURL: string,
+) {
+  return createAndLoginAs(
+    page,
+    baseURL,
+    apiURL,
+    'auth-providers-reader-test',
+    [Permissions.AuthProvidersRead],
+  )
+}
+
+/**
+ * Full-manage auth-providers user. All admin surfaces visible:
+ * Add Provider, Edit drawer, Test config, Switch, Delete, etc.
+ */
+export async function loginAsAuthProvidersManager(
+  page: Page,
+  baseURL: string,
+  apiURL: string,
+) {
+  return createAndLoginAs(
+    page,
+    baseURL,
+    apiURL,
+    'auth-providers-manager-test',
+    [Permissions.AuthProvidersRead, Permissions.AuthProvidersManage],
+  )
+}
+
+/**
  * Generic helper: create + log in as a user with an arbitrary explicit
  * permission set. Useful for one-off tests where the named fixtures
  * above don't fit (e.g. hub permission-prevention tests that need

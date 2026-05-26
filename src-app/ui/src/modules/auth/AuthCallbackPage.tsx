@@ -26,19 +26,31 @@ const SESSION_RETURN_TO_KEY = 'ziee.oauth.returnTo'
 export const AuthCallbackPage: React.FC = () => {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
+  // Capture the URL fragment SYNCHRONOUSLY on first render before any
+  // effect or router hook gets a chance to strip it. (Some router
+  // setups normalize the URL between the initial DOM mount and the
+  // first useEffect tick — observed in tests where the hash was gone
+  // by the time the effect ran.)
+  const [initial] = useState(() => {
+    const raw = window.location.hash.startsWith('#')
+      ? window.location.hash.slice(1)
+      : window.location.hash
+    const params = new URLSearchParams(raw)
+    return {
+      token: params.get('token'),
+      returnTo: params.get('return_to'),
+    }
+  })
 
   useEffect(() => {
     let cancelled = false
     const run = async () => {
-      const fragment = window.location.hash.startsWith('#')
-        ? window.location.hash.slice(1)
-        : window.location.hash
-      const params = new URLSearchParams(fragment)
-      const token = params.get('token')
-      const returnToFromUrl = params.get('return_to')
+      const token = initial.token
+      const returnToFromUrl = initial.returnTo
 
       // Scrub the fragment FIRST so even an immediate throw below
-      // doesn't leave the token in the URL bar.
+      // doesn't leave the token in the URL bar. (May already be
+      // gone — see the useState initializer above.)
       try {
         window.history.replaceState({}, '', '/auth/callback')
       } catch {
@@ -105,7 +117,7 @@ export const AuthCallbackPage: React.FC = () => {
               <>
                 <Title level={4}>Sign-in failed</Title>
                 <Alert type="error" message={error} showIcon className="my-3" />
-                <a href="/login">Return to login</a>
+                <a href="/auth">Return to login</a>
               </>
             ) : (
               <>
