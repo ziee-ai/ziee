@@ -239,7 +239,7 @@ export function AddLocalLlmModelDownloadDrawer() {
             ]
       }
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <div>
         {viewDownload && (

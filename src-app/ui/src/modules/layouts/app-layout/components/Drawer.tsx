@@ -25,8 +25,6 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const {
     placement = 'right',
     size = 520,
-    width, // deprecated - for backwards compatibility
-    maskClosable = true,
     children,
     styles: propsStyles,
     ...restProps
@@ -36,14 +34,13 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const resolvedPropsStyles =
     typeof propsStyles === 'function' ? propsStyles({ props }) : propsStyles
 
-  // Use size, fallback to width for backwards compatibility
-  const drawerSize = width !== undefined ? width : size
-
-  // Determine if we should use size or width prop
+  // antd 6 `size` accepts number | 'default' | 'large' | string.
+  // On the smallest breakpoint we want the panel to fill the
+  // viewport — antd's `size` doesn't accept '100%', so route through
+  // `width` only in that case (still a supported antd prop, not
+  // deprecated; just less convenient than `size` for the common case).
   const useSizeProp =
-    typeof drawerSize === 'number' ||
-    drawerSize === 'default' ||
-    drawerSize === 'large'
+    typeof size === 'number' || size === 'default' || size === 'large'
 
   if (Array.isArray(restProps.footer)) {
     restProps.footer = (
@@ -59,9 +56,8 @@ export const Drawer: React.FC<DrawerProps> = props => {
     <AntDrawer
       placement={placement}
       {...(useSizeProp
-        ? { size: drawerSize as number | 'default' | 'large' }
-        : { width: windowMinSize.xs ? '100%' : drawerSize })}
-      maskClosable={maskClosable}
+        ? { size: size as number | 'default' | 'large' }
+        : { width: windowMinSize.xs ? '100%' : size })}
       {...restProps}
       closable={false}
       classNames={{

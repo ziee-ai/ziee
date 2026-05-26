@@ -171,7 +171,7 @@ export function AssistantFormDrawer() {
       open={open}
       onClose={handleClose}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
       footer={null}
     >
       <Form

@@ -93,7 +93,7 @@ export function EditLlmModelDrawer() {
         </Button>,
       ]}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form name="edit-llm-model-form" form={form} layout="vertical">
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />

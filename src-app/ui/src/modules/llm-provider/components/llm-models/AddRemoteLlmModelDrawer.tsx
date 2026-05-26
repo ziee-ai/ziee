@@ -85,7 +85,7 @@ export function AddRemoteLlmModelDrawer() {
         ),
       ]}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form
         form={form}

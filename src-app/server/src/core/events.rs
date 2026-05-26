@@ -43,6 +43,9 @@ pub enum AppEvent {
 
     /// LLM Local Runtime module events (instances, versions)
     LlmLocalRuntime(crate::modules::llm_local_runtime::events::LlmLocalRuntimeEvent),
+
+    /// Project module events (project + project_files lifecycle)
+    Project(crate::modules::project::events::ProjectEvent),
     // Add new module events here as the application grows
 }
 

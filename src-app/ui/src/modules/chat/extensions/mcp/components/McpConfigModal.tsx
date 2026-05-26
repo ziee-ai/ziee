@@ -4,7 +4,7 @@ import type { CollapseProps } from 'antd'
 import { ToolOutlined, DeleteOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { Tool } from '@/api-client/types'
-import { PENDING_CONVERSATION_KEY } from '@/modules/chat/extensions/mcp/Mcp.store'
+import { PENDING_CONVERSATION_KEY, projectConfigKey } from '@/modules/chat/extensions/mcp/Mcp.store'
 
 const { Text, Title } = Typography
 
@@ -27,8 +27,21 @@ const { Text, Title } = Typography
 export function McpConfigModal() {
   const { servers } = Stores.McpServer  // Reactive access to MCP module store
   const mcpStore = Stores.Chat.McpStore
-  // Extract all store properties unconditionally at the top (store proxy uses hooks)
-  const { selectedServers, currentConversationId, conversationConfigs, configModalVisible } = mcpStore
+  // Extract all store properties unconditionally at the top (store proxy uses hooks).
+  // currentProjectId scopes the modal to a project's MCP defaults when set
+  // alongside a null currentConversationId; both falsy = chat scope.
+  const {
+    selectedServers,
+    currentConversationId,
+    currentProjectId,
+    conversationConfigs,
+    configModalVisible,
+  } = mcpStore
+
+  // Project scope dispatch: project is in effect only when there is no
+  // conversation context. A conversation that happens to belong to a
+  // project still edits conversation overrides via the chat path.
+  const isProjectScope = currentProjectId !== null && currentConversationId === null
 
   // Local state for tools (loaded on demand)
   const [serverTools, setServerTools] = useState<Map<string, Tool[]>>(new Map())
@@ -42,8 +55,13 @@ export function McpConfigModal() {
   // Get enabled servers (available for selection)
   const enabledServers = servers.filter(s => s.enabled)
 
-  // Get current conversation config (or pending config for new conversations)
-  const configKey = currentConversationId || PENDING_CONVERSATION_KEY
+  // Get the current config keyed by scope. Project scope uses the
+  // `project:<id>` namespaced key (set by openConfigModalForProject);
+  // chat scope falls back to the conversation id (or the pending key
+  // for new chats).
+  const configKey = isProjectScope
+    ? projectConfigKey(currentProjectId!)
+    : currentConversationId || PENDING_CONVERSATION_KEY
   const conversationConfig = conversationConfigs.get(configKey)
   const approvalMode = conversationConfig?.approvalMode || 'manual_approve'
   const loopSettings = conversationConfig?.loopSettings || {
@@ -87,6 +105,36 @@ export function McpConfigModal() {
         label: tool.name,  // Just tool name (server shown in group header)
       })),
   })).filter(group => group.options.length > 0)  // Remove empty groups
+
+  // Project scope: seed `selectedServers` from
+  // `enabledServers - disabled_servers` so the modal shows the
+  // server switches in the right state on open. Chat scope already
+  // populates this via setCurrentConversation; the project path
+  // skips that machinery, so do it once here when the modal opens.
+  useEffect(() => {
+    if (!configModalVisible || !isProjectScope) return
+    // Only seed when the map is empty — preserves user toggles made
+    // since open.
+    if (selectedServers.size > 0) return
+    const disabledIds = new Set(
+      (conversationConfig?.disabledServers || [])
+        .filter(d => (d.tools || []).length === 0)
+        .map(d => d.server_id),
+    )
+    for (const server of enabledServers) {
+      if (!disabledIds.has(server.id)) {
+        // Default to "all tools selected" (empty array). Partial
+        // disable from disabled_servers with non-empty tools will be
+        // honored on save via the inversion in saveProjectConfig.
+        mcpStore.selectServer(server.id, [])
+      }
+    }
+    // We intentionally exclude `selectedServers` + `conversationConfig`
+    // from deps — they change on every selectServer call and would
+    // re-trigger the seed loop. The size-guard above is the
+    // run-once gate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configModalVisible, isProjectScope, enabledServers.length])
 
   // Lazy load tools when modal opens
   useEffect(() => {
@@ -161,23 +209,29 @@ export function McpConfigModal() {
     mcpStore.setApprovalMode(currentConversationId, value)
   }
 
-  // Handle save (only for existing conversations - new ones save on first message)
+  // Handle save. Dispatches by scope:
+  //   - Project scope (currentProjectId set + currentConversationId null):
+  //     PUT /projects/{id}/mcp-settings via saveProjectConfig.
+  //   - Existing conversation: existing saveConversationConfig path.
+  //   - Pending conversation (both null): kept in the pending buffer,
+  //     persisted on first message when the conversation is created.
   const handleSave = async () => {
-    if (!currentConversationId) {
-      // For new conversations, settings are stored in pending config
-      // They will be saved when the conversation is created
+    if (!isProjectScope && !currentConversationId) {
       console.log('[MCP Config Modal] Settings stored in pending config (will save on first message)')
       return
     }
 
     setSaving(true)
     try {
-      // Pass available server IDs and full tool lists to compute disabled_servers (including partial tool disabling)
       const availableServerIds = enabledServers.map(s => s.id)
       const serverToolsMap = new Map(
         Array.from(serverTools.entries()).map(([id, tools]) => [id, tools.map(t => t.name)])
       )
-      await mcpStore.saveConversationConfig(currentConversationId, availableServerIds, serverToolsMap)
+      if (isProjectScope) {
+        await mcpStore.saveProjectConfig(currentProjectId!, availableServerIds, serverToolsMap)
+      } else {
+        await mcpStore.saveConversationConfig(currentConversationId!, availableServerIds, serverToolsMap)
+      }
       console.log('[MCP Config Modal] Configuration saved successfully')
     } catch (error) {
       console.error('[MCP Config Modal] Failed to save configuration:', error)
@@ -186,9 +240,11 @@ export function McpConfigModal() {
     }
   }
 
-  // Handle modal close - auto-save if conversation exists
+  // Auto-save on close in any scope that persists immediately
+  // (existing conversation OR project). Pending-conversation scope
+  // skips the network call — its config buffers until first message.
   const handleClose = async () => {
-    if (currentConversationId) {
+    if (currentConversationId || isProjectScope) {
       await handleSave()
     }
     mcpStore.closeConfigModal()
@@ -287,7 +343,9 @@ export function McpConfigModal() {
       title={
         <div className="flex items-center gap-2">
           <ToolOutlined />
-          <span>MCP Configuration</span>
+          <span>
+            {isProjectScope ? 'MCP Defaults for Project' : 'MCP Configuration'}
+          </span>
         </div>
       }
       open={configModalVisible}
@@ -295,11 +353,15 @@ export function McpConfigModal() {
       width={800}
       footer={
         <Space>
-          <Button onClick={handleSaveAsDefault} loading={savingDefaults}>
-            Save as Default
-          </Button>
+          {/* "Save as Default" writes user_mcp_defaults — orthogonal to
+              project scope, hide there to avoid confusion. */}
+          {!isProjectScope && (
+            <Button onClick={handleSaveAsDefault} loading={savingDefaults}>
+              Save as Default
+            </Button>
+          )}
           <Button type="primary" onClick={handleClose} loading={saving}>
-            {currentConversationId ? 'Save & Close' : 'Close'}
+            {isProjectScope || currentConversationId ? 'Save & Close' : 'Close'}
           </Button>
         </Space>
       }

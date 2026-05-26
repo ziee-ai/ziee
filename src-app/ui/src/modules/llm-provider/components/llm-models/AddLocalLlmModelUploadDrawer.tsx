@@ -394,7 +394,7 @@ export function AddLocalLlmModelUploadDrawer() {
         ),
       ]}
       size={600}
-      maskClosable={!uploading}
+      mask={{ closable: !uploading }}
       closable={!uploading}
     >
       <Form

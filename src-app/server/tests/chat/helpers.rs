@@ -34,11 +34,10 @@ pub fn get_test_model_configs() -> Vec<TestModelConfig> {
             model_name: "claude-haiku-4-5-20251001",
             display_name: "Claude Haiku 4.5",
         },
-        TestModelConfig {
-            provider_type: "anthropic",
-            model_name: "claude-3-5-haiku-20241022",
-            display_name: "Claude 3.5 Haiku",
-        },
+        // 3.5-haiku is removed — both `-20241022` and `-latest` 404
+        // for our test key. The 4.5 entry above is the current cheap
+        // haiku snapshot; tests that pinned the 3.5 ID should switch
+        // to it.
         // OpenAI models (from ai-providers/tests/test_openai.rs)
         TestModelConfig {
             provider_type: "openai",
