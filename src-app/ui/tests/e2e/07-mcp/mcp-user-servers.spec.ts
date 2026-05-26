@@ -101,7 +101,7 @@ test.describe('MCP - User Servers', () => {
     await openAddServerDrawer(page)
 
     // Try to submit without filling required fields
-    await page.click('button:has-text("Create Server")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Verify validation errors - check for at least one error (there will be multiple)
     await expect(page.locator('.ant-form-item-explain-error').first()).toBeVisible()
@@ -122,7 +122,7 @@ test.describe('MCP - User Servers', () => {
     // Fill args with invalid JSON
     await page.getByLabel('Arguments').fill('not valid json')
 
-    await page.click('button:has-text("Create Server")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Verify error message
     await expect(page.locator('.ant-message-error:has-text("Invalid JSON")')).toBeVisible({ timeout: 5000 })
@@ -143,7 +143,7 @@ test.describe('MCP - User Servers', () => {
     // Fill env with JSON array instead of object
     await page.getByLabel('Environment Variables').fill('["not", "an", "object"]')
 
-    await page.click('button:has-text("Create Server")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Verify error message
     await expect(page.locator('.ant-message-error:has-text("must be a JSON object")')).toBeVisible({ timeout: 5000 })

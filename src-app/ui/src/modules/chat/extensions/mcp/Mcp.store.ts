@@ -1,7 +1,8 @@
 import { enableMapSet } from 'immer'
 import { createExtensionStore } from '@/modules/chat/core/extensions'
-import type { ToolApprovalDecision, McpServerConfig, AutoApprovedServer, DisabledServer, UserMcpDefaultsResponse, LoopSettings, ToolIdentifier, PerToolLimit, SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
+import { Permissions, type ToolApprovalDecision, type McpServerConfig, type AutoApprovedServer, type DisabledServer, type UserMcpDefaultsResponse, type LoopSettings, type ToolIdentifier, type PerToolLimit, type SSEChatStreamMcpElicitationRequiredData } from '@/api-client/types'
 import { ApiClient } from '@/api-client'
+import { hasPermissionNow } from '@/core/permissions'
 
 // Enable Map support in Immer
 enableMapSet()
@@ -861,6 +862,13 @@ export const createMcpStore = () =>
      * Load user defaults from backend
      */
     loadUserDefaults: async () => {
+      // Permission-gate the shell-eager-load fetch (audit follow-up):
+      // /api/mcp/defaults is owned by the conversations module
+      // (gated on ConversationsRead). The chat extensions panel
+      // mounts even for users without that permission and the call
+      // 403s otherwise.
+      if (!hasPermissionNow(Permissions.ConversationsRead)) return
+
       try {
         const { ApiClient } = await import('@/api-client')
         const response = await ApiClient.Mcp.getDefaults()

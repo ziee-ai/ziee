@@ -26,6 +26,7 @@ interface HubAssistantsState {
     assistants: () => Promise<void>
     __store__?: () => void
   }
+  __destroy__?: () => void
 }
 
 export const useHubAssistantsStore = create<HubAssistantsState>()(
@@ -136,6 +137,12 @@ export const useHubAssistantsStore = create<HubAssistantsState>()(
             )
           },
           assistants: () => get().loadAssistants(),
+        },
+
+        // Unsubscribe from EventBus on store destroy so listener slots
+        // don't accumulate per destroy/re-init cycle. (audit 09 B-9)
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('HubAssistantsStore')
         },
       }),
     ),

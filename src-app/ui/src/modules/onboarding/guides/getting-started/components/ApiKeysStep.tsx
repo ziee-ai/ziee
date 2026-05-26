@@ -103,7 +103,7 @@ export default function ApiKeysStep({ registerBeforeNext }: OnboardingStepProps)
       </Paragraph>
 
       {error && (
-        <Alert type="error" message={error} showIcon className="mb-3" />
+        <Alert type="error" title={error} showIcon className="mb-3" />
       )}
 
       {/* Two-column layout */}

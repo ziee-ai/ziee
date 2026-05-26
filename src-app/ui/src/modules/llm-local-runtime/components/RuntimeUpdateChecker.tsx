@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Space, Tag } from 'antd'
+import { Alert, Button, Card, Flex, Tag } from 'antd'
 import { CloudSyncOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { RuntimeEngine } from '../types'
@@ -38,15 +38,15 @@ export function RuntimeUpdateChecker({ engine }: Props) {
     >
       {!updateCheck ? (
         <Alert
-          message="Click 'Check for Updates' to see available versions from GitHub"
+          title="Click 'Check for Updates' to see available versions from GitHub"
           type="info"
           showIcon
         />
       ) : updateCheck.has_updates ? (
         <Alert
-          message={`Updates available for ${engine}`}
+          title={`Updates available for ${engine}`}
           description={
-            <Space direction="vertical" style={{ width: '100%' }}>
+            <Flex vertical gap="small" style={{ width: '100%' }}>
               <div>
                 Current: <Tag>{updateCheck.current_version || 'None'}</Tag>
                 Latest: <Tag color="green">{updateCheck.latest_version}</Tag>
@@ -69,14 +69,14 @@ export function RuntimeUpdateChecker({ engine }: Props) {
               >
                 Download Update
               </Button>
-            </Space>
+            </Flex>
           }
           type="warning"
           showIcon
         />
       ) : (
         <Alert
-          message={`${engine} is up to date`}
+          title={`${engine} is up to date`}
           description={`Current version: ${updateCheck.current_version}`}
           type="success"
           showIcon

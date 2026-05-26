@@ -32,11 +32,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
       {error && (
         <div className="py-4">
           <Alert
-            message={error}
+            title={error}
             type="error"
             showIcon
-            closable
-            onClose={Stores.Auth.clearAuthenticationError}
+            closable={{ onClose: Stores.Auth.clearAuthenticationError }}
           />
         </div>
       )}

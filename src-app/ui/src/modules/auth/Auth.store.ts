@@ -28,6 +28,7 @@ interface AuthState {
   __init__: {
     __store__: () => void
   }
+  __destroy__: () => void
 
   // Actions
   authenticateUser: (credentials: LoginRequest) => Promise<void>
@@ -54,6 +55,12 @@ const defaultState = {
   isInitializing: true,
   error: null,
 }
+
+// Module-scope handle to the visibilitychange listener so __destroy__
+// can remove it (permission-plan follow-up: re-fetch /api/auth/me when
+// the tab regains focus, so stale permissions self-heal after an admin
+// edits the current user's group in another tab).
+let visibilityListener: (() => void) | null = null
 
 export const useAuthStore = create<AuthState>()(
   subscribeWithSelector(
@@ -179,7 +186,45 @@ export const useAuthStore = create<AuthState>()(
               },
               'AuthStore',
             )
+
+            // Re-fetch /me when the tab regains focus, so a permissions
+            // change made by an admin in another tab self-heals here on
+            // the next interaction (permission-plan follow-up).
+            visibilityListener = () => {
+              if (document.visibilityState !== 'visible') return
+              const state = get()
+              if (!state.token || state.isLoading) return
+              ApiClient.Auth.me(undefined, undefined)
+                .then(response => {
+                  set({
+                    user: response.user,
+                    permissions: response.permissions,
+                  })
+                })
+                .catch(err => {
+                  // 401 → user's session was revoked elsewhere; let the
+                  // next API call's normal error handling kick in rather
+                  // than logging the user out here (which would lose
+                  // any in-progress work).
+                  console.warn(
+                    '[Auth] visibility-refetch /me failed:',
+                    err,
+                  )
+                })
+            }
+            document.addEventListener('visibilitychange', visibilityListener)
           },
+        },
+
+        // Unsubscribe from EventBus + remove the visibilitychange listener
+        // on store destroy so listener slots don't accumulate per
+        // destroy/re-init cycle. (audit 09 B-9 + permission follow-up)
+        __destroy__: () => {
+          Stores.EventBus.removeGroupListeners('AuthStore')
+          if (visibilityListener) {
+            document.removeEventListener('visibilitychange', visibilityListener)
+            visibilityListener = null
+          }
         },
 
         initAuth: async () => {

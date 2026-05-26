@@ -37,11 +37,10 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
       {error && (
         <Alert
-          message={error}
+          title={error}
           type="error"
           showIcon
-          closable
-          onClose={Stores.Auth.clearAuthenticationError}
+          closable={{ onClose: Stores.Auth.clearAuthenticationError }}
           className="mb-4"
         />
       )}

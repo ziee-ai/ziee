@@ -81,9 +81,11 @@ test.describe('User Groups CRUD Operations', () => {
     await openCreateGroupDrawer(page)
 
     // Try to submit without required fields
+    // Drawer submit label was standardised to "Create" (audit I-2);
+    // scope by primary-button class to avoid colliding with the list
+    // CTA which still carries aria-label="Create group".
     const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open')
-      .getByRole('button', { name: /create group/i })
+      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Check for validation errors
@@ -101,9 +103,11 @@ test.describe('User Groups CRUD Operations', () => {
       .getByLabel(/permissions.*json/i)
       .fill('invalid json') // Invalid JSON
 
+    // Drawer submit label was standardised to "Create" (audit I-2);
+    // scope by primary-button class to avoid colliding with the list
+    // CTA which still carries aria-label="Create group".
     const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open')
-      .getByRole('button', { name: /create group/i })
+      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Check for validation error
@@ -123,9 +127,11 @@ test.describe('User Groups CRUD Operations', () => {
       .getByLabel(/permissions.*json/i)
       .fill('["invalid::permission"]') // Invalid permission
 
+    // Drawer submit label was standardised to "Create" (audit I-2);
+    // scope by primary-button class to avoid colliding with the list
+    // CTA which still carries aria-label="Create group".
     const submitButton = page
-      .locator('.ant-drawer.ant-drawer-open')
-      .getByRole('button', { name: /create group/i })
+      .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
     await submitButton.click()
 
     // Check for validation error

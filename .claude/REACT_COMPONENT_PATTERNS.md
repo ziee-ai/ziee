@@ -100,6 +100,111 @@ export function MyComponent() {
 5. **Testing complexity** - Harder to test and mock
 6. **Inconsistent behavior** - Different components might load data differently
 
+## Store Proxy Contract
+
+`Stores.X` is a `Proxy` wrapping a Zustand store. Its `get` handler
+dispatches on **what kind of property** is being read, in this order:
+
+1. **Special props** (`__refTracker`, `__refCount`, `__destroyed`,
+   `__init__`, `__destroy__`) — bookkeeping for the proxy itself.
+   Safe to read anywhere. The framework uses these; you usually
+   don't.
+
+2. **Functions / actions** — `Stores.X.createFoo(...)`,
+   `Stores.X.refreshBar()`. Returned directly without subscribing to
+   any state. **Safe to call from anywhere**: components, event
+   handlers, store-to-store calls, `__init__` / `__destroy__` hooks,
+   plain modules.
+
+3. **Nested store proxies** — properties whose value is itself a
+   store proxy (detected via `__refTracker`). Returned as-is so
+   reactivity stays local to that nested store. **Safe to read
+   anywhere**, then access state on the nested store under the same
+   rules.
+
+4. **State values** — primitives, objects, arrays held in the
+   store's state. **Reactive reads via the `useStore` hook** — only
+   safe inside a React component or another React hook.
+
+The proxy can't know syntactically whether a destructure like
+`const { items } = Stores.X` happens at a component's top level or
+in an event handler — both look identical to the trap. The contract
+the codebase commits to is:
+
+> **State values may only be read from inside a React component
+> body or a React hook. Actions and nested stores may be called
+> from anywhere.**
+
+### ✅ CORRECT usage
+
+```tsx
+function MyList() {
+  // Reactive read inside a component body — OK.
+  const { items, loading } = Stores.Items
+
+  const handleAdd = () => {
+    // Action call inside an event handler — OK.
+    Stores.Items.createItem({ name: 'New' })
+  }
+
+  return loading ? <Spin /> : items.map(/* ... */)
+}
+
+// Store-to-store action call from outside any component — OK.
+export const useItemsStore = create((set, get) => ({
+  __init__: {
+    items: async () => {
+      // Calling another store's action — fine, it's an action call.
+      await Stores.Auth.refreshSession()
+      const items = await ApiClient.Items.list()
+      set({ items })
+    },
+  },
+  // ...
+}))
+```
+
+### ❌ ANTI-PATTERN: reactive reads outside a component
+
+```tsx
+// ❌ WRONG: top-level destructure of state in a non-component module.
+//    Looks identical to the correct in-component form, but the
+//    proxy will call `useStore(...)` outside a React render and
+//    throw "Invalid hook call".
+const { items } = Stores.Items
+```
+
+```tsx
+// ❌ WRONG: state read inside an event handler.
+function Toolbar() {
+  const handleClick = () => {
+    // `Stores.Items.items` enters the state-value branch → useStore
+    // hook is called outside render → "Invalid hook call".
+    console.log(Stores.Items.items.length)
+  }
+  return <Button onClick={handleClick}>Log</Button>
+}
+
+// ✅ Either snapshot at render time and close over it…
+function Toolbar() {
+  const { items } = Stores.Items
+  const handleClick = () => console.log(items.length)
+  return <Button onClick={handleClick}>Log</Button>
+}
+
+// …or read the raw state outside the hook system via the underlying
+// `useStore.getState()` if you genuinely need a non-reactive read.
+```
+
+### Future safety net
+
+A `scripts/lint-stores.ts` walker (Cluster G follow-up) will flag
+reactive `Stores.X.<state-prop>` reads from outside React component
+bodies / `use*` hooks at CI time, and a dev-only runtime guard in
+`createStoreProxy` will throw a precise error when the state-value
+branch is entered without an active React render. Neither is in place
+yet — adhere to the contract by convention until they land.
+
 ## API Client Pattern
 
 ### ⚠️ CRITICAL: ApiClient is Auto-Generated

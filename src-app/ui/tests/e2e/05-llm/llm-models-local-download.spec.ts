@@ -78,7 +78,7 @@ test.describe('LLM Models - Local Download - UI Structure', () => {
     // Verify buttons - scope to drawer to avoid strict mode violations
     const downloadDrawer = page.locator('.ant-drawer.ant-drawer-open:has(.ant-drawer-title:has-text("Download from Repository"))')
     await expect(downloadDrawer.locator('button:has-text("Cancel")')).toBeVisible()
-    await expect(downloadDrawer.locator('button:has-text("Start Download")')).toBeVisible()
+    await expect(downloadDrawer.locator('.ant-btn-primary[type="button"]')).toBeVisible()
 
     // Close drawer explicitly and wait for it to close
     await downloadDrawer.locator('button:has-text("Cancel")').click()
@@ -154,7 +154,7 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     await selectAddModelOption(page, 'download')
 
     // Try to submit without filling any fields
-    await page.click('button:has-text("Start Download")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Should show validation errors
     await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
@@ -172,7 +172,7 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     await page.fill('#llm-model-download_main_filename', 'model.safetensors')
 
     // Submit
-    await page.click('button:has-text("Start Download")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Should show error for repository
     await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
@@ -193,7 +193,7 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
     // Submit
-    await page.click('button:has-text("Start Download")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Should show error for repository path
     await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
@@ -214,7 +214,7 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
     // Submit
-    await page.click('button:has-text("Start Download")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Should show error for display name
     await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
@@ -235,7 +235,7 @@ test.describe('LLM Models - Local Download - Form Validation', () => {
     await page.click('.ant-select-item:has-text("Hugging Face Hub")')
 
     // Submit
-    await page.click('button:has-text("Start Download")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Should show error for main filename
     await expect(page.locator('.ant-form-item-explain-error')).toBeVisible({ timeout: 5000 })
@@ -280,7 +280,7 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     await page.click('.ant-select-item:has-text("SafeTensors")')
 
     // Submit
-    await page.click('button:has-text("Start Download")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Wait for success message
     await page.waitForSelector('text=Download started successfully', { timeout: 15000 })
@@ -316,7 +316,7 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     await page.click('.ant-select-item:has-text("SafeTensors")')
 
     // Submit - download is accepted but validation happens asynchronously
-    await page.click('button:has-text("Start Download")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Wait for success message (download created, not yet validated)
     await page.waitForSelector('text=Download started successfully', { timeout: 10000 })
@@ -371,7 +371,7 @@ test.describe('LLM Models - Local Download - Download Initiation', () => {
     await page.click('.ant-select-item:has-text("SafeTensors")')
 
     // Submit
-    await page.click('button:has-text("Start Download")')
+    await page.locator('.ant-drawer.ant-drawer-open').last().locator('.ant-btn-primary').click()
 
     // Wait for success
     await page.waitForSelector('text=Download started successfully', { timeout: 15000 })

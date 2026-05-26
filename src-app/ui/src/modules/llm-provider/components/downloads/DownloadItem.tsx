@@ -1,4 +1,4 @@
-import { Button, Card, Space, Tag, Tooltip, Typography } from 'antd'
+import { Button, Card, Flex, Space, Tag, Tooltip, Typography } from 'antd'
 import {
   CloseOutlined,
   CheckCircleOutlined,
@@ -95,7 +95,7 @@ export function DownloadItem({
   if (mode === 'full') {
     return (
       <Card size="small">
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
+        <Flex vertical gap="small" style={{ width: '100%' }}>
           <div
             style={{
               display: 'flex',
@@ -157,7 +157,7 @@ export function DownloadItem({
           {download.error_message && (
             <Text type="danger">{download.error_message}</Text>
           )}
-        </Space>
+        </Flex>
       </Card>
     )
   }

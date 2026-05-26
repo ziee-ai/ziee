@@ -3,7 +3,8 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { createStoreProxy } from '@/core/stores'
 import { ApiClient } from '@/api-client'
-import type { ConversationResponse } from '@/api-client/types'
+import { Permissions, type ConversationResponse } from '@/api-client/types'
+import { hasPermissionNow } from '@/core/permissions'
 
 /**
  * ChatHistory Store
@@ -72,6 +73,13 @@ export const useChatHistoryStore = create<ChatHistoryStore>()(
        * Load conversations with pagination
        */
       loadConversations: async (page?: number) => {
+        // Permission-gate the shell-eager-load fetch (audit
+        // follow-up): the sidebar's recent-conversations widget
+        // accesses this store on every render. For users without
+        // conversations::read the API call 403s; silently skip
+        // instead.
+        if (!hasPermissionNow(Permissions.ConversationsRead)) return
+
         const state = get()
         const targetPage = page ?? state.page
 

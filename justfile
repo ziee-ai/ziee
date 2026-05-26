@@ -166,3 +166,8 @@ test:
 # Run the frontend dev server.
 ui:
     cd src-app/ui && npm run dev
+
+# Run @ant-design/cli diagnostics (doctor + lint + usage) against the UI.
+# Outputs in src-app/ui/docs/antd-diagnostics/<date>/. See FRONTEND_DEPS.md.
+antd-check:
+    cd src-app/ui && ./scripts/antd-diagnose.sh

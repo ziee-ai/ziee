@@ -29,7 +29,7 @@ export function RuntimeVersionList({ engine }: Props) {
   if (loading && !versions.length) {
     return (
       <Card>
-        <Spin tip="Loading versions..." />
+        <Spin description="Loading versions..." />
       </Card>
     )
   }

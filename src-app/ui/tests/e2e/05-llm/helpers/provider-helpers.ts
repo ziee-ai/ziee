@@ -130,23 +130,29 @@ export async function openDeleteProviderDialog(page: Page, providerName: string)
   // Navigate to provider detail page first - delete button is in ProviderHeader
   await clickProviderCard(page, providerName)
 
-  // Click delete button in ProviderHeader
+  // Click delete button in ProviderHeader. ProviderHeader migrated
+  // from Modal.confirm to Popconfirm in audit I-4, so the popover
+  // appears as `.ant-popconfirm` (not `.ant-modal-confirm`).
   const deleteButton = page.locator('button[aria-label="Delete provider"]')
   await deleteButton.click()
 
-  // Wait for confirmation modal - use the modal container selector
-  await page.waitForSelector('.ant-modal-confirm', { state: 'visible', timeout: 5000 })
-  await expect(page.locator('.ant-modal-confirm .ant-modal-confirm-title:has-text("Confirm Deletion")').first()).toBeVisible()
+  await page.waitForSelector('.ant-popconfirm', { state: 'visible', timeout: 5000 })
+  await expect(
+    page.locator('.ant-popconfirm-title:has-text("Delete Provider")').first(),
+  ).toBeVisible()
 }
 
 export async function confirmDeleteProvider(page: Page) {
-  // Click "Delete" button in confirmation modal
-  await page.click('.ant-modal-confirm-btns button:has-text("Delete")')
+  // Click the primary "Delete" button in the popconfirm. Scope by
+  // class so okText changes don't break this helper.
+  await page.locator('.ant-popconfirm:visible .ant-btn-primary').click()
   await page.waitForSelector('text=Provider deleted successfully', { timeout: 15000 })
 }
 
 export async function cancelDeleteProvider(page: Page) {
-  await page.click('.ant-modal-confirm-btns button:has-text("Cancel")')
+  // Cancel button in Popconfirm — text is "Cancel" by default; scope
+  // to the visible popconfirm.
+  await page.locator('.ant-popconfirm:visible').getByRole('button', { name: 'Cancel' }).click()
 }
 
 export async function deleteProvider(page: Page, providerName: string): Promise<void> {

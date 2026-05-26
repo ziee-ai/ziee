@@ -1,5 +1,6 @@
 import React from 'react'
-import { Button, Drawer, Form, Input, message, Select, Space } from 'antd'
+import { Button, Form, Input, message, Select, Space } from 'antd'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { detectPlatform, detectArch, getDefaultBackend } from '../../utils/platform'
 import type { DownloadVersionRequest } from '@/api-client/types'
@@ -47,7 +48,7 @@ export function RuntimeDownloadDrawer() {
       title={`Download ${engine} Runtime`}
       open={open}
       onClose={handleClose}
-      width={500}
+      size={600}
       footer={
         <Space>
           <Button onClick={handleClose}>Cancel</Button>

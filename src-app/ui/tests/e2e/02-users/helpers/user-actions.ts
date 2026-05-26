@@ -39,8 +39,11 @@ export async function createUser(page: Page, userData: CreateUserData) {
     await permissionsField.fill(JSON.stringify(userData.permissions))
   }
 
-  // Submit the form
-  const submitButton = drawer.getByRole('button', { name: /create user/i })
+  // Submit the form. Target the primary button by class — submit
+  // labels were standardised to verb-only ("Create User" → "Create",
+  // per audit I-1/I-2), and verb-only labels are too generic to match
+  // by role/name safely.
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.click()
 
   // Wait for success message
@@ -71,8 +74,9 @@ export async function updateUser(page: Page, userData: UpdateUserData) {
     await drawer.getByLabel(/display name/i).fill(userData.displayName)
   }
 
-  // Submit the form
-  const submitButton = drawer.getByRole('button', { name: /update user/i })
+  // Submit the form. Label is now "Save" (verb-only per audit I-2);
+  // target by primary-button class instead.
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.click()
 
   // Wait for success message
@@ -96,8 +100,10 @@ export async function deleteUser(page: Page, username: string) {
   await deleteButton.waitFor({ state: 'visible', timeout: 5000 })
   await deleteButton.click()
 
-  // Confirm the deletion in the popconfirm
-  const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
+  // Confirm the deletion in the popconfirm. Target the primary button
+  // by class so the locator survives okText standardisation
+  // ("Yes" → "Delete" / "Deactivate" per audit I-4).
+  const confirmButton = page.locator('.ant-popconfirm:visible .ant-btn-primary')
   await confirmButton.click()
 
   // Wait for success message
@@ -122,8 +128,9 @@ export async function toggleUserStatus(page: Page, username: string) {
 
   await statusSwitch.click()
 
-  // Confirm the action in the popconfirm
-  const confirmButton = page.locator('.ant-popconfirm:visible').getByRole('button', { name: /yes/i })
+  // Confirm the action in the popconfirm. Primary-button class is
+  // stable across okText variations.
+  const confirmButton = page.locator('.ant-popconfirm:visible .ant-btn-primary')
   await confirmButton.click()
 
   // Wait for success message
@@ -160,8 +167,9 @@ export async function resetUserPassword(
   // (closed drawers from earlier steps remain in the DOM).
   await drawer.getByLabel(/new password/i).fill(newPassword)
 
-  // Submit the form
-  const submitButton = drawer.getByRole('button', { name: /reset password/i })
+  // Submit the form. Label is now "Reset" (verb-only per audit I-2);
+  // target by primary-button class instead.
+  const submitButton = drawer.locator('.ant-btn-primary[type="submit"]')
   await submitButton.click()
 
   // Wait for success message
@@ -206,8 +214,10 @@ export async function assignUserToGroups(
     await groupCheckbox.click()
   }
 
-  // Submit
-  const submitButton = page.locator('.ant-drawer.ant-drawer-open').getByRole('button', { name: /assign/i }).last()
+  // Submit. Label is now "Assign" (verb-only per audit I-2); scope by
+  // primary-button class to avoid colliding with the "Assign group"
+  // CTA aria-label on parent UserGroupsDrawer.
+  const submitButton = page.locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
   await submitButton.click()
 
   // Wait for success message

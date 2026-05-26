@@ -181,7 +181,7 @@ export function LlmProviderDrawer() {
           </Button>
           {canSave && (
             <Button type="primary" htmlType="submit" loading={loading}>
-              {provider ? 'Update' : 'Add'} Provider
+              {provider ? 'Save' : 'Add'}
             </Button>
           )}
         </div>

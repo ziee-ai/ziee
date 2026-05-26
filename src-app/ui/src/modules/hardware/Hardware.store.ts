@@ -27,6 +27,7 @@ interface HardwareState {
   __init__: {
     hardwareInfo: () => Promise<void>
   }
+  __destroy__?: () => void
 
   // Actions
   loadHardwareInfo: () => Promise<void>
@@ -243,6 +244,20 @@ export const useHardwareStore = create<HardwareState>()(
         })
 
         // Reset flag after disconnection
+        isIntentionallyDisconnecting = false
+      },
+
+      // Abort the module-scope SSE controller on store destroy so it
+      // doesn't outlive the store (the proxy's refTracker may destroy
+      // the store after a 5s grace period; an in-flight SSE keeps
+      // running otherwise and reconnect attempts get blocked).
+      // (audit 09 B-8)
+      __destroy__: () => {
+        if (sseAbortController) {
+          sseAbortController.abort()
+          sseAbortController = null
+        }
+        isCurrentlyConnecting = false
         isIntentionallyDisconnecting = false
       },
     }),

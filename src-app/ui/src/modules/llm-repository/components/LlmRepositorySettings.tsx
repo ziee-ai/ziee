@@ -197,7 +197,7 @@ export function LlmRepositorySettings() {
           <div>
             {repositories.length === 0 ? (
               <Empty
-                description="No repositories configured"
+                description="No repositories yet"
                 image={
                   <CloudDownloadOutlined className="text-4xl opacity-50" />
                 }

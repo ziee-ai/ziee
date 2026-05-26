@@ -1,5 +1,6 @@
 import { useMemo, useEffect } from 'react'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { loadModules } from '@/modules/loader'
 import { setupAccessibilityFixes } from '@/utils/accessibilityFixes'
 import { usePrefetchModules } from '@/hooks/usePrefetchModules'
@@ -66,9 +67,19 @@ function App() {
 
   return (
     <ThemeProvider>
-      {/* Render components from modules (sorted by order) */}
+      {/* Render components from modules (sorted by order). Each module is
+        * wrapped in its own ErrorBoundary so a single module crash
+        * isolates to that module — other modules + the shell keep
+        * working. The outer boundary in main.tsx catches anything that
+        * escapes this layer (e.g. a ThemeProvider throw). */}
       {sortedComponents.map(comp => (
-        <ConditionalComponent key={comp.id} registration={comp} />
+        <AppErrorBoundary
+          key={comp.id}
+          label={comp.id}
+          fallback={() => null}
+        >
+          <ConditionalComponent registration={comp} />
+        </AppErrorBoundary>
       ))}
     </ThemeProvider>
   )

@@ -154,7 +154,7 @@ export function EditUserGroupDrawer() {
           </Button>
           {canEdit && (
             <Button type="primary" htmlType="submit" loading={loading}>
-              Update Group
+              Save
             </Button>
           )}
         </div>

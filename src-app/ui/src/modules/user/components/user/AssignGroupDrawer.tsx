@@ -63,12 +63,7 @@ export function AssignGroupDrawer() {
           </Select>
         </Form.Item>
         <Form.Item className="mb-0">
-          <Flex className="gap-2">
-            {canAssign && (
-              <Button type="primary" htmlType="submit">
-                Assign Group
-              </Button>
-            )}
+          <Flex className="justify-end gap-2">
             <Button
               onClick={() => {
                 Stores.AssignGroupDrawer.closeAssignGroupDrawer()
@@ -77,6 +72,11 @@ export function AssignGroupDrawer() {
             >
               {canAssign ? 'Cancel' : 'Close'}
             </Button>
+            {canAssign && (
+              <Button type="primary" htmlType="submit">
+                Assign
+              </Button>
+            )}
           </Flex>
         </Form.Item>
       </Form>

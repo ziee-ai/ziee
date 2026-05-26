@@ -6,12 +6,9 @@
  */
 
 export const getBaseUrl = (function () {
-  let baseUrl: Promise<string>
-  //@ts-ignore
+  let baseUrl: Promise<string> | undefined
   return async function () {
-    if (baseUrl) {
-      return baseUrl // Return existing promise if already created
-    }
-    return window.location.origin
+    baseUrl ??= Promise.resolve(window.location.origin)
+    return baseUrl
   }
 })()
