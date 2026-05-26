@@ -8,6 +8,7 @@ import {
   Tag,
   Button,
   Space,
+  Flex,
 } from 'antd'
 import {
   BulbOutlined,
@@ -134,7 +135,7 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
       </Paragraph>
 
       {error && (
-        <Alert type="error" message={error} showIcon className="mb-4" />
+        <Alert type="error" title={error} showIcon className="mb-4" />
       )}
 
       <div className="border rounded-lg p-4 mb-4">
@@ -203,7 +204,7 @@ function PickModelScreen({
       </Paragraph>
 
       {error && (
-        <Alert type="error" message={error} showIcon className="mb-4" />
+        <Alert type="error" title={error} showIcon className="mb-4" />
       )}
 
       <div className="mb-2 flex items-center gap-2">
@@ -218,9 +219,9 @@ function PickModelScreen({
           type="info"
           showIcon
           icon={<InfoCircleOutlined />}
-          message="No embedding-capable models found."
+          title="No embedding-capable models found."
           description={
-            <Space direction="vertical" className="w-full">
+            <Flex vertical className="w-full gap-2">
               <Text>
                 Add one from the LLM Providers page. The Hub catalog
                 ships curated entries (<code>nomic-embed-text-v1.5</code>,
@@ -258,7 +259,7 @@ function PickModelScreen({
                   Refresh
                 </Button>
               </Space>
-            </Space>
+            </Flex>
           }
           className="mb-4"
         />
@@ -272,8 +273,7 @@ function PickModelScreen({
             value: m.id,
             label: m.display_name || m.name,
           }))}
-          showSearch
-          optionFilterProp="label"
+          showSearch={{ optionFilterProp: 'label' }}
         />
       )}
 

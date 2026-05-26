@@ -73,8 +73,7 @@ export function CoreMemoryPage() {
               value: a.id,
               label: a.display_name || a.name,
             }))}
-            showSearch
-            optionFilterProp="label"
+            showSearch={{ optionFilterProp: 'label' }}
             allowClear
           />
         )}

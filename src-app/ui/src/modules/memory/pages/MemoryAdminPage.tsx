@@ -60,7 +60,7 @@ export function MemoryAdminPage() {
           <Alert
             type="info"
             showIcon
-            message="No embedding-capable models found."
+            title="No embedding-capable models found."
             description={
               <span>
                 Add one from the LLM Providers page — either upload a
@@ -96,8 +96,7 @@ export function MemoryAdminPage() {
                   value: m.id,
                   label: m.display_name || m.name,
                 }))}
-                showSearch
-                optionFilterProp="label"
+                showSearch={{ optionFilterProp: 'label' }}
                 allowClear
               />
               <Paragraph type="secondary" className="!mt-1 !mb-0 text-xs">
@@ -119,8 +118,7 @@ export function MemoryAdminPage() {
                   value: m.id,
                   label: m.display_name || m.name,
                 }))}
-                showSearch
-                optionFilterProp="label"
+                showSearch={{ optionFilterProp: 'label' }}
                 allowClear
               />
             </Form.Item>

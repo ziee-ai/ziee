@@ -370,7 +370,7 @@ function EditMemoryDrawer({
       open={!!row}
       title="Edit memory"
       onClose={onClose}
-      width={600}
+      size={600}
       extra={
         <Button
           type="primary"

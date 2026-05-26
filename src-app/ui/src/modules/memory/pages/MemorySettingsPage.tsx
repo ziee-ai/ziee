@@ -54,7 +54,7 @@ export function MemorySettingsPage() {
           <Alert
             type="warning"
             showIcon
-            message="Memory is currently disabled by the administrator."
+            title="Memory is currently disabled by the administrator."
             description="Settings here will be saved but have no effect until the administrator enables memory."
             className="mb-4"
           />
