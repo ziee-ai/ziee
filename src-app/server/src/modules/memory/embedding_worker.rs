@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use uuid::Uuid;
 
 use crate::common::AppError;
-use pgvector::Vector;
+use pgvector::HalfVector;
 
 const REBUILD_BATCH_SIZE: i64 = 100;
 
@@ -96,9 +96,9 @@ async fn run(
             .await
             .map_err(AppError::database_error)?;
 
-        // ALTER COLUMN — must drop the ivfflat index first (its
+        // ALTER COLUMN — must drop the hnsw index first (its
         // operator class is dimension-bound) and recreate after.
-        // DROP/CREATE INDEX and ALTER COLUMN TYPE vector(N) use a
+        // DROP/CREATE INDEX and ALTER COLUMN TYPE halfvec(N) use a
         // runtime-formatted string because `target_dimensions` becomes
         // part of the TYPE — Postgres parses TYPE at parse time, not
         // as a bind parameter. `target_dimensions` is an i32 from a
@@ -108,7 +108,7 @@ async fn run(
             .await
             .map_err(AppError::database_error)?;
         let alter = format!(
-            "ALTER TABLE user_memories ALTER COLUMN embedding TYPE vector({})",
+            "ALTER TABLE user_memories ALTER COLUMN embedding TYPE halfvec({})",
             target_dimensions
         );
         sqlx::query(&alter)
@@ -116,7 +116,7 @@ async fn run(
             .await
             .map_err(AppError::database_error)?;
         sqlx::query!(
-            "CREATE INDEX idx_user_memories_embedding ON user_memories USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"
+            "CREATE INDEX idx_user_memories_embedding ON user_memories USING hnsw (embedding halfvec_cosine_ops)"
         )
         .execute(&pool)
         .await
@@ -175,7 +175,7 @@ async fn run(
                         );
                         continue;
                     }
-                    let v = Vector::from(vec);
+                    let v = HalfVector::from_f32_slice(&vec);
                     let _ = sqlx::query(
                         "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
                     )

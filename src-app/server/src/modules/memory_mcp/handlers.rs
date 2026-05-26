@@ -13,7 +13,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use pgvector::Vector;
+use pgvector::HalfVector;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -213,7 +213,7 @@ async fn remember(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
                         .flatten()
                         .map(|m| m.name)
                         .unwrap_or_else(|| emb_model_id.to_string());
-                    let v = Vector::from(vec);
+                    let v = HalfVector::from_f32_slice(&vec);
                     let pool = Repos.memory.pool_clone();
                     let _ = sqlx::query(
                         "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
@@ -283,7 +283,7 @@ async fn recall(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         "#,
     )
     .bind(user_id)
-    .bind(&Vector::from(vec))
+    .bind(&HalfVector::from_f32_slice(&vec))
     .bind(limit)
     .bind(admin.cosine_threshold)
     .fetch_all(&pool)

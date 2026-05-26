@@ -9963,7 +9963,7 @@
         "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
         "operationId": "Memory.admin.update",
         "requestBody": {
-          "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default), `Some(Some(x))` = set to `x`.",
+          "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default for prompts, or \"no default\" for\n embedding/extraction models), `Some(Some(x))` = set to `x`.\n\n Serde's default `Option<T>` deserialization collapses `null` and\n \"absent\" to the same `None`, so the discriminating \"Some(None)\"\n state requires a custom deserializer — see\n `deserialize_nullable_field` below.",
           "content": {
             "application/json": {
               "schema": {
@@ -10004,6 +10004,220 @@
                 "schema": {
                   "$ref": "#/components/schemas/MemoryAdminSettings"
                 }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memory/admin-settings/rebuild-status": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Read embedding rebuild status",
+        "description": "\n\n**Required Permission:** `memory::admin::read`\n\nRead memory admin settings (embedding model, defaults).",
+        "operationId": "Memory.admin.rebuildStatus",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read memory admin settings (embedding model, defaults).",
+                        "name": "MemoryAdminRead",
+                        "value": "memory::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebuildStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memory/admin-settings/reembed": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Trigger a re-embed of all memories using the current embedding model",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "Memory.admin.reembed",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/memory/extract": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Test-only: trigger extraction synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "Memory.test.extract",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/memory/summarize": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "Memory.test.summarize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSummarizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
               }
             }
           }
@@ -16274,6 +16488,31 @@
           "content"
         ]
       },
+      "RebuildStatus": {
+        "type": "object",
+        "properties": {
+          "in_progress": {
+            "description": "True while a rebuild worker holds the process-local lock.",
+            "type": "boolean"
+          },
+          "model_name": {
+            "description": "Name of the currently-configured embedding model, if any.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pending_count": {
+            "description": "Live rows still needing (re)embedding under the current model:\n embedding IS NULL OR embedding_model != current_model.name.\n Returns 0 if no embedding model is configured.",
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "in_progress",
+          "pending_count"
+        ]
+      },
       "RefreshTokenRequest": {
         "type": "object",
         "properties": {
@@ -17462,6 +17701,26 @@
           "message"
         ]
       },
+      "TestExtractRequest": {
+        "type": "object",
+        "properties": {
+          "assistant_message": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "user_message",
+          "assistant_message"
+        ]
+      },
       "TestRepositoryConnectionRequest": {
         "type": "object",
         "properties": {
@@ -17504,6 +17763,23 @@
         "required": [
           "success",
           "message"
+        ]
+      },
+      "TestSummarizeRequest": {
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "branch_id",
+          "model_id"
         ]
       },
       "TextPageQuery": {
@@ -18232,7 +18508,7 @@
         }
       },
       "UpdateMemoryAdminSettingsRequest": {
-        "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default), `Some(Some(x))` = set to `x`.",
+        "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default for prompts, or \"no default\" for\n embedding/extraction models), `Some(Some(x))` = set to `x`.\n\n Serde's default `Option<T>` deserialization collapses `null` and\n \"absent\" to the same `None`, so the discriminating \"Some(None)\"\n state requires a custom deserializer — see\n `deserialize_nullable_field` below.",
         "type": "object",
         "properties": {
           "cosine_threshold": {
@@ -18254,7 +18530,8 @@
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "default": null
           },
           "default_top_k": {
             "type": [
@@ -18270,7 +18547,8 @@
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "default": null
           },
           "enabled": {
             "type": [
@@ -18282,13 +18560,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "default": null
           },
           "incremental_summary_prompt": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "default": null
           },
           "soft_delete_grace_days": {
             "type": [

@@ -482,6 +482,136 @@ pub fn update_admin_settings_docs(op: TransformOperation) -> TransformOperation 
 }
 
 // ============================================================================
+// Rebuild status + explicit trigger.
+//
+// Two endpoints supporting the admin UX around the embedding-model
+// rebuild worker:
+//
+//   GET  /memory/admin-settings/rebuild-status
+//       → { in_progress, pending_count, model_name }
+//   POST /memory/admin-settings/reembed
+//       → 202 — spawn reembed_all for the CURRENT admin.embedding_model_id
+//
+// `trigger_reembed` was added because the auto-trigger in
+// `update_admin_settings` only fires when `embedding_model_id`
+// CHANGES — so "Re-embed now" re-PUTing the same id was silently
+// a no-op. This explicit endpoint fixes that, and doubles as the
+// test hook for verifying resume-after-stale-rows behavior.
+// ============================================================================
+
+#[derive(Debug, serde::Serialize, Deserialize, JsonSchema)]
+pub struct RebuildStatus {
+    /// True while a rebuild worker holds the process-local lock.
+    pub in_progress: bool,
+    /// Live rows still needing (re)embedding under the current model:
+    /// embedding IS NULL OR embedding_model != current_model.name.
+    /// Returns 0 if no embedding model is configured.
+    pub pending_count: i64,
+    /// Name of the currently-configured embedding model, if any.
+    pub model_name: Option<String>,
+}
+
+#[debug_handler]
+pub async fn get_rebuild_status(
+    _auth: RequirePermissions<(MemoryAdminRead,)>,
+) -> ApiResult<Json<RebuildStatus>> {
+    let in_progress = super::embedding_worker::is_in_progress();
+    let admin = Repos.memory.get_admin_settings().await?;
+    let (pending_count, model_name) = if let Some(model_id) = admin.embedding_model_id {
+        let model = Repos
+            .llm_model
+            .get_by_id(model_id)
+            .await
+            .map_err(AppError::database_error)?
+            .ok_or_else(|| AppError::not_found("LlmModel"))?;
+        let pool = Repos.memory.pool_clone();
+        let n = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!" FROM user_memories
+               WHERE deleted_at IS NULL
+                 AND (embedding IS NULL OR embedding_model IS DISTINCT FROM $1)"#,
+            &model.name
+        )
+        .fetch_one(&pool)
+        .await
+        .map_err(AppError::database_error)?;
+        (n, Some(model.name))
+    } else {
+        (0, None)
+    };
+    Ok((
+        StatusCode::OK,
+        Json(RebuildStatus {
+            in_progress,
+            pending_count,
+            model_name,
+        }),
+    ))
+}
+
+pub fn get_rebuild_status_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryAdminRead,)>(op)
+        .id("Memory.admin.rebuildStatus")
+        .tag("Memory")
+        .summary("Read embedding rebuild status")
+        .response::<200, Json<RebuildStatus>>()
+}
+
+#[debug_handler]
+pub async fn trigger_reembed(
+    _auth: RequirePermissions<(MemoryAdminManage,)>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let admin = Repos.memory.get_admin_settings().await?;
+    let Some(model_id) = admin.embedding_model_id else {
+        return Err(AppError::bad_request(
+            "NO_EMBEDDING_MODEL",
+            "Configure an embedding model before triggering a re-embed",
+        )
+        .into());
+    };
+    let model = Repos
+        .llm_model
+        .get_by_id(model_id)
+        .await
+        .map_err(AppError::database_error)?
+        .ok_or_else(|| AppError::not_found("LlmModel"))?;
+
+    // Probe dim + spawn worker. Same pattern as the auto-trigger in
+    // update_admin_settings, factored to also handle the same-id
+    // case (e.g. "Re-embed now" button, post-stale-rows recovery).
+    let pool = Repos.memory.pool_clone();
+    let model_name = model.name.clone();
+    tokio::spawn(async move {
+        let dim = match crate::modules::chat::extensions::memory::dispatch::embed(
+            model_id,
+            "dimension probe",
+        )
+        .await
+        {
+            Ok(v) => v.len() as i32,
+            Err(e) => {
+                tracing::warn!(
+                    "memory.admin: dimension probe failed for {model_id}: {e} — keeping existing dim"
+                );
+                return;
+            }
+        };
+        super::embedding_worker::reembed_all(pool, model_id, model_name, dim).await;
+    });
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({ "ok": true, "started": true })),
+    ))
+}
+
+pub fn trigger_reembed_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryAdminManage,)>(op)
+        .id("Memory.admin.reembed")
+        .tag("Memory")
+        .summary("Trigger a re-embed of all memories using the current embedding model")
+        .response::<202, Json<serde_json::Value>>()
+}
+
+// ============================================================================
 // Test-only hooks (Tier-5 real-LLM integration tests).
 //
 // Gated behind `#[cfg(debug_assertions)]` so release builds physically

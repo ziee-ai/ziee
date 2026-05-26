@@ -597,3 +597,420 @@ async fn r7_cosine_threshold_filters_unrelated_memories() {
          got hits: {hits:?}"
     );
 }
+
+// ────────────────────────────────────────────────────────────────────
+// R8-R10 — embedding-model swap / rebuild paths.
+//
+// These cover what R1-R7 didn't:
+//   R8  — same-dim model swap (no ALTER, but every row gets re-embedded)
+//   R9  — dim-down swap (3072 → 1536; tests ALTER + index recreate)
+//   R10 — explicit re-embed endpoint resumes after stale embedding_model
+//
+// Use OpenAI for ada-002 (1536d) and text-embedding-3-small (1536d) —
+// the two non-Gemini real embedding models we have credentials for.
+// Free-tier-friendly for tests.
+// ────────────────────────────────────────────────────────────────────
+
+const OPENAI_EMBEDDING_MODEL_A: &str = "text-embedding-ada-002";
+const OPENAI_EMBEDDING_MODEL_B: &str = "text-embedding-3-small";
+
+/// Register the OpenAI provider + two embedding models (same dim:
+/// 1536). Returns (model_a_id, model_b_id). Reuses an admin user with
+/// the right perms; caller provides the user separately for inserts.
+async fn register_two_openai_embedders(
+    server: &crate::common::TestServer,
+) -> (Uuid, Uuid) {
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "openai_embed_admin",
+        &[
+            "llm_providers::read",
+            "llm_providers::edit",
+            "llm_models::read",
+            "llm_models::create",
+            "memory::admin::read",
+            "memory::admin::manage",
+        ],
+    )
+    .await;
+    let provider = h::configure_builtin_provider(server, &admin.token, "OpenAI", "OPENAI_API_KEY").await;
+    let pid = provider["id"].as_str().unwrap();
+    let model_a = h::create_model(
+        server,
+        &admin.token,
+        pid,
+        OPENAI_EMBEDDING_MODEL_A,
+        "OpenAI ada-002 (embed test A)",
+        json!({ "text_embedding": true }),
+    )
+    .await;
+    let model_b = h::create_model(
+        server,
+        &admin.token,
+        pid,
+        OPENAI_EMBEDDING_MODEL_B,
+        "OpenAI 3-small (embed test B)",
+        json!({ "text_embedding": true }),
+    )
+    .await;
+    (
+        Uuid::parse_str(model_a["id"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(model_b["id"].as_str().unwrap()).unwrap(),
+    )
+}
+
+/// Set the admin embedding model + enable. Returns the admin token
+/// (caller reuses for subsequent swap PUTs).
+async fn set_embedding_model(
+    server: &crate::common::TestServer,
+    model_id: Uuid,
+) -> String {
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        server,
+        "swap_admin",
+        &["memory::admin::manage", "memory::admin::read"],
+    )
+    .await;
+    let res = reqwest::Client::new()
+        .put(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({
+            "enabled": true,
+            "embedding_model_id": model_id,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        res.status().is_success(),
+        "PUT memory/admin-settings → {}",
+        res.status()
+    );
+    admin.token
+}
+
+/// Poll the public rebuild-status endpoint until either it reports
+/// in_progress=false AND pending_count=0, or the deadline expires.
+async fn wait_for_rebuild_done(
+    server: &crate::common::TestServer,
+    admin_token: &str,
+    timeout_secs: u64,
+) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    let client = reqwest::Client::new();
+    let url = server.api_url("/memory/admin-settings/rebuild-status");
+    loop {
+        let res = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {admin_token}"))
+            .send()
+            .await
+            .unwrap();
+        let body: Value = res.json().await.unwrap();
+        let in_progress = body["in_progress"].as_bool().unwrap_or(false);
+        let pending = body["pending_count"].as_i64().unwrap_or(0);
+        if !in_progress && pending == 0 {
+            return;
+        }
+        if std::time::Instant::now() > deadline {
+            panic!(
+                "rebuild didn't complete in {timeout_secs}s: in_progress={in_progress} pending={pending}"
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn r8_same_dim_model_swap_rebuilds_all_rows() {
+    if h::skip_if_no_openai("r8_same_dim_swap") {
+        return;
+    }
+    let server = crate::common::TestServer::start().await;
+    let (model_a, model_b) = register_two_openai_embedders(&server).await;
+    let admin_token = set_embedding_model(&server, model_a).await;
+    let user = h::memory_user(&server, "r8_user").await;
+
+    // Seed 3 memories under model A. Their embedding_model column
+    // should reflect ada-002 once the embed lands.
+    let mut ids = Vec::new();
+    for content in [
+        "User likes the Rust programming language.",
+        "User is allergic to peanuts.",
+        "User lives in Portland, Oregon.",
+    ] {
+        let id = h::mcp_remember(&server, &user.token, content).await;
+        h::wait_for_embedding(&server, &user.token, id).await;
+        ids.push(id);
+    }
+    for id in &ids {
+        let body: Value = reqwest::Client::new()
+            .get(server.api_url(&format!("/memories/{id}")))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(body["embedding_model"], OPENAI_EMBEDDING_MODEL_A);
+    }
+
+    // Snapshot the dim — should be 1536 for ada-002.
+    let before: Value = reqwest::Client::new()
+        .get(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(before["embedding_dimensions"], 1536);
+
+    // Swap to model B (same dim 1536). Worker should re-embed all
+    // 3 rows without ALTER.
+    let res = reqwest::Client::new()
+        .put(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .json(&json!({ "embedding_model_id": model_b }))
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success());
+
+    // Wait for the worker to settle. Same-dim re-embed: 3 rows ×
+    // ~1s each = ~3s.
+    wait_for_rebuild_done(&server, &admin_token, 30).await;
+
+    // Re-check each row — should now show model B's name.
+    for id in &ids {
+        let body: Value = reqwest::Client::new()
+            .get(server.api_url(&format!("/memories/{id}")))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(
+            body["embedding_model"], OPENAI_EMBEDDING_MODEL_B,
+            "row {id} should be re-embedded with model B"
+        );
+    }
+
+    // Dim should stay at 1536 — no ALTER fired.
+    let after: Value = reqwest::Client::new()
+        .get(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after["embedding_dimensions"], 1536);
+}
+
+#[tokio::test]
+#[ignore]
+async fn r9_dim_down_change_alters_column_and_reembeds() {
+    if h::skip_if_no_keys("r9_dim_down") || h::skip_if_no_openai("r9_dim_down") {
+        return;
+    }
+    let server = crate::common::TestServer::start().await;
+    let _gemini_ids = h::setup_real_providers(&server).await;
+    // Gemini (3072d) is now wired. Register OpenAI 3-small (1536d) as
+    // the dim-down target.
+    let admin = crate::common::test_helpers::create_user_with_permissions(
+        &server,
+        "r9_admin",
+        &[
+            "llm_providers::read",
+            "llm_providers::edit",
+            "llm_models::read",
+            "llm_models::create",
+            "memory::admin::read",
+            "memory::admin::manage",
+        ],
+    )
+    .await;
+    let openai = h::configure_builtin_provider(&server, &admin.token, "OpenAI", "OPENAI_API_KEY").await;
+    let three_small = h::create_model(
+        &server,
+        &admin.token,
+        openai["id"].as_str().unwrap(),
+        OPENAI_EMBEDDING_MODEL_B,
+        "OpenAI 3-small (r9)",
+        json!({ "text_embedding": true }),
+    )
+    .await;
+    let three_small_id = Uuid::parse_str(three_small["id"].as_str().unwrap()).unwrap();
+
+    // Insert a memory under Gemini. Wait for embedding (3072d).
+    let user = h::memory_user(&server, "r9_user").await;
+    let mem_id = h::mcp_remember(
+        &server,
+        &user.token,
+        "The user's favorite cuisine is Vietnamese.",
+    )
+    .await;
+    h::wait_for_embedding(&server, &user.token, mem_id).await;
+
+    // Confirm we're at 3072.
+    let before: Value = reqwest::Client::new()
+        .get(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(before["embedding_dimensions"], 3072);
+
+    // Swap to 3-small (1536d). Worker NULLs + ALTERs halfvec(3072) →
+    // halfvec(1536), drops/recreates hnsw index, re-embeds.
+    let res = reqwest::Client::new()
+        .put(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .json(&json!({ "embedding_model_id": three_small_id }))
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success());
+
+    wait_for_rebuild_done(&server, &admin.token, 60).await;
+
+    // Dim should now be 1536.
+    let after: Value = reqwest::Client::new()
+        .get(server.api_url("/memory/admin-settings"))
+        .header("Authorization", format!("Bearer {}", admin.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after["embedding_dimensions"], 1536);
+
+    // The seeded row should be re-embedded with 3-small.
+    let body: Value = reqwest::Client::new()
+        .get(server.api_url(&format!("/memories/{mem_id}")))
+        .header("Authorization", format!("Bearer {}", user.token))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["embedding_model"], OPENAI_EMBEDDING_MODEL_B);
+
+    // And retrieval should still work via the recreated hnsw index.
+    let hits = h::mcp_recall(&server, &user.token, "what food does the user prefer?", 3).await;
+    assert!(!hits.is_empty(), "retrieval should work post-rebuild");
+}
+
+#[tokio::test]
+#[ignore]
+async fn r10_explicit_reembed_endpoint_resumes_stale_rows() {
+    if h::skip_if_no_openai("r10_explicit_reembed") {
+        return;
+    }
+    let server = crate::common::TestServer::start().await;
+    let (model_a, _) = register_two_openai_embedders(&server).await;
+    let admin_token = set_embedding_model(&server, model_a).await;
+    let user = h::memory_user(&server, "r10_user").await;
+
+    // Seed 3 memories under ada-002.
+    let mut ids = Vec::new();
+    for content in [
+        "User enjoys jazz music.",
+        "User has a cat named Mochi.",
+        "User is learning to play piano.",
+    ] {
+        let id = h::mcp_remember(&server, &user.token, content).await;
+        h::wait_for_embedding(&server, &user.token, id).await;
+        ids.push(id);
+    }
+
+    // Pretend 2 of the 3 rows are stale: rewrite their embedding_model
+    // to a value that doesn't match the current admin model. The
+    // worker's re-embed filter is `embedding_model IS DISTINCT FROM
+    // current.name OR embedding IS NULL` — so these two rows should
+    // be re-embedded on the next reembed call.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&server.database_url)
+        .await
+        .unwrap();
+    sqlx::query!(
+        "UPDATE user_memories SET embedding_model = 'pretend-stale-model' WHERE id IN ($1, $2)",
+        ids[0],
+        ids[1]
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    // Confirm rebuild-status reports 2 pending.
+    let status_url = server.api_url("/memory/admin-settings/rebuild-status");
+    let status: Value = reqwest::Client::new()
+        .get(&status_url)
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["pending_count"], 2);
+    assert_eq!(status["in_progress"], false);
+
+    // Trigger explicit re-embed. The handler probes the current
+    // model + spawns the worker WITHOUT requiring a model_id change.
+    let res = reqwest::Client::new()
+        .post(server.api_url("/memory/admin-settings/reembed"))
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        res.status().is_success() || res.status() == 202,
+        "reembed trigger → {}",
+        res.status()
+    );
+
+    wait_for_rebuild_done(&server, &admin_token, 30).await;
+
+    // The two stale rows should now report ada-002 again; the third
+    // was already current and unchanged.
+    for id in &ids {
+        let body: Value = reqwest::Client::new()
+            .get(server.api_url(&format!("/memories/{id}")))
+            .header("Authorization", format!("Bearer {}", user.token))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(body["embedding_model"], OPENAI_EMBEDDING_MODEL_A);
+    }
+
+    // Final status: nothing pending.
+    let status: Value = reqwest::Client::new()
+        .get(&status_url)
+        .header("Authorization", format!("Bearer {admin_token}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(status["pending_count"], 0);
+    assert_eq!(status["in_progress"], false);
+}

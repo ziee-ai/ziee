@@ -28,16 +28,26 @@ export interface EmbeddingCapableModelRow {
   provider_id: string
 }
 
+export interface RebuildStatus {
+  in_progress: boolean
+  pending_count: number
+  model_name: string | null
+}
+
 interface MemoryAdminStore {
   settings: MemoryAdminSettingsRow | null
   availableModels: EmbeddingCapableModelRow[]
+  rebuildStatus: RebuildStatus | null
   loading: boolean
   saving: boolean
   loadingModels: boolean
+  reembeddingTrigger: boolean
   error: string | null
 
   load: () => Promise<void>
   loadEmbeddingCapableModels: () => Promise<void>
+  loadRebuildStatus: () => Promise<void>
+  triggerReembed: () => Promise<boolean>
   update: (
     patch: Partial<{
       embedding_model_id: string | null
@@ -60,9 +70,11 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
     immer((set, _get) => ({
       settings: null,
       availableModels: [],
+      rebuildStatus: null,
       loading: false,
       saving: false,
       loadingModels: false,
+      reembeddingTrigger: false,
       error: null,
 
       load: async () => {
@@ -118,6 +130,47 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
             d.error = e?.message ?? 'Failed to load embedding models'
             d.loadingModels = false
           })
+        }
+      },
+
+      loadRebuildStatus: async () => {
+        try {
+          const res = await fetch(
+            '/api/memory/admin-settings/rebuild-status',
+            { credentials: 'include' },
+          )
+          if (!res.ok) return
+          const status: RebuildStatus = await res.json()
+          set((d) => {
+            d.rebuildStatus = status
+          })
+        } catch {
+          // Polling failure shouldn't surface as an error toast —
+          // worst case the progress card briefly shows stale data.
+        }
+      },
+
+      triggerReembed: async () => {
+        set((d) => {
+          d.reembeddingTrigger = true
+          d.error = null
+        })
+        try {
+          const res = await fetch('/api/memory/admin-settings/reembed', {
+            method: 'POST',
+            credentials: 'include',
+          })
+          if (!res.ok) throw new Error(`Trigger failed: ${res.status}`)
+          set((d) => {
+            d.reembeddingTrigger = false
+          })
+          return true
+        } catch (e: any) {
+          set((d) => {
+            d.error = e?.message ?? 'Trigger failed'
+            d.reembeddingTrigger = false
+          })
+          return false
         }
       },
 

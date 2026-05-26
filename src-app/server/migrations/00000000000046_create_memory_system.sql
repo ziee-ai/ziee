@@ -13,6 +13,20 @@
 -- recommended local embedder). Switching to a different-dimension
 -- embedding model is a one-shot ALTER COLUMN + re-embed-all operation
 -- (see memory_admin module).
+--
+-- Column type is `halfvec` (fp16) not `vector` (fp32):
+--   - Half the storage per row.
+--   - Faster cosine search (SIMD: 2× half-floats per cycle, more
+--     rows in L1/L2 cache).
+--   - Doubled max indexable dim (4000 vs 2000) — important when
+--     pairing with high-dim providers (Gemini 3072, OpenAI 3-large
+--     3072) without falling off the index cliff.
+--   - <1% recall@10 hit vs fp32 in practice (pgvector/FAISS papers).
+--
+-- Index is `hnsw` not `ivfflat`:
+--   - >95% recall at default params; ivfflat needs `probes` tuning.
+--   - Faster search at our scale (100-10k rows per user).
+--   - No `lists` to size against unknown dataset growth.
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -20,7 +34,7 @@ CREATE TABLE user_memories (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content           TEXT NOT NULL,
-    embedding         vector(768),
+    embedding         halfvec(768),
     embedding_model   TEXT,
     source            TEXT NOT NULL CHECK (source IN ('extraction', 'mcp_tool', 'manual')),
     source_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
@@ -40,7 +54,7 @@ CREATE INDEX idx_user_memories_user
 CREATE INDEX idx_user_memories_user_updated
     ON user_memories(user_id, updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_user_memories_embedding
-    ON user_memories USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+    ON user_memories USING hnsw (embedding halfvec_cosine_ops);
 CREATE INDEX idx_user_memories_metadata
     ON user_memories USING GIN (metadata);
 

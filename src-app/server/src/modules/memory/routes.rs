@@ -38,6 +38,14 @@ pub fn memory_router() -> ApiRouter {
             "/memory/admin-settings",
             get_with(get_admin_settings, get_admin_settings_docs)
                 .put_with(update_admin_settings, update_admin_settings_docs),
+        )
+        .api_route(
+            "/memory/admin-settings/rebuild-status",
+            get_with(get_rebuild_status, get_rebuild_status_docs),
+        )
+        .api_route(
+            "/memory/admin-settings/reembed",
+            aide::axum::routing::post_with(trigger_reembed, trigger_reembed_docs),
         );
 
     // Test-only synchronous hooks for the extraction + summarizer

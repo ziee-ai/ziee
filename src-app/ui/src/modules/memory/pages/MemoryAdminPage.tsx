@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Typography,
   Switch,
@@ -11,6 +11,7 @@ import {
   Spin,
   Button,
   Modal,
+  Progress,
   Flex,
   message,
 } from 'antd'
@@ -39,12 +40,20 @@ export function MemoryAdminPage() {
   const {
     settings,
     availableModels,
+    rebuildStatus,
     loading,
     saving,
     loadingModels,
   } = Stores.MemoryAdmin
   const [form] = Form.useForm<AdminFormValues>()
   const [reembedConfirmOpen, setReembedConfirmOpen] = useState(false)
+  // Snapshot of submitted form values held while the swap-confirm
+  // Modal is open. When the admin confirms, we replay these into the
+  // store; cancelling discards them.
+  const [pendingSwap, setPendingSwap] = useState<AdminFormValues | null>(null)
+  // Snapshot the total pending count when the rebuild started so the
+  // progress bar can reflect % done instead of just remaining count.
+  const rebuildTotalRef = useRef<number>(0)
   // Form goes read-only mid-session if permission is revoked. Mirrors
   // project pattern from code_sandbox/SandboxResourceLimitsSection.
   const canManage = usePermission(Permissions.MemoryAdminManage)
@@ -52,7 +61,32 @@ export function MemoryAdminPage() {
   useEffect(() => {
     Stores.MemoryAdmin.load()
     Stores.MemoryAdmin.loadEmbeddingCapableModels()
+    Stores.MemoryAdmin.loadRebuildStatus()
   }, [])
+
+  // Poll rebuild status while a rebuild is in flight. 2s cadence —
+  // fast enough to feel responsive, slow enough that the per-row
+  // worker can do real work between polls without spamming the DB.
+  useEffect(() => {
+    if (!rebuildStatus?.in_progress) return
+    const id = setInterval(() => {
+      Stores.MemoryAdmin.loadRebuildStatus()
+    }, 2000)
+    return () => clearInterval(id)
+  }, [rebuildStatus?.in_progress])
+
+  // Snapshot total at rebuild start so % can render meaningfully.
+  useEffect(() => {
+    if (
+      rebuildStatus?.in_progress &&
+      rebuildStatus.pending_count > rebuildTotalRef.current
+    ) {
+      rebuildTotalRef.current = rebuildStatus.pending_count
+    }
+    if (!rebuildStatus?.in_progress && rebuildStatus?.pending_count === 0) {
+      rebuildTotalRef.current = 0
+    }
+  }, [rebuildStatus])
 
   // Populate form when settings arrive (or change externally via the
   // re-embed button). Matches the LlmProviderDrawer pattern. The
@@ -88,8 +122,7 @@ export function MemoryAdminPage() {
 
   const noModelsAvailable = availableModels.length === 0
 
-  const handleSubmit = async (values: AdminFormValues) => {
-    const priorEmbeddingId = settings.embedding_model_id
+  const persist = async (values: AdminFormValues, modelChanged: boolean) => {
     try {
       await Stores.MemoryAdmin.update({
         embedding_model_id: values.embedding_model_id ?? null,
@@ -109,10 +142,12 @@ export function MemoryAdminPage() {
           ? values.incremental_summary_prompt
           : null,
       })
-      if ((values.embedding_model_id ?? null) !== priorEmbeddingId) {
+      if (modelChanged) {
         message.success(
           'Settings saved. Embedding model changed — re-embed running in background.',
         )
+        // Refresh status so the progress card shows up promptly.
+        Stores.MemoryAdmin.loadRebuildStatus()
       } else {
         message.success('Settings saved.')
       }
@@ -121,19 +156,43 @@ export function MemoryAdminPage() {
     }
   }
 
+  const handleSubmit = async (values: AdminFormValues) => {
+    const priorEmbeddingId = settings.embedding_model_id
+    const newEmbeddingId = values.embedding_model_id ?? null
+    const modelChanged = newEmbeddingId !== priorEmbeddingId
+
+    // If the embedding model is being swapped, intercept with a
+    // confirmation Modal. The auto-spawned worker NULLs all
+    // embeddings + re-embeds — admins should know the cost before
+    // hitting Save. Other field changes proceed silently.
+    if (modelChanged && newEmbeddingId !== null && priorEmbeddingId !== null) {
+      setPendingSwap(values)
+      return
+    }
+    await persist(values, modelChanged)
+  }
+
   const handleReembed = async () => {
     if (!settings.embedding_model_id) return
-    // Re-PUT with the SAME embedding_model_id triggers the dim-probe +
-    // worker path in the backend, which detects the change-or-not and
-    // re-embeds rows with a stale embedding_model name.
-    await Stores.MemoryAdmin.update({
-      embedding_model_id: settings.embedding_model_id,
-    })
+    const ok = await Stores.MemoryAdmin.triggerReembed()
     setReembedConfirmOpen(false)
-    message.info(
-      'Re-embed job dispatched in background. Retrieval temporarily reduced until complete.',
-    )
+    if (ok) {
+      message.info(
+        'Re-embed job dispatched in background. Retrieval temporarily reduced until complete.',
+      )
+      Stores.MemoryAdmin.loadRebuildStatus()
+    } else {
+      message.error('Failed to start re-embed job.')
+    }
   }
+
+  const swapTargetLabel = pendingSwap
+    ? availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
+        ?.display_name ??
+      availableModels.find((m) => m.id === pendingSwap.embedding_model_id)
+        ?.name ??
+      pendingSwap.embedding_model_id
+    : ''
 
   return (
     <div className="max-w-2xl mx-auto p-6">
@@ -161,6 +220,46 @@ export function MemoryAdminPage() {
           }
           className="mb-4"
         />
+      )}
+
+      {rebuildStatus?.in_progress && (
+        <Card
+          className="mb-4"
+          title={
+            <Flex align="center" gap={8}>
+              <Spin size="small" />
+              <span>Re-embedding memories</span>
+            </Flex>
+          }
+        >
+          <Paragraph type="secondary" className="!mb-2 text-sm">
+            Running {rebuildStatus.model_name ? <code>{rebuildStatus.model_name}</code> : 'the configured embedding model'} against every stored memory.
+            Retrieval may return fewer results until this finishes; new
+            memories created during the rebuild are picked up automatically.
+          </Paragraph>
+          <Progress
+            percent={
+              rebuildTotalRef.current > 0
+                ? Math.max(
+                    0,
+                    Math.min(
+                      100,
+                      Math.round(
+                        ((rebuildTotalRef.current - rebuildStatus.pending_count) /
+                          rebuildTotalRef.current) *
+                          100,
+                      ),
+                    ),
+                  )
+                : undefined
+            }
+            status="active"
+          />
+          <Paragraph type="secondary" className="!mb-0 text-xs">
+            {rebuildStatus.pending_count} memory
+            {rebuildStatus.pending_count === 1 ? '' : 'ies'} remaining.
+          </Paragraph>
+        </Card>
       )}
 
       <Form
@@ -395,6 +494,32 @@ export function MemoryAdminPage() {
           </Button>
         </Flex>
       </Form>
+
+      <Modal
+        open={pendingSwap !== null}
+        title="Change the embedding model?"
+        okText="Change and re-embed"
+        okType="primary"
+        cancelText="Keep current model"
+        onCancel={() => setPendingSwap(null)}
+        onOk={async () => {
+          if (!pendingSwap) return
+          const captured = pendingSwap
+          setPendingSwap(null)
+          await persist(captured, true)
+        }}
+      >
+        <Paragraph>
+          Switching to <code>{swapTargetLabel}</code> will NULL every
+          stored memory's embedding and re-compute it in the background.
+        </Paragraph>
+        <Paragraph type="secondary" className="!mb-0 text-sm">
+          During the rebuild, memory retrieval returns fewer results
+          (rows without an embedding are skipped). New memories created
+          during the rebuild are picked up automatically. For large
+          memory stores this can take several minutes.
+        </Paragraph>
+      </Modal>
     </div>
   )
 }

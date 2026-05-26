@@ -55,6 +55,15 @@ pub fn skip_if_no_keys(test_name: &str) -> bool {
     false
 }
 
+/// R8-R10 also need OpenAI for same-dim and dim-down rebuild tests.
+pub fn skip_if_no_openai(test_name: &str) -> bool {
+    if std::env::var("OPENAI_API_KEY").is_err() {
+        eprintln!("test {test_name} skipped: OPENAI_API_KEY not set");
+        return true;
+    }
+    false
+}
+
 /// Provision real providers + models + admin settings end-to-end so
 /// the rest of the test can drive memory through real LLM/embedding
 /// paths. Returns the model IDs the test will reference via
@@ -127,7 +136,7 @@ pub async fn setup_real_providers(server: &TestServer) -> RealProviderIds {
 
 /// Find a built-in provider by display name, set its api_key + enable.
 /// Mirrors `chat::helpers::configure_provider_with_api_key`.
-async fn configure_builtin_provider(
+pub async fn configure_builtin_provider(
     server: &TestServer,
     token: &str,
     display_name: &str,
@@ -171,7 +180,7 @@ async fn configure_builtin_provider(
     serde_json::from_str(&body).expect("updated provider json")
 }
 
-async fn create_model(
+pub async fn create_model(
     server: &TestServer,
     token: &str,
     provider_id: &str,

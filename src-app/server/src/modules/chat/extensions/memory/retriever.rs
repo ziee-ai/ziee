@@ -11,7 +11,7 @@
 //!   - the embedding call fails.
 
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Role};
-use pgvector::Vector;
+use pgvector::HalfVector;
 use uuid::Uuid;
 
 use crate::common::AppError;
@@ -113,7 +113,7 @@ pub async fn retrieve_and_inject(
     // ── 5. Vector top-K ────────────────────────────────────────────
     let hits = match top_k(
         user_id,
-        Vector::from(embedding),
+        HalfVector::from_f32_slice(&embedding),
         admin.default_top_k as i64,
         admin.cosine_threshold,
     )
@@ -234,7 +234,7 @@ async fn inject_core_memory_blocks(
 /// rows where cosine distance < `threshold`.
 async fn top_k(
     user_id: Uuid,
-    embedding: Vector,
+    embedding: HalfVector,
     limit: i64,
     threshold: f32,
 ) -> Result<Vec<(Uuid, String)>, AppError> {

@@ -11,7 +11,7 @@
 
 use ai_providers::{ChatMessage, ChatRequest, ContentBlock, Provider, Role};
 use futures_util::StreamExt;
-use pgvector::Vector;
+use pgvector::HalfVector;
 use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -235,7 +235,7 @@ async fn apply_add(
     // rows that don't need rebuilding.
     if let Ok(vec) = super::dispatch::embed(embedding_model_id, &content).await {
         let model_name = embedding_model_name(embedding_model_id).await;
-        let v = Vector::from(vec);
+        let v = HalfVector::from_f32_slice(&vec);
         let _ = sqlx::query(
             "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
         )
@@ -288,7 +288,7 @@ async fn apply_update(
 
     if let Ok(vec) = super::dispatch::embed(embedding_model_id, &row.content).await {
         let model_name = embedding_model_name(embedding_model_id).await;
-        let v = Vector::from(vec);
+        let v = HalfVector::from_f32_slice(&vec);
         let _ = sqlx::query(
             "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
         )

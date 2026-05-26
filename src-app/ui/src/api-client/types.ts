@@ -1295,6 +1295,12 @@ export interface ReadResourceResponse {
   content: any
 }
 
+export interface RebuildStatus {
+  in_progress: boolean
+  model_name?: string
+  pending_count: number
+}
+
 export interface RefreshTokenRequest {
   refresh_token: string
 }
@@ -1545,6 +1551,12 @@ export interface SyncCacheResponse {
   synced_count: number
 }
 
+export interface TestExtractRequest {
+  assistant_message: string
+  user_id: string
+  user_message: string
+}
+
 export interface TestRepositoryConnectionRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -1555,6 +1567,11 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
+}
+
+export interface TestSummarizeRequest {
+  branch_id: string
+  model_id: string
 }
 
 export interface TextPageQuery {
@@ -2187,6 +2204,8 @@ export const ApiEndpoints = {
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
   'Memory.admin.get': 'GET /api/memory/admin-settings',
+  'Memory.admin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
+  'Memory.admin.reembed': 'POST /api/memory/admin-settings/reembed',
   'Memory.admin.update': 'PUT /api/memory/admin-settings',
   'Memory.audit.list': 'GET /api/memory/audit-log',
   'Memory.create': 'POST /api/memories',
@@ -2196,6 +2215,8 @@ export const ApiEndpoints = {
   'Memory.list': 'GET /api/memories',
   'Memory.settings.get': 'GET /api/memory/settings',
   'Memory.settings.update': 'PUT /api/memory/settings',
+  'Memory.test.extract': 'POST /api/_test/memory/extract',
+  'Memory.test.summarize': 'POST /api/_test/memory/summarize',
   'Memory.update': 'PATCH /api/memories/{id}',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
@@ -2369,6 +2390,8 @@ export type ApiEndpointParameters = {
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
   'Memory.admin.get': void
+  'Memory.admin.rebuildStatus': void
+  'Memory.admin.reembed': void
   'Memory.admin.update': UpdateMemoryAdminSettingsRequest
   'Memory.audit.list': { limit?: number }
   'Memory.create': CreateMemoryRequest
@@ -2378,6 +2401,8 @@ export type ApiEndpointParameters = {
   'Memory.list': { limit?: number; offset?: number }
   'Memory.settings.get': void
   'Memory.settings.update': UpdateUserMemorySettingsRequest
+  'Memory.test.extract': TestExtractRequest
+  'Memory.test.summarize': TestSummarizeRequest
   'Memory.update': { id: string } & UpdateMemoryRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
@@ -2551,6 +2576,8 @@ export type ApiEndpointResponses = {
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.update': McpServer
   'Memory.admin.get': MemoryAdminSettings
+  'Memory.admin.rebuildStatus': RebuildStatus
+  'Memory.admin.reembed': any
   'Memory.admin.update': MemoryAdminSettings
   'Memory.audit.list': MemoryAuditEntry[]
   'Memory.create': UserMemory
@@ -2560,6 +2587,8 @@ export type ApiEndpointResponses = {
   'Memory.list': UserMemory[]
   'Memory.settings.get': UserMemorySettings
   'Memory.settings.update': UserMemorySettings
+  'Memory.test.extract': any
+  'Memory.test.summarize': any
   'Memory.update': UserMemory
   'Message.delete': void
   'Message.edit': EditMessageResponse
