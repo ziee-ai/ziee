@@ -1,5 +1,5 @@
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import { getAdminToken, loginAsAdmin } from '../../common/auth-helpers'
 import {
   fillProjectForm,
   goToProjectsPage,
@@ -51,7 +51,12 @@ test.describe('Projects - Knowledge / file attach', () => {
     // Use the API directly to upload + attach; this matches the v1
     // UX path where the user attaches an existing file through the
     // combined endpoint. Full drag-drop UX is a Phase D polish item.
-    const token = await page.evaluate(() => localStorage.getItem('access_token'))
+    //
+    // Fetch the token via the dedicated helper — `localStorage`'s
+    // `access_token` key never existed; the auth store persists under
+    // `auth-storage` and tests should not couple to that internal
+    // shape.
+    const token = await getAdminToken(baseURL)
     const formData = new FormData()
     formData.append(
       'file',

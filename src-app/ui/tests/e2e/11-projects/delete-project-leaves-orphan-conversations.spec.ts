@@ -1,11 +1,11 @@
 import { test, expect } from '../../fixtures/test-context'
-import { loginAsAdmin } from '../../common/auth-helpers'
+import { getAdminToken, loginAsAdmin } from '../../common/auth-helpers'
 import {
-  clickCardMenuItem,
+  clickCardAction,
+  confirmDeletePopconfirm,
   fillProjectForm,
   goToProjectsPage,
   openCreateProjectDrawer,
-  openProjectCardMenu,
   submitProjectForm,
 } from './helpers/project-helpers'
 
@@ -31,9 +31,10 @@ test.describe('Projects - delete preserves orphan conversations', () => {
 
     // 2. Create a conversation inside the project via the API (drives
     //    the project_id snapshot path tested at the backend level).
-    const token = await page.evaluate(() =>
-      localStorage.getItem('access_token'),
-    )
+    //    The token lives under the persisted `auth-storage` Zustand
+    //    key, not `access_token` — fetch a fresh token via the helper
+    //    so we don't depend on the FE storage shape.
+    const token = await getAdminToken(baseURL)
     await page.locator('.ant-card', { hasText: 'Ephemeral Project' }).click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
     const projectId = new URL(page.url()).pathname.split('/').pop()!
@@ -53,20 +54,25 @@ test.describe('Projects - delete preserves orphan conversations', () => {
     )
     expect(convResp).toHaveProperty('id')
 
-    // 3. Delete the project from the list-page card menu.
+    // 3. Delete the project from the list-page card via the inline
+    //    Delete icon button + Popconfirm. The round-3 ProjectCard
+    //    rewrite replaced the Dropdown menu with inline icon buttons.
     await goToProjectsPage(page, baseURL)
-    await openProjectCardMenu(page, 'Ephemeral Project')
-    await clickCardMenuItem(page, 'Delete')
+    await clickCardAction(page, 'Ephemeral Project', 'Delete')
+    await confirmDeletePopconfirm(page)
 
     // 4. The conversation still exists at the API level (project_id = NULL).
     const after = await page.evaluate(
-      async ([apiBase, t, cid]) => {
+      async ({ apiBase, t, cid }: { apiBase: string; t: string; cid: string }) => {
         const r = await fetch(`${apiBase}/api/conversations/${cid}`, {
           headers: { Authorization: `Bearer ${t}` },
         })
-        return { status: r.status, body: r.status === 200 ? await r.json() : null }
+        return {
+          status: r.status,
+          body: r.status === 200 ? await r.json() : null,
+        }
       },
-      [baseURL, token, convResp.id],
+      { apiBase: baseURL, t: token, cid: convResp.id as string },
     )
     expect(after.status).toBe(200)
     expect(after.body.project_id).toBeNull()

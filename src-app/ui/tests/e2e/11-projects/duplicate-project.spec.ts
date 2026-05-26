@@ -2,11 +2,10 @@ import { test, expect } from '../../fixtures/test-context'
 import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   assertProjectExists,
-  clickCardMenuItem,
+  clickCardAction,
   fillProjectForm,
   goToProjectsPage,
   openCreateProjectDrawer,
-  openProjectCardMenu,
   submitProjectForm,
 } from './helpers/project-helpers'
 
@@ -27,9 +26,9 @@ test.describe('Projects - Duplicate', () => {
     await submitProjectForm(page)
     await assertProjectExists(page, 'Dup Source')
 
-    // Open the card menu → Duplicate.
-    await openProjectCardMenu(page, 'Dup Source')
-    await clickCardMenuItem(page, 'Duplicate')
+    // Click the inline Duplicate icon button on the card (round-3
+    // ProjectCard rewrite — Dropdown menu was replaced by inline icons).
+    await clickCardAction(page, 'Dup Source', 'Duplicate')
 
     // Server appends " (copy)" to the name.
     await assertProjectExists(page, 'Dup Source (copy)')
@@ -46,14 +45,22 @@ test.describe('Projects - Duplicate', () => {
     await page.locator('.ant-card', { hasText: 'Header Dup' }).click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
 
-    // Click "Duplicate" in the header bar.
+    // Click "Duplicate" in the header bar. Note: antd icons (CopyOutlined)
+    // contribute "copy" to the accessible name, so the button's full
+    // accessible name is "copy Duplicate" — match by trailing
+    // "Duplicate" rather than anchoring with /^…$/.
     await page
-      .getByRole('button', { name: /^duplicate$/i })
+      .getByRole('button', { name: /duplicate/i })
       .first()
       .click()
 
-    // The page navigates to the new project's detail page.
+    // The page navigates to the new project's detail page. Verify by
+    // checking the H4 page title — the project name also appears in
+    // the sidebar widget AND a brief success toast ("Duplicated as
+    // …"), which would trip strict-mode if we matched plain text.
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/, { timeout: 10000 })
-    await expect(page.getByText(/Header Dup \(copy\)/i)).toBeVisible()
+    await expect(
+      page.getByRole('heading', { level: 4, name: /Header Dup \(copy\)/i }),
+    ).toBeVisible()
   })
 })

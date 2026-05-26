@@ -60,8 +60,8 @@ test.describe('Projects - message uses project context (real LLM)', () => {
       apiURL,
       adminToken,
       providerId,
-      'claude-3-5-haiku-20241022',
-      'Claude 3.5 Haiku',
+      'claude-haiku-4-5-20251001',
+      'Claude Haiku 4.5',
       'anthropic',
     )
 
@@ -137,8 +137,8 @@ test.describe('Projects - message uses project context (real LLM)', () => {
       apiURL,
       adminToken,
       providerId,
-      'claude-3-5-haiku-20241022',
-      'Claude 3.5 Haiku',
+      'claude-haiku-4-5-20251001',
+      'Claude Haiku 4.5',
       'anthropic',
     )
 

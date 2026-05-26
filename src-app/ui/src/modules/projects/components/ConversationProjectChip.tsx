@@ -24,8 +24,16 @@ import { Stores } from '@/core/stores'
  */
 export function ConversationProjectChip() {
   const navigate = useNavigate()
+  // CRITICAL: every Stores.X.field access goes through the proxy
+  // `get` trap which calls useEffect + useStore (2 hooks per
+  // property). Reads MUST happen unconditionally at the top of the
+  // component, before any early return — otherwise React sees a
+  // varying hook count between renders and throws "Rendered more
+  // hooks than during the previous render." Read every property used
+  // anywhere in this component up front; let JS evaluate the
+  // downstream conditionals.
   const { conversation } = Stores.Chat
-  const { project } = Stores.ProjectDetail
+  const { project, files: projectFiles } = Stores.ProjectDetail
 
   const projectId = conversation?.project_id ?? null
 
@@ -79,9 +87,7 @@ export function ConversationProjectChip() {
   // Until ProjectDetail finishes loading, show a neutral chip with the
   // ID-as-fallback so the user still gets the affordance.
   const name = project?.id === projectId ? project?.name : 'Project'
-  const fileCount = project?.id === projectId
-    ? Stores.ProjectDetail.files.length
-    : 0
+  const fileCount = project?.id === projectId ? projectFiles.length : 0
 
   // Keyboard-accessible: Tag is rendered as a <span> by antd, so the
   // onClick handler is invisible to keyboard users by default. Add

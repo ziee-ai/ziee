@@ -3,11 +3,10 @@ import { loginAsAdmin } from '../../common/auth-helpers'
 import {
   assertProjectExists,
   assertSuccessMessage,
-  clickCardMenuItem,
+  clickCardAction,
   fillProjectForm,
   goToProjectsPage,
   openCreateProjectDrawer,
-  openProjectCardMenu,
   submitProjectForm,
 } from './helpers/project-helpers'
 
@@ -30,9 +29,9 @@ test.describe('Projects - Edit project', () => {
     await submitProjectForm(page)
     await assertProjectExists(page, 'Edit Target')
 
-    // Open the card menu → Edit.
-    await openProjectCardMenu(page, 'Edit Target')
-    await clickCardMenuItem(page, 'Edit')
+    // Click the inline Edit icon button on the card (round-3 ProjectCard
+    // rewrite replaced the Dropdown menu with inline icon buttons).
+    await clickCardAction(page, 'Edit Target', 'Edit')
 
     // The drawer should be in Edit mode with prefilled values.
     await expect(

@@ -53,9 +53,13 @@ export async function fillProjectForm(
 }
 
 export async function submitProjectForm(page: Page) {
+  // Per `[[project_ui_e2e_drawer_selectors]]`: scope by
+  // `.ant-btn-primary[type="submit"]` rather than the text-match.
+  // Text matching is fragile across button-label changes (Create/Save
+  // tense, icon contribution to accessible name, loading state hiding
+  // the label) and the CSS-selector is the canonical drawer submit.
   await page
-    .locator('.ant-drawer.ant-drawer-open')
-    .getByRole('button', { name: /^create$|^save$/i })
+    .locator('.ant-drawer.ant-drawer-open .ant-btn-primary[type="submit"]')
     .click()
 }
 
@@ -82,16 +86,59 @@ export function getProjectCard(page: Page, projectName: string) {
     .first()
 }
 
-export async function openProjectCardMenu(page: Page, projectName: string) {
-  const card = getProjectCard(page, projectName)
-  await card.getByRole('button', { name: /project actions/i }).click()
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-export async function clickCardMenuItem(
+/**
+ * Click the inline Edit/Duplicate/Delete icon button on a project
+ * card. The round-3 ProjectCard rewrite replaced the Dropdown
+ * "Project actions" menu with three inline icon buttons whose
+ * aria-labels are "Edit {name}" / "Duplicate {name}" / "Delete {name}".
+ *
+ * For `Delete`, the click opens an antd Popconfirm — call
+ * `confirmDeletePopconfirm` afterwards.
+ */
+export async function clickCardAction(
   page: Page,
-  itemName: 'Edit' | 'Duplicate' | 'Delete',
+  projectName: string,
+  action: 'Edit' | 'Duplicate' | 'Delete',
 ) {
-  await page.getByRole('menuitem', { name: itemName }).click()
+  const card = getProjectCard(page, projectName)
+  await card
+    .getByRole('button', {
+      name: new RegExp(`^${action} ${escapeRe(projectName)}$`, 'i'),
+    })
+    .click()
+}
+
+/**
+ * Click the primary action of the antd Popconfirm currently open on
+ * the page. Selector is stable across okText changes per
+ * `[[project_ui_e2e_drawer_selectors]]`.
+ */
+export async function confirmDeletePopconfirm(page: Page) {
+  await page
+    .locator('.ant-popconfirm .ant-btn-primary')
+    .first()
+    .click()
+}
+
+/** @deprecated Round-3 removed the Dropdown menu — use `clickCardAction` instead. */
+export async function openProjectCardMenu(_page: Page, projectName: string) {
+  throw new Error(
+    `openProjectCardMenu is gone — the Dropdown menu was replaced by inline ` +
+      `icon buttons in round 3. Update the test to call clickCardAction(page, '${projectName}', 'Edit'|'Duplicate'|'Delete') ` +
+      `(and confirmDeletePopconfirm for the delete case).`,
+  )
+}
+
+/** @deprecated See `openProjectCardMenu`. */
+export async function clickCardMenuItem(
+  _page: Page,
+  _itemName: 'Edit' | 'Duplicate' | 'Delete',
+) {
+  throw new Error('clickCardMenuItem is gone — use clickCardAction.')
 }
 
 export async function assertProjectExists(
@@ -107,7 +154,13 @@ export async function assertProjectExists(
 }
 
 export async function assertEmptyState(page: Page) {
-  await expect(page.getByText(/no projects yet/i)).toBeVisible()
+  // "No projects yet" appears both as the sidebar widget's <Text>
+  // empty-state AND the main page's <Title> empty-state. Scope to
+  // the main page's <h3> heading so the strict mode check doesn't
+  // match the sidebar instance.
+  await expect(
+    page.getByRole('heading', { name: /no projects yet/i }),
+  ).toBeVisible()
 }
 
 export async function assertSuccessMessage(page: Page, text: string | RegExp) {
