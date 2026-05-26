@@ -60,13 +60,23 @@ pub async fn start_model_instance(
     // Use model name as the path/identifier
     let model_path = model.name.clone();
 
+    // Build engine config. When the model is flagged as an embedder
+    // (capabilities.text_embedding=true) we set `embeddings: true` so
+    // build_llamacpp_command adds the `--embeddings` flag. Without
+    // this, llama-server boots in chat mode and `/embedding` POSTs
+    // return 404 / empty vectors. Plan §8 "Local-runtime embedding proxy".
+    let mut engine_config = serde_json::json!({});
+    if model.capabilities.text_embedding.unwrap_or(false) {
+        engine_config["embeddings"] = serde_json::Value::Bool(true);
+    }
+
     // Start the deployment
     let result = deployment
         .start(
             model_id,
             model.engine_type.as_str(),
             &model_path,
-            &serde_json::json!({}),
+            &engine_config,
         )
         .await?;
 

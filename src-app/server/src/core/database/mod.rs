@@ -7,6 +7,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::OnceCell;
 
+pub mod pgvector_install;
+
 const POSTGRES_VERSION: &str = "17.5.0";
 
 static DATABASE_POOL: OnceCell<Arc<PgPool>> = OnceCell::const_new();
@@ -196,10 +198,54 @@ async fn try_initialize_database_once(
 
         postgresql.setup().await?;
 
-        // Note: pgvector and Apache AGE extensions can be added later when needed
+        // Install pgvector into the embedded-PG installation dir BEFORE
+        // start() — Postgres only scans `share/extension/` at boot for
+        // CREATE EXTENSION lookups. Fail-soft: if the build embedded
+        // zero-byte stubs (pgvector make failed at compile time), log
+        // and continue; the memory module checks `pgvector_install::is_available()`
+        // before touching vector(N) tables.
+        if pgvector_install::has_real_artifacts() {
+            match pgvector_install::install_into(&postgresql.settings().installation_dir) {
+                Ok(()) => println!("pgvector: installed into embedded PG"),
+                Err(e) => eprintln!(
+                    "WARN: pgvector install failed; memory features will be disabled: {}",
+                    e
+                ),
+            }
+        } else {
+            eprintln!(
+                "WARN: pgvector artifacts not built into binary (build_helper/pgvector.rs::build_pgvector failed at compile time); memory features will be disabled"
+            );
+        }
 
         println!("Starting embedded PostgreSQL...");
         postgresql.start().await?;
+
+        // Smoke-test: CREATE EXTENSION vector. On success, mark
+        // available so the memory module knows it can use vector(N).
+        let smoke_url = postgresql.settings().url("postgres");
+        if let Ok(probe_pool) = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&smoke_url)
+            .await
+        {
+            match sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
+                .execute(&probe_pool)
+                .await
+            {
+                Ok(_) => {
+                    pgvector_install::mark_available();
+                    println!("pgvector: CREATE EXTENSION smoke-test passed");
+                }
+                Err(e) => {
+                    eprintln!(
+                        "WARN: CREATE EXTENSION vector failed; memory features will be disabled: {}",
+                        e
+                    );
+                }
+            }
+            probe_pool.close().await;
+        }
 
         let database_url = postgresql.settings().url("postgres");
         // Log only the host:port + db name; the embedded URL contains

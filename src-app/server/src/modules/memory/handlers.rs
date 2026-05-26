@@ -337,16 +337,65 @@ pub async fn update_admin_settings(
             .into());
         }
     }
+
+    // Snapshot the current embedding model id so we can detect a swap
+    // and trigger the re-embed worker if it changed.
+    let prior = Repos.memory.get_admin_settings().await?;
+    let prior_model_id = prior.embedding_model_id;
+
     let row = Repos
         .memory
         .update_admin_settings(
-            body.embedding_model_id,
+            body.embedding_model_id.clone(),
             body.default_extraction_model_id,
             body.default_top_k,
             body.cosine_threshold,
             body.enabled,
         )
         .await?;
+
+    // If the admin swapped the embedding model (or set one for the
+    // first time after onboarding), kick off the worker. The worker
+    // handles both same-dim re-embed and cross-dim ALTER COLUMN +
+    // re-embed. Fire-and-forget so the HTTP call returns immediately.
+    if let Some(new_id_opt) = body.embedding_model_id {
+        if new_id_opt != prior_model_id {
+            if let Some(new_id) = new_id_opt {
+                // Probe the new model to learn its name + dimension.
+                // The model row may not exist in extreme races; fall
+                // back to no-op if so.
+                if let Ok(Some(new_model)) = Repos.llm_model.get_by_id(new_id).await {
+                    // Best-effort dimension probe via a single embed
+                    // of a sentinel string. Allows recording the
+                    // actual model dimension into memory_admin_settings
+                    // and gates the cross-dim ALTER path.
+                    let pool = Repos.memory.pool_clone();
+                    let model_id = new_id;
+                    let model_name = new_model.name.clone();
+                    tokio::spawn(async move {
+                        let dim = match crate::modules::chat::extensions::memory::dispatch::embed(
+                            model_id,
+                            "dimension probe",
+                        )
+                        .await
+                        {
+                            Ok(v) => v.len() as i32,
+                            Err(e) => {
+                                tracing::warn!(
+                                    "memory.admin: dimension probe failed for {}: {} — keeping existing dim",
+                                    model_id,
+                                    e
+                                );
+                                return;
+                            }
+                        };
+                        super::embedding_worker::reembed_all(pool, model_id, model_name, dim).await;
+                    });
+                }
+            }
+        }
+    }
+
     Ok((StatusCode::OK, Json(row)))
 }
 

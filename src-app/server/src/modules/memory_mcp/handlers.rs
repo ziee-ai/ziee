@@ -204,13 +204,21 @@ async fn remember(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
                     crate::modules::chat::extensions::memory::dispatch::embed(emb_model_id, content)
                         .await
                 {
+                    let model_name = Repos
+                        .llm_model
+                        .get_by_id(emb_model_id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|m| m.name)
+                        .unwrap_or_else(|| emb_model_id.to_string());
                     let v = Vector::from(vec);
                     let pool = Repos.memory.pool_clone();
                     let _ = sqlx::query(
                         "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
                     )
                     .bind(&v)
-                    .bind(format!("model_id:{emb_model_id}"))
+                    .bind(&model_name)
                     .bind(row.id)
                     .bind(user_id)
                     .execute(&pool)

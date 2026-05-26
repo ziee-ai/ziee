@@ -79,6 +79,35 @@ async fn run(
         return Ok(());
     }
 
+    // Per-user daily extraction quota. Defaults to 200; admin can lift
+    // by raising max_memories (also gates total live memory count).
+    // Counts memories CREATED via extraction in the trailing 24h —
+    // covers spam-via-many-short-conversations evasion since memories
+    // accumulate globally per user, not per conversation. Plan §11.
+    const DAILY_EXTRACTION_QUOTA: i64 = 200;
+    let pool = Repos.memory.pool_clone();
+    let today_count: (i64,) = sqlx::query_as(
+        r#"
+        SELECT COUNT(*)
+        FROM user_memories
+        WHERE user_id = $1
+          AND source = 'extraction'
+          AND created_at > NOW() - INTERVAL '24 hours'
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await?;
+    if today_count.0 >= DAILY_EXTRACTION_QUOTA {
+        tracing::info!(
+            "memory.extract: user {} hit daily extraction quota ({}/{}) — skipping",
+            user_id,
+            today_count.0,
+            DAILY_EXTRACTION_QUOTA
+        );
+        return Ok(());
+    }
+
     // The extraction model can be the user's override or the admin default.
     let Some(extraction_model_id) = user_settings
         .extraction_model_id
@@ -192,14 +221,18 @@ async fn apply_add(
         )
         .await?;
 
-    // Embed + write back.
+    // Embed + write back. The model NAME (not UUID) goes into
+    // embedding_model so the re-embed worker can compare it cheaply
+    // against the admin's currently-configured model name and skip
+    // rows that don't need rebuilding.
     if let Ok(vec) = super::dispatch::embed(embedding_model_id, &content).await {
+        let model_name = embedding_model_name(embedding_model_id).await;
         let v = Vector::from(vec);
         let _ = sqlx::query(
             "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
         )
         .bind(&v)
-        .bind(format!("model_id:{embedding_model_id}"))
+        .bind(&model_name)
         .bind(new_row.id)
         .bind(user_id)
         .execute(pool)
@@ -207,6 +240,15 @@ async fn apply_add(
         .map_err(AppError::database_error)?;
     }
     Ok(())
+}
+
+/// Look up an llm_model's `name` for the `embedding_model` column.
+/// Falls back to the UUID string on error.
+async fn embedding_model_name(model_id: Uuid) -> String {
+    match Repos.llm_model.get_by_id(model_id).await {
+        Ok(Some(m)) => m.name,
+        _ => model_id.to_string(),
+    }
 }
 
 async fn apply_update(
@@ -237,12 +279,13 @@ async fn apply_update(
     };
 
     if let Ok(vec) = super::dispatch::embed(embedding_model_id, &row.content).await {
+        let model_name = embedding_model_name(embedding_model_id).await;
         let v = Vector::from(vec);
         let _ = sqlx::query(
             "UPDATE user_memories SET embedding = $1, embedding_model = $2 WHERE id = $3 AND user_id = $4",
         )
         .bind(&v)
-        .bind(format!("model_id:{embedding_model_id}"))
+        .bind(&model_name)
         .bind(row.id)
         .bind(user_id)
         .execute(pool)

@@ -10,6 +10,7 @@
 //! All three share the same Postgres tables (`user_memories`,
 //! `user_memory_settings`) defined by migration 46.
 
+pub mod embedding_worker;
 pub mod handlers;
 pub mod models;
 pub mod permissions;

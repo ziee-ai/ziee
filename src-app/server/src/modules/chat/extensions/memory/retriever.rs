@@ -24,8 +24,14 @@ const SYSTEM_BLOCK_FOOTER: &str = "\n\nIf a memory contradicts something the use
 
 /// Run retrieval. Mutates `chat_request` in place. Errors are logged
 /// and converted to no-ops — memory must never break the chat path.
+///
+/// `conversation_id` (when known) enables the per-conversation memory_mode
+/// override added by migration 47. `assistant_id` (when known) enables
+/// per-assistant core-memory block injection (Phase 6).
 pub async fn retrieve_and_inject(
     user_id: Uuid,
+    conversation_id: Option<Uuid>,
+    assistant_id: Option<Uuid>,
     chat_request: &mut ChatRequest,
 ) -> Result<(), AppError> {
     // ── 1. Gate checks ─────────────────────────────────────────────
@@ -50,7 +56,31 @@ pub async fn retrieve_and_inject(
             return Ok(());
         }
     };
-    if !user_settings.retrieval_enabled {
+
+    // Per-conversation override (migration 47). 'inherit' falls back
+    // to the user's retrieval_enabled toggle; 'on'/'off' force
+    // regardless. The override only controls RETRIEVAL — extraction
+    // still follows user settings (no per-conversation extraction
+    // toggle yet).
+    let per_conv_mode = match conversation_id {
+        Some(cid) => fetch_conversation_memory_mode(cid).await.unwrap_or_else(|| "inherit".to_string()),
+        None => "inherit".to_string(),
+    };
+    let retrieval_enabled = match per_conv_mode.as_str() {
+        "on" => true,
+        "off" => false,
+        _ => user_settings.retrieval_enabled,
+    };
+
+    // Core memory blocks are injected regardless of retrieval enabled —
+    // they're Letta-style always-in-context content, not vector recall.
+    if let Some(aid) = assistant_id {
+        if let Err(e) = inject_core_memory_blocks(user_id, aid, chat_request).await {
+            tracing::warn!("memory.retrieve: core_memory inject failed: {e}");
+        }
+    }
+
+    if !retrieval_enabled {
         return Ok(());
     }
 
@@ -149,6 +179,55 @@ fn latest_user_text(req: &ChatRequest) -> Option<String> {
             }
             if buf.is_empty() { None } else { Some(buf) }
         })
+}
+
+/// Fetch `conversations.memory_mode` (migration 47). Returns the
+/// 'inherit' string on any error so callers fall through to the
+/// user-level setting.
+async fn fetch_conversation_memory_mode(conversation_id: Uuid) -> Option<String> {
+    let pool = Repos.memory.pool_clone();
+    sqlx::query_scalar::<_, String>(
+        "SELECT memory_mode FROM conversations WHERE id = $1",
+    )
+    .bind(conversation_id)
+    .fetch_one(&pool)
+    .await
+    .ok()
+}
+
+/// Prepend a Letta-style core-memory block (persona / human / etc.) to
+/// `chat_request.messages`. Phase 6 plan §6 "Block injection in
+/// before_llm_call". Each block becomes a single System message;
+/// multiple blocks are concatenated.
+async fn inject_core_memory_blocks(
+    user_id: Uuid,
+    assistant_id: Uuid,
+    chat_request: &mut ChatRequest,
+) -> Result<(), AppError> {
+    let blocks = Repos
+        .assistant_core_memory
+        .list_for_user_assistant(user_id, assistant_id)
+        .await?;
+    if blocks.is_empty() {
+        return Ok(());
+    }
+    let body: String = blocks
+        .iter()
+        .map(|b| format!("[{}]\n{}", b.block_label, b.content))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let block_text = format!(
+        "## Assistant core memory (always in context):\n\n{}\n\nThe blocks above are persistent context for this assistant. Update them by calling the appropriate memory tool, not by repeating their content in conversation.",
+        body
+    );
+    chat_request.messages.insert(
+        0,
+        ChatMessage {
+            role: Role::System,
+            content: vec![ContentBlock::Text { text: block_text }],
+        },
+    );
+    Ok(())
 }
 
 /// Top-K cosine search filtered by user_id. Returns `(memory_id, content)`

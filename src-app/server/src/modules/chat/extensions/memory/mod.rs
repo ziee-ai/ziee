@@ -13,3 +13,4 @@ pub mod extractor;
 mod memory;
 pub mod prompts;
 pub mod retriever;
+pub mod summarizer;

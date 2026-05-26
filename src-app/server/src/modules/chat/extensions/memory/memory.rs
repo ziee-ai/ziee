@@ -50,7 +50,19 @@ impl ChatExtension for MemoryExtension {
         _send_request: &SendMessageRequest,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<Event, Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
-        if let Err(e) = super::retriever::retrieve_and_inject(context.user_id, request).await {
+        let assistant_id = context
+            .metadata
+            .get("assistant_id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+        if let Err(e) = super::retriever::retrieve_and_inject(
+            context.user_id,
+            Some(context.conversation_id),
+            assistant_id,
+            request,
+        )
+        .await
+        {
             tracing::warn!("memory.before_llm_call: retrieve_and_inject error: {e}");
         }
         Ok(BeforeLlmAction::Continue)

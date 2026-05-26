@@ -96,6 +96,13 @@ pub struct ListModelsQuery {
     /// Optional provider ID to filter models by
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<Uuid>,
+    /// Optional capability filter. When set, only models whose
+    /// `capabilities.<capability>` JSONB field is `true` are returned.
+    /// Used by the memory admin page to populate the embedding-model
+    /// dropdown via `?capability=text_embedding`. Validated against
+    /// a small allowlist; unknown values yield 400.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability: Option<String>,
     /// Page number (1-indexed)
     #[serde(default = "default_page")]
     pub page: i64,
