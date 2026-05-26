@@ -480,3 +480,77 @@ pub fn update_admin_settings_docs(op: TransformOperation) -> TransformOperation 
         .summary("Update admin memory settings")
         .response::<200, Json<MemoryAdminSettings>>()
 }
+
+// ============================================================================
+// Test-only hooks (Tier-5 real-LLM integration tests).
+//
+// Gated behind `#[cfg(debug_assertions)]` so release builds physically
+// don't ship these routes. They expose the extractor/summarizer
+// pipelines that normally fire from `after_llm_call` so a test can
+// trigger them synchronously via HTTP without needing to drive a
+// full chat conversation. Admin-perm-gated for paranoia in case a
+// debug binary ever runs in a quasi-production setting.
+// ============================================================================
+
+#[cfg(debug_assertions)]
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TestExtractRequest {
+    pub user_id: Uuid,
+    pub user_message: String,
+    pub assistant_message: String,
+}
+
+#[cfg(debug_assertions)]
+#[debug_handler]
+pub async fn test_extract(
+    _auth: RequirePermissions<(MemoryAdminManage,)>,
+    Json(body): Json<TestExtractRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    crate::modules::chat::extensions::memory::extractor::extract_and_persist(
+        body.user_id,
+        body.user_message,
+        body.assistant_message,
+        None,
+    )
+    .await;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))
+}
+
+#[cfg(debug_assertions)]
+pub fn test_extract_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryAdminManage,)>(op)
+        .id("Memory.test.extract")
+        .tag("Memory")
+        .summary("Test-only: trigger extraction synchronously (debug builds)")
+        .response::<200, Json<serde_json::Value>>()
+}
+
+#[cfg(debug_assertions)]
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TestSummarizeRequest {
+    pub branch_id: Uuid,
+    pub model_id: Uuid,
+}
+
+#[cfg(debug_assertions)]
+#[debug_handler]
+pub async fn test_summarize(
+    _auth: RequirePermissions<(MemoryAdminManage,)>,
+    Json(body): Json<TestSummarizeRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    crate::modules::chat::extensions::memory::summarizer::refresh_summary(
+        body.branch_id,
+        body.model_id,
+    )
+    .await?;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))
+}
+
+#[cfg(debug_assertions)]
+pub fn test_summarize_docs(op: TransformOperation) -> TransformOperation {
+    with_permission::<(MemoryAdminManage,)>(op)
+        .id("Memory.test.summarize")
+        .tag("Memory")
+        .summary("Test-only: trigger summary refresh synchronously (debug builds)")
+        .response::<200, Json<serde_json::Value>>()
+}

@@ -277,6 +277,7 @@ async fn recall(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
         WHERE user_id = $1
           AND deleted_at IS NULL
           AND embedding IS NOT NULL
+          AND (embedding <=> $2)::real < $4
         ORDER BY embedding <=> $2
         LIMIT $3
         "#,
@@ -284,6 +285,7 @@ async fn recall(user_id: Uuid, args: &Value) -> Result<Value, AppError> {
     .bind(user_id)
     .bind(&Vector::from(vec))
     .bind(limit)
+    .bind(admin.cosine_threshold)
     .fetch_all(&pool)
     .await
     .map_err(AppError::database_error)?;
