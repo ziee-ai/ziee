@@ -8,13 +8,14 @@ import {
 } from './helpers/project-helpers'
 
 /**
- * Knowledge tab: attach an existing file (via the file picker route)
- * to a project, see it in the panel, detach it again.
+ * Round-4 Option A redesign: Knowledge is now an inline compact
+ * preview on the project detail page (chip strip + "Manage" button
+ * that opens the full file panel in a Drawer). No more "Knowledge
+ * tab" — the empty state lives directly in the preview block.
  *
- * v1 ProjectFilesPanel uses the existing file-library state — when no
- * files exist yet the empty state is shown. Full multipart upload via
- * the drawer is exercised in the integration-test suite; the E2E spec
- * here covers UI behavior end-to-end.
+ * Full multipart upload via the drawer is exercised in the
+ * integration-test suite; the E2E spec here covers UI behavior
+ * end-to-end (empty-state visibility + post-attach chip rendering).
  */
 test.describe('Projects - Knowledge / file attach', () => {
   test.beforeEach(async ({ page, testInfra }) => {
@@ -28,13 +29,23 @@ test.describe('Projects - Knowledge / file attach', () => {
     await submitProjectForm(page)
   })
 
-  test('knowledge tab empty state', async ({ page }) => {
-    // Open the project's detail page by clicking its card.
+  test('inline knowledge preview shows empty state on a new project', async ({
+    page,
+  }) => {
     await page.locator('.ant-card', { hasText: 'Knowledge Target' }).click()
     await page.waitForURL(/\/projects\/[0-9a-f-]+$/)
 
-    // The Knowledge tab is the default tab on the detail page.
-    await expect(page.getByText(/no knowledge files yet/i)).toBeVisible()
+    // Knowledge section is now an inline block (section[data-test-section="knowledge"])
+    // — verify the empty-state marker is present in the compact preview.
+    await expect(
+      page.locator('[data-test-files-empty="true"]'),
+    ).toBeVisible()
+
+    // "Manage" button is always present, even when there are no files
+    // (so users can navigate to attach their first one).
+    await expect(
+      page.getByRole('button', { name: /manage knowledge files/i }),
+    ).toBeVisible()
   })
 
   test('uploads file via combined endpoint and shows in panel', async ({
@@ -78,8 +89,25 @@ test.describe('Projects - Knowledge / file attach', () => {
     )
     expect(resp).toBe(201)
 
-    // Refresh and verify the file appears in the Knowledge list.
+    // Refresh and verify the file appears in the inline knowledge
+    // preview as a chip. The data-test-file-chip attribute is
+    // stable across UI label tweaks.
     await page.reload()
-    await expect(page.getByText('notes.txt')).toBeVisible()
+    await expect(
+      page.locator('[data-test-file-chip="notes.txt"]'),
+    ).toBeVisible()
+
+    // The "Manage" button still works — opening the drawer should
+    // show the same file in the detailed list.
+    await page
+      .getByRole('button', { name: /manage knowledge files/i })
+      .click()
+    await page.locator('.ant-drawer.ant-drawer-open').waitFor({ state: 'visible' })
+    await expect(
+      page
+        .locator('.ant-drawer.ant-drawer-open')
+        .getByText('notes.txt')
+        .first(),
+    ).toBeVisible()
   })
 })

@@ -6,13 +6,19 @@ import { Page, expect } from '@playwright/test'
  * familiar with assistants tests can read these at a glance.
  */
 
+// Don't wait for `networkidle` — when navigating AWAY from
+// /projects/:id, the chat-input + MCP-modal mounts on the detail
+// page can leave background activity (lazy store hydration,
+// websocket reconnects) that delays networkidle past the 30s/180s
+// playwright timeout. Waiting for the page's distinctive heading is
+// sufficient — by then the route component has mounted and the
+// store hydration the next assertions need is already in flight.
 export async function goToProjectsPage(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/projects`)
-  await page.waitForLoadState('networkidle')
   await page
     .getByRole('heading', { level: 4, name: /projects/i })
     .first()
-    .waitFor({ timeout: 10000 })
+    .waitFor({ timeout: 15000 })
 }
 
 export async function goToProjectDetail(
@@ -21,7 +27,10 @@ export async function goToProjectDetail(
   projectId: string,
 ) {
   await page.goto(`${baseURL}/projects/${projectId}`)
-  await page.waitForLoadState('networkidle')
+  await page
+    .locator('[data-test-project-title]')
+    .first()
+    .waitFor({ state: 'visible', timeout: 15000 })
 }
 
 export async function openCreateProjectDrawer(page: Page) {
