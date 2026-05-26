@@ -24,10 +24,17 @@ BEGIN
         RAISE WARNING 'migration 51: no group matches (name=Users, is_system=true, is_default=true); memory permissions will NOT be granted. Check that the initial Users group was created by migration 1.';
     END IF;
 
-    -- Two baseline user-scoped permissions. Admin permissions
+    -- Baseline user-scoped permissions. Admin permissions
     -- (memory::admin::*) are NOT granted to the Users group — those go
     -- via the Administrators group's `*` wildcard.
-    FOREACH perm IN ARRAY ARRAY['memory::read', 'memory::write']
+    -- memory::core::* grants users management of their own
+    -- per-assistant core memory blocks (plan §9 Phase 6, audit R6-#7).
+    FOREACH perm IN ARRAY ARRAY[
+        'memory::read',
+        'memory::write',
+        'memory::core::read',
+        'memory::core::write'
+    ]
     LOOP
         UPDATE groups
         SET permissions = array_append(permissions, perm),

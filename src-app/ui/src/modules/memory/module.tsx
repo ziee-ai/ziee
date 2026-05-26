@@ -18,6 +18,9 @@ const MemorySettingsPage = lazyWithPreload(() =>
 const MemoryAdminPage = lazyWithPreload(() =>
   import('./pages/MemoryAdminPage').then((m) => ({ default: m.MemoryAdminPage })),
 )
+const CoreMemoryPage = lazyWithPreload(() =>
+  import('./pages/CoreMemoryPage').then((m) => ({ default: m.CoreMemoryPage })),
+)
 
 export default createModule({
   metadata: {
@@ -47,6 +50,13 @@ export default createModule({
       requiresAuth: true,
       permission: Permissions.MemoryAdminRead,
       layout: SettingsLayoutDef,
+    },
+    {
+      path: '/memories/core-memory',
+      element: CoreMemoryPage,
+      requiresAuth: true,
+      permission: Permissions.CoreMemoryRead,
+      layout: AppLayoutDef,
     },
   ],
   stores: [

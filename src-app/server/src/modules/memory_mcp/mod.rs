@@ -75,9 +75,13 @@ impl AppModule for MemoryMcpModule {
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
 
-        // Same loopback-pinning rationale as code_sandbox: the URL
-        // never points outside the server itself.
-        let host = "127.0.0.1";
+        // Defense-in-depth: route the built-in MCP URL through the same
+        // helper code_sandbox uses (audit R6-#3). The helper PINS
+        // loopback regardless of `ctx.config.server.host`, so a
+        // misconfigured operator can't make this server's JSON-RPC
+        // endpoint resolve to attacker.com — every MCP client call
+        // would ship JWT-signed bearer tokens to the wrong place.
+        let host = crate::modules::code_sandbox::loopback_host(&ctx.config.server.host);
         let loopback_url = format!(
             "http://{host}:{port}/api/memory-mcp",
             port = ctx.config.server.port,
@@ -88,12 +92,13 @@ impl AppModule for MemoryMcpModule {
         let upsert_url = loopback_url.clone();
         tokio::spawn(async move {
             let repo = repository::MemoryMcpRepository::new((*pool).clone());
-            if let Err(e) = repo.upsert_builtin_server(server_id, &upsert_url).await {
-                tracing::error!("memory_mcp: upsert_builtin_server failed: {e:?}");
-            } else {
-                tracing::info!(
+            match repo.upsert_builtin_server(server_id, &upsert_url).await {
+                Ok(()) => tracing::info!(
                     "memory_mcp: built-in server {server_id} registered at {upsert_url}"
-                );
+                ),
+                Err(e) => tracing::error!(
+                    "memory_mcp: upsert_builtin_server failed: {e:?}"
+                ),
             }
         });
 

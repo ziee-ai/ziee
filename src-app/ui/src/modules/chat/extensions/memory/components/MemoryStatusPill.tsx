@@ -20,18 +20,21 @@ export function MemoryStatusPill() {
   const [loading, setLoading] = useState(false)
 
   // Re-sync the local mode state whenever the active conversation
-  // changes (user navigated to a different one, branch switch, etc.).
+  // changes. `memory_mode` was added to Conversation via OpenAPI but
+  // the cast guards against stale api-client types.
+  const conversationMemoryMode = (
+    conversation as unknown as { memory_mode?: Mode }
+  )?.memory_mode
   useEffect(() => {
-    const current = (conversation as any)?.memory_mode as Mode | undefined
-    if (current) {
-      setMode(current)
-    } else {
-      setMode('inherit')
-    }
-  }, [conversation?.id, (conversation as any)?.memory_mode])
+    setMode(conversationMemoryMode ?? 'inherit')
+  }, [conversation?.id, conversationMemoryMode])
 
-  // Don't show the pill on the empty /chat landing.
+  // Don't show the pill on the empty /chat landing, or when memory is
+  // globally disabled by the admin (audit R6-#17 — pill is meaningless
+  // when the deployment-wide setting is off).
   if (!conversation?.id) return null
+  const adminEnabled = Stores.MemoryAdmin?.settings?.enabled
+  if (adminEnabled === false) return null
 
   async function setRemote(next: Mode) {
     if (!conversation?.id) return

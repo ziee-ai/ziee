@@ -117,6 +117,7 @@ export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string })
                   />
                   <Popconfirm
                     title="Delete this block?"
+                    description={`The "${b.block_label}" block will be removed from this assistant's core memory.`}
                     okText="Delete"
                     okButtonProps={{ danger: true }}
                     onConfirm={async () => {

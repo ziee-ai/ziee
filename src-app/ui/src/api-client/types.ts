@@ -1630,6 +1630,7 @@ export interface UpdateCodeSandboxResourceLimits {
 
 export interface UpdateConversationRequest {
   title?: string
+  memory_mode?: string
 }
 
 export interface UpdateGroupProvidersRequest {

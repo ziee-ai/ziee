@@ -85,7 +85,7 @@ export function MemoriesPage() {
             <Popconfirm
               title="Delete all memories?"
               description="This is permanent and cannot be undone."
-              okText="Delete all"
+              okText="Delete"
               okButtonProps={{ danger: true }}
               onConfirm={async () => {
                 const n = await Stores.Memories.removeAll()
@@ -140,7 +140,7 @@ export function MemoriesPage() {
         </div>
 
         {filtered.length === 0 && !loading ? (
-          <Empty description="No memories yet. Add one or enable auto-extraction." />
+          <Empty description="No memories yet" />
         ) : (
           <Table<UserMemoryRow>
             dataSource={filtered}
