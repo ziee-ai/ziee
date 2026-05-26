@@ -294,6 +294,15 @@ interface ChatState {
    */
   editingMessage: MessageWithContent | null
 
+  /**
+   * Project to attach the next-created conversation to. Set by
+   * NewChatPage from the `?project_id=<uuid>` URL query param when a
+   * user clicks "New chat" from a project page. Consumed (and cleared)
+   * by `createConversation` on the next call. NULL = "no project"
+   * (default).
+   */
+  pendingProjectId: string | null
+
   // ── Conversation state management ────────────────────────────────────────
 
   saveConversationState: (conversationId: string) => void
@@ -304,7 +313,13 @@ interface ChatState {
 
   // ── Core actions ──────────────────────────────────────────────────────────
 
-  createConversation: (title?: string, modelId?: string) => Promise<Conversation>
+  createConversation: (
+    title?: string,
+    modelId?: string,
+    projectId?: string | null,
+  ) => Promise<Conversation>
+  /** Set the pendingProjectId for the next created conversation. */
+  setPendingProjectId: (projectId: string | null) => void
   loadConversation: (id: string) => Promise<void>
   loadMessages: (id: string) => Promise<void>
   sendMessage: () => Promise<void>
@@ -391,6 +406,7 @@ export const useChatStore = create<ChatState>()(
       branchChangedDuringStream: false,
       forkPoints: new Map(),
       editingMessage: null,
+      pendingProjectId: null,
 
       // Right panel initial state
       rightPanel: { panelWidth: 440, tabs: [], activeId: null, mobileDrawerOpen: false },
@@ -493,12 +509,40 @@ export const useChatStore = create<ChatState>()(
 
       // ── Core actions ───────────────────────────────────────────────────────
 
-      createConversation: async (title?: string, modelId?: string) => {
+      createConversation: async (
+        title?: string,
+        modelId?: string,
+        projectId?: string | null,
+      ) => {
+        // Atomic read+clear of pendingProjectId (audit N4) so two
+        // rapid-fire createConversation calls — e.g. a double-clicked
+        // send button — can't BOTH consume the same latched id. The
+        // first call grabs it and clears the store; the second sees
+        // null. Explicit `projectId` arg always wins and doesn't
+        // touch the latch.
+        //
+        // JS is single-threaded so the get()+set() pair is atomic
+        // (no await between them). The chat store does NOT use immer
+        // middleware here, so we use plain partial-update set().
+        let effectiveProjectId: string | null | undefined
+        let consumedFromLatch: string | null = null
+        if (projectId !== undefined) {
+          effectiveProjectId = projectId
+        } else {
+          const latched = get().pendingProjectId
+          effectiveProjectId = latched
+          if (latched !== null) {
+            consumedFromLatch = latched
+            set({ pendingProjectId: null })
+          }
+        }
         set({ loading: true, error: null })
+
         try {
           const conversation = await ApiClient.Conversation.create({
             title: title,
             model_id: modelId,
+            project_id: effectiveProjectId ?? undefined,
           })
           set({ conversation, loading: false })
 
@@ -510,12 +554,30 @@ export const useChatStore = create<ChatState>()(
 
           return conversation
         } catch (error: any) {
-          set({
-            error: error.message || 'Failed to create conversation',
-            loading: false,
-          })
+          // Restore the latch on failure (audit Q8). The atomic-swap
+          // for N4 (double-click protection) only matters on the
+          // success path; on failure the user expects a retry to
+          // preserve their project context. We only restore if the
+          // user hasn't navigated to a different project mid-flight
+          // (i.e., pendingProjectId is still null — nobody else set it).
+          if (consumedFromLatch !== null && get().pendingProjectId === null) {
+            set({
+              pendingProjectId: consumedFromLatch,
+              error: error.message || 'Failed to create conversation',
+              loading: false,
+            })
+          } else {
+            set({
+              error: error.message || 'Failed to create conversation',
+              loading: false,
+            })
+          }
           throw error
         }
+      },
+
+      setPendingProjectId: (projectId: string | null) => {
+        set({ pendingProjectId: projectId })
       },
 
       loadConversation: async (id: string) => {
@@ -1494,6 +1556,7 @@ export const useChatStore = create<ChatState>()(
           branchChangedDuringStream: false,
           forkPoints: new Map(),
           editingMessage: null,
+          pendingProjectId: null,
           rightPanel: { ...state.rightPanel, tabs: [], activeId: null, mobileDrawerOpen: false },
         }))
       },

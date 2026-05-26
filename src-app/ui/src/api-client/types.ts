@@ -45,6 +45,10 @@ export interface AssistantListResponse {
   total: number
 }
 
+export interface AttachFileRequest {
+  file_id: string
+}
+
 export interface AuthResponse {
   access_token: string
   expires_in: number
@@ -147,6 +151,7 @@ export interface Conversation {
   created_at: string
   id: string
   model_id?: string
+  project_id?: string
   updated_at: string
   user_id: string
 }
@@ -170,6 +175,7 @@ export interface ConversationResponse {
   id: string
   message_count: number
   model_id?: string
+  project_id?: string
   updated_at: string
   user_id: string
 }
@@ -202,6 +208,7 @@ export interface CreateBranchRequest {
 export interface CreateConversationRequest {
   title?: string
   model_id?: string
+  project_id?: string
 }
 
 export interface CreateGroupRequest {
@@ -270,6 +277,17 @@ export interface CreateModelFromHubRequest {
   hub_id: string
   provider_id: string
   quantization_name?: string
+}
+
+export interface CreateProjectRequest {
+  description?: string
+  default_assistant_id?: string
+  default_model_id?: string
+  instructions?: string
+  mcp_approval_mode?: string
+  mcp_auto_approved_tools?: McpServerToolEntry[]
+  mcp_disabled_servers?: McpServerToolEntry[]
+  name?: string
 }
 
 export interface CreateUserRequest {
@@ -907,6 +925,11 @@ export interface McpServerOAuthConfigResponse {
   updated_at: string
 }
 
+export interface McpServerToolEntry {
+  server_id: string
+  tools?: string[]
+}
+
 export interface McpSettingsResponse {
   settings?: ConversationMcpSettingsResponse
 }
@@ -1119,8 +1142,14 @@ export interface PaginationQuery3 {
 }
 
 export interface PaginationQuery4 {
+  limit: number
+  page: number
+}
+
+export interface PaginationQuery5 {
   limit?: number
   page?: number
+  project_id?: string
 }
 
 export interface PendingApprovalsResponse {
@@ -1167,6 +1196,31 @@ export interface PrefetchTaskSummary {
 
 export interface PreviewQuery {
   page?: number
+}
+
+export interface Project {
+  description?: string
+  created_at: string
+  default_assistant_id?: string
+  default_model_id?: string
+  id: string
+  instructions?: string
+  mcp_approval_mode: string
+  mcp_auto_approved_tools?: any
+  mcp_disabled_servers?: any
+  name: string
+  updated_at: string
+  user_id: string
+}
+
+export interface ProjectFileListResponse {
+  files: File[]
+  total: number
+}
+
+export interface ProjectListResponse {
+  projects: Project[]
+  total: number
 }
 
 export interface Prompt {
@@ -1579,6 +1633,7 @@ export interface UpdateCodeSandboxResourceLimits {
 
 export interface UpdateConversationRequest {
   title?: string
+  project_id?: string
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -1639,6 +1694,20 @@ export interface UpdateMcpServerRequest {
   timeout_seconds?: number
   url?: string
   usage_mode?: UsageMode
+}
+
+export interface UpdateProjectMcpSettingsRequest {
+  approval_mode: string
+  auto_approved_tools: McpServerToolEntry[]
+  disabled_servers: McpServerToolEntry[]
+}
+
+export interface UpdateProjectRequest {
+  description?: string
+  default_assistant_id?: string
+  default_model_id?: string
+  instructions?: string
+  name?: string
 }
 
 export interface UpdateUserRequest {
@@ -1802,6 +1871,10 @@ export enum Permissions {
   MessagesRead = 'messages::read',
   ProfileEdit = 'profile::edit',
   ProfileRead = 'profile::read',
+  ProjectsCreate = 'projects::create',
+  ProjectsDelete = 'projects::delete',
+  ProjectsEdit = 'projects::edit',
+  ProjectsRead = 'projects::read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
@@ -1891,6 +1964,10 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesRead: 'Read messages in conversations',
   ProfileEdit: 'Edit own profile information',
   ProfileRead: 'View own profile information',
+  ProjectsCreate: 'Create chat projects',
+  ProjectsDelete: 'Delete chat projects',
+  ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
+  ProjectsRead: 'Read chat projects',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
@@ -2052,6 +2129,19 @@ export const ApiEndpoints = {
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Project.attachFile': 'POST /api/projects/{id}/files',
+  'Project.create': 'POST /api/projects',
+  'Project.delete': 'DELETE /api/projects/{id}',
+  'Project.detachFile': 'DELETE /api/projects/{id}/files/{file_id}',
+  'Project.duplicate': 'POST /api/projects/{id}/duplicate',
+  'Project.get': 'GET /api/projects/{id}',
+  'Project.getMcpSettings': 'GET /api/projects/{id}/mcp-settings',
+  'Project.list': 'GET /api/projects',
+  'Project.listConversations': 'GET /api/projects/{id}/conversations',
+  'Project.listFiles': 'GET /api/projects/{id}/files',
+  'Project.update': 'PUT /api/projects/{id}',
+  'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
+  'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -2113,7 +2203,7 @@ export type ApiEndpointParameters = {
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
   'Conversation.getMcpSettings': { id: string }
-  'Conversation.list': { limit?: number; page?: number }
+  'Conversation.list': { limit?: number; page?: number; project_id?: string }
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
   'File.delete': { file_id: string }
@@ -2220,6 +2310,19 @@ export type ApiEndpointParameters = {
   'Message.sendStream': { id: string } & SendMessageRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
+  'Project.attachFile': { id: string } & AttachFileRequest
+  'Project.create': CreateProjectRequest
+  'Project.delete': { id: string }
+  'Project.detachFile': { id: string; file_id: string }
+  'Project.duplicate': { id: string }
+  'Project.get': { id: string }
+  'Project.getMcpSettings': { id: string }
+  'Project.list': { limit: number; page: number }
+  'Project.listConversations': { id: string; limit: number; page: number }
+  'Project.listFiles': { id: string }
+  'Project.update': { id: string } & UpdateProjectRequest
+  'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
+  'Project.uploadAndAttachFile': { id: string } & FormData
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -2388,6 +2491,19 @@ export type ApiEndpointResponses = {
   'Message.sendStream': SSEChatStreamEvent
   'Onboarding.complete': User
   'Onboarding.completeStep': User
+  'Project.attachFile': void
+  'Project.create': Project
+  'Project.delete': void
+  'Project.detachFile': void
+  'Project.duplicate': Project
+  'Project.get': Project
+  'Project.getMcpSettings': UpdateProjectMcpSettingsRequest
+  'Project.list': ProjectListResponse
+  'Project.listConversations': ConversationResponse[]
+  'Project.listFiles': ProjectFileListResponse
+  'Project.update': Project
+  'Project.updateMcpSettings': Project
+  'Project.uploadAndAttachFile': File
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionResponse

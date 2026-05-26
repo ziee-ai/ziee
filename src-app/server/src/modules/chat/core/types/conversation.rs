@@ -25,6 +25,13 @@ pub struct CreateConversationRequest {
     pub model_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Optional project to create the conversation inside. If set AND
+    /// `model_id` is absent, the server snapshots the project's
+    /// `default_model_id` into `conversations.model_id`. If a row in
+    /// `conversation_mcp_settings` doesn't exist yet, the server inserts
+    /// one copying the project's three MCP columns.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<Uuid>,
 }
 
 /// Request to update conversation metadata
@@ -37,6 +44,16 @@ pub struct UpdateConversationRequest {
         deserialize_with = "deserialize_nullable_field"
     )]
     pub title: Option<Option<String>>,
+    /// Project move (tri-state):
+    ///   * missing field = no change
+    ///   * null = unassign (move out of project to "unfiled")
+    ///   * UUID = assign / move to that project (ownership verified)
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_nullable_field"
+    )]
+    pub project_id: Option<Option<Uuid>>,
 }
 
 /// Custom deserializer to distinguish between missing field and explicit null

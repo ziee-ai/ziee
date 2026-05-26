@@ -17,13 +17,35 @@ use uuid::Uuid;
 
 const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
 
-/// Upload file handler
-pub async fn upload_file(
-    auth: RequirePermissions<(FilesUpload,)>,
-    mut multipart: Multipart,
-) -> ApiResult<Json<File>> {
-    let user_id = auth.user.id;
+/// Per-user storage quota for uploads. Closes 05-file F-16 (Medium). 10 GiB
+/// matches typical SaaS chat-attachment quotas. Exposed as a constant so
+/// other upload entry points (e.g. project file upload) enforce the same
+/// cap.
+pub const PER_USER_STORAGE_QUOTA_BYTES: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
 
+/// Core upload routine used by every upload entry point.
+///
+/// Owns: multipart parsing, size + quota checks, MIME sniffing,
+/// zip-bomb validation, processing (thumbnail/text extraction),
+/// disk save, and DB row creation. Caller owns: permission gating +
+/// any post-create wiring (e.g. attaching the new file to a project).
+///
+/// **SECURITY CRITICAL — caller responsibility**: `user_id` is taken
+/// as a parameter instead of being extracted from the auth context
+/// inside this function. The new file row is owned by `user_id`, and
+/// per-user quota is checked against `user_id`. The caller MUST pass
+/// the authenticated user's id (via `RequirePermissions<…>.user.id`)
+/// — passing any other UUID would let one user upload as another and
+/// inflate that user's quota. This function does NOT re-validate the
+/// id against the request's auth context.
+///
+/// Returns the freshly-created `File` so the caller can use its `id`
+/// for follow-on actions (the project upload-and-attach endpoint
+/// inserts into `project_files` immediately after this returns).
+pub async fn upload_file_inner(
+    user_id: Uuid,
+    mut multipart: Multipart,
+) -> Result<File, AppError> {
     // Extract file from multipart
     let mut filename: Option<String> = None;
     let mut file_data: Option<Vec<u8>> = None;
@@ -52,16 +74,11 @@ pub async fn upload_file(
         return Err(AppError::bad_request(
             "FILE_TOO_LARGE",
             format!("File size exceeds maximum of {} bytes", MAX_FILE_SIZE),
-        ).into());
+        ));
     }
 
-    // Per-user storage quota. Closes 05-file F-16 (Medium). 10 GiB
-    // matches typical SaaS chat-attachment quotas; can be promoted to
-    // config when a real product requirement emerges. Without this,
-    // an authenticated user can fill the host disk via repeated
-    // uploads under the per-file cap.
-    const PER_USER_STORAGE_QUOTA_BYTES: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
-    let used = Repos.file.count_user_bytes(auth.user.id).await?;
+    // Per-user storage quota (see PER_USER_STORAGE_QUOTA_BYTES above).
+    let used = Repos.file.count_user_bytes(user_id).await?;
     let after = used.saturating_add(file_data.len() as i64);
     if after > PER_USER_STORAGE_QUOTA_BYTES {
         return Err(AppError::bad_request(
@@ -73,8 +90,7 @@ pub async fn upload_file(
                 used,
                 file_data.len()
             ),
-        )
-        .into());
+        ));
     }
 
     // Generate file ID
@@ -99,7 +115,7 @@ pub async fn upload_file(
     if let Some(reason) =
         crate::modules::file::utils::magic::smuggling_rejection(sniffed_mime, &claimed_mime)
     {
-        return Err(AppError::bad_request("MIME_MISMATCH", reason).into());
+        return Err(AppError::bad_request("MIME_MISMATCH", reason));
     }
     // Prefer the sniffed MIME when known AND it provides more
     // specificity than the extension-derived value. For
@@ -127,7 +143,7 @@ pub async fn upload_file(
     // no-op via the is_ooxml_or_odf gate.
     if crate::modules::file::utils::zipbomb::is_ooxml_or_odf(mime_type_str)
         && let Err(e) = crate::modules::file::utils::zipbomb::validate(&file_data) {
-            return Err(AppError::bad_request("ZIP_BOMB_DETECTED", e.to_string()).into());
+            return Err(AppError::bad_request("ZIP_BOMB_DETECTED", e.to_string()));
         }
 
     let processing_result = match processing_manager
@@ -193,9 +209,16 @@ pub async fn upload_file(
         })
         .await?;
 
-    // Emit event (async)
-    // Note: EventBus integration would go here
+    Ok(file)
+}
 
+/// Upload file handler — thin wrapper around `upload_file_inner` that
+/// adds permission gating + the 201 response code.
+pub async fn upload_file(
+    auth: RequirePermissions<(FilesUpload,)>,
+    multipart: Multipart,
+) -> ApiResult<Json<File>> {
+    let file = upload_file_inner(auth.user.id, multipart).await?;
     Ok((StatusCode::CREATED, Json(file)))
 }
 

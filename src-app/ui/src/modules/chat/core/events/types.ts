@@ -39,6 +39,20 @@ export interface ConversationMessageCountChangedEvent extends BaseEvent {
 }
 
 /**
+ * Emitted when a conversation is deleted. Subscribers (sidebar
+ * widgets, filtered list views, project-scoped panels) drop the row
+ * from their local state. Closes audit F5: previously delete didn't
+ * propagate, so widgets with their own fetch (e.g.
+ * RecentConversationsWidget in filtered mode) would stay stale.
+ */
+export interface ConversationDeletedEvent extends BaseEvent {
+  type: 'conversation.deleted'
+  data: {
+    conversationId: string
+  }
+}
+
+/**
  * Augment global AppEvents registry
  */
 declare module '@/core/events' {
@@ -46,6 +60,7 @@ declare module '@/core/events' {
     'conversation.created': ConversationCreatedEvent
     'conversation.titleUpdated': ConversationTitleUpdatedEvent
     'conversation.messageCountChanged': ConversationMessageCountChangedEvent
+    'conversation.deleted': ConversationDeletedEvent
   }
 }
 

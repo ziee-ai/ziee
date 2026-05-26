@@ -5,16 +5,15 @@ use uuid::Uuid;
 use crate::{
     common::AppError,
     core::Repos,
-    modules::{
-        chat::{
-            core::extension::{BeforeLlmAction, ChatExtension, SendMessageRequest, StreamContext},
-            extensions::file::types::{FileContent, ImageSource as FileImageSource},
+    modules::chat::{
+        core::extension::{BeforeLlmAction, ChatExtension, SendMessageRequest, StreamContext},
+        extensions::file::{
+            processor::process_file_blocks,
+            types::{FileContent, ImageSource as FileImageSource},
         },
-        file::storage::manager::get_file_storage,
-        llm_provider_files,
     },
 };
-use ai_providers::{ChatRequest, ContentBlock, DocumentSource, ImageSource, Role};
+use ai_providers::{ChatRequest, ContentBlock, ImageSource, Role};
 use aide::axum::ApiRouter;
 
 pub struct FileExtension {
@@ -24,151 +23,6 @@ pub struct FileExtension {
 impl FileExtension {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
-    }
-
-    /// Process a single file for the given provider
-    async fn process_file(
-        &self,
-        file_id: Uuid,
-        provider_id: Uuid,
-        provider_type: &str,
-        user_id: Uuid,
-    ) -> Result<Vec<ContentBlock>, AppError> {
-        // Get file metadata ONCE
-        let file = Repos
-            .file
-            .get_by_id(file_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("File"))?;
-
-        // Validate ownership
-        if file.user_id != user_id {
-            return Err(AppError::forbidden("FILE_ACCESS_DENIED", "You don't have access to this file"));
-        }
-
-        let mime = file.mime_type.as_deref().unwrap_or("application/octet-stream");
-
-        // Route based on provider type AND file type
-        match provider_type {
-            "anthropic" | "gemini" => {
-                // Provider Files API supports both PDFs and images
-                if mime == "application/pdf" || mime.starts_with("image/") {
-                    self.process_file_with_provider_api(file_id, provider_id, &file.filename, mime, user_id)
-                        .await
-                } else {
-                    // Other types use base64 fallback
-                    self.process_file_base64(file_id, &file.filename, mime, user_id)
-                        .await
-                }
-            }
-            _ => {
-                // All other providers use base64
-                self.process_file_base64(file_id, &file.filename, mime, user_id)
-                    .await
-            }
-        }
-    }
-
-    async fn process_file_with_provider_api(
-        &self,
-        file_id: Uuid,
-        provider_id: Uuid,
-        filename: &str,
-        mime_type: &str,
-        _user_id: Uuid,
-    ) -> Result<Vec<ContentBlock>, AppError> {
-        // Get provider configuration
-        let provider = Repos
-            .llm_provider
-            .get_by_id(provider_id)
-            .await?
-            .ok_or_else(|| AppError::not_found("Provider"))?;
-
-        // Get file storage singleton
-        let file_storage = get_file_storage();
-
-        // Get FileRepository
-        let file_repo = &Repos.file;
-
-        // Create AI provider instance (stateless trait object)
-        let ai_provider: &dyn ai_providers::AIProvider = match provider.provider_type.as_str() {
-            "anthropic" => &ai_providers::AnthropicProvider,
-            "gemini" => &ai_providers::GeminiProvider,
-            _ => &ai_providers::OpenAIProvider,
-        };
-
-        // Upload to provider or get cached file ID. user_id is threaded
-        // through for the user-scoped JOIN in get_provider_file_mapping
-        // — closes 06-llm-provider F-04.
-        let provider_file_id = llm_provider_files::service::get_or_upload_provider_file(
-            &self.pool,
-            file_repo,
-            &file_storage,
-            file_id,
-            _user_id,
-            &provider,
-            ai_provider,
-        )
-        .await?;
-
-        // Return appropriate content block based on mime type
-        if mime_type.starts_with("image/") {
-            Ok(vec![ContentBlock::Image {
-                source: ImageSource::File {
-                    file_id: provider_file_id,
-                },
-            }])
-        } else if mime_type == "application/pdf" {
-            Ok(vec![ContentBlock::Document {
-                source: DocumentSource::File {
-                    file_id: provider_file_id,
-                },
-            }])
-        } else {
-            // Unsupported type - return text description
-            Ok(vec![ContentBlock::Text {
-                text: format!("[File: {} ({})]", filename, mime_type),
-            }])
-        }
-    }
-
-    async fn process_file_base64(
-        &self,
-        file_id: Uuid,
-        filename: &str,
-        mime_type: &str,
-        user_id: Uuid,
-    ) -> Result<Vec<ContentBlock>, AppError> {
-        // Load file data from storage
-        let file_storage = get_file_storage();
-        let extension = get_extension(filename);
-        let file_data = file_storage
-            .load_original(user_id, file_id, &extension)
-            .await?;
-
-        // Encode as base64
-        use base64::Engine;
-        let base64_data = base64::engine::general_purpose::STANDARD.encode(&file_data);
-
-        if mime_type.starts_with("image/") {
-            Ok(vec![ContentBlock::Image {
-                source: ImageSource::Base64 {
-                    media_type: mime_type.to_string(),
-                    data: base64_data,
-                },
-            }])
-        } else if mime_type == "application/pdf" {
-            Ok(vec![ContentBlock::Document {
-                source: DocumentSource::Base64 {
-                    media_type: mime_type.to_string(),
-                    data: base64_data,
-                },
-            }])
-        } else {
-            Ok(vec![ContentBlock::Text {
-                text: format!("[File: {}]", filename),
-            }])
-        }
     }
 }
 
@@ -235,13 +89,11 @@ impl ChatExtension for FileExtension {
         send_request: &SendMessageRequest,
         _tx: Option<&tokio::sync::mpsc::UnboundedSender<Result<axum::response::sse::Event, std::convert::Infallible>>>,
     ) -> Result<BeforeLlmAction, AppError> {
-        // Access file_ids directly from composed request!
         if let Some(file_ids) = &send_request.file_ids {
             if file_ids.is_empty() {
                 return Ok(BeforeLlmAction::Continue);
             }
 
-            // Get provider info from context
             let provider_id = context
                 .metadata
                 .get("provider_id")
@@ -255,20 +107,27 @@ impl ChatExtension for FileExtension {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| AppError::internal_error("Provider type not in context"))?;
 
-            // Process each file
+            // Process each file via the shared free function (also used
+            // by ProjectExtension at order 8). Single source of truth
+            // for provider-specific routing — see processor.rs.
             let mut file_blocks = Vec::new();
             for file_id in file_ids {
-                let blocks = self
-                    .process_file(*file_id, provider_id, provider_type, context.user_id)
-                    .await?;
+                let blocks = process_file_blocks(
+                    &self.pool,
+                    *file_id,
+                    provider_id,
+                    provider_type,
+                    context.user_id,
+                )
+                .await?;
                 file_blocks.extend(blocks);
             }
 
-            // Add file blocks to the user's message
             if let Some(last_message) = request.messages.last_mut()
-                && last_message.role == Role::User {
-                    last_message.content.extend(file_blocks);
-                }
+                && last_message.role == Role::User
+            {
+                last_message.content.extend(file_blocks);
+            }
         }
 
         Ok(BeforeLlmAction::Continue)
@@ -293,10 +152,8 @@ impl ChatExtension for FileExtension {
             None => return Ok(None), // Not a file extension content
         };
 
-        // Process based on FileContent variant
         match file_content {
             FileContent::FileAttachment { file_id, .. } => {
-                // Get provider info from context
                 let provider_id = context
                     .metadata
                     .get("provider_id")
@@ -310,16 +167,18 @@ impl ChatExtension for FileExtension {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| AppError::internal_error("Provider type not in context"))?;
 
-                // Process file and return appropriate ContentBlock
-                let blocks = self
-                    .process_file(file_id, provider_id, provider_type, context.user_id)
-                    .await?;
+                let blocks = process_file_blocks(
+                    &self.pool,
+                    file_id,
+                    provider_id,
+                    provider_type,
+                    context.user_id,
+                )
+                .await?;
 
-                // Return first block (process_file returns Vec but we need single)
                 Ok(blocks.into_iter().next())
             }
             FileContent::Image { source, .. } => {
-                // Convert FileImageSource to ai_providers::ImageSource
                 let ai_source = match source {
                     FileImageSource::Url { url } => ImageSource::Url { url, detail: None },
                     FileImageSource::Base64 { media_type, data } => {
@@ -340,13 +199,4 @@ impl ChatExtension for FileExtension {
     ) -> Result<(), AppError> {
         Ok(())
     }
-}
-
-/// Helper function to extract file extension
-fn get_extension(filename: &str) -> String {
-    std::path::Path::new(filename)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_string()
 }

@@ -49,17 +49,24 @@ impl ChatCoreRepository {
         .await
     }
 
-    /// Create a new conversation
+    /// Create a new conversation.
+    ///
+    /// If `project_id` is set, the project is verified to be owned by
+    /// the same user, the project's default_model_id is snapshotted into
+    /// the conversation when no explicit model is given, and the
+    /// project's MCP settings are snapshotted into
+    /// conversation_mcp_settings.
     pub async fn create_conversation(
         &self,
         user_id: Uuid,
         model_id: Option<Uuid>,
         title: Option<String>,
+        project_id: Option<Uuid>,
     ) -> Result<Conversation, AppError> {
-        conversations::create_conversation(&self.pool, user_id, model_id, title).await
+        conversations::create_conversation(&self.pool, user_id, model_id, title, project_id).await
     }
 
-    /// List conversations for a user
+    /// List conversations for a user (all conversations, unfiltered).
     pub async fn list_conversations(
         &self,
         user_id: Uuid,
@@ -69,14 +76,53 @@ impl ChatCoreRepository {
         conversations::list_conversations(&self.pool, user_id, limit, offset).await
     }
 
-    /// Update a conversation
+    /// List conversations filtered to those NOT in any project
+    /// ("unfiled"). Used by the sidebar's RecentConversationsWidget.
+    pub async fn list_unfiled_conversations(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ConversationResponse>, AppError> {
+        conversations::list_conversations_filtered(
+            &self.pool,
+            user_id,
+            conversations::ConversationProjectFilter::Unfiled,
+            limit,
+            offset,
+        )
+        .await
+    }
+
+    /// List conversations scoped to a specific project. The caller must
+    /// have already verified that `project_id` is owned by `user_id`
+    /// (the project handler does this before calling here).
+    pub async fn list_conversations_by_project(
+        &self,
+        user_id: Uuid,
+        project_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ConversationResponse>, AppError> {
+        conversations::list_conversations_filtered(
+            &self.pool,
+            user_id,
+            conversations::ConversationProjectFilter::InProject(project_id),
+            limit,
+            offset,
+        )
+        .await
+    }
+
+    /// Update a conversation (title and/or project assignment).
     pub async fn update_conversation(
         &self,
         id: Uuid,
         user_id: Uuid,
         title: Option<Option<String>>,
+        project_id: Option<Option<Uuid>>,
     ) -> Result<Option<Conversation>, AppError> {
-        conversations::update_conversation(&self.pool, id, user_id, title).await
+        conversations::update_conversation(&self.pool, id, user_id, title, project_id).await
     }
 
     /// Delete a conversation
