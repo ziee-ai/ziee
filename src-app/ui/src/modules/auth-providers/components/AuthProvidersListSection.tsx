@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Card,
+  Popconfirm,
   Space,
   Switch,
   Table,
@@ -18,7 +19,6 @@ import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
 import { AddProviderMenu } from './AddProviderMenu'
 import { AuthProviderEditDrawer } from './AuthProviderEditDrawer'
-import { DeleteProviderModal } from './DeleteProviderModal'
 import type { ProviderTemplate } from '../types'
 
 const { Text } = Typography
@@ -45,14 +45,17 @@ export function AuthProvidersListSection() {
   const { message } = App.useApp()
   const { providers, loading, error, testingIds } = Stores.AuthProvidersAdmin
   const [drawer, setDrawer] = useState<DrawerState>({ mode: 'closed' })
-  const [toDelete, setToDelete] = useState<AuthProviderResponse | null>(null)
+  const [pendingToggleId, setPendingToggleId] = useState<string | null>(null)
 
   const onToggle = async (row: AuthProviderResponse, next: boolean) => {
+    setPendingToggleId(row.id)
     try {
       await Stores.AuthProvidersAdmin.updateProvider(row.id, { enabled: next })
       message.success(next ? 'Provider enabled' : 'Provider disabled')
     } catch (e: any) {
       message.error(e?.message ?? 'Failed to update')
+    } finally {
+      setPendingToggleId(null)
     }
   }
 
@@ -62,6 +65,15 @@ export function AuthProvidersListSection() {
       message.success(`${row.name}: ${res.message}`)
     } else {
       message.error(`${row.name}: ${res.message}`)
+    }
+  }
+
+  const onDelete = async (row: AuthProviderResponse) => {
+    try {
+      await Stores.AuthProvidersAdmin.deleteProvider(row.id)
+      message.success(`Deleted ${row.name}`)
+    } catch (e: any) {
+      message.error(e?.message ?? 'Failed to delete provider')
     }
   }
 
@@ -121,23 +133,40 @@ export function AuthProvidersListSection() {
               size="small"
               loading={testingIds.has(row.id)}
               onClick={() => onTest(row)}
+              aria-label={`Test ${row.name}`}
             >
               Test
             </Button>
             <Button
               size="small"
               onClick={() => setDrawer({ mode: 'edit', existing: row })}
+              aria-label={`Edit ${row.name}`}
             >
               Edit
             </Button>
             <Switch
               size="small"
               checked={row.enabled}
+              loading={pendingToggleId === row.id}
               onChange={next => onToggle(row, next)}
+              aria-label={`Toggle ${row.name}`}
             />
-            <Button size="small" danger onClick={() => setToDelete(row)}>
-              Delete
-            </Button>
+            <Popconfirm
+              title={`Delete ${row.name}?`}
+              description="Linked users lose this sign-in method; their accounts remain."
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+              cancelText="Cancel"
+              onConfirm={() => onDelete(row)}
+            >
+              <Button
+                size="small"
+                danger
+                aria-label={`Delete ${row.name}`}
+              >
+                Delete
+              </Button>
+            </Popconfirm>
           </Can>
         </Space>
       ),
@@ -174,7 +203,7 @@ export function AuthProvidersListSection() {
           pagination={false}
           locale={{
             emptyText:
-              'No providers configured. Click "Add provider" to set up Google, Microsoft, Apple, or a custom OIDC IdP.',
+              'No providers yet. Click "Add provider" to set up Google, Microsoft, Apple, or a custom OIDC IdP.',
           }}
         />
       </Card>
@@ -184,12 +213,6 @@ export function AuthProvidersListSection() {
         template={drawer.mode === 'create' ? drawer.template : undefined}
         existing={drawer.mode === 'edit' ? drawer.existing : undefined}
         onClose={() => setDrawer({ mode: 'closed' })}
-      />
-
-      <DeleteProviderModal
-        open={toDelete !== null}
-        provider={toDelete}
-        onClose={() => setToDelete(null)}
       />
     </>
   )

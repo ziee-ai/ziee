@@ -26,13 +26,29 @@ use super::{
     UserAttributes,
 };
 
-/// Create an HTTP client for OAuth2/OIDC requests
-/// This client disables redirects to prevent SSRF attacks
+/// Create an HTTP client for OAuth2/OIDC requests.
+///
+/// SECURITY: this routes through `build_validated_client(PUBLIC_HTTP_OR_HTTPS)`
+/// so every outbound URL — issuer discovery, token exchange, userinfo, JWKS
+/// fetch — is checked against the IP allowlist (no loopback, no RFC 1918,
+/// no link-local) AT REQUEST TIME, *including* redirect targets. Without
+/// this, an admin who configures `issuer_url=http://internal-vault:8200`
+/// could turn the OIDC discovery into a confused-deputy probe of our
+/// internal network.
+///
+/// Falls back to the redirect-disabled bare client only if
+/// `build_validated_client` somehow fails (TLS config error) — in practice
+/// the unwrap path is unreachable in correctly-built binaries.
 fn create_http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .expect("Failed to create HTTP client")
+    crate::utils::url_validator::build_validated_client(
+        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+    )
+    .unwrap_or_else(|_| {
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("Failed to create HTTP client")
+    })
 }
 
 /// Async HTTP client implementation for openidconnect
@@ -211,6 +227,17 @@ async fn probe_oidc_credentials(
         (_, "invalid_request") if error_desc.to_lowercase().contains("redirect") => {
             ProbeResult::RedirectUriMismatch
         }
+        // 429 (rate-limited) and 5xx are transient — surface them as
+        // a clear NetworkError rather than as `Unexpected` so the
+        // admin sees an actionable message and (for tests) we can
+        // distinguish "bad config" from "provider had a bad day."
+        (429, _) => ProbeResult::NetworkError(
+            "Provider returned HTTP 429 (rate-limited). Wait and retry.".to_string(),
+        ),
+        (s, _) if (500..=599).contains(&s) => ProbeResult::NetworkError(format!(
+            "Provider returned HTTP {} (upstream error). Try again later.",
+            s
+        )),
         _ => ProbeResult::Unexpected(format!(
             "HTTP {} body={}",
             status,
@@ -311,20 +338,26 @@ impl OAuth2Provider {
             AuthError::ConfigurationError("UserInfo URL not configured".to_string())
         })?;
 
-        // SECURITY: disable redirects on the UserInfo fetch. Without
-        // this, a malicious OIDC provider could return a 302 to
-        // http://169.254.169.254/latest/meta-data/iam/security-credentials
-        // and reqwest would happily follow the redirect WITH the bearer
-        // token attached, exfiltrating the access token to AWS IMDS or
-        // any other private-network service. The legit UserInfo flow
-        // never redirects — providers serve the user info directly.
-        // Closes 01-auth F-18 (High).
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|e| {
-                AuthError::ConnectionFailed(format!("Failed to build HTTP client: {}", e))
-            })?;
+        // SECURITY: SSRF-validated client + pre-flight validate_outbound_url
+        // on the configured userinfo URL. Two layers because:
+        //   1) build_validated_client checks redirect TARGETS at runtime
+        //      (so a malicious OIDC provider can't 302-bounce us into
+        //      AWS IMDS at 169.254.169.254 to exfiltrate the bearer token —
+        //      closes 01-auth F-18 High).
+        //   2) validate_outbound_url on the URL itself catches an admin
+        //      who configures `userinfo_url=http://internal-vault:8200`
+        //      at provider-create time.
+        crate::utils::url_validator::validate_outbound_url(
+            userinfo_url,
+            &crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS,
+        )
+        .map_err(|e| {
+            AuthError::ConfigurationError(format!(
+                "userinfo_url failed safety check: {}",
+                e
+            ))
+        })?;
+        let client = create_http_client();
         let response = client
             .get(userinfo_url)
             .bearer_auth(access_token)
@@ -674,16 +707,33 @@ impl AuthProviderTrait for OAuth2Provider {
                 // A templated issuer means a multi-tenant endpoint; without
                 // an explicit allowlist ANY Microsoft tenant in the world
                 // can log in. Refuse to operate in this footgun configuration.
-                let allowed = self.config.allowed_tenant_ids.as_ref().ok_or_else(|| {
-                    AuthError::ConfigurationError(format!(
-                        "Provider '{}' uses templated issuer URL but `allowed_tenant_ids` is not set — any Microsoft tenant could log in. Configure `allowed_tenant_ids` with the tenants you trust.",
-                        self.name
-                    ))
-                })?;
+                // Treat `Some(empty vec)` exactly like `None` — an empty
+                // allowlist is almost always a UI mistake (saved without
+                // any entries) and silently producing "no tenant can log
+                // in" is more confusing than a clear error.
+                let allowed = self
+                    .config
+                    .allowed_tenant_ids
+                    .as_ref()
+                    .filter(|v| !v.is_empty())
+                    .ok_or_else(|| {
+                        AuthError::ConfigurationError(format!(
+                            "Provider '{}' uses templated issuer URL but `allowed_tenant_ids` is empty or missing — any Microsoft tenant could log in. Configure `allowed_tenant_ids` with at least one tenant ID.",
+                            self.name
+                        ))
+                    })?;
                 if !allowed.iter().any(|t| t.eq_ignore_ascii_case(tid)) {
+                    // SECURITY: don't echo the raw tid into the error
+                    // string. Tenant IDs are stable per-organization
+                    // identifiers; one slipping into a third-party
+                    // log aggregator could ID a customer org by name.
+                    // Truncate to a non-reversible prefix purely for
+                    // debugging operator-side allowlist typos; the
+                    // operator can confirm by comparison.
+                    let preview: String = tid.chars().take(8).collect();
                     return Err(AuthError::InvalidCredentials(format!(
-                        "Tenant '{}' is not in the allowlist for provider '{}'",
-                        tid, self.name
+                        "Tenant (id prefix '{}…') is not in the allowlist for provider '{}'",
+                        preview, self.name
                     )));
                 }
                 let substituted = issuer_url.replace("{tenantid}", tid);

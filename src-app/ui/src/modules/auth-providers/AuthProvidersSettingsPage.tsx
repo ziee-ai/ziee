@@ -9,7 +9,7 @@ import { AuthProvidersListSection } from './components/AuthProvidersListSection'
 export function AuthProvidersSettingsPage() {
   return (
     <SettingsPageContainer
-      title="Auth providers"
+      title="Auth Providers"
       subtitle="Configure third-party sign-in: Google, Microsoft, Apple, and any OIDC- or OAuth2-compliant identity provider."
     >
       <AuthProvidersListSection />

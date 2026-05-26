@@ -642,53 +642,30 @@ async fn test_link_account_password_confirmation() {
     .unwrap();
     assert_eq!(after_bad, 0, "Wrong password must not create link");
 
-    // The pending row is single-use after a SUCCESSFUL consume.
-    // A failed password attempt should leave the row intact so the
-    // user can retry. Verify it still exists.
-    // (Actually consume_pending_link runs only on the success path —
-    // link_account verifies password BEFORE consuming. Check we
-    // still have the pending row for retry.)
-    //
-    // NOTE: our current implementation calls consume_pending_link
-    // FIRST. That means a single wrong password also burns the row.
-    // This is an intentional trade-off — protects against link-token
-    // brute force at the cost of one retry. Document via this test.
+    // Audit fix: link_account uses peek-then-delete so a wrong
+    // password preserves the token for retry (forcing a fresh OAuth
+    // dance on every typo would be hostile UX). Per-token brute-force
+    // protection now comes from the `attempts` counter, capped at 5.
     let after_bad_pending: i64 = sqlx::query_scalar!(
         r#"SELECT COUNT(*) AS "c!" FROM pending_account_links"#
     )
     .fetch_one(&pool).await.unwrap();
     assert_eq!(
-        after_bad_pending, 0,
-        "consume_pending_link burns the row even on wrong password (single-use design)"
+        after_bad_pending, 1,
+        "peek-then-delete: wrong-password attempt preserves the row for retry"
     );
 
-    // Since the pending row is now gone, we need a SECOND OAuth dance
-    // to mint a fresh link_token before testing the success path.
-    let (_, location2) = drive_oauth_flow(
-        &test_server,
-        "test-oauth",
-        "social-sub-bob",
-        json!({
-            "email": "bob@example.com",
-            "email_verified": true,
-            "preferred_username": "bob-social",
-            "name": "Bob Social"
-        }),
-        None,
-    )
-    .await;
-    let loc2 = location2.unwrap();
-    let link_token2 = loc2
-        .split_once("link_token=")
-        .map(|(_, t)| t.split('&').next().unwrap_or(t).to_string())
-        .unwrap();
-    // link_token is a UUID — no URL-encoding needed.
-
-    // Correct password → 200 + link row created.
+    // Continue using the SAME link_token (no need for a second OAuth
+    // dance now that the row survives the wrong-password attempt).
+    let location2 = Some(format!("/auth/link-account?link_token={}", link_token));
+    let _ = location2; // silence unused — we use link_token below
+    // Correct password on the SAME token → 200 + link row created.
+    // This proves peek-then-delete: the row survived the wrong-password
+    // attempt, and we consume it now on success.
     let good = client
         .post(&link_endpoint)
         .json(&json!({
-            "link_token": link_token2,
+            "link_token": link_token,
             "password": "hunter2-is-still-bad"
         }))
         .send()
@@ -701,6 +678,13 @@ async fn test_link_account_password_confirmation() {
     )
     .fetch_one(&pool).await.unwrap();
     assert_eq!(after_good, 1, "Correct password must create the link");
+
+    // The pending row is consumed on success.
+    let after_good_pending: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) AS "c!" FROM pending_account_links"#
+    )
+    .fetch_one(&pool).await.unwrap();
+    assert_eq!(after_good_pending, 0, "successful link must consume the token");
 }
 
 /// G4a — single-tenant `allowed_tenant_ids` accepts matching tid.
@@ -856,6 +840,85 @@ async fn test_oauth_return_to_rejects_open_redirect() {
         loc.contains("return_to=%2F&") || loc.ends_with("return_to=%2F"),
         "Open-redirect return_to must fall back to '/', got: {}",
         loc
+    );
+}
+
+/// Security regression: an OAuth provider that EXPLICITLY says
+/// `email_verified=false` is refused at the provider layer (the
+/// existing F-09 defense — see oauth2.rs::handle_oauth_callback).
+/// The whole flow must terminate with 401, NOT auto-provision and
+/// NOT enter FBL.
+#[tokio::test]
+async fn test_oauth_unverified_email_is_rejected_at_provider_layer() {
+    let test_server = crate::common::TestServer::start().await;
+    let oauth_server = OAuthMockServer::start()
+        .await
+        .expect("Failed to start OAuth mock server");
+    let pool = sqlx::PgPool::connect(&test_server.database_url)
+        .await
+        .expect("Failed to connect to test database");
+    let _ = seed_oidc_provider(&pool, "test-oauth", &oauth_server, json!({})).await;
+
+    // Pre-create a local user with a password — this is the "victim".
+    // We want to make sure NO bind to this user occurs.
+    let victim_pw = bcrypt::hash("victim-pw", bcrypt::DEFAULT_COST).unwrap();
+    let victim_id = sqlx::query_scalar!(
+        r#"
+        INSERT INTO users (id, username, email, password_hash, is_active, is_admin, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, true, false, NOW(), NOW())
+        RETURNING id
+        "#,
+        "victim",
+        "victim@example.com",
+        victim_pw,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // Attacker drives an OAuth flow that claims `email=victim@example.com`
+    // but with `email_verified=false`. The OIDC provider layer refuses
+    // the whole exchange (closes F-09); a 401 + no DB writes is the
+    // expected outcome.
+    let (status, _location) = drive_oauth_flow(
+        &test_server,
+        "test-oauth",
+        "attacker-sub",
+        json!({
+            "email": "victim@example.com",
+            "email_verified": false,
+            "preferred_username": "attacker"
+        }),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status, 401,
+        "unverified email must be rejected at the provider layer (F-09)"
+    );
+
+    // NO user_auth_links row was created against the victim.
+    let bound_to_victim: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "c!" FROM user_auth_links WHERE user_id = $1"#,
+        victim_id,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(bound_to_victim, 0, "victim must not be auto-linked");
+
+    // No NEW user was auto-provisioned either (we didn't even get
+    // to the provision branch).
+    let attacker_link: Option<uuid::Uuid> = sqlx::query_scalar!(
+        r#"SELECT user_id FROM user_auth_links WHERE external_id = $1"#,
+        "attacker-sub",
+    )
+    .fetch_optional(&pool)
+    .await
+    .unwrap();
+    assert!(
+        attacker_link.is_none(),
+        "no user_auth_link row should exist when email_verified=false"
     );
 }
 

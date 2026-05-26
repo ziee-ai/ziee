@@ -10,6 +10,13 @@ interface AuthProvidersState {
   hasLoaded: boolean
 
   loadProviders: () => Promise<void>
+
+  // Auto-loaded on store init so the login page's <ProviderButtons>
+  // doesn't have to fetch in a useEffect (avoids the mount-time
+  // double-load race that came up in the audit).
+  __init__: {
+    providers: () => Promise<void>
+  }
 }
 
 declare module '../../core/stores' {
@@ -41,5 +48,11 @@ export const useAuthProvidersStore = create<AuthProvidersState>((set, get) => ({
         hasLoaded: true,
       })
     }
+  },
+
+  __init__: {
+    providers: async () => {
+      await get().loadProviders()
+    },
   },
 }))

@@ -160,6 +160,22 @@ export const useAuthStore = create<AuthState>()(
         },
 
         setAuthFromAutoLogin: (response: AutoLoginResponse) => {
+          // The OAuth callback flow passes a null user (the server is
+          // the source of truth; initAuth() re-fetches /me right
+          // after). During the gap between this set() and the
+          // initAuth resolve, code that reads `user.something`
+          // would crash on null. Hold isAuthenticated=false +
+          // isLoading=true until we have a real user.
+          if (response.user == null) {
+            set({
+              user: null,
+              token: response.access_token,
+              isAuthenticated: false,
+              isLoading: true,
+              error: null,
+            })
+            return
+          }
           set({
             user: response.user,
             token: response.access_token,

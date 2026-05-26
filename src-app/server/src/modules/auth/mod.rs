@@ -63,6 +63,36 @@ impl AppModule for AuthModule {
 
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
+
+        // Spawn a periodic cleanup task: prune expired oauth_sessions
+        // and pending_account_links rows. Both have TTL columns, but
+        // rows that are never re-touched (abandoned OAuth dances,
+        // unused link tokens) would accumulate indefinitely. Runs
+        // every 5 minutes; failure is logged and ignored — next tick
+        // tries again.
+        let pool = ctx.db_pool.clone();
+        tokio::spawn(async move {
+            let repo = crate::modules::auth::repository::AuthRepository::new((*pool).clone());
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(5 * 60));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                ticker.tick().await;
+                match repo.cleanup_expired_auth_rows().await {
+                    Ok((s, p)) if s > 0 || p > 0 => {
+                        tracing::debug!(
+                            sessions_pruned = s,
+                            pending_links_pruned = p,
+                            "auth cleanup tick"
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = ?e, "auth cleanup tick failed");
+                    }
+                }
+            }
+        });
+
         Ok(())
     }
 

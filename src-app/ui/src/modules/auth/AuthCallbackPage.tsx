@@ -3,10 +3,24 @@ import { useNavigate } from 'react-router-dom'
 import { Alert, Card, Layout, Spin, Typography } from 'antd'
 import { Stores } from '@/core/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
+import { SESSION_RETURN_TO_KEY } from './constants'
 
 const { Content } = Layout
 const { Title, Text } = Typography
-const SESSION_RETURN_TO_KEY = 'ziee.oauth.returnTo'
+
+/**
+ * True when `target` is a safe same-origin path. Strict: must start
+ * with a single `/`, not `//` (protocol-relative URL → open redirect),
+ * no backslashes (Windows-style), no control characters, no embedded
+ * scheme.
+ */
+function isSameOriginPath(target: string | null): boolean {
+  if (!target) return false
+  if (!target.startsWith('/')) return false
+  if (target.startsWith('//')) return false
+  if (/[\\\x00-\x1f]/.test(target)) return false
+  return true
+}
 
 /**
  * /auth/callback — landing page after a successful OAuth dance.
@@ -56,6 +70,21 @@ export const AuthCallbackPage: React.FC = () => {
       } catch {
         // ignore — older browsers / sandboxed iframes
       }
+      // Belt-and-suspenders: even with the fragment scrubbed from the
+      // URL bar, the original full URL (token + return_to) lives on
+      // in the Performance API's navigation entry. Anything in the
+      // page that introspects performance.getEntriesByType('navigation')
+      // — analytics scripts, perf widgets — would see the token.
+      // Clear it.
+      try {
+        performance.clearResourceTimings?.()
+        // No standard API to clear navigation entries; setting the
+        // URL via replaceState above is the strongest available
+        // mitigation. This catch leaves intentionally as documentation
+        // that we considered it.
+      } catch {
+        // ignore
+      }
 
       if (!token) {
         setError('No authentication token in the callback URL.')
@@ -98,7 +127,15 @@ export const AuthCallbackPage: React.FC = () => {
       }
 
       if (!cancelled) {
-        navigate(target || '/', { replace: true })
+        // SECURITY: re-validate return_to as a same-origin path
+        // before navigating. The backend validated on the way IN to
+        // /authorize, but the value round-trips through the OAuth
+        // provider's URL and back here in our fragment — a tampered
+        // provider response could deliver a protocol-relative URL
+        // like `//evil.com/x` which react-router would happily
+        // navigate to. Strict path-only allowlist.
+        const safeTarget = isSameOriginPath(target) ? target! : '/'
+        navigate(safeTarget, { replace: true })
       }
     }
     run()

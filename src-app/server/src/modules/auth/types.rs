@@ -34,12 +34,6 @@ pub struct RefreshTokenRequest {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct OAuthAuthorizeQuery {
-    /// Redirect URI after successful authentication. Ignored
-    /// server-side — the handler derives the canonical callback URI
-    /// from the inbound request to prevent open-redirect attacks.
-    /// Kept on the schema for back-compat with clients that send it.
-    #[allow(dead_code)]
-    pub redirect_uri: Option<String>,
     /// Same-origin SPA path the user wants to land on after a
     /// successful login. Validated server-side as a same-origin path
     /// (no `//`, no absolute URLs) and stored in `oauth_sessions.return_to`

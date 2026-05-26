@@ -69,6 +69,15 @@ struct JwksCache {
     fetched_at: Option<DateTime<Utc>>,
 }
 
+/// Minimum seconds between successive JWKS refreshes when the kid
+/// lookup misses. Without a gate, a forged token with a random kid
+/// value turns every login attempt into an Apple JWKS round-trip — at
+/// the global rate limit that's still hundreds per minute and may
+/// trip Apple's per-IP throttling. 30 seconds is long enough to
+/// absorb a burst and short enough to pick up a real key rotation on
+/// the next retry.
+const JWKS_MIN_REFRESH_INTERVAL_SECS: i64 = 30;
+
 #[derive(Debug, Clone, Deserialize)]
 struct AppleJwks {
     keys: Vec<AppleJwk>,
@@ -80,10 +89,8 @@ struct AppleJwk {
     n: String,
     e: String,
     #[serde(default)]
-    #[allow(dead_code)]
     kty: String,
     #[serde(default)]
-    #[allow(dead_code)]
     alg: Option<String>,
     #[serde(default)]
     #[allow(dead_code)]
@@ -152,6 +159,16 @@ pub struct AppleProvider {
     #[allow(dead_code)]
     pool: PgPool,
     jwks_cache: Arc<RwLock<JwksCache>>,
+    /// Single-flight gate for JWKS refresh. Held across the network
+    /// fetch so concurrent kid-misses coalesce into one upstream
+    /// request — without this, N parallel logins on a key rotation
+    /// each issue their own GET to Apple.
+    jwks_refresh_lock: Arc<tokio::sync::Mutex<()>>,
+    /// EncodingKey is built once from the .p8 PEM and reused. The
+    /// previous implementation re-read the file + re-parsed PEM on
+    /// every token exchange (cheap, but pointless I/O + a path leak
+    /// in error messages on every failed login).
+    signing_key: Arc<EncodingKey>,
     http: reqwest::Client,
 }
 
@@ -180,6 +197,46 @@ impl AppleProvider {
             AuthError::ConfigurationError(format!("Invalid Apple configuration: {}", e))
         })?;
 
+        // SECURITY: defense against an admin pasting a tainted
+        // `base_url` (e.g. `http://localhost:1234/`). Apple is HTTPS-
+        // only on real deployments; the override exists for tests but
+        // gets force-disabled in release builds so an admin who can
+        // POST a provider config can't repoint Apple at a private-net
+        // probe.
+        if let Some(custom) = config.base_url.as_deref() {
+            if cfg!(not(debug_assertions))
+                && custom != DEFAULT_APPLE_BASE_URL
+            {
+                return Err(AuthError::ConfigurationError(
+                    "Apple `base_url` override is only permitted in debug builds (for tests)".to_string(),
+                ));
+            }
+            if !custom.starts_with("https://") && !custom.starts_with("http://") {
+                return Err(AuthError::ConfigurationError(
+                    "Apple `base_url` must be http(s)".to_string(),
+                ));
+            }
+        }
+
+        // Build the ES256 signing key ONCE at construction so the per-
+        // login token exchange doesn't re-read the .p8 from disk + re-
+        // parse PEM. Surfacing the path on error here (during admin
+        // create/update) is acceptable because admin already knows
+        // it; the bigger concern was the original code leaking it on
+        // EVERY login failure via `Debug` of PathBuf.
+        let pem = std::fs::read(&config.private_key_path).map_err(|e| {
+            AuthError::ConfigurationError(format!(
+                "Apple private key unreadable at the configured path: {}",
+                e
+            ))
+        })?;
+        let signing_key = EncodingKey::from_ec_pem(&pem).map_err(|e| {
+            AuthError::ConfigurationError(format!(
+                "Apple .p8 private key failed to parse: {}",
+                e
+            ))
+        })?;
+
         // SSRF hardening: disable redirects on the HTTP client used to
         // talk to Apple endpoints.
         let http = reqwest::Client::builder()
@@ -196,6 +253,8 @@ impl AppleProvider {
             raw_config: provider.config.clone(),
             pool,
             jwks_cache: Arc::new(RwLock::new(JwksCache::default())),
+            jwks_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
+            signing_key: Arc::new(signing_key),
             http,
         })
     }
@@ -205,16 +264,6 @@ impl AppleProvider {
     /// replay window; Apple's max is 6 months but there's no benefit
     /// to keeping it longer when regeneration is essentially free.
     fn generate_client_secret_jwt(&self) -> Result<String, AuthError> {
-        let pem = std::fs::read(&self.config.private_key_path).map_err(|e| {
-            AuthError::ConfigurationError(format!(
-                "Failed to read Apple private key at {:?}: {}",
-                self.config.private_key_path, e
-            ))
-        })?;
-        let key = EncodingKey::from_ec_pem(&pem).map_err(|e| {
-            AuthError::ConfigurationError(format!("Invalid Apple .p8 key: {}", e))
-        })?;
-
         let mut header = Header::new(Algorithm::ES256);
         header.kid = Some(self.config.key_id.clone());
 
@@ -227,7 +276,7 @@ impl AppleProvider {
             "sub": self.config.services_id,
         });
 
-        encode(&header, &claims, &key).map_err(|e| {
+        encode(&header, &claims, self.signing_key.as_ref()).map_err(|e| {
             AuthError::InternalError(format!("Failed to sign Apple client_secret JWT: {}", e))
         })
     }
@@ -245,20 +294,69 @@ impl AppleProvider {
         let jwks: AppleJwks = resp.json().await.map_err(|e| {
             AuthError::InternalError(format!("Failed to parse Apple JWKS: {}", e))
         })?;
-        Ok(jwks.keys)
+        // SECURITY: enforce kty=RSA + alg=RS256 (Apple is documented
+        // to use RSA / RS256 only). Without this, a malicious JWKS
+        // response could include an HS256 key whose `n` is a
+        // public-key-shaped string — jsonwebtoken's signature check
+        // would then verify a token signed with that string as MAC,
+        // bypassing asymmetric verification. Drop any key that
+        // doesn't conform.
+        let filtered: Vec<AppleJwk> = jwks
+            .keys
+            .into_iter()
+            .filter(|k| {
+                k.kty.eq_ignore_ascii_case("RSA")
+                    && k.alg.as_deref().map(|a| a.eq_ignore_ascii_case("RS256")).unwrap_or(true)
+            })
+            .collect();
+        if filtered.is_empty() {
+            return Err(AuthError::InternalError(
+                "Apple JWKS response had no RSA/RS256 keys".to_string(),
+            ));
+        }
+        Ok(filtered)
     }
 
     /// Look up the JWK by `kid`. Refresh the cache once if the kid
-    /// isn't found (Apple may have rotated). Beyond that we don't
-    /// retry, to avoid amplifying a misconfigured token into a flood
-    /// of requests.
+    /// isn't found (Apple may have rotated) — but gate the refresh
+    /// behind both (a) a min-interval timer and (b) a single-flight
+    /// mutex, so a forged token with a random kid can't turn N
+    /// concurrent login attempts into N Apple GETs.
     async fn get_jwk_for_kid(&self, kid: &str) -> Result<AppleJwk, AuthError> {
+        // Cached hit?
         {
             let cache = self.jwks_cache.read().await;
             if let Some(jwk) = cache.keys.iter().find(|j| j.kid == kid) {
                 return Ok(jwk.clone());
             }
         }
+
+        // Min-interval gate. If we fetched recently and the kid still
+        // doesn't exist, don't bother Apple again.
+        {
+            let cache = self.jwks_cache.read().await;
+            if let Some(fetched_at) = cache.fetched_at {
+                let elapsed = (Utc::now() - fetched_at).num_seconds();
+                if elapsed < JWKS_MIN_REFRESH_INTERVAL_SECS {
+                    return Err(AuthError::InvalidCredentials(format!(
+                        "Apple kid '{}' not found in JWKS (refresh throttled)",
+                        kid
+                    )));
+                }
+            }
+        }
+
+        // Single-flight: only one coroutine fetches at a time. After
+        // acquiring the lock, re-check the cache in case another
+        // coroutine just refreshed it.
+        let _refresh_guard = self.jwks_refresh_lock.lock().await;
+        {
+            let cache = self.jwks_cache.read().await;
+            if let Some(jwk) = cache.keys.iter().find(|j| j.kid == kid) {
+                return Ok(jwk.clone());
+            }
+        }
+
         let fresh = self.fetch_jwks().await?;
         let found = fresh.iter().find(|j| j.kid == kid).cloned();
         let mut cache = self.jwks_cache.write().await;
@@ -287,7 +385,13 @@ impl AppleProvider {
 
         let jwk = self.get_jwk_for_kid(&kid).await?;
         let key = DecodingKey::from_rsa_components(&jwk.n, &jwk.e).map_err(|e| {
-            AuthError::InternalError(format!("Invalid Apple JWK: {}", e))
+            // Distinct from "JWK unparseable" — the JWK parsed fine
+            // upstream; failure here means the n/e components couldn't
+            // be assembled into a usable RSA public key.
+            AuthError::InternalError(format!(
+                "Apple JWK RSA components rejected: {}",
+                e
+            ))
         })?;
 
         let mut validation = Validation::new(Algorithm::RS256);
@@ -445,7 +549,7 @@ impl AuthProviderTrait for AppleProvider {
         // Clean up session — single-use.
         let _ = Repos.auth.delete_oauth_session(state).await;
 
-        let email = claims.email.clone().unwrap_or_default();
+        let mut email = claims.email.clone().unwrap_or_default();
         let email_verified = claims
             .email_verified
             .as_ref()
@@ -457,15 +561,30 @@ impl AuthProviderTrait for AppleProvider {
             .map(|v| v.as_bool())
             .unwrap_or(false);
 
-        // Apple gives us no username; derive from email local-part
-        // (the handler may override using the `user` JSON if it's
-        // the user's first auth ever).
-        let username = email
-            .split('@')
-            .next()
-            .filter(|s| !s.is_empty())
-            .unwrap_or(&claims.sub)
-            .to_string();
+        // Defense in depth: if Apple didn't assert email_verified,
+        // drop the email at the provider boundary too. The handler
+        // also has this guard, but enforcing it here means even a
+        // future caller that bypasses the handler's check can't get
+        // an unverified email through.
+        if !email_verified {
+            email.clear();
+        }
+
+        // Apple gives us no username; derive one. For private-relay
+        // emails the local-part is an unstable hash that Apple may
+        // re-derive — use the stable `sub` instead so a user's
+        // username doesn't churn on key rotation events. For real
+        // emails the local-part is fine.
+        let username = if is_private || email.is_empty() {
+            claims.sub.clone()
+        } else {
+            email
+                .split('@')
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&claims.sub)
+                .to_string()
+        };
 
         Ok(AuthResult {
             external_id: claims.sub.clone(),

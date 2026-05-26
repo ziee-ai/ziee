@@ -53,6 +53,7 @@ pub struct PendingAccountLink {
     pub external_id: String,
     pub external_email: Option<String>,
     pub external_data: Option<serde_json::Value>,
+    pub attempts: i32,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }

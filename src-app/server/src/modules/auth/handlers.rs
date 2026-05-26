@@ -603,7 +603,6 @@ pub async fn oauth_authorize(
     // The path portion is server-controlled (provider_name comes from
     // URL routing matched against a string we built ourselves, not
     // user-controlled here).
-    let _ = query;
     // The redirect_uri sent to the OAuth provider must point at an
     // origin where the SPA is reachable (so the post-OAuth callback
     // can flow through the SPA's router to /auth/callback). In dev /
@@ -613,21 +612,35 @@ pub async fn oauth_authorize(
     // navigation to /api/auth/oauth/.../authorize) carries the right
     // origin, so we prefer it over HOST. Fallbacks ordered by
     // reliability: Referer > X-Forwarded-* > HOST.
+    //
+    // SECURITY: the scheme MUST be http or https. The host MUST NOT
+    // be empty. In release builds we refuse the "localhost" default
+    // — production deployments must terminate TLS at a known origin
+    // and forward X-Forwarded-Host (or set HOST correctly) so we
+    // never accidentally hand the provider a redirect_uri that
+    // points back to itself.
+    fn safe_scheme(s: &str) -> Option<&str> {
+        match s {
+            "http" | "https" => Some(s),
+            _ => None,
+        }
+    }
     let referer_origin = headers
         .get(axum::http::header::REFERER)
         .and_then(|v| v.to_str().ok())
         .and_then(|r| url::Url::parse(r).ok())
-        .map(|u| {
-            let scheme = u.scheme().to_string();
-            let host = u.host_str().unwrap_or("localhost").to_string();
-            match u.port_or_known_default() {
+        .and_then(|u| {
+            let scheme = safe_scheme(u.scheme())?.to_string();
+            let host = u.host_str().filter(|h| !h.is_empty())?.to_string();
+            Some(match u.port_or_known_default() {
                 Some(p) => format!("{}://{}:{}", scheme, host, p),
                 None => format!("{}://{}", scheme, host),
-            }
+            })
         });
     let fallback_scheme = headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
+        .and_then(|s| safe_scheme(s))
         .unwrap_or("http")
         .to_string();
     let fallback_host = headers
@@ -638,10 +651,30 @@ pub async fn oauth_authorize(
                 .get(axum::http::header::HOST)
                 .and_then(|v| v.to_str().ok())
         })
-        .unwrap_or("localhost")
-        .to_string();
-    let origin = referer_origin
-        .unwrap_or_else(|| format!("{}://{}", fallback_scheme, fallback_host));
+        .map(|s| s.to_string());
+    let origin = match referer_origin {
+        Some(o) => o,
+        None => match fallback_host {
+            Some(h) if !h.is_empty() => format!("{}://{}", fallback_scheme, h),
+            _ => {
+                // No usable Referer, no X-Forwarded-Host, no HOST
+                // header. In dev we tolerate this with a localhost
+                // default; in release we refuse so we never hand the
+                // provider a bogus redirect_uri.
+                if cfg!(debug_assertions) {
+                    "http://localhost".to_string()
+                } else {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        AppError::bad_request(
+                            "MISSING_ORIGIN",
+                            "OAuth authorize request lacked a usable Referer / X-Forwarded-Host / Host header; cannot derive redirect_uri",
+                        ),
+                    ));
+                }
+            }
+        },
+    };
     let redirect_uri = format!(
         "{}/api/auth/oauth/{}/callback",
         origin, provider_name
@@ -708,6 +741,34 @@ pub async fn oauth_callback_post(
     Path(provider_name): Path<String>,
     Form(form): Form<AppleCallbackForm>,
 ) -> Result<impl IntoResponse, (StatusCode, AppError)> {
+    // SECURITY: only Apple uses response_mode=form_post. Reject POSTs
+    // targeted at any other provider — without this gate, a hostile
+    // cross-origin form could submit `(code, state)` against
+    // /oauth/google/callback (cookie-less endpoint with no other
+    // protection) and trigger an account-binding flow as if Google
+    // had posted form_post. The state nonce already protects against
+    // unsolicited callbacks, but accepting POST for non-Apple
+    // providers also widens the surface for clickjacking-style POSTs
+    // and weakens the SameSite protections browsers apply to GETs.
+    let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                AppError::not_found("Authentication provider"),
+            )
+        })?;
+    if provider_config.provider_type != "apple" {
+        return Err((
+            StatusCode::METHOD_NOT_ALLOWED,
+            AppError::new(
+                StatusCode::METHOD_NOT_ALLOWED,
+                "POST_NOT_SUPPORTED",
+                "This provider does not support form_post callbacks. Use the GET callback URL.",
+            ),
+        ));
+    }
     oauth_complete(jwt_service, provider_name, form.code, form.state, form.user).await
 }
 
@@ -720,6 +781,29 @@ async fn oauth_complete(
     provider_name: String,
     code: String,
     state: String,
+    apple_user_json: Option<String>,
+) -> Result<Redirect, (StatusCode, AppError)> {
+    // Run the inner logic, then ALWAYS try to delete the oauth_sessions
+    // row keyed by `state` — providers delete on success, but every
+    // error path used to leave an orphan row that would only be reaped
+    // by the cleanup job (or worse, never if the cleanup job isn't
+    // running). Use of `let _ = ...` is deliberate: a delete failure
+    // here is non-fatal (the row will be reaped by TTL), and we don't
+    // want to mask the original error.
+    let result =
+        oauth_complete_inner(jwt_service, provider_name, code, &state, apple_user_json)
+            .await;
+    if result.is_err() {
+        let _ = Repos.auth.delete_oauth_session(&state).await;
+    }
+    result
+}
+
+async fn oauth_complete_inner(
+    jwt_service: Arc<JwtService>,
+    provider_name: String,
+    code: String,
+    state: &str,
     apple_user_json: Option<String>,
 ) -> Result<Redirect, (StatusCode, AppError)> {
     let provider_config = provider_repo::get_provider_by_name(Repos.pool(), &provider_name)
@@ -743,14 +827,14 @@ async fn oauth_complete(
     // worst case we fall back to "/".
     let return_to = Repos
         .auth
-        .get_oauth_session_by_state(&state)
+        .get_oauth_session_by_state(state)
         .await
         .ok()
         .flatten()
         .and_then(|s| s.return_to);
 
     let mut auth_result = provider
-        .handle_oauth_callback(&code, &state, &state)
+        .handle_oauth_callback(&code, state, state)
         .await
         .map_err(|e| {
             (
@@ -769,12 +853,32 @@ async fn oauth_complete(
         merge_apple_user_json(&mut auth_result, user_json_str);
     }
 
+    // SECURITY: drop the email if the provider didn't assert it as
+    // verified. Without this, a sloppy IdP (or a provider that
+    // simply omits the `email_verified` claim) can hand us an
+    // unverified email, and our email-collision branch would later
+    // bind a social identity to a victim's local account. Stripping
+    // the email forces auto-provisioning with email=None — user has
+    // to enter a real email out-of-band.
+    if !email_verified_from_auth_result(&auth_result)
+        && auth_result
+            .external_email
+            .as_deref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+    {
+        auth_result.external_email = None;
+        auth_result.attributes.email = String::new();
+    }
+
     let provider_id = provider_config.id;
 
     // ── 1. Existing link → returning user, just issue JWT ────────
+    // Single UPDATE+RETURNING (`touch_auth_link_and_get_user_id`)
+    // bumps last_login_at and returns the user_id in one round-trip.
     if let Some(user_id) = Repos
         .auth
-        .find_user_by_auth_link(provider_id, &auth_result.external_id)
+        .touch_auth_link_and_get_user_id(provider_id, &auth_result.external_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
     {
@@ -795,11 +899,6 @@ async fn oauth_complete(
         Repos
             .user
             .update_last_login(user.id)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-        Repos
-            .auth
-            .update_auth_link_last_login(provider_id, &auth_result.external_id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -886,27 +985,21 @@ async fn oauth_complete(
         ));
     }
 
+    // Atomic provision: user row + auth_link + default-group
+    // assignment in a single transaction. Partial failure (e.g.
+    // unique-collision race on the auth_link) used to leave a
+    // password-less orphan that locked the user out forever —
+    // re-login would trip the email-collision branch and refuse.
     let new_user_id = Repos
         .auth
-        .create_external_user(&username, email.clone(), &display_name)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-
-    Repos
-        .auth
-        .create_auth_link_with_data(
-            new_user_id,
+        .provision_external_user_atomic(
+            &username,
+            email.as_deref(),
+            &display_name,
             provider_id,
             &auth_result.external_id,
-            email.as_deref(),
             Some(&auth_result.metadata),
         )
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-
-    Repos
-        .auth
-        .assign_user_to_default_group(new_user_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
@@ -1012,13 +1105,21 @@ fn merge_apple_user_json(auth_result: &mut AuthResult, user_json_str: &str) {
     let Ok(parsed) = serde_json::from_str::<AppleUser>(user_json_str) else {
         return;
     };
+    // SECURITY: the `user` payload comes from Apple's POST body, NOT
+    // the signed id_token. Only trust the email if the id_token didn't
+    // contain one AND the form value looks like a private-relay
+    // address. Otherwise an attacker who can capture a (code, state)
+    // pair could supply an arbitrary `email` here and trigger FBL
+    // against a victim's account.
     if let Some(email) = parsed.email {
-        if auth_result
+        let id_token_had_email = auth_result
             .external_email
             .as_deref()
-            .map(str::is_empty)
-            .unwrap_or(true)
-        {
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        let looks_like_relay =
+            email.to_ascii_lowercase().ends_with("@privaterelay.appleid.com");
+        if !id_token_had_email && looks_like_relay {
             auth_result.external_email = Some(email.clone());
             auth_result.attributes.email = email;
         }
@@ -1067,9 +1168,14 @@ pub async fn link_account(
     Extension(jwt_service): Extension<Arc<JwtService>>,
     Json(req): Json<LinkAccountRequest>,
 ) -> ApiResult<Json<AuthResponse>> {
+    // Peek (don't consume) so a wrong-password attempt doesn't burn
+    // the single-use token — the user gets to retry without
+    // re-running the entire OAuth dance. The token is still
+    // single-use: we delete it on the FIRST successful password +
+    // link insertion.
     let pending = Repos
         .auth
-        .consume_pending_link(&req.link_token)
+        .peek_pending_link(&req.link_token)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
         .ok_or_else(|| {
@@ -1081,6 +1187,29 @@ pub async fn link_account(
                 ),
             )
         })?;
+
+    // SECURITY: per-token brute-force gate. The global rate limiter
+    // caps requests per IP; this caps requests per token, defeating
+    // distributed brute-force. Hard ceiling 5 attempts — past that
+    // the token is invalidated.
+    const LINK_TOKEN_MAX_ATTEMPTS: i32 = 5;
+    let attempt_n = Repos
+        .auth
+        .bump_pending_link_attempts(&req.link_token)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .unwrap_or(LINK_TOKEN_MAX_ATTEMPTS + 1);
+    if attempt_n > LINK_TOKEN_MAX_ATTEMPTS {
+        let _ = Repos.auth.delete_pending_link(&req.link_token).await;
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            AppError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "TOO_MANY_ATTEMPTS",
+                "Too many failed attempts. Restart the sign-in flow.",
+            ),
+        ));
+    }
 
     let user = Repos
         .user
@@ -1109,6 +1238,7 @@ pub async fn link_account(
         )
     })?;
     if !ok {
+        // Pending row intentionally preserved for retry.
         return Err((
             StatusCode::UNAUTHORIZED,
             AppError::unauthorized("INVALID_CREDENTIALS", "Invalid credentials"),
@@ -1126,6 +1256,9 @@ pub async fn link_account(
         )
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // Consume the pending token now that the link is bound.
+    let _ = Repos.auth.delete_pending_link(&req.link_token).await;
 
     Repos
         .user
@@ -1206,7 +1339,14 @@ fn default_display_name(name: &str, provider_type: &str) -> String {
 // get both implicitly via the `*` wildcard, so no seed grants needed.
 
 /// Sensitive keys whose values are masked in any GET / list response.
-const SENSITIVE_CONFIG_KEYS: &[&str] = &["client_secret", "bind_password"];
+const SENSITIVE_CONFIG_KEYS: &[&str] = &["client_secret", "bind_password", "private_key_path"];
+
+/// Mask sentinel used in admin-list GET responses. We treat the
+/// literal sentinel as "empty" on writes too — otherwise an admin
+/// who clicks Save in the EditDrawer without retyping the password
+/// would persist the bullet string `"••••••"` as the new secret,
+/// destroying the real one (HIGH bug found by 2026-05-25 audit).
+const MASK_SENTINEL: &str = "••••••";
 
 /// Mask sensitive values inside an auth_providers.config JSONB
 /// payload. Returns a cloned + masked copy; the original (with real
@@ -1217,7 +1357,7 @@ fn mask_provider_config(config: &serde_json::Value) -> serde_json::Value {
         for key in SENSITIVE_CONFIG_KEYS {
             if let Some(v) = map.get_mut(*key) {
                 if v.as_str().map(|s| !s.is_empty()).unwrap_or(false) {
-                    *v = serde_json::Value::String("••••••".to_string());
+                    *v = serde_json::Value::String(MASK_SENTINEL.to_string());
                 }
             }
         }
@@ -1272,7 +1412,10 @@ pub async fn admin_create_provider(
             AppError::bad_request("INVALID_NAME", "Provider name cannot be empty"),
         ));
     }
-    let allowed_types = ["oidc", "oauth2", "apple", "ldap", "local"];
+    // "local" is the built-in password provider — not creatable via
+    // this endpoint (creating a second one leaves the login routing
+    // in undefined state).
+    let allowed_types = ["oidc", "oauth2", "apple", "ldap"];
     if !allowed_types.contains(&req.provider_type.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -1352,11 +1495,20 @@ fn preserve_sensitive_fields(
         _ => return,
     };
     for key in SENSITIVE_CONFIG_KEYS {
-        let new_empty = new_obj
+        // Treat absent, empty string, AND the masking sentinel as
+        // "leave existing value alone." The sentinel branch matters
+        // because the admin EditDrawer GETs a masked config + sends
+        // it straight back on Save; without this guard the bullets
+        // would replace the real secret.
+        let new_should_preserve = new_obj
             .get(*key)
-            .map(|v| v.as_str().map(str::is_empty).unwrap_or(false))
+            .map(|v| {
+                v.as_str()
+                    .map(|s| s.is_empty() || s == MASK_SENTINEL)
+                    .unwrap_or(false)
+            })
             .unwrap_or(true);
-        if new_empty {
+        if new_should_preserve {
             if let Some(existing_val) = existing_obj.get(*key) {
                 new_obj.insert((*key).to_string(), existing_val.clone());
             }
@@ -1457,9 +1609,24 @@ pub async fn admin_test_provider_config(
     _: RequirePermissions<(AuthProvidersManage,)>,
     Json(req): Json<CreateAuthProviderRequest>,
 ) -> ApiResult<Json<TestProviderResponse>> {
-    // Construct a transient AuthProvider in memory matching what
-    // create_provider expects. The fake id + timestamps don't affect
-    // behavior — test_connection only reads `config` + `provider_type`.
+    // Same allowlist as admin_create_provider — refuses "local" + any
+    // unknown type. Without this, an admin could probe arbitrary
+    // LDAP/OIDC servers via the test endpoint (lower-impact than
+    // SSRF since admin already has manage permission, but still
+    // good hygiene).
+    let allowed_types = ["oidc", "oauth2", "apple", "ldap"];
+    if !allowed_types.contains(&req.provider_type.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            AppError::bad_request(
+                "INVALID_PROVIDER_TYPE",
+                format!(
+                    "provider_type must be one of: {}",
+                    allowed_types.join(", ")
+                ),
+            ),
+        ));
+    }
     let transient = super::providers::models::AuthProvider {
         id: uuid::Uuid::nil(),
         name: req.name,
@@ -1490,8 +1657,10 @@ pub fn admin_test_provider_config_docs(op: TransformOperation) -> TransformOpera
 async fn run_test_for_row(
     mut row: super::providers::models::AuthProvider,
 ) -> TestProviderResponse {
-    // Force-enable so the factory accepts the row even when the
-    // admin has the provider switched off (we want test-while-disabled).
+    // The provider factory refuses to construct a disabled provider
+    // (so the normal login flow stops early). Force-enable a copy
+    // here so admins can test config BEFORE flipping the switch
+    // — the row in the DB is untouched.
     row.enabled = true;
     let provider = match create_provider(&row, Repos.pool().clone()) {
         Ok(p) => p,

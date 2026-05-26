@@ -44,7 +44,7 @@ export default createModule({
       {
         id: 'auth-providers',
         icon: <LockOutlined />,
-        label: 'Auth providers',
+        label: 'Auth Providers',
         path: 'auth-providers',
         order: 22,
         permission: AUTH_PROVIDERS_READ,

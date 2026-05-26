@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Alert, Button, Divider, Spin, Typography } from 'antd'
 import {
   AppleFilled,
@@ -8,10 +7,9 @@ import {
 } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import type { PublicProvider } from '@/api-client/types'
+import { SESSION_RETURN_TO_KEY } from './constants'
 
 const { Text } = Typography
-
-const SESSION_RETURN_TO_KEY = 'ziee.oauth.returnTo'
 
 /**
  * Per-provider icon. AntD icons stand in for the official Google /
@@ -44,13 +42,8 @@ function iconFor(p: PublicProvider) {
  * password form is the only login option.
  */
 export const ProviderButtons: React.FC<{ returnTo?: string }> = ({ returnTo }) => {
-  const { providers, isLoading, error, hasLoaded } = Stores.AuthProviders
-
-  useEffect(() => {
-    if (!hasLoaded && !isLoading) {
-      Stores.AuthProviders.loadProviders()
-    }
-  }, [hasLoaded, isLoading])
+  // Store auto-loads via __init__; we just consume.
+  const { providers, error, hasLoaded } = Stores.AuthProviders
 
   if (!hasLoaded) {
     return (

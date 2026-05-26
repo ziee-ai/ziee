@@ -154,17 +154,17 @@ impl AuthRepository {
     }
 
     /// Find a local user by email — used to detect First-Broker-Login
-    /// collisions. Returns the user_id if a local-password account
-    /// exists with the given email. NOTE: matches on the literal
-    /// email; callers can lowercase first if they want
-    /// case-insensitive behavior.
+    /// collisions. Case-insensitive (LOWER(email)) so a user who
+    /// registered as `Bob@corp.com` is matched when an OAuth provider
+    /// hands back the canonical `bob@corp.com`. Without this, FBL is
+    /// bypassed silently and the user gets a duplicate account.
     pub async fn find_user_by_email_for_linking(
         &self,
         email: &str,
     ) -> Result<Option<Uuid>, AppError> {
         let row = sqlx::query!(
             r#"
-            SELECT id FROM users WHERE email = $1 LIMIT 1
+            SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1
             "#,
             email
         )
@@ -172,6 +172,160 @@ impl AuthRepository {
         .await
         .map_err(AppError::database_error)?;
         Ok(row.map(|r| r.id))
+    }
+
+    /// Atomically provision a brand-new external-only user (no
+    /// password) + bind the social identity + assign the default
+    /// group, in a single transaction. If any step fails, the whole
+    /// thing rolls back — without this, a partial failure leaves
+    /// orphan rows that lock the user out forever (no password →
+    /// can't local-login, no auth_link → can't social-login,
+    /// email-collision check on retry refuses to provision).
+    /// Returns the new user_id.
+    pub async fn provision_external_user_atomic(
+        &self,
+        username: &str,
+        email: Option<&str>,
+        display_name: &str,
+        provider_id: Uuid,
+        external_id: &str,
+        external_data: Option<&serde_json::Value>,
+    ) -> Result<Uuid, AppError> {
+        let mut tx = self.pool.begin().await.map_err(AppError::database_error)?;
+        let new_user_id = Uuid::new_v4();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO users (id, username, email, display_name, is_active, is_admin, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, true, false, NOW(), NOW())
+            "#,
+            new_user_id, username, email, display_name,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO user_auth_links (user_id, provider_id, external_id, external_email, external_data, created_at, last_login_at)
+            VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+            "#,
+            new_user_id, provider_id, external_id, email, external_data,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+
+        // Assign default group — fetch within the same tx so we see
+        // a consistent snapshot.
+        let default_group = sqlx::query!(
+            r#"SELECT id FROM groups WHERE is_default = true LIMIT 1"#
+        )
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(AppError::database_error)?;
+        if let Some(group) = default_group {
+            sqlx::query!(
+                r#"INSERT INTO user_groups (user_id, group_id, assigned_at) VALUES ($1, $2, NOW())"#,
+                new_user_id, group.id,
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::database_error)?;
+        }
+
+        tx.commit().await.map_err(AppError::database_error)?;
+        Ok(new_user_id)
+    }
+
+    /// Atomic SELECT + UPDATE on user_auth_links: bump last_login_at
+    /// and return the user_id in a single round-trip. Replaces the
+    /// prior SELECT-then-UPDATE pattern in oauth_callback.
+    pub async fn touch_auth_link_and_get_user_id(
+        &self,
+        provider_id: Uuid,
+        external_id: &str,
+    ) -> Result<Option<Uuid>, AppError> {
+        let row = sqlx::query!(
+            r#"
+            UPDATE user_auth_links
+            SET last_login_at = NOW(), updated_at = NOW()
+            WHERE provider_id = $1 AND external_id = $2
+            RETURNING user_id
+            "#,
+            provider_id, external_id,
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(row.map(|r| r.user_id))
+    }
+
+    /// Peek a pending link by token WITHOUT consuming it. Used in
+    /// `link_account` so a wrong-password attempt doesn't burn the
+    /// single-use token — the user gets to retry without re-running
+    /// the whole OAuth flow.
+    pub async fn peek_pending_link(
+        &self,
+        link_token: &str,
+    ) -> Result<Option<crate::modules::auth::providers::models::PendingAccountLink>, AppError> {
+        sqlx::query_as!(
+            crate::modules::auth::providers::models::PendingAccountLink,
+            r#"
+            SELECT link_token, provider_id, target_user_id, external_id,
+                   external_email, external_data, attempts,
+                   created_at as "created_at: _",
+                   expires_at as "expires_at: _"
+            FROM pending_account_links
+            WHERE link_token = $1 AND expires_at > NOW()
+            "#,
+            link_token
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)
+    }
+
+    /// Atomically increment `attempts` and return the new value. Used
+    /// in `link_account` to enforce a per-token attempt cap: at the
+    /// global 5 req/s rate limit a single IP could try ~3000 passwords
+    /// in the 10-minute TTL; this gate cuts that to single digits and
+    /// makes brute-forcing impractical even from a botnet.
+    pub async fn bump_pending_link_attempts(
+        &self,
+        link_token: &str,
+    ) -> Result<Option<i32>, AppError> {
+        let row = sqlx::query!(
+            r#"
+            UPDATE pending_account_links
+               SET attempts = attempts + 1
+             WHERE link_token = $1 AND expires_at > NOW()
+            RETURNING attempts
+            "#,
+            link_token,
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(row.map(|r| r.attempts))
+    }
+
+    /// Delete a pending link by token (best-effort — no error if
+    /// the row's already gone). Paired with `peek_pending_link`
+    /// when single-use semantics need to be enforced after the
+    /// password verification step succeeds.
+    pub async fn delete_pending_link(
+        &self,
+        link_token: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"DELETE FROM pending_account_links WHERE link_token = $1"#,
+            link_token,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok(())
     }
 
     /// Create a new user from external auth (used by LDAP/OAuth)
@@ -330,7 +484,7 @@ impl AuthRepository {
             DELETE FROM pending_account_links
             WHERE link_token = $1 AND expires_at > NOW()
             RETURNING link_token, provider_id, target_user_id, external_id,
-                      external_email, external_data,
+                      external_email, external_data, attempts,
                       created_at as "created_at: _",
                       expires_at as "expires_at: _"
             "#,
@@ -339,5 +493,29 @@ impl AuthRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(AppError::database_error)
+    }
+
+    /// Best-effort cleanup of expired oauth_sessions + pending_account_links
+    /// rows. Designed to be called from a periodic background task or
+    /// at server boot; safe to invoke at any time. Returns
+    /// `(sessions_pruned, pending_links_pruned)` counts.
+    ///
+    /// Even with the per-row TTL columns, rows we never re-touch (a
+    /// user who abandons the OAuth dance mid-flow) would otherwise
+    /// accumulate forever — both tables would grow without bound.
+    pub async fn cleanup_expired_auth_rows(&self) -> Result<(u64, u64), AppError> {
+        let s = sqlx::query!(
+            r#"DELETE FROM oauth_sessions WHERE expires_at < NOW()"#
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        let p = sqlx::query!(
+            r#"DELETE FROM pending_account_links WHERE expires_at < NOW()"#
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(AppError::database_error)?;
+        Ok((s.rows_affected(), p.rows_affected()))
     }
 }

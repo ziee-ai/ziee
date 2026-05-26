@@ -20,6 +20,14 @@ CREATE TABLE pending_account_links (
     external_id VARCHAR(255) NOT NULL,
     external_email VARCHAR(255),
     external_data JSONB,
+    -- Per-token password-attempt counter. The global rate limit caps
+    -- requests-per-IP, but a botnet with diverse IPs could still
+    -- brute-force the local password during the 10-minute TTL.
+    -- link_account increments this on every attempt and refuses
+    -- further attempts past a hard cap (see handler for the value).
+    -- Cheaper than a separate audit table and consistent with the
+    -- token's single-use lifecycle.
+    attempts INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
 );

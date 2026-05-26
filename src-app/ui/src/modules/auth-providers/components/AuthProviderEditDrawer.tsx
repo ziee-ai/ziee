@@ -158,19 +158,18 @@ export function AuthProviderEditDrawer({
       maskClosable={false}
       destroyOnClose
       footer={
-        // Cancel → Test → Save, right-aligned. Matches the dominant
+        // Cancel/Close → Save, right-aligned. Matches the dominant
         // convention from 08-cross-cutting-consistency I-1 (every
         // non-user-module drawer uses justify-end + Cancel-then-Submit).
+        // Read-only users get a "Close" button instead of "Cancel"
+        // because there's nothing to cancel.
         <Flex className="justify-end gap-2">
           <Button onClick={onClose} disabled={saving}>
-            Cancel
+            {canManage ? 'Cancel' : 'Close'}
           </Button>
           <Can permission={Permissions.AuthProvidersManage}>
-            <Button loading={testing} onClick={onTestConfig}>
-              Test config
-            </Button>
             <Button type="primary" loading={saving} onClick={onSubmit}>
-              {existing ? 'Save changes' : 'Create'}
+              {existing ? 'Save' : 'Create'}
             </Button>
           </Can>
         </Flex>
@@ -202,16 +201,20 @@ export function AuthProviderEditDrawer({
             className="mb-4"
           />
         )}
-        <Form form={form} layout="vertical" disabled={!canManage}>
+        <Form form={form} layout="vertical" disabled={!canManage} onFinish={onSubmit}>
         <Form.Item
           name="name"
           label="Name (URL slug)"
           rules={[
             { required: true, message: 'Provider name required' },
             {
-              pattern: /^[a-z0-9-]+$/i,
+              // Lowercase only — names are URL slugs and used in
+              // log lines. Case-insensitive matching would mean
+              // `Google` and `google` look like the same provider
+              // on the wire but distinct rows in the DB.
+              pattern: /^[a-z0-9-]+$/,
               message:
-                'Use only letters, digits, and hyphens (appears in URLs)',
+                'Lowercase letters, digits, and hyphens only (appears in URLs)',
             },
           ]}
         >
@@ -244,6 +247,13 @@ export function AuthProviderEditDrawer({
             Leave <code>client_secret</code> empty to keep the existing value.
           </Paragraph>
         )}
+        <Can permission={Permissions.AuthProvidersManage}>
+          <Flex className="mt-4">
+            <Button loading={testing} onClick={onTestConfig}>
+              Test config
+            </Button>
+          </Flex>
+        </Can>
         </Form>
       </div>
     </Drawer>
