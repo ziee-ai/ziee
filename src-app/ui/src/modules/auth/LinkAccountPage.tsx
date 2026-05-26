@@ -10,7 +10,6 @@ import {
   Typography,
 } from 'antd'
 import { LockOutlined } from '@ant-design/icons'
-import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
 import { BlankLayoutComponent } from '@/modules/layouts/blank'
 
@@ -50,16 +49,7 @@ export const LinkAccountPage: React.FC = () => {
     setError(null)
     setLoading(true)
     try {
-      const res = await ApiClient.Auth.linkAccount(
-        { link_token: linkToken, password },
-        undefined,
-      )
-      Stores.Auth.setAuthFromAutoLogin({
-        user: res.user,
-        access_token: res.access_token,
-        refresh_token: res.refresh_token,
-      })
-      await Stores.Auth.initAuth()
+      await Stores.Auth.linkAccount({ link_token: linkToken, password })
       navigate('/', { replace: true })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to link account')

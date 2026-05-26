@@ -230,6 +230,25 @@ interface McpStore {
   openConfigModalForProject: (project: Project) => void
   /** Close the config modal (also clears currentProjectId). */
   closeConfigModal: () => void
+  /** Fetch the live tool list from a running MCP server (used by the
+   *  config modal's lazy load). Pure passthrough — the modal owns its
+   *  own per-server cache. */
+  listServerTools: (
+    serverId: string,
+  ) => Promise<import('@/api-client/types').ListToolsResponse>
+  /** Fetch a conversation's persisted MCP settings (selectedServers
+   *  + disabled servers + approval mode + loop settings). Used by
+   *  the chat extension's onConversationLoad to restore state on
+   *  navigation/refresh. */
+  getConversationMcpSettings: (
+    conversationId: string,
+  ) => Promise<import('@/api-client/types').McpSettingsResponse>
+  /** Fetch pending tool-approval requests for a branch. Used by the
+   *  chat extension on conversation load to restore approval panels
+   *  after a refresh. */
+  getBranchPendingApprovals: (
+    branchId: string,
+  ) => Promise<import('@/api-client/types').PendingApprovalsResponse>
   /** Save the project's MCP defaults to /projects/{id}/mcp-settings. */
   saveProjectConfig: (
     projectId: string,
@@ -1175,6 +1194,22 @@ export const createMcpStore = () =>
       set(state => {
         state.configModalVisible = false
         state.currentProjectId = null
+      })
+    },
+
+    listServerTools: async (serverId: string) => {
+      return await ApiClient.McpServerRuntime.listTools({ id: serverId })
+    },
+
+    getConversationMcpSettings: async (conversationId: string) => {
+      return await ApiClient.Conversation.getMcpSettings({
+        id: conversationId,
+      })
+    },
+
+    getBranchPendingApprovals: async (branchId: string) => {
+      return await ApiClient.Branch.getPendingApprovals({
+        branch_id: branchId,
       })
     },
 

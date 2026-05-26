@@ -9,7 +9,6 @@ import { FileAttachMenuItem } from '@/modules/chat/extensions/file/components/Fi
 import { FileCard } from '@/modules/chat/extensions/file/components/FileCard'
 import { MessageFilesView } from '@/modules/chat/extensions/file/components/MessageFilesView'
 import { Stores } from '@/core/stores'
-import { ApiClient } from '@/api-client'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment } from '@/api-client/types'
 
 // Augment the central PanelRendererMap so `displayInRightPanel({ type: 'file',
@@ -147,7 +146,7 @@ const fileExtension: ChatExtension = createExtension({
               const fullFiles = await Promise.all(
                 fileContents.map(c => {
                   const data = c.content as MessageContentDataFileAttachment
-                  return ApiClient.File.get({ file_id: data.file_id })
+                  return fileStore.getFileEntityById(data.file_id)
                 })
               )
               const validFiles = fullFiles.filter(Boolean) as FileEntity[]

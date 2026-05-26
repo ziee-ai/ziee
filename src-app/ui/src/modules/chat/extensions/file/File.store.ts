@@ -117,6 +117,24 @@ interface FileExtensionStore {
   loadMessageFile: (fileId: string) => Promise<void>
 
   /**
+   * One-shot fetch returning the full FileEntity for a file id.
+   * Used by extension hooks (e.g. edit-conversation restore) that
+   * need a Promise rather than store-cache-backed state. Does NOT
+   * update messageFilesCache.
+   */
+  getFileEntityById: (fileId: string) => Promise<FileEntity>
+
+  /**
+   * Fetch the raw text body at a dynamic same-origin /api/... URL —
+   * used by `useResourceLinkContent` for inline MCP resource_link
+   * blocks whose targets aren't known endpoints in ApiClient.
+   * Attaches the bearer token from the auth store so the request
+   * matches authentication used everywhere else (the previous
+   * inlined `fetch(url)` was unauthenticated).
+   */
+  fetchResourceLinkText: (url: string) => Promise<string>
+
+  /**
    * Returns the cached thumbnail blob URL for a file, or null if not yet loaded.
    * Triggers async loading when the file has has_thumbnail=true and preview_page_count>0.
    * Components call this directly (no useEffect needed) — store handles re-renders.
@@ -556,6 +574,23 @@ export const createFileExtensionStore = () =>
         Promise.resolve().then(() => get().loadMessageFile(fileId))
       }
       return cached ?? fallback
+    },
+
+    getFileEntityById: async (fileId: string): Promise<FileEntity> => {
+      return await ApiClient.File.get({ file_id: fileId })
+    },
+
+    fetchResourceLinkText: async (url: string): Promise<string> => {
+      // Lazy-import to avoid a circular dep with the api-client module
+      // (which itself depends on auth-storage parsing — keeping that
+      // out of the file-store load order).
+      const { getAuthToken } = await import('@/api-client/core')
+      const token = getAuthToken()
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.text()
     },
 
     loadMessageFile: async (fileId: string): Promise<void> => {

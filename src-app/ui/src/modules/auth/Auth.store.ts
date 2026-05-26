@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { ApiClient } from '@/api-client'
 import type {
+  LinkAccountRequest,
   LoginRequest,
   CreateUserRequest,
   User,
@@ -38,6 +39,7 @@ interface AuthState {
   authenticateUser: (credentials: LoginRequest) => Promise<void>
   logoutUser: () => Promise<void>
   registerNewUser: (userData: CreateUserRequest) => Promise<void>
+  linkAccount: (request: LinkAccountRequest) => Promise<void>
   clearAuthenticationError: () => void
   initAuth: () => Promise<void>
   setAuthFromAutoLogin: (response: AutoLoginResponse) => void
@@ -161,6 +163,21 @@ export const useAuthStore = create<AuthState>()(
 
         clearAuthenticationError: () => {
           set({ error: null })
+        },
+
+        linkAccount: async (request: LinkAccountRequest) => {
+          // Encapsulates the OAuth-link round-trip + re-bootstrap
+          // sequence so LinkAccountPage stays presentation-only:
+          //   1. POST /api/auth/link_account
+          //   2. Seed the access token via setAuthFromAutoLogin
+          //   3. Re-fetch /me to populate user + permissions
+          const res = await ApiClient.Auth.linkAccount(request, undefined)
+          get().setAuthFromAutoLogin({
+            user: res.user,
+            access_token: res.access_token,
+            refresh_token: res.refresh_token,
+          })
+          await get().initAuth()
         },
 
         setAuthFromAutoLogin: (response: AutoLoginResponse) => {
