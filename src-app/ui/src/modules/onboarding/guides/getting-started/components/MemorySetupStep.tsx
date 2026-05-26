@@ -6,7 +6,6 @@ import {
   Alert,
   Spin,
   Tag,
-  Button,
 } from 'antd'
 import { BulbOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import type { OnboardingStepProps } from '@/modules/onboarding/types/onboarding'
@@ -165,18 +164,14 @@ export default function MemorySetupStep({ registerBeforeNext }: OnboardingStepPr
         </>
       )}
 
-      <div className="text-right">
-        <Button
-          type="primary"
-          loading={saving}
-          disabled={enableMemory && !embeddingModelId && !noModelsAvailable}
-          onClick={async () => {
-            await Stores.MemorySetupStep.saveSettings()
-          }}
-        >
-          Save
-        </Button>
-      </div>
+      {/* No in-page Save button — registerBeforeNext fires on the
+          wizard's Next click and persists the toggle + model id.
+          Avoids gap #30: double-save when both buttons exist. */}
+      {saving && (
+        <Paragraph type="secondary" className="text-right">
+          Saving…
+        </Paragraph>
+      )}
     </div>
   )
 }
