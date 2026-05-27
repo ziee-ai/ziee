@@ -249,11 +249,13 @@ test.describe('Chat — LLM-driven inline file preview (real LLM + mock MCP serv
       true,
     )
 
-    const pre = page
-      .locator('[data-testid="inline-file-preview"] pre')
+    // RawCodeView (used by the text viewer) renders a div-based
+    // line-numbered layout, not a <pre>. Anchor on its data-testid.
+    const rawView = page
+      .locator('[data-testid="inline-file-preview"] [data-testid="raw-code-view"]')
       .first()
-    await expect(pre).toBeVisible({ timeout: 60000 })
-    await expect(pre).toContainText('startup')
+    await expect(rawView).toBeVisible({ timeout: 60000 })
+    await expect(rawView).toContainText('startup')
   })
 })
 

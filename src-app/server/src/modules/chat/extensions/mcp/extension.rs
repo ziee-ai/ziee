@@ -236,9 +236,26 @@ pub enum MessageContentDataVariants {
         /// Function/tool name (required for some providers like Gemini)
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        /// ID of the MCP server that executed this tool (UUID string)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        server_id: Option<String>,
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
+        /// Inline file attachment returned by a tool (base64-encoded content).
+        /// Mirrors `McpContentData::ToolResult.attachment` so the
+        /// `to_message_content()` serde roundtrip in content.rs preserves
+        /// it through DB persistence. Without this field here, serde
+        /// silently drops it when re-deserialising into MessageContentData.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachment: Option<crate::modules::chat::extensions::mcp::content::RichFile>,
+        /// References to persisted files returned by a tool (MCP
+        /// resource_link). MUST be persisted on the assistant message —
+        /// the frontend's `MessageFilesView` keys inline file-preview
+        /// rendering off this field. Missing-from-schema means missing-
+        /// from-storage means no inline preview.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_links: Option<Vec<crate::modules::chat::extensions::mcp::content::ResourceLink>>,
         /// System context for the LLM (e.g. download URLs) — never rendered to users.
         /// Stripped from API responses by strip_hidden_content_serialize in core/models/content.rs.
         #[serde(skip_serializing_if = "Option::is_none")]

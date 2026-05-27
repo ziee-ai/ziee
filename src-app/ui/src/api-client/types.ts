@@ -1096,10 +1096,13 @@ export interface MessageContentDataToolUse {
 }
 export interface MessageContentDataToolResult {
   type: 'tool_result'
+  attachment?: RichFile | null
   content: string
   hidden_content?: string | null
   is_error?: boolean | null
   name?: string | null
+  resource_links?: ResourceLink[] | null
+  server_id?: string | null
   tool_use_id: string
 }
 export interface MessageContentDataElicitationRequest {
@@ -1429,6 +1432,14 @@ export interface Resource {
   uri: string
 }
 
+export interface ResourceLink {
+  is_saved?: boolean
+  mime_type?: string
+  name?: string
+  size?: number
+  uri: string
+}
+
 export interface RespondToElicitationRequest {
   action: string
   content?: any
@@ -1436,6 +1447,12 @@ export interface RespondToElicitationRequest {
 
 export interface RespondToElicitationResponse {
   success: boolean
+}
+
+export interface RichFile {
+  data: string
+  filename: string
+  mime_type: string
 }
 
 export interface RuntimeVersionListResponse {
