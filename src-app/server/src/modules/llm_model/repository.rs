@@ -1,7 +1,7 @@
 // LLM model repository
 #![allow(dead_code)]
 
-// LLM Model database queries - copied from react-test and refactored for ziee-chat
+// LLM Model database queries - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/database/queries/models.rs
 
 use chrono::DateTime;

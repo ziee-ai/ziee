@@ -2009,7 +2009,7 @@ async fn test_user_keys_are_isolated_between_users() {
 // but call the function directly instead of running a full chat round-trip
 // (which would require a mock LLM server).
 
-use ziee_chat::{resolve_api_key_for_user, UserKeyRepository};
+use ziee::{resolve_api_key_for_user, UserKeyRepository};
 
 /// Build a UserKeyRepository talking directly to the test server's database
 /// — bypasses the global `Repos` (which lives in a different process from

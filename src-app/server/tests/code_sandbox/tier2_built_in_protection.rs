@@ -11,7 +11,7 @@
 use sqlx::postgres::PgPoolOptions;
 
 use crate::common::TestServer;
-use ziee_chat::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
+use ziee::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
 
 #[tokio::test]
 async fn sandbox_row_is_built_in_after_upsert() {

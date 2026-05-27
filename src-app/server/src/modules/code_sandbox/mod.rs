@@ -22,6 +22,7 @@ use crate::module_api::{AppModule, ModuleContext, ModuleEntry, MODULE_ENTRIES};
 pub mod backend;
 pub mod cgroup;
 pub mod config;
+pub mod embedded;
 pub mod handlers;
 pub mod prefetch;
 pub mod runtime_fetch;
@@ -315,6 +316,26 @@ impl AppModule for CodeSandboxModule {
             None => return Ok(()),
         };
 
+        // Audit H-4: if the cloud instance metadata service is reachable
+        // from the host, `--share-net` (in build_bwrap_argv) would expose it
+        // to LLM-generated code — and IMDS hands out IAM credentials.
+        // Refuse to register unless the operator has explicitly opted in
+        // via `allow_cloud_imds_reachable: true`. Cheap host-only probe:
+        // 200ms connect-timeout against 169.254.169.254:80.
+        if !cfg.allow_cloud_imds_reachable && cloud_imds_reachable() {
+            tracing::error!(
+                "code_sandbox: cloud IMDS endpoint (169.254.169.254:80) is \
+                 reachable from this host. With `--share-net` (the current \
+                 sandbox network mode), LLM-generated code could fetch IAM/role \
+                 credentials and exfiltrate them. Either run the server on a \
+                 host where IMDS is not reachable (most on-prem / dev boxes), \
+                 OR set code_sandbox.allow_cloud_imds_reachable: true to accept \
+                 the risk (e.g. when behind IMDSv2 + hop-limit=1). Sandbox MCP \
+                 row will NOT be registered."
+            );
+            return Ok(());
+        }
+
         // ---- Workspace root + per-conversation reaper (Phase 8) ----
         let app_data_dir = crate::core::get_app_data_dir();
         let workspace_root = app_data_dir.join("sandboxes");
@@ -324,6 +345,19 @@ impl AppModule for CodeSandboxModule {
                 workspace_root.display()
             );
             return Ok(());
+        }
+        // Audit H-3: deny other local users even *listing* sibling conversation
+        // workspaces. Per-conversation dirs are chmod'd separately by
+        // handlers::build_context (mode depends on backend); this lock is the
+        // outer guard so the per-conversation 0o1777 (Mac/WSL2) isn't traversable
+        // by a non-server user.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(
+                &workspace_root,
+                std::fs::Permissions::from_mode(0o700),
+            );
         }
 
         // ---- Compute loopback URL (Phase 6 seeding) ----
@@ -449,4 +483,19 @@ async fn workspace_reaper(root: std::path::PathBuf) {
         }
         tokio::time::sleep(TICK).await;
     }
+}
+
+/// Audit H-4: synchronous TCP connect to the cloud instance metadata
+/// endpoint with a tight timeout. Used at boot to refuse-to-register when
+/// `--share-net` would expose the IMDS to LLM-generated code. Returns
+/// `true` when the endpoint accepted a TCP connection within 200 ms —
+/// covers AWS EC2, GCP Compute, Azure VM, OCI, DigitalOcean droplets
+/// (all expose 169.254.169.254:80). The probe never sends an HTTP request
+/// — just a TCP handshake — so it doesn't itself trigger anything
+/// IMDSv2 audit logs would flag.
+fn cloud_imds_reachable() -> bool {
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::Duration;
+    let addr: SocketAddr = ([169, 254, 169, 254], 80).into();
+    TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
 }

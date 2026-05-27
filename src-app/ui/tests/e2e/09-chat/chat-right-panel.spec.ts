@@ -584,7 +584,7 @@ test.describe('Chat - Right Panel + File Viewers', () => {
     // writes synchronously after displayInRightPanel, but the localStorage
     // entry is what we need to be present at reload time.
     await page.waitForFunction(() => {
-      const raw = localStorage.getItem('ziee-chat-right-panel-tabs-v2')
+      const raw = localStorage.getItem('ziee-right-panel-tabs-v2')
       if (!raw) return false
       const all = JSON.parse(raw)
       return Object.values(all).some(

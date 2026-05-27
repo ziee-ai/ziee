@@ -14,14 +14,14 @@ impl AutoAssignProviderHandler {
     }
 }
 
-#[ziee_chat::async_trait]
-impl ziee_chat::EventHandler for AutoAssignProviderHandler {
+#[ziee::async_trait]
+impl ziee::EventHandler for AutoAssignProviderHandler {
     async fn handle(
         &self,
-        event: &ziee_chat::AppEvent,
+        event: &ziee::AppEvent,
         _pool: &sqlx::PgPool,
-    ) -> std::result::Result<(), ziee_chat::AppError> {
-        if let ziee_chat::AppEvent::LlmProvider(ziee_chat::LlmProviderEvent::Created {
+    ) -> std::result::Result<(), ziee::AppError> {
+        if let ziee::AppEvent::LlmProvider(ziee::LlmProviderEvent::Created {
             provider,
         }) = event
         {
@@ -30,10 +30,10 @@ impl ziee_chat::EventHandler for AutoAssignProviderHandler {
                 provider.name
             );
 
-            if let Ok(groups) = ziee_chat::Repos.group.get_all().await {
+            if let Ok(groups) = ziee::Repos.group.get_all().await {
                 let group_count = groups.len();
                 for group in groups {
-                    let _ = ziee_chat::Repos
+                    let _ = ziee::Repos
                         .llm_provider
                         .assign_to_group(provider.id, group.id)
                         .await;

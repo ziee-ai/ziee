@@ -1,5 +1,5 @@
 // LLM Model file upload and download handlers
-// Adapted from react-test/src-tauri/src/api/model_uploads.rs for ziee-chat
+// Adapted from react-test/src-tauri/src/api/model_uploads.rs for ziee
 
 use crate::core::Repos;
 use axum::{debug_handler, extract::Multipart, http::StatusCode, response::Json};

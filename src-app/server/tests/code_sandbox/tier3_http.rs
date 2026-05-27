@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::code_sandbox::harness::test_jwt;
 use crate::common::TestServer;
-use ziee_chat::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
+use ziee::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
 
 fn endpoint(server: &TestServer) -> String {
     format!("{}/api/code-sandbox", server.base_url)
@@ -112,8 +112,8 @@ async fn rejects_expired_jwt() {
         sub: Uuid::new_v4().to_string(),
         exp: chrono::Utc::now().timestamp() - 3600,
         iat: chrono::Utc::now().timestamp() - 7200,
-        iss: "ziee-chat".into(),
-        aud: "ziee-chat-api".into(),
+        iss: "ziee".into(),
+        aud: "ziee-api".into(),
         username: String::new(),
         email: String::new(),
         is_admin: false,
@@ -158,8 +158,8 @@ async fn rejects_wrong_secret_jwt() {
         sub: Uuid::new_v4().to_string(),
         exp: chrono::Utc::now().timestamp() + 600,
         iat: chrono::Utc::now().timestamp(),
-        iss: "ziee-chat".into(),
-        aud: "ziee-chat-api".into(),
+        iss: "ziee".into(),
+        aud: "ziee-api".into(),
         username: String::new(),
         email: String::new(),
         is_admin: false,

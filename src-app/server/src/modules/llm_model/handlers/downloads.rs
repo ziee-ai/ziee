@@ -1,6 +1,6 @@
 // LLM Model Download Management Handlers
 // Source: react-test/src-tauri/src/api/download_instances.rs
-// Following ziee-chat patterns with handlers and docs together
+// Following ziee patterns with handlers and docs together
 
 use aide::transform::TransformOperation;
 use axum::{

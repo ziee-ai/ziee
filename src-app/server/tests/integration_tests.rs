@@ -1,4 +1,4 @@
-// Integration tests for ziee-chat backend API
+// Integration tests for ziee backend API
 // Each module contains tests for specific functionality
 
 mod assistant;

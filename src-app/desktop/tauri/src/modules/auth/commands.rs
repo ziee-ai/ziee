@@ -9,7 +9,7 @@ use serde::Serialize;
 /// Response for auto-login command
 #[derive(Serialize)]
 pub struct AutoLoginResponse {
-    pub user: ziee_chat::User,
+    pub user: ziee::User,
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: i64, // Seconds until token expires
@@ -26,7 +26,7 @@ pub async fn auto_login() -> Result<AutoLoginResponse, String> {
         .ok_or_else(|| "Server not ready - JWT service not initialized".to_string())?;
 
     // Get admin user (should exist from startup)
-    let admin = ziee_chat::Repos
+    let admin = ziee::Repos
         .user
         .get_by_username("admin")
         .await

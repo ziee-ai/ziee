@@ -146,7 +146,7 @@ async fn test_delete_downloaded_model_removes_files() {
     // App data dir defaults to home directory
     let app_data_dir = std::env::var("APP_DATA_DIR").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        format!("{}/.ziee-chat", home)
+        format!("{}/.ziee", home)
     });
     let model_path = Path::new(&app_data_dir)
         .join("models")
@@ -343,7 +343,7 @@ async fn test_download_creates_correct_file_structure() {
     // App data dir defaults to home directory
     let app_data_dir = std::env::var("APP_DATA_DIR").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        format!("{}/.ziee-chat", home)
+        format!("{}/.ziee", home)
     });
     let model_path = Path::new(&app_data_dir)
         .join("models")

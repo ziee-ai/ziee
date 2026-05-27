@@ -5,12 +5,12 @@
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::sync::Arc;
-use ziee_chat::{Extension, Json, JwtService, Repos, StatusCode, TransformOperation};
+use ziee::{Extension, Json, JwtService, Repos, StatusCode, TransformOperation};
 
 /// Response for auto-login endpoint
 #[derive(Serialize, JsonSchema)]
 pub struct AutoLoginResponse {
-    pub user: ziee_chat::User,
+    pub user: ziee::User,
     pub access_token: String,
     pub refresh_token: String,
 }

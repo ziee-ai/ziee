@@ -15,7 +15,7 @@ pub struct DeploymentManager {
 
 impl DeploymentManager {
     pub fn new(pool: PgPool) -> Result<Self, Box<dyn std::error::Error>> {
-        let binary_manager = BinaryManager::new(pool)?;
+        let binary_manager = BinaryManager::with_cache_dir(pool, std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))?;
         Ok(Self {
             local: Arc::new(LocalDeployment::new(Arc::new(binary_manager))),
         })

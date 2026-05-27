@@ -10,7 +10,7 @@ use crate::modules::{
 };
 use anyhow::Result;
 use tauri::App;
-use ziee_chat::{ApiRouter, Router};
+use ziee::{ApiRouter, Router};
 
 /// Create all desktop modules
 ///

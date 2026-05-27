@@ -1380,8 +1380,8 @@ async fn test_update_mcp_server_sampling_fields() {
 // SSE Sampling Roundtrip Tests (no DB, use HttpMcpClient directly)
 // ============================================================================
 
-fn make_sampling_server_config(url: String, timeout_seconds: i32) -> ziee_chat::McpServer {
-    ziee_chat::McpServer {
+fn make_sampling_server_config(url: String, timeout_seconds: i32) -> ziee::McpServer {
+    ziee::McpServer {
         id: uuid::Uuid::new_v4(),
         user_id: None,
         name: "test-mock".to_string(),
@@ -1389,7 +1389,7 @@ fn make_sampling_server_config(url: String, timeout_seconds: i32) -> ziee_chat::
         description: None,
         enabled: true,
         is_system: false,
-        transport_type: ziee_chat::TransportType::Http,
+        transport_type: ziee::TransportType::Http,
         command: None,
         args: serde_json::json!([]),
         environment_variables: serde_json::json!({}),
@@ -1397,7 +1397,7 @@ fn make_sampling_server_config(url: String, timeout_seconds: i32) -> ziee_chat::
         headers: serde_json::json!({}),
         timeout_seconds,
         supports_sampling: true,
-        usage_mode: ziee_chat::UsageMode::Auto,
+        usage_mode: ziee::UsageMode::Auto,
         max_concurrent_sessions: None,
         is_built_in: false,
         created_at: chrono::Utc::now(),
@@ -1418,7 +1418,7 @@ async fn test_call_tool_with_sampling_sse_roundtrip() {
     use async_trait::async_trait;
     use std::sync::Arc;
     use std::time::Duration;
-    use ziee_chat::{
+    use ziee::{
         AppError, HttpMcpClient, McpClient, SamplingContent, SamplingCreateMessageRequest,
         SamplingCreateMessageResult, SamplingHandler,
     };

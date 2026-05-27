@@ -250,8 +250,8 @@ logging:
 
 jwt:
   secret: "test-secret-key-for-jwt-tokens-min-32-chars-long-${testId}"
-  issuer: "ziee-chat-test"
-  audience: "ziee-chat-test-api"
+  issuer: "ziee-test"
+  audience: "ziee-test-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
 `
@@ -271,7 +271,7 @@ jwt:
 
     const serverProcess = spawn(
       cargoPath,
-      ['run', '--bin', 'ziee-chat', '--', '--config-file', configPath],
+      ['run', '--bin', 'ziee', '--', '--config-file', configPath],
       {
         cwd: resolve(__dirname, '../../../server'),
         stdio: ['ignore', 'pipe', 'pipe'],

@@ -52,7 +52,6 @@ async fn setup_user_and_conv(server: &crate::common::TestServer) -> (Uuid, Strin
 // ─────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn e2e_initialize_returns_protocol_version_and_server_info() {
     let Some(server) = enabled_test_server().await else { return };
     // initialize is a STATELESS MCP method — must work for any
@@ -90,7 +89,6 @@ async fn e2e_initialize_returns_protocol_version_and_server_info() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_tools_list_returns_seven_tools_via_real_server() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, _conv_id) = setup_user_and_conv(&server).await;
@@ -114,7 +112,6 @@ async fn e2e_tools_list_returns_seven_tools_via_real_server() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_method_not_found_returns_minus_32601() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -134,7 +131,6 @@ async fn e2e_method_not_found_returns_minus_32601() {
 // ─────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-#[ignore]
 async fn e2e_execute_command_echo_hello_returns_stdout() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -149,7 +145,7 @@ async fn e2e_execute_command_echo_hello_returns_stdout() {
     let structured = body
         .get("result")
         .and_then(|r| r.get("structuredContent"))
-        .expect("result.structuredContent");
+        .unwrap_or_else(|| panic!("result.structuredContent missing — full body: {body:#?}"));
     let stdout = structured["stdout"].as_str().expect("stdout str");
     let stderr = structured.get("stderr").and_then(|s| s.as_str()).unwrap_or("");
     let exit_code = structured.get("exit_code").and_then(|c| c.as_i64()).unwrap_or(-1);
@@ -162,7 +158,6 @@ async fn e2e_execute_command_echo_hello_returns_stdout() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_write_file_then_read_file_round_trip() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -203,7 +198,6 @@ async fn e2e_write_file_then_read_file_round_trip() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_read_file_slice_returns_requested_range() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -229,7 +223,6 @@ async fn e2e_read_file_slice_returns_requested_range() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_edit_file_replaces_inner_range() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -269,7 +262,6 @@ async fn e2e_edit_file_replaces_inner_range() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_edit_file_appends_at_len_plus_one() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -309,7 +301,6 @@ async fn e2e_edit_file_appends_at_len_plus_one() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_list_files_shows_written_files_hides_dotfiles() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -327,7 +318,6 @@ async fn e2e_list_files_shows_written_files_hides_dotfiles() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_get_resource_link_for_workspace_artifact_returns_signed_url() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -352,7 +342,6 @@ async fn e2e_get_resource_link_for_workspace_artifact_returns_signed_url() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn e2e_download_endpoint_returns_workspace_file_bytes() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;

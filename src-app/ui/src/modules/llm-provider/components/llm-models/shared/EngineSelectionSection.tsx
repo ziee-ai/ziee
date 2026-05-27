@@ -2,7 +2,7 @@ import React from 'react'
 import { Alert } from 'antd'
 
 // TODO: Implement engine selection
-// React-test used a @/store import which doesn't exist in ziee-chat's module architecture
+// React-test used a @/store import which doesn't exist in ziee's module architecture
 // Need to adapt to use module stores or remove if not needed
 export const EngineSelectionSection: React.FC = () => {
   return (

@@ -1,4 +1,4 @@
-// LLM Repository database queries - copied from react-test and refactored for ziee-chat
+// LLM Repository database queries - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/database/queries/repositories.rs
 
 use chrono::DateTime;

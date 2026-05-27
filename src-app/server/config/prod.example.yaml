@@ -1,4 +1,4 @@
-# Production runtime configuration template for ziee-chat web backend.
+# Production runtime configuration template for ziee web backend.
 # Copy to `prod.yaml` and override sensitive values per deployment.
 
 # Application settings
@@ -13,7 +13,7 @@ postgresql:
     port: 5432
     username: "ziee"
     password: "REPLACE_ME"
-    database: "ziee_chat"
+    database: "ziee"
   pool:
     max_connections: 50
     min_connections: 5
@@ -39,8 +39,8 @@ logging:
 # JWT — MUST override `secret` per deployment.
 jwt:
   secret: "REPLACE_ME_WITH_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
-  issuer: "ziee-chat"
-  audience: "ziee-chat-api"
+  issuer: "ziee"
+  audience: "ziee-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
 

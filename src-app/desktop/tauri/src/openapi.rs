@@ -17,22 +17,22 @@ pub async fn generate_openapi_spec(
     println!("Generating combined OpenAPI specification (server + desktop)...");
 
     // Load configuration
-    let config = ziee_chat::Config::load_from(config_file)?;
+    let config = ziee::Config::load_from(config_file)?;
 
     // Initialize database (this starts embedded PostgreSQL if use_embedded: true)
-    let pool = ziee_chat::initialize_database(&config).await?;
+    let pool = ziee::initialize_database(&config).await?;
 
     // Initialize global repository factory
-    ziee_chat::init_repositories((*pool).clone());
+    ziee::init_repositories((*pool).clone());
 
     // Initialize server modules
-    let module_context = ziee_chat::ServerContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
-    let mut server_modules = ziee_chat::create_modules();
-    ziee_chat::initialize_modules(&mut server_modules, &module_context)?;
+    let module_context = ziee::ServerContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
+    let mut server_modules = ziee::create_modules();
+    ziee::initialize_modules(&mut server_modules, &module_context)?;
 
     // Build server API router (returns combined router + OpenAPI doc)
     let (server_router, mut api_doc) =
-        ziee_chat::build_api_router(&server_modules, &config.server.api_prefix, (*pool).clone());
+        ziee::build_api_router(&server_modules, &config.server.api_prefix, (*pool).clone());
 
     // Build desktop API routes (these already include /api prefix in their paths)
     let desktop_modules = core::create_desktop_modules(None);

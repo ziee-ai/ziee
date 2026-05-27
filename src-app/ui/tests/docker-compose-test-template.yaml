@@ -1,4 +1,4 @@
-name: ziee-chat-test-${RUN_ID}
+name: ziee-test-${RUN_ID}
 
 services:
   postgres-test-${RUN_ID}:

@@ -3,7 +3,7 @@
 //! Route definitions for application update management
 
 use super::handlers;
-use ziee_chat::{get, post, Router};
+use ziee::{get, post, Router};
 
 /// Create updater routes
 pub fn updater_routes() -> Router {

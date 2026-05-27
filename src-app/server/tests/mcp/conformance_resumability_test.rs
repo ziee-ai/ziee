@@ -12,7 +12,7 @@
 //! the result and (b) issued a GET carrying the correct `Last-Event-Id`.
 
 use super::fixtures::mock_mcp_server::{MockMcpServer, MockResponse};
-use ziee_chat::{
+use ziee::{
     HttpMcpClient, McpClient, McpServer, OAuthClientConfig, TransportType, UsageMode,
 };
 

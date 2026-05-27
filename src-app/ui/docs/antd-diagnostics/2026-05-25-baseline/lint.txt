@@ -1,136 +1,136 @@
 Scanned 380 files. Found 66 issues:
 
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/app/SetupPage.tsx:71 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/app/SetupPage.tsx:71 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/app/SetupPage.tsx:74 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/app/SetupPage.tsx:74 [deprecated]
     Alert `onClose` is deprecated. Callback when Alert is closed, please use `closable.onClose` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/auth/LoginForm.tsx:35 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/auth/LoginForm.tsx:35 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/auth/LoginForm.tsx:39 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/auth/LoginForm.tsx:39 [deprecated]
     Alert `onClose` is deprecated. Callback when Alert is closed, please use `closable.onClose` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/auth/RegisterForm.tsx:40 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/auth/RegisterForm.tsx:40 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/auth/RegisterForm.tsx:44 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/auth/RegisterForm.tsx:44 [deprecated]
     Alert `onClose` is deprecated. Callback when Alert is closed, please use `closable.onClose` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/hardware/HardwareMonitor.tsx:163 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/hardware/HardwareMonitor.tsx:163 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/hardware/HardwareSettings.tsx:87 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/hardware/HardwareSettings.tsx:87 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/onboarding/OnboardingPage.tsx:198 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/onboarding/OnboardingPage.tsx:198 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/onboarding/OnboardingPage.tsx:201 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/onboarding/OnboardingPage.tsx:201 [deprecated]
     Alert `onClose` is deprecated. Callback when Alert is closed, please use `closable.onClose` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/settings/SettingsPage.tsx:147 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/settings/SettingsPage.tsx:147 [deprecated]
     Dropdown `overlayStyle` is deprecated. The style of the dropdown root element, please use `styles.root` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/settings/SettingsPage.tsx:150 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/settings/SettingsPage.tsx:150 [deprecated]
     Dropdown `overlayClassName` is deprecated. The class name of the dropdown root element, please use `classNames.root` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/user-llm-providers/UserLlmProvidersPage.tsx:111 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/user-llm-providers/UserLlmProvidersPage.tsx:111 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/components/ChatInput.tsx:94 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/components/ChatInput.tsx:94 [deprecated]
     Dropdown `dropdownRender` is deprecated. Customize dropdown content, use `popupRender` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/components/ConversationCard.tsx:92 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/components/ConversationCard.tsx:92 [deprecated]
     Divider `type` is deprecated. The direction type of divider
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/pages/ConversationPage.tsx:65 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/pages/ConversationPage.tsx:65 [deprecated]
     Alert `onClose` is deprecated. Callback when Alert is closed, please use `closable.onClose` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxEnvironmentsSection.tsx:59 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxEnvironmentsSection.tsx:59 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxEnvironmentsSection.tsx:202 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxEnvironmentsSection.tsx:202 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:131 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:131 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:142 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:142 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:163 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:163 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:186 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:186 [deprecated]
     InputNumber `addonAfter` is deprecated. The label text displayed after (on the right side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:195 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:195 [deprecated]
     InputNumber `addonAfter` is deprecated. The label text displayed after (on the right side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:212 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:212 [deprecated]
     InputNumber `addonAfter` is deprecated. The label text displayed after (on the right side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:283 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:283 [deprecated]
     InputNumber `addonAfter` is deprecated. The label text displayed after (on the right side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:300 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:300 [deprecated]
     InputNumber `addonAfter` is deprecated. The label text displayed after (on the right side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:321 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:321 [deprecated]
     InputNumber `addonAfter` is deprecated. The label text displayed after (on the right side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:359 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:359 [deprecated]
     InputNumber `addonAfter` is deprecated. The label text displayed after (on the right side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:417 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/code-sandbox/components/SandboxResourceLimitsSection.tsx:417 [deprecated]
     InputNumber `addonAfter` is deprecated. The label text displayed after (on the right side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-local-runtime/components/RuntimeUpdateChecker.tsx:41 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-local-runtime/components/RuntimeUpdateChecker.tsx:41 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-local-runtime/components/RuntimeUpdateChecker.tsx:47 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-local-runtime/components/RuntimeUpdateChecker.tsx:47 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-local-runtime/components/RuntimeUpdateChecker.tsx:49 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-local-runtime/components/RuntimeUpdateChecker.tsx:49 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-local-runtime/components/RuntimeUpdateChecker.tsx:79 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-local-runtime/components/RuntimeUpdateChecker.tsx:79 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.tsx:101 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.tsx:101 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.tsx:116 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/GroupLlmProvidersAssignmentDrawer.tsx:116 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.tsx:132 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.tsx:132 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.tsx:147 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/LlmProviderGroupsAssignmentDrawer.tsx:147 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/widgets/LLMProviderGroupWidget.tsx:36 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/widgets/LLMProviderGroupWidget.tsx:36 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/widgets/GroupSystemMcpServersWidget.tsx:41 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/widgets/GroupSystemMcpServersWidget.tsx:41 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/extension.tsx:131 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/extension.tsx:131 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/extension.tsx:219 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/extension.tsx:219 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/downloads/DownloadItem.tsx:98 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/downloads/DownloadItem.tsx:98 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer.tsx:350 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer.tsx:350 [deprecated]
     Select `optionFilterProp` is deprecated. Which prop value of option will be used for filter if filterOption is true. If `options` is set, it should be set to `label`
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer.tsx:370 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/AddLocalLlmModelDownloadDrawer.tsx:370 [deprecated]
     Input `addonBefore` is deprecated. The label text displayed before (on the left side of) the input field, please use Space.Compact instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/AddLocalLlmModelUploadDrawer.tsx:456 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/AddLocalLlmModelUploadDrawer.tsx:456 [deprecated]
     Select `optionFilterProp` is deprecated. Which prop value of option will be used for filter if filterOption is true. If `options` is set, it should be set to `label`
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/common/McpServerCard.tsx:107 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/common/McpServerCard.tsx:107 [deprecated]
     Card `bordered` is deprecated. Toggles rendering of the border around the card, please use `variant` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/common/McpServerDrawer.tsx:439 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/common/McpServerDrawer.tsx:439 [deprecated]
     Divider `orientationMargin` is deprecated. The margin-left/right between the title and its closest border, while the `titlePlacement` should not be `center`, If a numeric value of type `string` is provided without a unit, it is assumed to be in pixels (px) by default.
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/common/McpServerDrawer.tsx:489 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/common/McpServerDrawer.tsx:489 [deprecated]
     Divider `orientationMargin` is deprecated. The margin-left/right between the title and its closest border, while the `titlePlacement` should not be `center`, If a numeric value of type `string` is provided without a unit, it is assumed to be in pixels (px) by default.
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx:106 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx:106 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx:121 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/GroupSystemMcpServersAssignmentDrawer.tsx:121 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/McpServerGroupsAssignmentCard.tsx:69 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/McpServerGroupsAssignmentCard.tsx:69 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.tsx:118 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.tsx:118 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.tsx:133 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/mcp/components/system/McpServerGroupsAssignmentDrawer.tsx:133 [deprecated]
     Space `direction` is deprecated. The space direction
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/components/ElicitationFormContent.tsx:346 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/components/ElicitationFormContent.tsx:346 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/components/ElicitationFormContent.tsx:376 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/components/ElicitationFormContent.tsx:376 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/components/ElicitationFormContent.tsx:396 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/components/ElicitationFormContent.tsx:396 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/components/ElicitationFormContent.tsx:417 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/mcp/components/ElicitationFormContent.tsx:417 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/model/components/ProviderApiKeyModal.tsx:54 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/model/components/ProviderApiKeyModal.tsx:54 [deprecated]
     Modal `destroyOnClose` is deprecated. Whether to unmount child components on onClose
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/model/components/ProviderApiKeyModal.tsx:70 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/model/components/ProviderApiKeyModal.tsx:70 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/shared/DeviceSelectionSection.tsx:12 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/shared/DeviceSelectionSection.tsx:12 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/shared/EngineSelectionSection.tsx:11 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/llm-provider/components/llm-models/shared/EngineSelectionSection.tsx:11 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/onboarding/guides/getting-started/components/ApiKeysStep.tsx:106 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/onboarding/guides/getting-started/components/ApiKeysStep.tsx:106 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/onboarding/guides/getting-started/components/McpServersStep.tsx:61 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/onboarding/guides/getting-started/components/McpServersStep.tsx:61 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/file/file-viewers/shared/RawCodeView.tsx:25 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/file/file-viewers/shared/RawCodeView.tsx:25 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/file/file-viewers/tabular/DelimitedTable.tsx:62 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/file/file-viewers/tabular/DelimitedTable.tsx:62 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
-  ⚠ /home/pbya/projects/ziee-chat-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/file/file-viewers/tabular/XlsxBody.tsx:93 [deprecated]
+  ⚠ /home/pbya/projects/ziee-ui-deps-antd-cleanup/src-app/ui/src/modules/chat/extensions/file/file-viewers/tabular/XlsxBody.tsx:93 [deprecated]
     Alert `message` is deprecated. Content of Alert, please use `title` instead
 
 Summary: 66 deprecated, 0 a11y, 0 usage, 0 performance

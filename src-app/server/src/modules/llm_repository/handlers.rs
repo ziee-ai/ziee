@@ -1,4 +1,4 @@
-// LLM Repository handlers - copied from react-test and refactored for ziee-chat
+// LLM Repository handlers - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/api/repositories.rs
 // IMPORTANT: ALL validation logic preserved from react-test
 

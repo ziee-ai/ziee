@@ -39,7 +39,7 @@ pub async fn list_runtime_versions(
     Query(params): Query<ListVersionsQuery>,
 ) -> ApiResult<Json<RuntimeVersionListResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::new(pool.clone())
+    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
         .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     let versions = if let Some(engine) = params.engine {
@@ -67,7 +67,7 @@ pub async fn get_runtime_version(
     Path(version_id): Path<Uuid>,
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::new(pool.clone())
+    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
         .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     // Verify binary exists (result is the path, but we only need to check existence)
@@ -98,7 +98,7 @@ pub async fn download_runtime_version(
     Json(req): Json<DownloadVersionRequest>,
 ) -> ApiResult<Json<DownloadVersionResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::new(pool.clone())
+    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
         .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     // Parse engine type
@@ -150,7 +150,7 @@ pub async fn delete_runtime_version(
     Query(params): Query<DeleteVersionQuery>,
 ) -> ApiResult<impl IntoApiResponse> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::new(pool.clone())
+    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
         .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     let remove_binary = params.remove_binary.unwrap_or(false);
@@ -193,7 +193,7 @@ pub async fn set_system_default(
     Path(version_id): Path<Uuid>,
 ) -> ApiResult<Json<RuntimeVersionResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::new(pool.clone())
+    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
         .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     binary_manager
@@ -233,7 +233,7 @@ pub async fn check_for_updates(
     Path(engine): Path<String>,
 ) -> ApiResult<Json<AvailableUpdatesResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::new(pool.clone())
+    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
         .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     let available_versions = binary_manager
@@ -257,7 +257,7 @@ pub async fn sync_cache(
     _auth: RequirePermissions<(RuntimeVersionUpdate,)>,
 ) -> ApiResult<Json<SyncCacheResponse>> {
     let pool = Repos.pool();
-    let binary_manager = BinaryManager::new(pool.clone())
+    let binary_manager = BinaryManager::with_cache_dir(pool.clone(), std::path::PathBuf::from(crate::core::get_caches_config().llm_engines_dir()))
         .map_err(|e| AppError::internal_error(format!("Failed to initialize BinaryManager: {}", e)))?;
 
     let synced_count = binary_manager

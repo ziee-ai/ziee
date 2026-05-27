@@ -51,6 +51,25 @@ pub use modules::mcp::elicitation::models::{
 #[doc(hidden)]
 pub use modules::mcp::elicitation::registry as elicitation_registry;
 
+// Re-export the embedded mac-sandbox-runtime accessor for the
+// self-contained verification tests. The whole module is mac-arm64-only
+// useful but the symbol exists on every target (empty BUNDLE elsewhere).
+#[doc(hidden)]
+pub use modules::code_sandbox::embedded as code_sandbox_embedded;
+
+// Re-export app_data_dir setter so the selective-wipe regression test
+// can redirect the app data root to a TempDir without going through
+// the full config-load path.
+#[doc(hidden)]
+pub use core::set_app_data_dir;
+
+// Test-helper exports: the platform-specific sandbox backend dispatch
+// + the raw-exec result shape. Used by tests/code_sandbox/harness.rs
+// to drive tier-4 hardening tests through the same backend the prod
+// code uses (instead of `Command::new("bwrap")` directly).
+#[doc(hidden)]
+pub use modules::code_sandbox::backend::{active as sandbox_backend, RawExecResult};
+
 // Re-export MCP content types for integration tests
 #[doc(hidden)]
 pub use modules::chat::extensions::mcp::content::{McpContentData, RichFile};
@@ -102,7 +121,7 @@ struct ServerSetup {
 }
 
 /// Initialize tracing based on config. Closes 14-core F-23 (Info):
-/// uses EnvFilter so operators can do `RUST_LOG=ziee_chat=debug,sqlx=warn`
+/// uses EnvFilter so operators can do `RUST_LOG=ziee=debug,sqlx=warn`
 /// for module-level filtering. Falls back to the config-file level when
 /// RUST_LOG is unset.
 fn init_tracing(config: &Config) {
@@ -144,7 +163,11 @@ fn init_tracing(config: &Config) {
     }
 }
 
-/// Initialize app data directory
+/// Initialize app data directory + caches config from the resolved
+/// `Config`. Called from both the standalone server entrypoint and the
+/// Tauri desktop's setup_server path. `Config::resolve_paths` (run at
+/// `Config::load_from`) guarantees `app.data_dir` is set and every
+/// `caches.*_dir` field is `Some(...)`.
 fn init_data_dir(config: &Config) {
     if let Some(ref app_config) = config.app {
         let data_dir = std::path::PathBuf::from(&app_config.data_dir);
@@ -152,9 +175,12 @@ fn init_data_dir(config: &Config) {
     } else {
         let default_data_dir = dirs::home_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(".ziee-chat");
+            .join(".ziee");
         core::set_app_data_dir(default_data_dir);
     }
+    // Publish the resolved caches config into global state so handlers
+    // can read paths without threading Config through every signature.
+    core::set_caches_config(config.caches.clone());
 }
 
 /// Common server setup - initializes all components and returns the router

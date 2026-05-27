@@ -37,7 +37,6 @@ async fn setup_user_and_conv(server: &crate::common::TestServer) -> (Uuid, Strin
 /// tokio::fs::write FOLLOW the symlink and write payload to the host's
 /// /tmp/test-sandbox-pwn — host filesystem clobber.
 #[tokio::test]
-#[ignore]
 async fn e2e_dangling_symlink_does_not_clobber_host() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -114,7 +113,6 @@ async fn e2e_dangling_symlink_does_not_clobber_host() {
 /// We set a sentinel env var on the spawned server, then ask the
 /// sandbox to print its env, then assert the sentinel isn't there.
 #[tokio::test]
-#[ignore]
 async fn e2e_clearenv_wipes_server_env_from_sandbox() {
     let Some(rootfs) = crate::code_sandbox::harness::rootfs_path() else {
         eprintln!("test skipped: no rootfs");
@@ -133,6 +131,7 @@ async fn e2e_clearenv_wipes_server_env_from_sandbox() {
             "ZIEE_TEST_SECRET_SENTINEL".into(),
             "this-must-not-leak-to-sandbox".into(),
         )],
+        sandbox_cache_tempdir: None,
     })
     .await;
 
@@ -177,7 +176,6 @@ async fn e2e_clearenv_wipes_server_env_from_sandbox() {
 /// `WRITE_FILE_MAX_BYTES` constant (commit 8e02fb4) prevents host-disk
 /// exhaustion via a single tool call.
 #[tokio::test]
-#[ignore]
 async fn e2e_write_file_rejects_oversized_content() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -225,7 +223,6 @@ async fn e2e_write_file_rejects_oversized_content() {
 /// `canonicalize_in_workspace` is the defense (used since the original
 /// port; reverified here through real HTTP).
 #[tokio::test]
-#[ignore]
 async fn e2e_download_endpoint_rejects_path_traversal() {
     let Some(server) = enabled_test_server().await else { return };
     let (_user_id, jwt, conv_id) = setup_user_and_conv(&server).await;
@@ -253,7 +250,6 @@ async fn e2e_download_endpoint_rejects_path_traversal() {
 /// reach build_context → stage_attachments(other user's files) →
 /// /home/sandboxuser/<filename> bind-mount → execute_command can read.
 #[tokio::test]
-#[ignore]
 async fn e2e_cross_tenant_conversation_id_blocked() {
     let Some(server) = enabled_test_server().await else { return };
 

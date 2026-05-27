@@ -114,18 +114,109 @@ fn run(cfg: VmLaunchConfig) -> ! {
     // libkrun's KRUN_FS_ROOT_TAG (the magic virtio-fs tag that becomes `/`).
     const KRUN_FS_ROOT_TAG: &str = "/dev/root";
 
-    // Gap #5: macOS has no PR_SET_PDEATHSIG. Watch the parent (the server);
-    // if it dies, exit so the VM is reclaimed instead of orphaned. Started
-    // BEFORE krun_start_enter (which takes over this thread + never returns).
+    // Preload libkrunfw from the bundled lib/ next to this binary. libkrun
+    // dlopens it with the bare leafname "libkrunfw.5.dylib", and macOS's
+    // bare-leaf dlopen does NOT search @rpath — only DYLD_*_LIBRARY_PATH
+    // and the system paths. In a self-contained bundle where libkrunfw
+    // lives at <exe>/../lib/, libkrun's later dlopen would fail. Preloading
+    // with an absolute path puts libkrunfw into the process address space;
+    // libkrun's subsequent bare-leaf dlopen returns the already-loaded
+    // handle. Skipped silently when running from a brew-installed libkrun
+    // (system dlopen path still resolves the leaf).
+    preload_libkrunfw();
+
+    // Audit H-6: macOS has no PR_SET_PDEATHSIG. The previous defense was a
+    // 1-second `getppid()` poll, which left a 1-second window during which
+    // the VM survived after server crash — long enough for the new server
+    // process to boot and open virtio-fs handles into the same workspace
+    // the orphan VM was still mutating (data corruption + ghost executions
+    // answering a now-gone HTTP request). Replace with a kqueue
+    // `EVFILT_PROC | NOTE_EXIT` watch that wakes within milliseconds of
+    // parent exit. Kept the 100 ms fallback poll for defense-in-depth in
+    // case kqueue registration ever fails (defensive — kqueue against an
+    // existing pid is well-supported on every macOS we run on).
+    //
+    // Started BEFORE krun_start_enter (which takes over this thread + never
+    // returns).
     {
         let initial_ppid = unsafe { libc::getppid() };
-        std::thread::spawn(move || loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            let ppid = unsafe { libc::getppid() };
-            // Reparented (parent died → adopted by launchd, pid 1).
-            if ppid != initial_ppid || ppid == 1 {
-                eprintln!("launcher: parent (server) exited; tearing down VM");
-                std::process::exit(0);
+        std::thread::spawn(move || {
+            const EVFILT_PROC: i16 = -5;
+            const NOTE_EXIT: u32 = 0x8000_0000;
+            // Cf. <sys/event.h>: kevent { ident, filter, flags, fflags, data, udata }.
+            #[repr(C)]
+            #[derive(Default)]
+            struct Kevent {
+                ident: usize,
+                filter: i16,
+                flags: u16,
+                fflags: u32,
+                data: isize,
+                udata: *mut std::ffi::c_void,
+            }
+            extern "C" {
+                fn kqueue() -> i32;
+                fn kevent(
+                    kq: i32,
+                    changelist: *const Kevent,
+                    nchanges: i32,
+                    eventlist: *mut Kevent,
+                    nevents: i32,
+                    timeout: *const libc::timespec,
+                ) -> i32;
+            }
+
+            // Register a one-shot exit watch on the parent pid.
+            let kq = unsafe { kqueue() };
+            if kq >= 0 {
+                let change = Kevent {
+                    ident: initial_ppid as usize,
+                    filter: EVFILT_PROC,
+                    flags: 0x0001 /* EV_ADD */ | 0x0010 /* EV_ENABLE */ | 0x0020 /* EV_ONESHOT */,
+                    fflags: NOTE_EXIT,
+                    data: 0,
+                    udata: std::ptr::null_mut(),
+                };
+                let rc = unsafe {
+                    kevent(kq, &change, 1, std::ptr::null_mut(), 0, std::ptr::null())
+                };
+                if rc >= 0 {
+                    // Block until the parent exits OR we get re-poked by the
+                    // backstop below. Either way, exit if the parent is gone.
+                    let mut out = Kevent::default();
+                    loop {
+                        let n = unsafe {
+                            kevent(kq, std::ptr::null(), 0, &mut out, 1, std::ptr::null())
+                        };
+                        if n > 0 && out.filter == EVFILT_PROC {
+                            eprintln!(
+                                "launcher: parent (server, pid={initial_ppid}) exited via kqueue; tearing down VM"
+                            );
+                            std::process::exit(0);
+                        }
+                        // Spurious wake (EINTR etc.) — re-check getppid as a sanity belt.
+                        let ppid = unsafe { libc::getppid() };
+                        if ppid != initial_ppid || ppid == 1 {
+                            eprintln!(
+                                "launcher: parent (server) reparented to pid={ppid}; tearing down VM"
+                            );
+                            std::process::exit(0);
+                        }
+                    }
+                }
+            }
+
+            // Fallback path (kqueue init failed): 100 ms polling — same logic
+            // as before but 10× tighter window, in the off-chance the kqueue
+            // primitive is unavailable.
+            eprintln!("launcher: kqueue parent-watch unavailable; falling back to 100ms poll");
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                let ppid = unsafe { libc::getppid() };
+                if ppid != initial_ppid || ppid == 1 {
+                    eprintln!("launcher: parent (server) exited; tearing down VM");
+                    std::process::exit(0);
+                }
             }
         });
     }
@@ -182,6 +273,59 @@ fn run(cfg: VmLaunchConfig) -> ! {
         let rc = krun_start_enter(ctx);
         eprintln!("launcher: krun_start_enter returned unexpectedly (rc={rc})");
         std::process::exit(if rc < 0 { 1 } else { 0 });
+    }
+}
+
+/// macOS: load `<exe-dir>/../lib/libkrunfw.5.dylib` with an absolute path
+/// so libkrun's later bare-leaf `dlopen("libkrunfw.5.dylib")` finds it.
+/// See the comment block at the call site for why this is necessary.
+///
+/// Best-effort by design: when running against a brew-installed libkrun
+/// (dev path, no bundled lib/), there's nothing at `../lib/` and we just
+/// let libkrun's dlopen find libkrunfw via the system search path.
+#[cfg(target_os = "macos")]
+fn preload_libkrunfw() {
+    use std::ffi::CString;
+    use std::os::raw::{c_char, c_int, c_void};
+
+    extern "C" {
+        fn _NSGetExecutablePath(buf: *mut c_char, sz: *mut u32) -> c_int;
+        fn dlopen(path: *const c_char, mode: c_int) -> *mut c_void;
+        fn dlerror() -> *const c_char;
+    }
+    const RTLD_NOW: c_int = 0x2;
+    const RTLD_GLOBAL: c_int = 0x8;
+
+    let mut buf = vec![0u8; 4096];
+    let mut sz = buf.len() as u32;
+    let rc = unsafe { _NSGetExecutablePath(buf.as_mut_ptr() as *mut c_char, &mut sz) };
+    if rc != 0 {
+        return;
+    }
+    let nul = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    let exe = std::path::PathBuf::from(std::str::from_utf8(&buf[..nul]).unwrap_or(""));
+    let candidate = match exe.parent().and_then(|d| d.parent()) {
+        Some(bundle_root) => bundle_root.join("lib").join("libkrunfw.5.dylib"),
+        None => return,
+    };
+    if !candidate.exists() {
+        // Not a bundled install — likely the brew/dev path. libkrun will
+        // find libkrunfw via the system search path.
+        return;
+    }
+    let c_path = match CString::new(candidate.as_os_str().as_encoded_bytes()) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let handle = unsafe { dlopen(c_path.as_ptr(), RTLD_NOW | RTLD_GLOBAL) };
+    if handle.is_null() {
+        let err = unsafe {
+            let p = dlerror();
+            if p.is_null() { String::from("(no dlerror)") }
+            else { std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned() }
+        };
+        eprintln!("launcher: preload of {} failed: {err}", candidate.display());
+        std::process::exit(1);
     }
 }
 

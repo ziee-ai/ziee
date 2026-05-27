@@ -5,7 +5,7 @@ use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
 use crate::common::TestServer;
-use ziee_chat::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
+use ziee::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
 
 #[tokio::test]
 async fn sandbox_row_is_accessible_to_default_group_user() {
@@ -49,7 +49,7 @@ async fn sandbox_row_is_accessible_to_default_group_user() {
 
     // Hit the mcp repository directly to confirm the sandbox shows up
     // for this user.
-    use ziee_chat::mcp::McpRepository;
+    use ziee::mcp::McpRepository;
     let mcp_repo = McpRepository::new(pool.clone());
     let resp = mcp_repo
         .list_accessible(user_id, 1, 100)

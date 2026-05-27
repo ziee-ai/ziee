@@ -4,7 +4,7 @@
 
 use schemars::JsonSchema;
 use serde::Serialize;
-use ziee_chat::{Json, TransformOperation};
+use ziee::{Json, TransformOperation};
 
 /// Backend status response
 #[derive(Serialize, JsonSchema)]

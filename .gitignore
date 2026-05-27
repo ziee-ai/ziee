@@ -6,3 +6,13 @@ check-sandbox-*.log
 e2e-*.log
 integration-all-*.log
 tier3-prefetch-*.log
+
+# Local test-environment secrets (API keys for integration tests).
+# Sourced by `just test` via tests/.env.test; never committed.
+**/.env.test
+
+# Cross-compile target dir for sandbox-guest-agent (built inside an
+# aarch64-musl Docker container so the host Mac can produce the in-VM agent
+# binary). Cargo doesn't auto-place a .gitignore here because the path is
+# custom (CARGO_TARGET_DIR), so ignore it explicitly.
+target-docker/

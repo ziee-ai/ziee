@@ -64,8 +64,8 @@ pub struct DownloadTokenQuery {
 ///
 /// Carries `iss` / `aud` so a download token can NOT be cross-used as
 /// an access token even though both are signed with the same secret —
-/// the access-token validator requires `aud="ziee-chat-api"`, ours
-/// requires `aud="ziee-chat-download"`. Closes 02-permissions F-03.
+/// the access-token validator requires `aud="ziee-api"`, ours
+/// requires `aud="ziee-download"`. Closes 02-permissions F-03.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadTokenClaims {
     pub file_id: String,
@@ -75,16 +75,16 @@ pub struct DownloadTokenClaims {
     /// Issuer — same value as the access-token issuer for now; can
     /// diverge if/when we split signers.
     pub iss: String,
-    /// Audience — MUST be `"ziee-chat-download"` for download tokens.
+    /// Audience — MUST be `"ziee-download"` for download tokens.
     /// The validator rejects any other value; cross-audience replay
     /// is impossible.
     pub aud: String,
 }
 
 /// Audience claim value for download-only tokens. Distinct from the
-/// access-token audience (`ziee-chat-api`) so a leaked download token
+/// access-token audience (`ziee-api`) so a leaked download token
 /// can't be replayed against authenticated endpoints.
-pub const DOWNLOAD_TOKEN_AUDIENCE: &str = "ziee-chat-download";
+pub const DOWNLOAD_TOKEN_AUDIENCE: &str = "ziee-download";
 
 /// Helper type for documenting binary responses in OpenAPI
 #[derive(Debug, Clone, Serialize, JsonSchema)]

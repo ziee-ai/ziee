@@ -307,7 +307,7 @@ async fn test_oauth_authorization_flow() {
 //      302 back to our /callback (with `code` + `state`)
 //   3. assert the final redirect / status
 
-use ziee_chat::hash_password;
+use ziee::hash_password;
 
 /// Seed an OIDC auth_providers row that points at the navikt mock.
 /// `extra_config` is merged into the JSONB to test allowed_tenant_ids,

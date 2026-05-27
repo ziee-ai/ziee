@@ -9,7 +9,7 @@
 use uuid::Uuid;
 
 use crate::common::TestServer;
-use ziee_chat::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
+use ziee::code_sandbox::{code_sandbox_server_id, CodeSandboxRepository};
 
 async fn repo(server: &TestServer) -> CodeSandboxRepository {
     let pool = sqlx::postgres::PgPoolOptions::new()

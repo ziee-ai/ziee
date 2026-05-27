@@ -20,7 +20,7 @@
 //! the conformance signal is opt-in.
 
 use super::fixtures::everything_server::EverythingServer;
-use ziee_chat::{HttpMcpClient, McpClient, McpServer, TransportType, UsageMode};
+use ziee::{HttpMcpClient, McpClient, McpServer, TransportType, UsageMode};
 
 /// Build the McpServer DB-row shape pointing at the given URL.
 fn server_config(url: String) -> McpServer {

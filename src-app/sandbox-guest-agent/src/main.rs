@@ -119,7 +119,29 @@ async fn serve_vsock(port: u32, bpf: Option<Arc<Vec<u8>>>) {
     tracing::info!("ziee-sandbox-agent: listening on vsock port {port}");
     loop {
         match listener.accept().await {
-            Ok((stream, peer)) => spawn_conn(stream, &bpf, format!("{peer:?}")),
+            Ok((stream, peer)) => {
+                // Audit H-2: reject any peer that isn't the host. We bind on
+                // VMADDR_CID_ANY (you can't bind to a single remote cid in
+                // AF_VSOCK), so on Windows WSL2's shared utility VM a sibling
+                // distro that can `socket(AF_VSOCK)` could in principle reach
+                // us. The host appears as cid=2 (VMADDR_CID_HOST) from inside
+                // every libkrun guest and inside every WSL2 Linux distro;
+                // anything else is by definition a sibling guest and must be
+                // refused with the connection torn down so the workload it
+                // would have asked us to spawn never happens. On Mac libkrun
+                // the host bridge also presents as cid=2, so this filter is a
+                // no-op on the legitimate path.
+                let peer_cid = peer.cid();
+                if peer_cid != libc::VMADDR_CID_HOST {
+                    tracing::warn!(
+                        "agent: refusing vsock connection from non-host peer (cid={peer_cid}, port={})",
+                        peer.port()
+                    );
+                    drop(stream);
+                    continue;
+                }
+                spawn_conn(stream, &bpf, format!("{peer:?}"))
+            }
             Err(e) => {
                 tracing::warn!("agent: vsock accept failed: {e}");
                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -166,13 +188,28 @@ where
 /// than the agent refusing to start.
 fn init_mounts() {
     mount_fs("proc", "/proc", "proc", 0, None);
-    let _ = std::fs::create_dir_all(ROOTFS_MOUNT);
-    // Read-only squashfs.
+    // Guest root is mounted RO via virtio-fs (host-side gap #2). Provide a
+    // writable /tmp so the seccomp BPF build (which uses `tempfile`) and any
+    // other ephemeral guest work has somewhere to land.
+    mount_fs("tmpfs", "/tmp", "tmpfs", 0, Some("size=16m,mode=1777"));
     mount_fs(ROOTFS_DEVICE, ROOTFS_MOUNT, "squashfs", libc::MS_RDONLY, None);
-    let _ = std::fs::create_dir_all(WORKSPACE_MOUNT);
-    // virtio-fs workspace share (read-write; bwrap re-binds the per-conversation
-    // subdir into the sandbox).
     mount_fs(WORKSPACE_TAG, WORKSPACE_MOUNT, "virtiofs", 0, None);
+    // Make /workspace world-writable so the sandboxed user (uid 1001
+    // via --unshare-user in the bwrap argv) can create files inside
+    // it. The virtio-fs share inherits its mode from the host dir,
+    // which on Mac is owned by the running user (not uid 1001). Without
+    // this chmod, bwrap's bind-target creation under /home/sandboxuser
+    // (bound from /workspace) fails with EACCES.
+    // Same for /tmp's mode-1777 above — kernel honors the explicit
+    // tmpfs option; virtio-fs needs an explicit post-mount chmod.
+    let c_ws = std::ffi::CString::new(WORKSPACE_MOUNT).unwrap();
+    let chmod_rc = unsafe { libc::chmod(c_ws.as_ptr(), 0o1777) };
+    if chmod_rc != 0 {
+        tracing::warn!(
+            "agent: chmod {WORKSPACE_MOUNT} 1777 failed: {} — sandboxed writes may fail",
+            std::io::Error::last_os_error()
+        );
+    }
 }
 
 fn mount_fs(src: &str, target: &str, fstype: &str, flags: libc::c_ulong, data: Option<&str>) {

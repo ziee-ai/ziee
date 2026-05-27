@@ -316,7 +316,7 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
     // flavor's mount dir, since probe_pid_ns invokes bwrap with
     // `--ro-bind <rootfs>/usr /usr`.
     let mut probe_cfg = state.config.clone();
-    probe_cfg.rootfs_path = mount_dir.to_string_lossy().into_owned();
+    probe_cfg.rootfs_path = Some(mount_dir.to_string_lossy().into_owned());
     let caps = crate::modules::code_sandbox::probes::probe_rootfs_dependent(
         &probe_cfg,
         &state.host_caps,
@@ -349,7 +349,7 @@ fn derive_cache_dir(state: &CodeSandboxState) -> PathBuf {
     // (e.g. `/var/lib/ziee/sandbox-rootfs/current`). Its parent is
     // the cache dir where per-flavor squashfs files live + where
     // per-flavor mount dirs sit.
-    PathBuf::from(&state.config.rootfs_path)
+    PathBuf::from(state.config.rootfs_path())
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."))

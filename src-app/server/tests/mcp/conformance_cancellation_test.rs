@@ -5,7 +5,7 @@
 //! abandoned request id + reason, so the server can stop the work.
 
 use super::fixtures::mock_mcp_server::{MockMcpServer, MockResponse};
-use ziee_chat::{HttpMcpClient, McpClient, McpServer, TransportType, UsageMode};
+use ziee::{HttpMcpClient, McpClient, McpServer, TransportType, UsageMode};
 
 fn server_config(url: String) -> McpServer {
     McpServer {

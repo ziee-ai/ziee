@@ -60,19 +60,29 @@ pub struct GitService {
 }
 
 impl GitService {
-    pub fn new() -> Self {
-        // Use platform-appropriate cache directory
-        let cache_dir = dirs::cache_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
-            .join("ziee-chat")
-            .join("models")
-            .join("git");
-        let lfs_cache_dir = cache_dir.join("lfs_cache");
+    /// Construct with explicit cache directories. Caller passes the
+    /// paths resolved from `core::config::CachesConfig` (typically via
+    /// the global `crate::core::get_caches_config()`).
+    pub fn with_cache_dirs(
+        cache_dir: std::path::PathBuf,
+        lfs_cache_dir: std::path::PathBuf,
+    ) -> Self {
         let lfs_service = LfsService::new(lfs_cache_dir);
         Self {
             cache_dir,
             lfs_service,
         }
+    }
+
+    /// Construct from the global `CachesConfig`. Convenience for handlers
+    /// that don't have the resolved Config in scope — reads from the
+    /// `CACHES_CONFIG` static populated at server boot.
+    pub fn new() -> Self {
+        let caches = crate::core::get_caches_config();
+        Self::with_cache_dirs(
+            std::path::PathBuf::from(caches.git_cache_dir()),
+            std::path::PathBuf::from(caches.lfs_cache_dir()),
+        )
     }
 
     /// Generate a unique cache key based on repository_id, URL, and branch

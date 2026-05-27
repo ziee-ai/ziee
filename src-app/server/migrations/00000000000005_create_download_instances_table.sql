@@ -1,6 +1,6 @@
 -- Create download_instances table for tracking model downloads from repositories
 -- Source: react-test/src-tauri/migrations/00000000000001_init.sql
--- Adapted for ziee-chat structure
+-- Adapted for ziee structure
 
 CREATE TABLE download_instances (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

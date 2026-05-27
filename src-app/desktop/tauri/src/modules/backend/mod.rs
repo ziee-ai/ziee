@@ -17,15 +17,15 @@ use anyhow::Result;
 use axum::{body::Body, http::Request, response::Response};
 use std::sync::{Arc, OnceLock};
 use tauri::{App, Manager};
-use ziee_chat::ApiRouter;
+use ziee::ApiRouter;
 
 /// Global storage for backend config (set during init, used when starting server)
-static BACKEND_CONFIG: OnceLock<ziee_chat::Config> = OnceLock::new();
+static BACKEND_CONFIG: OnceLock<ziee::Config> = OnceLock::new();
 static BACKEND_STATE: OnceLock<BackendState> = OnceLock::new();
-static JWT_SERVICE: OnceLock<Arc<ziee_chat::JwtService>> = OnceLock::new();
+static JWT_SERVICE: OnceLock<Arc<ziee::JwtService>> = OnceLock::new();
 
 /// Get the JWT service (for Tauri commands)
-pub fn get_jwt_service() -> Option<&'static Arc<ziee_chat::JwtService>> {
+pub fn get_jwt_service() -> Option<&'static Arc<ziee::JwtService>> {
     JWT_SERVICE.get()
 }
 
@@ -54,7 +54,7 @@ impl DesktopModule for BackendModule {
         // Load config from file or generate default
         let mut config = if let Some(ref config_path) = self.config_file {
             tracing::info!("Loading config from file: {}", config_path);
-            ziee_chat::Config::load_from(Some(config_path.clone()))
+            ziee::Config::load_from(Some(config_path.clone()))
                 .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?
         } else {
             // Get app data directory for backend configuration
@@ -69,7 +69,7 @@ impl DesktopModule for BackendModule {
             std::fs::create_dir_all(&data_dir)?;
 
             // Find available port for backend
-            let port = ziee_chat::find_available_port(8080, 8180)
+            let port = ziee::find_available_port(8080, 8180)
                 .ok_or_else(|| anyhow::anyhow!("No available ports in range 8080-8180"))?;
 
             tracing::info!("Selected port {} for backend server", port);
@@ -112,7 +112,7 @@ impl DesktopModule for BackendModule {
 
         // Cleanup backend resources
         tauri::async_runtime::block_on(async {
-            ziee_chat::cleanup_server().await;
+            ziee::cleanup_server().await;
         });
 
         Ok(())
@@ -143,10 +143,10 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
     tracing::info!("Starting backend server with desktop routes...");
 
     // Create desktop-specific event handlers
-    let handlers: Vec<Arc<dyn ziee_chat::EventHandler>> = vec![AutoAssignProviderHandler::new()];
+    let handlers: Vec<Arc<dyn ziee::EventHandler>> = vec![AutoAssignProviderHandler::new()];
 
     tauri::async_runtime::spawn(async move {
-        match ziee_chat::start_server_with_routes(
+        match ziee::start_server_with_routes(
             config,
             |router, jwt| {
             // Store JWT service for Tauri command access
@@ -156,7 +156,7 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
             // Initialize desktop repositories with server's pool
             // Repos is available here because start_server_with_routes
             // initializes it before calling this closure
-            let pool = ziee_chat::Repos.pool().clone();
+            let pool = ziee::Repos.pool().clone();
             crate::core::init_desktop_repositories(pool);
             tracing::info!("Desktop repositories initialized with server pool");
 
@@ -212,7 +212,7 @@ pub fn start_backend_server(desktop_routes: ApiRouter, app_handle: tauri::AppHan
 async fn run_desktop_migrations() -> Result<()> {
     tracing::info!("Running desktop migrations...");
 
-    let pool = ziee_chat::Repos.pool();
+    let pool = ziee::Repos.pool();
 
     // Use set_ignore_missing(true) because server migrations are tracked
     // in the same _sqlx_migrations table but are not in our migrations folder
@@ -265,7 +265,7 @@ async fn proxy_to_vite(req: Request<Body>) -> Result<Response<Body>, axum::http:
 fn create_desktop_config(
     data_dir: &std::path::Path,
     port: u16,
-) -> Result<ziee_chat::Config> {
+) -> Result<ziee::Config> {
     use serde_yaml;
     use std::collections::HashMap;
 
@@ -316,7 +316,7 @@ fn create_desktop_config(
 
     // Parse config from YAML
     let yaml_str = serde_yaml::to_string(&config_map)?;
-    let config: ziee_chat::Config = serde_yaml::from_str(&yaml_str)?;
+    let config: ziee::Config = serde_yaml::from_str(&yaml_str)?;
 
     Ok(config)
 }

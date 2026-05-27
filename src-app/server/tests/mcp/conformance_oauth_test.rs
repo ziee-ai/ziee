@@ -9,7 +9,7 @@
 //!   with `Authorization: Bearer` → success.
 
 use super::fixtures::mock_mcp_server::{MockMcpServer, MockResponse};
-use ziee_chat::{HttpMcpClient, McpClient, McpServer, OAuthClientConfig, TransportType, UsageMode};
+use ziee::{HttpMcpClient, McpClient, McpServer, OAuthClientConfig, TransportType, UsageMode};
 
 fn server_config(url: String) -> McpServer {
     McpServer {
@@ -146,7 +146,7 @@ async fn refresh_token_grant_is_used_when_a_refresh_token_is_stored() {
 
     // Stored token with a `refresh_token`: this is the only state needed to
     // exercise the refresh-grant branch without orchestrating a clock advance.
-    let stored = ziee_chat::StoredToken {
+    let stored = ziee::StoredToken {
         access_token: "stale-access".into(),
         refresh_token: Some("rt-from-an-earlier-issuance".into()),
         expires_at: None,
@@ -156,7 +156,7 @@ async fn refresh_token_grant_is_used_when_a_refresh_token_is_stored() {
         .build()
         .expect("reqwest client");
 
-    let fresh = ziee_chat::oauth_refresh_token(&http, &token_endpoint, &cfg, &stored)
+    let fresh = ziee::oauth_refresh_token(&http, &token_endpoint, &cfg, &stored)
         .await
         .expect("refresh_token grant should succeed against the mock");
     assert_eq!(

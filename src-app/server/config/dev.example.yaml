@@ -1,9 +1,9 @@
-# Development runtime configuration for ziee-chat web backend
+# Development runtime configuration for ziee web backend
 # This file is used by src-web when running the application
 
 # Application settings
 app:
-  data_dir: "../../ziee-chat-data/dev/app-data"  # Directory for models, caches, and temporary files
+  data_dir: "../../ziee-data/dev/app-data"  # Directory for models, caches, and temporary files
 
 # PostgreSQL connection settings
 postgresql:
@@ -20,8 +20,8 @@ postgresql:
     database: "postgres"
 
     # Directories for embedded PostgreSQL runtime instance
-    installation_dir: "../../ziee-chat-data/dev/postgres"
-    data_dir: "../../ziee-chat-data/dev/postgres-data"
+    installation_dir: "../../ziee-data/dev/postgres"
+    data_dir: "../../ziee-data/dev/postgres-data"
 
     # Timezone settings
     timezone: "UTC"
@@ -40,7 +40,7 @@ postgresql:
     port: 5432
     username: "postgres"
     password: "password"
-    database: "ziee_chat_dev"
+    database: "ziee_dev"
 
   # Connection pool settings (used for both embedded and external)
   pool:
@@ -79,8 +79,8 @@ logging:
 # JWT authentication settings
 jwt:
   secret: "dev-secret-change-in-production-min-32-chars-long"
-  issuer: "ziee-chat"
-  audience: "ziee-chat-api"
+  issuer: "ziee"
+  audience: "ziee-api"
   access_token_expiry_hours: 24  # Access token expires in 24 hours
   refresh_token_expiry_days: 30  # Refresh token expires in 30 days
 

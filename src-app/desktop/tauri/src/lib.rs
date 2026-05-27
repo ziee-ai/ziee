@@ -68,7 +68,7 @@ pub fn run(config_file: Option<String>) -> Result<()> {
                 if window.label() == "main" {
                     tracing::info!("Main window close requested, cleaning up...");
                     tauri::async_runtime::spawn(async move {
-                        ziee_chat::cleanup_server().await;
+                        ziee::cleanup_server().await;
                     });
                 }
             }

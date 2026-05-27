@@ -1,4 +1,4 @@
-name: ziee-chat
+name: ziee
 
 services:
   postgres-build:

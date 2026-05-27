@@ -8,7 +8,7 @@ mod routes;
 use crate::module_api::DesktopModule;
 use anyhow::Result;
 use tauri::App;
-use ziee_chat::Router;
+use ziee::Router;
 
 pub struct UpdaterModule;
 

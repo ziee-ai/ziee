@@ -43,6 +43,15 @@ name = "sandbox-vm-launcher"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "sandbox-vm-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "sandbox-vm-protocol"
+version = "0.1.0"
+dependencies = [
  "serde",
  "serde_json",
 ]

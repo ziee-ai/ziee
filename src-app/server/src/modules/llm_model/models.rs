@@ -1,7 +1,7 @@
 // LLM Model infrastructure
 #![allow(dead_code)]
 
-// LLM Model models - copied from react-test and refactored for ziee-chat
+// LLM Model models - copied from react-test and refactored for ziee
 // Source: react-test/src-tauri/src/database/models/model.rs and download_instance.rs
 
 use crate::common::types::JsonOption;

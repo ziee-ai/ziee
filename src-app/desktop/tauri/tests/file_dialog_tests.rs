@@ -11,7 +11,7 @@ use serial_test::serial;
 /// Test that file dialog filter struct is properly defined
 #[test]
 fn test_dialog_filter_struct() {
-    use ziee_chat_desktop::modules::file_dialog::commands::DialogFilter;
+    use ziee_desktop::modules::file_dialog::commands::DialogFilter;
 
     let filter = DialogFilter {
         name: "Images".to_string(),
@@ -26,7 +26,7 @@ fn test_dialog_filter_struct() {
 /// Test that multiple filters can be created
 #[test]
 fn test_multiple_dialog_filters() {
-    use ziee_chat_desktop::modules::file_dialog::commands::DialogFilter;
+    use ziee_desktop::modules::file_dialog::commands::DialogFilter;
 
     let filters = vec![
         DialogFilter {
@@ -52,7 +52,7 @@ fn test_multiple_dialog_filters() {
 /// Test DialogFilter serialization
 #[test]
 fn test_dialog_filter_serialization() {
-    use ziee_chat_desktop::modules::file_dialog::commands::DialogFilter;
+    use ziee_desktop::modules::file_dialog::commands::DialogFilter;
 
     let filter = DialogFilter {
         name: "Test".to_string(),

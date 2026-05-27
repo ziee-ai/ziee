@@ -128,7 +128,7 @@ done
 echo
 echo "==> Publishing release $TAG"
 notes=$(cat <<EOF
-First (bootstrap) release of the ziee-chat sandbox rootfs.
+First (bootstrap) release of the ziee sandbox rootfs.
 
 - Schema: $SCHEMA  (matches \`SANDBOX_ROOTFS_SCHEMA_VERSION\` in the
   server binary's \`code_sandbox/mod.rs\`)

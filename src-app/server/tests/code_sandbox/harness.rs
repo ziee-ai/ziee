@@ -46,8 +46,8 @@ pub fn test_jwt(user_id: Uuid, _conv_id: Uuid) -> String {
         sub: user_id.to_string(),
         exp: (now + Duration::seconds(60)).timestamp(),
         iat: now.timestamp(),
-        iss: "ziee-chat".to_string(),
-        aud: "ziee-chat-api".to_string(),
+        iss: "ziee".to_string(),
+        aud: "ziee-api".to_string(),
         username: String::new(),
         email: String::new(),
         is_admin: false,
@@ -63,6 +63,11 @@ pub fn test_jwt(user_id: Uuid, _conv_id: Uuid) -> String {
 /// Returns the rootfs mount path probed from the standard locations.
 /// `None` when no rootfs is mounted — callers should skip the test
 /// with `eprintln!("test skipped: …")`.
+///
+/// Linux only: the path points at a mounted FUSE directory (where
+/// `./usr/` etc. are readable from the host). On Mac/Windows the
+/// rootfs is a squashfs file that the libkrun/WSL2 backend mounts
+/// inside the guest — use `rootfs_squashfs_path()` instead.
 pub fn rootfs_path() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("ZIEE_SANDBOX_ROOTFS") {
         let pb = PathBuf::from(p);
@@ -83,9 +88,70 @@ pub fn rootfs_path() -> Option<PathBuf> {
     None
 }
 
-/// `true` when bwrap is on PATH and runnable.
+/// Returns the test rootfs squashfs FILE path (not a mount dir).
+/// Used by `run_in_sandbox()` on Mac/Windows where the backend
+/// passes the squashfs to libkrun/WSL2 as a virtio-blk disk; on
+/// Linux the backend ignores it (host bwrap reads the mount).
+///
+/// Built by `scripts/build-test-rootfs.sh` (`just test-prereqs`).
+/// Panics with a clear message if missing — tests must not silently
+/// skip; the runner ensures the prereq is present.
+pub fn rootfs_squashfs_path() -> PathBuf {
+    if let Ok(p) = std::env::var("ZIEE_SANDBOX_TEST_SQUASHFS") {
+        let pb = PathBuf::from(p);
+        if pb.is_file() {
+            return pb;
+        }
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let candidate = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("repo root")
+        .join(".ziee-cache")
+        .join("sandbox-rootfs")
+        .join("test-minimal.squashfs");
+    if !candidate.is_file() {
+        panic!(
+            "test rootfs squashfs missing at {}.\n  \
+             Build it with: just test-prereqs\n  \
+             Or directly: scripts/build-test-rootfs.sh",
+            candidate.display()
+        );
+    }
+    candidate
+}
+
+/// `true` when bwrap is on PATH and runnable. Linux-only check;
+/// Mac/Windows don't have host bwrap (it runs in the libkrun/WSL2
+/// guest), so callers should use `run_in_sandbox()` instead.
 pub fn bwrap_available() -> bool {
     Command::new("bwrap").arg("--version").output().is_ok()
+}
+
+/// Execute a raw bwrap argv inside the active platform's sandbox
+/// dispatch path. The implementation detail of how bwrap actually
+/// runs (host process on Linux; libkrun VM on Mac; WSL2 distro on
+/// Windows) is owned by the SandboxBackend impl.
+///
+/// **Argv path conventions** — to be platform-portable, paths in
+/// the argv must reference the SANDBOX'S view of the filesystem,
+/// not the host's:
+///   - `/sandbox-rootfs/usr` (the agent mounts the squashfs there)
+///   - `/workspace/<file>` (the agent mounts the virtio-fs share there)
+///   - `/proc`, `/dev`, `/tmp` (Linux primitives; exist inside the VM)
+///
+/// On Linux the active backend translates `/sandbox-rootfs` to the
+/// mounted FUSE path. On Mac/Windows the in-VM agent has the rootfs
+/// at `/sandbox-rootfs` already.
+pub async fn run_in_sandbox(
+    argv: Vec<String>,
+    timeout: std::time::Duration,
+) -> Result<ziee::RawExecResult, ziee::AppError> {
+    let rootfs = rootfs_squashfs_path();
+    ziee::sandbox_backend()
+        .exec_raw_argv(argv, &rootfs, timeout)
+        .await
 }
 
 /// Runtime skip helper for tests that need the FULL flavor (numpy /
@@ -210,8 +276,8 @@ pub fn test_server_jwt(user_id: Uuid) -> String {
         // Match the TestServer's JWT config (which uses prod issuer/
         // audience values for MCP loopback compatibility — see
         // tests/common/mod.rs).
-        iss: "ziee-chat".to_string(),
-        aud: "ziee-chat-api".to_string(),
+        iss: "ziee".to_string(),
+        aud: "ziee-api".to_string(),
         username: String::new(),
         email: String::new(),
         is_admin: false,
@@ -224,38 +290,125 @@ pub fn test_server_jwt(user_id: Uuid) -> String {
     .expect("sign test-server jwt")
 }
 
-/// Boot a TestServer with code_sandbox enabled. Skips the test cleanly
-/// (returns None) when bwrap isn't installed or no rootfs is mounted.
+/// Stage the test squashfs as a "minimal" flavor in a fresh cache dir
+/// + write a matching `known_revisions.dev.toml`. Returns the cache
+/// TempDir (held by caller so it outlives the TestServer) and the env
+/// vars to pass to TestServer. Mac/Windows path — bypasses the
+/// `runtime_fetch` network path via cache-hit + sha256 short-circuit.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub fn stage_test_rootfs_for_e2e() -> Option<(tempfile::TempDir, Vec<(String, String)>)> {
+    let source = rootfs_squashfs_path();
+    let cache = tempfile::tempdir().ok()?;
+    let arch = std::env::consts::ARCH;
+    let asset = format!("ziee-sandbox-rootfs-v1.r0-{arch}-minimal.squashfs");
+    std::fs::copy(&source, cache.path().join(&asset)).ok()?;
+    let sha256 = {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut f = std::fs::File::open(&source).ok()?;
+        let mut h = Sha256::new();
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            let n = f.read(&mut buf).ok()?;
+            if n == 0 { break; }
+            h.update(&buf[..n]);
+        }
+        format!("{:x}", h.finalize())
+    };
+    let dev_toml = format!(
+        r#"
+[[revision]]
+schema = 1
+revision = "r0"
+arch = "{arch}"
+flavor = "minimal"
+sha256 = "{sha256}"
+signed = false
+yanked = false
+"#
+    );
+    let dev_toml_path = cache.path().join("known_revisions.dev.toml");
+    std::fs::write(&dev_toml_path, dev_toml).ok()?;
+    let env = vec![
+        (
+            "CODE_SANDBOX_KNOWN_REVISIONS_OVERRIDE".to_string(),
+            dev_toml_path.to_string_lossy().into_owned(),
+        ),
+    ];
+    Some((cache, env))
+}
+
+/// Boot a TestServer with code_sandbox enabled. Cross-platform:
+///   - Linux: requires bwrap + a host-mounted rootfs (existing path).
+///   - Mac/Windows: stages the test squashfs into a TempDir cache +
+///     writes `known_revisions.dev.toml` so `runtime_fetch` hits the
+///     cache without going to the network; the active backend
+///     (libkrun on Mac, WSL2 on Windows) then dispatches bwrap
+///     inside the VM/distro.
+/// Returns None only when the test rootfs isn't built — caller
+/// should panic with `just test-prereqs` guidance (we no longer skip
+/// silently).
 ///
 /// Use at the top of every Tier-6 test:
 /// ```ignore
 /// let Some(server) = enabled_test_server().await else { return };
 /// ```
 pub async fn enabled_test_server() -> Option<TestServer> {
-    if !bwrap_available() {
-        eprintln!("test skipped: bwrap not installed");
-        return None;
-    }
-    let Some(rootfs) = rootfs_path() else {
-        eprintln!(
-            "test skipped: no rootfs mounted. Run `just sandbox-build && \
-             just sandbox-mount` first."
+    #[cfg(target_os = "linux")]
+    {
+        if !bwrap_available() {
+            eprintln!("test skipped: bwrap not installed");
+            return None;
+        }
+        let Some(rootfs) = rootfs_path() else {
+            eprintln!(
+                "test skipped: no rootfs mounted. Run `just sandbox-build && \
+                 just sandbox-mount` first."
+            );
+            return None;
+        };
+        return Some(
+            TestServer::start_with_options(TestServerOptions {
+                sandbox_enabled: true,
+                sandbox_rootfs: Some(rootfs),
+                sandbox_cgroup_parent: String::new(),
+                extra_env: Vec::new(),
+                sandbox_cache_tempdir: None,
+            })
+            .await,
         );
-        return None;
-    };
-    Some(
-        TestServer::start_with_options(TestServerOptions {
-            sandbox_enabled: true,
-            sandbox_rootfs: Some(rootfs),
-            // Default to rlimits-only (no cgroup delegation needed).
-            // Tests that need cgroup enforcement should boot their
-            // own TestServer with the right cgroup_parent + first
-            // call needs_cgroup_delegation().
-            sandbox_cgroup_parent: String::new(),
-            extra_env: Vec::new(),
-        })
-        .await,
-    )
+    }
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        // Stage the test squashfs as the "minimal" flavor in a fresh
+        // cache + write a matching known_revisions.toml. The cache
+        // TempDir must outlive TestServer — we pass it in via the
+        // sandbox_cache_tempdir field on TestServerOptions, and
+        // TestServer holds it through the test lifetime.
+        //
+        // `runtime_mount::derive_cache_dir` does `.parent()` on
+        // `rootfs_path` (it expects `<cache>/current`-shape), so we
+        // hand it `<tempdir>/current` and stage the squashfs in
+        // `<tempdir>` so the derived cache dir resolves correctly.
+        let (cache, env) = stage_test_rootfs_for_e2e()
+            .expect("stage test rootfs (run `just test-prereqs`)");
+        let rootfs_path = cache.path().join("current");
+        return Some(
+            TestServer::start_with_options(TestServerOptions {
+                sandbox_enabled: true,
+                sandbox_rootfs: Some(rootfs_path),
+                sandbox_cgroup_parent: String::new(),
+                extra_env: env,
+                sandbox_cache_tempdir: Some(std::sync::Arc::new(cache)),
+            })
+            .await,
+        );
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        eprintln!("test skipped: unsupported platform");
+        None
+    }
 }
 
 /// Conversation owned by a specific user. Inserts the row directly

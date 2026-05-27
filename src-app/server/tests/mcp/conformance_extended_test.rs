@@ -10,7 +10,7 @@
 use super::fixtures::everything_server::EverythingServer;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use ziee_chat::{HttpMcpClient, McpClient, McpServer, TransportType, UsageMode};
+use ziee::{HttpMcpClient, McpClient, McpServer, TransportType, UsageMode};
 
 fn server_config(url: String) -> McpServer {
     McpServer {

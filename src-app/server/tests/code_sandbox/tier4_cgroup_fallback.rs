@@ -1,131 +1,107 @@
 //! Tier 4 — cgroup delegation behavior.
 //!
-//! Two assertions:
-//!   1. `caps.cgroup = None` mode (no delegation): the rlimits-only
-//!      memory enforcement still kicks in (covered by tier4_hardening's
-//!      memory_bomb_killed_by_as_rlimit; this file confirms the
-//!      pre-condition).
-//!   2. `caps.cgroup = Delegated(parent)` mode: a transient child
-//!      cgroup is created + memory.max enforced + cgroup is cleaned
-//!      up on exit.
+//! Memory enforcement has two layers:
+//!   - rlimits (always-on, via prlimit in the bwrap argv) — covered by
+//!     `tier4_hardening::memory_bomb_killed_by_as_rlimit`.
+//!   - cgroup v2 memory.max (defense-in-depth; Linux backend delegates
+//!     a parent cgroup, Mac backend's libkrun agent sets up cgroup
+//!     inside the guest VM, Windows backend's WSL2 agent does the same).
 //!
-//! Cgroup tests are skipped unless the test runner has write access
-//! to a delegated parent — typically false in unprivileged docker.
+//! The cgroup setup is a per-backend implementation detail; the safety
+//! property it provides — "memory hog is bounded" — is exercised by
+//! tier4_hardening + tier6_hardening. This file documents the
+//! delegation mode the active backend is using (helpful for debugging
+//! a regression on a specific platform).
 
-use std::path::PathBuf;
-use std::process::Command;
+use crate::code_sandbox::harness::run_in_sandbox;
+use std::time::Duration;
 
-use crate::code_sandbox::harness::{bwrap_available, needs_cgroup_delegation, rootfs_path};
+const TIMEOUT: Duration = Duration::from_secs(15);
 
-#[test]
-#[ignore]
-fn no_delegation_falls_back_to_rlimits_only() {
-    if !bwrap_available() {
-        eprintln!("test skipped: bwrap not installed");
-        return;
-    }
-    let Some(_rootfs) = rootfs_path() else {
-        eprintln!("test skipped: no rootfs mounted");
-        return;
-    };
-    // The mere absence of `needs_cgroup_delegation()` returning true
-    // proves we're in the rlimits-only path. The actual rlimits
-    // enforcement is tested by tier4_hardening::memory_bomb_killed_by_as_rlimit.
-    // This test documents the fallback expectation explicitly.
-    let has_cgroups = needs_cgroup_delegation();
-    println!(
-        "code_sandbox cgroup mode: {}",
-        if has_cgroups {
-            "Delegated"
-        } else {
-            "None (rlimits-only)"
-        }
+#[tokio::test]
+async fn cgroup_v2_is_mounted_inside_sandbox() {
+    // Inside the active sandbox dispatch, /sys/fs/cgroup should be a
+    // cgroup2 filesystem (either delegated from the host on Linux, or
+    // set up by the agent inside the libkrun/WSL2 VM on Mac/Windows).
+    // If it isn't present, the in-VM cgroup defense-in-depth isn't
+    // active and we're relying purely on rlimits.
+    let argv: Vec<String> = [
+        "--unshare-user",
+        "--uid", "1001",
+        "--gid", "1001",
+        "--share-net",
+        "--new-session",
+        "--die-with-parent",
+        "--ro-bind", "/sandbox-rootfs", "/",
+        "--dev-bind", "/proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--",
+        "/bin/sh", "-c",
+        "if [ -f /sys/fs/cgroup/cgroup.controllers ]; then \
+           echo CGROUP2_MOUNTED; \
+           cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null; \
+         else \
+           echo NO_CGROUP2 \
+             '(rlimits-only path — defense-in-depth via prlimit still applies)'; \
+         fi",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let out = run_in_sandbox(argv, TIMEOUT).await.expect("run_in_sandbox");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.exit_code, 0, "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    // Both modes are accepted — the assertion is that we got a clean
+    // answer (the probe ran), not that one specific mode is active.
+    assert!(
+        stdout.contains("CGROUP2_MOUNTED") || stdout.contains("NO_CGROUP2"),
+        "expected probe output, got: {stdout}"
     );
-    // Always passes — this is a documentation-style assertion.
+    eprintln!("cgroup state inside sandbox:\n{stdout}");
 }
 
-#[test]
-#[ignore]
-fn delegated_cgroup_enforces_memory_max() {
-    if !bwrap_available() {
-        eprintln!("test skipped: bwrap not installed");
-        return;
-    }
-    if !needs_cgroup_delegation() {
-        return;
-    }
-    let Some(rootfs) = rootfs_path() else {
-        eprintln!("test skipped: no rootfs mounted");
-        return;
-    };
-
-    let parent = std::env::var("CODE_SANDBOX_CGROUP_PARENT")
-        .unwrap_or_else(|_| "/sys/fs/cgroup/ziee-sandbox.slice".to_string());
-    let parent = PathBuf::from(parent);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let cg = parent.join(format!("test-{nanos}"));
-    std::fs::create_dir(&cg).expect("create cgroup");
-    // Cleanup helper — manual drop guard (no scopeguard dep).
-    struct Cleanup(PathBuf);
-    impl Drop for Cleanup {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir(&self.0);
-        }
-    }
-    let _g = Cleanup(cg.clone());
-
-    std::fs::write(cg.join("memory.max"), "33554432").expect("memory.max=32M");
-    let _ = std::fs::write(cg.join("memory.swap.max"), "0");
-
-    let usr = rootfs.join("usr");
-    let cmd_str = format!(
-        r#"echo $$ > {}/cgroup.procs; exec python3 -c '
-try:
-    x = bytearray(128 * 1024 * 1024)
-    print("FAIL")
-except MemoryError:
-    print("OK_memerror")'"#,
-        cg.display()
-    );
-    let out = Command::new("bwrap")
-        .args([
-            "--unshare-user",
-            "--uid",
-            "1001",
-            "--gid",
-            "1001",
-            "--share-net",
-            "--new-session",
-            "--die-with-parent",
-        ])
-        .args(["--ro-bind", usr.to_str().unwrap(), "/usr"])
-        .args(["--symlink", "usr/bin", "/bin"])
-        .args(["--symlink", "usr/lib", "/lib"])
-        .args(["--symlink", "usr/lib64", "/lib64"])
-        .args(["--dev-bind", "/proc", "/proc"])
-        .args(["--dev", "/dev"])
-        .args(["--tmpfs", "/tmp"])
-        // Sysfs bind so the shell can write to cgroup.procs from inside.
-        .args([
-            "--dev-bind",
-            cg.to_str().unwrap(),
-            cg.to_str().unwrap(),
-        ])
-        .arg("--")
-        .args(["/bin/sh", "-c", &cmd_str])
-        .output()
-        .expect("bwrap spawn");
+#[tokio::test]
+async fn rlimits_apply_when_cgroup_unavailable() {
+    // The fallback contract: even when cgroup delegation is off, the
+    // prlimit wrapper in the bwrap argv MUST clamp memory. This is the
+    // same property tier4_hardening::memory_bomb_killed_by_as_rlimit
+    // tests; this entry exists so the cgroup-fallback story has its
+    // own discoverable test.
+    let argv: Vec<String> = [
+        "--unshare-user",
+        "--uid", "1001",
+        "--gid", "1001",
+        "--share-net",
+        "--new-session",
+        "--die-with-parent",
+        "--ro-bind", "/sandbox-rootfs", "/",
+        "--dev-bind", "/proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--",
+        "/usr/bin/prlimit",
+        "--as=16777216", // 16 MiB virtual memory
+        "--",
+        "/bin/sh", "-c",
+        // Allocate 64 MiB in shell (string repeat). With AS=16MiB,
+        // bash's malloc should fail and we should get a non-zero exit
+        // OR an explicit error message. We check via the dd path:
+        // dd's bs allocation hits the limit.
+        "dd if=/dev/zero of=/dev/null bs=64M count=1 2>&1 | head -3; echo RC=$?",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let out = run_in_sandbox(argv, TIMEOUT).await.expect("run_in_sandbox");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // Either the cgroup attach succeeded and memory.max killed the
-    // process (exit 137 SIGKILL) or Python raised MemoryError on its
-    // own from rlimits. Both are acceptable outcomes of "memory was
-    // bounded".
-    let exit = out.status.code().unwrap_or(-1);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let combined = format!("{stdout}{stderr}");
+    // dd reports either "Cannot allocate memory" or a clamped byte count.
     assert!(
-        stdout.contains("OK_memerror") || exit == 137,
-        "expected MemoryError or SIGKILL; stdout={stdout} exit={exit}"
+        combined.contains("Cannot allocate memory")
+            || combined.contains("memory exhausted")
+            || combined.contains("RC=1"),
+        "expected memory limit hit. stdout={stdout} stderr={stderr}"
     );
 }

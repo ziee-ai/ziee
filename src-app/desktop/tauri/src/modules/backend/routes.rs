@@ -4,7 +4,7 @@
 
 use aide::axum::ApiRouter;
 use super::handlers;
-use ziee_chat::get_with;
+use ziee::get_with;
 
 /// Create backend API routes with OpenAPI documentation
 pub fn backend_api_routes() -> ApiRouter {

@@ -714,8 +714,8 @@ mod helpers {
             sub: user_id,
             exp: now + 86400, // 24 hours
             iat: now,
-            iss: "ziee-chat-test".to_string(),
-            aud: "ziee-chat-test-api".to_string(),
+            iss: "ziee-test".to_string(),
+            aud: "ziee-test-api".to_string(),
         };
 
         let secret = "test-secret-key-for-jwt-tokens-min-32-chars-long";
