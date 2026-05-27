@@ -349,7 +349,18 @@ logging:
 "#
     );
 
-    let config: ziee::Config = serde_yaml::from_str(&yaml)?;
+    let mut config: ziee::Config = serde_yaml::from_str(&yaml)?;
+
+    // CRITICAL: `Config::load_from` normally calls `resolve_paths()` at
+    // the end (it's what fills optional path fields like
+    // `postgresql.embedded.installation_dir` and
+    // `caches.llm_engines_dir` from `app.data_dir`). We bypassed
+    // `load_from` by parsing the YAML directly, so we have to do it
+    // ourselves — otherwise the first `installation_dir` /
+    // `llm_engines_dir` accessor panics with
+    // "<field> filled by Config::resolve_paths".
+    config.resolve_paths();
+
     Ok(config)
 }
 
