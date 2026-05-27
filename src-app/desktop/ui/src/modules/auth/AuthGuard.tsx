@@ -1,5 +1,5 @@
 /**
- * Desktop Override: AuthGuard
+ * DELIBERATE DIVERGENCE from core's AuthGuard.
  *
  * Differs from the core AuthGuard in three ways:
  *

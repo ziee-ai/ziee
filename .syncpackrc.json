@@ -17,10 +17,8 @@
       ]
     },
     {
-      "label": "Test/db tooling only used by core UI's setup scripts",
+      "label": "Test/db tooling only used by core UI's setup scripts (desktop now uses pg too for its test fixture)",
       "dependencies": [
-        "pg",
-        "@types/pg",
         "bcryptjs",
         "@types/bcryptjs",
         "dotenv",

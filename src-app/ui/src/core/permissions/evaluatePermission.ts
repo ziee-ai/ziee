@@ -16,6 +16,15 @@ export function evaluatePermission(
   permissions: string[] | null | undefined,
   expr: PermissionExpr,
 ): boolean {
+  // Defensive: an undefined / null expression means "fail closed" (no
+  // grant). Happens when a `Permissions.X` enum lookup resolves to
+  // undefined (e.g., a downstream consumer's api-client types are
+  // stale and missing the X constant). Without this guard, the next
+  // `'allOf' in expr` throws "Cannot use 'in' operator … in undefined"
+  // and crashes the whole router.
+  if (expr == null) {
+    return false
+  }
   if (typeof expr === 'string') {
     return hasPermission(user, permissions, expr)
   }

@@ -60,6 +60,17 @@ export interface InstallTauriMockOptions {
    *   - { failFirstN }: first N calls reject, then success
    */
   autoLogin?: 'success' | 'fail-forever' | { failFirstN: number }
+  /**
+   * The port returned from `invoke('get_server_port')`. Defaults to
+   * 8080 (a port nothing is listening on — combine with
+   * `mockBackendDefaults` so `fetch` never hits a real server).
+   *
+   * For real-backend specs (the testInfra fixture), pass
+   * `testInfra.backendPort` and SKIP `mockBackendDefaults` — the SPA's
+   * `getBaseUrl()` resolves to that port and `fetch` reaches the
+   * spawned backend.
+   */
+  backendPort?: number
 }
 
 export async function installTauriMock(
@@ -68,9 +79,10 @@ export async function installTauriMock(
 ): Promise<void> {
   const tokens = options.tokens ?? FAKE_TOKENS
   const autoLogin = options.autoLogin ?? 'success'
+  const backendPort = options.backendPort ?? 8080
 
   await page.addInitScript(
-    ({ tokens, autoLogin }) => {
+    ({ tokens, autoLogin, backendPort }) => {
       // Truthy marker the platform.ts isTauriView check reads.
       ;(window as any).__TAURI__ = { __mocked: true }
 
@@ -105,7 +117,7 @@ export async function installTauriMock(
             return tokens
           }
           if (cmd === 'get_server_port') {
-            return 8080
+            return backendPort
           }
           // Unmocked Tauri commands resolve to undefined rather than
           // throw, so unrelated desktop modules (window controls, etc.)
@@ -114,7 +126,7 @@ export async function installTauriMock(
         },
       }
     },
-    { tokens, autoLogin },
+    { tokens, autoLogin, backendPort },
   )
 }
 
@@ -135,13 +147,19 @@ export async function mockBackendDefaults(page: Page): Promise<void> {
     })
   })
 
-  // Catch-all for any other /api call: return an empty 200 so the SPA
-  // doesn't surface error boundaries for unrelated startup fetches.
+  // Catch-all for any other /api call.
+  //
+  // Returning `{}` blows up sidebar widgets that expect arrays
+  // (`conversations.map(...)`, `projects.map(...)`, …). Returning `[]`
+  // works for list endpoints; object endpoints get `[]` and their
+  // store handlers gracefully fall through to the initial empty
+  // state (since `res.something` on an array yields undefined, not
+  // a thrown TypeError).
   await page.route('**/api/**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: '{}',
+      body: '[]',
     })
   })
 }

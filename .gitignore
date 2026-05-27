@@ -20,6 +20,10 @@ target-docker/
 # npm workspaces hoists into the repo-root node_modules; never committed.
 node_modules/
 
+# Playwright artifacts — per-run, never committed.
+playwright-report/
+test-results/
+
 # macOS Finder cruft.
 .DS_Store
 

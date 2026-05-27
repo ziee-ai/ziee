@@ -53,4 +53,45 @@ test.describe('desktop settings filter', () => {
     await expect(menu.getByText(/LLM Providers/i)).toBeVisible()
     await expect(menu.getByText(/Code Sandbox/i)).toBeVisible()
   })
+
+  test('Memory shows exactly one entry that opens the combined page', async ({
+    page,
+  }) => {
+    await page.goto('/settings')
+    await expect(
+      page.getByRole('menuitem').first(),
+    ).toBeVisible({ timeout: 10_000 })
+
+    const menu = page.getByRole('menu')
+
+    // Core registers TWO 'memory' slots (user + admin); the desktop
+    // module registers ONE 'memory-desktop' that filters both core
+    // entries. The menu must show exactly one "Memory".
+    await expect(menu.getByText(/^Memory$/)).toHaveCount(1)
+
+    // Clicking lands on the desktop combined route.
+    await menu.getByText(/^Memory$/).click()
+    await expect(page).toHaveURL(/\/settings\/memory-combined\b/)
+
+    // Both section headers from the combined page must be present.
+    await expect(page.getByText(/^Your preferences$/i)).toBeVisible()
+    await expect(page.getByText(/^Administration$/i)).toBeVisible()
+  })
+
+  test('LLM Providers shows exactly one entry (admin page, no user-side dup)', async ({
+    page,
+  }) => {
+    await page.goto('/settings')
+    await expect(
+      page.getByRole('menuitem').first(),
+    ).toBeVisible({ timeout: 10_000 })
+
+    const menu = page.getByRole('menu')
+
+    // Core registers BOTH a user-side slot ('user-llm-providers') and
+    // an admin slot ('llm-providers'), both labeled 'LLM Providers'.
+    // Desktop hides the user-side (no role on single-admin), so
+    // exactly one "LLM Providers" entry should appear.
+    await expect(menu.getByText(/^LLM Providers$/)).toHaveCount(1)
+  })
 })

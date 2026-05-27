@@ -1,10 +1,25 @@
 /**
- * Desktop Override: Drawer
+ * DELIBERATE DIVERGENCE from core's Drawer.
  *
- * Adds Tauri-specific features:
- * - TauriDragRegion in title for window movement
- * - Position monitoring to adjust title padding for macOS traffic lights
- * - Tauri-aware wrapper styles (maxWidth, border, borderRadius)
+ * Desktop is a superset of core: the underlying AntDrawer config,
+ * size/width resolution, footer normalization, mask + body styling
+ * all match core 1:1. The desktop-only additions are:
+ *
+ *   - <TauriDragRegion> overlaid in the drawer title so the user
+ *     can drag the window from the title strip.
+ *   - `titleRef` + ResizeObserver effect that watches the drawer's
+ *     left edge and adds left padding when the drawer would sit
+ *     under the macOS traffic-light controls (clears 72px on Mac).
+ *   - `resizeMaxWidth` passed to ResizeHandle so dragging the left
+ *     edge can't push the drawer under the traffic lights either.
+ *   - `wrapper.maxWidth` and `wrapper.border` formulas that account
+ *     for Tauri window chrome (90px reserve on Mac).
+ *
+ * If you find behavior that core has and desktop doesn't (a real
+ * regression rather than a deliberate addition), copy core's logic
+ * into the matching place here. `just desktop-drift-check` will flag
+ * the file as long as it differs at all — the marker above tells the
+ * recipe the difference is intentional.
  */
 
 import {
@@ -73,8 +88,6 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const {
     placement = 'right',
     size = 520,
-    width, // deprecated - for backwards compatibility
-    maskClosable = true,
     children,
     styles: propsStyles,
     ...restProps
@@ -84,14 +97,13 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const resolvedPropsStyles =
     typeof propsStyles === 'function' ? propsStyles({ props }) : propsStyles
 
-  // Use size, fallback to width for backwards compatibility
-  const drawerSize = width !== undefined ? width : size
-
-  // Determine if we should use size or width prop
+  // antd 6 `size` accepts number | 'default' | 'large' | string.
+  // On the smallest breakpoint we want the panel to fill the
+  // viewport — antd's `size` doesn't accept '100%', so route through
+  // `width` only in that case (still a supported antd prop, not
+  // deprecated; just less convenient than `size` for the common case).
   const useSizeProp =
-    typeof drawerSize === 'number' ||
-    drawerSize === 'default' ||
-    drawerSize === 'large'
+    typeof size === 'number' || size === 'default' || size === 'large'
 
   if (Array.isArray(restProps.footer)) {
     restProps.footer = (
@@ -107,9 +119,8 @@ export const Drawer: React.FC<DrawerProps> = props => {
     <AntDrawer
       placement={placement}
       {...(useSizeProp
-        ? { size: drawerSize as number | 'default' | 'large' }
-        : { width: windowMinSize.xs ? '100%' : drawerSize })}
-      maskClosable={maskClosable}
+        ? { size: size as number | 'default' | 'large' }
+        : { width: windowMinSize.xs ? '100%' : size })}
       {...restProps}
       closable={false}
       classNames={{
@@ -215,7 +226,11 @@ export const Drawer: React.FC<DrawerProps> = props => {
       <DivScrollY className={'flex w-full h-full'}>
         <div className={'flex w-full h-full pr-3'}>
           {React.Children.map(children, child => {
-            if (React.isValidElement(child)) {
+            // Sync from core: typed narrowing so child.props.className
+            // is `string | undefined` instead of `unknown` (avoids the
+            // `child.props is of type unknown` TS error against React 19
+            // types).
+            if (React.isValidElement<{ className?: string }>(child)) {
               return React.cloneElement(child, {
                 ...child.props,
                 className: `w-full ${child.props.className || ''}`.trim(),

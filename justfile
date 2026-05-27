@@ -253,6 +253,35 @@ desktop-test-rust: workspace-cargo-pin-sqlx
 desktop-test-e2e:
     cd src-app/desktop/ui && npm run test:e2e
 
+# Scan every desktop override file under src-app/desktop/ui/src/modules/
+# and report whether it matches its core equivalent. Output prefixes:
+#   =  matches core verbatim (override could be deleted if no longer needed)
+#   ≠  diverges from core (review intent — DELIBERATE DIVERGENCE header
+#      means it's intentional; otherwise it's drift to re-sync)
+#   +  desktop-only (no core equivalent — leave alone)
+#
+# Skips desktop-only module roots whose existence is the point.
+desktop-drift-check:
+    @bash -c 'set -e; \
+        cd src-app/desktop/ui/src; \
+        find modules -type f \( -name "*.tsx" -o -name "*.ts" \) \
+            | grep -vE "modules/(desktop-base|window|file-dialog|memory|llm-providers|desktop-loader)" \
+            | sort \
+            | while read f; do \
+                core="../../../ui/src/$f"; \
+                if [ -f "$core" ]; then \
+                    if diff -q "$f" "$core" >/dev/null 2>&1; then \
+                        echo "= $f"; \
+                    elif grep -q "DELIBERATE DIVERGENCE" "$f"; then \
+                        echo "≠ $f  (intentional — has DELIBERATE DIVERGENCE marker)"; \
+                    else \
+                        echo "≠ $f  (drifted — re-sync from $core)"; \
+                    fi; \
+                else \
+                    echo "+ $f  (desktop-only)"; \
+                fi; \
+            done'
+
 # ─── Self-contained release builds ──────────────────────────────────
 #
 # Mac: produces target/aarch64-apple-darwin/release/ziee — a single

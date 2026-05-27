@@ -1,11 +1,21 @@
 /**
- * Desktop Override: HeaderBarContainer
+ * DELIBERATE DIVERGENCE from core's HeaderBarContainer.
  *
- * Adds Tauri drag region overlay and adjusts padding for window controls:
- * - macOS: Extra left padding for traffic lights when sidebar collapsed
- * - Windows/Linux: Extra right padding for window controls
+ * Core simply renders a 50px div with `padding-left: 48 | 12` and
+ * `padding-right: 12`. Desktop adds:
  *
- * Uses debounced ref-based style updates to handle multiple React re-renders smoothly
+ *   - <TauriDragRegion> overlay so the user can drag the window from
+ *     the empty area around the header content.
+ *   - Larger `padding-left` (110px on macOS Tauri, sidebar collapsed,
+ *     not fullscreen) to clear the traffic-light controls.
+ *   - Larger `padding-right` (100px on Windows/Linux Tauri, not
+ *     fullscreen) to clear minimize/maximize/close window controls.
+ *   - Debounced ref-based style writes (`useLayoutEffect` with a
+ *     setTimeout(0) coalesce) so the multi-pass renders that fire
+ *     during sidebar-collapse animations don't thrash the DOM.
+ *
+ * If core grows new layout primitives, port them into the inline
+ * `style` object below or the className.
  */
 
 import { useRef, useLayoutEffect } from 'react'
@@ -28,10 +38,13 @@ export const HeaderBarContainer = ({
   const { token } = theme.useToken()
   const { isSidebarCollapsed, isFullscreen } = Stores.AppLayout
   const containerRef = useRef<HTMLDivElement>(null)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  )
 
-  // Calculate left padding
-  // macOS: need extra space for traffic lights when sidebar is collapsed
+  // macOS Tauri: ~110px on the left when the sidebar is collapsed so the
+  // header content doesn't sit under the traffic-light controls. Off in
+  // fullscreen (no traffic lights). Web / non-Tauri: core's 48 | 12.
   const paddingLeft =
     isSidebarCollapsed && isTauriView && !isFullscreen && isMacOS
       ? 110
@@ -39,18 +52,20 @@ export const HeaderBarContainer = ({
         ? 48
         : 12
 
-  // Calculate right padding
-  // Windows/Linux: need extra space for window controls
+  // Windows/Linux Tauri: ~100px on the right to clear the minimize /
+  // maximize / close trio. Off in fullscreen. Web: 12.
   const paddingRight = isTauriView && !isFullscreen && !isMacOS ? 100 : 12
 
-  // Debounced style update - waits for renders to settle before updating DOM
+  // Coalesced style write — sidebar-collapse animates over ~200ms and
+  // triggers many renders; writing padding inline on every render would
+  // re-trigger layout. The setTimeout-0 trick lets React's batch
+  // settle, then we apply once.
   useLayoutEffect(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
     }
     timeoutRef.current = setTimeout(() => {
       if (containerRef.current) {
-        console.log('Updating HeaderBarContainer padding:')
         containerRef.current.style.paddingLeft = `${paddingLeft}px`
         containerRef.current.style.paddingRight = `${paddingRight}px`
       }

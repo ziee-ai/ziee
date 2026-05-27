@@ -126,6 +126,30 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
         newComponents.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       }
 
+      // Register slots — append this module's slot entries to the
+      // existing map. Without this, modules registered AFTER
+      // `initializeModules()` has already run (e.g., desktop modules
+      // loaded by `desktop-loader.ts` post-`loadCoreModules()`) would
+      // have their slot entries silently dropped: the new-module
+      // branch of this reducer was missing the slot merge that the
+      // HMR-rebuild branch above does.
+      const newSlots = new Map<keyof Slots, any[]>(state.slots)
+      if (module.registerSlots) {
+        try {
+          const slots = module.registerSlots()
+          for (const [slotName, slotArray] of Object.entries(slots)) {
+            const slot = slotName as keyof Slots
+            const existing = newSlots.get(slot) || []
+            newSlots.set(slot, [...existing, ...slotArray])
+          }
+        } catch (error) {
+          console.error(
+            `Failed to register slots for module ${module.metadata.name}:`,
+            error,
+          )
+        }
+      }
+
       // Call onModuleRegister hook for all existing modules
       state.modules.forEach(existingModule => {
         existingModule.onModuleRegister?.(module)
@@ -142,6 +166,7 @@ export const useModuleSystemStore = create<ModuleSystemState>((set, get) => ({
         modules: newModules,
         stores: newStores,
         components: newComponents,
+        slots: newSlots,
       }
     })
   },
