@@ -1,6 +1,7 @@
 import type { StoreProxy } from '@/core/stores'
 import type { useChatStore } from '@/modules/chat/core/stores/Chat.store'
 import type { useChatHistoryStore } from '@/modules/chat/stores/ChatHistory.store'
+import type { SidebarWidgetItem } from '@/modules/layouts/app-layout/types'
 
 /**
  * Chat Extension Stores Interface
@@ -17,5 +18,22 @@ declare module '@/core/stores' {
       ReturnType<typeof useChatStore.getState> & ChatExtensionStores
     >
     ChatHistory: StoreProxy<ReturnType<typeof useChatHistoryStore.getState>>
+  }
+}
+
+/**
+ * Slot that other modules use to render content trailing the chat
+ * header title (next to the TitleEditor in ConversationPage). The
+ * Projects module uses this for `ConversationProjectChip` so the
+ * chat module doesn't have a compile-time import on projects (closes
+ * audit N11).
+ *
+ * Slot items render in `order` ascending, rightmost-first visually.
+ * Use SidebarWidgetItem's shape so any module can register without
+ * a new slot type.
+ */
+declare module '@/core/module-system/types' {
+  interface Slots {
+    chatConversationHeaderTrailing: SidebarWidgetItem[]
   }
 }

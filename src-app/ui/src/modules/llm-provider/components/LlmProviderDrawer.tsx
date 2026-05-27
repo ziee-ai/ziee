@@ -100,7 +100,7 @@ export function LlmProviderDrawer() {
       onClose={handleClose}
       footer={null}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form
         name="llm-provider-form"

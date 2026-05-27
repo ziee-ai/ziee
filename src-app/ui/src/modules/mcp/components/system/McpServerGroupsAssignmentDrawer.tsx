@@ -3,7 +3,6 @@ import { App, Button, Card, Flex, Spin, Switch, Tag, Typography } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
-import { ApiClient } from '@/api-client'
 import { Permissions, type McpServer } from '@/api-client/types'
 import { emitMcpServerGroupsChanged } from '@/modules/mcp/events'
 
@@ -35,9 +34,9 @@ export function McpServerGroupsAssignmentDrawer() {
 
     setLoading(true)
     try {
-      const groupIds = await ApiClient.McpServerSystem.getServerGroups({
-        id: selectedServerId,
-      })
+      const groupIds = await Stores.SystemMcpServer.getServerGroups(
+        selectedServerId,
+      )
       setAssignedIds(groupIds)
     } catch (error) {
       console.error('Failed to load assigned groups:', error)
@@ -53,10 +52,10 @@ export function McpServerGroupsAssignmentDrawer() {
     setSaving(true)
     try {
       // Use POST endpoint to replace all groups
-      await ApiClient.McpServerSystem.assignServerToGroups({
-        id: selectedServerId,
-        group_ids: assignedIds,
-      })
+      await Stores.SystemMcpServer.assignServerToGroups(
+        selectedServerId,
+        assignedIds,
+      )
 
       message.success('Group assignments updated')
 

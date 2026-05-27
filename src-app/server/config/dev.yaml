@@ -62,6 +62,16 @@ server:
   port: 3000  # Use 0 for automatic port selection
   api_prefix: "/api"  # Base path prefix for all API routes
 
+  # Honor X-Forwarded-Host / X-Forwarded-Proto in OAuth redirect_uri
+  # derivation. Dev: Vite proxy forwards X-Forwarded-Host explicitly
+  # so the backend can derive the user-facing origin. Production:
+  # only enable behind a trusted reverse proxy that STRIPS inbound
+  # X-Forwarded-* headers (nginx proxy_set_header / Caddy header_up /
+  # Cloudflare default). Otherwise an attacker can send their own
+  # X-Forwarded-Host: evil.com directly to the backend and steal
+  # OAuth codes via permissive IdPs.
+  trust_forwarded_headers: true
+
   # CORS settings
   cors:
     allow_origins:

@@ -18,4 +18,5 @@ mod mcp;
 mod memory;
 mod memory_mcp;
 mod onboarding;
+mod project;
 mod user;

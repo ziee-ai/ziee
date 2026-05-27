@@ -17,8 +17,9 @@ pub mod llm_repository;
 pub mod mcp;
 pub mod memory;
 pub mod memory_mcp;
-pub mod permissions;
 pub mod onboarding;
+pub mod permissions;
+pub mod project;
 pub mod user;
 
 // Re-export modules

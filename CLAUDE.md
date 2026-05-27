@@ -436,6 +436,102 @@ and the ongoing release workflow.
 
 ---
 
+## Chat Projects
+
+Flat, per-user grouping above conversations. Each project owns:
+
+- `instructions` (TEXT, capped at 64 KiB) — wrapped + injected as a
+  system message into every conversation in the project.
+- Attached files (M:N via `project_files`, hard-capped at 100 per
+  project) — prepended onto the user message as provider-routed
+  ContentBlocks.
+- Default assistant + default model (nullable FKs, `ON DELETE SET NULL`).
+- Inline MCP settings — snapshotted into the conversation's
+  `conversation_mcp_settings` row at conversation create time. Snapshot,
+  not read-through: subsequent project MCP edits do NOT propagate to
+  existing conversations.
+
+### Backend module
+
+- Code: `src-app/server/src/modules/project/{mod,models,types,repository,routes,handlers,permissions,events}.rs`
+- Migrations: `00000000000046..00000000000049` (projects table,
+  project_files join, conversations.project_id ALTER, Administrators
+  permission grant).
+- Chat extension: `src-app/server/src/modules/chat/extensions/project/`
+  at **order 8** — runs BEFORE the assistant extension (order 10) so
+  the final wire format is `[assistant_sys, project_sys, user_msg]`
+  (assistant at older position, project closer to the user message).
+  Mutation logic lives in the pure function
+  `apply_project_context(&mut ChatRequest, instructions, file_blocks)`
+  so it's directly unit-testable.
+- File→ContentBlock routing: shared `chat/extensions/file/processor.rs`
+  `process_file_blocks()` — single source of truth for both the file
+  extension and the project extension.
+
+### API
+
+13 endpoints under `/projects/*` — full CRUD + `/duplicate` + `/files`
+(attach by ID + multipart upload+attach + detach + list) +
+`/conversations` + `/mcp-settings` (get/put). Combined upload returns
+**422** (not 400) when the 100-file cap is hit.
+
+Cross-cutting on the chat module:
+- `POST /conversations` accepts optional `project_id`; if set with no
+  explicit `model_id` it snapshots `project.default_model_id`.
+- `PUT /conversations/{id}` accepts tri-state `project_id`
+  (missing/null/uuid) using the existing `deserialize_nullable_field`.
+- `GET /conversations?project_id=null` filters to unfiled;
+  `?project_id=<uuid>` filters to that project.
+- `SendMessageRequest` does **NOT** accept `project_id` — project is
+  derived server-side from `conversation.project_id` (security: clients
+  cannot inject project Y's context into conversation X).
+
+### Frontend module
+
+`src-app/ui/src/modules/projects/` — stores (Projects, ProjectDetail,
+ProjectDrawer), pages (ProjectsListPage, ProjectDetailPage), components
+(ProjectFormDrawer, ProjectFilesPanel, ProjectConversationsList,
+ProjectMcpSettingsPanel, ConversationProjectChip), sidebar widget
+(`ProjectsNavWidget` in `sidebarContent` at order 5, above
+`RecentConversationsWidget`).
+
+The chat module's `RecentConversationsWidget` is wrapped at the slot
+registration site with `projectIdFilter={null}` so it shows ONLY
+unfiled conversations when the projects module is present (avoids
+duplication with per-project lists).
+
+**`pendingProjectId` contract**: `Stores.Chat` exposes a
+`pendingProjectId` field. `NewChatPage` reads `?project_id=<uuid>` from
+the URL on mount and calls `setPendingProjectId`. The next
+`createConversation` call consumes + clears it (cleared on both success
+and error so a failed send doesn't latch the project). This is the
+mechanism by which "New chat in this project" affordances (from
+ProjectsNavWidget hover + ProjectDetailPage header) thread the project
+through the chat module.
+
+### Tests
+
+| Tier | Location | What's covered |
+|---|---|---|
+| 1 unit | `src/modules/project/{permissions,handlers}.rs` `#[cfg(test)]` + `chat/extensions/project/project.rs` `#[cfg(test)]` | Permission constants, name validator, text-length validators, file-count cap constant, and **8 wire-format mutation tests** on `apply_project_context()` covering stack-both, file prepend, assistant-layering, no-op cases |
+| 2 integration | `tests/project/*.rs` | CRUD, permissions, ownership, file attach/detach/cascade/cap-422, conversation move + scoping, duplicate (incl. name-collision suffix), MCP snapshot, default_model snapshot |
+| 3 real-LLM | `tests/project/injection_test.rs` | Real-provider tests that send a chat message and assert the LLM response reflects the project instructions / files / stacking. Gated on `ANTHROPIC_API_KEY` (or other provider keys) — skipped when unset. Mirrors `tests/chat/file_attachments_real_providers_test.rs` pattern |
+| E2E | `tests/e2e/11-projects/` | Full Playwright flow: list/create/edit/attach/duplicate/delete-orphan/conversation-in-project + a real-LLM `message-uses-project-context` spec |
+
+**Running just the project tests:**
+
+```bash
+# Tier 1
+cargo test --lib -p ziee-chat project::
+
+# Tier 2 + 3 (Tier 3 skips when no API keys)
+source tests/.env.test
+cargo test --test integration_tests project:: -- --test-threads=1 \
+    2>&1 | tee project-int-$(date +%Y%m%d-%H%M%S).log
+```
+
+---
+
 ## Documentation Index
 
 ### 📐 Architecture

@@ -45,6 +45,23 @@ export interface AssistantListResponse {
   total: number
 }
 
+export interface AttachFileRequest {
+  file_id: string
+}
+
+export interface AuthProviderResponse {
+  config: any
+  created_at: string
+  enabled: boolean
+  id: string
+  last_test_at?: string
+  last_test_message?: string
+  last_test_ok?: boolean
+  name: string
+  provider_type: string
+  updated_at: string
+}
+
 export interface AuthResponse {
   access_token: string
   expires_in: number
@@ -146,7 +163,9 @@ export interface Conversation {
   active_branch_id?: string
   created_at: string
   id: string
+  memory_mode: string
   model_id?: string
+  project_id?: string
   updated_at: string
   user_id: string
 }
@@ -168,8 +187,10 @@ export interface ConversationResponse {
   active_branch_id?: string
   created_at: string
   id: string
+  memory_mode: string
   message_count: number
   model_id?: string
+  project_id?: string
   updated_at: string
   user_id: string
 }
@@ -205,6 +226,13 @@ export interface CreateAssistantRequest {
   parameters?: ModelParameters
 }
 
+export interface CreateAuthProviderRequest {
+  config: any
+  enabled?: boolean
+  name: string
+  provider_type: string
+}
+
 export interface CreateBranchRequest {
   fork_level?: string
   from_message_id: string
@@ -213,6 +241,7 @@ export interface CreateBranchRequest {
 export interface CreateConversationRequest {
   title?: string
   model_id?: string
+  project_id?: string
 }
 
 export interface CreateGroupRequest {
@@ -290,6 +319,17 @@ export interface CreateModelFromHubRequest {
   quantization_name?: string
 }
 
+export interface CreateProjectRequest {
+  description?: string
+  default_assistant_id?: string
+  default_model_id?: string
+  instructions?: string
+  mcp_approval_mode?: string
+  mcp_auto_approved_tools?: McpServerToolEntry[]
+  mcp_disabled_servers?: McpServerToolEntry[]
+  name?: string
+}
+
 export interface CreateUserRequest {
   display_name?: string
   email: string
@@ -300,6 +340,11 @@ export interface CreateUserRequest {
 
 export interface DeleteAllResponse {
   deleted: number
+}
+
+export interface DeleteProviderResponse {
+  affected_user_links: number
+  deleted: boolean
 }
 
 export interface DeleteVersionQuery {
@@ -730,6 +775,11 @@ export interface InstanceStatusResponse {
   uptime_seconds?: number
 }
 
+export interface LinkAccountRequest {
+  link_token: string
+  password: string
+}
+
 export interface ListAuditLogQuery {
   limit?: number
 }
@@ -937,6 +987,11 @@ export interface McpServerOAuthConfigResponse {
   scopes?: string
   server_id: string
   updated_at: string
+}
+
+export interface McpServerToolEntry {
+  server_id: string
+  tools?: string[]
 }
 
 export interface McpSettingsResponse {
@@ -1184,6 +1239,12 @@ export interface PaginationQuery4 {
   page?: number
 }
 
+export interface PaginationQuery5 {
+  limit?: number
+  page?: number
+  project_id?: string
+}
+
 export interface PendingApprovalsResponse {
   approvals: ToolUseApproval[]
 }
@@ -1228,6 +1289,32 @@ export interface PrefetchTaskSummary {
 
 export interface PreviewQuery {
   page?: number
+}
+
+export interface Project {
+  description?: string
+  created_at: string
+  default_assistant_id?: string
+  default_model_id?: string
+  id: string
+  instructions?: string
+  mcp_approval_mode: string
+  mcp_auto_approved_tools?: any
+  mcp_disabled_servers?: any
+  mcp_loop_settings?: any
+  name: string
+  updated_at: string
+  user_id: string
+}
+
+export interface ProjectFileListResponse {
+  files: File[]
+  total: number
+}
+
+export interface ProjectListResponse {
+  projects: Project[]
+  total: number
 }
 
 export interface Prompt {
@@ -1285,6 +1372,16 @@ export interface ProxySettings {
   password?: string
   url?: string
   username?: string
+}
+
+export interface PublicProvider {
+  display_name: string
+  name: string
+  provider_type: string
+}
+
+export interface PublicProvidersResponse {
+  providers: PublicProvider[]
 }
 
 export interface ReadResourceRequest {
@@ -1557,6 +1654,11 @@ export interface TestExtractRequest {
   user_message: string
 }
 
+export interface TestProviderResponse {
+  message: string
+  ok: boolean
+}
+
 export interface TestRepositoryConnectionRequest {
   auth_config?: RepositoryAuthConfig
   auth_type: string
@@ -1638,6 +1740,12 @@ export interface UpdateAssistantRequest {
   parameters?: ModelParameters
 }
 
+export interface UpdateAuthProviderRequest {
+  config?: any
+  enabled?: boolean
+  name?: string
+}
+
 export interface UpdateCodeSandboxResourceLimits {
   address_space_bytes?: number
   cpu_max?: string
@@ -1658,6 +1766,7 @@ export interface UpdateCodeSandboxResourceLimits {
 export interface UpdateConversationRequest {
   title?: string
   memory_mode?: string
+  project_id?: string
 }
 
 export interface UpdateGroupProvidersRequest {
@@ -1739,6 +1848,21 @@ export interface UpdateMemoryRequest {
   importance?: number
   kind?: string
   metadata?: any
+}
+
+export interface UpdateProjectMcpSettingsRequest {
+  approval_mode: string
+  auto_approved_tools: McpServerToolEntry[]
+  disabled_servers: McpServerToolEntry[]
+  loop_settings?: any
+}
+
+export interface UpdateProjectRequest {
+  description?: string
+  default_assistant_id?: string
+  default_model_id?: string
+  instructions?: string
+  name?: string
 }
 
 export interface UpdateUserMemorySettingsRequest {
@@ -1878,6 +2002,8 @@ export enum Permissions {
   AssistantsTemplateDelete = 'assistant_templates::delete',
   AssistantsTemplateEdit = 'assistant_templates::edit',
   AssistantsTemplateRead = 'assistant_templates::read',
+  AuthProvidersManage = 'auth_providers::manage',
+  AuthProvidersRead = 'auth_providers::read',
   BranchesCreate = 'branches::create',
   BranchesSwitch = 'branches::switch',
   CodeSandboxEnvironmentsManage = 'code_sandbox::environments::manage',
@@ -1951,6 +2077,10 @@ export enum Permissions {
   MessagesRead = 'messages::read',
   ProfileEdit = 'profile::edit',
   ProfileRead = 'profile::read',
+  ProjectsCreate = 'projects::create',
+  ProjectsDelete = 'projects::delete',
+  ProjectsEdit = 'projects::edit',
+  ProjectsRead = 'projects::read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
@@ -1973,6 +2103,8 @@ export const PermissionDescriptions: Record<string, string> = {
   AssistantsTemplateDelete: 'Delete system-wide template assistants',
   AssistantsTemplateEdit: 'Edit system-wide template assistants',
   AssistantsTemplateRead: 'Read system-wide template assistants',
+  AuthProvidersManage: 'Create, update, delete, enable/disable, and test auth providers.',
+  AuthProvidersRead: 'List configured auth providers and view their (masked) config.',
   BranchesCreate: 'Create message branches for edit/regenerate',
   BranchesSwitch: 'Switch between conversation branches',
   CodeSandboxEnvironmentsManage: 'Trigger pre-fetch + cache management of sandbox rootfs environments.',
@@ -2046,6 +2178,10 @@ export const PermissionDescriptions: Record<string, string> = {
   MessagesRead: 'Read messages in conversations',
   ProfileEdit: 'Edit own profile information',
   ProfileRead: 'View own profile information',
+  ProjectsCreate: 'Create chat projects',
+  ProjectsDelete: 'Delete chat projects',
+  ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
+  ProjectsRead: 'Read chat projects',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
@@ -2079,11 +2215,19 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.linkAccount': 'POST /api/auth/link-account',
+  'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
   'Auth.logout': 'POST /api/auth/logout',
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
+  'AuthProviders.create': 'POST /api/admin/auth-providers',
+  'AuthProviders.delete': 'DELETE /api/admin/auth-providers/{id}',
+  'AuthProviders.list': 'GET /api/admin/auth-providers',
+  'AuthProviders.test': 'POST /api/admin/auth-providers/{id}/test',
+  'AuthProviders.testConfig': 'POST /api/admin/auth-providers/test-config',
+  'AuthProviders.update': 'PUT /api/admin/auth-providers/{id}',
   'Branch.activate': 'POST /api/conversations/{id}/branches/{branch_id}/activate',
   'Branch.create': 'POST /api/conversations/{id}/branches',
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
@@ -2225,6 +2369,19 @@ export const ApiEndpoints = {
   'Message.sendStream': 'POST /api/conversations/{id}/messages/stream',
   'Onboarding.complete': 'POST /api/onboarding/{guide_id}/complete',
   'Onboarding.completeStep': 'POST /api/onboarding/{guide_id}/steps/{step_id}/complete',
+  'Project.attachFile': 'POST /api/projects/{id}/files',
+  'Project.create': 'POST /api/projects',
+  'Project.delete': 'DELETE /api/projects/{id}',
+  'Project.detachFile': 'DELETE /api/projects/{id}/files/{file_id}',
+  'Project.duplicate': 'POST /api/projects/{id}/duplicate',
+  'Project.get': 'GET /api/projects/{id}',
+  'Project.getMcpSettings': 'GET /api/projects/{id}/mcp-settings',
+  'Project.list': 'GET /api/projects',
+  'Project.listConversations': 'GET /api/projects/{id}/conversations',
+  'Project.listFiles': 'GET /api/projects/{id}/files',
+  'Project.update': 'PUT /api/projects/{id}',
+  'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
+  'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -2265,11 +2422,19 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.getDefault': void
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.linkAccount': LinkAccountRequest
+  'Auth.listProviders': void
   'Auth.login': LoginRequest
   'Auth.logout': void
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
+  'AuthProviders.create': CreateAuthProviderRequest
+  'AuthProviders.delete': { id: string }
+  'AuthProviders.list': void
+  'AuthProviders.test': { id: string }
+  'AuthProviders.testConfig': CreateAuthProviderRequest
+  'AuthProviders.update': { id: string } & UpdateAuthProviderRequest
   'Branch.activate': { id: string; branch_id: string }
   'Branch.create': { id: string } & CreateBranchRequest
   'Branch.getPendingApprovals': { branch_id: string }
@@ -2286,7 +2451,7 @@ export type ApiEndpointParameters = {
   'Conversation.delete': { id: string }
   'Conversation.get': { id: string }
   'Conversation.getMcpSettings': { id: string }
-  'Conversation.list': { limit?: number; page?: number }
+  'Conversation.list': { limit?: number; page?: number; project_id?: string }
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
   'CoreMemory.delete': { assistant_id: string; block_label: string }
@@ -2411,6 +2576,19 @@ export type ApiEndpointParameters = {
   'Message.sendStream': { id: string } & SendMessageRequest
   'Onboarding.complete': { guide_id: string }
   'Onboarding.completeStep': { guide_id: string; step_id: string }
+  'Project.attachFile': { id: string } & AttachFileRequest
+  'Project.create': CreateProjectRequest
+  'Project.delete': { id: string }
+  'Project.detachFile': { id: string; file_id: string }
+  'Project.duplicate': { id: string }
+  'Project.get': { id: string }
+  'Project.getMcpSettings': { id: string }
+  'Project.list': { limit?: number; page?: number }
+  'Project.listConversations': { id: string; limit?: number; page?: number }
+  'Project.listFiles': { id: string }
+  'Project.update': { id: string } & UpdateProjectRequest
+  'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
+  'Project.uploadAndAttachFile': { id: string } & FormData
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -2451,11 +2629,19 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.linkAccount': AuthResponse
+  'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
   'Auth.logout': void
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
+  'AuthProviders.create': AuthProviderResponse
+  'AuthProviders.delete': DeleteProviderResponse
+  'AuthProviders.list': AuthProviderResponse[]
+  'AuthProviders.test': TestProviderResponse
+  'AuthProviders.testConfig': TestProviderResponse
+  'AuthProviders.update': AuthProviderResponse
   'Branch.activate': void
   'Branch.create': Branch
   'Branch.getPendingApprovals': PendingApprovalsResponse
@@ -2597,6 +2783,19 @@ export type ApiEndpointResponses = {
   'Message.sendStream': SSEChatStreamEvent
   'Onboarding.complete': User
   'Onboarding.completeStep': User
+  'Project.attachFile': void
+  'Project.create': Project
+  'Project.delete': void
+  'Project.detachFile': void
+  'Project.duplicate': Project
+  'Project.get': Project
+  'Project.getMcpSettings': UpdateProjectMcpSettingsRequest
+  'Project.list': ProjectListResponse
+  'Project.listConversations': ConversationResponse[]
+  'Project.listFiles': ProjectFileListResponse
+  'Project.update': Project
+  'Project.updateMcpSettings': Project
+  'Project.uploadAndAttachFile': File
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionResponse

@@ -14,12 +14,7 @@ import {} from '@/modules/llm-provider/stores'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { LocalLlmModelCommonFields } from '@/modules/llm-provider/components/llm-models/shared/LocalLlmModelCommonFields'
-import { ApiClient } from '@/api-client'
-import {
-  Permissions,
-  type LlmRepository,
-  type FileFormat,
-} from '@/api-client/types'
+import { Permissions, type FileFormat } from '@/api-client/types'
 
 const { Text } = Typography
 
@@ -27,12 +22,20 @@ export function AddLocalLlmModelDownloadDrawer() {
   const { message } = App.useApp()
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
-  const [repositories, setRepositories] = useState<LlmRepository[]>([])
-  const [loadingRepositories, setLoadingRepositories] = useState(false)
 
   const { open: addMode, providerId } = Stores.AddLocalLlmModelDownloadDrawer
   const { open: viewMode, downloadId } = Stores.ViewDownloadDrawer
   const { downloads } = Stores.LlmModelDownload
+  // Read repositories from the canonical LlmRepository store (whose
+  // __init__ hits /api/llm-repositories once and caches; filter here
+  // because the drawer only offers enabled repos as download targets).
+  // Previously inlined an ApiClient.LlmRepository.list call into a
+  // useState — bypassed the store cache and missed any subsequent
+  // create/update/delete events.
+  const repositories = Stores.LlmRepository.repositories.filter(
+    r => r.enabled,
+  )
+  const loadingRepositories = Stores.LlmRepository.loading
   const canCreate = usePermission(Permissions.LlmModelsCreate)
   const canCancelDownload = usePermission(Permissions.LlmModelsDownloadsCancel)
 
@@ -56,27 +59,6 @@ export function AddLocalLlmModelDownloadDrawer() {
 
     const timestamp = Date.now().toString(36)
     return `${baseId}-${timestamp}`
-  }
-
-  // Load available repositories
-  const loadRepositories = async () => {
-    try {
-      setLoadingRepositories(true)
-      const response = await ApiClient.LlmRepository.list({
-        page: 1,
-        per_page: 100,
-      })
-      // Filter to only enabled repositories
-      const enabledRepos = response.repositories.filter(
-        (repo: LlmRepository) => repo.enabled,
-      )
-      setRepositories(enabledRepos)
-    } catch (error) {
-      console.error('Failed to load repositories:', error)
-      message.error('Failed to load repositories')
-    } finally {
-      setLoadingRepositories(false)
-    }
   }
 
   // Helper function to close the modal
@@ -169,10 +151,10 @@ export function AddLocalLlmModelDownloadDrawer() {
     handleCloseModal()
   }
 
-  // Load repositories and pre-fill form when modal opens
+  // Pre-fill form when modal opens (repositories are now read
+  // reactively from the LlmRepository store at top level).
   useEffect(() => {
     if (open) {
-      loadRepositories()
       if (viewDownload) {
         // In view mode, populate form with download data from request_data
         const requestData = viewDownload.request_data
@@ -257,7 +239,7 @@ export function AddLocalLlmModelDownloadDrawer() {
             ]
       }
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <div>
         {viewDownload && (

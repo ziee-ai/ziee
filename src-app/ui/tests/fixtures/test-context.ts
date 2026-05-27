@@ -337,6 +337,14 @@ export default defineConfig({
       '@': path.resolve('${projectRoot}', './src'),
     },
   },
+  // Pre-bundle streamdown including its internal hashed chunks
+  // (highlighted-body-XXX.js for Shiki, mermaid-XXX.js, etc.) so
+  // the first chat code-block render doesn't trigger an on-the-fly
+  // optimizer 504 that crashes the React tree. Vite 8 supports glob
+  // patterns in optimizeDeps.include for exactly this case.
+  optimizeDeps: {
+    include: ['streamdown', 'streamdown/dist/*.js'],
+  },
   server: {
     port: ${vitePort},
     strictPort: true,
@@ -349,6 +357,12 @@ export default defineConfig({
       '/api/': {
         target: 'http://localhost:${backendPort}',
         changeOrigin: true,
+        // xfwd: forward X-Forwarded-* headers so the backend's
+        // OAuth handler can build redirect_uris that point back
+        // through this Vite proxy (which serves the SPA), not the
+        // backend port directly. Required for the social-login E2E
+        // parity test against navikt.
+        xfwd: true,
       },
     },
   },

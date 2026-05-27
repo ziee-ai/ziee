@@ -2,7 +2,6 @@ import { Button, Form, Input, InputNumber, Select, Switch, App, Divider } from '
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/core/stores'
-import { ApiClient } from '@/api-client'
 import { usePermission } from '@/core/permissions'
 import { useMcpServerDrawerStore } from '@/modules/mcp/stores'
 import {
@@ -77,7 +76,7 @@ export function McpServerDrawer() {
       open &&
       editingServer.transport_type === 'http'
     ) {
-      ApiClient.McpServer.getOAuthConfig({ id: editingServer.id })
+      Stores.McpServer.getMcpServerOAuthConfig(editingServer.id)
         .then(cfg => {
           if (cancelled) return
           setHasExistingOAuth(!!cfg)
@@ -273,8 +272,7 @@ export function McpServerDrawer() {
         const clientSecret = values.oauth_client_secret ?? ''
         const scopes = (values.oauth_scopes ?? '').trim() || null
         if (clientId && clientSecret) {
-          await ApiClient.McpServer.setOAuthConfig({
-            id: savedServerId,
+          await Stores.McpServer.setMcpServerOAuthConfig(savedServerId, {
             client_id: clientId,
             client_secret: clientSecret,
             scopes,
@@ -285,7 +283,7 @@ export function McpServerDrawer() {
           return
         } else if (!clientId && hasExistingOAuth) {
           // Cleared the client id → remove the stored config.
-          await ApiClient.McpServer.deleteOAuthConfig({ id: savedServerId })
+          await Stores.McpServer.deleteMcpServerOAuthConfig(savedServerId)
         }
         // (clientId set, secret blank, config exists → keep the current secret)
       }

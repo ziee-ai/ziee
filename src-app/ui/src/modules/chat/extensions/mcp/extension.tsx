@@ -677,15 +677,17 @@ const mcpExtension: ChatExtension = createExtension({
   // Load conversation MCP settings when conversation is opened
   onConversationLoad: async (conversation) => {
     const { Stores } = await import('@/core/stores')
-    const { ApiClient } = await import('@/api-client')
     const mcpStore = Stores.Chat.__state.McpStore
+    const mcpStoreProxy = Stores.Chat.McpStore
 
     // Set current conversation ID
     mcpStore.setCurrentConversation(conversation.id)
 
     try {
-      // Load conversation MCP settings from backend
-      const response = await ApiClient.Conversation.getMcpSettings({ id: conversation.id })
+      // Load conversation MCP settings from backend (via store action).
+      const response = await mcpStoreProxy.getConversationMcpSettings(
+        conversation.id,
+      )
 
       // Get available servers to compute selectedServers from disabledServers
       // Access __state directly on the McpServer store (outside React context)
@@ -709,7 +711,7 @@ const mcpExtension: ChatExtension = createExtension({
           } else if (disabledEntry.tools.length > 0) {
             // Partially disabled: specific tools are disabled, compute selected = all - disabled
             try {
-              const toolsResponse = await ApiClient.McpServerRuntime.listTools({ id: serverId })
+              const toolsResponse = await mcpStoreProxy.listServerTools(serverId)
               const allTools = toolsResponse.tools.map(t => t.name)
               const selectedTools = allTools.filter(t => !disabledEntry.tools.includes(t))
               if (selectedTools.length > 0) {
@@ -781,9 +783,9 @@ const mcpExtension: ChatExtension = createExtension({
     // Load pending approvals for the current branch (to restore state after page refresh)
     if (conversation.active_branch_id) {
       try {
-        const approvalsResponse = await ApiClient.Branch.getPendingApprovals({
-          branch_id: conversation.active_branch_id,
-        })
+        const approvalsResponse = await mcpStoreProxy.getBranchPendingApprovals(
+          conversation.active_branch_id,
+        )
 
         if (approvalsResponse.approvals && approvalsResponse.approvals.length > 0) {
           for (const approval of approvalsResponse.approvals) {

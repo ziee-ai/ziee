@@ -7,8 +7,8 @@ import { createFileExtensionStore } from '@/modules/chat/extensions/file/File.st
 import { FilePreviewList } from '@/modules/chat/extensions/file/components/FilePreviewList'
 import { FileAttachMenuItem } from '@/modules/chat/extensions/file/components/FileAttachMenuItem'
 import { FileCard } from '@/modules/chat/extensions/file/components/FileCard'
+import { MessageFilesView } from '@/modules/chat/extensions/file/components/MessageFilesView'
 import { Stores } from '@/core/stores'
-import { ApiClient } from '@/api-client'
 import type { File as FileEntity, MessageContent, MessageContentDataFileAttachment } from '@/api-client/types'
 
 // Augment the central PanelRendererMap so `displayInRightPanel({ type: 'file',
@@ -146,7 +146,7 @@ const fileExtension: ChatExtension = createExtension({
               const fullFiles = await Promise.all(
                 fileContents.map(c => {
                   const data = c.content as MessageContentDataFileAttachment
-                  return ApiClient.File.get({ file_id: data.file_id })
+                  return fileStore.getFileEntityById(data.file_id)
                 })
               )
               const validFiles = fullFiles.filter(Boolean) as FileEntity[]
@@ -279,6 +279,8 @@ const fileExtension: ChatExtension = createExtension({
     toolbar_plus_items: { component: FileAttachMenuItem, order: 10 },
     // File preview list above textarea
     input_area_prefix: { component: FilePreviewList, order: 10 },
+    // Inline previews of files referenced by tool_result blocks
+    message_footer: { component: MessageFilesView, order: 10 },
   },
 })
 

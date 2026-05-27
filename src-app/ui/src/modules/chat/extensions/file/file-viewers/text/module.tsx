@@ -25,6 +25,9 @@ export const viewers: FileViewerModule[] = [
       headerActions: TextHeader,
       label: 'Document',
       icon: <FileTextOutlined />,
+      // Plain text / code via RawCodeView. Covers logs, JSON, source
+      // files — anything we fall back to text rendering for.
+      inline: true,
     },
   },
 ]

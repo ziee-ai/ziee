@@ -2,7 +2,6 @@ import { App, Button, Card, Flex, Form } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
 import { Stores } from '@/modules/llm-provider/stores'
-import { ApiClient } from '@/api-client'
 import { LlmModelCapabilitiesSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelCapabilitiesSection'
 import { LlmModelParametersSection } from '@/modules/llm-provider/components/llm-models/shared/LlmModelParametersSection'
 import {
@@ -50,22 +49,15 @@ export function EditLlmModelDrawer() {
       setLoading(true)
       const values = await form.validateFields()
 
-      // Update model via API
-      const updatedModel = await ApiClient.LlmModel.update({
-        model_id: currentModel.id,
+      // Update via the store (which calls the API + reconciles
+      // local provider state).
+      await Stores.LlmProvider.updateLlmModel(currentModel.id, {
         name: values.name,
         display_name: values.display_name,
         description: values.description,
         capabilities: values.capabilities,
         parameters: values.parameters,
       })
-
-      // Update in store
-      Stores.LlmProvider.updateLlmModelInProvider(
-        currentProvider.id,
-        currentModel.id,
-        updatedModel,
-      )
 
       Stores.EditLlmModelDrawer.closeEditLlmModelDrawer()
       message.success('Model updated successfully')
@@ -101,7 +93,7 @@ export function EditLlmModelDrawer() {
         </Button>,
       ]}
       size={600}
-      maskClosable={false}
+      mask={{ closable: false }}
     >
       <Form name="edit-llm-model-form" form={form} layout="vertical">
         <LlmModelParametersSection parameters={BASIC_MODEL_FIELDS} />

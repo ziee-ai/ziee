@@ -5,7 +5,13 @@ import type { FileViewerSlotProps } from '../../types'
 
 const { Text } = Typography
 
-export function PdfBody({ file }: FileViewerSlotProps) {
+export function PdfBody(props: FileViewerSlotProps) {
+  // PDF viewer is not inline-capable (its module declares no `inline:`).
+  // The chat dispatcher won't call this in source context, but guard for
+  // type-narrowing safety.
+  if (!('file' in props)) return null
+  const { file } = props
+
   // Subscribe to previewPageUrls Map directly so we re-render as each
   // page slot loads. Calling the `getPreviewPageUrls()` action instead
   // would only subscribe to the function reference (whose identity never

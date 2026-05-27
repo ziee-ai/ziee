@@ -1,9 +1,7 @@
-// Auth provider infrastructure - part of future auth system
-#![allow(dead_code)]
-
 // OAuth2/OIDC authentication provider implementation
 
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
@@ -28,13 +26,58 @@ use super::{
     UserAttributes,
 };
 
-/// Create an HTTP client for OAuth2/OIDC requests
-/// This client disables redirects to prevent SSRF attacks
+/// Reject an issuer URL that points at a private/loopback IP or
+/// non-http(s) scheme BEFORE the openidconnect crate fires its
+/// discovery GET. `build_validated_client` validates redirect
+/// *targets*, but the initial URL is never checked — without this,
+/// an admin with manage permission could set
+/// `issuer_url=http://10.0.0.5:8200/v1/identity/oidc` and observe
+/// the response via the 5xx/error surface.
+///
+/// DEV_LOCAL in debug builds so the testcontainer mock at 127.0.0.1
+/// works; PUBLIC_HTTP_OR_HTTPS in release (loopback blocked).
+fn validate_issuer_url(url: &str) -> Result<(), AuthError> {
+    let policy = if cfg!(debug_assertions) {
+        crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+    } else {
+        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+    };
+    crate::utils::url_validator::validate_outbound_url(url, &policy)
+        .map(|_| ())
+        .map_err(|e| {
+            AuthError::ConfigurationError(format!(
+                "issuer_url failed safety check: {}",
+                e
+            ))
+        })
+}
+
+/// Create an HTTP client for OAuth2/OIDC requests.
+///
+/// SECURITY: this routes through `build_validated_client` so every
+/// outbound URL — issuer discovery, token exchange, userinfo, JWKS
+/// fetch — is checked against the IP allowlist (no RFC 1918, no
+/// link-local) AT REQUEST TIME, *including* redirect targets.
+/// Policy is DEV_LOCAL in debug builds (loopback allowed — the
+/// testcontainer mock binds 127.0.0.1) and PUBLIC_HTTP_OR_HTTPS in
+/// release (loopback blocked). Matches `validate_issuer_url` so the
+/// pre-flight check and the actual request use the same policy.
+///
+/// Falls back to the redirect-disabled bare client only if
+/// `build_validated_client` somehow fails (TLS config error).
 fn create_http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .expect("Failed to create HTTP client")
+    let policy = if cfg!(debug_assertions) {
+        crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+    } else {
+        crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+    };
+    crate::utils::url_validator::build_validated_client(policy)
+        .unwrap_or_else(|_| {
+            reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("Failed to create HTTP client")
+        })
 }
 
 /// Async HTTP client implementation for openidconnect
@@ -110,20 +153,140 @@ pub struct OAuth2Config {
     pub client_id: String,
     /// OAuth 2.0 client secret
     pub client_secret: String,
-    /// Authorization endpoint URL
-    pub authorization_url: String,
-    /// Token endpoint URL
-    pub token_url: String,
-    /// OIDC issuer URL (for OIDC providers)
+    /// Authorization endpoint URL. Optional for OIDC providers
+    /// (discovery returns it); required for plain OAuth2.
+    #[serde(default)]
+    pub authorization_url: Option<String>,
+    /// Token endpoint URL. Optional for OIDC providers (discovery
+    /// returns it); required for plain OAuth2.
+    #[serde(default)]
+    pub token_url: Option<String>,
+    /// OIDC issuer URL (required for OIDC providers; omit for plain OAuth2)
     pub issuer_url: Option<String>,
     /// User info endpoint URL (for OAuth 2.0 providers without OIDC)
     pub userinfo_url: Option<String>,
     /// Scopes to request
+    #[serde(default)]
     pub scopes: Vec<String>,
-    /// Attribute mapping for user info
+    /// Attribute mapping for user info. Defaults to standard OIDC
+    /// claim names (sub/email/preferred_username/etc.).
+    #[serde(default)]
     pub attribute_mapping: OAuth2AttributeMapping,
     /// Session timeout in seconds (default: 300 = 5 minutes)
     pub session_timeout_seconds: Option<i64>,
+    /// Microsoft Entra ONLY: allowlist of tenant IDs (the `tid` claim
+    /// on the ID token). When `Some`, the callback REJECTS tokens
+    /// whose `tid` is not in this list — critical for safety when
+    /// using the `https://login.microsoftonline.com/common/v2.0`
+    /// (multi-tenant) issuer, because `common`'s discovery returns
+    /// the templated issuer `https://login.microsoftonline.com/{tenantid}/v2.0`,
+    /// which `openidconnect` cannot equality-check. Without this
+    /// allowlist, ANY Microsoft tenant in the world is a valid login.
+    /// `None` = accept any tenant (only safe for true consumer apps
+    /// using the `consumers` endpoint).
+    #[serde(default)]
+    pub allowed_tenant_ids: Option<Vec<String>>,
+}
+
+/// Outcome of `probe_oidc_credentials`. Interpreted by `test_connection`
+/// to build the admin-facing message.
+enum ProbeResult {
+    /// Token endpoint replied with `invalid_grant` (or equivalent
+    /// 400-class error specifically about the code being invalid).
+    /// Means: client_id + client_secret are recognized; only the
+    /// code itself was bad — which it was, because we sent a dummy.
+    CredentialsOk,
+    /// Token endpoint replied with `invalid_client` or 401 — the
+    /// provider didn't recognize our client_id / client_secret pair.
+    CredentialsBad(String),
+    /// Provider rejected the redirect_uri (it's not registered).
+    /// Credentials format is fine but the admin needs to register
+    /// the callback URL in the provider's console.
+    RedirectUriMismatch,
+    /// Couldn't reach the token endpoint at all.
+    NetworkError(String),
+    /// Provider replied with something we don't recognize. Surface
+    /// it verbatim to the admin.
+    Unexpected(String),
+}
+
+/// POST `grant_type=authorization_code` to the token endpoint with a
+/// hand-crafted dummy code. Used by `test_connection` to distinguish:
+///   - bad credentials (provider rejects client_id/client_secret)
+///   - good credentials but bad redirect_uri (admin must register URL)
+///   - good credentials, only the code was bad (our dummy → expected)
+/// See https://datatracker.ietf.org/doc/html/rfc6749#section-5.2 for
+/// the standard error codes.
+async fn probe_oidc_credentials(
+    token_url: &str,
+    client_id: &str,
+    client_secret: &str,
+) -> ProbeResult {
+    let client = create_http_client();
+    let body = [
+        ("grant_type", "authorization_code"),
+        ("code", "ziee-test-connection-probe-dummy-code"),
+        ("redirect_uri", "http://localhost/ziee-config-probe"),
+        ("client_id", client_id),
+        ("client_secret", client_secret),
+    ];
+    let resp = match client.post(token_url).form(&body).send().await {
+        Ok(r) => r,
+        Err(e) => return ProbeResult::NetworkError(e.to_string()),
+    };
+    let status = resp.status();
+    let body_text = resp.text().await.unwrap_or_default();
+    let parsed: serde_json::Value = serde_json::from_str(&body_text).unwrap_or(serde_json::Value::Null);
+    let error_code = parsed.get("error").and_then(|v| v.as_str()).unwrap_or("");
+    let error_desc = parsed
+        .get("error_description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    match (status.as_u16(), error_code) {
+        (400, "invalid_grant") => ProbeResult::CredentialsOk,
+        (400 | 401, "invalid_client") | (401, _) => {
+            ProbeResult::CredentialsBad(if error_desc.is_empty() {
+                format!("HTTP {} {}", status, error_code)
+            } else {
+                format!("{}: {}", error_code, error_desc)
+            })
+        }
+        (_, code) if code.contains("redirect_uri") => ProbeResult::RedirectUriMismatch,
+        (_, "invalid_request") if error_desc.to_lowercase().contains("redirect") => {
+            ProbeResult::RedirectUriMismatch
+        }
+        // 429 (rate-limited) and 5xx are transient — surface them as
+        // a clear NetworkError rather than as `Unexpected` so the
+        // admin sees an actionable message and (for tests) we can
+        // distinguish "bad config" from "provider had a bad day."
+        (429, _) => ProbeResult::NetworkError(
+            "Provider returned HTTP 429 (rate-limited). Wait and retry.".to_string(),
+        ),
+        (s, _) if (500..=599).contains(&s) => ProbeResult::NetworkError(format!(
+            "Provider returned HTTP {} (upstream error). Try again later.",
+            s
+        )),
+        _ => ProbeResult::Unexpected(format!(
+            "HTTP {} body={}",
+            status,
+            body_text.chars().take(200).collect::<String>()
+        )),
+    }
+}
+
+/// Extract a string claim from a verified JWT compact serialization.
+/// Safe because openidconnect has already validated signature +
+/// standard claims before this is called; we just need to read one
+/// additional claim (`tid`) that isn't in `CoreIdTokenClaims`.
+fn extract_string_claim(id_token_jwt: &str, claim: &str) -> Option<String> {
+    let parts: Vec<&str> = id_token_jwt.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
+    let payload: serde_json::Value = serde_json::from_slice(&payload_bytes).ok()?;
+    payload.get(claim).and_then(|v| v.as_str()).map(String::from)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,20 +367,28 @@ impl OAuth2Provider {
             AuthError::ConfigurationError("UserInfo URL not configured".to_string())
         })?;
 
-        // SECURITY: disable redirects on the UserInfo fetch. Without
-        // this, a malicious OIDC provider could return a 302 to
-        // http://169.254.169.254/latest/meta-data/iam/security-credentials
-        // and reqwest would happily follow the redirect WITH the bearer
-        // token attached, exfiltrating the access token to AWS IMDS or
-        // any other private-network service. The legit UserInfo flow
-        // never redirects — providers serve the user info directly.
-        // Closes 01-auth F-18 (High).
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
+        // SECURITY: SSRF-validated client + pre-flight validate_outbound_url
+        // on the configured userinfo URL. Two layers because:
+        //   1) build_validated_client checks redirect TARGETS at runtime
+        //      (so a malicious OIDC provider can't 302-bounce us into
+        //      AWS IMDS at 169.254.169.254 to exfiltrate the bearer token —
+        //      closes 01-auth F-18 High).
+        //   2) validate_outbound_url on the URL itself catches an admin
+        //      who configures `userinfo_url=http://internal-vault:8200`
+        //      at provider-create time.
+        let policy = if cfg!(debug_assertions) {
+            crate::utils::url_validator::OutboundUrlPolicy::DEV_LOCAL
+        } else {
+            crate::utils::url_validator::OutboundUrlPolicy::PUBLIC_HTTP_OR_HTTPS
+        };
+        crate::utils::url_validator::validate_outbound_url(userinfo_url, &policy)
             .map_err(|e| {
-                AuthError::ConnectionFailed(format!("Failed to build HTTP client: {}", e))
+                AuthError::ConfigurationError(format!(
+                    "userinfo_url failed safety check: {}",
+                    e
+                ))
             })?;
+        let client = create_http_client();
         let response = client
             .get(userinfo_url)
             .bearer_auth(access_token)
@@ -334,7 +505,11 @@ impl AuthProviderTrait for OAuth2Provider {
         ))
     }
 
-    async fn init_oauth_flow(&self, redirect_uri: &str) -> Result<OAuthResult, AuthError> {
+    async fn init_oauth_flow(
+        &self,
+        redirect_uri: &str,
+        return_to: Option<&str>,
+    ) -> Result<OAuthResult, AuthError> {
         // Generate PKCE challenge
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -345,6 +520,10 @@ impl AuthProviderTrait for OAuth2Provider {
         // Build authorization URL
         let auth_url = if let Some(issuer_url) = &self.config.issuer_url {
             // OIDC flow - create client inline to avoid type parameter issues
+            // SSRF: validate the issuer URL BEFORE handing it to
+            // discover_async (closes the gap where build_validated_client
+            // only checks redirects, not the initial GET).
+            validate_issuer_url(issuer_url)?;
             let issuer = IssuerUrl::new(issuer_url.clone())
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e)))?;
 
@@ -388,10 +567,20 @@ impl AuthProviderTrait for OAuth2Provider {
             // OAuth 2.0 flow - create client inline to avoid type parameter issues
             let client_id = ClientId::new(self.config.client_id.clone());
             let client_secret = ClientSecret::new(self.config.client_secret.clone());
-            let auth_url = AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
+            let auth_url_str = self.config.authorization_url.clone().ok_or_else(|| {
+                AuthError::ConfigurationError(
+                    "OAuth2 provider requires `authorization_url` (or set `issuer_url` for OIDC)".to_string(),
+                )
+            })?;
+            let token_url_str = self.config.token_url.clone().ok_or_else(|| {
+                AuthError::ConfigurationError(
+                    "OAuth2 provider requires `token_url` (or set `issuer_url` for OIDC)".to_string(),
+                )
+            })?;
+            let auth_url = AuthUrl::new(auth_url_str).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
             })?;
-            let token_url = TokenUrl::new(self.config.token_url.clone())
+            let token_url = TokenUrl::new(token_url_str)
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
             let redirect_url = RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
@@ -430,6 +619,7 @@ impl AuthProviderTrait for OAuth2Provider {
             redirect_uri: redirect_uri.to_string(),
             created_at: Utc::now(),
             expires_at,
+            return_to: return_to.map(|s| s.to_string()),
         };
 
         Repos.auth.create_oauth_session(&session)
@@ -472,6 +662,7 @@ impl AuthProviderTrait for OAuth2Provider {
         // Exchange code for token
         let (_access_token, user_info) = if let Some(issuer_url) = &self.config.issuer_url {
             // OIDC flow - create client inline to avoid type parameter issues
+            validate_issuer_url(issuer_url)?;
             let issuer = IssuerUrl::new(issuer_url.clone())
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e)))?;
 
@@ -520,15 +711,143 @@ impl AuthProviderTrait for OAuth2Provider {
                 .id_token()
                 .ok_or_else(|| AuthError::InternalError("No ID token in response".to_string()))?;
 
-            // Verify ID token
-            let verifier = client.id_token_verifier();
+            // Peek at `tid` from the JWT payload BEFORE verification.
+            // Required for two reasons:
+            //   (a) Microsoft's `common` endpoint discovery returns the
+            //       templated issuer `https://login.microsoftonline.com/{tenantid}/v2.0`
+            //       (literal curly-brace placeholder), which fails
+            //       openidconnect's strict issuer-equality check. We
+            //       substitute `{tenantid}` with the token's tid and
+            //       re-do discovery against the resulting single-tenant
+            //       URL before verifying.
+            //   (b) Tenant-allowlist enforcement when configured.
+            // The peek is safe — it reads JSON from the verified-signature
+            // payload only AFTER we re-verify below. We never trust the
+            // peeked value beyond using it to pick the right verifier.
+            let id_token_jwt = id_token.to_string();
+            let token_tid = extract_string_claim(&id_token_jwt, "tid");
+
+            let needs_substitution = issuer_url.contains("{tenantid}");
+
+            // Enforce the allowlist + substitute issuer URL if templated.
+            // Order matters: reject BEFORE the expensive re-discovery.
+            let (verify_client, _verify_client_holder);
             let nonce = Nonce::new(nonce_str.clone());
+
+            if needs_substitution {
+                let tid = token_tid.as_deref().ok_or_else(|| {
+                    AuthError::InvalidCredentials(
+                        "Microsoft templated-issuer flow requires a `tid` claim on the ID token".to_string(),
+                    )
+                })?;
+                // A templated issuer means a multi-tenant endpoint; without
+                // an explicit allowlist ANY Microsoft tenant in the world
+                // can log in. Refuse to operate in this footgun configuration.
+                // Treat `Some(empty vec)` exactly like `None` — an empty
+                // allowlist is almost always a UI mistake (saved without
+                // any entries) and silently producing "no tenant can log
+                // in" is more confusing than a clear error.
+                let allowed = self
+                    .config
+                    .allowed_tenant_ids
+                    .as_ref()
+                    .filter(|v| !v.is_empty())
+                    .ok_or_else(|| {
+                        AuthError::ConfigurationError(format!(
+                            "Provider '{}' uses templated issuer URL but `allowed_tenant_ids` is empty or missing — any Microsoft tenant could log in. Configure `allowed_tenant_ids` with at least one tenant ID.",
+                            self.name
+                        ))
+                    })?;
+                if !allowed.iter().any(|t| t.eq_ignore_ascii_case(tid)) {
+                    // SECURITY: don't echo the raw tid into the error
+                    // string. Tenant IDs are stable per-organization
+                    // identifiers; one slipping into a third-party
+                    // log aggregator could ID a customer org by name.
+                    // Truncate to a non-reversible prefix purely for
+                    // debugging operator-side allowlist typos; the
+                    // operator can confirm by comparison.
+                    let preview: String = tid.chars().take(8).collect();
+                    return Err(AuthError::InvalidCredentials(format!(
+                        "Tenant (id prefix '{}…') is not in the allowlist for provider '{}'",
+                        preview, self.name
+                    )));
+                }
+                // SECURITY: refuse tid values that aren't strictly
+                // alphanumeric + hyphen — anything with a slash or
+                // dot could path-inject into the substituted URL
+                // (`a/../../evil`) and bend discovery toward a
+                // different host after url normalization. Reject
+                // empty tids too: `"".chars().all(...)` is vacuously
+                // true and would let `issuer_url.replace("{tenantid}", "")`
+                // produce a `//` URL that may normalize unexpectedly.
+                if tid.is_empty()
+                    || !tid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                {
+                    return Err(AuthError::InvalidCredentials(
+                        "Tenant ID contains invalid characters".to_string(),
+                    ));
+                }
+                let substituted = issuer_url.replace("{tenantid}", tid);
+                // SSRF: validate the substituted URL before discovery
+                // (issuer_url itself was checked at config time, but
+                // an attacker-controlled tid could in theory redirect
+                // through different DNS).
+                validate_issuer_url(&substituted)?;
+                let sub_issuer = IssuerUrl::new(substituted).map_err(|e| {
+                    AuthError::ConfigurationError(format!(
+                        "Invalid substituted issuer URL: {}",
+                        e
+                    ))
+                })?;
+                let sub_metadata =
+                    CoreProviderMetadata::discover_async(sub_issuer, &async_http_client)
+                        .await
+                        .map_err(|e| {
+                            AuthError::ConfigurationError(format!(
+                                "Failed to discover OIDC metadata for substituted issuer: {}",
+                                e
+                            ))
+                        })?;
+                let sub_client_id = ClientId::new(self.config.client_id.clone());
+                let sub_client_secret = ClientSecret::new(self.config.client_secret.clone());
+                let sub_redirect_url =
+                    RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
+                        AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
+                    })?;
+                _verify_client_holder = CoreClient::from_provider_metadata(
+                    sub_metadata,
+                    sub_client_id,
+                    Some(sub_client_secret),
+                )
+                .set_redirect_uri(sub_redirect_url);
+                verify_client = &_verify_client_holder;
+            } else {
+                // Single-tenant or non-MS provider: still enforce the
+                // allowlist if one is configured, but no substitution.
+                if let Some(allowed) = &self.config.allowed_tenant_ids {
+                    let tid = token_tid.as_deref().ok_or_else(|| {
+                        AuthError::InvalidCredentials(
+                            "Tenant allowlist configured but ID token has no `tid` claim".to_string(),
+                        )
+                    })?;
+                    if !allowed.iter().any(|t| t.eq_ignore_ascii_case(tid)) {
+                        return Err(AuthError::InvalidCredentials(format!(
+                            "Tenant '{}' is not in the allowlist for provider '{}'",
+                            tid, self.name
+                        )));
+                    }
+                }
+                verify_client = &client;
+            }
+
+            // Now verify against the correct (possibly substituted) client.
+            let verifier = verify_client.id_token_verifier();
             let _claims = id_token.claims(&verifier, &nonce).map_err(|e| {
                 AuthError::InvalidCredentials(format!("ID token verification failed: {}", e))
             })?;
 
-            // Note: AccessTokenHash verification skipped - requires JWK key which is complex to obtain
-            // The ID token verification above provides sufficient security
+            // Note: AccessTokenHash verification skipped - requires JWK key which is complex to obtain.
+            // The ID token verification above provides sufficient security.
 
             let user_info = self
                 .get_user_info_from_token(id_token, &verifier, &nonce)
@@ -538,10 +857,20 @@ impl AuthProviderTrait for OAuth2Provider {
             // OAuth 2.0 flow - create client inline to avoid type parameter issues
             let client_id = ClientId::new(self.config.client_id.clone());
             let client_secret = ClientSecret::new(self.config.client_secret.clone());
-            let auth_url = AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
+            let auth_url_str = self.config.authorization_url.clone().ok_or_else(|| {
+                AuthError::ConfigurationError(
+                    "OAuth2 provider requires `authorization_url` (or set `issuer_url` for OIDC)".to_string(),
+                )
+            })?;
+            let token_url_str = self.config.token_url.clone().ok_or_else(|| {
+                AuthError::ConfigurationError(
+                    "OAuth2 provider requires `token_url` (or set `issuer_url` for OIDC)".to_string(),
+                )
+            })?;
+            let auth_url = AuthUrl::new(auth_url_str).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
             })?;
-            let token_url = TokenUrl::new(self.config.token_url.clone())
+            let token_url = TokenUrl::new(token_url_str)
                 .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
             let redirect_url = RedirectUrl::new(redirect_uri.to_string()).map_err(|e| {
                 AuthError::ConfigurationError(format!("Invalid redirect URL: {}", e))
@@ -607,27 +936,128 @@ impl AuthProviderTrait for OAuth2Provider {
         })
     }
 
-    async fn test_connection(&self) -> Result<(), AuthError> {
-        // Test by attempting to discover OIDC metadata if OIDC provider
-        if let Some(issuer_url) = &self.config.issuer_url {
-            let issuer = IssuerUrl::new(issuer_url.clone())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e)))?;
+    async fn test_connection(&self) -> Result<String, AuthError> {
+        // Layered checks so the success message tells the admin
+        // exactly what was verified — config error vs credential
+        // error becomes obvious instead of a single opaque pass/fail.
+        let mut messages: Vec<String> = Vec::new();
 
-            CoreProviderMetadata::discover_async(issuer, &async_http_client)
-                .await
-                .map_err(|e| {
-                    AuthError::ConnectionFailed(format!("Failed to discover OIDC metadata: {}", e))
-                })?;
-        } else {
-            // For OAuth 2.0, just validate URLs
-            AuthUrl::new(self.config.authorization_url.clone()).map_err(|e| {
-                AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
-            })?;
-            TokenUrl::new(self.config.token_url.clone())
-                .map_err(|e| AuthError::ConfigurationError(format!("Invalid token URL: {}", e)))?;
+        // Layer 1: structural validation of config fields.
+        if self.config.client_id.trim().is_empty() {
+            return Err(AuthError::ConfigurationError(
+                "client_id is empty".to_string(),
+            ));
         }
 
-        Ok(())
+        // Layer 2: OIDC discovery (proves issuer URL is reachable + serves a valid doc).
+        let (token_url, original_issuer_url): (String, Option<String>) =
+            if let Some(issuer_url) = &self.config.issuer_url {
+                // For templated Microsoft `common` URLs we can't run
+                // real discovery against the literal `{tenantid}`
+                // placeholder — `openidconnect` only accepts a fully-
+                // qualified issuer. Substitute with a benign placeholder
+                // (matches `common` itself, which is what's reachable).
+                let probe_issuer_url = issuer_url.replace("{tenantid}", "common");
+                validate_issuer_url(&probe_issuer_url)?;
+                let issuer = IssuerUrl::new(probe_issuer_url.clone()).map_err(|e| {
+                    AuthError::ConfigurationError(format!("Invalid issuer URL: {}", e))
+                })?;
+                let metadata =
+                    CoreProviderMetadata::discover_async(issuer, &async_http_client)
+                        .await
+                        .map_err(|e| {
+                            AuthError::ConnectionFailed(format!(
+                                "OIDC discovery failed for {}: {}",
+                                probe_issuer_url, e
+                            ))
+                        })?;
+                messages.push("OIDC discovery succeeded".to_string());
+                let token_endpoint = metadata.token_endpoint().ok_or_else(|| {
+                    AuthError::ConfigurationError(
+                        "OIDC metadata missing token_endpoint".to_string(),
+                    )
+                })?;
+                (
+                    token_endpoint.url().to_string(),
+                    Some(issuer_url.clone()),
+                )
+            } else {
+                // OAuth 2.0 (non-OIDC): URL syntax only.
+                let auth_url_str = self.config.authorization_url.clone().ok_or_else(|| {
+                    AuthError::ConfigurationError(
+                        "OAuth2 provider requires `authorization_url` (or set `issuer_url` for OIDC)".to_string(),
+                    )
+                })?;
+                let token_url_str = self.config.token_url.clone().ok_or_else(|| {
+                    AuthError::ConfigurationError(
+                        "OAuth2 provider requires `token_url` (or set `issuer_url` for OIDC)".to_string(),
+                    )
+                })?;
+                AuthUrl::new(auth_url_str).map_err(|e| {
+                    AuthError::ConfigurationError(format!("Invalid authorization URL: {}", e))
+                })?;
+                TokenUrl::new(token_url_str.clone()).map_err(|e| {
+                    AuthError::ConfigurationError(format!("Invalid token URL: {}", e))
+                })?;
+                messages.push("OAuth2 URLs are valid".to_string());
+                (token_url_str, None)
+            };
+
+        // Layer 3: dummy token-exchange probe — distinguishes wrong
+        // credentials from wrong URL. Skipped if client_secret is
+        // empty (we'd just see a guaranteed invalid_client and the
+        // admin hasn't actually entered anything to probe).
+        if self.config.client_secret.trim().is_empty() {
+            messages.push("client_secret empty; skipped credential probe".to_string());
+            return Ok(messages.join("; "));
+        }
+
+        match probe_oidc_credentials(
+            &token_url,
+            &self.config.client_id,
+            &self.config.client_secret,
+        )
+        .await
+        {
+            ProbeResult::CredentialsOk => messages.push(
+                "credentials accepted (token endpoint returned `invalid_grant` for our dummy probe — proves client_id/secret are recognized)"
+                    .to_string(),
+            ),
+            ProbeResult::CredentialsBad(detail) => {
+                return Err(AuthError::InvalidCredentials(format!(
+                    "token endpoint rejected client_id/client_secret: {}",
+                    detail
+                )));
+            }
+            ProbeResult::RedirectUriMismatch => messages.push(
+                "credentials format OK; redirect URI not registered with provider (register `<your-server>/api/auth/oauth/<name>/callback` in the provider's console)"
+                    .to_string(),
+            ),
+            ProbeResult::NetworkError(e) => {
+                return Err(AuthError::ConnectionFailed(format!(
+                    "token endpoint unreachable: {}",
+                    e
+                )));
+            }
+            ProbeResult::Unexpected(s) => {
+                messages.push(format!("token endpoint returned unexpected response: {}", s))
+            }
+        }
+
+        // For templated `common` issuers, note that the per-tenant
+        // validation only kicks in at real login time.
+        if original_issuer_url
+            .as_deref()
+            .map(|s| s.contains("{tenantid}"))
+            .unwrap_or(false)
+        {
+            messages.push(
+                "templated issuer uses `{tenantid}`; per-tenant validation happens at real login via the allowed_tenant_ids allowlist"
+                    .to_string(),
+            );
+        }
+
+        Ok(messages.join("; "))
     }
 
     fn get_config(&self) -> &serde_json::Value {
