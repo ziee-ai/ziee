@@ -42,13 +42,6 @@ export function EmbeddingEngineSection() {
   const [pendingSwap, setPendingSwap] = useState<FormValues | null>(null)
 
   useEffect(() => {
-    if (canRead) {
-      Stores.MemoryAdmin.load()
-      Stores.MemoryAdmin.loadEmbeddingCapableModels()
-    }
-  }, [canRead])
-
-  useEffect(() => {
     if (settings) {
       form.setFieldsValue({
         embedding_model_id: settings.embedding_model_id,
@@ -90,8 +83,12 @@ export function EmbeddingEngineSection() {
       } else {
         message.success('Engine saved.')
       }
-    } catch (e: any) {
-      message.error(e?.message ?? 'Failed to save engine settings.')
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to save engine settings.',
+      )
     }
   }
 
@@ -113,15 +110,19 @@ export function EmbeddingEngineSection() {
 
   const handleReembed = async () => {
     if (!settings.embedding_model_id) return
-    const ok = await Stores.MemoryAdmin.triggerReembed()
     setReembedConfirmOpen(false)
-    if (ok) {
+    try {
+      await Stores.MemoryAdmin.triggerReembed()
       message.info(
         'Re-embed job dispatched in background. Retrieval temporarily reduced until complete.',
       )
       Stores.MemoryAdmin.loadRebuildStatus()
-    } else {
-      message.error('Failed to start re-embed job.')
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to start re-embed job.',
+      )
     }
   }
 

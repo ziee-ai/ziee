@@ -13,7 +13,7 @@ import {
   Empty,
 } from 'antd'
 import { DeleteOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
-import { ApiClient } from '@/api-client'
+import { Stores } from '@/core/stores'
 import type { CoreMemoryBlock } from '@/api-client/types'
 
 const { Title, Paragraph, Text } = Typography
@@ -27,26 +27,19 @@ const { Title, Paragraph, Text } = Typography
  * lists what's there and lets the user add / edit / delete. Plan §9
  * Phase 6: "Assistant designer UI to set/edit blocks".
  */
-export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string }) {
-  const [blocks, setBlocks] = useState<CoreMemoryBlock[]>([])
-  const [loading, setLoading] = useState(false)
+export function CoreMemoryBlocksEditor({
+  assistantId,
+}: {
+  assistantId: string
+}) {
+  const { blocksByAssistant, loadingByAssistant } = Stores.CoreMemoryBlocks
+  const blocks = blocksByAssistant[assistantId] ?? []
+  const loading = loadingByAssistant[assistantId] ?? false
   const [editing, setEditing] = useState<CoreMemoryBlock | null>(null)
   const [creating, setCreating] = useState(false)
 
-  async function load() {
-    setLoading(true)
-    try {
-      const rows = await ApiClient.CoreMemory.list({ assistant_id: assistantId })
-      setBlocks(rows)
-    } catch (e: any) {
-      message.error(e?.message || 'Failed to load core memory blocks')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
-    if (assistantId) load()
+    if (assistantId) Stores.CoreMemoryBlocks.load(assistantId)
   }, [assistantId])
 
   return (
@@ -84,7 +77,7 @@ export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string })
         />
       ) : (
         <div className="space-y-2">
-          {blocks.map((b) => (
+          {blocks.map(b => (
             <Card key={b.id} size="small">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -110,14 +103,17 @@ export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string })
                     okButtonProps={{ danger: true }}
                     onConfirm={async () => {
                       try {
-                        await ApiClient.CoreMemory.delete({
-                          assistant_id: assistantId,
-                          block_label: b.block_label,
-                        })
+                        await Stores.CoreMemoryBlocks.remove(
+                          assistantId,
+                          b.block_label,
+                        )
                         message.success('Block deleted')
-                        await load()
-                      } catch (e: any) {
-                        message.error(e?.message || 'Delete failed')
+                      } catch (error) {
+                        message.error(
+                          error instanceof Error
+                            ? error.message
+                            : 'Delete failed',
+                        )
                       }
                     }}
                   >
@@ -139,14 +135,12 @@ export function CoreMemoryBlocksEditor({ assistantId }: { assistantId: string })
         open={creating}
         assistantId={assistantId}
         onClose={() => setCreating(false)}
-        onSaved={load}
       />
       <BlockFormModal
         open={!!editing}
         assistantId={assistantId}
         existing={editing ?? undefined}
         onClose={() => setEditing(null)}
-        onSaved={load}
       />
     </Card>
   )
@@ -157,15 +151,17 @@ function BlockFormModal({
   assistantId,
   existing,
   onClose,
-  onSaved,
 }: {
   open: boolean
   assistantId: string
   existing?: CoreMemoryBlock
   onClose: () => void
-  onSaved: () => Promise<void>
 }) {
-  const [form] = Form.useForm<{ block_label: string; content: string; char_limit: number }>()
+  const [form] = Form.useForm<{
+    block_label: string
+    content: string
+    char_limit: number
+  }>()
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -183,7 +179,7 @@ function BlockFormModal({
   }) => {
     setSaving(true)
     try {
-      await ApiClient.CoreMemory.upsert({
+      await Stores.CoreMemoryBlocks.upsert({
         assistant_id: assistantId,
         block_label: values.block_label,
         content: values.content,
@@ -191,9 +187,8 @@ function BlockFormModal({
       })
       message.success(existing ? 'Block updated' : 'Block added')
       onClose()
-      await onSaved()
-    } catch (e: any) {
-      message.error(e?.message || 'Save failed')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Save failed')
     } finally {
       setSaving(false)
     }
@@ -202,7 +197,9 @@ function BlockFormModal({
   return (
     <Modal
       open={open}
-      title={existing ? `Edit "${existing.block_label}"` : 'Add core memory block'}
+      title={
+        existing ? `Edit "${existing.block_label}"` : 'Add core memory block'
+      }
       onCancel={onClose}
       confirmLoading={saving}
       onOk={() => form.submit()}

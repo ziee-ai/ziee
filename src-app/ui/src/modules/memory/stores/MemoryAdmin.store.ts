@@ -1,41 +1,42 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { createStoreProxy } from '@/core/stores'
+import { ApiClient } from '@/api-client'
+import type {
+  LlmModel,
+  MemoryAdminSettings,
+  RebuildStatus,
+  UpdateMemoryAdminSettingsRequest,
+} from '@/api-client/types'
 import { emitMemoryAdminSettingsUpdated } from '@/modules/memory/events'
 
-export interface MemoryAdminSettingsRow {
-  id: number
-  embedding_model_id: string | null
-  embedding_dimensions: number
-  default_extraction_model_id: string | null
-  default_top_k: number
-  cosine_threshold: number
-  enabled: boolean
-  soft_delete_grace_days: number
-  daily_extraction_quota: number
-  summarize_after_n_messages: number
-  summarizer_keep_recent: number
-  full_summary_prompt: string | null
-  incremental_summary_prompt: string | null
-  updated_at: string
-}
+export type EmbeddingCapableModelRow = Pick<
+  LlmModel,
+  'id' | 'name' | 'display_name' | 'provider_id'
+>
 
-export interface EmbeddingCapableModelRow {
-  id: string
-  name: string
-  display_name: string | null
-  provider_id: string
-}
-
-export interface RebuildStatus {
-  in_progress: boolean
-  pending_count: number
-  model_name: string | null
+// Widened patch type. Reason: the backend's `UpdateMemoryAdminSettingsRequest`
+// uses `Option<Option<T>>` for `embedding_model_id` /
+// `default_extraction_model_id` / the prompt fields — tri-state
+// (absent = leave, null = clear, value = set). The OpenAPI schema
+// reports `type: ["string", "null"]`, but the TS codegen strips
+// `null` from optional fields so the generated type is `?: T`.
+// Widen at the boundary so callers can pass `null` to clear.
+export type MemoryAdminUpdatePatch = Omit<
+  UpdateMemoryAdminSettingsRequest,
+  | 'embedding_model_id'
+  | 'default_extraction_model_id'
+  | 'full_summary_prompt'
+  | 'incremental_summary_prompt'
+> & {
+  embedding_model_id?: string | null
+  default_extraction_model_id?: string | null
+  full_summary_prompt?: string | null
+  incremental_summary_prompt?: string | null
 }
 
 interface MemoryAdminStore {
-  settings: MemoryAdminSettingsRow | null
+  settings: MemoryAdminSettings | null
   availableModels: EmbeddingCapableModelRow[]
   rebuildStatus: RebuildStatus | null
   loading: boolean
@@ -44,25 +45,88 @@ interface MemoryAdminStore {
   reembeddingTrigger: boolean
   error: string | null
 
+  __init__: {
+    settings: () => Promise<void>
+    availableModels: () => Promise<void>
+    rebuildStatus: () => Promise<void>
+  }
+
   load: () => Promise<void>
   loadEmbeddingCapableModels: () => Promise<void>
   loadRebuildStatus: () => Promise<void>
-  triggerReembed: () => Promise<boolean>
-  update: (
-    patch: Partial<{
-      embedding_model_id: string | null
-      default_extraction_model_id: string | null
-      default_top_k: number
-      cosine_threshold: number
-      enabled: boolean
-      soft_delete_grace_days: number
-      daily_extraction_quota: number
-      summarize_after_n_messages: number
-      summarizer_keep_recent: number
-      full_summary_prompt: string | null
-      incremental_summary_prompt: string | null
-    }>,
-  ) => Promise<MemoryAdminSettingsRow | null>
+  triggerReembed: () => Promise<void>
+  update: (patch: MemoryAdminUpdatePatch) => Promise<MemoryAdminSettings>
+}
+
+const loadAdminSettings = async (
+  set: (fn: (s: MemoryAdminStore) => void) => void,
+) => {
+  set(s => {
+    s.loading = true
+    s.error = null
+  })
+  try {
+    const row = await ApiClient.MemoryAdmin.get()
+    set(s => {
+      s.settings = row
+      s.loading = false
+    })
+  } catch (error) {
+    set(s => {
+      s.error =
+        error instanceof Error
+          ? error.message
+          : 'Failed to load admin settings'
+      s.loading = false
+    })
+  }
+}
+
+const loadEmbeddingModels = async (
+  set: (fn: (s: MemoryAdminStore) => void) => void,
+) => {
+  set(s => {
+    s.loadingModels = true
+  })
+  try {
+    const body = await ApiClient.LlmModel.list({
+      capability: 'text_embedding',
+      page: 1,
+      perPage: 200,
+    })
+    const rows: EmbeddingCapableModelRow[] = body.models.map(m => ({
+      id: m.id,
+      name: m.name,
+      display_name: m.display_name,
+      provider_id: m.provider_id,
+    }))
+    set(s => {
+      s.availableModels = rows
+      s.loadingModels = false
+    })
+  } catch (error) {
+    set(s => {
+      s.error =
+        error instanceof Error
+          ? error.message
+          : 'Failed to load embedding models'
+      s.loadingModels = false
+    })
+  }
+}
+
+const loadRebuildStatusInternal = async (
+  set: (fn: (s: MemoryAdminStore) => void) => void,
+) => {
+  try {
+    const status = await ApiClient.MemoryAdmin.rebuildStatus()
+    set(s => {
+      s.rebuildStatus = status
+    })
+  } catch {
+    // Polling failure shouldn't surface as an error toast — worst case
+    // the progress card briefly shows stale data.
+  }
 }
 
 export const useMemoryAdminStore = create<MemoryAdminStore>()(
@@ -77,133 +141,72 @@ export const useMemoryAdminStore = create<MemoryAdminStore>()(
       reembeddingTrigger: false,
       error: null,
 
-      load: async () => {
-        set((d) => {
-          d.loading = true
-          d.error = null
+      __init__: {
+        settings: () => loadAdminSettings(set),
+        availableModels: () => loadEmbeddingModels(set),
+        rebuildStatus: () => loadRebuildStatusInternal(set),
+      },
+
+      load: () => loadAdminSettings(set),
+      loadEmbeddingCapableModels: () => loadEmbeddingModels(set),
+      loadRebuildStatus: () => loadRebuildStatusInternal(set),
+
+      triggerReembed: async (): Promise<void> => {
+        set(s => {
+          s.reembeddingTrigger = true
+          s.error = null
         })
         try {
-          const res = await fetch('/api/memory/admin-settings', {
-            credentials: 'include',
+          await ApiClient.MemoryAdmin.reembed()
+          set(s => {
+            s.reembeddingTrigger = false
           })
-          if (!res.ok) throw new Error(`Failed to load admin settings: ${res.status}`)
-          const row: MemoryAdminSettingsRow = await res.json()
-          set((d) => {
-            d.settings = row
-            d.loading = false
+        } catch (error) {
+          set(s => {
+            s.error =
+              error instanceof Error ? error.message : 'Trigger failed'
+            s.reembeddingTrigger = false
           })
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Failed to load admin settings'
-            d.loading = false
-          })
+          throw error
         }
       },
 
-      loadEmbeddingCapableModels: async () => {
-        set((d) => {
-          d.loadingModels = true
+      update: async (patch): Promise<MemoryAdminSettings> => {
+        set(s => {
+          s.saving = true
+          s.error = null
         })
         try {
-          // Server-side capability filter — Phase 2 added the
-          // `?capability=text_embedding` query param on /api/llm-models.
-          const res = await fetch(
-            '/api/llm-models?capability=text_embedding&page=1&per_page=200',
-            { credentials: 'include' },
+          // Cast: the OpenAPI codegen widens `Option<Option<T>>` only
+          // partially (loses the `null` arm). The store accepts the
+          // wider `MemoryAdminUpdatePatch`; pass through verbatim —
+          // JSON.stringify writes null vs absent correctly, and the
+          // backend's `deserialize_nullable_field` honors both arms.
+          const row = await ApiClient.MemoryAdmin.update(
+            patch as UpdateMemoryAdminSettingsRequest,
           )
-          if (!res.ok) throw new Error(`Failed to load models: ${res.status}`)
-          const body: any = await res.json()
-          const rows: EmbeddingCapableModelRow[] = (body.models ?? body ?? []).map(
-            (m: any) => ({
-              id: m.id,
-              name: m.name,
-              display_name: m.display_name,
-              provider_id: m.provider_id,
-            }),
-          )
-          set((d) => {
-            d.availableModels = rows
-            d.loadingModels = false
+          set(s => {
+            s.settings = row
+            s.saving = false
           })
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Failed to load embedding models'
-            d.loadingModels = false
-          })
-        }
-      },
-
-      loadRebuildStatus: async () => {
-        try {
-          const res = await fetch(
-            '/api/memory/admin-settings/rebuild-status',
-            { credentials: 'include' },
-          )
-          if (!res.ok) return
-          const status: RebuildStatus = await res.json()
-          set((d) => {
-            d.rebuildStatus = status
-          })
-        } catch {
-          // Polling failure shouldn't surface as an error toast —
-          // worst case the progress card briefly shows stale data.
-        }
-      },
-
-      triggerReembed: async () => {
-        set((d) => {
-          d.reembeddingTrigger = true
-          d.error = null
-        })
-        try {
-          const res = await fetch('/api/memory/admin-settings/reembed', {
-            method: 'POST',
-            credentials: 'include',
-          })
-          if (!res.ok) throw new Error(`Trigger failed: ${res.status}`)
-          set((d) => {
-            d.reembeddingTrigger = false
-          })
-          return true
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Trigger failed'
-            d.reembeddingTrigger = false
-          })
-          return false
-        }
-      },
-
-      update: async (patch) => {
-        set((d) => {
-          d.saving = true
-          d.error = null
-        })
-        try {
-          const res = await fetch('/api/memory/admin-settings', {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(patch),
-          })
-          if (!res.ok) throw new Error(`Update failed: ${res.status}`)
-          const row: MemoryAdminSettingsRow = await res.json()
-          set((d) => {
-            d.settings = row
-            d.saving = false
-          })
-          emitMemoryAdminSettingsUpdated(row).catch(() => {})
+          try {
+            await emitMemoryAdminSettingsUpdated(row)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit memory admin settings updated event:',
+              eventError,
+            )
+          }
           return row
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Update failed'
-            d.saving = false
+        } catch (error) {
+          set(s => {
+            s.error =
+              error instanceof Error ? error.message : 'Update failed'
+            s.saving = false
           })
-          return null
+          throw error
         }
       },
     })),
   ),
 )
-
-export const MemoryAdminStoreProxy = createStoreProxy(useMemoryAdminStore)

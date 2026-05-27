@@ -2,17 +2,18 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { createStoreProxy } from '@/core/stores'
+import { ApiClient } from '@/api-client'
+import type {
+  LlmModel,
+  UpdateMemoryAdminSettingsRequest,
+} from '@/api-client/types'
 
-// Minimal embedding-capable model row for the dropdown. The full
-// `LlmModel` type lives in `@/api-client/types` but the OpenAPI bundle
-// only regenerates after the backend ships — until then we keep this
-// local. Phase 2 will replace with the generated DTO.
-interface EmbeddingCapableModel {
-  id: string
-  name: string
-  display_name: string | null
-  provider_id: string
-}
+// Picks the small subset of `LlmModel` the embedding-model dropdown
+// needs. Keeps the store payload light and the JSX simple.
+type EmbeddingCapableModel = Pick<
+  LlmModel,
+  'id' | 'name' | 'display_name' | 'provider_id'
+>
 
 interface MemorySetupStepStore {
   enableMemory: boolean
@@ -57,25 +58,19 @@ export const useMemorySetupStepStore = create<MemorySetupStepStore>()(
           draft.error = null
         })
         try {
-          // GET /api/llm-models?capability=text_embedding will be
-          // available after the Phase 2 list-endpoint filter lands.
-          // For Phase 1 onboarding we fetch all models and filter
-          // client-side; cheap because admin model lists are small.
-          const res = await fetch('/api/llm-models?page=1&per_page=200', {
-            credentials: 'include',
+          // Server-side filter `?capability=text_embedding` (Phase 2)
+          // is exposed on the typed `LlmModel.list` endpoint.
+          const body = await ApiClient.LlmModel.list({
+            capability: 'text_embedding',
+            page: 1,
+            perPage: 200,
           })
-          if (!res.ok) {
-            throw new Error(`Failed to load models: ${res.status}`)
-          }
-          const body = await res.json()
-          const models: EmbeddingCapableModel[] = (body.models || body || [])
-            .filter((m: any) => m?.capabilities?.text_embedding === true)
-            .map((m: any) => ({
-              id: m.id,
-              name: m.name,
-              display_name: m.display_name,
-              provider_id: m.provider_id,
-            }))
+          const models: EmbeddingCapableModel[] = body.models.map((m) => ({
+            id: m.id,
+            name: m.name,
+            display_name: m.display_name,
+            provider_id: m.provider_id,
+          }))
           set((draft) => {
             draft.availableModels = models
             draft.loading = false
@@ -95,19 +90,17 @@ export const useMemorySetupStepStore = create<MemorySetupStepStore>()(
           draft.error = null
         })
         try {
-          const body: Record<string, unknown> = { enabled: enableMemory }
+          // The PUT body matches `UpdateMemoryAdminSettingsRequest`. We
+          // ONLY include `embedding_model_id` when the admin opted in
+          // and picked a model — sending an empty patch would clear an
+          // existing setting, which is wrong during onboarding.
+          const patch: UpdateMemoryAdminSettingsRequest = {
+            enabled: enableMemory,
+          }
           if (enableMemory && embeddingModelId) {
-            body.embedding_model_id = embeddingModelId
+            patch.embedding_model_id = embeddingModelId
           }
-          const res = await fetch('/api/memory/admin-settings', {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          })
-          if (!res.ok) {
-            throw new Error(`Failed to save: ${res.status}`)
-          }
+          await ApiClient.MemoryAdmin.update(patch)
           set((draft) => {
             draft.saving = false
           })

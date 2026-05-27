@@ -37,7 +37,12 @@ test.describe('Memory — manual add', () => {
     await login(page, baseURL, username, 'password123')
 
     await page.goto(`${baseURL}/settings/memory`)
-    await expect(page.getByRole('heading', { name: 'My Memories' })).toBeVisible()
+    // After the settings-page consolidation, "My memories" is a Card
+    // section title (not a Typography heading), so anchor on the
+    // section's unique CTA instead.
+    await expect(
+      page.getByRole('button', { name: /Add memory/ }),
+    ).toBeVisible()
 
     // Add
     await page.getByRole('button', { name: /Add memory/ }).click()
@@ -52,13 +57,15 @@ test.describe('Memory — manual add', () => {
       page.getByText('User prefers TypeScript over JavaScript'),
     ).toBeVisible()
 
-    // Delete (Popconfirm)
+    // Delete (Popconfirm) — okText="Delete" per codebase convention;
+    // `exact: true` distinguishes the Popconfirm's "Delete" OK button
+    // from the row's trash icon (aria-label = "Delete memory <id>").
     await page
       .getByRole('row', { name: /TypeScript/ })
       .getByRole('button')
       .last()
       .click()
-    await page.getByRole('button', { name: 'OK' }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(page.getByText('Memory deleted')).toBeVisible({ timeout: 5000 })
   })
 })

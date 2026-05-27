@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   login,
 } from '../../common/auth-helpers'
@@ -57,15 +58,19 @@ test.describe('Memory — retrieval injects system block', () => {
       ],
     )
     await login(page, baseURL, username, 'password123')
+    const userToken = await getCurrentUserToken(page)
+    const authHeader = { Authorization: `Bearer ${userToken}` }
 
     // Seed a known memory directly via the REST API.
     const createRes = await page.request.post(`${apiURL}/api/memories`, {
+      headers: authHeader,
       data: { content: 'User goes by the codename Falcon', kind: 'fact' },
     })
     expect(createRes.status()).toBe(201)
 
     // Enable retrieval for this user.
     const putRes = await page.request.put(`${apiURL}/api/memory/settings`, {
+      headers: authHeader,
       data: { retrieval_enabled: true },
     })
     expect(putRes.status()).toBe(200)
@@ -73,7 +78,9 @@ test.describe('Memory — retrieval injects system block', () => {
     expect(settings.retrieval_enabled).toBe(true)
 
     // Sanity: GET the memory back to confirm the seed worked.
-    const listRes = await page.request.get(`${apiURL}/api/memories`)
+    const listRes = await page.request.get(`${apiURL}/api/memories`, {
+      headers: authHeader,
+    })
     const rows: any[] = await listRes.json()
     expect(rows.some((r) => r.content === 'User goes by the codename Falcon')).toBe(true)
   })

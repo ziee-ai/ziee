@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   login,
 } from '../../common/auth-helpers'
@@ -34,19 +35,27 @@ test.describe('Memory — audit log', () => {
     const { baseURL, apiURL } = testInfra
     const username = await memoryUser(apiURL, 'audit')
     await login(page, baseURL, username, 'password123')
+    const userToken = await getCurrentUserToken(page)
+    const authHeader = { Authorization: `Bearer ${userToken}` }
 
     // Drive memory ops via REST (faster than UI) but assert via the
     // public audit-log endpoint we just shipped.
     const create = await page.request.post(`${apiURL}/api/memories`, {
+      headers: authHeader,
       data: { content: 'User code is Bravo' },
     })
     const row = await create.json()
     await page.request.patch(`${apiURL}/api/memories/${row.id}`, {
+      headers: authHeader,
       data: { content: 'User code is Charlie' },
     })
-    await page.request.delete(`${apiURL}/api/memories/${row.id}`)
+    await page.request.delete(`${apiURL}/api/memories/${row.id}`, {
+      headers: authHeader,
+    })
 
-    const log = await page.request.get(`${apiURL}/api/memory/audit-log`)
+    const log = await page.request.get(`${apiURL}/api/memory/audit-log`, {
+      headers: authHeader,
+    })
     expect(log.status()).toBe(200)
     const entries = await log.json()
     const ops = entries.map((e: any) => e.op)

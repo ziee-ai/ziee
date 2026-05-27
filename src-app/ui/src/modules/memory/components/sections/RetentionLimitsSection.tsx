@@ -58,8 +58,12 @@ export function RetentionLimitsSection() {
         daily_extraction_quota: values.daily_extraction_quota,
       })
       message.success('Retention & limits saved.')
-    } catch (e: any) {
-      message.error(e?.message ?? 'Failed to save retention settings.')
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to save retention settings.',
+      )
     }
   }
 

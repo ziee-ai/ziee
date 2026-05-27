@@ -26,7 +26,7 @@ import {
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
-import type { UserMemoryRow } from '@/modules/memory/stores/Memories.store'
+import type { UserMemory } from '@/api-client/types'
 
 const { Text } = Typography
 const { Search } = Input
@@ -46,14 +46,8 @@ export function MyMemoriesSection() {
   const canWrite = usePermission(WRITE_PERM)
   const { memories, loading, searchQuery, kindFilter, sourceFilter } =
     Stores.Memories
-  const [editing, setEditing] = useState<UserMemoryRow | null>(null)
+  const [editing, setEditing] = useState<UserMemory | null>(null)
   const [creating, setCreating] = useState(false)
-
-  useEffect(() => {
-    if (canRead) {
-      Stores.Memories.load()
-    }
-  }, [canRead])
 
   const filtered = useMemo(() => {
     return memories.filter((m) => {
@@ -107,8 +101,16 @@ export function MyMemoriesSection() {
               okText="Delete"
               okButtonProps={{ danger: true }}
               onConfirm={async () => {
-                const n = await Stores.Memories.removeAll()
-                message.success(`Deleted ${n} memories`)
+                try {
+                  const n = await Stores.Memories.removeAll()
+                  message.success(`Deleted ${n} memories`)
+                } catch (error) {
+                  message.error(
+                    error instanceof Error
+                      ? error.message
+                      : 'Delete-all failed.',
+                  )
+                }
               }}
             >
               <Button danger>Delete all</Button>
@@ -174,7 +176,7 @@ export function MyMemoriesSection() {
       {filtered.length === 0 && !loading ? (
         <Empty description="No memories yet" />
       ) : (
-        <Table<UserMemoryRow>
+        <Table<UserMemory>
           dataSource={filtered}
           rowKey="id"
           loading={loading}
@@ -233,7 +235,7 @@ export function MyMemoriesSection() {
                     title: '',
                     key: 'actions',
                     width: 100,
-                    render: (_: unknown, row: UserMemoryRow) => (
+                    render: (_: unknown, row: UserMemory) => (
                       <Space>
                         <Button
                           icon={<EditOutlined />}
@@ -245,8 +247,16 @@ export function MyMemoriesSection() {
                           okText="Delete"
                           okButtonProps={{ danger: true }}
                           onConfirm={async () => {
-                            const ok = await Stores.Memories.remove(row.id)
-                            if (ok) message.success('Memory deleted')
+                            try {
+                              await Stores.Memories.remove(row.id)
+                              message.success('Memory deleted')
+                            } catch (error) {
+                              message.error(
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Delete failed.',
+                              )
+                            }
                           }}
                         >
                           <Button
@@ -275,7 +285,7 @@ export function MyMemoriesSection() {
   )
 }
 
-function exportMemories(rows: UserMemoryRow[], format: 'json' | 'csv') {
+function exportMemories(rows: UserMemory[], format: 'json' | 'csv') {
   const filename = `ziee-memories-${new Date().toISOString().slice(0, 10)}.${format}`
   let blob: Blob
   if (format === 'json') {
@@ -352,15 +362,19 @@ function CreateMemoryModal({
     importance: number
     kind: string
   }) => {
-    const row = await Stores.Memories.create(
-      values.content,
-      values.importance,
-      values.kind,
-    )
-    if (row) {
+    try {
+      await Stores.Memories.create(
+        values.content,
+        values.importance,
+        values.kind,
+      )
       form.resetFields()
       onClose()
       message.success('Memory added')
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'Failed to add memory.',
+      )
     }
   }
 
@@ -415,7 +429,7 @@ function EditMemoryDrawer({
   row,
   onClose,
 }: {
-  row: UserMemoryRow | null
+  row: UserMemory | null
   onClose: () => void
 }) {
   const [form] = Form.useForm<{
@@ -441,10 +455,14 @@ function EditMemoryDrawer({
     kind: string
   }) => {
     if (!row) return
-    const updated = await Stores.Memories.update(row.id, values)
-    if (updated) {
+    try {
+      await Stores.Memories.update(row.id, values)
       onClose()
       message.success('Memory updated')
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'Failed to update memory.',
+      )
     }
   }
 

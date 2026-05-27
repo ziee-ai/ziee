@@ -71,8 +71,12 @@ export function SummarizerSection() {
           : null,
       })
       message.success('Summarizer settings saved.')
-    } catch (e: any) {
-      message.error(e?.message ?? 'Failed to save summarizer settings.')
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to save summarizer settings.',
+      )
     }
   }
 

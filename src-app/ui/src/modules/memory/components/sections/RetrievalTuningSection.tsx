@@ -59,8 +59,12 @@ export function RetrievalTuningSection() {
         cosine_threshold: values.cosine_threshold,
       })
       message.success('Retrieval tuning saved.')
-    } catch (e: any) {
-      message.error(e?.message ?? 'Failed to save retrieval tuning.')
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to save retrieval tuning.',
+      )
     }
   }
 

@@ -16,12 +16,6 @@ export function RebuildStatusSection() {
   const { rebuildStatus } = Stores.MemoryAdmin
   const rebuildTotalRef = useRef<number>(0)
 
-  // Initial fetch so the card shows up on direct navigation if a
-  // rebuild is already in flight.
-  useEffect(() => {
-    Stores.MemoryAdmin.loadRebuildStatus()
-  }, [])
-
   // Poll while in flight. 2s cadence — fast enough to feel responsive,
   // slow enough that the per-row worker can do real work between polls
   // without spamming the DB.

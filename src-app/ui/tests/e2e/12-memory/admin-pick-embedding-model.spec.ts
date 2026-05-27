@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   login,
 } from '../../common/auth-helpers'
@@ -42,12 +43,14 @@ test.describe('Memory — admin embedding picker', () => {
       ],
     )
     await login(page, baseURL, username, 'password123')
+    const userToken = await getCurrentUserToken(page)
 
     await page.goto(`${baseURL}/settings/admin/memory`)
 
     // The capability filter API responds 200 (even with empty list).
     const res = await page.request.get(
       `${apiURL}/api/llm-models?capability=text_embedding&page=1&per_page=10`,
+      { headers: { Authorization: `Bearer ${userToken}` } },
     )
     expect(res.status()).toBe(200)
 

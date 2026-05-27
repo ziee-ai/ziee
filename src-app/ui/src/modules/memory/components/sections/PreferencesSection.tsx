@@ -15,6 +15,7 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 
+
 const READ_PERM = Permissions.MemoryRead
 const WRITE_PERM = Permissions.MemoryWrite
 
@@ -40,12 +41,6 @@ export function PreferencesSection() {
   const { settings, loading, saving } = Stores.MemorySettings
   const { settings: adminSettings } = Stores.MemoryAdmin
   const [form] = Form.useForm<FormValues>()
-
-  useEffect(() => {
-    if (canRead) {
-      Stores.MemorySettings.load()
-    }
-  }, [canRead])
 
   useEffect(() => {
     if (settings) {
@@ -81,8 +76,10 @@ export function PreferencesSection() {
         retention_days: values.retention_days ?? null,
       })
       message.success('Preferences saved.')
-    } catch (e: any) {
-      message.error(e?.message ?? 'Failed to save preferences.')
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'Failed to save preferences.',
+      )
     }
   }
 

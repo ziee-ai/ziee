@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import {
   Card,
   Empty,
@@ -9,24 +8,14 @@ import {
   Tag,
   Typography,
 } from 'antd'
+import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
+import type { MemoryAuditEntry } from '@/api-client/types'
 
 const { Text, Paragraph } = Typography
 
 const READ_PERM = Permissions.MemoryRead
-
-interface AuditEntry {
-  id: number
-  user_id: string
-  memory_id: string | null
-  op: 'ADD' | 'UPDATE' | 'DELETE' | 'BULK_DELETE'
-  source: 'extraction' | 'mcp_tool' | 'manual' | 'admin'
-  content_snapshot: string | null
-  actor_kind: 'user' | 'assistant' | 'admin' | 'system'
-  metadata: unknown
-  created_at: string
-}
 
 /**
  * Append-only audit log of memory operations on the viewing user's
@@ -34,32 +23,7 @@ interface AuditEntry {
  */
 export function AuditLogSection() {
   const canRead = usePermission(READ_PERM)
-  const [entries, setEntries] = useState<AuditEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [limit, setLimit] = useState<number>(100)
-
-  useEffect(() => {
-    if (!canRead) return
-    let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      try {
-        const res = await fetch(`/api/memory/audit-log?limit=${limit}`, {
-          credentials: 'include',
-        })
-        if (!res.ok) throw new Error(`Failed: ${res.status}`)
-        const rows: AuditEntry[] = await res.json()
-        if (!cancelled) setEntries(rows)
-      } catch {
-        if (!cancelled) setEntries([])
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [canRead, limit])
+  const { entries, loading, limit } = Stores.MemoryAudit
 
   if (!canRead) return null
 
@@ -77,7 +41,9 @@ export function AuditLogSection() {
           min={1}
           max={500}
           value={limit}
-          onChange={(v) => setLimit(typeof v === 'number' ? v : 100)}
+          onChange={v =>
+            Stores.MemoryAudit.setLimit(typeof v === 'number' ? v : 100)
+          }
         />
         <Text>entries</Text>
       </Space>
@@ -89,7 +55,7 @@ export function AuditLogSection() {
       ) : entries.length === 0 ? (
         <Empty description="No audit entries yet" />
       ) : (
-        <Table<AuditEntry>
+        <Table<MemoryAuditEntry>
           dataSource={entries}
           rowKey="id"
           size="middle"

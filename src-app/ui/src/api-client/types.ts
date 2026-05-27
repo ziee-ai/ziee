@@ -2203,21 +2203,21 @@ export const ApiEndpoints = {
   'McpServerSystem.list': 'GET /api/mcp/system-servers',
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
-  'Memory.admin.get': 'GET /api/memory/admin-settings',
-  'Memory.admin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
-  'Memory.admin.reembed': 'POST /api/memory/admin-settings/reembed',
-  'Memory.admin.update': 'PUT /api/memory/admin-settings',
-  'Memory.audit.list': 'GET /api/memory/audit-log',
   'Memory.create': 'POST /api/memories',
   'Memory.delete': 'DELETE /api/memories/{id}',
   'Memory.deleteAll': 'DELETE /api/memories/all',
   'Memory.get': 'GET /api/memories/{id}',
   'Memory.list': 'GET /api/memories',
-  'Memory.settings.get': 'GET /api/memory/settings',
-  'Memory.settings.update': 'PUT /api/memory/settings',
-  'Memory.test.extract': 'POST /api/_test/memory/extract',
-  'Memory.test.summarize': 'POST /api/_test/memory/summarize',
   'Memory.update': 'PATCH /api/memories/{id}',
+  'MemoryAdmin.get': 'GET /api/memory/admin-settings',
+  'MemoryAdmin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
+  'MemoryAdmin.reembed': 'POST /api/memory/admin-settings/reembed',
+  'MemoryAdmin.update': 'PUT /api/memory/admin-settings',
+  'MemoryAudit.list': 'GET /api/memory/audit-log',
+  'MemorySettings.get': 'GET /api/memory/settings',
+  'MemorySettings.update': 'PUT /api/memory/settings',
+  'MemoryTest.extract': 'POST /api/_test/memory/extract',
+  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
@@ -2389,21 +2389,21 @@ export type ApiEndpointParameters = {
   'McpServerSystem.list': PaginationQuery
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
-  'Memory.admin.get': void
-  'Memory.admin.rebuildStatus': void
-  'Memory.admin.reembed': void
-  'Memory.admin.update': UpdateMemoryAdminSettingsRequest
-  'Memory.audit.list': { limit?: number }
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void
   'Memory.get': { id: string }
   'Memory.list': { limit?: number; offset?: number }
-  'Memory.settings.get': void
-  'Memory.settings.update': UpdateUserMemorySettingsRequest
-  'Memory.test.extract': TestExtractRequest
-  'Memory.test.summarize': TestSummarizeRequest
   'Memory.update': { id: string } & UpdateMemoryRequest
+  'MemoryAdmin.get': void
+  'MemoryAdmin.rebuildStatus': void
+  'MemoryAdmin.reembed': void
+  'MemoryAdmin.update': UpdateMemoryAdminSettingsRequest
+  'MemoryAudit.list': { limit?: number }
+  'MemorySettings.get': void
+  'MemorySettings.update': UpdateUserMemorySettingsRequest
+  'MemoryTest.extract': TestExtractRequest
+  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
@@ -2575,21 +2575,21 @@ export type ApiEndpointResponses = {
   'McpServerSystem.list': McpServerListResponse
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.update': McpServer
-  'Memory.admin.get': MemoryAdminSettings
-  'Memory.admin.rebuildStatus': RebuildStatus
-  'Memory.admin.reembed': any
-  'Memory.admin.update': MemoryAdminSettings
-  'Memory.audit.list': MemoryAuditEntry[]
   'Memory.create': UserMemory
   'Memory.delete': void
   'Memory.deleteAll': DeleteAllResponse
   'Memory.get': UserMemory
   'Memory.list': UserMemory[]
-  'Memory.settings.get': UserMemorySettings
-  'Memory.settings.update': UserMemorySettings
-  'Memory.test.extract': any
-  'Memory.test.summarize': any
   'Memory.update': UserMemory
+  'MemoryAdmin.get': MemoryAdminSettings
+  'MemoryAdmin.rebuildStatus': RebuildStatus
+  'MemoryAdmin.reembed': any
+  'MemoryAdmin.update': MemoryAdminSettings
+  'MemoryAudit.list': MemoryAuditEntry[]
+  'MemorySettings.get': UserMemorySettings
+  'MemorySettings.update': UserMemorySettings
+  'MemoryTest.extract': any
+  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent

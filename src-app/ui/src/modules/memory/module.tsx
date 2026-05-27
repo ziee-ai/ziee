@@ -5,6 +5,8 @@ import { Permissions } from '@/api-client/types'
 import { useMemoriesStore } from './stores/Memories.store'
 import { useMemorySettingsStore } from './stores/MemorySettings.store'
 import { useMemoryAdminStore } from './stores/MemoryAdmin.store'
+import { useMemoryAuditStore } from './stores/MemoryAudit.store'
+import { useCoreMemoryBlocksStore } from './stores/CoreMemoryBlocks.store'
 import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import './types'
 
@@ -50,6 +52,8 @@ export default createModule({
     { name: 'Memories', store: useMemoriesStore },
     { name: 'MemorySettings', store: useMemorySettingsStore },
     { name: 'MemoryAdmin', store: useMemoryAdminStore },
+    { name: 'MemoryAudit', store: useMemoryAuditStore },
+    { name: 'CoreMemoryBlocks', store: useCoreMemoryBlocksStore },
   ],
   slots: {
     settingsUserPages: [
@@ -67,20 +71,19 @@ export default createModule({
         id: 'memory',
         icon: <BulbOutlined />,
         label: 'Memory',
-        path: 'memory',
+        // Two-segment path: clicking the sidebar item navigates to
+        // `/settings/admin/memory` (matches the registered route).
+        // Critically, this also keeps it from colliding with the
+        // user-side settingsUserPages slot's `path: 'memory'` — the
+        // SettingsPage's `forbiddenSettingsItems.find(path === ...)`
+        // is keyed on path-equality, so equal paths cause the
+        // user-side `/settings/memory` URL to spuriously match the
+        // admin entry and 403 even when the user has the user-side
+        // read perm.
+        path: 'admin/memory',
         order: 60,
         permission: Permissions.MemoryAdminRead,
       },
     ],
-  },
-  initialize: () => {
-    // Pre-fetch admin settings so MemoryStatusPill renders correctly
-    // on first paint (audit R7-#10). Without this, the chat composer
-    // briefly shows the pill before discovering memory is admin-
-    // disabled. Non-admin 403s are intentionally swallowed: pill
-    // visibility falls back to "shown" (settings undefined ≠ disabled).
-    import('@/core/stores').then(({ Stores }) => {
-      Stores.MemoryAdmin.load().catch(() => {})
-    })
   },
 })

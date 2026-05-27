@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   loginExpectingOnboarding,
 } from '../../common/auth-helpers'
@@ -56,11 +57,16 @@ test.describe('Memory — onboarding skip', () => {
     await expect(page.getByRole('heading', { name: /Persistent Memory/ })).toBeVisible()
     await page.getByRole('button', { name: /Next/ }).click()
 
-    // Finish step.
-    await page.getByRole('button', { name: /Finish|Done/ }).click()
+    // Finish step. OnboardingPage.tsx:231 labels the last-step button
+    // "Start Chatting" (not "Finish" / "Done").
+    await page.getByRole('button', { name: /Start Chatting/ }).click()
 
     // Admin settings page reachable; memory still disabled.
-    const adminRes = await page.request.get(`${apiURL}/api/memory/admin-settings`)
+    const userToken = await getCurrentUserToken(page)
+    const adminRes = await page.request.get(
+      `${apiURL}/api/memory/admin-settings`,
+      { headers: { Authorization: `Bearer ${userToken}` } },
+    )
     expect(adminRes.status()).toBe(200)
     const settings = await adminRes.json()
     expect(settings.enabled).toBe(false)

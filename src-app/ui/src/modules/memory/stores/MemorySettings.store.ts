@@ -1,36 +1,58 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { createStoreProxy } from '@/core/stores'
+import { ApiClient } from '@/api-client'
+import type {
+  UpdateUserMemorySettingsRequest,
+  UserMemorySettings,
+} from '@/api-client/types'
 import { emitMemorySettingsUpdated } from '@/modules/memory/events'
 
-export interface UserMemorySettingsRow {
-  user_id: string
-  extraction_enabled: boolean
-  retrieval_enabled: boolean
-  max_memories: number
-  retention_days: number | null
-  extraction_model_id: string | null
-  created_at: string
-  updated_at: string
+// Widened patch type — `retention_days` + `extraction_model_id` are
+// tri-state on the backend (Option<Option<T>>): absent = leave,
+// null = clear, value = set. See [[MemoryAdminUpdatePatch]] doc.
+export type MemorySettingsUpdatePatch = Omit<
+  UpdateUserMemorySettingsRequest,
+  'retention_days' | 'extraction_model_id'
+> & {
+  retention_days?: number | null
+  extraction_model_id?: string | null
 }
 
 interface MemorySettingsStore {
-  settings: UserMemorySettingsRow | null
+  settings: UserMemorySettings | null
   loading: boolean
   saving: boolean
   error: string | null
 
+  __init__: {
+    settings: () => Promise<void>
+  }
+
   load: () => Promise<void>
-  update: (
-    patch: Partial<{
-      extraction_enabled: boolean
-      retrieval_enabled: boolean
-      max_memories: number
-      retention_days: number | null
-      extraction_model_id: string | null
-    }>,
-  ) => Promise<UserMemorySettingsRow | null>
+  update: (patch: MemorySettingsUpdatePatch) => Promise<UserMemorySettings>
+}
+
+const loadSettings = async (
+  set: (fn: (s: MemorySettingsStore) => void) => void,
+) => {
+  set(s => {
+    s.loading = true
+    s.error = null
+  })
+  try {
+    const row = await ApiClient.MemorySettings.get()
+    set(s => {
+      s.settings = row
+      s.loading = false
+    })
+  } catch (error) {
+    set(s => {
+      s.error =
+        error instanceof Error ? error.message : 'Failed to load settings'
+      s.loading = false
+    })
+  }
 }
 
 export const useMemorySettingsStore = create<MemorySettingsStore>()(
@@ -41,59 +63,45 @@ export const useMemorySettingsStore = create<MemorySettingsStore>()(
       saving: false,
       error: null,
 
-      load: async () => {
-        set((d) => {
-          d.loading = true
-          d.error = null
-        })
-        try {
-          const res = await fetch('/api/memory/settings', {
-            credentials: 'include',
-          })
-          if (!res.ok) throw new Error(`Failed to load settings: ${res.status}`)
-          const row: UserMemorySettingsRow = await res.json()
-          set((d) => {
-            d.settings = row
-            d.loading = false
-          })
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Failed to load settings'
-            d.loading = false
-          })
-        }
+      __init__: {
+        settings: () => loadSettings(set),
       },
 
-      update: async (patch) => {
-        set((d) => {
-          d.saving = true
-          d.error = null
+      load: () => loadSettings(set),
+
+      update: async (patch): Promise<UserMemorySettings> => {
+        set(s => {
+          s.saving = true
+          s.error = null
         })
         try {
-          const res = await fetch('/api/memory/settings', {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(patch),
+          // Cast: widened patch carries `null` arms the OpenAPI
+          // codegen strips. See MemoryAdmin.store comment.
+          const row = await ApiClient.MemorySettings.update(
+            patch as UpdateUserMemorySettingsRequest,
+          )
+          set(s => {
+            s.settings = row
+            s.saving = false
           })
-          if (!res.ok) throw new Error(`Update failed: ${res.status}`)
-          const row: UserMemorySettingsRow = await res.json()
-          set((d) => {
-            d.settings = row
-            d.saving = false
-          })
-          emitMemorySettingsUpdated(row).catch(() => {})
+          try {
+            await emitMemorySettingsUpdated(row)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit memory settings updated event:',
+              eventError,
+            )
+          }
           return row
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Update failed'
-            d.saving = false
+        } catch (error) {
+          set(s => {
+            s.error =
+              error instanceof Error ? error.message : 'Update failed'
+            s.saving = false
           })
-          return null
+          throw error
         }
       },
     })),
   ),
 )
-
-export const MemorySettingsStoreProxy = createStoreProxy(useMemorySettingsStore)

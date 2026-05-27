@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   login,
 } from '../../common/auth-helpers'
@@ -40,9 +41,11 @@ test.describe('Memory MCP — remember/forget tools', () => {
       ],
     )
     await login(page, baseURL, username, 'password123')
+    const userToken = await getCurrentUserToken(page)
 
     // Call the remember tool via JSON-RPC.
     const res = await page.request.post(`${apiURL}/api/memories/mcp`, {
+      headers: { Authorization: `Bearer ${userToken}` },
       data: {
         jsonrpc: '2.0',
         id: 1,
@@ -57,10 +60,20 @@ test.describe('Memory MCP — remember/forget tools', () => {
     const body = await res.json()
     expect(body.result?.structuredContent?.memory_id).toBeTruthy()
 
-    // Now visit /settings/memory and confirm it shows up.
+    // Now visit /settings/memory and confirm it shows up. The page
+    // also renders an Audit log card whose Snapshot column contains
+    // the same string — scope to the "My memories" card, and use
+    // `.first()` because antd `ellipsis: true` columns render a
+    // hidden measurement <td> alongside the visible one.
     await page.goto(`${baseURL}/settings/memory`)
+    const memoriesCard = page
+      .locator('.ant-card')
+      .filter({ hasText: 'My memories' })
+      .first()
     await expect(
-      page.getByText('User uses Linux on a ThinkPad'),
+      memoriesCard
+        .getByRole('cell', { name: 'User uses Linux on a ThinkPad' })
+        .first(),
     ).toBeVisible({ timeout: 5000 })
   })
 })

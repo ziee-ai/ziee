@@ -260,7 +260,7 @@ pub async fn list_audit_log(
 
 pub fn list_audit_log_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryRead,)>(op)
-        .id("Memory.audit.list")
+        .id("MemoryAudit.list")
         .tag("Memory")
         .summary("List the caller's memory audit log entries")
         .response::<200, Json<Vec<MemoryAuditEntry>>>()
@@ -278,7 +278,7 @@ pub async fn get_user_settings(
 
 pub fn get_user_settings_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryRead,)>(op)
-        .id("Memory.settings.get")
+        .id("MemorySettings.get")
         .tag("Memory")
         .summary("Fetch the caller's memory settings")
         .response::<200, Json<UserMemorySettings>>()
@@ -323,7 +323,7 @@ pub async fn update_user_settings(
 
 pub fn update_user_settings_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryWrite,)>(op)
-        .id("Memory.settings.update")
+        .id("MemorySettings.update")
         .tag("Memory")
         .summary("Update the caller's memory settings")
         .response::<200, Json<UserMemorySettings>>()
@@ -341,7 +341,7 @@ pub async fn get_admin_settings(
 
 pub fn get_admin_settings_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryAdminRead,)>(op)
-        .id("Memory.admin.get")
+        .id("MemoryAdmin.get")
         .tag("Memory")
         .summary("Read admin memory settings")
         .response::<200, Json<MemoryAdminSettings>>()
@@ -475,7 +475,7 @@ pub async fn update_admin_settings(
 
 pub fn update_admin_settings_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryAdminManage,)>(op)
-        .id("Memory.admin.update")
+        .id("MemoryAdmin.update")
         .tag("Memory")
         .summary("Update admin memory settings")
         .response::<200, Json<MemoryAdminSettings>>()
@@ -550,7 +550,7 @@ pub async fn get_rebuild_status(
 
 pub fn get_rebuild_status_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryAdminRead,)>(op)
-        .id("Memory.admin.rebuildStatus")
+        .id("MemoryAdmin.rebuildStatus")
         .tag("Memory")
         .summary("Read embedding rebuild status")
         .response::<200, Json<RebuildStatus>>()
@@ -605,7 +605,7 @@ pub async fn trigger_reembed(
 
 pub fn trigger_reembed_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryAdminManage,)>(op)
-        .id("Memory.admin.reembed")
+        .id("MemoryAdmin.reembed")
         .tag("Memory")
         .summary("Trigger a re-embed of all memories using the current embedding model")
         .response::<202, Json<serde_json::Value>>()
@@ -649,7 +649,7 @@ pub async fn test_extract(
 #[cfg(debug_assertions)]
 pub fn test_extract_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryAdminManage,)>(op)
-        .id("Memory.test.extract")
+        .id("MemoryTest.extract")
         .tag("Memory")
         .summary("Test-only: trigger extraction synchronously (debug builds)")
         .response::<200, Json<serde_json::Value>>()
@@ -679,7 +679,7 @@ pub async fn test_summarize(
 #[cfg(debug_assertions)]
 pub fn test_summarize_docs(op: TransformOperation) -> TransformOperation {
     with_permission::<(MemoryAdminManage,)>(op)
-        .id("Memory.test.summarize")
+        .id("MemoryTest.summarize")
         .tag("Memory")
         .summary("Test-only: trigger summary refresh synchronously (debug builds)")
         .response::<200, Json<serde_json::Value>>()

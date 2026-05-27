@@ -2,7 +2,7 @@ name: ziee-chat
 
 services:
   postgres-build:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password

@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   loginExpectingOnboarding,
 } from '../../common/auth-helpers'
@@ -65,7 +66,11 @@ test.describe('Memory — onboarding enable', () => {
     await page.getByRole('button', { name: /Finish|Done/ }).click()
 
     // Verify settings now enabled.
-    const adminRes = await page.request.get(`${apiURL}/api/memory/admin-settings`)
+    const userToken = await getCurrentUserToken(page)
+    const adminRes = await page.request.get(
+      `${apiURL}/api/memory/admin-settings`,
+      { headers: { Authorization: `Bearer ${userToken}` } },
+    )
     const settings = await adminRes.json()
     expect(settings.enabled).toBe(true)
     expect(settings.embedding_model_id).not.toBeNull()

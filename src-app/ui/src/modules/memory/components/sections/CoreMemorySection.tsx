@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Card, Empty, Select, Spin, Typography } from 'antd'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
@@ -18,12 +18,6 @@ export function CoreMemorySection() {
   const canRead = usePermission(READ_PERM)
   const { assistants: assistantsMap, loading } = Stores.UserAssistants
   const [assistantId, setAssistantId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (canRead) {
-      Stores.UserAssistants.loadUserAssistants()
-    }
-  }, [canRead])
 
   const assistants = useMemo(
     () => Array.from(assistantsMap.values()),

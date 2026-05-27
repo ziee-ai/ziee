@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   login,
 } from '../../common/auth-helpers'
@@ -37,12 +38,14 @@ test.describe('Memory — assistant core memory blocks', () => {
       ],
     )
     await login(page, baseURL, username, 'password123')
+    const userToken = await getCurrentUserToken(page)
 
     // Random UUID — the FK to assistants(id) will reject, but the
     // 400 we expect for the bad slug fires BEFORE the FK check
     // because validation happens in the handler.
     const assistantId = '00000000-0000-0000-0000-000000000001'
     const res = await page.request.put(`${apiURL}/api/assistants/core-memory`, {
+      headers: { Authorization: `Bearer ${userToken}` },
       data: {
         assistant_id: assistantId,
         block_label: 'NOT A VALID SLUG',

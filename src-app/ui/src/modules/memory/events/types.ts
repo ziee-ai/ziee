@@ -1,15 +1,17 @@
 import type { BaseEvent } from '@/core/events'
-import type { UserMemoryRow } from '@/modules/memory/stores/Memories.store'
-import type { UserMemorySettingsRow } from '@/modules/memory/stores/MemorySettings.store'
-import type { MemoryAdminSettingsRow } from '@/modules/memory/stores/MemoryAdmin.store'
+import type {
+  MemoryAdminSettings,
+  UserMemory,
+  UserMemorySettings,
+} from '@/api-client/types'
 
 export interface MemoryCreatedEvent extends BaseEvent {
   type: 'memory.created'
-  data: { memory: UserMemoryRow }
+  data: { memory: UserMemory }
 }
 export interface MemoryUpdatedEvent extends BaseEvent {
   type: 'memory.updated'
-  data: { memory: UserMemoryRow }
+  data: { memory: UserMemory }
 }
 export interface MemoryDeletedEvent extends BaseEvent {
   type: 'memory.deleted'
@@ -21,11 +23,11 @@ export interface MemoryAllClearedEvent extends BaseEvent {
 }
 export interface MemorySettingsUpdatedEvent extends BaseEvent {
   type: 'memory.settings_updated'
-  data: { settings: UserMemorySettingsRow }
+  data: { settings: UserMemorySettings }
 }
 export interface MemoryAdminSettingsUpdatedEvent extends BaseEvent {
   type: 'memory.admin_settings_updated'
-  data: { settings: MemoryAdminSettingsRow }
+  data: { settings: MemoryAdminSettings }
 }
 
 export type MemoryModuleEvent =

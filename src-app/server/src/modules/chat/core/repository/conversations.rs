@@ -47,6 +47,7 @@ pub async fn create_conversation(
         INSERT INTO conversations (user_id, model_id, title)
         VALUES ($1, $2, $3)
         RETURNING id, user_id, model_id as "model_id: _", title, active_branch_id,
+                  memory_mode,
                   created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         user_id,
@@ -78,6 +79,7 @@ pub async fn create_conversation(
         SET active_branch_id = $1, updated_at = NOW()
         WHERE id = $2
         RETURNING id, user_id, model_id as "model_id: _", title, active_branch_id,
+                  memory_mode,
                   created_at as "created_at: _", updated_at as "updated_at: _"
         "#,
         branch.id,
@@ -103,6 +105,7 @@ pub async fn get_conversation(
         Conversation,
         r#"
         SELECT id, user_id, model_id as "model_id: _", title, active_branch_id,
+               memory_mode,
                created_at as "created_at: _", updated_at as "updated_at: _"
         FROM conversations
         WHERE id = $1 AND user_id = $2
@@ -129,7 +132,7 @@ pub async fn list_conversations(
         r#"
         SELECT
             c.id, c.user_id, c.model_id, c.title, c.active_branch_id,
-            c.created_at, c.updated_at,
+            c.memory_mode, c.created_at, c.updated_at,
             COUNT(bm.message_id) as message_count
         FROM conversations c
         LEFT JOIN branches b ON b.conversation_id = c.id
@@ -156,6 +159,7 @@ pub async fn list_conversations(
                 model_id: row.model_id,
                 title: row.title,
                 active_branch_id: row.active_branch_id,
+                memory_mode: row.memory_mode,
                 created_at: to_chrono_datetime(row.created_at),
                 updated_at: to_chrono_datetime(row.updated_at),
             },
@@ -184,6 +188,7 @@ pub async fn update_conversation(
                 Conversation,
                 r#"
                 SELECT id, user_id, model_id as "model_id: _", title, active_branch_id,
+                       memory_mode,
                        created_at as "created_at: _", updated_at as "updated_at: _"
                 FROM conversations
                 WHERE id = $1 AND user_id = $2
@@ -206,6 +211,7 @@ pub async fn update_conversation(
                     updated_at = NOW()
                 WHERE id = $2 AND user_id = $3
                 RETURNING id, user_id, model_id as "model_id: _", title, active_branch_id,
+                          memory_mode,
                           created_at as "created_at: _", updated_at as "updated_at: _"
                 "#,
                 new_title as Option<String>,

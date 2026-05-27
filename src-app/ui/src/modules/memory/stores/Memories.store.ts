@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { createStoreProxy } from '@/core/stores'
+import { ApiClient } from '@/api-client'
+import type {
+  CreateMemoryRequest,
+  DeleteAllResponse,
+  UpdateMemoryRequest,
+  UserMemory,
+} from '@/api-client/types'
 import {
   emitMemoryAllCleared,
   emitMemoryCreated,
@@ -9,25 +15,8 @@ import {
   emitMemoryUpdated,
 } from '@/modules/memory/events'
 
-export interface UserMemoryRow {
-  id: string
-  user_id: string
-  content: string
-  embedding_model: string | null
-  source: 'extraction' | 'mcp_tool' | 'manual'
-  source_message_id: string | null
-  importance: number
-  confidence: number
-  kind: 'preference' | 'fact' | 'goal' | 'relationship' | 'other'
-  metadata: unknown
-  created_at: string
-  updated_at: string
-  last_recalled_at: string | null
-  recall_count: number
-}
-
 interface MemoriesStore {
-  memories: UserMemoryRow[]
+  memories: UserMemory[]
   loading: boolean
   saving: boolean
   error: string | null
@@ -35,22 +24,48 @@ interface MemoriesStore {
   kindFilter: string | null
   sourceFilter: string | null
 
+  __init__: {
+    memories: () => Promise<void>
+  }
+
   load: () => Promise<void>
   create: (
     content: string,
     importance?: number,
     kind?: string,
-  ) => Promise<UserMemoryRow | null>
+  ) => Promise<UserMemory>
   update: (
     id: string,
-    patch: { content?: string; importance?: number; kind?: string },
-  ) => Promise<UserMemoryRow | null>
-  remove: (id: string) => Promise<boolean>
+    patch: Omit<UpdateMemoryRequest, never>,
+  ) => Promise<UserMemory>
+  remove: (id: string) => Promise<void>
   removeAll: () => Promise<number>
   setSearchQuery: (q: string) => void
   setKindFilter: (k: string | null) => void
   setSourceFilter: (s: string | null) => void
   reset: () => void
+}
+
+const loadMemories = async (
+  set: (fn: (s: MemoriesStore) => void) => void,
+) => {
+  set(s => {
+    s.loading = true
+    s.error = null
+  })
+  try {
+    const rows = await ApiClient.Memory.list({ limit: 200 })
+    set(s => {
+      s.memories = rows
+      s.loading = false
+    })
+  } catch (error) {
+    set(s => {
+      s.error =
+        error instanceof Error ? error.message : 'Failed to load memories'
+      s.loading = false
+    })
+  }
 }
 
 export const useMemoriesStore = create<MemoriesStore>()(
@@ -64,152 +79,146 @@ export const useMemoriesStore = create<MemoriesStore>()(
       kindFilter: null,
       sourceFilter: null,
 
-      load: async () => {
-        set((d) => {
-          d.loading = true
-          d.error = null
-        })
-        try {
-          const res = await fetch('/api/memories?limit=200', {
-            credentials: 'include',
-          })
-          if (!res.ok) throw new Error(`Failed to load memories: ${res.status}`)
-          const rows: UserMemoryRow[] = await res.json()
-          set((d) => {
-            d.memories = rows
-            d.loading = false
-          })
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Failed to load memories'
-            d.loading = false
-          })
-        }
+      __init__: {
+        memories: () => loadMemories(set),
       },
 
-      create: async (content, importance, kind) => {
-        set((d) => {
-          d.saving = true
-          d.error = null
+      load: () => loadMemories(set),
+
+      create: async (content, importance, kind): Promise<UserMemory> => {
+        set(s => {
+          s.saving = true
+          s.error = null
         })
         try {
-          const res = await fetch('/api/memories', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content,
-              importance: importance ?? 50,
-              kind: kind ?? 'fact',
-              metadata: {},
-            }),
-          })
-          if (!res.ok) throw new Error(`Create failed: ${res.status}`)
-          const row: UserMemoryRow = await res.json()
-          set((d) => {
-            d.memories.unshift(row)
-            d.saving = false
-          })
-          emitMemoryCreated(row).catch(() => {})
-          return row
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Create failed'
-            d.saving = false
-          })
-          return null
-        }
-      },
-
-      update: async (id, patch) => {
-        set((d) => {
-          d.saving = true
-          d.error = null
-        })
-        try {
-          const res = await fetch(`/api/memories/${id}`, {
-            method: 'PATCH',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(patch),
-          })
-          if (!res.ok) throw new Error(`Update failed: ${res.status}`)
-          const row: UserMemoryRow = await res.json()
-          set((d) => {
-            const idx = d.memories.findIndex((m: UserMemoryRow) => m.id === id)
-            if (idx >= 0) d.memories[idx] = row
-            d.saving = false
-          })
-          emitMemoryUpdated(row).catch(() => {})
-          return row
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Update failed'
-            d.saving = false
-          })
-          return null
-        }
-      },
-
-      remove: async (id) => {
-        try {
-          const res = await fetch(`/api/memories/${id}`, {
-            method: 'DELETE',
-            credentials: 'include',
-          })
-          if (!res.ok && res.status !== 204) {
-            throw new Error(`Delete failed: ${res.status}`)
+          const req: CreateMemoryRequest = {
+            content,
+            importance: importance ?? 50,
+            kind: kind ?? 'fact',
+            metadata: {},
           }
-          set((d) => {
-            d.memories = d.memories.filter((m: UserMemoryRow) => m.id !== id)
+          const row = await ApiClient.Memory.create(req)
+          set(s => {
+            s.memories.unshift(row)
+            s.saving = false
           })
-          emitMemoryDeleted(id).catch(() => {})
-          return true
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Delete failed'
+          try {
+            await emitMemoryCreated(row)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit memory created event:',
+              eventError,
+            )
+          }
+          return row
+        } catch (error) {
+          set(s => {
+            s.error = error instanceof Error ? error.message : 'Create failed'
+            s.saving = false
           })
-          return false
+          throw error
         }
       },
 
-      removeAll: async () => {
+      update: async (id, patch): Promise<UserMemory> => {
+        set(s => {
+          s.saving = true
+          s.error = null
+        })
         try {
-          const res = await fetch('/api/memories/all', {
-            method: 'DELETE',
-            credentials: 'include',
+          const row = await ApiClient.Memory.update({ id, ...patch })
+          set(s => {
+            const idx = s.memories.findIndex(m => m.id === id)
+            if (idx >= 0) s.memories[idx] = row
+            s.saving = false
           })
-          if (!res.ok) throw new Error(`Delete-all failed: ${res.status}`)
-          const body: { deleted: number } = await res.json()
-          set((d) => {
-            d.memories = []
+          try {
+            await emitMemoryUpdated(row)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit memory updated event:',
+              eventError,
+            )
+          }
+          return row
+        } catch (error) {
+          set(s => {
+            s.error = error instanceof Error ? error.message : 'Update failed'
+            s.saving = false
           })
-          emitMemoryAllCleared(body.deleted).catch(() => {})
-          return body.deleted
-        } catch (e: any) {
-          set((d) => {
-            d.error = e?.message ?? 'Delete-all failed'
-          })
-          return 0
+          throw error
         }
       },
 
-      setSearchQuery: (q) => set((d) => { d.searchQuery = q }),
-      setKindFilter: (k) => set((d) => { d.kindFilter = k }),
-      setSourceFilter: (s) => set((d) => { d.sourceFilter = s }),
+      remove: async (id): Promise<void> => {
+        try {
+          await ApiClient.Memory.delete({ id })
+          set(s => {
+            s.memories = s.memories.filter(m => m.id !== id)
+          })
+          try {
+            await emitMemoryDeleted(id)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit memory deleted event:',
+              eventError,
+            )
+          }
+        } catch (error) {
+          set(s => {
+            s.error = error instanceof Error ? error.message : 'Delete failed'
+          })
+          throw error
+        }
+      },
+
+      removeAll: async (): Promise<number> => {
+        try {
+          const body: DeleteAllResponse = await ApiClient.Memory.deleteAll()
+          set(s => {
+            s.memories = []
+          })
+          try {
+            await emitMemoryAllCleared(body.deleted)
+          } catch (eventError) {
+            console.error(
+              'Failed to emit memory all-cleared event:',
+              eventError,
+            )
+          }
+          return body.deleted
+        } catch (error) {
+          set(s => {
+            s.error =
+              error instanceof Error ? error.message : 'Delete-all failed'
+          })
+          throw error
+        }
+      },
+
+      setSearchQuery: q =>
+        set(s => {
+          s.searchQuery = q
+        }),
+      setKindFilter: k =>
+        set(s => {
+          s.kindFilter = k
+        }),
+      setSourceFilter: source =>
+        set(s => {
+          s.sourceFilter = source
+        }),
 
       reset: () =>
-        set((d) => {
-          d.memories = []
-          d.loading = false
-          d.saving = false
-          d.error = null
-          d.searchQuery = ''
-          d.kindFilter = null
-          d.sourceFilter = null
+        set(s => {
+          s.memories = []
+          s.loading = false
+          s.saving = false
+          s.error = null
+          s.searchQuery = ''
+          s.kindFilter = null
+          s.sourceFilter = null
         }),
     })),
   ),
 )
-
-export const MemoriesStoreProxy = createStoreProxy(useMemoriesStore)

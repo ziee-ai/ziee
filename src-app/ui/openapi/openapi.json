@@ -9739,7 +9739,7 @@
         ],
         "summary": "Fetch the caller's memory settings",
         "description": "\n\n**Required Permission:** `memory::read`\n\nList and read own memories.",
-        "operationId": "Memory.settings.get",
+        "operationId": "MemorySettings.get",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -9787,7 +9787,7 @@
         ],
         "summary": "Update the caller's memory settings",
         "description": "\n\n**Required Permission:** `memory::write`\n\nCreate, edit, and delete own memories.",
-        "operationId": "Memory.settings.update",
+        "operationId": "MemorySettings.update",
         "requestBody": {
           "description": "Per-user settings update body.",
           "content": {
@@ -9848,7 +9848,7 @@
         ],
         "summary": "List the caller's memory audit log entries",
         "description": "\n\n**Required Permission:** `memory::read`\n\nList and read own memories.",
-        "operationId": "Memory.audit.list",
+        "operationId": "MemoryAudit.list",
         "parameters": [
           {
             "in": "query",
@@ -9913,7 +9913,7 @@
         ],
         "summary": "Read admin memory settings",
         "description": "\n\n**Required Permission:** `memory::admin::read`\n\nRead memory admin settings (embedding model, defaults).",
-        "operationId": "Memory.admin.get",
+        "operationId": "MemoryAdmin.get",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -9961,7 +9961,7 @@
         ],
         "summary": "Update admin memory settings",
         "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
-        "operationId": "Memory.admin.update",
+        "operationId": "MemoryAdmin.update",
         "requestBody": {
           "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default for prompts, or \"no default\" for\n embedding/extraction models), `Some(Some(x))` = set to `x`.\n\n Serde's default `Option<T>` deserialization collapses `null` and\n \"absent\" to the same `None`, so the discriminating \"Some(None)\"\n state requires a custom deserializer — see\n `deserialize_nullable_field` below.",
           "content": {
@@ -10022,7 +10022,7 @@
         ],
         "summary": "Read embedding rebuild status",
         "description": "\n\n**Required Permission:** `memory::admin::read`\n\nRead memory admin settings (embedding model, defaults).",
-        "operationId": "Memory.admin.rebuildStatus",
+        "operationId": "MemoryAdmin.rebuildStatus",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -10072,7 +10072,7 @@
         ],
         "summary": "Trigger a re-embed of all memories using the current embedding model",
         "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
-        "operationId": "Memory.admin.reembed",
+        "operationId": "MemoryAdmin.reembed",
         "responses": {
           "403": {
             "description": "Forbidden - Missing required permission",
@@ -10120,7 +10120,7 @@
         ],
         "summary": "Test-only: trigger extraction synchronously (debug builds)",
         "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
-        "operationId": "Memory.test.extract",
+        "operationId": "MemoryTest.extract",
         "requestBody": {
           "content": {
             "application/json": {
@@ -10178,7 +10178,7 @@
         ],
         "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
         "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
-        "operationId": "Memory.test.summarize",
+        "operationId": "MemoryTest.summarize",
         "requestBody": {
           "content": {
             "application/json": {

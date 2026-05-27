@@ -1,12 +1,14 @@
 import { Stores } from '@/core/stores'
-import type { UserMemoryRow } from '@/modules/memory/stores/Memories.store'
-import type { UserMemorySettingsRow } from '@/modules/memory/stores/MemorySettings.store'
-import type { MemoryAdminSettingsRow } from '@/modules/memory/stores/MemoryAdmin.store'
+import type {
+  MemoryAdminSettings,
+  UserMemory,
+  UserMemorySettings,
+} from '@/api-client/types'
 
-export const emitMemoryCreated = async (memory: UserMemoryRow) => {
+export const emitMemoryCreated = async (memory: UserMemory) => {
   await Stores.EventBus.emit({ type: 'memory.created', data: { memory } })
 }
-export const emitMemoryUpdated = async (memory: UserMemoryRow) => {
+export const emitMemoryUpdated = async (memory: UserMemory) => {
   await Stores.EventBus.emit({ type: 'memory.updated', data: { memory } })
 }
 export const emitMemoryDeleted = async (memoryId: string) => {
@@ -18,13 +20,17 @@ export const emitMemoryAllCleared = async (deletedCount: number) => {
     data: { deletedCount },
   })
 }
-export const emitMemorySettingsUpdated = async (settings: UserMemorySettingsRow) => {
+export const emitMemorySettingsUpdated = async (
+  settings: UserMemorySettings,
+) => {
   await Stores.EventBus.emit({
     type: 'memory.settings_updated',
     data: { settings },
   })
 }
-export const emitMemoryAdminSettingsUpdated = async (settings: MemoryAdminSettingsRow) => {
+export const emitMemoryAdminSettingsUpdated = async (
+  settings: MemoryAdminSettings,
+) => {
   await Stores.EventBus.emit({
     type: 'memory.admin_settings_updated',
     data: { settings },

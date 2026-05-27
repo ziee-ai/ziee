@@ -2,6 +2,7 @@ import { test, expect } from '../../fixtures/test-context'
 import {
   loginAsAdmin,
   getAdminToken,
+  getCurrentUserToken,
   createTestUser,
   login,
 } from '../../common/auth-helpers'
@@ -49,26 +50,35 @@ test.describe('Memory — auto-extraction', () => {
       ],
     )
     await login(page, baseURL, username, 'password123')
+    const userToken = await getCurrentUserToken(page)
+    const authHeader = { Authorization: `Bearer ${userToken}` }
 
     // Toggle extraction on.
     const putRes = await page.request.put(`${apiURL}/api/memory/settings`, {
+      headers: authHeader,
       data: { extraction_enabled: true },
     })
     expect(putRes.status()).toBe(200)
     expect((await putRes.json()).extraction_enabled).toBe(true)
 
     // Audit log endpoint reachable; starts empty.
-    const auditRes = await page.request.get(`${apiURL}/api/memory/audit-log`)
+    const auditRes = await page.request.get(
+      `${apiURL}/api/memory/audit-log`,
+      { headers: authHeader },
+    )
     expect(auditRes.status()).toBe(200)
     expect(Array.isArray(await auditRes.json())).toBe(true)
 
     // Manual memory ADD writes an audit entry.
     const addRes = await page.request.post(`${apiURL}/api/memories`, {
+      headers: authHeader,
       data: { content: 'User likes hiking', kind: 'preference' },
     })
     expect(addRes.status()).toBe(201)
 
-    const audit2 = await page.request.get(`${apiURL}/api/memory/audit-log`)
+    const audit2 = await page.request.get(`${apiURL}/api/memory/audit-log`, {
+      headers: authHeader,
+    })
     const entries2: any[] = await audit2.json()
     expect(entries2.some((e) => e.op === 'ADD')).toBe(true)
   })
