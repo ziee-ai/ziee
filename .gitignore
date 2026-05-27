@@ -16,3 +16,13 @@ tier3-prefetch-*.log
 # binary). Cargo doesn't auto-place a .gitignore here because the path is
 # custom (CARGO_TARGET_DIR), so ignore it explicitly.
 target-docker/
+
+# npm workspaces hoists into the repo-root node_modules; never committed.
+node_modules/
+
+# macOS Finder cruft.
+.DS_Store
+
+# Per-session Claude Code state (lock file used by the scheduled-task
+# bookkeeping). Never committed.
+.claude/scheduled_tasks.lock

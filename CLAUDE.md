@@ -7,6 +7,10 @@ Essential documentation for developing Ziee, a full-stack application with Rust 
 ## Quick Start
 
 ```bash
+# One-time setup (or after any dep bump):
+npm install                          # hoists deps for BOTH UI workspaces
+cd src-app && cargo check --workspace  # builds the entire Rust workspace
+
 # Backend
 cd src-app/server
 CONFIG_FILE=config/dev.yaml cargo run
@@ -17,6 +21,23 @@ npm run dev
 ```
 
 Access at http://localhost:5173
+
+### Monorepo layout
+
+- **Rust** — single workspace at `src-app/Cargo.toml` listing 9 member
+  crates. Shared dep versions live in `[workspace.dependencies]`; bump
+  once there, every member picks it up. One `Cargo.lock` at
+  `src-app/Cargo.lock`. Cargo's config (`POSTGRESQL_VERSION` etc.) is
+  workspace-wide at `src-app/.cargo/config.toml`.
+- **npm** — root `/package.json` declares `workspaces:
+  ["src-app/ui", "src-app/desktop/ui"]`. `npm install` from the repo
+  root hoists shared deps into `/node_modules`. One
+  `/package-lock.json`. `overrides` pins react/react-dom/typescript
+  across workspaces.
+- **Drift guard** — `npx syncpack lint` (or `just sync-check`) flags
+  any shared dep whose version differs between
+  `src-app/ui/package.json` and `src-app/desktop/ui/package.json`.
+  Rules live in `/.syncpackrc.json`.
 
 ---
 

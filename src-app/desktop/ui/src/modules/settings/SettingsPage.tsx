@@ -15,8 +15,17 @@ import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
 
-// Admin settings to hide in desktop app
-const HIDDEN_ADMIN_ITEMS = ['users', 'user-groups', 'assistants', 'mcp-admin']
+// Admin settings to hide in desktop app (single-admin, no external auth).
+// `auth-providers` is LDAP / OAuth / SAML — only meaningful on a hosted,
+// multi-user deployment. `users` / `user-groups` / `mcp-admin` / `assistants`
+// are all multi-user RBAC surfaces that collapse to a no-op here.
+const HIDDEN_ADMIN_ITEMS = [
+  'users',
+  'user-groups',
+  'assistants',
+  'mcp-admin',
+  'auth-providers',
+]
 
 export default function SettingsPage() {
   const navigate = useNavigate()

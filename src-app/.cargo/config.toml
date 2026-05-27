@@ -1,30 +1,32 @@
-# Cargo build configuration for ziee-chat-server.
+# Workspace-wide Cargo build configuration.
 #
-# Applies to all `cargo build`/`run`/`test` invocations inside this
-# crate. Variables here are visible to dependent build scripts
-# (notably libseccomp-sys) at compile time.
+# Applies to every member of the `src-app/` workspace (see `Cargo.toml`
+# `[workspace] members`). Cargo's config lookup walks UP from the
+# invocation directory; this file is the first one hit from any
+# member, so per-member `.cargo/config.toml` files are obsolete.
 
 [env]
 # Pin the embedded-PostgreSQL version. Single source of truth used by:
 #   - `postgresql_embedded`'s build.rs (reads POSTGRESQL_VERSION as a
 #     semver constraint, then downloads + bundles the matching theseus
 #     binary into our final binary).
-#   - `build_helper/pgvector.rs` (reads ZIEE_POSTGRES_VERSION as a plain
-#     version, used in the theseus download URL to build vector.so
-#     against header-compatible PG sources).
-#   - `core/database/mod.rs` (reads ZIEE_POSTGRES_VERSION via env!() and
-#     bakes it into `POSTGRES_VERSION` so the runtime VersionReq
-#     matches the bundled archive).
+#   - `server/build_helper/pgvector.rs` (reads ZIEE_POSTGRES_VERSION as
+#     a plain version, used in the theseus download URL to build
+#     vector.so against header-compatible PG sources).
+#   - `server/src/core/database/mod.rs` (reads ZIEE_POSTGRES_VERSION
+#     via env!() and bakes it into `POSTGRES_VERSION` so the runtime
+#     VersionReq matches the bundled archive).
 # Bumping the PG floor is a one-line change here; remember to also bump
-# `config/dev.yaml` + `config/dev.example.yaml` (those are runtime
-# config and read at server start).
+# `server/config/dev.yaml` + `server/config/dev.example.yaml` (those
+# are runtime config and read at server start).
 POSTGRESQL_VERSION = "=18.3.0"
 ZIEE_POSTGRES_VERSION = "18.3.0"
 
 # Static-link libseccomp so operators don't need libseccomp2 on the
 # host. The libseccomp-sys build script honors LIBSECCOMP_LINK_TYPE.
-# Only takes effect when the `code_sandbox_seccomp` cargo feature is
-# enabled (i.e. Linux release builds with the feature flag on).
+# Only takes effect when the server crate's `code_sandbox_seccomp`
+# cargo feature is enabled (i.e. Linux release builds with the feature
+# flag on). For non-server crates this is an inert env var.
 LIBSECCOMP_LINK_TYPE = "static"
 
 # Where libseccomp.a lives. Default is Debian/Ubuntu's multilib path

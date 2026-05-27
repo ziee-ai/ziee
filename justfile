@@ -190,6 +190,69 @@ ui:
 antd-check:
     cd src-app/ui && ./scripts/antd-diagnose.sh
 
+# ─── Desktop (Tauri) app ────────────────────────────────────────────
+
+# Run the desktop app in dev mode (Tauri window + hot-reload Vite).
+desktop-dev:
+    cd src-app/desktop/tauri && npx tauri dev
+
+# Build a release bundle (.dmg on macOS, .deb/.AppImage on Linux,
+# .msi on Windows). Output: src-app/desktop/tauri/target/release/bundle/.
+desktop-build:
+    cd src-app/desktop/tauri && npx tauri build
+
+# Same but unsigned + debug profile, for faster iteration.
+desktop-build-debug:
+    cd src-app/desktop/tauri && npx tauri build --debug
+
+# Install npm deps for both UI workspaces in one shot. With npm
+# workspaces (root /package.json), `npm install` hoists shared deps
+# to the repo's root node_modules and dedupes across workspaces.
+desktop-deps:
+    npm install
+
+# Check for dependency drift between core UI and desktop UI
+# package.json files. Exits non-zero if any shared dep version
+# differs (with the exception of intentionally split deps configured
+# in /.syncpackrc.json). Wire into CI to catch drift early.
+sync-check:
+    npx --no-install syncpack lint
+
+# Auto-fix mismatched dependency versions across workspaces by
+# rewriting the lower-version package.json to match the higher.
+# Run sync-check after to confirm clean.
+sync-fix:
+    npx --no-install syncpack fix-mismatches
+
+# Pin sqlx to the 0.8.x line in the workspace's `src-app/Cargo.lock`.
+# pgvector 0.4 accepts sqlx `>= 0.8, < 0.10` and cargo's resolver picks
+# 0.9 for it independently of the rest of the tree (which is pinned to
+# 0.8.x by ziee's `sqlx = "0.8.6"` + macros feature). Without this pin,
+# the two sqlx versions coexist and `HalfVector: sqlx::Type<Postgres>`
+# trait impls (which live in 0.9) don't apply to ziee's 0.8 query
+# builders → ~12 compile errors in the server lib.
+#
+# Run after every `cargo update`. No-op if already pinned.
+workspace-cargo-pin-sqlx:
+    @bash -c 'cd src-app && \
+        if cargo tree -i sqlx@0.9.0 2>/dev/null | grep -q pgvector; then \
+            echo "==> pinning pgvector→sqlx onto 0.8.6"; \
+            cargo update -p sqlx@0.9.0 --precise 0.8.6; \
+        else \
+            echo "==> sqlx already pinned to 0.8.x in lock"; \
+        fi'
+
+# Run desktop tests (layer 1: cargo on the Tauri crate;
+# layer 2: Playwright against the Vite dev server with a mocked
+# window.__TAURI__ shim). See plan-carefully-to-make-prancy-badger.md.
+desktop-test: desktop-test-rust desktop-test-e2e
+
+desktop-test-rust: workspace-cargo-pin-sqlx
+    cd src-app/desktop/tauri && cargo test
+
+desktop-test-e2e:
+    cd src-app/desktop/ui && npm run test:e2e
+
 # ─── Self-contained release builds ──────────────────────────────────
 #
 # Mac: produces target/aarch64-apple-darwin/release/ziee — a single

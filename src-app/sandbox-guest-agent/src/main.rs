@@ -46,6 +46,15 @@ const WORKSPACE_MOUNT: &str = "/workspace";
 /// Chunk size for streaming child stdout/stderr.
 const READ_CHUNK: usize = 64 * 1024;
 
+// Non-Linux stub so the bin can compile in a cargo workspace check
+// from a Mac/Windows host. Cross-compile to Linux for the real build.
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("ziee-sandbox-agent is built for Linux guest VMs only");
+    std::process::exit(1);
+}
+
+#[cfg(target_os = "linux")]
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     tracing_subscriber::fmt()
@@ -108,6 +117,7 @@ fn parse_listen() -> Listen {
     Listen::Vsock(VSOCK_PORT)
 }
 
+#[cfg(target_os = "linux")]
 async fn serve_vsock(port: u32, bpf: Option<Arc<Vec<u8>>>) {
     let listener = match VsockListener::bind(VsockAddr::new(libc::VMADDR_CID_ANY, port)) {
         Ok(l) => l,
@@ -150,6 +160,7 @@ async fn serve_vsock(port: u32, bpf: Option<Arc<Vec<u8>>>) {
     }
 }
 
+#[cfg(target_os = "linux")]
 async fn serve_tcp(addr: &str, bpf: Option<Arc<Vec<u8>>>) {
     let listener = match TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -170,6 +181,8 @@ async fn serve_tcp(addr: &str, bpf: Option<Arc<Vec<u8>>>) {
     }
 }
 
+// spawn_conn calls install_seccomp + uses libc::pidfd_open; both Linux-only.
+#[cfg(target_os = "linux")]
 fn spawn_conn<S>(stream: S, bpf: &Option<Arc<Vec<u8>>>, peer: String)
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -186,6 +199,10 @@ where
 /// Best-effort mounts. Failures are logged, not fatal: an `execute_command`
 /// against a missing rootfs returns a clear non-zero exit, which is more useful
 /// than the agent refusing to start.
+// libc::mount + MS_RDONLY are Linux-only — gating these two functions
+// keeps `cargo check --workspace` happy on Mac/Windows hosts. main()
+// has a parallel cfg gate.
+#[cfg(target_os = "linux")]
 fn init_mounts() {
     mount_fs("proc", "/proc", "proc", 0, None);
     // Guest root is mounted RO via virtio-fs (host-side gap #2). Provide a
@@ -212,6 +229,7 @@ fn init_mounts() {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn mount_fs(src: &str, target: &str, fstype: &str, flags: libc::c_ulong, data: Option<&str>) {
     use std::ffi::CString;
     let c_src = CString::new(src).unwrap();
@@ -236,6 +254,8 @@ fn mount_fs(src: &str, target: &str, fstype: &str, flags: libc::c_ulong, data: O
 
 /// Handle one control connection: read a single `Exec` frame, run bwrap, stream
 /// output, send `Exit`.
+// handle_conn calls install_seccomp + uses Linux pidfd APIs.
+#[cfg(target_os = "linux")]
 async fn handle_conn<S>(stream: S, bpf: Option<Arc<Vec<u8>>>) -> std::io::Result<()>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -419,6 +439,7 @@ where
 /// controllers child cgroups will use. Best-effort — if it fails, per-exec
 /// cgroup limits are simply unavailable and prlimit (in the bwrap argv) does
 /// the enforcement, exactly like the Linux host's `CgroupMode::None` path.
+#[cfg(target_os = "linux")]
 fn cgroup_init() {
     if !std::path::Path::new("/sys/fs/cgroup/cgroup.controllers").exists() {
         let _ = std::fs::create_dir_all("/sys/fs/cgroup");
@@ -471,6 +492,7 @@ impl Drop for GuestCgroup {
 /// read end to `target_fd` (clearing `FD_CLOEXEC` so it survives execve into
 /// bwrap, which reads it via `--seccomp <target_fd>`). Returns the parent's
 /// read fd so the caller can close it after spawn.
+#[cfg(target_os = "linux")]
 fn install_seccomp(cmd: &mut Command, target_fd: i32, bpf: Arc<Vec<u8>>) -> std::io::Result<i32> {
     let mut fds: [libc::c_int; 2] = [0; 2];
     if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
