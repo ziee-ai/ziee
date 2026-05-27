@@ -5,7 +5,7 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(name = "ziee-desktop")]
-#[command(version, about = "Ziee Chat Desktop Application", long_about = None)]
+#[command(version, about = "Ziee Desktop Application", long_about = None)]
 struct Cli {
     /// Path to configuration file (overrides CONFIG_FILE env var)
     #[arg(long, value_name = "FILE")]

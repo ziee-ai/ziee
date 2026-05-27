@@ -1,6 +1,6 @@
 [package]
 name = "ziee-desktop"
-description = "Ziee Chat Desktop Application"
+description = "Ziee Desktop Application"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

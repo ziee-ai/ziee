@@ -1,4 +1,4 @@
-//! Ziee Chat Desktop - Library
+//! Ziee Desktop - Library
 //!
 //! Tauri application with modular desktop features.
 //! All functionality (except get_server_port) communicates via HTTP routes.
@@ -24,7 +24,7 @@ pub fn run(config_file: Option<String>) -> Result<()> {
         )
         .init();
 
-    tracing::info!("Starting Ziee Chat Desktop...");
+    tracing::info!("Starting Ziee Desktop...");
     if let Some(ref path) = config_file {
         tracing::info!("Using config file: {}", path);
     }
