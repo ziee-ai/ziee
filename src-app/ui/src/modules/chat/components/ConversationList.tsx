@@ -65,12 +65,19 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
     return () => clearTimeout(timeoutId)
   }, [localSearchQuery])
 
-  // Load conversations on mount
+  // Load conversations on mount — always re-fetch, not guarded by
+  // `isInitialized`. The sidebar's RecentConversationsWidget calls
+  // `loadConversations()` at login and flips `isInitialized=true`
+  // with whatever conversations existed at that moment. If
+  // conversations are created later (by another tab, an MCP tool,
+  // or — in the E2E suite — a test that seeds before navigating
+  // here), the dedicated `/chats` page must show them.
+  // `loadConversations` already dedupes concurrent calls via its
+  // internal `loading/loadingMore` in-flight check, so unconditional
+  // refetch is safe.
   useEffect(() => {
-    if (!isInitialized) {
-      Stores.ChatHistory.__state.loadConversations()
-    }
-  }, [isInitialized])
+    Stores.ChatHistory.__state.loadConversations()
+  }, [])
 
   const handleLoadMore = async () => {
     try {

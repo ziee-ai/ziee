@@ -365,6 +365,30 @@ export async function getAdminToken(
 }
 
 /**
+ * Read the currently-logged-in user's access token from the page's
+ * localStorage. `login()` (and `loginAsAdmin()`) inject the token via
+ * addInitScript, so this works as soon as the post-login navigation
+ * has settled. Use this token to put `Authorization: Bearer ...`
+ * headers on `page.request.X(...)` calls when a spec needs to drive
+ * REST endpoints as the current page user.
+ */
+export async function getCurrentUserToken(page: Page): Promise<string> {
+  const authData = await page.evaluate(() =>
+    localStorage.getItem('auth-storage'),
+  )
+  if (!authData) {
+    throw new Error(
+      'getCurrentUserToken: no auth-storage in localStorage — did you call login() first?',
+    )
+  }
+  const token: string | undefined = JSON.parse(authData)?.state?.token
+  if (!token) {
+    throw new Error('getCurrentUserToken: auth-storage had no token')
+  }
+  return token
+}
+
+/**
  * Clear authentication state (logout)
  *
  * Used in: auth.spec.ts and potentially others

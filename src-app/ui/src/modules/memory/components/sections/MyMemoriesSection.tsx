@@ -1,0 +1,506 @@
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Button,
+  Card,
+  Drawer,
+  Dropdown,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd'
+import {
+  DeleteOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  PlusOutlined,
+} from '@ant-design/icons'
+import { Stores } from '@/core/stores'
+import { usePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
+import type { UserMemory } from '@/api-client/types'
+
+const { Text } = Typography
+const { Search } = Input
+
+const READ_PERM = Permissions.MemoryRead
+const WRITE_PERM = Permissions.MemoryWrite
+
+/**
+ * Per-user memory list with CRUD + filters + export.
+ *
+ * Hidden if no `memory::read`. Write controls (Add, Edit, Delete,
+ * Delete-all) hidden if no `memory::write`. Read-only viewers see
+ * the table + filters + export but no mutation affordances.
+ */
+export function MyMemoriesSection() {
+  const canRead = usePermission(READ_PERM)
+  const canWrite = usePermission(WRITE_PERM)
+  const { memories, loading, searchQuery, kindFilter, sourceFilter } =
+    Stores.Memories
+  const [editing, setEditing] = useState<UserMemory | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  const filtered = useMemo(() => {
+    return memories.filter((m) => {
+      if (kindFilter && m.kind !== kindFilter) return false
+      if (sourceFilter && m.source !== sourceFilter) return false
+      if (
+        searchQuery &&
+        !m.content.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+        return false
+      return true
+    })
+  }, [memories, kindFilter, sourceFilter, searchQuery])
+
+  if (!canRead) return null
+
+  return (
+    <Card
+      title="My memories"
+      extra={
+        canWrite ? (
+          <Space>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setCreating(true)}
+            >
+              Add memory
+            </Button>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'json',
+                    label: 'Export as JSON',
+                    onClick: () => exportMemories(memories, 'json'),
+                  },
+                  {
+                    key: 'csv',
+                    label: 'Export as CSV',
+                    onClick: () => exportMemories(memories, 'csv'),
+                  },
+                ],
+              }}
+            >
+              <Button icon={<DownloadOutlined />}>Export</Button>
+            </Dropdown>
+            <Popconfirm
+              title="Delete all memories?"
+              description="This is permanent and cannot be undone."
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+              onConfirm={async () => {
+                try {
+                  const n = await Stores.Memories.removeAll()
+                  message.success(`Deleted ${n} memories`)
+                } catch (error) {
+                  message.error(
+                    error instanceof Error
+                      ? error.message
+                      : 'Delete-all failed.',
+                  )
+                }
+              }}
+            >
+              <Button danger>Delete all</Button>
+            </Popconfirm>
+          </Space>
+        ) : (
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'json',
+                  label: 'Export as JSON',
+                  onClick: () => exportMemories(memories, 'json'),
+                },
+                {
+                  key: 'csv',
+                  label: 'Export as CSV',
+                  onClick: () => exportMemories(memories, 'csv'),
+                },
+              ],
+            }}
+          >
+            <Button icon={<DownloadOutlined />}>Export</Button>
+          </Dropdown>
+        )
+      }
+    >
+      <div className="flex gap-2 mb-4">
+        <Search
+          placeholder="Search content"
+          allowClear
+          onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
+          style={{ maxWidth: 300 }}
+        />
+        <Select
+          placeholder="Kind"
+          allowClear
+          value={kindFilter ?? undefined}
+          onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
+          style={{ minWidth: 140 }}
+          options={[
+            { value: 'preference', label: 'Preference' },
+            { value: 'fact', label: 'Fact' },
+            { value: 'goal', label: 'Goal' },
+            { value: 'relationship', label: 'Relationship' },
+            { value: 'other', label: 'Other' },
+          ]}
+        />
+        <Select
+          placeholder="Source"
+          allowClear
+          value={sourceFilter ?? undefined}
+          onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
+          style={{ minWidth: 140 }}
+          options={[
+            { value: 'manual', label: 'Manual' },
+            { value: 'extraction', label: 'Auto-extracted' },
+            { value: 'mcp_tool', label: 'Assistant tool' },
+          ]}
+        />
+      </div>
+
+      {filtered.length === 0 && !loading ? (
+        <Empty description="No memories yet" />
+      ) : (
+        <Table<UserMemory>
+          dataSource={filtered}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 25 }}
+          columns={[
+            {
+              title: 'Content',
+              dataIndex: 'content',
+              ellipsis: true,
+            },
+            {
+              title: 'Kind',
+              dataIndex: 'kind',
+              width: 110,
+              render: (v: string) => <Tag>{v}</Tag>,
+            },
+            {
+              title: 'Source',
+              dataIndex: 'source',
+              width: 120,
+              render: (v: string) => (
+                <Tag
+                  color={
+                    v === 'manual'
+                      ? 'blue'
+                      : v === 'extraction'
+                        ? 'green'
+                        : 'purple'
+                  }
+                >
+                  {v === 'mcp_tool' ? 'tool' : v}
+                </Tag>
+              ),
+            },
+            {
+              title: 'Importance',
+              dataIndex: 'importance',
+              width: 100,
+            },
+            {
+              title: 'Recalls',
+              dataIndex: 'recall_count',
+              width: 90,
+            },
+            {
+              title: 'Updated',
+              dataIndex: 'updated_at',
+              width: 170,
+              render: (v: string) => (
+                <Text type="secondary">{new Date(v).toLocaleString()}</Text>
+              ),
+            },
+            ...(canWrite
+              ? [
+                  {
+                    title: '',
+                    key: 'actions',
+                    width: 100,
+                    render: (_: unknown, row: UserMemory) => (
+                      <Space>
+                        <Button
+                          icon={<EditOutlined />}
+                          size="small"
+                          onClick={() => setEditing(row)}
+                        />
+                        <Popconfirm
+                          title="Delete this memory?"
+                          okText="Delete"
+                          okButtonProps={{ danger: true }}
+                          onConfirm={async () => {
+                            try {
+                              await Stores.Memories.remove(row.id)
+                              message.success('Memory deleted')
+                            } catch (error) {
+                              message.error(
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Delete failed.',
+                              )
+                            }
+                          }}
+                        >
+                          <Button
+                            icon={<DeleteOutlined />}
+                            size="small"
+                            danger
+                            aria-label={`Delete memory ${row.id}`}
+                          />
+                        </Popconfirm>
+                      </Space>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+        />
+      )}
+
+      {canWrite && (
+        <>
+          <CreateMemoryModal open={creating} onClose={() => setCreating(false)} />
+          <EditMemoryDrawer row={editing} onClose={() => setEditing(null)} />
+        </>
+      )}
+    </Card>
+  )
+}
+
+function exportMemories(rows: UserMemory[], format: 'json' | 'csv') {
+  const filename = `ziee-memories-${new Date().toISOString().slice(0, 10)}.${format}`
+  let blob: Blob
+  if (format === 'json') {
+    blob = new Blob([JSON.stringify(rows, null, 2)], {
+      type: 'application/json',
+    })
+  } else {
+    const header = [
+      'id',
+      'content',
+      'kind',
+      'source',
+      'importance',
+      'confidence',
+      'recall_count',
+      'created_at',
+      'updated_at',
+    ].join(',')
+    const escape = (v: unknown): string => {
+      const s = String(v ?? '')
+      // RFC-4180: quote if cell contains comma, quote, or any line
+      // ending (LF, CR, or CRLF). Audit R7-#1.
+      if (
+        s.includes(',') ||
+        s.includes('"') ||
+        s.includes('\n') ||
+        s.includes('\r')
+      ) {
+        return `"${s.replace(/"/g, '""')}"`
+      }
+      return s
+    }
+    const lines = rows.map((r) =>
+      [
+        r.id,
+        r.content,
+        r.kind,
+        r.source,
+        r.importance,
+        r.confidence,
+        r.recall_count,
+        r.created_at,
+        r.updated_at,
+      ]
+        .map(escape)
+        .join(','),
+    )
+    blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' })
+  }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function CreateMemoryModal({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
+  const [form] = Form.useForm<{
+    content: string
+    importance: number
+    kind: string
+  }>()
+  const { saving } = Stores.Memories
+
+  const handleSubmit = async (values: {
+    content: string
+    importance: number
+    kind: string
+  }) => {
+    try {
+      await Stores.Memories.create(
+        values.content,
+        values.importance,
+        values.kind,
+      )
+      form.resetFields()
+      onClose()
+      message.success('Memory added')
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'Failed to add memory.',
+      )
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      title="Add memory"
+      onCancel={onClose}
+      onOk={() => form.submit()}
+      confirmLoading={saving}
+      okText="Add"
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{ importance: 50, kind: 'fact' }}
+        onFinish={handleSubmit}
+      >
+        <Form.Item
+          name="content"
+          label="Content"
+          rules={[
+            { required: true, message: 'Required' },
+            { max: 4000, message: 'Max 4000 chars' },
+          ]}
+        >
+          <Input.TextArea
+            rows={4}
+            placeholder="One sentence, third-person about you"
+          />
+        </Form.Item>
+        <Form.Item name="kind" label="Kind">
+          <Select
+            options={[
+              { value: 'preference', label: 'Preference' },
+              { value: 'fact', label: 'Fact' },
+              { value: 'goal', label: 'Goal' },
+              { value: 'relationship', label: 'Relationship' },
+              { value: 'other', label: 'Other' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="importance" label="Importance (0-100)">
+          <InputNumber min={0} max={100} />
+        </Form.Item>
+      </Form>
+    </Modal>
+  )
+}
+
+function EditMemoryDrawer({
+  row,
+  onClose,
+}: {
+  row: UserMemory | null
+  onClose: () => void
+}) {
+  const [form] = Form.useForm<{
+    content: string
+    importance: number
+    kind: string
+  }>()
+  const { saving } = Stores.Memories
+
+  useEffect(() => {
+    if (row) {
+      form.setFieldsValue({
+        content: row.content,
+        importance: row.importance,
+        kind: row.kind,
+      })
+    }
+  }, [row])
+
+  const handleSubmit = async (values: {
+    content: string
+    importance: number
+    kind: string
+  }) => {
+    if (!row) return
+    try {
+      await Stores.Memories.update(row.id, values)
+      onClose()
+      message.success('Memory updated')
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : 'Failed to update memory.',
+      )
+    }
+  }
+
+  return (
+    <Drawer
+      open={!!row}
+      title="Edit memory"
+      onClose={onClose}
+      size={600}
+      extra={
+        <Button type="primary" loading={saving} onClick={() => form.submit()}>
+          Save
+        </Button>
+      }
+    >
+      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form.Item
+          name="content"
+          label="Content"
+          rules={[{ required: true, max: 4000 }]}
+        >
+          <Input.TextArea rows={6} />
+        </Form.Item>
+        <Form.Item name="kind" label="Kind">
+          <Select
+            options={[
+              { value: 'preference', label: 'Preference' },
+              { value: 'fact', label: 'Fact' },
+              { value: 'goal', label: 'Goal' },
+              { value: 'relationship', label: 'Relationship' },
+              { value: 'other', label: 'Other' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="importance" label="Importance (0-100)">
+          <InputNumber min={0} max={100} />
+        </Form.Item>
+      </Form>
+    </Drawer>
+  )
+}

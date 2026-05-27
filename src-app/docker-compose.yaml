@@ -2,7 +2,7 @@ name: ziee
 
 services:
   postgres-build:
-    image: postgres:17.5
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password

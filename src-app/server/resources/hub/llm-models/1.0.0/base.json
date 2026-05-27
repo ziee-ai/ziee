@@ -823,5 +823,168 @@
       "dimension": 1024
     },
     "auth_required": true
+  },
+  {
+    "id": "nomic-embed-text-v1-5-gguf",
+    "name": "Nomic Embed Text v1.5 GGUF",
+    "display_name": "Nomic Embed Text v1.5",
+    "description": "High-quality general-purpose English embedding model (768-dim) packaged as GGUF for llama.cpp. Plan §8 recommended default for Memory.",
+    "repository_url": "https://huggingface.co",
+    "repository_path": "nomic-ai/nomic-embed-text-v1.5-GGUF",
+    "main_filename": "nomic-embed-text-v1.5.Q4_K_M.gguf",
+    "file_format": "gguf",
+    "capabilities": {
+      "vision": false,
+      "audio": false,
+      "tools": false,
+      "code_interpreter": false,
+      "chat": false,
+      "text_embedding": true,
+      "image_generator": false
+    },
+    "size_gb": 0.08,
+    "tags": [
+      "embedding",
+      "english",
+      "retrieval",
+      "rag",
+      "text-similarity",
+      "gguf",
+      "memory-recommended"
+    ],
+    "recommended_parameters": {
+      "temperature": null,
+      "top_p": null,
+      "top_k": null,
+      "repeat_penalty": null,
+      "context_size": 8192
+    },
+    "public": true,
+    "popularity_score": 0.88,
+    "license": "Apache-2.0",
+    "quantization_options": [
+      { "name": "q4_k_m", "main_filename": "nomic-embed-text-v1.5.Q4_K_M.gguf" },
+      { "name": "q5_k_m", "main_filename": "nomic-embed-text-v1.5.Q5_K_M.gguf" },
+      { "name": "q8_0", "main_filename": "nomic-embed-text-v1.5.Q8_0.gguf" },
+      { "name": "fp16", "main_filename": "nomic-embed-text-v1.5.F16.gguf" }
+    ],
+    "context_length": 8192,
+    "language_support": ["en"],
+    "recommended_engine": "llamacpp",
+    "recommended_engine_settings": {
+      "embedding": true,
+      "pooling_type": "mean",
+      "normalize_embeddings": true,
+      "dimension": 768
+    },
+    "auth_required": true
+  },
+  {
+    "id": "bge-small-en-v1-5-gguf",
+    "name": "BGE Small EN v1.5 GGUF",
+    "display_name": "BGE Small EN v1.5",
+    "description": "BAAI's BGE Small English v1.5 (384-dim) — fast lightweight English embedder; cheap CPU inference.",
+    "repository_url": "https://huggingface.co",
+    "repository_path": "CompendiumLabs/bge-small-en-v1.5-gguf",
+    "main_filename": "bge-small-en-v1.5-q4_k_m.gguf",
+    "file_format": "gguf",
+    "capabilities": {
+      "vision": false,
+      "audio": false,
+      "tools": false,
+      "code_interpreter": false,
+      "chat": false,
+      "text_embedding": true,
+      "image_generator": false
+    },
+    "size_gb": 0.04,
+    "tags": [
+      "embedding",
+      "english",
+      "retrieval",
+      "rag",
+      "small",
+      "fast",
+      "gguf"
+    ],
+    "recommended_parameters": {
+      "temperature": null,
+      "top_p": null,
+      "top_k": null,
+      "repeat_penalty": null,
+      "context_size": 512
+    },
+    "public": true,
+    "popularity_score": 0.82,
+    "license": "MIT",
+    "quantization_options": [
+      { "name": "q4_k_m", "main_filename": "bge-small-en-v1.5-q4_k_m.gguf" },
+      { "name": "q8_0", "main_filename": "bge-small-en-v1.5-q8_0.gguf" },
+      { "name": "fp16", "main_filename": "bge-small-en-v1.5-f16.gguf" }
+    ],
+    "context_length": 512,
+    "language_support": ["en"],
+    "recommended_engine": "llamacpp",
+    "recommended_engine_settings": {
+      "embedding": true,
+      "pooling_type": "mean",
+      "normalize_embeddings": true,
+      "dimension": 384
+    },
+    "auth_required": true
+  },
+  {
+    "id": "mxbai-embed-large-v1-gguf",
+    "name": "MxBai Embed Large v1 GGUF",
+    "display_name": "MxBai Embed Large v1",
+    "description": "Mixedbread.ai's mxbai-embed-large-v1 — strong general-purpose English embedder (1024-dim).",
+    "repository_url": "https://huggingface.co",
+    "repository_path": "mixedbread-ai/mxbai-embed-large-v1-gguf",
+    "main_filename": "mxbai-embed-large-v1.q4_k_m.gguf",
+    "file_format": "gguf",
+    "capabilities": {
+      "vision": false,
+      "audio": false,
+      "tools": false,
+      "code_interpreter": false,
+      "chat": false,
+      "text_embedding": true,
+      "image_generator": false
+    },
+    "size_gb": 0.21,
+    "tags": [
+      "embedding",
+      "english",
+      "retrieval",
+      "rag",
+      "large",
+      "high-quality",
+      "gguf"
+    ],
+    "recommended_parameters": {
+      "temperature": null,
+      "top_p": null,
+      "top_k": null,
+      "repeat_penalty": null,
+      "context_size": 512
+    },
+    "public": true,
+    "popularity_score": 0.85,
+    "license": "Apache-2.0",
+    "quantization_options": [
+      { "name": "q4_k_m", "main_filename": "mxbai-embed-large-v1.q4_k_m.gguf" },
+      { "name": "q8_0", "main_filename": "mxbai-embed-large-v1.q8_0.gguf" },
+      { "name": "fp16", "main_filename": "mxbai-embed-large-v1.f16.gguf" }
+    ],
+    "context_length": 512,
+    "language_support": ["en"],
+    "recommended_engine": "llamacpp",
+    "recommended_engine_settings": {
+      "embedding": true,
+      "pooling_type": "cls",
+      "normalize_embeddings": true,
+      "dimension": 1024
+    },
+    "auth_required": true
   }
 ]

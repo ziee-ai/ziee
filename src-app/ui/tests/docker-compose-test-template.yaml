@@ -2,7 +2,7 @@ name: ziee-test-${RUN_ID}
 
 services:
   postgres-test-${RUN_ID}:
-    image: postgres:17.5
+    image: pgvector/pgvector:pg18
     container_name: ziee-test-postgres-${RUN_ID}
     environment:
       POSTGRES_USER: postgres

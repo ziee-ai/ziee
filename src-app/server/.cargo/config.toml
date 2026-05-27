@@ -5,6 +5,22 @@
 # (notably libseccomp-sys) at compile time.
 
 [env]
+# Pin the embedded-PostgreSQL version. Single source of truth used by:
+#   - `postgresql_embedded`'s build.rs (reads POSTGRESQL_VERSION as a
+#     semver constraint, then downloads + bundles the matching theseus
+#     binary into our final binary).
+#   - `build_helper/pgvector.rs` (reads ZIEE_POSTGRES_VERSION as a plain
+#     version, used in the theseus download URL to build vector.so
+#     against header-compatible PG sources).
+#   - `core/database/mod.rs` (reads ZIEE_POSTGRES_VERSION via env!() and
+#     bakes it into `POSTGRES_VERSION` so the runtime VersionReq
+#     matches the bundled archive).
+# Bumping the PG floor is a one-line change here; remember to also bump
+# `config/dev.yaml` + `config/dev.example.yaml` (those are runtime
+# config and read at server start).
+POSTGRESQL_VERSION = "=18.3.0"
+ZIEE_POSTGRES_VERSION = "18.3.0"
+
 # Static-link libseccomp so operators don't need libseccomp2 on the
 # host. The libseccomp-sys build script honors LIBSECCOMP_LINK_TYPE.
 # Only takes effect when the `code_sandbox_seccomp` cargo feature is

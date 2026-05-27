@@ -163,6 +163,7 @@ export interface Conversation {
   active_branch_id?: string
   created_at: string
   id: string
+  memory_mode: string
   model_id?: string
   project_id?: string
   updated_at: string
@@ -186,9 +187,21 @@ export interface ConversationResponse {
   active_branch_id?: string
   created_at: string
   id: string
+  memory_mode: string
   message_count: number
   model_id?: string
   project_id?: string
+  updated_at: string
+  user_id: string
+}
+
+export interface CoreMemoryBlock {
+  assistant_id: string
+  block_label: string
+  char_limit: number
+  content: string
+  created_at: string
+  id: string
   updated_at: string
   user_id: string
 }
@@ -291,6 +304,13 @@ export interface CreateMcpServerRequest {
   usage_mode?: UsageMode
 }
 
+export interface CreateMemoryRequest {
+  content: string
+  importance?: number
+  kind?: string
+  metadata?: any
+}
+
 export interface CreateModelFromHubRequest {
   display_name?: string
   enabled?: boolean
@@ -316,6 +336,10 @@ export interface CreateUserRequest {
   password: string
   permissions?: string[]
   username: string
+}
+
+export interface DeleteAllResponse {
+  deleted: number
 }
 
 export interface DeleteProviderResponse {
@@ -756,7 +780,17 @@ export interface LinkAccountRequest {
   password: string
 }
 
+export interface ListAuditLogQuery {
+  limit?: number
+}
+
+export interface ListMemoriesQuery {
+  limit?: number
+  offset?: number
+}
+
 export interface ListModelsQuery {
+  capability?: string
   page?: number
   perPage?: number
   providerId?: string
@@ -969,6 +1003,35 @@ export interface MeResponse {
   user: User
 }
 
+export interface MemoryAdminSettings {
+  cosine_threshold: number
+  daily_extraction_quota: number
+  default_extraction_model_id?: string
+  default_top_k: number
+  embedding_dimensions: number
+  embedding_model_id?: string
+  enabled: boolean
+  full_summary_prompt?: string
+  id: number
+  incremental_summary_prompt?: string
+  soft_delete_grace_days: number
+  summarize_after_n_messages: number
+  summarizer_keep_recent: number
+  updated_at: string
+}
+
+export interface MemoryAuditEntry {
+  actor_kind: string
+  content_snapshot?: string
+  created_at: string
+  id: number
+  memory_id?: string
+  metadata: any
+  op: string
+  source: string
+  user_id: string
+}
+
 export interface MemoryInfo {
   total_ram: number
   total_swap?: number
@@ -1033,10 +1096,13 @@ export interface MessageContentDataToolUse {
 }
 export interface MessageContentDataToolResult {
   type: 'tool_result'
+  attachment?: RichFile | null
   content: string
   hidden_content?: string | null
   is_error?: boolean | null
   name?: string | null
+  resource_links?: ResourceLink[] | null
+  server_id?: string | null
   tool_use_id: string
 }
 export interface MessageContentDataElicitationRequest {
@@ -1329,6 +1395,12 @@ export interface ReadResourceResponse {
   content: any
 }
 
+export interface RebuildStatus {
+  in_progress: boolean
+  model_name?: string
+  pending_count: number
+}
+
 export interface RefreshTokenRequest {
   refresh_token: string
 }
@@ -1360,6 +1432,14 @@ export interface Resource {
   uri: string
 }
 
+export interface ResourceLink {
+  is_saved?: boolean
+  mime_type?: string
+  name?: string
+  size?: number
+  uri: string
+}
+
 export interface RespondToElicitationRequest {
   action: string
   content?: any
@@ -1367,6 +1447,12 @@ export interface RespondToElicitationRequest {
 
 export interface RespondToElicitationResponse {
   success: boolean
+}
+
+export interface RichFile {
+  data: string
+  filename: string
+  mime_type: string
 }
 
 export interface RuntimeVersionListResponse {
@@ -1579,6 +1665,12 @@ export interface SyncCacheResponse {
   synced_count: number
 }
 
+export interface TestExtractRequest {
+  assistant_message: string
+  user_id: string
+  user_message: string
+}
+
 export interface TestProviderResponse {
   message: string
   ok: boolean
@@ -1594,6 +1686,11 @@ export interface TestRepositoryConnectionRequest {
 export interface TestRepositoryConnectionResponse {
   message: string
   success: boolean
+}
+
+export interface TestSummarizeRequest {
+  branch_id: string
+  model_id: string
 }
 
 export interface TextPageQuery {
@@ -1685,6 +1782,7 @@ export interface UpdateCodeSandboxResourceLimits {
 
 export interface UpdateConversationRequest {
   title?: string
+  memory_mode?: string
   project_id?: string
 }
 
@@ -1748,6 +1846,27 @@ export interface UpdateMcpServerRequest {
   usage_mode?: UsageMode
 }
 
+export interface UpdateMemoryAdminSettingsRequest {
+  cosine_threshold?: number
+  daily_extraction_quota?: number
+  default_extraction_model_id?: string
+  default_top_k?: number
+  embedding_model_id?: string
+  enabled?: boolean
+  full_summary_prompt?: string
+  incremental_summary_prompt?: string
+  soft_delete_grace_days?: number
+  summarize_after_n_messages?: number
+  summarizer_keep_recent?: number
+}
+
+export interface UpdateMemoryRequest {
+  content?: string
+  importance?: number
+  kind?: string
+  metadata?: any
+}
+
 export interface UpdateProjectMcpSettingsRequest {
   approval_mode: string
   auto_approved_tools: McpServerToolEntry[]
@@ -1763,10 +1882,25 @@ export interface UpdateProjectRequest {
   name?: string
 }
 
+export interface UpdateUserMemorySettingsRequest {
+  extraction_enabled?: boolean
+  extraction_model_id?: string
+  max_memories?: number
+  retention_days?: number
+  retrieval_enabled?: boolean
+}
+
 export interface UpdateUserRequest {
   display_name?: string
   is_active?: boolean
   username?: string
+}
+
+export interface UpsertCoreMemoryBlockRequest {
+  assistant_id: string
+  block_label: string
+  char_limit?: number
+  content: string
 }
 
 export interface UpsertMcpSettingsRequest {
@@ -1844,6 +1978,34 @@ export interface UserMcpDefaultsResponse {
   user_id: string
 }
 
+export interface UserMemory {
+  confidence: number
+  content: string
+  created_at: string
+  embedding_model?: string
+  id: string
+  importance: number
+  kind: string
+  last_recalled_at?: string
+  metadata: any
+  recall_count: number
+  source: string
+  source_message_id?: string
+  updated_at: string
+  user_id: string
+}
+
+export interface UserMemorySettings {
+  created_at: string
+  extraction_enabled: boolean
+  extraction_model_id?: string
+  max_memories: number
+  retention_days?: number
+  retrieval_enabled: boolean
+  updated_at: string
+  user_id: string
+}
+
 // =============================================================================
 // PERMISSIONS
 // =============================================================================
@@ -1869,6 +2031,8 @@ export enum Permissions {
   ConversationsDelete = 'conversations::delete',
   ConversationsEdit = 'conversations::edit',
   ConversationsRead = 'conversations::read',
+  CoreMemoryRead = 'memory::core::read',
+  CoreMemoryWrite = 'memory::core::write',
   FilesDelete = 'files::delete',
   FilesDownload = 'files::download',
   FilesGenerateToken = 'files::generate_token',
@@ -1921,6 +2085,10 @@ export enum Permissions {
   McpServersDelete = 'mcp_servers::delete',
   McpServersEdit = 'mcp_servers::edit',
   McpServersRead = 'mcp_servers::read',
+  MemoryAdminManage = 'memory::admin::manage',
+  MemoryAdminRead = 'memory::admin::read',
+  MemoryRead = 'memory::read',
+  MemoryWrite = 'memory::write',
   MessagesCreate = 'messages::create',
   MessagesDelete = 'messages::delete',
   MessagesRead = 'messages::read',
@@ -1964,6 +2132,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ConversationsDelete: 'Delete chat conversations',
   ConversationsEdit: 'Edit conversation titles and metadata',
   ConversationsRead: 'View chat conversations',
+  CoreMemoryRead: 'Read own assistant core memory blocks.',
+  CoreMemoryWrite: 'Upsert / delete own assistant core memory blocks.',
   FilesDelete: 'Delete files',
   FilesDownload: 'Download file content',
   FilesGenerateToken: 'Generate download tokens',
@@ -2016,6 +2186,10 @@ export const PermissionDescriptions: Record<string, string> = {
   McpServersDelete: 'Delete MCP servers',
   McpServersEdit: 'Edit MCP servers',
   McpServersRead: 'View MCP servers',
+  MemoryAdminManage: 'Update memory admin settings (embedding model, enable/disable).',
+  MemoryAdminRead: 'Read memory admin settings (embedding model, defaults).',
+  MemoryRead: 'List and read own memories.',
+  MemoryWrite: 'Create, edit, and delete own memories.',
   MessagesCreate: 'Send messages in conversations',
   MessagesDelete: 'Delete messages from conversations',
   MessagesRead: 'Read messages in conversations',
@@ -2090,6 +2264,9 @@ export const ApiEndpoints = {
   'Conversation.list': 'GET /api/conversations',
   'Conversation.update': 'PUT /api/conversations/{id}',
   'Conversation.updateMcpSettings': 'PUT /api/conversations/{id}/mcp-settings',
+  'CoreMemory.delete': 'DELETE /api/assistants/{assistant_id}/core-memory/{block_label}',
+  'CoreMemory.list': 'GET /api/assistants/{assistant_id}/core-memory',
+  'CoreMemory.upsert': 'PUT /api/assistants/core-memory',
   'File.delete': 'DELETE /api/files/{file_id}',
   'File.download': 'GET /api/files/{file_id}/download',
   'File.downloadWithToken': 'GET /api/files/{file_id}/download-with-token',
@@ -2187,6 +2364,21 @@ export const ApiEndpoints = {
   'McpServerSystem.list': 'GET /api/mcp/system-servers',
   'McpServerSystem.removeServerFromGroup': 'DELETE /api/mcp/system-servers/{id}/groups/{group_id}',
   'McpServerSystem.update': 'PUT /api/mcp/system-servers/{id}',
+  'Memory.create': 'POST /api/memories',
+  'Memory.delete': 'DELETE /api/memories/{id}',
+  'Memory.deleteAll': 'DELETE /api/memories/all',
+  'Memory.get': 'GET /api/memories/{id}',
+  'Memory.list': 'GET /api/memories',
+  'Memory.update': 'PATCH /api/memories/{id}',
+  'MemoryAdmin.get': 'GET /api/memory/admin-settings',
+  'MemoryAdmin.rebuildStatus': 'GET /api/memory/admin-settings/rebuild-status',
+  'MemoryAdmin.reembed': 'POST /api/memory/admin-settings/reembed',
+  'MemoryAdmin.update': 'PUT /api/memory/admin-settings',
+  'MemoryAudit.list': 'GET /api/memory/audit-log',
+  'MemorySettings.get': 'GET /api/memory/settings',
+  'MemorySettings.update': 'PUT /api/memory/settings',
+  'MemoryTest.extract': 'POST /api/_test/memory/extract',
+  'MemoryTest.summarize': 'POST /api/_test/memory/summarize',
   'Message.delete': 'DELETE /api/messages/{id}',
   'Message.edit': 'PUT /api/conversations/{conversation_id}/messages/{message_id}',
   'Message.get': 'GET /api/messages/{id}',
@@ -2279,6 +2471,9 @@ export type ApiEndpointParameters = {
   'Conversation.list': { limit?: number; page?: number; project_id?: string }
   'Conversation.update': { id: string } & UpdateConversationRequest
   'Conversation.updateMcpSettings': { id: string } & UpsertMcpSettingsRequest
+  'CoreMemory.delete': { assistant_id: string; block_label: string }
+  'CoreMemory.list': { assistant_id: string }
+  'CoreMemory.upsert': UpsertCoreMemoryBlockRequest
   'File.delete': { file_id: string }
   'File.download': { file_id: string }
   'File.downloadWithToken': { file_id: string; token: string }
@@ -2318,7 +2513,7 @@ export type ApiEndpointParameters = {
   'LlmModel.enable': { model_id: string }
   'LlmModel.get': { model_id: string }
   'LlmModel.getDownload': { download_id: string }
-  'LlmModel.list': { page?: number; perPage?: number; providerId?: string }
+  'LlmModel.list': { capability?: string; page?: number; perPage?: number; providerId?: string }
   'LlmModel.listDownloads': { page?: number; per_page?: number; status?: string }
   'LlmModel.subscribeDownloadProgress': void
   'LlmModel.update': { model_id: string } & UpdateLlmModelRequest
@@ -2376,6 +2571,21 @@ export type ApiEndpointParameters = {
   'McpServerSystem.list': PaginationQuery
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
+  'Memory.create': CreateMemoryRequest
+  'Memory.delete': { id: string }
+  'Memory.deleteAll': void
+  'Memory.get': { id: string }
+  'Memory.list': { limit?: number; offset?: number }
+  'Memory.update': { id: string } & UpdateMemoryRequest
+  'MemoryAdmin.get': void
+  'MemoryAdmin.rebuildStatus': void
+  'MemoryAdmin.reembed': void
+  'MemoryAdmin.update': UpdateMemoryAdminSettingsRequest
+  'MemoryAudit.list': { limit?: number }
+  'MemorySettings.get': void
+  'MemorySettings.update': UpdateUserMemorySettingsRequest
+  'MemoryTest.extract': TestExtractRequest
+  'MemoryTest.summarize': TestSummarizeRequest
   'Message.delete': { id: string }
   'Message.edit': { conversation_id: string; message_id: string } & EditMessageRequest
   'Message.get': { id: string }
@@ -2468,6 +2678,9 @@ export type ApiEndpointResponses = {
   'Conversation.list': ConversationResponse[]
   'Conversation.update': Conversation
   'Conversation.updateMcpSettings': ConversationMcpSettingsResponse
+  'CoreMemory.delete': void
+  'CoreMemory.list': CoreMemoryBlock[]
+  'CoreMemory.upsert': CoreMemoryBlock
   'File.delete': void
   'File.download': Blob
   'File.downloadWithToken': Blob
@@ -2565,6 +2778,21 @@ export type ApiEndpointResponses = {
   'McpServerSystem.list': McpServerListResponse
   'McpServerSystem.removeServerFromGroup': void
   'McpServerSystem.update': McpServer
+  'Memory.create': UserMemory
+  'Memory.delete': void
+  'Memory.deleteAll': DeleteAllResponse
+  'Memory.get': UserMemory
+  'Memory.list': UserMemory[]
+  'Memory.update': UserMemory
+  'MemoryAdmin.get': MemoryAdminSettings
+  'MemoryAdmin.rebuildStatus': RebuildStatus
+  'MemoryAdmin.reembed': any
+  'MemoryAdmin.update': MemoryAdminSettings
+  'MemoryAudit.list': MemoryAuditEntry[]
+  'MemorySettings.get': UserMemorySettings
+  'MemorySettings.update': UserMemorySettings
+  'MemoryTest.extract': any
+  'MemoryTest.summarize': any
   'Message.delete': void
   'Message.edit': EditMessageResponse
   'Message.get': MessageWithContent

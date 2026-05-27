@@ -12,7 +12,7 @@ postgresql:
 
   # Embedded PostgreSQL configuration (used when use_embedded: true)
   embedded:
-    version: "17.5.0"
+    version: "18.3.0"
     port: 54323  # Use 0 for automatic port selection
     bind_address: "127.0.0.1"
     username: "postgres"

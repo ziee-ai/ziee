@@ -188,5 +188,7 @@ declare_repositories! {
     chat: ChatRepository => crate::modules::chat::core,
     local_runtime: LocalRuntimeRepository => crate::modules::llm_local_runtime,
     code_sandbox: CodeSandboxRepository => crate::modules::code_sandbox,
+    memory: MemoryRepository => crate::modules::memory,
+    assistant_core_memory: AssistantCoreMemoryRepository => crate::modules::assistant_core_memory,
     project: ProjectRepository => crate::modules::project,
 }

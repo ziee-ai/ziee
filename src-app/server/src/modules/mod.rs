@@ -1,6 +1,7 @@
 // All feature modules
 pub mod app;
 pub mod assistant;
+pub mod assistant_core_memory;
 pub mod auth;
 pub mod chat;
 pub mod code_sandbox;
@@ -14,6 +15,8 @@ pub mod llm_provider;
 pub mod llm_provider_files;
 pub mod llm_repository;
 pub mod mcp;
+pub mod memory;
+pub mod memory_mcp;
 pub mod onboarding;
 pub mod permissions;
 pub mod project;

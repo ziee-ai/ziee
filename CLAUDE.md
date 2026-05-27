@@ -95,6 +95,70 @@ The `build.rs` script automatically manages the build database for SQLx compile-
 
 ---
 
+## Memory System (LLM Memory)
+
+The `memory` module ships per-user persistent memory with vector
+retrieval (mem0 / Letta-style). Postgres-backed via **pgvector**,
+which is bundled into the embedded PG binary at build time.
+
+### Host build deps (Linux)
+
+```bash
+sudo apt install build-essential   # provides make + gcc
+```
+
+`build_helper/pgvector.rs` invokes `make` against the vendored
+pgvector source under `src-app/server/vendor/pgvector` and downloads
+matching Postgres 17.5.0 binaries from `theseus-rs/postgresql-binaries`
+to link against. Fail-soft: if the build fails (no make, no network,
+unsupported target triple), zero-byte stub assets are written so the
+crate still compiles; at runtime the server logs "memory features
+disabled" and `memory_admin_settings.enabled` flips off.
+
+macOS uses the Apple-Silicon SDK-path wrapper ported verbatim from
+the legacy ziee-chat-ref project (handles `/opt/homebrew` paths).
+Windows needs `nmake` + MSVC.
+
+### docker-compose
+
+The `pgvector/pgvector:pg17` image is required for the build DB
+(`docker-compose.yaml` already references it on this branch). The
+test DB inherits the same image. Without it, `CREATE EXTENSION vector`
+in migration 46 will fail at build.rs time.
+
+### Pgvector submodule
+
+The vendored pgvector source is a git submodule at
+`src-app/server/vendor/pgvector` pinned at `v0.7.4`. Run
+`git submodule update --init` after the first clone of this branch.
+
+### Memory tables
+
+- `user_memories` — per-user fact rows (vector(N) default 768)
+- `user_memory_settings` — per-user opt-in toggles (default OFF)
+- `memory_admin_settings` — deployment-wide config (default OFF)
+- `conversations.memory_mode` — per-conversation override
+  (`inherit`/`on`/`off`)
+- `assistant_core_memory` — Letta-style always-in-context blocks
+- `conversation_summaries` — rolling per-branch summary
+
+### Surfaces
+
+- REST CRUD at `/api/memories`, `/api/memory/settings`,
+  `/api/memory/admin-settings`.
+- Built-in MCP server at `/api/memories/mcp` exposing
+  `remember` / `recall` / `forget` tools (deterministic UUID via
+  `Uuid::new_v5(NAMESPACE_URL, "memory.ziee.internal")`).
+- Chat extension `chat::extensions::memory` injects retrieved
+  memories before each LLM call (`before_llm_call` hook) and spawns
+  background extraction after each assistant reply (`after_llm_call`).
+- Onboarding step `memory-setup` in the `getting-started` guide asks
+  the admin to enable memory + pick an embedding model.
+- User-facing pages: `/memories`, `/settings/memory`,
+  `/settings/admin/memory`.
+
+---
+
 ## Code Sandbox
 
 The `code_sandbox` module exposes a bwrap-isolated code-execution

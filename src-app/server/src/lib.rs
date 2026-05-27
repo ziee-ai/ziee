@@ -74,6 +74,15 @@ pub use modules::code_sandbox::backend::{active as sandbox_backend, RawExecResul
 #[doc(hidden)]
 pub use modules::chat::extensions::mcp::content::{McpContentData, RichFile};
 
+// Re-export memory chat-extension functions for integration tests
+// (tier 5 real-LLM tests need to invoke the extraction + summarizer
+// pipelines directly).
+#[doc(hidden)]
+pub mod memory_extensions {
+    pub use crate::modules::chat::extensions::memory::extractor;
+    pub use crate::modules::chat::extensions::memory::summarizer;
+}
+
 // Re-export code_sandbox surface for integration tests (tier 2 + 3).
 #[doc(hidden)]
 pub mod code_sandbox {
