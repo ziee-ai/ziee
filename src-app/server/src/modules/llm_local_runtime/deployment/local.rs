@@ -165,6 +165,20 @@ impl LocalDeployment {
             cmd.arg("--n-gpu-layers").arg(n_gpu_layers.to_string());
         }
 
+        // Embedding mode for memory module + RAG. llama-server's
+        // `--embeddings` flag is mutually exclusive with `--chat-template`
+        // — the engine returns 768-d (or model-specific) float vectors
+        // on POST `/embedding` instead of streaming chat tokens. Memory
+        // dispatcher detects this via `llm_models.capabilities.text_embedding`
+        // and sets `config.embeddings = true` before calling start().
+        if config
+            .get("embeddings")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            cmd.arg("--embeddings");
+        }
+
         Self::apply_hardening(&mut cmd);
 
         cmd

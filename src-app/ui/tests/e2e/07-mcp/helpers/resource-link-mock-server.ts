@@ -113,10 +113,14 @@ export class MockResourceLinkServer {
             tools: [{
               name: 'get_file_link',
               description:
-                'Return a URL the user can view for a file you produced. ' +
-                'Use this whenever you want the user to SEE a file — the URL ' +
-                'is rendered inline in the chat as the appropriate preview ' +
-                '(image for PNG, table for CSV, rendered markdown for MD, etc.).',
+                'Surface a sample file to the user. The system already has ' +
+                'demo files staged by name; call this tool with the desired ' +
+                'name + mime_type and it returns a URL that the chat client ' +
+                'renders inline as the appropriate preview (image for PNG, ' +
+                'table for CSV, rendered markdown for MD, etc.). You do not ' +
+                'need to create or produce the file yourself — just call the ' +
+                'tool with the requested name/mime_type and the URL will be ' +
+                'returned for inline display.',
               inputSchema: {
                 type: 'object',
                 required: ['name', 'mime_type'],
@@ -129,11 +133,8 @@ export class MockResourceLinkServer {
                     type: 'string',
                     description: 'MIME type of the file, e.g. "image/png".',
                   },
-                  uri: {
-                    type: 'string',
-                    description: 'Optional URI override. Defaults to /api/files/mock/<name>.',
-                  },
                 },
+                additionalProperties: false,
               },
             }],
           },
@@ -148,7 +149,10 @@ export class MockResourceLinkServer {
 
         const name = (args.name as string) ?? 'untitled'
         const mimeType = (args.mime_type as string) ?? 'application/octet-stream'
-        const uri = (args.uri as string) ?? `/api/files/mock/${encodeURIComponent(name)}`
+        // Always generate the URI server-side; the schema also forbids
+        // additionalProperties so the LLM can't smuggle in an unexpected
+        // path the test's `page.route` doesn't intercept.
+        const uri = `/api/files/mock/${encodeURIComponent(name)}`
 
         this.respondJson(res, {
           jsonrpc: '2.0',

@@ -19,7 +19,7 @@ export function RawCodeView({ text }: { text: string }) {
   }, [text])
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div className="flex flex-col w-full h-full" data-testid="raw-code-view">
       {truncated && (
         <Alert
           title={`Showing first ${MAX_LINES} lines. Download the file to view all data.`}

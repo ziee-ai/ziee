@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button, Typography } from 'antd'
 import { MessageOutlined, PlusOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -19,6 +19,17 @@ export default function ChatHistoryPage() {
 
   // Chat history store for empty state detection
   const { conversations, loading } = Stores.ChatHistory
+
+  // Refetch on mount. The sidebar's RecentConversationsWidget may have
+  // eager-primed the store with an empty list at login (before any
+  // conversations existed), leaving `isInitialized=true` and the
+  // render below short-circuiting into the empty state — which means
+  // `<ConversationList>` never mounts and its own load-on-mount
+  // useEffect never fires. Trigger the refetch here so newly-created
+  // conversations always appear.
+  useEffect(() => {
+    Stores.ChatHistory.__state.loadConversations()
+  }, [])
 
   return (
     <div className="h-full w-full flex flex-col overflow-y-hidden">

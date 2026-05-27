@@ -4122,6 +4122,19 @@
         "parameters": [
           {
             "in": "query",
+            "name": "capability",
+            "description": "Optional capability filter. When set, only models whose\n `capabilities.<capability>` JSONB field is `true` are returned.\n Used by the memory admin page to populate the embedding-model\n dropdown via `?capability=text_embedding`. Validated against\n a small allowlist; unknown values yield 400.",
+            "schema": {
+              "description": "Optional capability filter. When set, only models whose\n `capabilities.<capability>` JSONB field is `true` are returned.\n Used by the memory admin page to populate the embedding-model\n dropdown via `?capability=text_embedding`. Validated against\n a small allowlist; unknown values yield 400.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
             "name": "page",
             "description": "Page number (1-indexed)",
             "schema": {
@@ -9243,6 +9256,406 @@
         ]
       }
     },
+    "/api/code-sandbox/environments": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List available sandbox environments",
+        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
+        "operationId": "CodeSandbox.listEnvironments",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/environments/{flavor}": {
+      "delete": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Evict a flavor's cached rootfs",
+        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
+        "operationId": "CodeSandbox.evictEnvironment",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Unknown flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "List known prefetch tasks",
+        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
+        "operationId": "CodeSandbox.listPrefetchTasks",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Start (or join) a rootfs prefetch task",
+        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
+        "operationId": "CodeSandbox.startPrefetch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPrefetchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
+                        "name": "CodeSandboxEnvironmentsManage",
+                        "value": "code_sandbox::environments::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartPrefetchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown flavor"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/prefetch/{flavor}/events": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Subscribe to prefetch progress via SSE",
+        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
+        "operationId": "CodeSandbox.subscribePrefetchEvents",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List available sandbox environments and watch prefetch progress.",
+                        "name": "CodeSandboxEnvironmentsRead",
+                        "value": "code_sandbox::environments::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::environments::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSEPrefetchEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "No task for this flavor"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/code-sandbox/resource-limits": {
+      "get": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Read the singleton sandbox resource-limits configuration",
+        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
+        "operationId": "CodeSandbox.getResourceLimits",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read the sandbox resource limits configuration.",
+                        "name": "CodeSandboxResourceLimitsRead",
+                        "value": "code_sandbox::resource_limits::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Code Sandbox"
+        ],
+        "summary": "Update the singleton sandbox resource-limits configuration",
+        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
+        "operationId": "CodeSandbox.updateResourceLimits",
+        "requestBody": {
+          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
+                        "name": "CodeSandboxResourceLimitsManage",
+                        "value": "code_sandbox::resource_limits::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Value out of range"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/hub/models": {
       "get": {
         "tags": [
@@ -10039,406 +10452,6 @@
         ]
       }
     },
-    "/api/code-sandbox/environments": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List available sandbox environments",
-        "description": "Returns every rootfs flavor this server binary knows about, with description, approximate size, and whether the squashfs is currently cached locally. A `cached: false` flavor will trigger an auto-fetch on the first `execute_command` or `POST /prefetch` for that flavor.",
-        "operationId": "CodeSandbox.listEnvironments",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/environments/{flavor}": {
-      "delete": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Evict a flavor's cached rootfs",
-        "description": "Unmounts the flavor's squashfuse (if mounted) and deletes its cached squashfs, freeing disk. Idempotent — a not-cached flavor is a no-op. The next `execute_command` for the flavor re-fetches automatically. Returns the refreshed environments list (the flavor's `cached` flips to false).",
-        "operationId": "CodeSandbox.evictEnvironment",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EnvironmentsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "Unknown flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "List known prefetch tasks",
-        "description": "One entry per flavor; terminal-state entries persist until replaced by the next POST for the same flavor.",
-        "operationId": "CodeSandbox.listPrefetchTasks",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListPrefetchTasksResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Start (or join) a rootfs prefetch task",
-        "description": "Idempotent: concurrent POSTs for the same flavor while a task is Running return the same task_id. The returned `events_url` is suitable for the frontend's EventSource. If the flavor is already cached, the returned status is `already_cached` and the task completes immediately.",
-        "operationId": "CodeSandbox.startPrefetch",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartPrefetchBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Trigger pre-fetch + cache management of sandbox rootfs environments.",
-                        "name": "CodeSandboxEnvironmentsManage",
-                        "value": "code_sandbox::environments::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StartPrefetchResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Unknown flavor"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/prefetch/{flavor}/events": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Subscribe to prefetch progress via SSE",
-        "description": "Server-Sent Events stream of prefetch progress for the named flavor. The first event is always `connected`; the stream then replays any buffered `progress` events (so late subscribers catch up) and finally streams live events until the task reaches terminal state (`complete` or `failed`). Declaring the SSEPrefetchEvent enum as the 200 response is what surfaces the discriminated union in the generated TypeScript client.",
-        "operationId": "CodeSandbox.subscribePrefetchEvents",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "List available sandbox environments and watch prefetch progress.",
-                        "name": "CodeSandboxEnvironmentsRead",
-                        "value": "code_sandbox::environments::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::environments::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SSEPrefetchEvent"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "404": {
-            "description": "No task for this flavor"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/code-sandbox/resource-limits": {
-      "get": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Read the singleton sandbox resource-limits configuration",
-        "description": "Returns the current memory / CPU / PID / prlimit / timeout caps that the sandbox runtime applies on every `execute_command`. Admin-only.",
-        "operationId": "CodeSandbox.getResourceLimits",
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Read the sandbox resource limits configuration.",
-                        "name": "CodeSandboxResourceLimitsRead",
-                        "value": "code_sandbox::resource_limits::read"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::read",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "Code Sandbox"
-        ],
-        "summary": "Update the singleton sandbox resource-limits configuration",
-        "description": "PATCH semantics: any field omitted from the body preserves its existing value. Validation rejects out-of-range values with 422; the new limits take effect on the very next `execute_command`.",
-        "operationId": "CodeSandbox.updateResourceLimits",
-        "requestBody": {
-          "description": "Admin PUT payload. All fields optional; absent fields preserve their\n existing value. Mirrors the `llm_provider` admin-update pattern.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCodeSandboxResourceLimits"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Forbidden - Missing required permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PermissionError"
-                },
-                "example": {
-                  "details": {
-                    "required_permissions": [
-                      {
-                        "description": "Update the sandbox memory/CPU/PID caps + per-exec timeout + idle-evict policy.",
-                        "name": "CodeSandboxResourceLimitsManage",
-                        "value": "code_sandbox::resource_limits::manage"
-                      }
-                    ]
-                  },
-                  "error": "Missing required permission: code_sandbox::resource_limits::manage",
-                  "error_code": "INSUFFICIENT_PERMISSIONS"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "One row of `code_sandbox_settings`. Field order mirrors the SQL column\n order; field names match the SQL column names (snake_case) so the sqlx\n `query_as` mapping is trivial.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodeSandboxResourceLimits"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Value out of range"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/hardware": {
       "get": {
         "tags": [
@@ -10570,6 +10583,1005 @@
             }
           }
         }
+      }
+    },
+    "/api/memories": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "List the caller's own memories",
+        "description": "\n\n**Required Permission:** `memory::read`\n\nList and read own memories.",
+        "operationId": "Memory.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 50
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 0
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List and read own memories.",
+                        "name": "MemoryRead",
+                        "value": "memory::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserMemory"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Manually create a memory",
+        "description": "\n\n**Required Permission:** `memory::write`\n\nCreate, edit, and delete own memories.",
+        "operationId": "Memory.create",
+        "requestBody": {
+          "description": "Request body for `POST /api/memories` — manual user-driven memory add.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, edit, and delete own memories.",
+                        "name": "MemoryWrite",
+                        "value": "memory::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "A persisted user-level memory row.\n\n `embedding` is intentionally omitted from the public response shape —\n embeddings are internal retrieval machinery, never user-facing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMemory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memories/all": {
+      "delete": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Hard-delete every memory for the caller",
+        "description": "\n\n**Required Permission:** `memory::write`\n\nCreate, edit, and delete own memories.",
+        "operationId": "Memory.deleteAll",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, edit, and delete own memories.",
+                        "name": "MemoryWrite",
+                        "value": "memory::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteAllResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memories/{id}": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Fetch a single owned memory",
+        "description": "\n\n**Required Permission:** `memory::read`\n\nList and read own memories.",
+        "operationId": "Memory.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List and read own memories.",
+                        "name": "MemoryRead",
+                        "value": "memory::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A persisted user-level memory row.\n\n `embedding` is intentionally omitted from the public response shape —\n embeddings are internal retrieval machinery, never user-facing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMemory"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not owned"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Delete an owned memory (soft delete)",
+        "description": "\n\n**Required Permission:** `memory::write`\n\nCreate, edit, and delete own memories.",
+        "operationId": "Memory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, edit, and delete own memories.",
+                        "name": "MemoryWrite",
+                        "value": "memory::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found or not owned"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Edit an owned memory",
+        "description": "\n\n**Required Permission:** `memory::write`\n\nCreate, edit, and delete own memories.",
+        "operationId": "Memory.update",
+        "requestBody": {
+          "description": "Request body for `PATCH /api/memories/{id}` — partial edit.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, edit, and delete own memories.",
+                        "name": "MemoryWrite",
+                        "value": "memory::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A persisted user-level memory row.\n\n `embedding` is intentionally omitted from the public response shape —\n embeddings are internal retrieval machinery, never user-facing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMemory"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or not owned"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memory/settings": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Fetch the caller's memory settings",
+        "description": "\n\n**Required Permission:** `memory::read`\n\nList and read own memories.",
+        "operationId": "MemorySettings.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List and read own memories.",
+                        "name": "MemoryRead",
+                        "value": "memory::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Per-user memory preferences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMemorySettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Update the caller's memory settings",
+        "description": "\n\n**Required Permission:** `memory::write`\n\nCreate, edit, and delete own memories.",
+        "operationId": "MemorySettings.update",
+        "requestBody": {
+          "description": "Per-user settings update body.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserMemorySettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Create, edit, and delete own memories.",
+                        "name": "MemoryWrite",
+                        "value": "memory::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Per-user memory preferences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMemorySettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memory/audit-log": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "List the caller's memory audit log entries",
+        "description": "\n\n**Required Permission:** `memory::read`\n\nList and read own memories.",
+        "operationId": "MemoryAudit.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 100
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "List and read own memories.",
+                        "name": "MemoryRead",
+                        "value": "memory::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryAuditEntry"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memory/admin-settings": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Read admin memory settings",
+        "description": "\n\n**Required Permission:** `memory::admin::read`\n\nRead memory admin settings (embedding model, defaults).",
+        "operationId": "MemoryAdmin.get",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read memory admin settings (embedding model, defaults).",
+                        "name": "MemoryAdminRead",
+                        "value": "memory::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide memory admin settings (single row, id=1).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Update admin memory settings",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "MemoryAdmin.update",
+        "requestBody": {
+          "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default for prompts, or \"no default\" for\n embedding/extraction models), `Some(Some(x))` = set to `x`.\n\n Serde's default `Option<T>` deserialization collapses `null` and\n \"absent\" to the same `None`, so the discriminating \"Some(None)\"\n state requires a custom deserializer — see\n `deserialize_nullable_field` below.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemoryAdminSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Deployment-wide memory admin settings (single row, id=1).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAdminSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memory/admin-settings/rebuild-status": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Read embedding rebuild status",
+        "description": "\n\n**Required Permission:** `memory::admin::read`\n\nRead memory admin settings (embedding model, defaults).",
+        "operationId": "MemoryAdmin.rebuildStatus",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read memory admin settings (embedding model, defaults).",
+                        "name": "MemoryAdminRead",
+                        "value": "memory::admin::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebuildStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/memory/admin-settings/reembed": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Trigger a re-embed of all memories using the current embedding model",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "MemoryAdmin.reembed",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/memory/extract": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Test-only: trigger extraction synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "MemoryTest.extract",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/_test/memory/summarize": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Test-only: trigger summary refresh synchronously (debug builds)",
+        "description": "\n\n**Required Permission:** `memory::admin::manage`\n\nUpdate memory admin settings (embedding model, enable/disable).",
+        "operationId": "MemoryTest.summarize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSummarizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Update memory admin settings (embedding model, enable/disable).",
+                        "name": "MemoryAdminManage",
+                        "value": "memory::admin::manage"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::admin::manage",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory": {
+      "get": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "List the caller's core memory blocks for an assistant",
+        "description": "\n\n**Required Permission:** `memory::core::read`\n\nRead own assistant core memory blocks.",
+        "operationId": "CoreMemory.list",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Read own assistant core memory blocks.",
+                        "name": "CoreMemoryRead",
+                        "value": "memory::core::read"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::read",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoreMemoryBlock"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/core-memory": {
+      "put": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Create or update a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.upsert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCoreMemoryBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreMemoryBlock"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/assistants/{assistant_id}/core-memory/{block_label}": {
+      "delete": {
+        "tags": [
+          "CoreMemory"
+        ],
+        "summary": "Delete a core memory block",
+        "description": "\n\n**Required Permission:** `memory::core::write`\n\nUpsert / delete own assistant core memory blocks.",
+        "operationId": "CoreMemory.delete",
+        "responses": {
+          "403": {
+            "description": "Forbidden - Missing required permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionError"
+                },
+                "example": {
+                  "details": {
+                    "required_permissions": [
+                      {
+                        "description": "Upsert / delete own assistant core memory blocks.",
+                        "name": "CoreMemoryWrite",
+                        "value": "memory::core::write"
+                      }
+                    ]
+                  },
+                  "error": "Missing required permission: memory::core::write",
+                  "error_code": "INSUFFICIENT_PERMISSIONS"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/health": {
@@ -11390,6 +12402,10 @@
             "type": "string",
             "format": "uuid"
           },
+          "memory_mode": {
+            "description": "Per-conversation memory mode (migration 57):\n `inherit` defers to the user's retrieval_enabled setting,\n `on` forces retrieval, `off` suppresses it. NOT NULL DEFAULT 'inherit'.",
+            "type": "string"
+          },
           "model_id": {
             "description": "Optional model ID for display/history purposes\n Actual model selection happens per-message via SendMessageRequest",
             "type": [
@@ -11418,6 +12434,7 @@
         "required": [
           "id",
           "user_id",
+          "memory_mode",
           "created_at",
           "updated_at"
         ]
@@ -11514,6 +12531,10 @@
             "type": "string",
             "format": "uuid"
           },
+          "memory_mode": {
+            "description": "Per-conversation memory mode (migration 57):\n `inherit` defers to the user's retrieval_enabled setting,\n `on` forces retrieval, `off` suppresses it. NOT NULL DEFAULT 'inherit'.",
+            "type": "string"
+          },
           "message_count": {
             "type": "integer",
             "format": "int64"
@@ -11546,9 +12567,55 @@
         "required": [
           "id",
           "user_id",
+          "memory_mode",
           "created_at",
           "updated_at",
           "message_count"
+        ]
+      },
+      "CoreMemoryBlock": {
+        "type": "object",
+        "properties": {
+          "assistant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "block_label": {
+            "type": "string"
+          },
+          "char_limit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "assistant_id",
+          "user_id",
+          "block_label",
+          "content",
+          "char_limit",
+          "created_at",
+          "updated_at"
         ]
       },
       "CreateAssistantFromHubRequest": {
@@ -12035,6 +13102,32 @@
           "transport_type"
         ]
       },
+      "CreateMemoryRequest": {
+        "description": "Request body for `POST /api/memories` — manual user-driven memory add.",
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "importance": {
+            "type": "integer",
+            "format": "int16",
+            "default": 50,
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "kind": {
+            "type": "string",
+            "default": "fact"
+          },
+          "metadata": {
+            "default": null
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
       "CreateModelFromHubRequest": {
         "description": "Request to create LLM model from hub catalog (triggers download)",
         "type": "object",
@@ -12172,6 +13265,18 @@
           "username",
           "email",
           "password"
+        ]
+      },
+      "DeleteAllResponse": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "deleted"
         ]
       },
       "DeleteProviderResponse": {
@@ -14185,10 +15290,44 @@
           "password"
         ]
       },
+      "ListAuditLogQuery": {
+        "description": "Optional `?limit=N` query param for the audit-log endpoint.\n Clamp 1..=500 happens in the repo. Audit R7-#2.",
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "default": 100
+          }
+        }
+      },
+      "ListMemoriesQuery": {
+        "description": "List/page query params.",
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "default": 50
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "default": 0
+          }
+        }
+      },
       "ListModelsQuery": {
         "description": "Query parameters for listing models with optional provider filtering",
         "type": "object",
         "properties": {
+          "capability": {
+            "description": "Optional capability filter. When set, only models whose\n `capabilities.<capability>` JSONB field is `true` are returned.\n Used by the memory admin page to populate the embedding-model\n dropdown via `?capability=text_embedding`. Validated against\n a small allowlist; unknown values yield 400.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "page": {
             "description": "Page number (1-indexed)",
             "type": "integer",
@@ -15152,6 +16291,149 @@
           "permissions"
         ]
       },
+      "MemoryAdminSettings": {
+        "description": "Deployment-wide memory admin settings (single row, id=1).",
+        "type": "object",
+        "properties": {
+          "cosine_threshold": {
+            "type": "number",
+            "format": "float"
+          },
+          "daily_extraction_quota": {
+            "description": "Per-user/day extraction quota (rows created via extraction).",
+            "type": "integer",
+            "format": "int32"
+          },
+          "default_extraction_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "default_top_k": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "embedding_dimensions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "full_summary_prompt": {
+            "description": "Override for the full-resummarize LLM prompt. NULL = use the\n compiled-in default. Must contain `{transcript}` if set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "incremental_summary_prompt": {
+            "description": "Override for the incremental-refresh LLM prompt. NULL = use the\n compiled-in default. Must contain `{previous_summary}` and\n `{new_transcript}` if set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "soft_delete_grace_days": {
+            "description": "Reaper hard-delete grace period for soft-deleted memories (days).",
+            "type": "integer",
+            "format": "int32"
+          },
+          "summarize_after_n_messages": {
+            "description": "Summarizer trigger threshold (branch message count).",
+            "type": "integer",
+            "format": "int32"
+          },
+          "summarizer_keep_recent": {
+            "description": "Summarizer messages kept verbatim alongside the summary.",
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "embedding_dimensions",
+          "default_top_k",
+          "cosine_threshold",
+          "enabled",
+          "soft_delete_grace_days",
+          "daily_extraction_quota",
+          "summarize_after_n_messages",
+          "summarizer_keep_recent",
+          "updated_at"
+        ]
+      },
+      "MemoryAuditEntry": {
+        "description": "Append-only audit entry for memory operations.",
+        "type": "object",
+        "properties": {
+          "actor_kind": {
+            "type": "string"
+          },
+          "content_snapshot": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memory_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "metadata": true,
+          "op": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "op",
+          "source",
+          "actor_kind",
+          "metadata",
+          "created_at"
+        ]
+      },
       "MemoryInfo": {
         "type": "object",
         "properties": {
@@ -15450,6 +16732,17 @@
                 "type": "string",
                 "const": "tool_result"
               },
+              "attachment": {
+                "description": "Inline file attachment returned by a tool (base64-encoded content).\n Mirrors `McpContentData::ToolResult.attachment` so the\n `to_message_content()` serde roundtrip in content.rs preserves\n it through DB persistence. Without this field here, serde\n silently drops it when re-deserialising into MessageContentData.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RichFile"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "content": {
                 "type": "string"
               },
@@ -15468,6 +16761,23 @@
               },
               "name": {
                 "description": "Function/tool name (required for some providers like Gemini)",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "resource_links": {
+                "description": "References to persisted files returned by a tool (MCP\n resource_link). MUST be persisted on the assistant message —\n the frontend's `MessageFilesView` keys inline file-preview\n rendering off this field. Missing-from-schema means missing-\n from-storage means no inline preview.",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/ResourceLink"
+                }
+              },
+              "server_id": {
+                "description": "ID of the MCP server that executed this tool (UUID string)",
                 "type": [
                   "string",
                   "null"
@@ -16830,6 +18140,31 @@
           "content"
         ]
       },
+      "RebuildStatus": {
+        "type": "object",
+        "properties": {
+          "in_progress": {
+            "description": "True while a rebuild worker holds the process-local lock.",
+            "type": "boolean"
+          },
+          "model_name": {
+            "description": "Name of the currently-configured embedding model, if any.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pending_count": {
+            "description": "Live rows still needing (re)embedding under the current model:\n embedding IS NULL OR embedding_model != current_model.name.\n Returns 0 if no embedding model is configured.",
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "in_progress",
+          "pending_count"
+        ]
+      },
       "RefreshTokenRequest": {
         "type": "object",
         "properties": {
@@ -16948,6 +18283,48 @@
           "name"
         ]
       },
+      "ResourceLink": {
+        "description": "A reference to a resource returned by a tool (MCP resource_link content type)\n\n Used when a tool creates or references a file that is already persisted on the server.\n The URI follows the pattern `/api/files/{file_id}` for files stored in the file system.",
+        "type": "object",
+        "properties": {
+          "is_saved": {
+            "description": "Whether the file is already persisted in originals storage (user-attached).\n true  → URI is a download-with-token URL; skip fetch-and-save pipeline.\n false → workspace file; run full processing pipeline.\n None  → external MCP server; run full processing pipeline.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "mime_type": {
+            "description": "MIME type of the resource",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Display name for the resource",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size": {
+            "description": "File size in bytes",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "uri": {
+            "description": "URI of the resource (e.g. `/api/files/{file_id}`)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri"
+        ]
+      },
       "RespondToElicitationRequest": {
         "description": "Request body for POST /api/mcp/elicitation/{id}/respond",
         "type": "object",
@@ -16974,6 +18351,27 @@
         },
         "required": [
           "success"
+        ]
+      },
+      "RichFile": {
+        "description": "A file attachment returned by a tool (inline base64 content)",
+        "type": "object",
+        "properties": {
+          "data": {
+            "description": "Base64-encoded file content",
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "mime_type",
+          "data"
         ]
       },
       "RuntimeVersionListResponse": {
@@ -18018,6 +19416,26 @@
           "message"
         ]
       },
+      "TestExtractRequest": {
+        "type": "object",
+        "properties": {
+          "assistant_message": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "user_message",
+          "assistant_message"
+        ]
+      },
       "TestProviderResponse": {
         "type": "object",
         "properties": {
@@ -18075,6 +19493,23 @@
         "required": [
           "success",
           "message"
+        ]
+      },
+      "TestSummarizeRequest": {
+        "type": "object",
+        "properties": {
+          "branch_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "model_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "branch_id",
+          "model_id"
         ]
       },
       "TextPageQuery": {
@@ -18490,6 +19925,13 @@
               "null"
             ]
           },
+          "memory_mode": {
+            "description": "Per-conversation memory mode override:\n `inherit` falls back to the user's retrieval_enabled setting,\n `on` forces retrieval, `off` suppresses retrieval. Drives the\n composer-pill toggle. Migration 57 added the column.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "project_id": {
             "description": "Project move (tri-state):\n   * missing field = no change\n   * null = unassign (move out of project to \"unfiled\")\n   * UUID = assign / move to that project (ownership verified)",
             "type": [
@@ -18826,6 +20268,120 @@
           }
         }
       },
+      "UpdateMemoryAdminSettingsRequest": {
+        "description": "Admin settings update body.\n\n The `Option<Option<T>>` pattern on nullable columns means: outer\n `None` = leave the field unchanged, `Some(None)` = clear to NULL\n (use the compiled-in default for prompts, or \"no default\" for\n embedding/extraction models), `Some(Some(x))` = set to `x`.\n\n Serde's default `Option<T>` deserialization collapses `null` and\n \"absent\" to the same `None`, so the discriminating \"Some(None)\"\n state requires a custom deserializer — see\n `deserialize_nullable_field` below.",
+        "type": "object",
+        "properties": {
+          "cosine_threshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "daily_extraction_quota": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "default_extraction_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "default_top_k": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "default": null
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "full_summary_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "incremental_summary_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "soft_delete_grace_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "summarize_after_n_messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "summarizer_keep_recent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "UpdateMemoryRequest": {
+        "description": "Request body for `PATCH /api/memories/{id}` — partial edit.",
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "importance": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true
+        }
+      },
       "UpdateProjectMcpSettingsRequest": {
         "description": "MCP-only update endpoint payload (sibling to UpdateProjectRequest so\n the MCP panel can PUT without sending the rest of the project fields).\n\n `loop_settings` is `Option<Value>` (not a strict struct) for symmetry\n with the conversation_mcp_settings schema (migration 19) — keeping\n the project shape JSONB-flexible avoids a separate Rust struct that\n would need to stay in lockstep with the chat-side type. The chat\n extension consumes the snapshot opaquely.",
         "type": "object",
@@ -18898,6 +20454,45 @@
           }
         }
       },
+      "UpdateUserMemorySettingsRequest": {
+        "description": "Per-user settings update body.",
+        "type": "object",
+        "properties": {
+          "extraction_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "extraction_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "max_memories": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "retention_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "retrieval_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateUserRequest": {
         "type": "object",
         "properties": {
@@ -18920,6 +20515,31 @@
             ]
           }
         }
+      },
+      "UpsertCoreMemoryBlockRequest": {
+        "type": "object",
+        "properties": {
+          "assistant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "block_label": {
+            "type": "string"
+          },
+          "char_limit": {
+            "type": "integer",
+            "format": "int32",
+            "default": 2000
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assistant_id",
+          "block_label",
+          "content"
+        ]
       },
       "UpsertMcpSettingsRequest": {
         "description": "Request to create/update MCP settings",
@@ -19289,6 +20909,137 @@
           "auto_approved_tools",
           "disabled_servers",
           "loop_settings",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "UserMemory": {
+        "description": "A persisted user-level memory row.\n\n `embedding` is intentionally omitted from the public response shape —\n embeddings are internal retrieval machinery, never user-facing.",
+        "type": "object",
+        "properties": {
+          "confidence": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "embedding_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "importance": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_recalled_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "metadata": true,
+          "recall_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "content",
+          "source",
+          "importance",
+          "confidence",
+          "kind",
+          "metadata",
+          "created_at",
+          "updated_at",
+          "recall_count"
+        ]
+      },
+      "UserMemorySettings": {
+        "description": "Per-user memory preferences.",
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "extraction_enabled": {
+            "type": "boolean"
+          },
+          "extraction_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "max_memories": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "retention_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "retrieval_enabled": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "user_id",
+          "extraction_enabled",
+          "retrieval_enabled",
+          "max_memories",
           "created_at",
           "updated_at"
         ]

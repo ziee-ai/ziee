@@ -105,9 +105,11 @@ test.describe('Chat — LLM-driven inline file preview (real LLM + mock MCP serv
     page,
     testInfra,
   }) => {
-    // Intercept the resource_link URL the mock will return.
+    // Intercept the resource_link URL the mock will return. Use a `**`
+    // glob because `page.route` with a plain string matches the full
+    // URL, not just the path (see mock-tool-result.ts comment).
     const mockedUri = '/api/files/mock/plot.png'
-    await page.route(mockedUri, async route => {
+    await page.route(`**${mockedUri}`, async route => {
       // Tiny 1x1 PNG (transparent).
       const png = Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
@@ -138,7 +140,7 @@ test.describe('Chat — LLM-driven inline file preview (real LLM + mock MCP serv
     testInfra,
   }) => {
     const mockedUri = '/api/files/mock/data.csv'
-    await page.route(mockedUri, async route => {
+    await page.route(`**${mockedUri}`, async route => {
       await route.fulfill({
         status: 200,
         contentType: 'text/csv',
@@ -166,14 +168,14 @@ test.describe('Chat — LLM-driven inline file preview (real LLM + mock MCP serv
     page,
     testInfra,
   }) => {
-    await page.route('/api/files/mock/img.png', async route => {
+    await page.route('**/api/files/mock/img.png', async route => {
       const png = Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
         'base64',
       )
       await route.fulfill({ status: 200, contentType: 'image/png', body: png })
     })
-    await page.route('/api/files/mock/data.csv', async route => {
+    await page.route('**/api/files/mock/data.csv', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'text/csv',
@@ -202,7 +204,7 @@ test.describe('Chat — LLM-driven inline file preview (real LLM + mock MCP serv
     page,
     testInfra,
   }) => {
-    await page.route('/api/files/mock/report.md', async route => {
+    await page.route('**/api/files/mock/report.md', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'text/markdown',
@@ -230,7 +232,7 @@ test.describe('Chat — LLM-driven inline file preview (real LLM + mock MCP serv
     page,
     testInfra,
   }) => {
-    await page.route('/api/files/mock/log.txt', async route => {
+    await page.route('**/api/files/mock/log.txt', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'text/plain',
@@ -247,11 +249,13 @@ test.describe('Chat — LLM-driven inline file preview (real LLM + mock MCP serv
       true,
     )
 
-    const pre = page
-      .locator('[data-testid="inline-file-preview"] pre')
+    // RawCodeView (used by the text viewer) renders a div-based
+    // line-numbered layout, not a <pre>. Anchor on its data-testid.
+    const rawView = page
+      .locator('[data-testid="inline-file-preview"] [data-testid="raw-code-view"]')
       .first()
-    await expect(pre).toBeVisible({ timeout: 60000 })
-    await expect(pre).toContainText('startup')
+    await expect(rawView).toBeVisible({ timeout: 60000 })
+    await expect(rawView).toContainText('startup')
   })
 })
 

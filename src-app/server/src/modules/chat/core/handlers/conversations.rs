@@ -193,6 +193,17 @@ pub async fn update_conversation(
             return Err(AppError::bad_request("VALIDATION_ERROR", "Title must not exceed 500 characters").into());
         }
 
+    // Validate memory_mode if provided.
+    if let Some(ref mode) = request.memory_mode {
+        if !matches!(mode.as_str(), "inherit" | "on" | "off") {
+            return Err(AppError::bad_request(
+                "VALIDATION_ERROR",
+                "memory_mode must be one of: inherit, on, off",
+            )
+            .into());
+        }
+    }
+
     // If the update changes project_id, capture the BEFORE value so we
     // can emit a ConversationMoved event after a successful update.
     // We only fetch when the request actually includes a project_id
@@ -209,12 +220,34 @@ pub async fn update_conversation(
     };
     let project_change_requested = request.project_id.is_some();
 
-    let conversation = Repos
+    let mut conversation = Repos
         .chat
         .core
         .update_conversation(id, auth.user.id, request.title, request.project_id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation"))?;
+
+    // memory_mode lives on the conversations table but isn't covered by
+    // the generic update_conversation repo method; one-shot SQL keeps the
+    // diff small. Re-fetch afterwards so the returned struct is current.
+    if let Some(mode) = request.memory_mode {
+        let pool = crate::core::Repos.memory.pool_clone();
+        sqlx::query!(
+            "UPDATE conversations SET memory_mode = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3",
+            mode,
+            id,
+            auth.user.id
+        )
+        .execute(&pool)
+        .await
+        .map_err(AppError::database_error)?;
+        conversation = Repos
+            .chat
+            .core
+            .get_conversation(id, auth.user.id)
+            .await?
+            .ok_or_else(|| AppError::not_found("Conversation"))?;
+    }
 
     if project_change_requested && old_project_id != conversation.project_id {
         event_bus.emit_async(ProjectEvent::conversation_moved(

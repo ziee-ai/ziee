@@ -323,7 +323,10 @@ interface ChatState {
   loadConversation: (id: string) => Promise<void>
   loadMessages: (id: string) => Promise<void>
   sendMessage: () => Promise<void>
-  updateConversation: (updates: { title?: string }) => Promise<void>
+  updateConversation: (updates: {
+    title?: string
+    memory_mode?: 'inherit' | 'on' | 'off'
+  }) => Promise<void>
   clearError: () => void
   reset: () => void
 
@@ -1443,7 +1446,10 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
-      updateConversation: async (updates: { title?: string }) => {
+      updateConversation: async (updates: {
+        title?: string
+        memory_mode?: 'inherit' | 'on' | 'off'
+      }) => {
         const { conversation } = get()
         if (!conversation) {
           set({ error: 'No active conversation' })

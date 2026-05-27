@@ -37,13 +37,47 @@ pub async fn list_models(
     Query(params): Query<ListModelsQuery>,
 ) -> ApiResult<Json<LlmModelListResponse>> {
     // Get models based on whether provider_id filter is provided
-    let all_models = if let Some(provider_id) = params.provider_id {
+    let mut all_models = if let Some(provider_id) = params.provider_id {
         // Filter by provider
         Repos.llm_model.list_by_provider(provider_id).await?
     } else {
         // Get all models across all providers
         Repos.llm_model.list_all().await?
     };
+
+    // Optional capability filter. Allowlisted to defend against admin
+    // typos / future JSONB-path injection. Used by the memory admin
+    // page's embedding-model dropdown via `?capability=text_embedding`.
+    if let Some(ref cap) = params.capability {
+        const ALLOWED_CAPABILITIES: &[&str] = &[
+            "text_embedding",
+            "vision",
+            "audio",
+            "tools",
+            "chat",
+            "image_generator",
+        ];
+        if !ALLOWED_CAPABILITIES.contains(&cap.as_str()) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                AppError::bad_request(
+                    "VALIDATION_ERROR",
+                    format!(
+                        "unknown capability {:?}; expected one of: {}",
+                        cap,
+                        ALLOWED_CAPABILITIES.join(", ")
+                    ),
+                ),
+            ));
+        }
+        let cap = cap.clone();
+        all_models.retain(|m| {
+            serde_json::to_value(&m.capabilities)
+                .ok()
+                .and_then(|v| v.get(&cap).and_then(|c| c.as_bool()))
+                .unwrap_or(false)
+        });
+    }
 
     // Calculate pagination
     let total = all_models.len() as i64;
