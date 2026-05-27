@@ -132,42 +132,14 @@ async function waitForBackendReady(
   )
 }
 
-/**
- * Bootstrap the first admin user. The server's `setup_admin` handler
- * returns an `AuthResponse` (user + flattened TokenPair) directly, so
- * we don't need a separate `/api/auth/login` round-trip.
- *
- * Request shape per `server/src/modules/app/types.rs::SetupAdminRequest`:
- *   { username, email, password, display_name? }
- * Response shape per `server/src/modules/auth/types.rs::AuthResponse`:
- *   { user, access_token, refresh_token, token_type, expires_in }
- */
-async function bootstrapAdmin(
-  backendURL: string,
-  username: string,
-  password: string,
-  email: string,
-): Promise<AuthTokens> {
-  const res = await fetch(`${backendURL}/api/app/setup/admin`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password, email }),
-  })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(
-      `Failed to bootstrap admin (${res.status}): ${body.slice(0, 200)}`,
-    )
-  }
-  const json = (await res.json()) as AuthTokens & { token_type?: string }
-  // Discard token_type; desktop's AutoLoginResponse doesn't carry it.
-  return {
-    user: json.user,
-    access_token: json.access_token,
-    refresh_token: json.refresh_token,
-    expires_in: json.expires_in,
-  }
-}
+// Admin bootstrap + tokens are obtained inline in the testInfra
+// fixture below (POST /api/app/setup/admin returns AuthResponse —
+// user + flattened TokenPair — directly, so no separate /api/auth/login
+// round-trip is needed). Request shape per
+// `server/src/modules/app/types.rs::SetupAdminRequest`:
+//   { username, email, password, display_name? }
+// Response shape per `server/src/modules/auth/types.rs::AuthResponse`:
+//   { user, access_token, refresh_token, token_type, expires_in }
 
 export const test = base.extend<TestFixtures>({
   testInfra: async ({}, use, testInfo) => {

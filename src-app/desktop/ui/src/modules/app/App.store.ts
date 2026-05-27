@@ -37,7 +37,11 @@ interface AppState {
   clearSetupError: () => void
 }
 
-declare module '../../core/stores' {
+// `@/core/stores` resolves via tsconfig path mapping to core's
+// stores.ts; using the alias here instead of a relative path because
+// `../../core/stores` from desktop's modules/app/ would point at a
+// non-existent file under desktop's src tree.
+declare module '@/core/stores' {
   interface RegisteredStores {
     App: StoreProxy<AppState>
   }

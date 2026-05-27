@@ -19,6 +19,16 @@ pub async fn generate_openapi_spec(
     // Load configuration
     let config = ziee::Config::load_from(config_file)?;
 
+    // Initialize globals normally set by `setup_server`. Modules read
+    // these during `initialize_modules` below (e.g.,
+    // llm_local_runtime/runtime_version/handlers.rs unwraps
+    // `get_caches_config().llm_engines_dir()`); skipping them panics
+    // with "llm_engines_dir filled by Config::resolve_paths" mid-init.
+    if let Some(app) = &config.app {
+        ziee::set_app_data_dir(std::path::PathBuf::from(&app.data_dir));
+    }
+    ziee::set_caches_config(config.caches.clone());
+
     // Initialize database (this starts embedded PostgreSQL if use_embedded: true)
     let pool = ziee::initialize_database(&config).await?;
 

@@ -61,7 +61,7 @@ pub use modules::code_sandbox::embedded as code_sandbox_embedded;
 // can redirect the app data root to a TempDir without going through
 // the full config-load path.
 #[doc(hidden)]
-pub use core::set_app_data_dir;
+pub use core::{set_app_data_dir, set_caches_config};
 
 // Test-helper exports: the platform-specific sandbox backend dispatch
 // + the raw-exec result shape. Used by tests/code_sandbox/harness.rs
