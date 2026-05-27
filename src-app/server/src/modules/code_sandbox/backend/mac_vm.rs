@@ -154,6 +154,119 @@ async fn boot_lock_for(flavor: &str) -> Arc<Mutex<()>> {
         .clone()
 }
 
+/// Test-only VM pool keyed by rootfs squashfs path. Used by
+/// `exec_raw_argv` so the 50+ tier-4/6 tests in a `cargo test`
+/// invocation share one libkrun VM per (process, rootfs) rather than
+/// paying the ~2s boot cost per test.
+static TEST_VMS: Lazy<Mutex<HashMap<PathBuf, Arc<VmHandle>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Boot (or reuse) a libkrun VM with `rootfs_squashfs` as the
+/// virtio-blk disk and a temp dir as the virtio-fs workspace. Used
+/// only by `exec_raw_argv`. Each unique rootfs gets its own VM;
+/// subsequent calls hit the cache.
+async fn ensure_test_vm(rootfs_squashfs: &Path) -> Result<Arc<VmHandle>, AppError> {
+    {
+        let vms = TEST_VMS.lock().await;
+        if let Some(h) = vms.get(rootfs_squashfs) {
+            return Ok(h.clone());
+        }
+    }
+
+    let dir = runtime_dir()
+        .map_err(|e| AppError::internal_error(format!("test runtime dir: {e}")))?;
+    // Per-rootfs socket name so multiple test rootfs files can coexist.
+    let key: String = rootfs_squashfs
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("test")
+        .to_string();
+    let socket_path = dir.join(format!("test-vm-{key}.sock"));
+    let _ = std::fs::remove_file(&socket_path);
+
+    // Workspace dir for the VM's virtio-fs share. Shared across tests
+    // in this pool entry — tier 4 tests don't write to /workspace.
+    let workspace_host_path = dir.join(format!("test-vm-{key}-workspace"));
+    std::fs::create_dir_all(&workspace_host_path)
+        .map_err(|e| AppError::internal_error(format!("mkdir test workspace: {e}")))?;
+
+    let cfg = serde_json::json!({
+        "num_vcpus": 1,
+        "ram_mib": 512,
+        "root_path": MacVmBackend::guest_root_path().to_string_lossy(),
+        "sandbox_disk_path": rootfs_squashfs.to_string_lossy(),
+        "workspace_host_path": workspace_host_path.to_string_lossy(),
+        "vsock_socket_path": socket_path.to_string_lossy(),
+        "vsock_port": GUEST_VSOCK_PORT,
+        "agent_exec_path": GUEST_AGENT_PATH,
+    });
+    let cfg_path = dir.join(format!("test-vm-{key}.json"));
+    std::fs::write(&cfg_path, serde_json::to_vec(&cfg).unwrap())
+        .map_err(|e| AppError::internal_error(format!("write test VM config: {e}")))?;
+
+    // Spawn launcher with stderr piped so we can scan for the agent's
+    // "listening on vsock port" readiness marker. The socket existing
+    // ≠ the agent listening; connecting too early gets EOF.
+    let mut child = tokio::process::Command::new(MacVmBackend::launcher_path())
+        .arg(&cfg_path)
+        .env_clear()
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| AppError::internal_error(format!("spawn test VM launcher: {e}")))?;
+
+    // Wait for socket to appear AND agent to log readiness.
+    let stderr = child.stderr.take().expect("piped stderr");
+    let (ready_tx, mut ready_rx) = tokio::sync::mpsc::channel::<()>(1);
+    tokio::spawn(async move {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        let reader = BufReader::new(stderr);
+        let mut lines = reader.lines();
+        let mut signaled = false;
+        while let Ok(Some(line)) = lines.next_line().await {
+            eprintln!("[test-vm:{key}] {line}");
+            if !signaled && line.contains("listening on vsock port") {
+                let _ = ready_tx.send(()).await;
+                signaled = true;
+            }
+        }
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !socket_path.exists() {
+        if Instant::now() > deadline {
+            return Err(AppError::internal_error(
+                "test VM launcher: vsock socket did not appear within 30s",
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    tokio::time::timeout(Duration::from_secs(30), ready_rx.recv())
+        .await
+        .map_err(|_| {
+            AppError::internal_error(
+                "test VM launcher: agent did not log 'listening on vsock port' within 30s",
+            )
+        })?;
+
+    let handle = Arc::new(VmHandle {
+        child: Mutex::new(child),
+        socket_path,
+        last_used: Mutex::new(Instant::now()),
+        inflight: AtomicUsize::new(0),
+        // 4 concurrent execs per test VM — tier-4 tests are mostly
+        // sequential so this is generous.
+        sem: Semaphore::new(4),
+    });
+    TEST_VMS
+        .lock()
+        .await
+        .insert(rootfs_squashfs.to_path_buf(), handle.clone());
+    Ok(handle)
+}
+
 /// Per-server-instance private runtime dir (mode 0700) for VM control sockets +
 /// launch configs. Replaces predictable, world-traversable /tmp paths (S1/S2):
 /// only the server's uid can reach the (unauthenticated) control socket, and an
@@ -173,23 +286,60 @@ impl MacVmBackend {
         Self
     }
 
-    /// Resolve the bundled launcher binary + guest root. Overridable via env
-    /// for dev; defaults assume the app-bundle layout (Contents/Resources).
+    /// Resolve the bundled launcher binary + guest root. Resolution order:
+    ///   1. Env var (`ZIEE_SANDBOX_VM_LAUNCHER` / `ZIEE_SANDBOX_GUEST_ROOT`)
+    ///      — explicit dev override.
+    ///   2. Sibling of the running executable (the legacy app-bundle layout
+    ///      where the launcher lives next to the server binary). For the
+    ///      guest root, the legacy default `/opt/ziee/sandbox-guest-root`.
+    ///   3. Embedded bundle, extracted to the user's cache dir on first
+    ///      sandbox call. This is the self-contained-binary path: the
+    ///      server binary ships the launcher + dylibs + guest-root as
+    ///      bytes (see `code_sandbox::embedded`); on first use we unpack
+    ///      to `dirs::cache_dir()/ziee/sandbox-runtime/<sha256>/`.
     fn launcher_path() -> PathBuf {
         if let Ok(p) = std::env::var("ZIEE_SANDBOX_VM_LAUNCHER") {
             return PathBuf::from(p);
         }
-        std::env::current_exe()
+        let sibling = std::env::current_exe()
             .ok()
             .and_then(|e| e.parent().map(Path::to_path_buf))
-            .map(|dir| dir.join("ziee-sandbox-vm-launcher"))
-            .unwrap_or_else(|| PathBuf::from("ziee-sandbox-vm-launcher"))
+            .map(|dir| dir.join("ziee-sandbox-vm-launcher"));
+        if let Some(p) = sibling.as_ref()
+            && p.exists()
+        {
+            return p.clone();
+        }
+        match crate::modules::code_sandbox::embedded::ensure() {
+            Ok(extracted) => extracted.launcher.clone(),
+            Err(e) => {
+                tracing::warn!(
+                    "code_sandbox: launcher resolution falling back to bare path; \
+                     embedded bundle extraction failed: {e}"
+                );
+                sibling.unwrap_or_else(|| PathBuf::from("ziee-sandbox-vm-launcher"))
+            }
+        }
     }
 
     fn guest_root_path() -> PathBuf {
-        std::env::var("ZIEE_SANDBOX_GUEST_ROOT")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/opt/ziee/sandbox-guest-root"))
+        if let Ok(p) = std::env::var("ZIEE_SANDBOX_GUEST_ROOT") {
+            return PathBuf::from(p);
+        }
+        let legacy = PathBuf::from("/opt/ziee/sandbox-guest-root");
+        if legacy.exists() {
+            return legacy;
+        }
+        match crate::modules::code_sandbox::embedded::ensure() {
+            Ok(extracted) => extracted.guest_root.clone(),
+            Err(e) => {
+                tracing::warn!(
+                    "code_sandbox: guest-root resolution falling back to legacy path; \
+                     embedded bundle extraction failed: {e}"
+                );
+                legacy
+            }
+        }
     }
 
     /// Get the warm VM for `flavor`, booting one (single-flight) if needed.
@@ -239,14 +389,40 @@ impl MacVmBackend {
         // Gap #4: clear the env so the VMM process does not inherit the
         // server's secrets (DATABASE_URL/JWT/API keys). The launcher needs no
         // env — its config is the JSON file arg and libkrun is found via rpath.
-        let child = tokio::process::Command::new(Self::launcher_path())
+        // Pipe stderr so we can scan for the agent's "listening on vsock port"
+        // log line — vm.sock appearing on the HOST is libkrun's bridge being
+        // ready, NOT the in-guest agent. Connecting before the guest agent
+        // listens gets an immediate EOF. (Same race + fix as the test-VM
+        // helper `ensure_test_vm`.)
+        let mut child = tokio::process::Command::new(Self::launcher_path())
             .arg(&cfg_path)
             .env_clear()
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| AppError::internal_error(format!("spawn VM launcher: {e}")))?;
 
-        // Wait for the bridge socket to appear (VM booted + agent listening).
+        // Reader task: forward stderr to ours (preserves diagnostic output)
+        // AND signal when the agent logs readiness.
+        let stderr = child.stderr.take().expect("piped stderr");
+        let (ready_tx, mut ready_rx) = tokio::sync::mpsc::channel::<()>(1);
+        let flavor_for_log = flavor.to_string();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let mut lines = BufReader::new(stderr).lines();
+            let mut signaled = false;
+            while let Ok(Some(line)) = lines.next_line().await {
+                eprintln!("[vm:{flavor_for_log}] {line}");
+                if !signaled && line.contains("listening on vsock port") {
+                    let _ = ready_tx.send(()).await;
+                    signaled = true;
+                }
+            }
+        });
+
+        // Wait first for the host bridge socket, then for the in-guest agent.
         let deadline = Instant::now() + Duration::from_secs(30);
         while !socket_path.exists() {
             if Instant::now() > deadline {
@@ -256,6 +432,13 @@ impl MacVmBackend {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
+        tokio::time::timeout(Duration::from_secs(30), ready_rx.recv())
+            .await
+            .map_err(|_| {
+                AppError::internal_error(
+                    "VM launcher: agent did not log 'listening on vsock port' within 30s",
+                )
+            })?;
 
         let handle = Arc::new(VmHandle {
             child: Mutex::new(child),
@@ -455,6 +638,51 @@ impl SandboxBackend for MacVmBackend {
             let _ = std::fs::remove_file(&handle.socket_path);
             tracing::info!(flavor, "code_sandbox: macOS VM stopped on shutdown");
         }
+        // Also tear down test-scoped VMs (tier 4 helper pool).
+        let mut test_vms = TEST_VMS.lock().await;
+        for (_, handle) in test_vms.drain() {
+            let mut child = handle.child.lock().await;
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            let _ = std::fs::remove_file(&handle.socket_path);
+        }
+    }
+
+    async fn exec_raw_argv(
+        &self,
+        argv: Vec<String>,
+        rootfs_squashfs: &Path,
+        timeout: Duration,
+    ) -> Result<super::RawExecResult, AppError> {
+        let vm = ensure_test_vm(rootfs_squashfs).await?;
+        let req = ExecRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: REQ_COUNTER.fetch_add(1, Ordering::Relaxed),
+            bwrap_path: GUEST_BWRAP_PATH.to_string(),
+            argv,
+            timeout_ms: timeout.as_millis().min(u64::MAX as u128) as u64,
+            // The agent's seccomp pipe path uses its embedded BPF when
+            // seccomp_fd is Some; we leave it None so tests can supply
+            // --seccomp <fd> themselves if they want, by appending a
+            // bwrap arg that opens an FD. Most tier 4 seccomp tests
+            // synthesize this via the agent's pipe — see the helper.
+            seccomp_fd: None,
+            cgroup: None,
+        };
+        let secs = timeout.as_secs().max(1);
+        let _permit = vm.sem.acquire().await.expect("VM semaphore never closed");
+        vm.inflight.fetch_add(1, Ordering::SeqCst);
+        let _guard = InflightGuard(vm.clone());
+        let stream = UnixStream::connect(&vm.socket_path)
+            .await
+            .map_err(|e| AppError::internal_error(format!("connect test-VM socket: {e}")))?;
+        let run = super::vm_client::run_on_stream(stream, req, secs).await?;
+        Ok(super::RawExecResult {
+            exit_code: run.exit_code,
+            stdout: run.stdout.into_bytes(),
+            stderr: run.stderr.into_bytes(),
+            timed_out: run.timed_out,
+        })
     }
 
     async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {

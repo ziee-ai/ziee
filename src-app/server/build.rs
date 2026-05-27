@@ -9,6 +9,8 @@ mod pdfium;
 mod uv;
 #[path = "build_helper/bun.rs"]
 mod bun;
+#[path = "build_helper/sandbox_runtime.rs"]
+mod sandbox_runtime;
 
 /// Redact the password portion of a postgres URL for safe logging.
 /// Closes 14-core F-02 (Critical): build.rs previously echoed the raw
@@ -139,6 +141,15 @@ fn setup_external_binaries() {
     // Setup Bun - downloads to binaries/{target}/
     if let Err(e) = bun::setup_bun(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to setup Bun: {}", e);
+    }
+
+    // Assemble the macOS sandbox runtime bundle (no-op on every other
+    // target). Failures here are warnings, not hard errors — a dev
+    // machine without Docker can still build the server; the embedded
+    // bundle just won't work at runtime (the existing env/exe-parent
+    // fallbacks in mac_vm.rs cover the dev path).
+    if let Err(e) = sandbox_runtime::setup(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to assemble sandbox-runtime bundle: {}", e);
     }
 }
 

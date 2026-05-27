@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
@@ -13,6 +14,39 @@ pub struct Config {
     pub code_sandbox: Option<CodeSandboxConfig>,
     #[serde(default)]
     pub secrets: Option<SecretsConfig>,
+    /// Per-cache path overrides. Defaults to all-None; `Config::resolve_paths`
+    /// fills each unset field with a subdir of `app.data_dir`. Operators
+    /// override individual entries to put a particular cache on a
+    /// different disk (e.g. `hf_models_dir` on a big spinning disk while
+    /// `git_cache_dir` stays on the SSD).
+    #[serde(default)]
+    pub caches: CachesConfig,
+}
+
+/// Overridable paths for runtime caches. Every field defaults to a
+/// subdir of `app.data_dir` after `Config::resolve_paths` runs. Direct
+/// reads of these fields BEFORE `resolve_paths` see `None` — every
+/// caller should be downstream of `Config::load_from` which calls it.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct CachesConfig {
+    /// HuggingFace model downloads. Default `<app.data_dir>/hf-models`.
+    /// Was hardcoded `~/.llm-runtime/models/` in the standalone crate.
+    #[serde(default)]
+    pub hf_models_dir: Option<String>,
+    /// llama-server / mistralrs-server downloaded engine binaries.
+    /// Default `<app.data_dir>/llm-engines`.
+    /// Was hardcoded `~/.llm-runtime/binaries/` in the standalone crate.
+    #[serde(default)]
+    pub llm_engines_dir: Option<String>,
+    /// Hub repository clones. Default `<app.data_dir>/cache/git`.
+    /// Was hardcoded `dirs::cache_dir()/ziee/models/git/` in
+    /// `utils/git/service.rs`.
+    #[serde(default)]
+    pub git_cache_dir: Option<String>,
+    /// Git LFS object cache. Default `<app.data_dir>/cache/lfs`.
+    /// Was nested under `git_cache_dir/lfs_cache` historically.
+    #[serde(default)]
+    pub lfs_cache_dir: Option<String>,
 }
 
 /// At-rest encryption configuration.
@@ -43,10 +77,16 @@ pub struct CodeSandboxConfig {
     /// (no boot probes, no MCP row upsert, no reaper task).
     #[serde(default)]
     pub enabled: bool,
-    /// Path to the mounted rootfs (squashfuse target). Bind-mounted
-    /// read-only into every bwrap call.
-    #[serde(default = "default_rootfs_path")]
-    pub rootfs_path: String,
+    /// Path to the cached rootfs squashfs files. Default
+    /// `<app.data_dir>/sandbox-rootfs/` (filled by `resolve_paths`).
+    /// Bind-mounted read-only into every bwrap call.
+    #[serde(default)]
+    pub rootfs_path: Option<String>,
+    /// Per-conversation sandbox workspaces root. Default
+    /// `<app.data_dir>/sandboxes/`. Was previously derived ad-hoc in
+    /// `code_sandbox/mod.rs` with no override.
+    #[serde(default)]
+    pub workspace_root: Option<String>,
     /// Delegated cgroup v2 parent. Empty string → rlimits-only mode
     /// (no per-call cgroup scope; rlimits still enforce memory + procs).
     #[serde(default)]
@@ -63,22 +103,81 @@ pub struct CodeSandboxConfig {
     /// always asks. Only consulted when `require_download_consent` is true.
     #[serde(default = "default_auto_download_under_mb")]
     pub auto_download_under_mb: u64,
+    /// Audit H-8: refuse to register the sandbox MCP server on Windows when
+    /// WSL2 `networkingMode = mirrored` is enabled in `.wslconfig`. In
+    /// mirrored mode the Windows host's 127.0.0.1 (Postgres, the Ziee API
+    /// itself, browser DevTools, …) is reachable from inside the distro,
+    /// and `--share-net` carries that into the sandbox. The previous
+    /// behavior was a warn-log only. Operators who genuinely want this
+    /// configuration must opt in with `allow_wsl2_mirrored_mode: true`.
+    /// No-op on Linux/macOS.
+    #[serde(default)]
+    pub allow_wsl2_mirrored_mode: bool,
+    /// Audit H-4: refuse to register when the cloud instance metadata
+    /// service (169.254.169.254) is reachable from the host AND `--share-net`
+    /// would expose it to LLM-generated code. On EC2/GCE/Azure, IMDS hands
+    /// out IAM/role credentials that the sandboxed workload can curl + ship
+    /// to whatever egress the LLM is told to use. Operators on a cloud host
+    /// who genuinely want this configuration (e.g. behind IMDSv2 with a
+    /// hop-limit of 1 + sandboxed bash unable to set the v2 token header)
+    /// must opt in with `allow_cloud_imds_reachable: true`. No-op on hosts
+    /// where IMDS is unreachable (the common dev / on-prem case).
+    #[serde(default)]
+    pub allow_cloud_imds_reachable: bool,
 }
 
 impl Default for CodeSandboxConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            rootfs_path: default_rootfs_path(),
+            rootfs_path: None,
+            workspace_root: None,
             cgroup_parent: String::new(),
             require_download_consent: default_require_download_consent(),
             auto_download_under_mb: default_auto_download_under_mb(),
+            allow_wsl2_mirrored_mode: false,
+            allow_cloud_imds_reachable: false,
         }
     }
 }
 
-fn default_rootfs_path() -> String {
-    "/var/lib/ziee/sandbox-rootfs/current".to_string()
+impl CodeSandboxConfig {
+    /// `rootfs_path` after `Config::resolve_paths` has run. Panics if
+    /// called on an unresolved config (programmer error — `load_from`
+    /// always resolves).
+    pub fn rootfs_path(&self) -> &str {
+        self.rootfs_path
+            .as_deref()
+            .expect("rootfs_path filled by Config::resolve_paths")
+    }
+    pub fn workspace_root(&self) -> &str {
+        self.workspace_root
+            .as_deref()
+            .expect("workspace_root filled by Config::resolve_paths")
+    }
+}
+
+impl CachesConfig {
+    pub fn hf_models_dir(&self) -> &str {
+        self.hf_models_dir
+            .as_deref()
+            .expect("hf_models_dir filled by Config::resolve_paths")
+    }
+    pub fn llm_engines_dir(&self) -> &str {
+        self.llm_engines_dir
+            .as_deref()
+            .expect("llm_engines_dir filled by Config::resolve_paths")
+    }
+    pub fn git_cache_dir(&self) -> &str {
+        self.git_cache_dir
+            .as_deref()
+            .expect("git_cache_dir filled by Config::resolve_paths")
+    }
+    pub fn lfs_cache_dir(&self) -> &str {
+        self.lfs_cache_dir
+            .as_deref()
+            .expect("lfs_cache_dir filled by Config::resolve_paths")
+    }
 }
 
 fn default_require_download_consent() -> bool {
@@ -113,8 +212,17 @@ pub struct EmbeddedPostgreSqlConfig {
     pub username: String,
     pub password: String,
     pub database: String,
-    pub installation_dir: String,
-    pub data_dir: String,
+    /// Postgres install tree (bin/lib/share). Default
+    /// `<app.data_dir>/postgres/` (filled by `resolve_paths`).
+    /// postgresql_embedded skips re-extraction if the version matches —
+    /// safe to share across server upgrades.
+    #[serde(default)]
+    pub installation_dir: Option<String>,
+    /// PGDATA cluster (pg_wal, base, postgresql.conf). Default
+    /// `<app.data_dir>/postgres-data/`. Operators commonly override
+    /// to put the cluster on a fast disk.
+    #[serde(default)]
+    pub data_dir: Option<String>,
     pub timezone: String,
     pub log_timezone: String,
     pub logging: LoggingConfigPostgres,
@@ -254,7 +362,74 @@ impl Config {
             tracing::info!("Auto-assigned server port: {}", config.server.port);
         }
 
+        // Fill every unset path field by joining `app.data_dir` with a
+        // fixed subpath. Idempotent. After this call, every Optional path
+        // on the Config is `Some(...)` and callers can `.unwrap()`.
+        config.resolve_paths();
+
         Ok(config)
+    }
+
+    /// Resolve every Optional path field by deriving from `app.data_dir`.
+    /// Called once at the end of `load_from`. Idempotent: existing
+    /// `Some(...)` values are preserved as-is (operator overrides win
+    /// over derived defaults).
+    pub fn resolve_paths(&mut self) {
+        // 1. Ensure app.data_dir exists. Falls back to ~/.ziee per the
+        //    same convention init_data_dir uses.
+        let app_data_dir: PathBuf = match &self.app {
+            Some(a) => PathBuf::from(&a.data_dir),
+            None => {
+                let default = dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".ziee");
+                self.app = Some(AppConfig {
+                    data_dir: default.to_string_lossy().into_owned(),
+                });
+                default
+            }
+        };
+
+        // 2. postgres install + data dirs.
+        if let Some(ref mut emb) = self.postgresql.embedded {
+            emb.installation_dir
+                .get_or_insert_with(|| join_to_string(&app_data_dir, "postgres"));
+            emb.data_dir
+                .get_or_insert_with(|| join_to_string(&app_data_dir, "postgres-data"));
+        }
+
+        // 3. code_sandbox paths.
+        let sandbox = self.code_sandbox.get_or_insert_with(CodeSandboxConfig::default);
+        sandbox
+            .rootfs_path
+            .get_or_insert_with(|| join_to_string(&app_data_dir, "sandbox-rootfs"));
+        sandbox
+            .workspace_root
+            .get_or_insert_with(|| join_to_string(&app_data_dir, "sandboxes"));
+
+        // 4. Caches (HuggingFace models, LLM engine binaries, git, LFS).
+        self.caches
+            .hf_models_dir
+            .get_or_insert_with(|| join_to_string(&app_data_dir, "hf-models"));
+        self.caches
+            .llm_engines_dir
+            .get_or_insert_with(|| join_to_string(&app_data_dir, "llm-engines"));
+        self.caches
+            .git_cache_dir
+            .get_or_insert_with(|| join_to_string(&app_data_dir, "cache/git"));
+        self.caches
+            .lfs_cache_dir
+            .get_or_insert_with(|| join_to_string(&app_data_dir, "cache/lfs"));
+    }
+
+    /// Helper for code paths that have a resolved `Config` and need the
+    /// installation_dir for the embedded postgres install.
+    pub fn embedded_postgres_installation_dir(&self) -> Option<PathBuf> {
+        self.postgresql
+            .embedded
+            .as_ref()
+            .and_then(|e| e.installation_dir.as_ref())
+            .map(PathBuf::from)
     }
 
     pub fn database_url(&self) -> String {
@@ -292,6 +467,14 @@ impl Config {
     pub fn server_address(&self) -> String {
         format!("{}:{}", self.server.host, self.server.port)
     }
+}
+
+/// Join a subpath onto a base dir and stringify. Used by `resolve_paths`
+/// to fill Option<String> path defaults. `to_string_lossy` is fine here:
+/// `app.data_dir` originates from the YAML config (UTF-8) or our
+/// `~/.ziee` default (ASCII), neither of which produce surrogate halves.
+fn join_to_string(base: &std::path::Path, sub: &str) -> String {
+    base.join(sub).to_string_lossy().into_owned()
 }
 
 /// Find an available port in the given range

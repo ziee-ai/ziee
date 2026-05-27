@@ -176,6 +176,7 @@ yanked = false
                 mirror_url.clone(),
             ),
         ],
+        sandbox_cache_tempdir: None,
     };
     let server = TestServer::start_with_options(opts).await;
 

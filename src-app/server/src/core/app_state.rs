@@ -5,6 +5,8 @@ use once_cell::sync::Lazy;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use crate::core::config::CachesConfig;
+
 /// Global application data directory
 /// This stores models, caches, temporary files, etc.
 pub static APP_DATA_DIR: Lazy<Mutex<PathBuf>> = Lazy::new(|| {
@@ -44,13 +46,42 @@ pub fn get_app_data_dir() -> PathBuf {
         .clone()
 }
 
+/// Global cache-paths config (Phase-2 path consolidation). Holds the
+/// resolved values that `Config::resolve_paths` filled in from
+/// `app.data_dir`. Used by handlers that need a cache dir but don't
+/// have the full Config in scope (e.g. `BinaryManager::new` callers).
+///
+/// Default is an empty CachesConfig (all None) — set ONLY after
+/// `Config::resolve_paths` has run, so by the time any handler reads
+/// it the paths are guaranteed populated. Accessor methods on
+/// CachesConfig panic if read on an unresolved instance.
+pub static CACHES_CONFIG: Lazy<Mutex<CachesConfig>> = Lazy::new(|| Mutex::new(CachesConfig::default()));
+
+pub fn set_caches_config(c: CachesConfig) {
+    let mut guard = CACHES_CONFIG.lock().unwrap_or_else(|poisoned| {
+        tracing::error!("CACHES_CONFIG mutex poisoned in set_caches_config; recovering");
+        poisoned.into_inner()
+    });
+    *guard = c;
+}
+
+pub fn get_caches_config() -> CachesConfig {
+    CACHES_CONFIG
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            tracing::error!("CACHES_CONFIG mutex poisoned in get_caches_config; recovering");
+            poisoned.into_inner()
+        })
+        .clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_app_data_dir() {
-        let test_path = PathBuf::from("/tmp/test-ziee-chat");
+        let test_path = PathBuf::from("/tmp/test-ziee");
         set_app_data_dir(test_path.clone());
         let retrieved_path = get_app_data_dir();
         assert_eq!(retrieved_path, test_path);

@@ -1,5 +1,5 @@
 // LLM Model permissions
-// Following ziee-chat patterns from llm_provider module
+// Following ziee patterns from llm_provider module
 
 use crate::modules::permissions::PermissionCheck;
 

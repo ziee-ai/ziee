@@ -4,7 +4,7 @@
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "ziee-chat-desktop")]
+#[command(name = "ziee-desktop")]
 #[command(version, about = "Ziee Chat Desktop Application", long_about = None)]
 struct Cli {
     /// Path to configuration file (overrides CONFIG_FILE env var)
@@ -36,7 +36,7 @@ fn main() {
 
         // Run OpenAPI generation
         let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-        match rt.block_on(ziee_chat_desktop::openapi::generate_openapi_spec(&output_dir, cli.config_file)) {
+        match rt.block_on(ziee_desktop::openapi::generate_openapi_spec(&output_dir, cli.config_file)) {
             Ok(_) => {
                 std::process::exit(0);
             }
@@ -50,5 +50,5 @@ fn main() {
     // Get config file from CLI arg or CONFIG_FILE env var
     let config_file = cli.config_file.or_else(|| std::env::var("CONFIG_FILE").ok());
 
-    ziee_chat_desktop::run(config_file).expect("Failed to run desktop app");
+    ziee_desktop::run(config_file).expect("Failed to run desktop app");
 }

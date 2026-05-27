@@ -39,13 +39,13 @@ pub fn probe_rootfs_dependent(
     config: &CodeSandboxConfig,
     host: &HostCapabilities,
 ) -> Result<HardeningCapabilities, String> {
-    let pid_namespace = probe_pid_ns(&host.bwrap_path, &config.rootfs_path);
+    let pid_namespace = probe_pid_ns(&host.bwrap_path, config.rootfs_path());
     if matches!(pid_namespace, PidNsMode::Disabled) {
         return Err(format!(
             "PID-namespace probe failed against rootfs at {}; bwrap \
              cannot start a useful sandbox here. Check kernel config \
              (CONFIG_USER_NS=y, unprivileged_userns_clone=1).",
-            config.rootfs_path
+            config.rootfs_path()
         ));
     }
     let caps = HardeningCapabilities {

@@ -1,5 +1,5 @@
 // LLM Model module
-// Following ziee-chat module patterns
+// Following ziee module patterns
 
 use aide::axum::ApiRouter;
 use linkme::distributed_slice;

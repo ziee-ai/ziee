@@ -10,6 +10,6 @@ pub mod repository;
 pub mod secrets;
 
 // Re-export commonly used functions
-pub use app_state::{get_app_data_dir, set_app_data_dir};
+pub use app_state::{get_app_data_dir, get_caches_config, set_app_data_dir, set_caches_config};
 pub use events::{AppEvent, EventBus, EventHandler};
 pub use repository::{Repos, init_repositories};

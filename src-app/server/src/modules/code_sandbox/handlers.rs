@@ -417,7 +417,7 @@ pub(crate) fn build_environments_response() -> EnvironmentsResponse {
     let cache_dir = state
         .as_ref()
         .map(|s| {
-            std::path::PathBuf::from(&s.config.rootfs_path)
+            std::path::PathBuf::from(s.config.rootfs_path())
                 .parent()
                 .map(std::path::Path::to_path_buf)
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -590,7 +590,7 @@ pub async fn evict_environment_handler(
     let cache_dir = config::get_state()
         .as_ref()
         .map(|s| {
-            std::path::PathBuf::from(&s.config.rootfs_path)
+            std::path::PathBuf::from(s.config.rootfs_path())
                 .parent()
                 .map(std::path::Path::to_path_buf)
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -678,7 +678,7 @@ pub async fn start_prefetch_handler(
     let cache_dir = config::get_state()
         .as_ref()
         .map(|s| {
-            std::path::PathBuf::from(&s.config.rootfs_path)
+            std::path::PathBuf::from(s.config.rootfs_path())
                 .parent()
                 .map(std::path::Path::to_path_buf)
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -1014,6 +1014,53 @@ async fn build_context(
             format!("mkdir workspace: {e}"),
         )
     })?;
+    // Audit H-7: bump the `.last_used` sentinel that the workspace reaper
+    // reads. Previously this was only written by `sandbox::run_in_sandbox`
+    // (the Linux host-bwrap path), so Mac libkrun and Windows WSL2 long-
+    // running conversations got reaped mid-execution after 30d because no
+    // backend bumped their sentinel. Writing it here covers EVERY backend —
+    // build_context runs in every MCP tool dispatch path before the actual
+    // backend.run() fires. Failures are best-effort: the reaper's fallback
+    // is the directory mtime, and a per-call failure to bump the sentinel
+    // is bounded by the next call succeeding.
+    let _ = tokio::fs::write(
+        workspace.join(".last_used"),
+        chrono::Utc::now().timestamp().to_string(),
+    )
+    .await;
+    // Permission-mode for the per-conversation workspace.
+    //
+    // Audit H-3: previously `0o1777` (sticky world-writable) was applied on
+    // ALL platforms. On Mac libkrun + Windows WSL2 the workload runs at
+    // uid 1001 inside the VM (via virtio-fs uid-passthrough) and the host
+    // uid that owns the workspace dir is the server's — so the dir MUST be
+    // world-writable for the in-VM workload to create files. Fine on Mac
+    // (single-user box) and WSL2 (per-user utility VM). On Linux host-bwrap,
+    // bwrap's `--unshare-user` maps in-sandbox uid 1001 → the server's host
+    // uid, so the server already owns the workspace and `0o700` suffices.
+    // Keeping `0o1777` on Linux is a cross-tenant data leak on multi-user
+    // hosts (every local user can read/write every conversation's workspace).
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = tokio::fs::set_permissions(
+            &workspace,
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .await;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = tokio::fs::set_permissions(
+            &workspace,
+            std::fs::Permissions::from_mode(0o1777),
+        )
+        .await;
+    }
+    // Windows host has its own NTFS ACL story; the in-WSL2-distro path that
+    // rsync's bytes into the agent's GUEST_WORKSPACE_ROOT applies its own
+    // mode. Nothing to chmod on the Windows host side.
 
     let files = Repos
         .code_sandbox
@@ -1686,7 +1733,7 @@ mod tests {
         CodeSandboxState {
             config: CodeSandboxConfig {
                 enabled: true,
-                rootfs_path: String::new(),
+                rootfs_path: Some(String::new()),
                 cgroup_parent: String::new(),
                 ..Default::default()
             },

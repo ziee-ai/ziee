@@ -6,7 +6,7 @@ use crate::core::DesktopRepos;
 use axum::extract::Path;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use ziee_chat::{Json, StatusCode, TransformOperation};
+use ziee::{Json, StatusCode, TransformOperation};
 
 #[derive(Serialize, JsonSchema)]
 pub struct SettingResponse {

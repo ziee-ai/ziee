@@ -1,5 +1,5 @@
 [package]
-name = "ziee-chat-desktop"
+name = "ziee-desktop"
 version = "0.1.0"
 description = "Ziee Chat Desktop Application"
 authors = ["Ziee Team"]
@@ -22,7 +22,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-decorum = "1.1.1"
 
 # Backend server (embedded as library)
-ziee-chat = { path = "../../server" }
+ziee = { path = "../../server" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

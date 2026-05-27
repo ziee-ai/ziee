@@ -11,7 +11,7 @@ use module_api::ModuleContext;
 use tokio::signal;
 
 #[derive(Parser, Debug)]
-#[command(name = "ziee-chat")]
+#[command(name = "ziee")]
 #[command(version, about = "Ziee Chat backend server", long_about = None)]
 struct Cli {
     /// Path to configuration file (overrides CONFIG_FILE env var)
@@ -65,7 +65,7 @@ async fn main() {
 
     // Initialize tracing for logging based on config.
     //
-    // Uses EnvFilter so operators can do `RUST_LOG=ziee_chat=debug,sqlx=warn`
+    // Uses EnvFilter so operators can do `RUST_LOG=ziee=debug,sqlx=warn`
     // for module-level filtering. Closes 14-core F-23 (Info). Falls back
     // to the config-file level when RUST_LOG is unset.
     use tracing_subscriber::filter::EnvFilter;
@@ -102,9 +102,11 @@ async fn main() {
         }
     }
 
-    tracing::info!("Starting Ziee Chat backend server");
+    tracing::info!("Starting Ziee backend server");
 
-    // Initialize application data directory from config
+    // Initialize application data directory + caches config from the
+    // resolved Config. `Config::resolve_paths` (called inside load_from)
+    // guarantees app.data_dir is set and every caches.*_dir is Some(...).
     if let Some(ref app_config) = config.app {
         let data_dir = std::path::PathBuf::from(&app_config.data_dir);
         core::set_app_data_dir(data_dir);
@@ -112,9 +114,10 @@ async fn main() {
         // Use default if not configured
         let default_data_dir = dirs::home_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(".ziee-chat");
+            .join(".ziee");
         core::set_app_data_dir(default_data_dir);
     }
+    core::set_caches_config(config.caches.clone());
 
     // Initialize database
     let pool = match core::database::initialize_database(&config).await {

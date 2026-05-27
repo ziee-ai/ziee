@@ -138,8 +138,17 @@ async fn try_initialize_database_once(
         settings.version = VersionReq::parse(&format!("={}", embedded.version))?;
         settings.temporary = false;
 
-        // Use directories from config
-        settings.installation_dir = PathBuf::from(&embedded.installation_dir);
+        // Paths are filled by `Config::resolve_paths` from `app.data_dir`
+        // if the operator didn't set them explicitly — see core/config.rs.
+        let installation_dir = embedded
+            .installation_dir
+            .as_ref()
+            .expect("installation_dir filled by Config::resolve_paths");
+        let data_dir_str = embedded
+            .data_dir
+            .as_ref()
+            .expect("data_dir filled by Config::resolve_paths");
+        settings.installation_dir = PathBuf::from(installation_dir);
 
         // Stop any existing PostgreSQL instance before proceeding
         stop_existing_postgres_instance(&settings.installation_dir)?;
@@ -151,7 +160,7 @@ async fn try_initialize_database_once(
         } else {
             settings.password = embedded.password.clone();
         }
-        settings.data_dir = PathBuf::from(&embedded.data_dir);
+        settings.data_dir = PathBuf::from(data_dir_str);
 
         // Set timezone from config
         settings

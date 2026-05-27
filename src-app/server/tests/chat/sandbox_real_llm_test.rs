@@ -15,7 +15,7 @@
 #![allow(unused_imports)]
 
 use crate::chat::helpers;
-use crate::code_sandbox::harness::{bwrap_available, rootfs_path};
+use crate::code_sandbox::harness::{bwrap_available, rootfs_path, stage_test_rootfs_for_e2e};
 use crate::common::{TestServer, TestServerOptions};
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
@@ -89,32 +89,60 @@ async fn send_with_sandbox_enabled(
         .expect("send message")
 }
 
-/// Skip if API key + bwrap + rootfs aren't all available.
+/// Skip if API key + bwrap + rootfs aren't all available. On Linux uses
+/// the host-mounted production rootfs; on Mac/Windows stages the test
+/// squashfs via the same cross-platform path as Tier-6 `enabled_test_server`.
 async fn enabled_test_server_with_anthropic() -> Option<TestServer> {
     if std::env::var("ANTHROPIC_API_KEY").is_err() {
         eprintln!("test skipped: ANTHROPIC_API_KEY not set");
         return None;
     }
-    if !bwrap_available() {
-        eprintln!("test skipped: bwrap not installed");
-        return None;
-    }
-    let Some(rootfs) = rootfs_path() else {
-        eprintln!("test skipped: no rootfs mounted");
-        return None;
-    };
     let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap();
-    Some(
-        TestServer::start_with_options(TestServerOptions {
-            sandbox_enabled: true,
-            sandbox_rootfs: Some(rootfs),
-            sandbox_cgroup_parent: String::new(),
-            // Forward the API key so the spawned server can see it
-            // when the LLM provider executes outbound calls.
-            extra_env: vec![("ANTHROPIC_API_KEY".into(), api_key)],
-        })
-        .await,
-    )
+
+    #[cfg(target_os = "linux")]
+    {
+        if !bwrap_available() {
+            eprintln!("test skipped: bwrap not installed");
+            return None;
+        }
+        let Some(rootfs) = rootfs_path() else {
+            eprintln!("test skipped: no rootfs mounted");
+            return None;
+        };
+        return Some(
+            TestServer::start_with_options(TestServerOptions {
+                sandbox_enabled: true,
+                sandbox_rootfs: Some(rootfs),
+                sandbox_cgroup_parent: String::new(),
+                extra_env: vec![("ANTHROPIC_API_KEY".into(), api_key)],
+                sandbox_cache_tempdir: None,
+            })
+            .await,
+        );
+    }
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        let (cache, mut env) = stage_test_rootfs_for_e2e()
+            .expect("stage test rootfs (run `just test-prereqs`)");
+        let rootfs_path = cache.path().join("current");
+        env.push(("ANTHROPIC_API_KEY".into(), api_key));
+        return Some(
+            TestServer::start_with_options(TestServerOptions {
+                sandbox_enabled: true,
+                sandbox_rootfs: Some(rootfs_path),
+                sandbox_cgroup_parent: String::new(),
+                extra_env: env,
+                sandbox_cache_tempdir: Some(std::sync::Arc::new(cache)),
+            })
+            .await,
+        );
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        let _ = api_key;
+        eprintln!("test skipped: unsupported platform");
+        None
+    }
 }
 
 /// Setup: register a user, create a conversation with a real
@@ -145,7 +173,7 @@ async fn setup_chat_with_anthropic(
         .connect(&server.database_url)
         .await
         .unwrap();
-    let sandbox_id = ziee_chat::code_sandbox::code_sandbox_server_id();
+    let sandbox_id = ziee::code_sandbox::code_sandbox_server_id();
     // Find the test group this user was added to. `test_helpers::
     // create_user_with_permissions` creates ONE group per user named
     // `test_group_{8-hex-chars}` with the requested permissions set.
@@ -214,7 +242,6 @@ async fn setup_chat_with_anthropic(
 /// invokes it via MCP, no `mcpApprovalRequired` SSE event should
 /// fire — the tool runs immediately and the result flows back.
 #[tokio::test]
-#[ignore]
 async fn list_files_via_llm_is_auto_approved() {
     let Some(server) = enabled_test_server_with_anthropic().await else { return };
     let (token, _user, conv_id, branch_id, model_id, sandbox_id) =
@@ -276,7 +303,6 @@ async fn list_files_via_llm_is_auto_approved() {
 /// `read_file` is also auto-approved (migration 36). Same shape as
 /// the list_files test.
 #[tokio::test]
-#[ignore]
 async fn read_file_via_llm_is_auto_approved() {
     let Some(server) = enabled_test_server_with_anthropic().await else { return };
     let (token, _user, conv_id, branch_id, model_id, sandbox_id) =
@@ -337,7 +363,6 @@ async fn read_file_via_llm_is_auto_approved() {
 /// event fires; it does NOT respond to it (the approval workflow is
 /// covered by mcp_approval_workflow_test.rs).
 #[tokio::test]
-#[ignore]
 async fn execute_command_emits_approval_required_sse_event() {
     let Some(server) = enabled_test_server_with_anthropic().await else { return };
     let (token, _user, conv_id, branch_id, model_id, sandbox_id) =

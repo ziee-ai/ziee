@@ -1069,7 +1069,7 @@ impl HttpMcpClient {
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": capabilities,
             "clientInfo": {
-                "name": "ziee-chat",
+                "name": "ziee",
                 "version": env!("CARGO_PKG_VERSION"),
             },
         });

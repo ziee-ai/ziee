@@ -55,7 +55,7 @@ const TEST_MODELS: &[(&str, &str, &str, &str)] = &[
 
 /// Helper to download a model from HuggingFace using hf CLI
 async fn download_test_model(repo_id: &str, filename: &str) -> Result<PathBuf, String> {
-    let cache_dir = std::env::temp_dir().join("ziee-chat-test-models");
+    let cache_dir = std::env::temp_dir().join("ziee-test-models");
     fs::create_dir_all(&cache_dir)
         .await
         .map_err(|e| e.to_string())?;

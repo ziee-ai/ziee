@@ -6,7 +6,7 @@ use anyhow::Result;
 
 /// Ensure desktop admin user exists (create on first run)
 pub async fn ensure_desktop_admin() -> Result<()> {
-    let has_admin = ziee_chat::Repos
+    let has_admin = ziee::Repos
         .user
         .has_admin()
         .await
@@ -15,10 +15,10 @@ pub async fn ensure_desktop_admin() -> Result<()> {
     if !has_admin {
         tracing::info!("No admin exists, creating desktop admin user");
 
-        let password_hash = ziee_chat::hash_password("desktop-auto-login")
+        let password_hash = ziee::hash_password("desktop-auto-login")
             .map_err(|e| anyhow::anyhow!("Failed to hash password: {}", e))?;
 
-        ziee_chat::Repos
+        ziee::Repos
             .app
             .create_admin_user("admin", "admin@localhost", &password_hash, None)
             .await

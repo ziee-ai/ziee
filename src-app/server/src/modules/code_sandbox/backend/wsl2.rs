@@ -126,18 +126,24 @@ const GUEST_WSL_CONF: &str = "/etc/wsl.conf";
 /// surface the audit flagged.
 const GUEST_WORKSPACE_ROOT: &str = "/var/lib/ziee/workspace";
 
-/// Narrow AppArmor profile (Claude-Code-documented recipe, verified in code
-/// during the prior-art deep read). Grants `userns` ONLY to `/usr/bin/bwrap`,
-/// leaving Ubuntu 24.04/noble's `kernel.apparmor_restrict_unprivileged_userns`
-/// in force for every other binary. The earlier wsl2 implementation flipped
-/// that sysctl to `0` globally — that disables Ubuntu's documented mitigation
+/// Narrow AppArmor profile. Grants `userns` ONLY to `/usr/bin/bwrap`, leaving
+/// Ubuntu 24.04/noble's `kernel.apparmor_restrict_unprivileged_userns` in
+/// force for every other binary. The earlier wsl2 implementation flipped that
+/// sysctl to `0` globally — that disables Ubuntu's documented mitigation
 /// against in-userns kernel exploits for the WHOLE distro, including any
 /// sandbox-escaped process. This profile keeps the kernel-level restriction
 /// and only carves out our explicit bwrap binary.
+///
+/// `flags=(unconfined)` was REMOVED (audit H-1) — under that flag the profile
+/// is no-op, so the kernel's `apparmor_restrict_unprivileged_userns` either
+/// blocks bwrap (sandbox broken) or grants userns globally (the very thing
+/// this profile was trying to scope). The Canonical-documented recipe is the
+/// bare-profile body with the explicit `userns` capability; that's a
+/// *confined* profile that grants exactly the one capability bwrap needs.
 const APPARMOR_BWRAP_PROFILE: &str = "abi <abi/4.0>,\n\
 include <tunables/global>\n\
 \n\
-profile bwrap /usr/bin/bwrap flags=(unconfined) {\n\
+profile bwrap /usr/bin/bwrap {\n\
   userns,\n\
   include if exists <local/bwrap>\n\
 }\n";
@@ -510,6 +516,28 @@ impl Wsl2Backend {
         )
         .await?;
 
+        // 5c. Audit H-5: strip setuid/setgid from every binary in the distro
+        //     rootfs. `wsl --import` reuses the flavor tarball AS the distro
+        //     filesystem itself, so any setuid-root binary it ships (sudo,
+        //     mount, passwd, chsh, pkexec, newgrp, …) becomes reachable to
+        //     bwrap-spawned workloads. bwrap's `--unshare-user` decouples
+        //     in-userns root from host root, so setuid is mostly defanged on
+        //     its own — but combined with a mount-ns escape primitive (e.g.
+        //     CVE-2022-0185 class) it's a documented escalation vector.
+        //     Defense in depth: chmod -s the lot up front, refuse to register
+        //     if any survive a re-scan (corrupted dpkg / weird flavor recipe).
+        run_in_distro(
+            distro,
+            "find / -xdev \\( -perm -4000 -o -perm -2000 \\) -type f \
+             -exec chmod u-s,g-s {} + 2>/dev/null; \
+             remaining=$(find / -xdev \\( -perm -4000 -o -perm -2000 \\) -type f 2>/dev/null | head -5); \
+             if [ -n \"$remaining\" ]; then \
+               echo \"setuid binaries remain after strip: $remaining\" >&2; \
+               exit 1; \
+             fi",
+        )
+        .await?;
+
         // 6. Apply LIVE for this boot too. `apparmor_parser -r` reloads if
         //    already loaded; plain `apparmor_parser` adds a new profile.
         //    Either-or-true keeps provision idempotent across both states.
@@ -728,18 +756,38 @@ impl SandboxBackend for Wsl2Backend {
             }
         }
 
-        // 3. LOW-3: warn-log on mirrored networking mode. `--share-net` already
-        //    bridges egress; mirrored mode additionally collapses the Windows
-        //    host's `127.0.0.1` services (Postgres, the Ziee server itself, …)
-        //    into the sandbox's reach. Operators should know.
+        // 3. Audit H-8: REFUSE on mirrored networking mode unless the operator
+        //    has explicitly opted in. `--share-net` already bridges egress;
+        //    mirrored mode additionally collapses the Windows host's
+        //    `127.0.0.1` services (Postgres, the Ziee server itself, browser
+        //    DevTools, …) into the sandbox's reach. The Ziee API is reachable
+        //    on the loopback the sandbox just gained access to, and the user
+        //    is already JWT-signed-in for this session — sandbox-escaped or
+        //    prompt-injected code can authenticate to the admin API. Was a
+        //    warn-log; now hard-refuse + `allow_wsl2_mirrored_mode: true`
+        //    operator opt-in.
         if user_wslconfig_uses_mirrored_mode() {
-            tracing::warn!(
-                "code_sandbox: WSL2 mirrored networking mode is enabled in \
-                 .wslconfig. Sandboxed commands can reach the Windows host's \
-                 127.0.0.1 services (Postgres, the Ziee server, …) via \
-                 `--share-net`. Consider switching back to NAT mode or \
-                 firewalling sensitive host services."
-            );
+            if cfg.allow_wsl2_mirrored_mode {
+                tracing::warn!(
+                    "code_sandbox: WSL2 mirrored networking mode is enabled \
+                     AND allow_wsl2_mirrored_mode: true is set — sandboxed \
+                     commands can reach the Windows host's 127.0.0.1 services \
+                     via `--share-net`. Make sure your host services that \
+                     listen on loopback are intentionally trusting this."
+                );
+            } else {
+                tracing::error!(
+                    "code_sandbox: WSL2 mirrored networking mode is enabled in \
+                     .wslconfig. Sandboxed commands could reach the Windows \
+                     host's 127.0.0.1 services (Postgres, the Ziee API, …) via \
+                     `--share-net` — including the Ziee admin API the user is \
+                     JWT-signed-in for. Either switch back to NAT mode in \
+                     .wslconfig (remove the `networkingMode=mirrored` line) \
+                     OR set code_sandbox.allow_wsl2_mirrored_mode: true to \
+                     accept the risk. Sandbox MCP row will NOT be registered."
+                );
+                return None;
+            }
         }
 
         Some(HostCapabilities {
@@ -954,6 +1002,23 @@ impl SandboxBackend for Wsl2Backend {
             }
         }
         EvictOutcome { bytes_freed, was_cached }
+    }
+
+    async fn exec_raw_argv(
+        &self,
+        _argv: Vec<String>,
+        _rootfs_squashfs: &Path,
+        _timeout: std::time::Duration,
+    ) -> Result<super::RawExecResult, AppError> {
+        // TODO(windows): port the test-VM helper pattern from mac_vm.rs.
+        // Same shape: ensure a per-rootfs WSL2 distro is up, send the
+        // raw argv via the in-distro agent's existing protocol (the
+        // same protocol mac_vm.rs uses), collect frames, return.
+        // Untested from Mac/Linux dev hosts; finished when a Windows
+        // CI runner lands.
+        Err(AppError::internal_error(
+            "exec_raw_argv: WSL2 backend test-helper not yet implemented",
+        ))
     }
 }
 

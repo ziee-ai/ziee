@@ -254,7 +254,7 @@ impl BinaryManager {
         let response = client
             .get(&url)
             .header("Accept", "application/vnd.github.v3+json")
-            .header("User-Agent", "ziee-chat/1.0")
+            .header("User-Agent", "ziee/1.0")
             .send()
             .await?;
 

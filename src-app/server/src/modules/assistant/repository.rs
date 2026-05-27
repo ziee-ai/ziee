@@ -1,5 +1,5 @@
-// Assistant repository - copied from ziee-chat-ref and adapted for ziee-chat
-// Source: ziee-chat-ref/src-tauri/src/database/queries/assistants.rs
+// Assistant repository - copied from ziee-ref and adapted for ziee
+// Source: ziee-ref/src-tauri/src/database/queries/assistants.rs
 
 use chrono::DateTime;
 use sqlx::PgPool;

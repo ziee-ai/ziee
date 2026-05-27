@@ -1,6 +1,6 @@
 //! Integration tests for MCP content data types (McpContentData, etc.)
 
-use ziee_chat::{McpContentData, RichFile};
+use ziee::{McpContentData, RichFile};
 
 #[test]
 fn test_tool_use_conversion() {

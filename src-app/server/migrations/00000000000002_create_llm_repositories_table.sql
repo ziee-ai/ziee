@@ -1,5 +1,5 @@
 -- Create LLM model repositories table (Hugging Face, GitHub, custom sources)
--- Copied from react-test repositories table and refactored for ziee-chat
+-- Copied from react-test repositories table and refactored for ziee
 
 CREATE TABLE llm_repositories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

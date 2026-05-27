@@ -1,6 +1,6 @@
-# Ziee Chat - Developer Documentation Hub
+# Ziee - Developer Documentation Hub
 
-Essential documentation for developing Ziee Chat, a full-stack application with Rust backend and React meta-framework frontend.
+Essential documentation for developing Ziee, a full-stack application with Rust backend and React meta-framework frontend.
 
 ---
 
@@ -20,21 +20,48 @@ Access at http://localhost:5173
 
 ---
 
+## Naming convention
+
+The application is named **ziee** (not `ziee-chat`). This applies to:
+
+- Cargo package + binary names (`ziee`; the built binary is `target/<triple>/release/ziee`)
+- Cargo lib name (`ziee`; imports are `use ziee::...`)
+- Default paths (`~/.ziee/`, `/tmp/ziee-*`, etc.)
+- Env var prefixes (`ZIEE_*`)
+- JWT claim values (`iss: "ziee"`, `aud: "ziee-api"`, `aud: "ziee-download"`)
+- Docker compose project (`name: ziee`)
+- Log messages, error messages, doc comments
+- Anything user- or operator-facing
+
+The string `ziee-chat` survives only in **external references that are opaque
+to us**:
+
+- The GitHub repo URL (`github.com/phibya/ziee-chat`) — used by the sandbox
+  rootfs fetcher (`src-app/server/src/modules/code_sandbox/runtime_fetch.rs`),
+  the cosign cert-identity regex
+  (`scripts/bootstrap-first-rootfs-release.sh`), and `sandbox-rootfs/README.md`.
+- Historical log/diagnostic artifacts under `src-app/server/test-logs/` and
+  `src-app/ui/docs/antd-diagnostics/`. They roll over naturally.
+
+Anywhere else, treat `ziee-chat` as a bug to fix.
+
+---
+
 ## Development Environment
 
 ### Docker Compose
 
-**Location:** `/home/pbya/projects/ziee-chat/src-app/docker-compose.yaml`
+**Location:** `/home/pbya/projects/ziee/src-app/docker-compose.yaml`
 
 **IMPORTANT:** When working with database schema changes:
 1. The docker-compose file is in `src-app/` directory, NOT the project root
 2. To reset the database after migration changes:
    ```bash
-   cd /home/pbya/projects/ziee-chat/src-app
+   cd /home/pbya/projects/ziee/src-app
    docker compose down
    docker compose up -d
    ```
-3. The PostgreSQL build container is named `ziee-chat-postgres-build-1`
+3. The PostgreSQL build container is named `ziee-postgres-build-1`
 4. Port mappings:
    - `54321` → Build database (SQLx compile-time verification)
    - `54322` → Test database (integration tests)
@@ -458,7 +485,7 @@ through the chat module.
 
 ```bash
 # Tier 1
-cargo test --lib -p ziee-chat project::
+cargo test --lib -p ziee project::
 
 # Tier 2 + 3 (Tier 3 skips when no API keys)
 source tests/.env.test
@@ -668,7 +695,7 @@ cargo test &  # Output is lost or fragmented
 1. **MUST source `tests/.env.test` before running tests:**
    - Sets `HUGGINGFACE_API_KEY` for download tests
    - Without this, 11 llm_model download tests will fail
-   - File location: `/home/pbya/projects/ziee-chat/src-app/server/tests/.env.test`
+   - File location: `/home/pbya/projects/ziee/src-app/server/tests/.env.test`
 
 2. **Test execution:**
    - Use `--test-threads=1` to avoid database conflicts
@@ -856,10 +883,10 @@ If you find yourself increasing timeouts from 1s → 5s → 10s, this indicates 
 
 ## Paths
 
-- **Reference Project:** `/home/pbya/projects/ziee-chat-ref`
-- **Active Project:** `/home/pbya/projects/ziee-chat`
-- **Backend:** `/home/pbya/projects/ziee-chat/src-app/server`
-- **Frontend:** `/home/pbya/projects/ziee-chat/src-app/ui`
+- **Reference Project:** `/home/pbya/projects/ziee-ref`
+- **Active Project:** `/home/pbya/projects/ziee`
+- **Backend:** `/home/pbya/projects/ziee/src-app/server`
+- **Frontend:** `/home/pbya/projects/ziee/src-app/ui`
 
 ---
 

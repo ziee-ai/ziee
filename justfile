@@ -1,4 +1,4 @@
-# ziee-chat dev workflows.
+# ziee dev workflows.
 #
 # Sandbox rootfs is built by src-app/sandbox-rootfs/build.sh (maintainer/CI
 # task). Rootfs cache management (list / evict) is in the admin UI, not a CLI.
@@ -18,7 +18,7 @@ sandbox-build flavor="full":
 #
 # Production servers auto-mount the rootfs lazily on the first
 # `execute_command` call (see modules/code_sandbox/runtime_mount.rs)
-# — there is no `ziee-chat mount-sandbox-rootfs` CLI command. But
+# — there is no `ziee mount-sandbox-rootfs` CLI command. But
 # `just check-sandbox` runs Tier-4/6 tests that exercise bwrap
 # directly against a mounted rootfs, bypassing the server. This
 # recipe is for that case.
@@ -156,10 +156,28 @@ check-rootfs-reproducibility:
 server:
     cd src-app/server && CONFIG_FILE=config/dev.yaml cargo run
 
-# Run the full backend test suite (no bwrap-ignored).
-test:
+# One-time test prerequisites: builds the minimal sandbox squashfs
+# that tier-4/6 tests dispatch into via the libkrun (Mac) / bwrap
+# (Linux) / WSL2 (Windows) backend. Idempotent — skips if cached.
+test-prereqs:
+    scripts/build-test-rootfs.sh
+
+# Run the full backend test suite, including tier-4 (45 tests that
+# now dispatch through SandboxBackend::exec_raw_argv on all platforms).
+# Depends on test-prereqs so the squashfs is always present.
+test: test-prereqs
     cd src-app/server && \
         bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads=1'
+
+# Same as `test` but also runs tier-6 e2e + tier-5 LLM tests (marked
+# `#[ignore]` because they need extra harness setup: tier-6 requires a
+# `enabled_test_server` extension that stages the test rootfs + fakes
+# `known_revisions.toml` on Mac/Windows; tier-5 needs ANTHROPIC_API_KEY
+# and costs ~$0.30/run). Use this in CI / pre-release validation, not
+# routine dev cycles.
+test-all: test-prereqs
+    cd src-app/server && \
+        bash -c 'source tests/.env.test && cargo test --test integration_tests -- --test-threads=1 --include-ignored'
 
 # ─── UI ─────────────────────────────────────────────────────────────
 
@@ -171,3 +189,37 @@ ui:
 # Outputs in src-app/ui/docs/antd-diagnostics/<date>/. See FRONTEND_DEPS.md.
 antd-check:
     cd src-app/ui && ./scripts/antd-diagnose.sh
+
+# ─── Self-contained release builds ──────────────────────────────────
+#
+# Mac: produces target/aarch64-apple-darwin/release/ziee — a single
+# binary that embeds the sandbox launcher + libkrun dylibs + guest root
+# (see build_helper/sandbox_runtime.rs). Requires Docker (for the
+# cross-compiled guest agent + Alpine guest root) and brew with the
+# pinned libkrun/libkrunfw/libepoxy/virglrenderer/molten-vk versions.
+build-mac:
+    cd src-app/server && cargo build --release --target aarch64-apple-darwin
+
+# Linux: produces target/{x86_64,aarch64}-unknown-linux-musl/release/ziee
+# — a static-musl binary. Operator's runtime prereqs: `apt install
+# bubblewrap squashfuse fuse3`. LIBSECCOMP_LIB_PATH override matches
+# Alpine's musl layout (the cargo-zigbuild image is Alpine-based).
+build-linux arch="x86_64":
+    cd src-app/server && \
+        LIBSECCOMP_LIB_PATH=/usr/lib \
+        cargo zigbuild --release --target {{arch}}-unknown-linux-musl
+
+# Static-analysis "self-contained" checks (no /opt/homebrew refs,
+# musl-only ldd, no native-tls in dep graph). Run after each build.
+verify-mac:
+    cd src-app/server && cargo test --release --target aarch64-apple-darwin --test macos_self_contained -- --nocapture
+verify-linux arch="x86_64":
+    cd src-app/server && cargo test --release --target {{arch}}-unknown-linux-musl --test linux_self_contained -- --nocapture
+
+# Dynamic "self-contained" checks. Mac boots a libkrun VM with brew
+# poisoned (DYLD_*=/nonexistent). Linux runs the binary inside
+# `gcr.io/distroless/static` and `alpine + sandbox prereqs`.
+test-mac:
+    cd src-app/server && cargo test --release --target aarch64-apple-darwin --test macos_brewless_boot -- --ignored --nocapture
+test-linux arch="x86_64":
+    cd src-app/server && cargo test --release --target {{arch}}-unknown-linux-musl --test linux_distroless_boot -- --ignored --nocapture

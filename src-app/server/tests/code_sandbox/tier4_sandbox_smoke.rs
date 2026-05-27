@@ -1,146 +1,85 @@
-//! Tier 4 — bwrap-required smoke tests.
+//! Tier 4 — sandbox smoke tests.
 //!
-//! All tests `#[ignore]` so server-only CI skips them; locally and in
-//! the rootfs-PR / nightly workflows they run with:
-//!   cargo test --test integration_tests -- --ignored code_sandbox::tier4_
+//! Dispatched through `harness::run_in_sandbox()` so the same test code
+//! runs on Linux (host bwrap), macOS (libkrun VM + bwrap-in-VM), and
+//! Windows (WSL2 distro + bwrap-in-distro). No platform-specific paths
+//! appear in the argv — `/sandbox-rootfs`, `/proc`, `/dev`, `/tmp`,
+//! `/workspace` are the canonical in-sandbox paths.
 //!
-//! Requires:
-//!   - bwrap installed (`apt install bubblewrap`)
-//!   - Rootfs mounted at ZIEE_SANDBOX_ROOTFS env var (default
-//!     /tmp/ziee-sandbox-rootfs or .ziee-cache/sandbox-rootfs/current)
-//!
-//! The test driver is intentionally thin — it shells out to bwrap
-//! directly with the SAME flag set the production sandbox.rs uses.
-//! When sandbox.rs gains a flag, mirror the change here.
+//! Test rootfs squashfs prereq: `just test-prereqs` (one-time setup;
+//! checked by `harness::rootfs_squashfs_path()`).
 
-use std::path::PathBuf;
-use std::process::Command;
+use crate::code_sandbox::harness::run_in_sandbox;
+use std::time::Duration;
 
-fn rootfs_path() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("ZIEE_SANDBOX_ROOTFS") {
-        let pb = PathBuf::from(p);
-        if pb.join("usr").exists() {
-            return Some(pb);
-        }
-    }
-    for candidate in [
-        ".ziee-cache/sandbox-rootfs/current",
-        "/var/lib/ziee/sandbox-rootfs/current",
-        "/opt/ziee-sandbox-rootfs/current",
-    ] {
-        let pb = PathBuf::from(candidate);
-        if pb.join("usr").exists() {
-            return Some(pb);
-        }
-    }
-    None
-}
+const TIMEOUT: Duration = Duration::from_secs(30);
 
-fn skip_if_no_rootfs() -> Option<PathBuf> {
-    match rootfs_path() {
-        Some(p) => Some(p),
-        None => {
-            eprintln!(
-                "test skipped: no rootfs found. Set ZIEE_SANDBOX_ROOTFS or run \
-                 `just sandbox-build && just sandbox-mount`."
-            );
-            None
-        }
-    }
-}
+#[tokio::test]
+async fn smoke_echo_hello() {
+    // Bind the entire rootfs read-only at /, then add the sandbox
+    // primitives (/proc, /dev, /tmp). Binding the whole rootfs
+    // (rather than carving /usr + symlinking /bin) sidesteps the
+    // layout difference between Debian (real /bin/echo) and Alpine
+    // (`/bin/echo → ../usr/bin/coreutils`) — both work because their
+    // internal symlinks resolve within the bound tree.
+    let argv: Vec<String> = [
+        "--unshare-user",
+        "--uid", "1001",
+        "--gid", "1001",
+        "--unshare-uts",
+        "--unshare-ipc",
+        "--share-net",
+        "--new-session",
+        "--die-with-parent",
+        "--ro-bind", "/sandbox-rootfs", "/",
+        "--dev-bind", "/proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--",
+        "/bin/echo", "hello-from-sandbox",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
 
-fn bwrap_available() -> bool {
-    Command::new("bwrap").arg("--version").output().is_ok()
-}
-
-#[test]
-#[ignore]
-fn smoke_echo_hello() {
-    if !bwrap_available() {
-        eprintln!("test skipped: bwrap not installed");
-        return;
-    }
-    let Some(rootfs) = skip_if_no_rootfs() else { return };
-    let usr = rootfs.join("usr");
-
-    let out = Command::new("bwrap")
-        .args([
-            "--unshare-user",
-            "--uid",
-            "1001",
-            "--gid",
-            "1001",
-            "--unshare-uts",
-            "--unshare-ipc",
-            "--share-net",
-            "--new-session",
-            "--die-with-parent",
-        ])
-        .args(["--ro-bind", usr.to_str().unwrap(), "/usr"])
-        .args(["--symlink", "usr/bin", "/bin"])
-        .args(["--symlink", "usr/lib", "/lib"])
-        .args(["--symlink", "usr/lib64", "/lib64"])
-        .args(["--dev-bind", "/proc", "/proc"])
-        .args(["--dev", "/dev"])
-        .args(["--tmpfs", "/tmp"])
-        .arg("--")
-        .args(["/bin/echo", "hello-from-sandbox"])
-        .output()
-        .expect("bwrap spawn");
-    assert!(out.status.success(), "exit: {}", out.status);
+    let result = run_in_sandbox(argv, TIMEOUT).await.expect("run_in_sandbox");
+    assert_eq!(result.exit_code, 0, "stderr: {}", String::from_utf8_lossy(&result.stderr));
     assert_eq!(
-        String::from_utf8_lossy(&out.stdout).trim(),
+        String::from_utf8_lossy(&result.stdout).trim(),
         "hello-from-sandbox"
     );
 }
 
-#[test]
-#[ignore]
-fn smoke_whoami_is_sandboxuser() {
-    if !bwrap_available() {
-        eprintln!("test skipped: bwrap not installed");
-        return;
-    }
-    let Some(rootfs) = skip_if_no_rootfs() else { return };
-    let usr = rootfs.join("usr");
+#[tokio::test]
+async fn smoke_whoami_is_sandboxuser() {
+    // Verifies bwrap's `--uid 1001` actually applies — the in-sandbox
+    // process should see uid=1001 regardless of the launching uid.
+    // We assert on `id -u` (always available) rather than `whoami`
+    // (which requires /etc/passwd resolution).
+    let argv: Vec<String> = [
+        "--unshare-user",
+        "--uid", "1001",
+        "--gid", "1001",
+        "--share-net",
+        "--new-session",
+        "--die-with-parent",
+        "--ro-bind", "/sandbox-rootfs", "/",
+        "--dev-bind", "/proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--",
+        "/bin/sh", "-c", "id -u && id -g",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
 
-    // Synthetic passwd file.
-    let ws = tempfile::tempdir().unwrap();
-    let passwd = ws.path().join("passwd");
-    std::fs::write(
-        &passwd,
-        "sandboxuser:x:1001:1001::/home/sandboxuser:/bin/bash\n",
-    )
-    .unwrap();
-    let group = ws.path().join("group");
-    std::fs::write(&group, "sandboxuser:x:1001:\n").unwrap();
-
-    let out = Command::new("bwrap")
-        .args([
-            "--unshare-user",
-            "--uid",
-            "1001",
-            "--gid",
-            "1001",
-            "--share-net",
-            "--new-session",
-            "--die-with-parent",
-        ])
-        .args(["--ro-bind", usr.to_str().unwrap(), "/usr"])
-        .args(["--ro-bind", passwd.to_str().unwrap(), "/etc/passwd"])
-        .args(["--ro-bind", group.to_str().unwrap(), "/etc/group"])
-        .args(["--symlink", "usr/bin", "/bin"])
-        .args(["--symlink", "usr/lib", "/lib"])
-        .args(["--symlink", "usr/lib64", "/lib64"])
-        .args(["--dev-bind", "/proc", "/proc"])
-        .args(["--dev", "/dev"])
-        .args(["--tmpfs", "/tmp"])
-        .arg("--")
-        .args(["/bin/sh", "-c", "whoami && id -u"])
-        .output()
-        .expect("bwrap spawn");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "exit: {}, stderr: {}", out.status, String::from_utf8_lossy(&out.stderr));
-    assert!(stdout.contains("sandboxuser"), "got: {stdout}");
-    assert!(stdout.contains("1001"), "got: {stdout}");
+    let result = run_in_sandbox(argv, TIMEOUT).await.expect("run_in_sandbox");
+    assert_eq!(result.exit_code, 0, "stderr: {}", String::from_utf8_lossy(&result.stderr));
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("1001"),
+        "expected uid/gid 1001 in stdout, got: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
 }

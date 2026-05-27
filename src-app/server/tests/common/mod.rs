@@ -23,6 +23,39 @@ pub struct TestServer {
     pub database_name: String,
     pub database_url: String,
     temp_config_path: String,
+    /// Per-test workspace dir for `code_sandbox.workspace_root` (when
+    /// sandbox is enabled). Held here so Drop cleans it; tests that
+    /// need the path can read `workspace_root` below.
+    _workspace_tempdir: Option<tempfile::TempDir>,
+    /// Resolved workspace_root that was injected into the test YAML
+    /// (`None` when sandbox was not enabled for this test).
+    pub workspace_root: Option<PathBuf>,
+    /// Tier-6 cache TempDir holding the staged test squashfs +
+    /// known_revisions.dev.toml on Mac/Windows. Held for the
+    /// TestServer's lifetime; dropped (which deletes the tree) when
+    /// the test ends. Unset on Linux.
+    _sandbox_cache_tempdir: Option<std::sync::Arc<tempfile::TempDir>>,
+}
+
+/// Repo-relative shared cache dir for tests. The test harness injects
+/// this as `app.data_dir` in every test config so:
+///   - extractions of pandoc/pdfium/uv/bun + the sandbox-runtime bundle
+///     happen ONCE across `cargo test` invocations (postgresql_embedded
+///     + embedded::ensure both honor the sha/marker → skip re-extract).
+///   - tests don't fall back to the dev's real `~/.ziee/` and contaminate
+///     production state (the latent harness bug that consolidation
+///     surfaced).
+/// Lives under `.ziee-cache/` which is gitignored.
+pub fn shared_test_app_data_dir() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // <repo>/.ziee-cache/test-app-data/  (manifest_dir = src-app/server)
+    let path = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|repo| repo.join(".ziee-cache").join("test-app-data"))
+        .expect("repo root walk");
+    fs::create_dir_all(&path).expect("create shared test app_data_dir");
+    path
 }
 
 /// Options for spinning up a TestServer with non-default features.
@@ -50,6 +83,14 @@ pub struct TestServerOptions {
     /// the test is responsible for unsetting sensitive ones it didn't
     /// intend to expose.
     pub extra_env: Vec<(String, String)>,
+    /// Tier-6 only: the staged-rootfs cache TempDir whose lifetime
+    /// must exceed the spawned server's. Set by
+    /// `harness::enabled_test_server()` on Mac/Windows (where the
+    /// rootfs is staged inline into a TempDir + fake known_revisions
+    /// TOML); unset on Linux (the rootfs is a real FUSE mount owned
+    /// by the operator). TestServer holds it alive via Arc so this
+    /// struct stays Clone; drops on TestServer::Drop.
+    pub sandbox_cache_tempdir: Option<std::sync::Arc<tempfile::TempDir>>,
 }
 
 impl TestServer {
@@ -67,9 +108,9 @@ impl TestServer {
         // the YAML config, but tests that construct repositories
         // directly against the test DB pool (UserKeyRepository,
         // LlmRepositoryRepository) decrypt rows in-process and need the
-        // key to be available via ziee_chat::storage_key(). Idempotent —
+        // key to be available via ziee::storage_key(). Idempotent —
         // OnceCell::set after first call is a noop.
-        ziee_chat::init_storage_key(Some(
+        ziee::init_storage_key(Some(
             "test-storage-key-for-pgcrypto-min-32-chars-long".to_string(),
         ));
 
@@ -95,9 +136,23 @@ impl TestServer {
         let username = url.username();
         let password = url.password().unwrap_or("");
 
+        // Shared cache dir (extractions persist across runs); the path
+        // resolution layer in Config::resolve_paths derives every
+        // subdir from this. Tests inherit:
+        //   - <shared>/bin/{pandoc,libpdfium,uv,bun} extracted once
+        //   - <shared>/{bin,lib,share,etc}/* sandbox-runtime extracted once
+        //   - <shared>/sandboxes/  ← SHARED across tests, but EVERY
+        //     sandbox-enabled test overrides workspace_root below to a
+        //     per-test TempDir for isolation. Tests that don't enable
+        //     the sandbox don't touch this dir.
+        let shared_data_dir = shared_test_app_data_dir();
+
         // Create test config for the server
         let mut config = format!(
             r#"
+app:
+  data_dir: "{shared}"
+
 postgresql:
   use_embedded: false
 
@@ -142,8 +197,8 @@ jwt:
   # reject the MCP client's tokens with InvalidIssuer and Tier-5 tests
   # (LLM → sandbox via MCP) would fail with "no tools available".
   secret: "test-secret-key-for-jwt-tokens-min-32-chars-long"
-  issuer: "ziee-chat"
-  audience: "ziee-chat-api"
+  issuer: "ziee"
+  audience: "ziee-api"
   access_token_expiry_hours: 24
   refresh_token_expiry_days: 30
 
@@ -153,13 +208,14 @@ jwt:
 secrets:
   storage_key: "test-storage-key-for-pgcrypto-min-32-chars-long"
 "#,
-            host, port, username, password, database_name, server_port
+            host, port, username, password, database_name, server_port,
+            shared = shared_data_dir.display(),
         );
 
         // Optional code_sandbox section. Only written when the test
         // explicitly opts in; otherwise the server boots with sandbox
         // disabled (the default behavior every existing test relies on).
-        if opts.sandbox_enabled {
+        let (workspace_tempdir, workspace_root_path) = if opts.sandbox_enabled {
             let rootfs = opts
                 .sandbox_rootfs
                 .as_ref()
@@ -172,14 +228,39 @@ secrets:
                          returns None."
                     )
                 });
+            // Per-test workspace_root override. Each sandbox-enabled test
+            // gets a fresh TempDir; held on TestServer so Drop reaps it.
+            // Without this, parallel sandbox tests would race on the
+            // shared `<app_data>/sandboxes/` dir created by the harness's
+            // shared app.data_dir.
+            let ws = tempfile::tempdir().expect("workspace TempDir");
+            let ws_path = ws.path().to_path_buf();
+            // On Mac, the sandbox-runtime guest VM accesses this dir
+            // via virtio-fs as `--unshare-user --uid 1001`; uid 1001's
+            // write attempts on the host fs need permissive mode.
+            // tempfile defaults to 0700 (owner-only). Same chmod also
+            // applies on Linux without harm.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &ws_path,
+                    std::fs::Permissions::from_mode(0o1777),
+                );
+            }
             config.push_str(&format!(
-                "\ncode_sandbox:\n  enabled: true\n  rootfs_path: \"{}\"\n  cgroup_parent: \"{}\"\n",
-                rootfs, opts.sandbox_cgroup_parent
+                "\ncode_sandbox:\n  enabled: true\n  rootfs_path: \"{}\"\n  workspace_root: \"{}\"\n  cgroup_parent: \"{}\"\n",
+                rootfs,
+                ws_path.display(),
+                opts.sandbox_cgroup_parent
             ));
-        }
+            (Some(ws), Some(ws_path))
+        } else {
+            (None, None)
+        };
 
         // Write temporary config file
-        let temp_config_path = format!("/tmp/ziee-chat-test-{}.yaml", test_id);
+        let temp_config_path = format!("/tmp/ziee-test-{}.yaml", test_id);
         fs::write(&temp_config_path, config).expect("Failed to write temporary config");
 
         // Create the test database
@@ -197,7 +278,7 @@ secrets:
         pool.close().await;
 
         // Start the server process with the temporary config
-        let binary_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/ziee-chat");
+        let binary_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/ziee");
 
         let mut cmd = Command::new(binary_path);
         cmd.arg("--config-file").arg(&temp_config_path);
@@ -247,6 +328,9 @@ secrets:
             database_name,
             database_url: test_database_url,
             temp_config_path,
+            _workspace_tempdir: workspace_tempdir,
+            workspace_root: workspace_root_path,
+            _sandbox_cache_tempdir: opts.sandbox_cache_tempdir.clone(),
         }
     }
 

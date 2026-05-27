@@ -124,7 +124,7 @@ pub async fn generate_download_token(
         .await?
         .ok_or_else(|| AppError::not_found("File"))?;
 
-    // Generate JWT token. Sets iss + aud (audience=ziee-chat-download)
+    // Generate JWT token. Sets iss + aud (audience=ziee-download)
     // so the validator below can refuse cross-audience replay against
     // the access-token validator. Closes 02-permissions F-03.
     let jwt_config = get_jwt_config();
@@ -161,7 +161,7 @@ pub async fn download_with_token(
 ) -> Result<Response, StatusCode> {
     // Validate token. Enforces iss + aud=DOWNLOAD_TOKEN_AUDIENCE so a
     // download token cannot be replayed against the access-token
-    // validator (which expects aud="ziee-chat-api"). Closes
+    // validator (which expects aud="ziee-api"). Closes
     // 02-permissions F-03.
     let jwt_config = get_jwt_config();
     let mut validation = Validation::default();

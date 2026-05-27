@@ -4,7 +4,7 @@
 
 use aide::axum::ApiRouter;
 use super::handlers;
-use ziee_chat::{delete_with, get_with, put_with};
+use ziee::{delete_with, get_with, put_with};
 
 /// Create settings API routes with OpenAPI documentation
 pub fn settings_api_routes() -> ApiRouter {

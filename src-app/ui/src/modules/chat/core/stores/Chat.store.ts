@@ -117,7 +117,7 @@ export function resolvePanelRenderer(tab: RightPanelTab): {
 
 // v2 bump: tab shape changed from { id, title } to { id, title, type, data }.
 // Old v1 snapshots are discarded (panel state, not user data).
-const PANEL_STORAGE_KEY = 'ziee-chat-right-panel-tabs-v2'
+const PANEL_STORAGE_KEY = 'ziee-right-panel-tabs-v2'
 
 /**
  * Snapshots not touched within this window are evicted on the next write.

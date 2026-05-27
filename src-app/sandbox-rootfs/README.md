@@ -4,7 +4,7 @@ Build inputs for the **ziee code sandbox rootfs** — the Ubuntu-based
 filesystem mounted inside `bwrap` for code execution.
 
 The rootfs is shipped as a `squashfs` (zstd-19) binary artifact via
-GitHub Releases on the `phibya/ziee-chat` repo. Sources live here.
+GitHub Releases on the `phibya/ziee` repo. Sources live here.
 
 ## Quick start (dev)
 

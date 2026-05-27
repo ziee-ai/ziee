@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
 use tauri_plugin_updater::UpdaterExt;
-use ziee_chat::{Json, StatusCode};
+use ziee::{Json, StatusCode};
 
 use crate::core::get_app_handle;
 

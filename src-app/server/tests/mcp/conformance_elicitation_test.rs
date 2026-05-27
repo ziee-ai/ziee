@@ -24,7 +24,7 @@
 use super::fixtures::mock_elicitation_server::{ElicitationScript, MockElicitationServer};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use ziee_chat::{
+use ziee::{
     elicitation_registry, ElicitationResponse, ElicitationStartedNotification, HttpMcpClient,
     McpClient, McpServer, TransportType, UsageMode,
 };

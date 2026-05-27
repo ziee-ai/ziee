@@ -14,7 +14,7 @@ use serial_test::serial;
 fn test_window_commands_exist() {
     // This test verifies that the window module commands are accessible
     // The actual window operations require a Tauri runtime
-    use ziee_chat_desktop::modules::window::commands;
+    use ziee_desktop::modules::window::commands;
 
     // Verify module compiles and exports commands
     // The commands are:

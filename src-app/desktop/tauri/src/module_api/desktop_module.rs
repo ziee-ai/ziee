@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use tauri::App;
-use ziee_chat::{ApiRouter, Router};
+use ziee::{ApiRouter, Router};
 
 /// DesktopModule trait for modular desktop features
 ///

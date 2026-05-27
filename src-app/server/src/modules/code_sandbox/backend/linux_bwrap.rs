@@ -57,4 +57,38 @@ impl SandboxBackend for LinuxBwrapBackend {
     async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {
         runtime_mount::evict_flavor(cache_dir, flavor).await
     }
+
+    async fn exec_raw_argv(
+        &self,
+        argv: Vec<String>,
+        _rootfs_squashfs: &Path,
+        timeout: std::time::Duration,
+    ) -> Result<super::RawExecResult, AppError> {
+        // Linux backend: bwrap on the host directly. `rootfs_squashfs` is
+        // unused — Linux tests bind-mount the already-mounted rootfs into
+        // bwrap via the argv (`--ro-bind /var/lib/ziee/sandbox-rootfs/current
+        // /sandbox-rootfs`). The mount is set up by `runtime_mount` /
+        // `just sandbox-mount` before the test runs.
+        let output = tokio::time::timeout(
+            timeout,
+            tokio::process::Command::new("bwrap").args(&argv).output(),
+        )
+        .await;
+
+        match output {
+            Ok(Ok(out)) => Ok(super::RawExecResult {
+                exit_code: out.status.code().unwrap_or(-1),
+                stdout: out.stdout,
+                stderr: out.stderr,
+                timed_out: false,
+            }),
+            Ok(Err(e)) => Err(AppError::internal_error(format!("bwrap spawn failed: {e}"))),
+            Err(_) => Ok(super::RawExecResult {
+                exit_code: -1,
+                stdout: Vec::new(),
+                stderr: format!("bwrap timed out after {timeout:?}").into_bytes(),
+                timed_out: true,
+            }),
+        }
+    }
 }

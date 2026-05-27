@@ -1,6 +1,6 @@
 // LLM Model routes configuration
 // Source: react-test/src-tauri/src/api/models.rs
-// Following ziee-chat patterns from llm_provider module
+// Following ziee patterns from llm_provider module
 
 use aide::axum::{
     ApiRouter,
