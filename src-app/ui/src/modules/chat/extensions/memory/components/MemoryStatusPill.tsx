@@ -15,7 +15,12 @@ type Mode = 'inherit' | 'on' | 'off'
  * is loaded (initial /chat page with no selection shows nothing).
  */
 export function MemoryStatusPill() {
+  // CRITICAL: read every Stores.X.field at the TOP, before any early
+  // return. Each proxy access fires a useEffect; reading conditionally
+  // after a guard triggers "Rendered more hooks than during the
+  // previous render" (memory: project_stores_proxy_hooks).
   const conversation = Stores.Chat.conversation
+  const adminSettings = Stores.MemoryAdmin.settings
   const [mode, setMode] = useState<Mode>('inherit')
   const [loading, setLoading] = useState(false)
 
@@ -33,8 +38,7 @@ export function MemoryStatusPill() {
   // globally disabled by the admin (audit R6-#17 — pill is meaningless
   // when the deployment-wide setting is off).
   if (!conversation?.id) return null
-  const adminEnabled = Stores.MemoryAdmin?.settings?.enabled
-  if (adminEnabled === false) return null
+  if (adminSettings?.enabled === false) return null
 
   async function setRemote(next: Mode) {
     if (!conversation?.id) return
