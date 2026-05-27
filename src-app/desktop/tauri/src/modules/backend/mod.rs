@@ -261,63 +261,95 @@ async fn proxy_to_vite(req: Request<Body>) -> Result<Response<Body>, axum::http:
     }
 }
 
-/// Create desktop-specific configuration for the backend
+/// Build the in-memory `ziee::Config` the embedded server boots from.
+///
+/// Construct as a YAML template + interpolate the per-launch values
+/// (port, app_data_dir, random jwt secret). This matches the
+/// canonical shape `Config` deserializes from (see
+/// `src-app/server/config/dev.yaml` for the reference). The previous
+/// implementation built a `HashMap` with ad-hoc top-level keys
+/// (`database:` instead of `postgresql:`, `embedded: "true"` instead
+/// of `use_embedded: true`, `access_token_expiry` instead of
+/// `access_token_expiry_hours`, and no `issuer`/`audience` at all)
+/// — serde silently dropped the typo'd keys and only worked because
+/// `Config::resolve_paths` filled in the postgres dirs from
+/// `app.data_dir` anyway.
+///
+/// Per-launch overrides:
+///   - `app.data_dir` → Tauri's `app_data_dir()`
+///   - `server.port` → first free port in 8080..8180
+///   - `jwt.secret` → fresh 32-byte hex (regenerated every cold
+///     start; persisted browser tokens from previous launches don't
+///     validate, so `desktop-base` always re-runs `auto_login`).
+///
+/// Everything else (postgres embedded version, install/data dirs via
+/// resolve_paths, pool sizes, logging) uses the same defaults the
+/// development config uses.
 fn create_desktop_config(
     data_dir: &std::path::Path,
     port: u16,
 ) -> Result<ziee::Config> {
-    use serde_yaml;
-    use std::collections::HashMap;
-
-    // Create config structure
-    let mut config_map = HashMap::new();
-
-    // Server configuration
-    let mut server_config = HashMap::new();
-    server_config.insert("host".to_string(), "127.0.0.1".to_string());
-    server_config.insert("port".to_string(), port.to_string());
-    server_config.insert("api_prefix".to_string(), "/api".to_string());
-    config_map.insert("server".to_string(), server_config);
-
-    // App configuration
-    let mut app_config = HashMap::new();
-    app_config.insert(
-        "data_dir".to_string(),
-        data_dir.to_string_lossy().to_string(),
-    );
-    config_map.insert("app".to_string(), app_config);
-
-    // Database configuration (embedded PostgreSQL)
-    let mut db_config = HashMap::new();
-    db_config.insert("embedded".to_string(), true.to_string());
-    let db_path = data_dir.join("database");
-    db_config.insert("path".to_string(), db_path.to_string_lossy().to_string());
-    config_map.insert("database".to_string(), db_config);
-
-    // JWT configuration
-    let mut jwt_config = HashMap::new();
-    // Generate random secret for desktop app
     use rand::Rng;
     let secret: String = rand::rng()
         .random_iter::<u8>()
         .take(32)
         .map(|b| format!("{:02x}", b))
         .collect();
-    jwt_config.insert("secret".to_string(), secret);
-    jwt_config.insert("access_token_expiry".to_string(), "3600".to_string());
-    jwt_config.insert("refresh_token_expiry".to_string(), "604800".to_string());
-    config_map.insert("jwt".to_string(), jwt_config);
 
-    // Logging configuration
-    let mut logging_config = HashMap::new();
-    logging_config.insert("level".to_string(), "info".to_string());
-    logging_config.insert("format".to_string(), "compact".to_string());
-    config_map.insert("logging".to_string(), logging_config);
+    // data_dir is already validated to exist; serialize the path with
+    // YAML-safe quoting (the path may contain spaces on macOS:
+    // "Application Support"). Single quotes are the simplest safe
+    // YAML scalar — '' escapes single quotes inside.
+    let data_dir_yaml = data_dir
+        .to_string_lossy()
+        .replace('\'', "''");
 
-    // Parse config from YAML
-    let yaml_str = serde_yaml::to_string(&config_map)?;
-    let config: ziee::Config = serde_yaml::from_str(&yaml_str)?;
+    let yaml = format!(
+        r#"app:
+  data_dir: '{data_dir_yaml}'
 
+postgresql:
+  use_embedded: true
+  embedded:
+    version: "18.3.0"
+    port: 0
+    bind_address: "127.0.0.1"
+    username: "postgres"
+    password: "password"
+    database: "postgres"
+    timezone: "UTC"
+    log_timezone: "UTC"
+    logging:
+      collector: true
+      directory: "log"
+      filename: "postgresql-%Y-%m-%d_%H%M%S.log"
+      statement: "ddl"
+  pool:
+    max_connections: 10
+    min_connections: 1
+    acquire_timeout_secs: 5
+    idle_timeout_secs: 30
+    max_lifetime_secs: 300
+
+server:
+  host: "127.0.0.1"
+  port: {port}
+  api_prefix: "/api"
+
+jwt:
+  secret: "{secret}"
+  issuer: "ziee"
+  audience: "ziee-api"
+  access_token_expiry_hours: 1
+  refresh_token_expiry_days: 7
+
+logging:
+  level: "info"
+  format: "compact"
+"#
+    );
+
+    let config: ziee::Config = serde_yaml::from_str(&yaml)?;
     Ok(config)
 }
 
