@@ -22,7 +22,7 @@ pub struct TestServer {
     pub base_url: String,
     pub database_name: String,
     pub database_url: String,
-    temp_config_path: String,
+    temp_config_path: PathBuf,
     /// Per-test workspace dir for `code_sandbox.workspace_root` (when
     /// sandbox is enabled). Held here so Drop cleans it; tests that
     /// need the path can read `workspace_root` below.
@@ -147,11 +147,18 @@ impl TestServer {
         //     the sandbox don't touch this dir.
         let shared_data_dir = shared_test_app_data_dir();
 
-        // Create test config for the server
+        // Create test config for the server.
+        //
+        // Path values are written with SINGLE quotes (YAML's "flow scalar")
+        // because Windows paths contain backslashes — `C:\Users\...` —
+        // and YAML's double-quoted scalars interpret `\` as an escape
+        // (e.g. `\U` starts a Unicode escape that demands hex digits and
+        // fails to parse). Single-quoted YAML scalars treat backslashes
+        // literally, so any host-OS path string round-trips correctly.
         let mut config = format!(
             r#"
 app:
-  data_dir: "{shared}"
+  data_dir: '{shared}'
 
 postgresql:
   use_embedded: false
@@ -248,8 +255,11 @@ secrets:
                     std::fs::Permissions::from_mode(0o1777),
                 );
             }
+            // Single-quote the path values (see note above the `data_dir`
+            // formatter); Windows paths contain backslashes that break
+            // YAML double-quoted scalars.
             config.push_str(&format!(
-                "\ncode_sandbox:\n  enabled: true\n  rootfs_path: \"{}\"\n  workspace_root: \"{}\"\n  cgroup_parent: \"{}\"\n",
+                "\ncode_sandbox:\n  enabled: true\n  rootfs_path: '{}'\n  workspace_root: '{}'\n  cgroup_parent: '{}'\n",
                 rootfs,
                 ws_path.display(),
                 opts.sandbox_cgroup_parent
@@ -259,8 +269,10 @@ secrets:
             (None, None)
         };
 
-        // Write temporary config file
-        let temp_config_path = format!("/tmp/ziee-test-{}.yaml", test_id);
+        // Write temporary config file (cross-platform: `/tmp/...` doesn't
+        // exist on Windows, so use `std::env::temp_dir()` which resolves
+        // to `%TEMP%` on Windows and `/tmp` on Unix).
+        let temp_config_path = std::env::temp_dir().join(format!("ziee-test-{test_id}.yaml"));
         fs::write(&temp_config_path, config).expect("Failed to write temporary config");
 
         // Create the test database
@@ -277,10 +289,23 @@ secrets:
 
         pool.close().await;
 
-        // Start the server process with the temporary config
-        let binary_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/ziee");
+        // Start the server process with the temporary config. Windows
+        // appends `.exe`; cargo emits both `ziee` (the artifact stem,
+        // present as a hard link on Unix) and `ziee.exe` on Windows.
+        // The workspace refactor moved target/ to the parent dir
+        // (`src-app/target` rather than `src-app/server/target`), so
+        // resolve relative to CARGO_MANIFEST_DIR's parent.
+        let exe_name = if cfg!(windows) { "ziee.exe" } else { "ziee" };
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace_target = manifest.parent().map(|p| p.join("target/debug").join(exe_name));
+        let local_target = manifest.join("target/debug").join(exe_name);
+        let binary_path = workspace_target
+            .as_ref()
+            .filter(|p| p.exists())
+            .cloned()
+            .unwrap_or(local_target);
 
-        let mut cmd = Command::new(binary_path);
+        let mut cmd = Command::new(&binary_path);
         cmd.arg("--config-file").arg(&temp_config_path);
         for (k, v) in &opts.extra_env {
             cmd.env(k, v);

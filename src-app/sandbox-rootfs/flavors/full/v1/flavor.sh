@@ -13,12 +13,18 @@ APPROX_SIZE_MB=853
 APT_SNAPSHOT="20250115T000000Z"
 
 # Whitespace/newline separated; build.sh collapses to mmdebstrap's comma list.
+#
+# bubblewrap + rsync are required by the WSL2 backend's `provision_distro`
+# (src-app/server/src/modules/code_sandbox/backend/wsl2.rs). Baked in here
+# so the runtime `apt-get install` step short-circuits via the `command -v`
+# check. Same packages also useful on Linux/Mac.
 APT_PACKAGES="
   bash coreutils util-linux ca-certificates curl wget bzip2 xz-utils unzip
   locales tzdata python3 python3-pip python3-venv
   build-essential gfortran git git-lfs libffi-dev libssl-dev zlib1g-dev
   vim jq ripgrep fd-find tree net-tools dnsutils iputils-ping
   gnupg lsb-release apt-transport-https r-base r-base-dev
+  bubblewrap rsync
 "
 
 # Post-bootstrap provisioning. Runs inside the chroot (systemd-nspawn) with

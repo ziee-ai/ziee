@@ -24,6 +24,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CACHE_DIR="$REPO_ROOT/.ziee-cache/sandbox-rootfs"
 OUTPUT="$CACHE_DIR/test-minimal.squashfs"
+# Windows WSL2 backend can't `wsl --import` a squashfs; it needs a tar
+# format. Produce a sibling `.tar.zst` from the same stage tree so
+# `wsl2.rs::resolve_tarball_for_rootfs` can find it next to the squashfs
+# the trait param points at.
+OUTPUT_TARBALL="$CACHE_DIR/test-minimal.tar.zst"
 SCHEMA="$(grep -E '^current_schema' "$REPO_ROOT/src-app/sandbox-rootfs/compat.toml" | awk '{print $3}')"
 
 FORCE=0
@@ -47,8 +52,10 @@ done
 
 mkdir -p "$CACHE_DIR"
 
-if [[ "$FORCE" -eq 0 && -f "$OUTPUT" ]]; then
-  echo "✓ test rootfs already cached: $OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
+if [[ "$FORCE" -eq 0 && -f "$OUTPUT" && -f "$OUTPUT_TARBALL" ]]; then
+  echo "✓ test rootfs already cached:"
+  echo "    $OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
+  echo "    $OUTPUT_TARBALL ($(du -h "$OUTPUT_TARBALL" | cut -f1))"
   echo "  use --force to rebuild"
   exit 0
 fi
@@ -72,7 +79,7 @@ docker run --rm \
   sh -c "
     set -euo pipefail
     # squashfs-tools for mksquashfs; python3 for the symlink-rewrite pass below.
-    apk add --quiet --no-cache squashfs-tools python3 >/dev/null
+    apk add --quiet --no-cache squashfs-tools python3 zstd tar >/dev/null
     STAGE=/stage
     mkdir -p \$STAGE/etc/apk
     cp /etc/apk/repositories \$STAGE/etc/apk/
@@ -86,9 +93,16 @@ docker run --rm \
     # (the dynamic linker can't find libsmartcols.so.1).
     # python3 is needed by several tier-6 hardening tests that exercise
     # memory caps via Python's bytearray alloc.
+    # bubblewrap + rsync are required by the production wsl2 provision
+    # path on Windows (provision_distro tries `apt-get install` them if
+    # absent — which Alpine doesn't have). Baking them into the test
+    # rootfs short-circuits that step via `command -v` checks. Mirrors
+    # the WIN-TODO at wsl2.rs:496 (move them into APT_PACKAGES for
+    # production schema v3).
     apk add --quiet --no-cache --root \$STAGE \
       alpine-baselayout busybox musl bash coreutils \
-      util-linux util-linux-misc libsmartcols procps python3 >/dev/null
+      util-linux util-linux-misc libsmartcols procps python3 \
+      bubblewrap rsync >/dev/null
     # usr-merge: production sandbox argv does '--symlink usr/lib /lib'
     # (assumes Debian usrmerged layout). Alpine keeps /lib + /usr/lib
     # separate, so libsmartcols.so.1 (needed by /usr/bin/prlimit) ends
@@ -134,6 +148,14 @@ PYEOF
     # Pre-create the mount points sandbox bind-binds into (best-effort, agent
     # also tries to create them).
     mkdir -p \$STAGE/proc \$STAGE/sys \$STAGE/dev \$STAGE/tmp \$STAGE/workspace
+    # /sandbox-rootfs: on Mac, the agent mounts the squashfs here from
+    # /dev/vda. On Windows (WSL2), the distro filesystem IS the rootfs
+    # (wsl --import unpacks the tarball as ext4), so we expose the same
+    # canonical path via a symlink to /. Bwrap follows the symlink when
+    # resolving --ro-bind sources, so `--ro-bind /sandbox-rootfs /` works
+    # cross-platform without any platform-specific argv rewriting in
+    # the harness.
+    (cd \$STAGE && ln -sf . sandbox-rootfs)
     # Skip device nodes that mksquashfs would warn on for un-rooted Docker.
     rm -f \$STAGE/dev/* 2>/dev/null || true
     # Strip setuid (defense-in-depth; same as the production build.sh).
@@ -144,10 +166,22 @@ PYEOF
       -quiet -no-progress -comp gzip -all-root
     mv /out/test-minimal.squashfs.tmp /out/test-minimal.squashfs
     echo '==> wrote /out/test-minimal.squashfs (' \$(du -h /out/test-minimal.squashfs | cut -f1) ')'
+    # Tar+zstd from the same stage tree for the Windows WSL2 test path
+    # (wsl --import accepts tar/tar.gz/tar.zst; level 19 matches the
+    # production rootfs publisher).
+    echo '==> tar+zstd (level 19; for wsl --import on Windows)'
+    tar -C \$STAGE -cf - . | zstd -19 -q -o /out/test-minimal.tar.zst.tmp
+    mv /out/test-minimal.tar.zst.tmp /out/test-minimal.tar.zst
+    echo '==> wrote /out/test-minimal.tar.zst (' \$(du -h /out/test-minimal.tar.zst | cut -f1) ')'
   "
 
 if [[ ! -f "$OUTPUT" ]]; then
   echo "ERROR: build completed but $OUTPUT is missing" >&2
   exit 1
 fi
+if [[ ! -f "$OUTPUT_TARBALL" ]]; then
+  echo "ERROR: build completed but $OUTPUT_TARBALL is missing" >&2
+  exit 1
+fi
 echo "✓ wrote $OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
+echo "✓ wrote $OUTPUT_TARBALL ($(du -h "$OUTPUT_TARBALL" | cut -f1))"

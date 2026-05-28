@@ -61,8 +61,13 @@ async fn e2e_nproc_rlimit_enforced_via_http() {
     )
     .await;
     let elapsed = started.elapsed();
+    // Wedge-detector: on Linux the call completes in <1s; on macOS in <5s.
+    // Windows WSL2 adds ~30s of vmcompute / hvsocket warmup on the first
+    // connect to a freshly-spawned agent (see `wsl2.rs` ensure_distro
+    // connect-wait — same 60s deadline). 90s catches a genuinely wedged
+    // sandbox while accommodating that warmup.
     assert!(
-        elapsed < std::time::Duration::from_secs(30),
+        elapsed < std::time::Duration::from_secs(90),
         "fork-bomb call took {:?} — sandbox likely wedged",
         elapsed
     );
