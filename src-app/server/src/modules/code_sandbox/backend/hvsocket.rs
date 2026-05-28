@@ -25,6 +25,21 @@
 //! override `ZIEE_WSL_VM_ID=<guid>` short-circuits the probe for dev /
 //! diagnostic use.
 //!
+//! ## Service-ID registration prereq (HOST → guest)
+//!
+//! Despite Microsoft's docs suggesting `HV_GUID_VSOCK_TEMPLATE` is auto-routable,
+//! in practice the Windows host's connect to a port-templated GUID times out
+//! with **WSA 10060** unless that specific GUID is registered under
+//! `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\<GUID>`.
+//! The vmcompute service caches the registration list at VM-start time, so a
+//! fresh registration also requires `wsl --shutdown` before the next VM boot
+//! sees it. The bundled `scripts/register-sandbox-vsock-ports.ps1` does both
+//! in one admin invocation (registers 10001..10100 + restarts WSL).
+//!
+//! Symptom of skipped setup: `connect AF_HYPERV port=<N> ... failed: WSA error 10060`.
+//! The connect-wait loops in [`super::wsl2::Wsl2Backend::ensure_distro`] and
+//! `ensure_test_distro` surface the script path in their timeout error.
+//!
 //! ## tokio wrapping
 //!
 //! We open the AF_HYPERV socket synchronously through `windows-sys`, set it
@@ -196,21 +211,8 @@ pub fn wsl_utility_vm_id() -> Result<GUID, AppError> {
     }
 
     let text = String::from_utf8_lossy(&out.stdout);
-    // Each row is roughly: `<GUID>, <state>, <type>, <name>` (column order
-    // varies by hcsdiag version; we just scan for a GUID-shaped first token
-    // followed somewhere on the line by WSL / LCOWv2).
-    for line in text.lines() {
-        let lower = line.to_ascii_lowercase();
-        if !(lower.contains("wsl") || lower.contains("lcowv2")) {
-            continue;
-        }
-        // First whitespace- or comma-separated token.
-        let first = line.split(|c: char| c.is_whitespace() || c == ',').next();
-        if let Some(tok) = first {
-            if let Ok(g) = parse_guid(tok.trim()) {
-                return Ok(g);
-            }
-        }
+    if let Some(g) = parse_wsl_vm_id_from_hcsdiag(&text) {
+        return Ok(g);
     }
 
     Err(AppError::internal_error(format!(
@@ -218,6 +220,41 @@ pub fn wsl_utility_vm_id() -> Result<GUID, AppError> {
          Try `wsl --status` first. Workaround: set ZIEE_WSL_VM_ID=<guid>. \
          Raw output:\n{text}"
     )))
+}
+
+/// Extract the WSL utility VM's GUID from `hcsdiag list` output.
+///
+/// Returns `None` when no block in the output mentions WSL/LCOWv2 or
+/// no GUID-shaped token is found in the WSL block. Layout varies by
+/// Windows version:
+///   - Win11 24H2+ tends to emit one row per VM:
+///     `<GUID>, Running, WSL`
+///   - Older `hcsdiag` builds split a VM across two rows:
+///     `<GUID>\n    VM, Running, <GUID>, WSL`
+///
+/// Both layouts use blank lines as block separators when multiple VMs
+/// are listed. Block-scoping the GUID search keeps us from grabbing
+/// the GUID of a *different* Hyper-V VM (e.g. Docker Desktop's
+/// data-plane VM, a developer's local guest) when WSL is listed
+/// alongside it.
+pub(crate) fn parse_wsl_vm_id_from_hcsdiag(text: &str) -> Option<GUID> {
+    let normalized = text.replace("\r\n", "\n");
+    for block in normalized.split("\n\n") {
+        let block_lower = block.to_ascii_lowercase();
+        if !(block_lower.contains("wsl") || block_lower.contains("lcowv2")) {
+            continue;
+        }
+        for token in block.split(|c: char| c.is_whitespace() || c == ',') {
+            let tok = token.trim();
+            if tok.is_empty() {
+                continue;
+            }
+            if let Ok(g) = parse_guid(tok) {
+                return Some(g);
+            }
+        }
+    }
+    None
 }
 
 /// Parse a GUID from either `aabbccdd-eeff-…` or `{aabbccdd-eeff-…}` form.
@@ -312,5 +349,67 @@ mod tests {
         assert_eq!(svc.data1, 1024);
         assert_eq!(svc.data2, 0xfacb);
         assert_eq!(svc.data3, 0x11e6);
+    }
+
+    // ─── hcsdiag output parser regression tests ────────────────────────
+
+    #[test]
+    fn parse_wsl_vm_id_single_row_format() {
+        // Newer Win11 hcsdiag emits one row per VM.
+        let text = "2C340624-1A5B-43CB-BD13-CF3831D8C760, Running, WSL\r\n";
+        let g = parse_wsl_vm_id_from_hcsdiag(text).expect("found GUID");
+        assert_eq!(g.data1, 0x2C340624);
+    }
+
+    #[test]
+    fn parse_wsl_vm_id_two_row_format() {
+        // Older hcsdiag (observed on this Win11 host): GUID on line 1,
+        // metadata on line 2 with leading whitespace.
+        let text = "2C340624-1A5B-43CB-BD13-CF3831D8C760\r\n    VM,                       \tRunning, 2C340624-1A5B-43CB-BD13-CF3831D8C760, WSL\r\n";
+        let g = parse_wsl_vm_id_from_hcsdiag(text).expect("found GUID");
+        assert_eq!(g.data1, 0x2C340624);
+    }
+
+    #[test]
+    fn parse_wsl_vm_id_picks_wsl_block_over_other_vms() {
+        // Multiple VMs: the WSL block's GUID must be picked, NOT the
+        // first GUID in the output. Closes the "wrong VM selected"
+        // class of bug if the host is also running a Docker Desktop
+        // data-plane VM or a Hyper-V dev guest.
+        let text = "11111111-aaaa-bbbb-cccc-111111111111, Running, OtherType\n\n\
+                    22222222-aaaa-bbbb-cccc-222222222222, Running, WSL\n";
+        let g = parse_wsl_vm_id_from_hcsdiag(text).expect("found GUID");
+        assert_eq!(g.data1, 0x22222222);
+    }
+
+    #[test]
+    fn parse_wsl_vm_id_matches_lcowv2_block() {
+        // hcsdiag on some Windows versions calls the WSL2 utility VM
+        // "LCOWv2" (Linux Containers On Windows v2). Accept either
+        // marker so this parser remains robust against the naming
+        // change Microsoft has cycled through.
+        let text = "3a3a3a3a-bbbb-cccc-dddd-3a3a3a3a3a3a, Running, LCOWv2\r\n";
+        let g = parse_wsl_vm_id_from_hcsdiag(text).expect("found GUID");
+        assert_eq!(g.data1, 0x3a3a3a3a);
+    }
+
+    #[test]
+    fn parse_wsl_vm_id_returns_none_without_wsl_marker() {
+        // Output that has GUIDs but none in a WSL/LCOWv2 block: no match.
+        let text = "11111111-aaaa-bbbb-cccc-111111111111, Running, Docker\n";
+        assert!(parse_wsl_vm_id_from_hcsdiag(text).is_none());
+    }
+
+    #[test]
+    fn parse_wsl_vm_id_returns_none_for_empty_output() {
+        assert!(parse_wsl_vm_id_from_hcsdiag("").is_none());
+    }
+
+    #[test]
+    fn parse_wsl_vm_id_returns_none_when_block_lacks_guid() {
+        // Pathological: a block mentions WSL but has no valid GUID.
+        // Don't return a garbage-extracted value.
+        let text = "    Some status line, WSL\n";
+        assert!(parse_wsl_vm_id_from_hcsdiag(text).is_none());
     }
 }

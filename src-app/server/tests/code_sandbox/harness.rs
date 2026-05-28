@@ -297,44 +297,78 @@ pub fn test_server_jwt(user_id: Uuid) -> String {
 /// `runtime_fetch` network path via cache-hit + sha256 short-circuit.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn stage_test_rootfs_for_e2e() -> Option<(tempfile::TempDir, Vec<(String, String)>)> {
-    let source = rootfs_squashfs_path();
-    let cache = tempfile::tempdir().ok()?;
-    let arch = std::env::consts::ARCH;
-    let asset = format!("ziee-sandbox-rootfs-v1.r0-{arch}-minimal.squashfs");
-    std::fs::copy(&source, cache.path().join(&asset)).ok()?;
-    let sha256 = {
-        use sha2::{Digest, Sha256};
-        use std::io::Read;
-        let mut f = std::fs::File::open(&source).ok()?;
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    fn sha256_file(p: &std::path::Path) -> Option<String> {
+        let mut f = std::fs::File::open(p).ok()?;
         let mut h = Sha256::new();
         let mut buf = vec![0u8; 64 * 1024];
         loop {
             let n = f.read(&mut buf).ok()?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             h.update(&buf[..n]);
         }
-        format!("{:x}", h.finalize())
+        Some(format!("{:x}", h.finalize()))
+    }
+
+    let source_sqfs = rootfs_squashfs_path();
+    let arch = std::env::consts::ARCH;
+    let cache = tempfile::tempdir().ok()?;
+    let sqfs_asset = format!("ziee-sandbox-rootfs-v1.r0-{arch}-minimal.squashfs");
+    std::fs::copy(&source_sqfs, cache.path().join(&sqfs_asset)).ok()?;
+    let sha256_sqfs = sha256_file(&source_sqfs)?;
+
+    // Windows: also stage the `.tar.zst` (the production WSL2 backend
+    // imports tar formats via `wsl --import` and asks runtime_fetch for
+    // `RootfsFormat::TarZst`, which requires `sha256_tar_zst` in the
+    // revision row). build-test-rootfs.sh publishes both formats side
+    // by side; `resolve_tarball_for_rootfs` (in wsl2.rs) finds the
+    // sibling for the exec_raw_argv path, and we stage it here for the
+    // production-handler path.
+    let tar_zst_line = {
+        #[cfg(target_os = "windows")]
+        {
+            let source_tar_zst = source_sqfs.with_extension("tar.zst");
+            if source_tar_zst.is_file() {
+                let tar_asset = format!("ziee-sandbox-rootfs-v1.r0-{arch}-minimal.tar.zst");
+                std::fs::copy(&source_tar_zst, cache.path().join(&tar_asset)).ok()?;
+                let sha = sha256_file(&source_tar_zst)?;
+                format!("sha256_tar_zst = \"{sha}\"\n")
+            } else {
+                // Tarball not built — Tier 6 production-handler tests will
+                // surface a clear "no sha256_tar_zst" error pointing the
+                // operator at `scripts/build-test-rootfs.sh`. exec_raw_argv
+                // (Tier 4) doesn't depend on it.
+                String::new()
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            String::new()
+        }
     };
+
     let dev_toml = format!(
-        r#"
-[[revision]]
-schema = 1
-revision = "r0"
-arch = "{arch}"
-flavor = "minimal"
-sha256 = "{sha256}"
-signed = false
-yanked = false
-"#
+        "\n\
+[[revision]]\n\
+schema = 1\n\
+revision = \"r0\"\n\
+arch = \"{arch}\"\n\
+flavor = \"minimal\"\n\
+sha256 = \"{sha256_sqfs}\"\n\
+{tar_zst_line}\
+signed = false\n\
+yanked = false\n"
     );
     let dev_toml_path = cache.path().join("known_revisions.dev.toml");
     std::fs::write(&dev_toml_path, dev_toml).ok()?;
-    let env = vec![
-        (
-            "CODE_SANDBOX_KNOWN_REVISIONS_OVERRIDE".to_string(),
-            dev_toml_path.to_string_lossy().into_owned(),
-        ),
-    ];
+    let env = vec![(
+        "CODE_SANDBOX_KNOWN_REVISIONS_OVERRIDE".to_string(),
+        dev_toml_path.to_string_lossy().into_owned(),
+    )];
     Some((cache, env))
 }
 

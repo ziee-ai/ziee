@@ -89,7 +89,7 @@ tower-http = { version = "0.6.2", features = ["cors", "timeout", "set-header"] }
 # `>= 0.8, < 0.10` constraint resolves to the same 0.8.x line that
 # `HalfVector: sqlx::Type<Postgres>` impls were built against.
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "macros", "migrate"] }
-pgvector = { version = "0.4", features = ["postgres", "halfvec", "sqlx"] }
+pgvector = { version = "=0.4.1", features = ["postgres", "halfvec", "sqlx"] }
 postgresql_embedded = { version = "0.20.0", default-features = false, features = ["bundled", "theseus", "rustls"] }
 portpicker = "0.1"
 

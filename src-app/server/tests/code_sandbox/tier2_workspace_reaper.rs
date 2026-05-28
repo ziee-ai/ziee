@@ -136,30 +136,38 @@ fn reap_once(root: &std::path::Path, max_age: Duration) {
 }
 
 fn set_mtime(path: &std::path::Path, when: SystemTime) {
-    use std::os::unix::fs::MetadataExt;
-    let secs = when
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs() as libc::time_t)
-        .unwrap_or(0);
-    let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
-    // Two-element array: [atime, mtime].
-    let times = [
-        libc::timeval {
-            tv_sec: secs,
-            tv_usec: 0,
-        },
-        libc::timeval {
-            tv_sec: secs,
-            tv_usec: 0,
-        },
-    ];
-    let rc = unsafe { libc::utimes(cpath.as_ptr(), times.as_ptr()) };
-    assert!(
-        rc == 0,
-        "utimes({}) failed: {}",
-        path.display(),
-        std::io::Error::last_os_error()
-    );
-    // Suppress unused-import lint.
-    let _ = std::fs::metadata(path).map(|m| m.size());
+    // Cross-platform mtime setter, working for BOTH files and directories.
+    //
+    // Unix: `OpenOptions::write(true).read(true).open(path)` works on
+    // a directory too; `File::set_modified` then `futimens`.
+    //
+    // Windows: opening a directory needs `FILE_FLAG_BACKUP_SEMANTICS`
+    // *and* `access_mode(GENERIC_READ | GENERIC_WRITE)`. The default
+    // `OpenOptions::write(true)` doesn't add GENERIC_WRITE for directories
+    // — we have to set both flags explicitly via the Windows extension.
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // 0x02000000 = FILE_FLAG_BACKUP_SEMANTICS (required for directory handles)
+        // 0x40000000 = GENERIC_WRITE
+        // 0x80000000 = GENERIC_READ
+        let f = std::fs::OpenOptions::new()
+            .access_mode(0x80000000 | 0x40000000)
+            .custom_flags(0x02000000)
+            .open(path)
+            .unwrap_or_else(|e| panic!("open({}) for set_mtime: {e}", path.display()));
+        f.set_modified(when)
+            .unwrap_or_else(|e| panic!("set_modified({}): {e}", path.display()));
+        return;
+    }
+    #[cfg(unix)]
+    {
+        let f = std::fs::OpenOptions::new()
+            .write(true)
+            .read(true)
+            .open(path)
+            .unwrap_or_else(|e| panic!("open({}) for set_mtime: {e}", path.display()));
+        f.set_modified(when)
+            .unwrap_or_else(|e| panic!("set_modified({}): {e}", path.display()));
+    }
 }
