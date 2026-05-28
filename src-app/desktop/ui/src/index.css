@@ -37,3 +37,37 @@
     width: 100dvw;
   }
 }
+
+/* Linux frame styles live in linux-titlebar.tsx (JS-injected `<style>`),
+ * not here. Tailwind v4's `@import "tailwindcss"` pipeline interacts
+ * weirdly with appended unlayered rules — they were getting silently
+ * stripped from the compiled output. Injecting at runtime sidesteps
+ * the compiler entirely. */
+
+/* OverlayScrollbars (DivScrollY) dark-mode handle override.
+ * Library default `.os-theme-dark` paints a near-black handle that
+ * disappears against ant-design's dark surface tokens. Re-bind the
+ * handle vars to white when `html.dark` (set by ThemeProvider).
+ * Duplicates the same rule in src-app/ui/src/index.css — the desktop
+ * UI imports its OWN index.css from src-app/desktop/ui/src and never
+ * pulls in the web UI's stylesheet. */
+html.dark .os-theme-dark {
+  --os-handle-bg: rgba(255, 255, 255, 0.22);
+  --os-handle-bg-hover: rgba(255, 255, 255, 0.35);
+  --os-handle-bg-active: rgba(255, 255, 255, 0.48);
+}
+
+/* Hover-expand handle so it's easier to grab, with smooth width/height
+ * transition (the library only transitions opacity / bg-color). */
+.os-scrollbar-handle {
+  transition:
+    opacity 0.15s,
+    background-color 0.15s,
+    border-color 0.15s,
+    width 0.15s ease-out,
+    height 0.15s ease-out;
+}
+.os-theme-dark.os-scrollbar:hover,
+.os-theme-light.os-scrollbar:hover {
+  --os-size: 12px;
+}

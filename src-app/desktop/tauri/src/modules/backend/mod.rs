@@ -645,8 +645,8 @@ mod tests {
 fn create_main_window(app_handle: &tauri::AppHandle) {
     tracing::info!("Creating main window...");
 
-    // macOS/Linux: no decorations initially
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    // macOS: no native decorations initially (overlay titlebar set below).
+    #[cfg(target_os = "macos")]
     let mut main_window_builder = tauri::webview::WebviewWindowBuilder::new(
         app_handle,
         "main",
@@ -670,8 +670,14 @@ fn create_main_window(app_handle: &tauri::AppHandle) {
         color: None,
     });
 
-    // Windows: has decorations
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    // Windows + Linux: native decorations.
+    //  - Windows then overlays decorum's custom titlebar (preserves Aero
+    //    snapping, snap layouts that a pure HTML titlebar can't replicate).
+    //  - Linux relies entirely on the WM's server-side decorations
+    //    (xfwm4 / Mutter / KWin) for border + shadow + close/min/max
+    //    trio. XFCE / GNOME / KDE all default to right-aligned buttons,
+    //    which matches the project's other platforms.
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     let main_window_builder = tauri::webview::WebviewWindowBuilder::new(
         app_handle,
         "main",
@@ -679,7 +685,11 @@ fn create_main_window(app_handle: &tauri::AppHandle) {
     )
     .title("")
     .inner_size(1200.0, 800.0)
-    .min_inner_size(800.0, 600.0)
+    // Match macOS's `min_inner_size(400, 600)` — the previous 800-wide
+    // floor blocked the sidebar's xs-mode (drawer / overlay) layout
+    // path from ever rendering on Windows. The responsive UI already
+    // handles widths down to 400.
+    .min_inner_size(400.0, 600.0)
     .resizable(true)
     .fullscreen(false)
     .decorations(true)
@@ -702,12 +712,6 @@ fn create_main_window(app_handle: &tauri::AppHandle) {
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .decorations(true)
             .traffic_light_position(tauri::LogicalPosition::new(12.0, 22.0));
-    }
-
-    // Linux: transparent
-    #[cfg(target_os = "linux")]
-    {
-        main_window_builder = main_window_builder.transparent(true);
     }
 
     main_window_builder.build().unwrap();
