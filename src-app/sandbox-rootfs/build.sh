@@ -130,6 +130,14 @@ STAGE_DIR="$(dirname "$OUTPUT")/.stage-v${SCHEMA}.${REVISION}-${FLAVOR}"
 # (the stage dir then contains root-owned files like /var/log/wtmp,
 # /boot, /var/cache/ldconfig that a plain `rm -rf` can't remove).
 cleanup_stage() {
+  # Unmount any pseudo-filesystems the chroot-provision fallback may have
+  # bind-mounted under the stage dir FIRST. Without this, the rm -rf below
+  # could recurse through a live /dev or /proc bind mount into the host.
+  for mp in "$STAGE_DIR/dev/pts" "$STAGE_DIR/dev" "$STAGE_DIR/sys" "$STAGE_DIR/proc"; do
+    if mountpoint -q "$mp" 2>/dev/null; then
+      sudo umount -l "$mp" 2>/dev/null || umount -l "$mp" 2>/dev/null || true
+    fi
+  done
   if [[ -d "$STAGE_DIR" ]]; then
     if command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
       sudo rm -rf "$STAGE_DIR" 2>/dev/null || rm -rf "$STAGE_DIR" 2>/dev/null
@@ -183,14 +191,35 @@ build_mmdebstrap() {
   # — mmdebstrap can't reach PyPI/CRAN/npm directly). Runs inside the chroot
   # via systemd-nspawn with /etc/resolv.conf bound. The recipe's `provision`
   # function is shipped in verbatim via `declare -f` (no quoting-hell).
+  #
+  # systemd-nspawn needs a booted systemd + system D-Bus on the host, which
+  # containerized build hosts (Docker, etc.) don't have. Fall back to a plain
+  # chroot there: bind-mount the pseudo-filesystems (pip/apt/npm need
+  # /proc + /dev/{null,urandom}) and copy resolv.conf for DNS. cleanup_stage
+  # unmounts these before any rm -rf.
   if declare -f provision >/dev/null; then
     echo "==> chroot provision (recipe provision function)"
     local prov="$STAGE_DIR/tmp/ziee-provision.sh"
     { echo "set -euo pipefail"; declare -f provision; echo "provision"; } \
       | sudo tee "$prov" >/dev/null
-    sudo systemd-nspawn --quiet -D "$STAGE_DIR" \
-      --bind-ro=/etc/resolv.conf \
-      /bin/bash /tmp/ziee-provision.sh 2>&1 | tail -30
+    if [[ -d /run/systemd/system ]] && command -v systemd-nspawn >/dev/null \
+       && [[ -S /run/dbus/system_bus_socket ]]; then
+      sudo systemd-nspawn --quiet -D "$STAGE_DIR" \
+        --bind-ro=/etc/resolv.conf \
+        /bin/bash /tmp/ziee-provision.sh 2>&1 | tail -30
+    else
+      echo "    (systemd-nspawn unavailable; using chroot fallback)"
+      sudo cp /etc/resolv.conf "$STAGE_DIR/etc/resolv.conf"
+      sudo mount --bind /proc "$STAGE_DIR/proc"
+      sudo mount --bind /sys "$STAGE_DIR/sys"
+      sudo mount --bind /dev "$STAGE_DIR/dev"
+      sudo mount --bind /dev/pts "$STAGE_DIR/dev/pts"
+      sudo chroot "$STAGE_DIR" /bin/bash /tmp/ziee-provision.sh 2>&1 | tail -30
+      # Unmount immediately (defensively; cleanup_stage also covers failures).
+      sudo umount -l "$STAGE_DIR/dev/pts" "$STAGE_DIR/dev" \
+        "$STAGE_DIR/sys" "$STAGE_DIR/proc" 2>/dev/null || true
+      sudo rm -f "$STAGE_DIR/etc/resolv.conf"
+    fi
     sudo rm -f "$prov"
   fi
 

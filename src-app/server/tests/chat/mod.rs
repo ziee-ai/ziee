@@ -35,4 +35,6 @@ mod mcp_elicitation_test;
 mod mcp_content_test;
 mod sandbox_real_llm_test;
 mod test_single_assistant_message_architecture;
+mod assistant_block_grouping_test;
+mod append_content_ordering_test;
 mod user_providers_test;

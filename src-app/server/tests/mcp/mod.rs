@@ -1216,6 +1216,8 @@ mod conformance_oauth_test;        // Plan-3 Phase-4 (Cos1): OAuth client_creden
 mod oauth_config_route_test;       // Plan-3 Phase-4: per-server OAuth config endpoints
 mod conformance_cancellation_test; // Plan-3 Phase-2 (C3): client notifications/cancelled
 mod elicitation_route_test;       // HTTP route tests for /mcp/elicitation/{id}/respond
+mod rate_limit_retry_test;        // HTTP 429 backoff/retry against the mock server
+mod rate_limit_parse_test;        // HTTP 429 wait-hint parser/backoff unit tests
 
 // ============================================================================
 // Sampling Field CRUD Tests

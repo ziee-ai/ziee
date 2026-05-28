@@ -151,6 +151,93 @@ fn reconnect_delay_ms(attempt: u32) -> u64 {
     (d as u64).min(SSE_RECONNECT_MAX_MS)
 }
 
+// --- HTTP 429 rate-limit retry --------------------------------------------
+// The built-in code-sandbox MCP server is reached over loopback through the
+// SAME Axum router as public traffic, so the global tower-governor limiter
+// (default 5 req/s) counts each ephemeral session's handshake + tool call
+// against one 127.0.0.1 bucket. Rapid agent loops therefore self-inflict
+// HTTP 429s. Rather than weaken the limiter, the client honors the server's
+// wait hint and retries, so a transient limit slows the loop instead of
+// poisoning it with error tool_results.
+
+/// Maximum retries when the server keeps returning HTTP 429 for one logical
+/// request. Bounded so a persistently-saturated limiter can't hang the loop.
+const RL_RETRY_MAX: u32 = 4;
+/// Backoff (ms) for the first 429 retry when the server gives no wait hint.
+pub const RL_RETRY_INITIAL_MS: u64 = 200;
+/// Cap on any single 429 backoff sleep (defensive against an absurd hint).
+pub const RL_RETRY_MAX_MS: u64 = 5_000;
+
+/// Parse a rate-limit wait hint into milliseconds. Prefers the standard
+/// `Retry-After` header (delta-seconds); falls back to the `Wait for Ns` suffix
+/// our own loopback governor puts in the 429 body. Returns `None` (→ exponential
+/// backoff) when neither is present, parseable, or the hint is zero.
+pub fn rate_limit_wait_ms(headers: &reqwest::header::HeaderMap, body: &str) -> Option<u64> {
+    if let Some(secs) = headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        && secs > 0.0
+    {
+        return Some((secs * 1000.0) as u64);
+    }
+    if let Some(idx) = body.find("Wait for ") {
+        let num: String = body[idx + "Wait for ".len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        if let Ok(secs) = num.parse::<f64>()
+            && secs > 0.0
+        {
+            return Some((secs * 1000.0) as u64);
+        }
+    }
+    None
+}
+
+/// Backoff (ms) for the Nth (0-based) 429 retry: `max(hint, exponential)` —
+/// honor a server hint when given, but never wait *less* than the exponential
+/// floor (so a low hint at a high retry count still backs off appropriately).
+/// Clamped to `[1, RL_RETRY_MAX_MS]`.
+pub fn rate_limit_delay_ms(attempt: u32, hint_ms: Option<u64>) -> u64 {
+    let exp = RL_RETRY_INITIAL_MS.saturating_mul(2u64.saturating_pow(attempt));
+    let base = hint_ms.map_or(exp, |h| h.max(exp));
+    base.clamp(1, RL_RETRY_MAX_MS)
+}
+
+/// Send a request, transparently retrying on HTTP 429 using the server's wait
+/// hint. `build` MUST produce a fresh `RequestBuilder` on every call (body +
+/// headers re-applied), since a `RequestBuilder` is consumed by `send()`.
+async fn send_with_rate_limit_retry<F>(
+    server_name: &str,
+    what: &str,
+    build: F,
+) -> Result<reqwest::Response, AppError>
+where
+    F: Fn() -> reqwest::RequestBuilder,
+{
+    let mut attempt = 0u32;
+    loop {
+        let response = build()
+            .send()
+            .await
+            .map_err(|e| AppError::internal_error(format!("{} request failed: {}", what, e)))?;
+        if response.status().as_u16() == 429 && attempt < RL_RETRY_MAX {
+            let headers = response.headers().clone();
+            let body = response.text().await.unwrap_or_default();
+            let delay = rate_limit_delay_ms(attempt, rate_limit_wait_ms(&headers, &body));
+            tracing::warn!(
+                "[mcp] '{}' rate-limited {} (HTTP 429); retrying in {}ms (attempt {}/{})",
+                server_name, what, delay, attempt + 1, RL_RETRY_MAX
+            );
+            attempt += 1;
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+            continue;
+        }
+        return Ok(response);
+    }
+}
+
 /// Extract the SSE `id:` field from an event block (last `id:` line wins per
 /// the SSE spec). Returns `None` if the block carries no id — i.e. the server
 /// isn't emitting resumable event ids, so we won't attempt a resume.
@@ -866,22 +953,27 @@ impl HttpMcpClient {
             })
         };
 
-        let mut req = self.client
-            .post(&self.base_url)
-            .header("Accept", "application/json, text/event-stream")
-            .json(&body);
-        if let Some(sid) = self.get_session_id() {
-            req = req.header("mcp-session-id", sid);
-        }
-        if let Some(ver) = self.get_protocol_version() {
-            req = req.header("MCP-Protocol-Version", ver);
-        }
-        if let Some(bearer) = self.current_bearer() {
-            req = req.header("Authorization", format!("Bearer {bearer}"));
-        }
-
-        let response = req.send().await
-            .map_err(|e| AppError::internal_error(format!("MCP notification {} failed: {}", method, e)))?;
+        let response = send_with_rate_limit_retry(
+            &self.server_name,
+            &format!("notification {}", method),
+            || {
+                let mut req = self.client
+                    .post(&self.base_url)
+                    .header("Accept", "application/json, text/event-stream")
+                    .json(&body);
+                if let Some(sid) = self.get_session_id() {
+                    req = req.header("mcp-session-id", sid);
+                }
+                if let Some(ver) = self.get_protocol_version() {
+                    req = req.header("MCP-Protocol-Version", ver);
+                }
+                if let Some(bearer) = self.current_bearer() {
+                    req = req.header("Authorization", format!("Bearer {bearer}"));
+                }
+                req
+            },
+        )
+        .await?;
 
         let status = response.status();
         // 202 Accepted (per spec) is the success case; some servers return 200.
@@ -958,6 +1050,8 @@ impl HttpMcpClient {
         // At most one extra attempt: an OAuth-protected server's first request
         // 401s, we acquire a token, and retry with `Authorization: Bearer`.
         let mut oauth_retried = false;
+        // Independent budget for HTTP 429 retries (see send_with_rate_limit_retry).
+        let mut rl_attempt = 0u32;
         let (status, content_type, response_text) = loop {
             let id = self.next_id();
             let request_body = serde_json::json!({
@@ -1005,6 +1099,22 @@ impl HttpMcpClient {
                     self.server_name, method
                 );
                 self.acquire_oauth_token(&www).await?;
+                continue;
+            }
+
+            // Rate limited (e.g. the loopback governor in front of the built-in
+            // code-sandbox server). Honor the wait hint and retry rather than
+            // surfacing 429 as a hard failure that aborts initialize / the call.
+            if status.as_u16() == 429 && rl_attempt < RL_RETRY_MAX {
+                let headers = response.headers().clone();
+                let body = response.text().await.unwrap_or_default();
+                let delay = rate_limit_delay_ms(rl_attempt, rate_limit_wait_ms(&headers, &body));
+                tracing::warn!(
+                    "[mcp] server '{}' rate-limited '{}' (HTTP 429); retrying in {}ms (attempt {}/{})",
+                    self.server_name, method, delay, rl_attempt + 1, RL_RETRY_MAX
+                );
+                rl_attempt += 1;
+                tokio::time::sleep(Duration::from_millis(delay)).await;
                 continue;
             }
 
@@ -1171,25 +1281,7 @@ impl HttpMcpClient {
             }
         });
 
-        let mut req = stream_client
-            .post(&url)
-            // Per spec § Transports: client MUST advertise both content types.
-            .header("Accept", "application/json, text/event-stream")
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
         let sid = get_sid();
-        if let Some(ref s) = sid {
-            req = req.header("mcp-session-id", s.as_str());
-        }
-        // Per spec: MUST send MCP-Protocol-Version on subsequent requests.
-        if let Some(ref ver) = protocol_version {
-            req = req.header("MCP-Protocol-Version", ver);
-        }
-        if let Some(ref b) = bearer {
-            req = req.header("Authorization", format!("Bearer {b}"));
-        }
-
         tracing::info!(
             "[sampling] tools/call → url={} headers={{Accept: application/json+SSE, Content-Type: application/json, mcp-session-id: {:?}, MCP-Protocol-Version: {:?}}} body={}",
             url, sid, protocol_version, request_body
@@ -1197,11 +1289,26 @@ impl HttpMcpClient {
 
         tracing::info!("[sampling] sending tools/call SSE request");
 
-        let response = req.send().await
-            .map_err(|e| {
-                tracing::error!("[sampling] SSE request failed: {}", e);
-                AppError::internal_error(format!("SSE request failed: {}", e))
-            })?;
+        let response = send_with_rate_limit_retry(&server_name, "tools/call", || {
+            let mut req = stream_client
+                .post(&url)
+                // Per spec § Transports: client MUST advertise both content types.
+                .header("Accept", "application/json, text/event-stream")
+                .header("Content-Type", "application/json")
+                .json(&request_body);
+            if let Some(ref s) = sid {
+                req = req.header("mcp-session-id", s.as_str());
+            }
+            // Per spec: MUST send MCP-Protocol-Version on subsequent requests.
+            if let Some(ref ver) = protocol_version {
+                req = req.header("MCP-Protocol-Version", ver);
+            }
+            if let Some(ref b) = bearer {
+                req = req.header("Authorization", format!("Bearer {b}"));
+            }
+            req
+        })
+        .await?;
 
         tracing::info!("[sampling] SSE response headers received");
 
@@ -2045,27 +2152,29 @@ impl McpClient for HttpMcpClient {
                 }
             });
 
-            let mut req = stream_client
-                .post(&url)
-                // Per spec § Transports: client MUST advertise both content types.
-                .header("Accept", "application/json, text/event-stream")
-                .header("Content-Type", "application/json")
-                .json(&request_body);
-
-            if let Some(s) = get_sid() {
-                req = req.header("mcp-session-id", s);
-            }
-            if let Some(ref ver) = pv_owned {
-                req = req.header("MCP-Protocol-Version", ver);
-            }
-            if let Some(ref b) = bearer_owned {
-                req = req.header("Authorization", format!("Bearer {b}"));
-            }
-
-            let response = match req.send().await {
+            let response = match send_with_rate_limit_retry(&server_name, "tools/call", || {
+                let mut req = stream_client
+                    .post(&url)
+                    // Per spec § Transports: client MUST advertise both content types.
+                    .header("Accept", "application/json, text/event-stream")
+                    .header("Content-Type", "application/json")
+                    .json(&request_body);
+                if let Some(s) = get_sid() {
+                    req = req.header("mcp-session-id", s);
+                }
+                if let Some(ref ver) = pv_owned {
+                    req = req.header("MCP-Protocol-Version", ver);
+                }
+                if let Some(ref b) = bearer_owned {
+                    req = req.header("Authorization", format!("Bearer {b}"));
+                }
+                req
+            })
+            .await
+            {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = result_tx.send(Err(AppError::internal_error(format!("MCP request failed: {}", e))));
+                    let _ = result_tx.send(Err(e));
                     return;
                 }
             };
@@ -2282,4 +2391,5 @@ impl McpClient for HttpMcpClient {
 }
 
 // Tests for this module live in tests/mcp/mod.rs (see test_call_tool_with_sampling_sse_roundtrip
-// and test_call_tool_with_real_llm_sampling).
+// and test_call_tool_with_real_llm_sampling). The pure 429 wait-hint parser/backoff
+// helpers are unit-tested in tests/mcp/rate_limit_parse_test.rs via ziee::test_internals.

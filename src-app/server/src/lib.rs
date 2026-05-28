@@ -97,6 +97,23 @@ pub mod mcp {
     pub use crate::modules::mcp::McpRepository;
 }
 
+// Private pure helpers that integration tests unit-test directly (wire-format
+// grouping + MCP 429 backoff parsing). Kept out of the public docs; the ai_providers
+// wire types are re-exported too because that crate is a dependency of `ziee` but
+// not of the integration-test crate.
+#[doc(hidden)]
+pub mod test_internals {
+    pub use crate::modules::chat::core::services::streaming::group_assistant_blocks;
+    pub use crate::modules::mcp::client::http::{
+        rate_limit_delay_ms, rate_limit_wait_ms, RL_RETRY_INITIAL_MS, RL_RETRY_MAX_MS,
+    };
+    pub use ai_providers::{ChatMessage, ContentBlock, Role};
+    // Chat repository surface for the DB-level append_content tests
+    // (Tier-2 monotonic / collision-free under concurrent appends).
+    pub use crate::modules::chat::core::repository::ChatCoreRepository;
+    pub use crate::modules::chat::core::models::MessageContentData;
+}
+
 // Re-export axum types for route building
 pub use axum::{Extension, Json, extract::State, http::StatusCode};
 pub use axum::routing::{get, post};

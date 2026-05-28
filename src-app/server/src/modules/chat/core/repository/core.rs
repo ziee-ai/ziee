@@ -265,6 +265,18 @@ impl ChatCoreRepository {
         contents::create_content(&self.pool, message_id, content_type, data, index).await
     }
 
+    /// Append content to a message, assigning the next `sequence_order` atomically
+    /// (MAX+1 in the INSERT). Use this for plain appends instead of computing an
+    /// index from a cached count, which can drift from the DB and collide.
+    pub async fn append_content(
+        &self,
+        message_id: Uuid,
+        content_type: &str,
+        data: MessageContentData,
+    ) -> Result<MessageContent, AppError> {
+        contents::append_content(&self.pool, message_id, content_type, data).await
+    }
+
     /// Create content with a pre-determined UUID (used for elicitation rows registered before insertion)
     pub async fn create_content_with_id(
         &self,
@@ -275,6 +287,18 @@ impl ChatCoreRepository {
         index: i32,
     ) -> Result<MessageContent, AppError> {
         contents::create_content_with_id(&self.pool, id, message_id, content_type, data, index).await
+    }
+
+    /// Append content with a pre-registered UUID, assigning the next
+    /// `sequence_order` atomically (MAX+1). Id-preserving sibling of `append_content`.
+    pub async fn append_content_with_id(
+        &self,
+        id: Uuid,
+        message_id: Uuid,
+        content_type: &str,
+        data: MessageContentData,
+    ) -> Result<MessageContent, AppError> {
+        contents::append_content_with_id(&self.pool, id, message_id, content_type, data).await
     }
 
     /// Update the JSONB content of an existing content block (e.g. to update elicitation status)

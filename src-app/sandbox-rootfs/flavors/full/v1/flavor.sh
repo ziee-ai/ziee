@@ -13,12 +13,20 @@ APPROX_SIZE_MB=853
 APT_SNAPSHOT="20250115T000000Z"
 
 # Whitespace/newline separated; build.sh collapses to mmdebstrap's comma list.
+#
+# NOTE: build.sh runs `mmdebstrap --variant=minbase`, which installs with
+# Recommends DISABLED. r-base-core pulls its BLAS/LAPACK runtime
+# (libblas.so.3 / liblapack.so.3) via Recommends, so without an EXPLICIT
+# dependency R fails at runtime with "libblas.so.3: cannot open shared object
+# file". libopenblas0 provides both libs via the alternatives system. Likewise
+# `which` was dropped from debianutils on Ubuntu 24.04 (noble), so add it back
+# explicitly for tool ergonomics (LLMs commonly probe with `which`).
 APT_PACKAGES="
   bash coreutils util-linux ca-certificates curl wget bzip2 xz-utils unzip
   locales tzdata python3 python3-pip python3-venv
   build-essential gfortran git git-lfs libffi-dev libssl-dev zlib1g-dev
-  vim jq ripgrep fd-find tree net-tools dnsutils iputils-ping
-  gnupg lsb-release apt-transport-https r-base r-base-dev
+  vim jq ripgrep fd-find tree net-tools dnsutils iputils-ping which
+  gnupg lsb-release apt-transport-https r-base r-base-dev libopenblas0
 "
 
 # Post-bootstrap provisioning. Runs inside the chroot (systemd-nspawn) with

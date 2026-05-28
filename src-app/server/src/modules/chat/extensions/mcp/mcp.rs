@@ -88,10 +88,6 @@ impl McpChatExtension {
                     bind_user_id,
                 );
                 if let Some(msg_id) = notif.message_id {
-                    let order = crate::core::Repos.chat.core
-                        .get_message_with_content(msg_id).await
-                        .map(|m| m.map(|msg| msg.contents.len() as i32).unwrap_or(0))
-                        .unwrap_or(0);
                     let content_data = MessageContentData::ElicitationRequest {
                         elicitation_id: notif.elicitation_id.to_string(),
                         message: notif.message,
@@ -101,7 +97,7 @@ impl McpChatExtension {
                         response_content: None,
                     };
                     let _ = crate::core::Repos.chat.core
-                        .create_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data, order)
+                        .append_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data)
                         .await;
                 }
             }
@@ -904,24 +900,22 @@ impl ChatExtension for McpChatExtension {
                 // bypasses the normal Continue action. Without this, the tool_use block already in
                 // the DB would have no matching tool_result, causing API errors on subsequent messages.
                 if let Some(message_id) = context.message_id {
-                    // Get current content count for sequence ordering
-                    let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
-                        Ok(Some(msg)) => msg.contents.len() as i32,
-                        _ => 0,
-                    };
-
-                    for (idx, result) in tool_results.iter().enumerate() {
+                    // append_content assigns sequence_order atomically (MAX+1), so these
+                    // results can't collide with the tool_use blocks finalize() wrote nor
+                    // with a concurrent iteration's blocks.
+                    for result in tool_results.iter() {
                         let content_type = result.content_type();
 
-                        if let Err(e) = Repos.chat.core.create_content(
+                        match Repos.chat.core.append_content(
                             message_id,
                             &content_type,
                             result.clone(),
-                            current_count + idx as i32,
                         ).await {
-                            tracing::error!("Failed to save tool result to message: {}", e);
-                        } else {
-                            tracing::info!("Saved tool_result to message {}, sequence {}", message_id, current_count + idx as i32);
+                            Ok(created) => tracing::info!(
+                                "Saved tool_result to message {}, sequence {}",
+                                message_id, created.sequence_order
+                            ),
+                            Err(e) => tracing::error!("Failed to save tool result to message: {}", e),
                         }
                     }
 
@@ -980,12 +974,7 @@ impl ChatExtension for McpChatExtension {
                 );
 
                 if let Some(message_id) = context.message_id {
-                    let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
-                        Ok(Some(msg)) => msg.contents.len() as i32,
-                        _ => 0,
-                    };
-
-                    for (idx, denied) in denied_tools.iter().enumerate() {
+                    for denied in denied_tools.iter() {
                         let denied_result = McpContentData::ToolResult {
                             tool_use_id: denied.tool_use_id.clone(),
                             name: Some(denied.tool_name.clone()),
@@ -998,13 +987,13 @@ impl ChatExtension for McpChatExtension {
                         };
                         let msg_content = denied_result.to_message_content();
 
-                        // Persist denied result so the conversation history stays coherent
+                        // Persist denied result so the conversation history stays coherent.
+                        // append_content assigns sequence_order atomically (MAX+1).
                         let content_type = msg_content.content_type();
-                        if let Err(e) = Repos.chat.core.create_content(
+                        if let Err(e) = Repos.chat.core.append_content(
                             message_id,
                             &content_type,
                             msg_content.clone(),
-                            current_count + idx as i32,
                         ).await {
                             tracing::error!(
                                 "Failed to save denied tool_result for tool_use_id={}: {}",
@@ -1387,8 +1376,7 @@ impl ChatExtension for McpChatExtension {
                             _ => None,
                         })
                         .collect();
-                    let current_count = msg.contents.len() as i32;
-                    for (idx, (tool_use_id, tool_name)) in pending_tool_uses.iter().enumerate() {
+                    for (tool_use_id, tool_name) in pending_tool_uses.iter() {
                         let error_result = McpContentData::ToolResult {
                             tool_use_id: tool_use_id.clone(),
                             name: Some(tool_name.clone()),
@@ -1401,11 +1389,12 @@ impl ChatExtension for McpChatExtension {
                             hidden_content: None,
                         };
                         let msg_content = error_result.to_message_content();
-                        if let Err(e) = Repos.chat.core.create_content(
+                        // append_content assigns sequence_order atomically (MAX+1) so these
+                        // synthetic results stay strictly after the unresolved tool_use blocks.
+                        if let Err(e) = Repos.chat.core.append_content(
                             message_id,
                             &msg_content.content_type(),
                             msg_content,
-                            current_count + idx as i32,
                         ).await {
                             tracing::error!(
                                 "Failed to save synthetic tool_result for tool_use_id={}: {}",
@@ -1733,10 +1722,6 @@ impl ChatExtension for McpChatExtension {
                     bind_user_id,
                 );
                 if let Some(msg_id) = notif.message_id {
-                    let order = crate::core::Repos.chat.core
-                        .get_message_with_content(msg_id).await
-                        .map(|m| m.map(|msg| msg.contents.len() as i32).unwrap_or(0))
-                        .unwrap_or(0);
                     let content_data = MessageContentData::ElicitationRequest {
                         elicitation_id: notif.elicitation_id.to_string(),
                         message: notif.message,
@@ -1746,7 +1731,7 @@ impl ChatExtension for McpChatExtension {
                         response_content: None,
                     };
                     let _ = crate::core::Repos.chat.core
-                        .create_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data, order)
+                        .append_content_with_id(notif.content_id, msg_id, "elicitation_request", content_data)
                         .await;
                 }
             }
@@ -2288,15 +2273,14 @@ impl ChatExtension for McpChatExtension {
                 // Save accumulated tool_results to DB so tool_use blocks are not orphaned.
                 // finalize() already wrote tool_use blocks; without matching tool_result blocks
                 // the next LLM request will be rejected by Anthropic with "tool_use without tool_result".
+                // append_content assigns sequence_order atomically (MAX+1) so results stay
+                // strictly after the tool_use blocks finalize() just wrote.
                 if let Some(message_id) = context.message_id {
-                    let current_count = Repos.chat.core.get_message_with_content(message_id).await
-                        .ok().flatten().map(|m| m.contents.len() as i32).unwrap_or(0);
-                    for (idx, tr) in tool_results.iter().enumerate() {
-                        let _ = Repos.chat.core.create_content(
+                    for tr in tool_results.iter() {
+                        let _ = Repos.chat.core.append_content(
                             message_id,
                             &tr.content_type(),
                             tr.clone(),
-                            current_count + idx as i32,
                         ).await;
                     }
                 }
@@ -2311,17 +2295,12 @@ impl ChatExtension for McpChatExtension {
         // reject the request with "tool_use ids found without tool_result blocks".
         if let Some(text) = final_response_text {
             if let Some(message_id) = context.message_id {
-                let current_count = match Repos.chat.core.get_message_with_content(message_id).await {
-                    Ok(Some(msg)) => msg.contents.len() as i32,
-                    _ => 0,
-                };
-                for (idx, result) in tool_results.iter().enumerate() {
+                for result in tool_results.iter() {
                     let content_type = result.content_type();
-                    if let Err(e) = Repos.chat.core.create_content(
+                    if let Err(e) = Repos.chat.core.append_content(
                         message_id,
                         &content_type,
                         result.clone(),
-                        current_count + idx as i32,
                     ).await {
                         tracing::error!("Failed to save tool result before CompleteWithContent: {}", e);
                     }

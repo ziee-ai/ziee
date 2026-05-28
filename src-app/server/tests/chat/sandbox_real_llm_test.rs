@@ -15,7 +15,12 @@
 #![allow(unused_imports)]
 
 use crate::chat::helpers;
-use crate::code_sandbox::harness::{bwrap_available, rootfs_path, stage_test_rootfs_for_e2e};
+use crate::code_sandbox::harness::{bwrap_available, rootfs_path};
+// stage_test_rootfs_for_e2e is only defined (and only used, at the call site
+// below) on macOS/Windows; importing it unconditionally fails to compile on
+// Linux where the fn is cfg'd out.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use crate::code_sandbox::harness::stage_test_rootfs_for_e2e;
 use crate::common::{TestServer, TestServerOptions};
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
