@@ -7657,8 +7657,9 @@
             "name": "page",
             "schema": {
               "type": "integer",
-              "format": "int32",
-              "default": 1
+              "format": "uint32",
+              "default": 1,
+              "minimum": 0
             },
             "style": "form"
           },
@@ -7667,8 +7668,33 @@
             "name": "per_page",
             "schema": {
               "type": "integer",
-              "format": "int32",
-              "default": 20
+              "format": "uint32",
+              "default": 20,
+              "minimum": 0
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
             },
             "style": "form"
           }
@@ -8604,8 +8630,9 @@
             "name": "page",
             "schema": {
               "type": "integer",
-              "format": "int32",
-              "default": 1
+              "format": "uint32",
+              "default": 1,
+              "minimum": 0
             },
             "style": "form"
           },
@@ -8614,8 +8641,33 @@
             "name": "per_page",
             "schema": {
               "type": "integer",
-              "format": "int32",
-              "default": 20
+              "format": "uint32",
+              "default": 20,
+              "minimum": 0
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
             },
             "style": "form"
           }
@@ -10590,17 +10642,36 @@
         "tags": [
           "Memory"
         ],
-        "summary": "List the caller's own memories",
+        "summary": "List the caller's own memories (paginated)",
         "description": "\n\n**Required Permission:** `memory::read`\n\nList and read own memories.",
         "operationId": "Memory.list",
         "parameters": [
           {
             "in": "query",
-            "name": "limit",
+            "name": "kind",
+            "description": "Exact-match filter on `kind`. None = no filter.",
             "schema": {
-              "type": "integer",
+              "description": "Exact-match filter on `kind`. None = no filter.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "description": "Legacy: when `page`/`per_page` are absent, fall back to\n `limit`/`offset` (clamped to safe ranges).",
+            "schema": {
+              "description": "Legacy: when `page`/`per_page` are absent, fall back to\n `limit`/`offset` (clamped to safe ranges).",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "int64",
-              "default": 50
+              "default": null
             },
             "style": "form"
           },
@@ -10608,9 +10679,66 @@
             "in": "query",
             "name": "offset",
             "schema": {
-              "type": "integer",
+              "type": [
+                "integer",
+                "null"
+              ],
               "format": "int64",
-              "default": 0
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "description": "Substring search on `content` (case-insensitive). Trimmed +\n empty-string normalized to None.",
+            "schema": {
+              "description": "Substring search on `content` (case-insensitive). Trimmed +\n empty-string normalized to None.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "description": "Exact-match filter on `source`. None = no filter.",
+            "schema": {
+              "description": "Exact-match filter on `source`. None = no filter.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
             },
             "style": "form"
           }
@@ -10640,14 +10768,11 @@
             }
           },
           "200": {
-            "description": "",
+            "description": "Paginated response shape for the per-user memory list — matches\n the convention used by `McpServerListResponse` /\n `LlmRepositoryListResponse`, so the UI can drive a standard\n antd `<Pagination>` from the response (current_page, total).",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/UserMemory"
-                  }
+                  "$ref": "#/components/schemas/MemoryListResponse"
                 }
               }
             }
@@ -15290,6 +15415,38 @@
           "password"
         ]
       },
+      "ListAccessibleServersQuery": {
+        "description": "Query params for the user-accessible MCP server list.\n\n Extends `PaginationQuery` with server-side filters that match\n the UI's controls 1-to-1:\n   - `search` → ILIKE on name / display_name / description\n   - `status` → one of `enabled` | `disabled` | `system` | `user`\n                (translated here to enabled/is_system bool predicates)",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 1,
+            "minimum": 0
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 20,
+            "minimum": 0
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
       "ListAuditLogQuery": {
         "description": "Optional `?limit=N` query param for the audit-log endpoint.\n Clamp 1..=500 happens in the repo. Audit R7-#2.",
         "type": "object",
@@ -15302,18 +15459,65 @@
         }
       },
       "ListMemoriesQuery": {
-        "description": "List/page query params.",
+        "description": "List/page query params. Accepts `page` + `per_page` (1-based)\n plus optional server-side filters that get pushed all the way\n down to the SQL WHERE clause:\n\n   - `search` — case-insensitive substring match on `content`\n   - `kind`   — exact match on the memory kind\n                (preference / fact / goal / relationship / other)\n   - `source` — exact match on the source\n                (manual / extraction / mcp_tool)\n\n `limit`/`offset` are still accepted as legacy fallback for\n scripted callers — the standard page/per_page path is preferred.",
         "type": "object",
         "properties": {
+          "kind": {
+            "description": "Exact-match filter on `kind`. None = no filter.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
           "limit": {
-            "type": "integer",
+            "description": "Legacy: when `page`/`per_page` are absent, fall back to\n `limit`/`offset` (clamped to safe ranges).",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "default": 50
+            "default": null
           },
           "offset": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "default": 0
+            "default": null
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "per_page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "default": null
+          },
+          "search": {
+            "description": "Substring search on `content` (case-insensitive). Trimmed +\n empty-string normalized to None.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "source": {
+            "description": "Exact-match filter on `source`. None = no filter.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         }
       },
@@ -15391,6 +15595,38 @@
         "required": [
           "resources"
         ]
+      },
+      "ListSystemServersQuery": {
+        "description": "Query params for the system MCP server list — extends pagination\n with server-side `search` (name/display_name/description ILIKE)\n and `status` (enabled / disabled, translated to a bool predicate).",
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 1,
+            "minimum": 0
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "uint32",
+            "default": 20,
+            "minimum": 0
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
       },
       "ListToolsResponse": {
         "type": "object",
@@ -16453,6 +16689,36 @@
         },
         "required": [
           "total_ram"
+        ]
+      },
+      "MemoryListResponse": {
+        "description": "Paginated response shape for the per-user memory list — matches\n the convention used by `McpServerListResponse` /\n `LlmRepositoryListResponse`, so the UI can drive a standard\n antd `<Pagination>` from the response (current_page, total).",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMemory"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "per_page": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "per_page"
         ]
       },
       "MemoryUsage": {

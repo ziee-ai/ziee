@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Button, Card, Input, Select, Typography, Flex } from 'antd'
+import { Button, Card, Flex, Input, Pagination, Select, Typography } from 'antd'
 import { PlusOutlined, SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { Stores } from '@/core/stores'
@@ -12,49 +11,39 @@ import { McpServerGroupsAssignmentCard } from '@/modules/mcp/components/system/M
 const { Text } = Typography
 
 export function SystemMcpServersPage() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [sortBy, setSortBy] = useState('created_at')
-
-  const { systemServers, systemServersLoading } = Stores.SystemMcpServer
+  const {
+    systemServers,
+    systemServersLoading,
+    systemServersTotal,
+    systemServersPage,
+    systemServersPageSize,
+    searchTerm,
+    statusFilter,
+  } = Stores.SystemMcpServer
+  const setSearchTerm = Stores.SystemMcpServer.setSearchTerm
+  const setStatusFilter = Stores.SystemMcpServer.setStatusFilter
 
   const clearAllFilters = () => {
     setSearchTerm('')
     setStatusFilter('all')
   }
 
+  const handlePageChange = (page: number, size?: number) => {
+    const nextSize = size || systemServersPageSize
+    // Reset to page 1 when the user changes page size — matches
+    // UsersSettings / UserGroupsSettings behavior.
+    const nextPage = size && size !== systemServersPageSize ? 1 : page
+    Stores.SystemMcpServer.loadSystemServers(nextPage, nextSize)
+  }
+
   const handleCreateServer = () => {
     Stores.McpServerDrawer.openMcpServerDrawer(undefined, 'create-system')
   }
 
-  // Filter and sort servers
+  // Server-side filtering — `systemServers` already reflects
+  // searchTerm + statusFilter via the store setters. Sort dropped:
+  // backend's default ORDER BY display_name ASC covers it.
   const filteredServers = systemServers
-    .filter(server => {
-      const matchesSearch =
-        searchTerm === '' ||
-        server.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        server.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        server.description?.toLowerCase().includes(searchTerm.toLowerCase())
-
-      const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'enabled' && server.enabled) ||
-        (statusFilter === 'disabled' && !server.enabled)
-
-      return matchesSearch && matchesStatus
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.display_name.localeCompare(b.display_name)
-        case 'status':
-          return Number(b.enabled) - Number(a.enabled)
-        case 'created_at':
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        default:
-          return 0
-      }
-    })
 
   return (
     <SettingsPageContainer
@@ -87,18 +76,6 @@ export function SystemMcpServersPage() {
               { label: 'All Servers', value: 'all' },
               { label: 'Enabled', value: 'enabled' },
               { label: 'Disabled', value: 'disabled' },
-            ]}
-          />
-          <Select
-            placeholder="Sort by"
-            value={sortBy}
-            onChange={setSortBy}
-            style={{ minWidth: 120 }}
-            aria-label="Sort servers"
-            options={[
-              { label: 'Date Added', value: 'created_at' },
-              { label: 'Name', value: 'name' },
-              { label: 'Status', value: 'status' },
             ]}
           />
           <Can permission={Permissions.McpServersAdminCreate}>
@@ -158,6 +135,24 @@ export function SystemMcpServersPage() {
                 : 'No system MCP servers configured'}
             </Text>
           </div>
+        )}
+
+        {systemServersTotal > 0 && (
+          <Flex justify="end">
+            <Pagination
+              current={systemServersPage}
+              total={systemServersTotal}
+              pageSize={systemServersPageSize}
+              showSizeChanger
+              showQuickJumper
+              showTotal={(total, range) =>
+                `${range[0]}-${range[1]} of ${total} servers`
+              }
+              onChange={handlePageChange}
+              onShowSizeChange={handlePageChange}
+              pageSizeOptions={['5', '10', '20', '50']}
+            />
+          </Flex>
         )}
 
         {/* Drawer */}

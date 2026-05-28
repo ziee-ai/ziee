@@ -3,7 +3,7 @@
  * single-admin desktop user sees one "Memory" settings entry that
  * stacks both the user-preferences and admin-config sections that
  * core normally splits across `/settings/memory` and
- * `/settings/admin/memory`.
+ * `/settings/memory-admin`.
  *
  * Core's two slot entries are filtered out by desktop's SettingsPage
  * HIDDEN_ITEMS list. Core's two routes still exist; URL-typing
@@ -13,7 +13,7 @@
 
 import { createModule, type AppModule } from '@ziee/ui-core'
 import { lazy } from 'react'
-import { BulbOutlined } from '@ant-design/icons'
+import { BookOutlined } from '@ant-design/icons'
 import { SettingsLayoutDef } from '@ziee/ui-core/modules/settings/SettingsLayout'
 
 const MemoryCombinedPage = lazy(() =>
@@ -42,7 +42,7 @@ const memoryDesktopModule: AppModule = createModule({
     settingsUserPages: [
       {
         id: 'memory-desktop',
-        icon: <BulbOutlined />,
+        icon: <BookOutlined />,
         label: 'Memory',
         path: 'memory-combined',
         // Same order as core's user-side Memory entry so the desktop

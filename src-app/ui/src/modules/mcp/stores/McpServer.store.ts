@@ -23,10 +23,25 @@ import { Stores } from '@/core/stores'
 // Enable Map and Set support in Immer
 enableMapSet()
 
+/** Debounce timer for search-term reloads (250ms). */
+let mcpSearchDebounce: ReturnType<typeof setTimeout> | null = null
+
 interface McpState {
   // Server data (accessible servers - personal + system from groups)
   servers: McpServer[]
   isInitialized: boolean
+
+  // Pagination state — drives the settings page's <Pagination> control.
+  // Backend `listAccessible` accepts `page` + `per_page` and returns
+  // `{ servers, total, page, per_page, total_pages }`.
+  currentPage: number
+  pageSize: number
+  total: number
+
+  // Server-side filter state. Search is debounced via the
+  // setSearchTerm action; status changes fire an immediate reload.
+  searchTerm: string
+  statusFilter: string // 'all' | 'enabled' | 'disabled' | 'system' | 'user'
 
   // Loading states
   loading: boolean
@@ -49,7 +64,9 @@ interface McpState {
   __destroy__?: () => void
 
   // Actions
-  loadMcpServers: () => Promise<void>
+  loadMcpServers: (page?: number, pageSize?: number) => Promise<void>
+  setSearchTerm: (q: string) => void
+  setStatusFilter: (status: string) => void
   createMcpServer: (data: CreateMcpServerRequest) => Promise<McpServer>
   updateMcpServer: (
     serverId: string,
@@ -80,6 +97,16 @@ export const useMcpStore = create<McpState>()(
         // Server data
         servers: [],
         isInitialized: false,
+
+        // Pagination state (defaults match the settings page's
+        // pageSizeOptions={['5','10','20','50']}).
+        currentPage: 1,
+        pageSize: 10,
+        total: 0,
+
+        // Filter state (server-side).
+        searchTerm: '',
+        statusFilter: 'all',
 
         // Loading states
         loading: false,
@@ -184,7 +211,7 @@ export const useMcpStore = create<McpState>()(
         },
 
         // Actions
-        loadMcpServers: async (): Promise<void> => {
+        loadMcpServers: async (page?: number, pageSize?: number): Promise<void> => {
           // Permission-gate the shell-eager-load fetch (audit
           // follow-up): AppLayout triggers this store's __init__ on
           // every render regardless of route, and for users without
@@ -200,16 +227,29 @@ export const useMcpStore = create<McpState>()(
             return
           }
 
+          const nextPage = page ?? state.currentPage
+          const nextPageSize = pageSize ?? state.pageSize
+
           try {
             set(draft => {
               draft.loading = true
               draft.error = null
             })
 
-            const response = await ApiClient.McpServer.listAccessible({})
+            const response = await ApiClient.McpServer.listAccessible({
+              page: nextPage,
+              per_page: nextPageSize,
+              ...(state.searchTerm ? { search: state.searchTerm } : {}),
+              ...(state.statusFilter !== 'all'
+                ? { status: state.statusFilter }
+                : {}),
+            })
 
             set(draft => {
               draft.servers = response.servers
+              draft.total = response.total
+              draft.currentPage = response.page
+              draft.pageSize = response.per_page
               draft.isInitialized = true
               draft.loading = false
               draft.error = null
@@ -225,6 +265,27 @@ export const useMcpStore = create<McpState>()(
             })
             throw error
           }
+        },
+
+        // Filter setters — both reset to page 1 and reload. Search
+        // is debounced so keystrokes coalesce into a single backend
+        // hit; status changes fire immediately.
+        setSearchTerm: (q: string) => {
+          set(draft => {
+            draft.searchTerm = q
+            draft.currentPage = 1
+          })
+          if (mcpSearchDebounce) clearTimeout(mcpSearchDebounce)
+          mcpSearchDebounce = setTimeout(() => {
+            void get().loadMcpServers(1)
+          }, 250)
+        },
+        setStatusFilter: (status: string) => {
+          set(draft => {
+            draft.statusFilter = status
+            draft.currentPage = 1
+          })
+          void get().loadMcpServers(1)
         },
 
         createMcpServer: async (

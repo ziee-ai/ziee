@@ -5,8 +5,12 @@
  * size/width resolution, footer normalization, mask + body styling
  * all match core 1:1. The desktop-only additions are:
  *
- *   - <TauriDragRegion> overlaid in the drawer title so the user
- *     can drag the window from the title strip.
+ *   - Manual `startDragging()` mousedown on the drawer title strip
+ *     (with interactive-target exemption for the close Button and
+ *     any future controls). Prior version used a `<TauriDragRegion>`
+ *     overlay layered absolutely on top of the title content; that
+ *     captured every pointer event and made the Close button
+ *     unclickable. The manual approach matches HeaderBarContainer.
  *   - `titleRef` + ResizeObserver effect that watches the drawer's
  *     left edge and adds left padding when the drawer would sit
  *     under the macOS traffic-light controls (clears 72px on Mac).
@@ -29,14 +33,17 @@ import {
   theme,
   Typography,
 } from 'antd'
-import React, { useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { ResizeHandle } from '@/modules/layouts/app-layout/components/ResizeHandle'
 import tinycolor from 'tinycolor2'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowBack } from 'react-icons/io'
 import { DivScrollY } from '@/components/common/DivScrollY'
 import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
-import { TauriDragRegion } from '@ziee/desktop/components/TauriDragRegion'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+
+const INTERACTIVE_SEL =
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger'
 
 export interface DrawerProps extends AntDrawerProps {
   children?: React.ReactNode
@@ -84,6 +91,31 @@ export const Drawer: React.FC<DrawerProps> = props => {
   // Calculate max resize width (leave room for traffic lights on macOS)
   const resizeMaxWidth =
     isTauriView && isMacOS ? window.innerWidth - 90 : window.innerWidth - 24
+
+  // Window-drag handlers for the title strip — same pattern as
+  // HeaderBarContainer. Bail on interactive descendants so the
+  // close Button (and any future header controls) keep working.
+  const handleTitleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isTauriView) return
+      if (e.button !== 0) return
+      const target = e.target as Element
+      if (target.closest?.(INTERACTIVE_SEL)) return
+      e.preventDefault()
+      void getCurrentWindow().startDragging()
+    },
+    [],
+  )
+
+  const handleTitleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isTauriView) return
+      const target = e.target as Element
+      if (target.closest?.(INTERACTIVE_SEL)) return
+      void getCurrentWindow().toggleMaximize()
+    },
+    [],
+  )
 
   const {
     placement = 'right',
@@ -140,10 +172,9 @@ export const Drawer: React.FC<DrawerProps> = props => {
               paddingLeft:
                 windowMinSize.xs && isTauriView && isMacOS ? 74 : undefined,
             }}
+            onMouseDown={handleTitleMouseDown}
+            onDoubleClick={handleTitleDoubleClick}
           >
-            <TauriDragRegion
-              className={'h-full w-full absolute top-0 left-0'}
-            />
             <Button
               type={'text'}
               onClick={props.onClose}

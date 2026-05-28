@@ -242,9 +242,22 @@ workspace-cargo-pin-sqlx:
             echo "==> sqlx already pinned to 0.8.x in lock"; \
         fi'
 
-# Run desktop tests (layer 1: cargo on the Tauri crate;
-# layer 2: Playwright against the Vite dev server with a mocked
-# window.__TAURI__ shim). See plan-carefully-to-make-prancy-badger.md.
+# Run desktop tests across all three layers (L1 + L2 + L3 + the
+# legacy Playwright suite). L2 and L3 are heavy and gated on built
+# artifacts — invoke them individually if you don't have a fresh
+# bundle.
+#
+# Layer breakdown:
+#   L1 — Tauri command unit tests via tauri::test::mock_builder
+#        (`tests/tauri_commands_test.rs`). Fast, no external deps.
+#   L2 — Spawn-binary smoke that boots the production binary against
+#        an isolated tempdir, hits /api/health, then SIGTERMs
+#        (`tests/spawn_binary_smoke.rs`, `#[ignore]`). Needs the
+#        release binary built. Real embedded-PG bringup ~30s.
+#   L3 — WebDriver E2E against the fully-bundled .app via
+#        tauri-driver (`desktop/ui/tests/tauri-driver/smoke.mjs`).
+#        Needs `cargo install tauri-driver` + `safaridriver --enable`
+#        on macOS. See that dir's README.md for setup.
 desktop-test: desktop-test-rust desktop-test-e2e
 
 desktop-test-rust: workspace-cargo-pin-sqlx
@@ -252,6 +265,22 @@ desktop-test-rust: workspace-cargo-pin-sqlx
 
 desktop-test-e2e:
     cd src-app/desktop/ui && npm run test:e2e
+
+# L1 only — fast iteration on Tauri command tests.
+desktop-test-l1: workspace-cargo-pin-sqlx
+    cd src-app/desktop/tauri && cargo test --test tauri_commands_test
+
+# L2 — spawn-binary smoke. Builds release binary if missing, then
+# runs the ignored test.
+desktop-test-l2: workspace-cargo-pin-sqlx
+    cd src-app/desktop/tauri && cargo build --release --bin ziee-desktop
+    cd src-app/desktop/tauri && cargo test --test spawn_binary_smoke -- --ignored --test-threads=1
+
+# L3 — tauri-driver WebDriver smoke against the bundled .app.
+# Preconditions enforced by the script itself; see
+# desktop/ui/tests/tauri-driver/README.md for the install steps.
+desktop-test-l3:
+    cd src-app/desktop/ui && npm run test:tauri-driver
 
 # Scan every desktop override file under src-app/desktop/ui/src/modules/
 # and report whether it matches its core equivalent. Output prefixes:

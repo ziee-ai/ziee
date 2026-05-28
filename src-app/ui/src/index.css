@@ -10,12 +10,16 @@
   }
 
   body {
+    /* Web (cross-OS browser) stack. Keep in sync with TokenOverrides
+     * in themes/override.ts — antd's fontFamily token covers antd
+     * components, this covers raw HTML (headings, divs, body text). */
     font-family:
-      -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-      "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-      sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+      system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable",
+      "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+    font-size: 14px;
+    /* `-webkit-font-smoothing: antialiased` is considered an anti-pattern
+     * in 2025+: makes SF Pro look too thin. Letting the OS default
+     * (subpixel) handle it. */
   }
 
   #root {

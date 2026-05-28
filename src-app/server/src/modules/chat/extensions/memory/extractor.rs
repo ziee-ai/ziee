@@ -128,7 +128,10 @@ async fn run(
     };
 
     // ── 2. Load existing memories for dedup bias ───────────────────
-    let existing = Repos.memory.list_for_user(user_id, 20, 0).await?;
+    let existing = Repos
+        .memory
+        .list_for_user(user_id, 20, 0, None, None, None)
+        .await?;
     let existing_block = if existing.is_empty() {
         "(no existing memories)".to_string()
     } else {

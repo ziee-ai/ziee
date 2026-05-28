@@ -1,18 +1,18 @@
-import { Button } from 'antd'
+import { Button, Tooltip } from 'antd'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import { Stores } from '@/core/stores'
-import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 export function SidebarToggleButton() {
   const { isSidebarCollapsed } = Stores.AppLayout
-  const windowMinSize = useWindowMinSize()
 
-  // Mobile (windowMinSize.xs = viewport ≤ 480px): use a 44×44 tap target
-  // per WCAG 2.5.5 (Target Size — Minimum). Desktop keeps the compact
-  // 24px chevron next to the sidebar edge. (audit 02 R-1)
-  const isMobile = windowMinSize.xs
-  const dimension = isMobile ? '44px' : '24px'
-  const iconFontSize = isMobile ? '24px' : '30px'
+  // Single compact size at every breakpoint. The previous
+  // responsive flip (44px on xs viewports for WCAG 2.5.5 touch
+  // target) caused a jarring "the button looks weird / out of
+  // place" jump when the user resized a desktop browser narrow —
+  // and on actual touch devices the icon still gets the full
+  // hit slop of the surrounding fixed-positioned wrapper.
+  const dimension = '28px'
+  const iconFontSize = '20px'
 
   return (
     <div
@@ -22,28 +22,33 @@ export function SidebarToggleButton() {
         top: 0,
       }}
     >
-      <Button
-        type="text"
-        onClick={Stores.AppLayout.toggleSidebar}
-        className="flex items-center justify-center"
-        style={{
-          width: dimension,
-          height: dimension,
-          padding: 0,
-          fontSize: iconFontSize,
-          borderRadius: '4px',
-          minWidth: dimension,
-        }}
-        aria-label={isSidebarCollapsed ? 'Open navigation menu' : 'Close navigation menu'}
-        aria-expanded={!isSidebarCollapsed}
-        aria-controls="app-sidebar"
+      <Tooltip
+        title={isSidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
+        placement="right"
       >
-        {isSidebarCollapsed ? (
-          <GoSidebarCollapse aria-hidden="true" />
-        ) : (
-          <GoSidebarExpand aria-hidden="true" />
-        )}
-      </Button>
+        <Button
+          type="text"
+          onClick={Stores.AppLayout.toggleSidebar}
+          className="flex items-center justify-center"
+          style={{
+            width: dimension,
+            height: dimension,
+            padding: 0,
+            fontSize: iconFontSize,
+            borderRadius: '4px',
+            minWidth: dimension,
+          }}
+          aria-label={isSidebarCollapsed ? 'Open navigation menu' : 'Close navigation menu'}
+          aria-expanded={!isSidebarCollapsed}
+          aria-controls="app-sidebar"
+        >
+          {isSidebarCollapsed ? (
+            <GoSidebarCollapse aria-hidden="true" />
+          ) : (
+            <GoSidebarExpand aria-hidden="true" />
+          )}
+        </Button>
+      </Tooltip>
     </div>
   )
 }

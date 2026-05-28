@@ -12,12 +12,17 @@
   }
 
   body {
+    /* macOS-native stack — see src/themes/override.ts for rationale.
+     * Keep in sync with TokenOverrides.fontFamily there: antd
+     * components flow through the token, raw HTML inherits from
+     * body. Tauri on macOS is WKWebView so `-apple-system` resolves
+     * to live SF Pro with dynamic optical sizing. */
     font-family:
-      -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-      "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-      sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+      -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro",
+      system-ui, sans-serif;
+    font-size: 16px;
+    /* Leave -webkit-font-smoothing at default (subpixel). Forcing
+     * `antialiased` in 2025+ makes SF Pro look anemic. */
   }
 
   #root {

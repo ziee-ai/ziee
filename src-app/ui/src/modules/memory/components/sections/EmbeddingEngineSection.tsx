@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Divider,
   Flex,
   Form,
   Modal,
@@ -136,45 +137,39 @@ export function EmbeddingEngineSection() {
 
   return (
     <>
+      {noModelsAvailable && (
+        <Alert
+          type="info"
+          showIcon
+          title="No embedding-capable models found."
+          description={
+            <span>
+              Add one from the LLM Providers page — either upload a
+              GGUF (e.g. <code>nomic-embed-text-v1.5</code>), download
+              from HuggingFace, or register a remote API model like{' '}
+              <code>text-embedding-3-small</code>. Tick the{' '}
+              <strong>text_embedding</strong> capability on the model
+              form. Then return here and select it below.
+            </span>
+          }
+        />
+      )}
       <Card title="Engine">
-        {noModelsAvailable && (
-          <Alert
-            type="info"
-            showIcon
-            title="No embedding-capable models found."
-            description={
-              <span>
-                Add one from the LLM Providers page — either upload a
-                GGUF (e.g. <code>nomic-embed-text-v1.5</code>), download
-                from HuggingFace, or register a remote API model like{' '}
-                <code>text-embedding-3-small</code>. Tick the{' '}
-                <strong>text_embedding</strong> capability on the model
-                form. Then return here and select it below.
-              </span>
-            }
-            className="mb-4"
-          />
-        )}
-
         <Form
           name="memory-admin-engine-form"
           form={form}
-          layout="vertical"
+          layout="horizontal"
+          labelCol={{ flex: '280px' }}
+          wrapperCol={{ flex: 'auto' }}
+          labelAlign="left"
+          colon={false}
           onFinish={handleSubmit}
           disabled={!canManage}
         >
           <Form.Item
             name="embedding_model_id"
             label="Embedding model"
-            extra={
-              <>
-                The model used to compute vectors for both retrieval and
-                extraction. Switching dimension triggers a re-embed of
-                all stored memories.
-                <br />
-                Current vector dimension: {settings.embedding_dimensions}
-              </>
-            }
+            extra={`The model used to compute vectors for both retrieval and extraction. Switching dimension triggers a re-embed of all stored memories. Current vector dimension: ${settings.embedding_dimensions}`}
           >
             <Select
               placeholder={
@@ -190,6 +185,7 @@ export function EmbeddingEngineSection() {
               }))}
               showSearch={{ optionFilterProp: 'label' }}
               allowClear
+              style={{ maxWidth: 480 }}
             />
           </Form.Item>
 
@@ -206,6 +202,7 @@ export function EmbeddingEngineSection() {
               }))}
               showSearch={{ optionFilterProp: 'label' }}
               allowClear
+              style={{ maxWidth: 480 }}
             />
           </Form.Item>
 
@@ -232,11 +229,14 @@ export function EmbeddingEngineSection() {
           </Form.Item>
 
           {canManage && (
-            <Flex justify="end">
-              <Button type="primary" htmlType="submit" loading={saving}>
-                Save
-              </Button>
-            </Flex>
+            <>
+              <Divider className="!my-3" />
+              <Flex justify="end">
+                <Button type="primary" htmlType="submit" loading={saving}>
+                  Save
+                </Button>
+              </Flex>
+            </>
           )}
         </Form>
       </Card>

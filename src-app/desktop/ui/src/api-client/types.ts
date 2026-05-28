@@ -790,13 +790,25 @@ export interface LinkAccountRequest {
   password: string
 }
 
+export interface ListAccessibleServersQuery {
+  page?: number
+  per_page?: number
+  search?: string
+  status?: string
+}
+
 export interface ListAuditLogQuery {
   limit?: number
 }
 
 export interface ListMemoriesQuery {
+  kind?: string
   limit?: number
   offset?: number
+  page?: number
+  per_page?: number
+  search?: string
+  source?: string
 }
 
 export interface ListModelsQuery {
@@ -816,6 +828,13 @@ export interface ListPromptsResponse {
 
 export interface ListResourcesResponse {
   resources: Resource[]
+}
+
+export interface ListSystemServersQuery {
+  page?: number
+  per_page?: number
+  search?: string
+  status?: string
 }
 
 export interface ListToolsResponse {
@@ -1045,6 +1064,13 @@ export interface MemoryAuditEntry {
 export interface MemoryInfo {
   total_ram: number
   total_swap?: number
+}
+
+export interface MemoryListResponse {
+  items: UserMemory[]
+  page: number
+  per_page: number
+  total: number
 }
 
 export interface MemoryUsage {
@@ -2591,7 +2617,7 @@ export type ApiEndpointParameters = {
   'McpServer.deleteOAuthConfig': { id: string }
   'McpServer.get': { id: string }
   'McpServer.getOAuthConfig': { id: string }
-  'McpServer.listAccessible': PaginationQuery
+  'McpServer.listAccessible': { page?: number; per_page?: number; search?: string; status?: string }
   'McpServer.setOAuthConfig': { id: string } & SetMcpServerOAuthConfigRequest
   'McpServer.update': { id: string } & UpdateMcpServerRequest
   'McpServerRuntime.callTool': { id: string; name: string } & CallToolRequest
@@ -2607,14 +2633,14 @@ export type ApiEndpointParameters = {
   'McpServerSystem.delete': { id: string }
   'McpServerSystem.get': { id: string }
   'McpServerSystem.getServerGroups': { id: string }
-  'McpServerSystem.list': PaginationQuery
+  'McpServerSystem.list': { page?: number; per_page?: number; search?: string; status?: string }
   'McpServerSystem.removeServerFromGroup': { id: string; group_id: string }
   'McpServerSystem.update': { id: string } & UpdateMcpServerRequest
   'Memory.create': CreateMemoryRequest
   'Memory.delete': { id: string }
   'Memory.deleteAll': void
   'Memory.get': { id: string }
-  'Memory.list': { limit?: number; offset?: number }
+  'Memory.list': { kind?: string; limit?: number; offset?: number; page?: number; per_page?: number; search?: string; source?: string }
   'Memory.update': { id: string } & UpdateMemoryRequest
   'MemoryAdmin.get': void
   'MemoryAdmin.rebuildStatus': void
@@ -2826,7 +2852,7 @@ export type ApiEndpointResponses = {
   'Memory.delete': void
   'Memory.deleteAll': DeleteAllResponse
   'Memory.get': UserMemory
-  'Memory.list': UserMemory[]
+  'Memory.list': MemoryListResponse
   'Memory.update': UserMemory
   'MemoryAdmin.get': MemoryAdminSettings
   'MemoryAdmin.rebuildStatus': RebuildStatus

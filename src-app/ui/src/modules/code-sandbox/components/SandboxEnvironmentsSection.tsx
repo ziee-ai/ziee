@@ -1,4 +1,17 @@
-import { Alert, Button, Card, Popconfirm, Progress, Spin, Table, Tag, Tooltip } from 'antd'
+import {
+  Alert,
+  Button,
+  Card,
+  Divider,
+  Empty,
+  Flex,
+  Popconfirm,
+  Progress,
+  Spin,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd'
 import {
   CheckCircleTwoTone,
   CloudDownloadOutlined,
@@ -12,6 +25,8 @@ import {
   type EnvironmentInfo,
   type FetchPhase,
 } from '@/api-client/types'
+
+const { Text } = Typography
 
 const MANAGE_PERM = Permissions.CodeSandboxEnvironmentsManage
 const READ_PERM = Permissions.CodeSandboxEnvironmentsRead
@@ -52,7 +67,7 @@ export function SandboxEnvironmentsSection() {
 
   if (!canRead) {
     return (
-      <Card title="Rootfs environments" style={{ marginBottom: 16 }}>
+      <Card title="Rootfs environments">
         <Alert
           type="warning"
           showIcon
@@ -62,155 +77,156 @@ export function SandboxEnvironmentsSection() {
     )
   }
 
-  const columns = [
-    {
-      title: 'Environment',
-      dataIndex: 'flavor',
-      key: 'flavor',
-      render: (flavor: string, row: EnvironmentInfo) => (
-        <div>
-          <strong>{flavor}</strong>
-          <div className="text-xs opacity-70">{row.description}</div>
-        </div>
-      ),
-    },
-    {
-      title: 'Size',
-      dataIndex: 'approximate_size_mb',
-      key: 'size',
-      render: (mb: number) => `~${mb} MB`,
-    },
-    {
-      title: 'Cached size',
-      key: 'cached_size',
-      render: (_: unknown, row: EnvironmentInfo) => {
-        if (!row.cached || row.cached_size_bytes == null) return '—'
-        return (
-          <span data-testid="cached-size">
-            {formatBytes(row.cached_size_bytes)}
-            {row.mounted && (
-              <Tag color="blue" className="!ml-2">
-                Mounted
-              </Tag>
-            )}
-          </span>
-        )
-      },
-    },
-    {
-      title: 'Status',
-      key: 'status',
-      render: (_: unknown, row: EnvironmentInfo) => {
-        const p = progress[row.flavor]
-        if (row.cached && (!p || p.status === 'completed')) {
-          return (
-            <Tag
-              icon={<CheckCircleTwoTone twoToneColor="#52c41a" />}
-              color="success"
-            >
-              Cached
-            </Tag>
-          )
-        }
-        if (p?.status === 'running') {
-          return (
-            <div style={{ minWidth: 180 }} data-testid="prefetch-progress">
-              <Progress
-                percent={phasePercent(p.phase)}
-                size="small"
-                status="active"
-              />
-              <div className="text-xs opacity-70">{p.message ?? p.phase}</div>
-            </div>
-          )
-        }
-        if (p?.status === 'failed') {
-          return <Tag color="error">Failed: {p.error}</Tag>
-        }
-        return <Tag>Not fetched</Tag>
-      },
-    },
-    {
-      title: '',
-      key: 'action',
-      render: (_: unknown, row: EnvironmentInfo) => {
-        const p = progress[row.flavor]
-        const busy = p?.status === 'running'
+  // Renders the right-side action button (Fetch / Evict) plus
+  // the inline progress bar when a fetch is in flight. Same logic
+  // as the previous Table render, just lifted out for clarity.
+  const renderRowActions = (row: EnvironmentInfo) => {
+    const p = progress[row.flavor]
+    const busy = p?.status === 'running'
 
-        // Cached (and not mid-fetch-failure): offer Evict.
-        if (row.cached && p?.status !== 'failed') {
-          const evictBtn = (
-            <Popconfirm
-              title="Evict cached rootfs?"
-              description={
-                row.mounted
-                  ? 'This flavor is mounted; evicting unmounts it. An in-flight execution may fail and the next one re-downloads.'
-                  : 'Frees disk; the next code execution for this flavor re-downloads it.'
-              }
-              okText="Evict"
-              okButtonProps={{ danger: true }}
-              onConfirm={() =>
-                Stores.SandboxEnvironments.evictEnvironment(row.flavor)
-              }
-            >
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                loading={!!evicting[row.flavor]}
-                disabled={!canManage}
-                data-testid="evict-button"
-              >
-                Evict
-              </Button>
-            </Popconfirm>
-          )
-          return canManage ? (
-            evictBtn
-          ) : (
-            <Tooltip title={`Requires ${MANAGE_PERM}`}>
-              {evictBtn}
-            </Tooltip>
-          )
-        }
-
-        // Not cached (or a failed fetch): offer Fetch.
-        const btn = (
+    if (row.cached && p?.status !== 'failed') {
+      const evictBtn = (
+        <Popconfirm
+          title="Evict cached rootfs?"
+          description={
+            row.mounted
+              ? 'This flavor is mounted; evicting unmounts it. An in-flight execution may fail and the next one re-downloads.'
+              : 'Frees disk; the next code execution for this flavor re-downloads it.'
+          }
+          okText="Evict"
+          okButtonProps={{ danger: true }}
+          onConfirm={() =>
+            Stores.SandboxEnvironments.evictEnvironment(row.flavor)
+          }
+        >
           <Button
-            type="primary"
-            icon={<CloudDownloadOutlined />}
-            loading={busy}
-            disabled={!canManage || busy}
-            onClick={() => Stores.SandboxEnvironments.startPrefetch(row.flavor)}
+            danger
+            type="text"
+            icon={<DeleteOutlined />}
+            loading={!!evicting[row.flavor]}
+            disabled={!canManage}
+            data-testid="evict-button"
           >
-            Fetch
+            Evict
           </Button>
-        )
-        return canManage ? (
-          btn
-        ) : (
-          <Tooltip title={`Requires ${MANAGE_PERM}`}>
-            {btn}
-          </Tooltip>
-        )
-      },
-    },
-  ]
+        </Popconfirm>
+      )
+      return canManage ? (
+        evictBtn
+      ) : (
+        <Tooltip title={`Requires ${MANAGE_PERM}`}>{evictBtn}</Tooltip>
+      )
+    }
+
+    const btn = (
+      <Button
+        type="text"
+        icon={<CloudDownloadOutlined />}
+        loading={busy}
+        disabled={!canManage || busy}
+        onClick={() => Stores.SandboxEnvironments.startPrefetch(row.flavor)}
+      >
+        Fetch
+      </Button>
+    )
+    return canManage ? (
+      btn
+    ) : (
+      <Tooltip title={`Requires ${MANAGE_PERM}`}>{btn}</Tooltip>
+    )
+  }
+
+  const renderStatus = (row: EnvironmentInfo) => {
+    const p = progress[row.flavor]
+    if (row.cached && (!p || p.status === 'completed')) {
+      return (
+        <Tag
+          icon={<CheckCircleTwoTone twoToneColor="#52c41a" />}
+          color="success"
+        >
+          Cached
+        </Tag>
+      )
+    }
+    if (p?.status === 'running') {
+      return (
+        <div style={{ minWidth: 180 }} data-testid="prefetch-progress">
+          <Progress
+            percent={phasePercent(p.phase)}
+            size="small"
+            status="active"
+          />
+          <div className="text-xs opacity-70">{p.message ?? p.phase}</div>
+        </div>
+      )
+    }
+    if (p?.status === 'failed') {
+      return <Tag color="error">Failed: {p.error}</Tag>
+    }
+    return <Tag>Not fetched</Tag>
+  }
 
   return (
-    <Card title="Rootfs environments" style={{ marginBottom: 16 }}>
-      {error && (
-        <Alert type="error" showIcon title={error} style={{ marginBottom: 12 }} />
-      )}
+    <Card title="Rootfs environments">
+      {error && <Alert type="error" showIcon title={error} className="mb-3" />}
       {loading ? (
         <Spin />
       ) : (
-        <Table
-          rowKey="flavor"
-          dataSource={environments}
-          columns={columns}
-          pagination={false}
-          onRow={row => ({ 'data-flavor': row.flavor }) as any}
-        />
+        <Flex className="flex-col gap-4">
+          {environments.length === 0 ? (
+            <Empty
+              description="No environments available"
+              image={<CloudDownloadOutlined className="text-4xl opacity-50" />}
+            />
+          ) : (
+            <div>
+              {environments.map((row, index) => (
+                <div key={row.flavor} data-flavor={row.flavor}>
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">
+                        <div className="flex-1 min-w-48">
+                          <Flex align="center" gap="small">
+                            <Text className="font-medium">{row.flavor}</Text>
+                            {row.mounted && (
+                              <Tag color="blue" className="!m-0">
+                                Mounted
+                              </Tag>
+                            )}
+                          </Flex>
+                        </div>
+                        <div className="flex gap-1 items-center justify-end">
+                          {renderRowActions(row)}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Text type="secondary" className="block">
+                          {row.description}
+                        </Text>
+                        <Text type="secondary" className="text-xs block">
+                          Size: ~{row.approximate_size_mb} MB
+                          {row.cached && row.cached_size_bytes != null && (
+                            <>
+                              {' · '}
+                              <span data-testid="cached-size">
+                                Cached: {formatBytes(row.cached_size_bytes)}
+                              </span>
+                            </>
+                          )}
+                        </Text>
+                        <div className="pt-1">{renderStatus(row)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  {index < environments.length - 1 && (
+                    <Divider className="my-4" />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Flex>
       )}
     </Card>
   )

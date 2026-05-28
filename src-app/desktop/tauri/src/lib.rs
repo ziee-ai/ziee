@@ -10,6 +10,19 @@ pub mod openapi;
 
 use anyhow::Result;
 
+/// Wire all desktop `#[tauri::command]` functions into a Builder's invoke
+/// handler. Exposed so integration tests (`tests/tauri_commands_test.rs`)
+/// can register the same commands without needing access to the per-command
+/// `__cmd__*` macros, which only resolve inside this crate's scope.
+pub fn register_desktop_invoke_handler<R: tauri::Runtime>(
+    builder: tauri::Builder<R>,
+) -> tauri::Builder<R> {
+    builder.invoke_handler(tauri::generate_handler![
+        crate::modules::backend::commands::get_server_port,
+        crate::modules::auth::commands::auto_login,
+    ])
+}
+
 /// Run the desktop application
 ///
 /// # Arguments
@@ -33,12 +46,14 @@ pub fn run(config_file: Option<String>) -> Result<()> {
     let mut modules = core::create_desktop_modules(config_file);
     tracing::info!("Created {} desktop modules", modules.len());
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    register_desktop_invoke_handler(builder)
         .setup(move |app| {
             tracing::info!("Tauri setup starting...");
 
@@ -57,11 +72,6 @@ pub fn run(config_file: Option<String>) -> Result<()> {
             tracing::info!("Tauri setup complete");
             Ok(())
         })
-        // Tauri commands (desktop-only functionality)
-        .invoke_handler(tauri::generate_handler![
-            crate::modules::backend::commands::get_server_port,
-            crate::modules::auth::commands::auto_login,
-        ])
         // Window event handler for cleanup
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

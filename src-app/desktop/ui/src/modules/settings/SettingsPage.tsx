@@ -23,10 +23,10 @@
 
 import { Button, Dropdown, Flex, Menu, theme, Typography } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
+import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { IoIosArrowDown, IoMdSettings } from 'react-icons/io'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Stores } from '@/core/stores'
 
 // Slot entries (in EITHER `settingsUserPages` or `settingsAdminPages`)
@@ -47,13 +47,22 @@ const HIDDEN_ITEMS = new Set([
   'mcp-admin',
   'auth-providers',
   'memory',
+  'memory-admin',
   'user-llm-providers',
 ])
 
 export default function SettingsPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const windowMinSize = useWindowMinSize()
+  // Layout flips based on the settings page's OWN width via
+  // ResizeObserver on `containerRef` (not the viewport, not the
+  // AppLayout main-content). `sm` (≤640px) is the threshold: the
+  // side menu (~180px) + a usable content column (~440px) needs
+  // ~620px total. Below that, fold the menu into the mobile
+  // dropdown so the page stops feeling cramped.
+  const containerRef = useRef<HTMLDivElement>(null)
+  const minSize = useElementMinSize(containerRef)
+  const useMobileLayout = minSize.sm
   const { token } = theme.useToken()
 
   const { slots } = Stores.ModuleSystem
@@ -142,14 +151,17 @@ export default function SettingsPage() {
   )
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div
+      ref={containerRef}
+      className="h-full flex flex-col overflow-hidden"
+    >
       {/* Page Header */}
       <HeaderBarContainer>
         <div className="h-full flex items-center justify-between w-full">
           <Typography.Title level={4} className="!m-0 !leading-tight truncate">
             Settings
           </Typography.Title>
-          {windowMinSize.xs && (
+          {useMobileLayout && (
             <div className="flex flex-1 items-center px-2">
               <Dropdown
                 overlayStyle={{
@@ -209,7 +221,7 @@ export default function SettingsPage() {
       {/* Page Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Desktop Sidebar */}
-        {!windowMinSize.xs && (
+        {!useMobileLayout && (
           <div className="w-fit">
             <SettingsMenu />
           </div>

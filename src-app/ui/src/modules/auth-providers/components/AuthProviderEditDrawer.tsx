@@ -300,7 +300,7 @@ function OidcFields() {
       <Form.Item
         name={['config', 'allowed_tenant_ids']}
         label="Allowed tenant IDs (Microsoft only)"
-        tooltip="Comma-separated list of tenant IDs (the `tid` claim). REQUIRED when issuer is the Microsoft `common` endpoint."
+        extra="Comma-separated list of tenant IDs (the `tid` claim). REQUIRED when issuer is the Microsoft `common` endpoint."
         getValueFromEvent={parseScopeInput}
         normalize={normalizeScopeArray}
         dependencies={[['config', 'issuer_url']]}
@@ -429,7 +429,7 @@ function AppleFields() {
             message: 'Use an absolute filesystem path (must start with `/`)',
           },
         ]}
-        tooltip="Filesystem path to the AuthKey_<KEY_ID>.p8 file. The file itself stays on disk with proper permissions — it is not uploaded through the UI."
+        extra="Filesystem path to the AuthKey_<KEY_ID>.p8 file. The file itself stays on disk with proper permissions — it is not uploaded through the UI."
       >
         <Input placeholder="/var/lib/ziee/apple/AuthKey_XXXXXXXXXX.p8" />
       </Form.Item>

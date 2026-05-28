@@ -26,6 +26,15 @@ server:
   host: "0.0.0.0"
   port: 9000
   api_prefix: "/api"
+  # Per-peer-IP rate limit (tower-governor token bucket). Optional —
+  # default fallback is `per_second: 50, burst_size: 500`. Tighten
+  # for production once you've measured normal SPA cold-load demand
+  # (~15-25 parallel calls). Behind a reverse proxy that NATs all
+  # users to one IP, raise these or switch to a different key
+  # extractor (PeerIpKeyExtractor buckets per source IP).
+  rate_limit:
+    per_second: 50
+    burst_size: 500
   cors:
     allow_origins: ["https://chat.example.com"]
     allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]

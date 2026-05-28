@@ -24,11 +24,18 @@ interface MemoriesStore {
   kindFilter: string | null
   sourceFilter: string | null
 
+  // Pagination state — drives MyMemoriesSection's <Pagination>.
+  // Backend `Memory.list` accepts `page` + `per_page` and returns
+  // `MemoryListResponse { items, total, page, per_page }`.
+  currentPage: number
+  pageSize: number
+  total: number
+
   __init__: {
     memories: () => Promise<void>
   }
 
-  load: () => Promise<void>
+  load: (page?: number, pageSize?: number) => Promise<void>
   create: (
     content: string,
     importance?: number,
@@ -48,15 +55,32 @@ interface MemoriesStore {
 
 const loadMemories = async (
   set: (fn: (s: MemoriesStore) => void) => void,
+  get: () => MemoriesStore,
+  page?: number,
+  pageSize?: number,
 ) => {
+  const state = get()
+  const nextPage = page ?? state.currentPage
+  const nextPageSize = pageSize ?? state.pageSize
   set(s => {
     s.loading = true
     s.error = null
   })
   try {
-    const rows = await ApiClient.Memory.list({ limit: 200 })
+    const resp = await ApiClient.Memory.list({
+      page: nextPage,
+      per_page: nextPageSize,
+      // Server-side filters — backend ILIKE + exact-match on kind/source.
+      // Empty/null values are omitted so the server short-circuits.
+      ...(state.searchQuery ? { search: state.searchQuery } : {}),
+      ...(state.kindFilter ? { kind: state.kindFilter } : {}),
+      ...(state.sourceFilter ? { source: state.sourceFilter } : {}),
+    })
     set(s => {
-      s.memories = rows
+      s.memories = resp.items
+      s.total = resp.total
+      s.currentPage = resp.page
+      s.pageSize = resp.per_page
       s.loading = false
     })
   } catch (error) {
@@ -68,9 +92,15 @@ const loadMemories = async (
   }
 }
 
+/**
+ * Debounce timer for search-query reloads — keystrokes within
+ * 250ms coalesce into a single backend hit.
+ */
+let searchDebounce: ReturnType<typeof setTimeout> | null = null
+
 export const useMemoriesStore = create<MemoriesStore>()(
   subscribeWithSelector(
-    immer((set, _get) => ({
+    immer((set, get) => ({
       memories: [],
       loading: false,
       saving: false,
@@ -78,12 +108,16 @@ export const useMemoriesStore = create<MemoriesStore>()(
       searchQuery: '',
       kindFilter: null,
       sourceFilter: null,
+      currentPage: 1,
+      pageSize: 10,
+      total: 0,
 
       __init__: {
-        memories: () => loadMemories(set),
+        memories: () => loadMemories(set, get),
       },
 
-      load: () => loadMemories(set),
+      load: (page?: number, pageSize?: number) =>
+        loadMemories(set, get, page, pageSize),
 
       create: async (content, importance, kind): Promise<UserMemory> => {
         set(s => {
@@ -100,6 +134,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
           const row = await ApiClient.Memory.create(req)
           set(s => {
             s.memories.unshift(row)
+            s.total += 1
             s.saving = false
           })
           try {
@@ -155,6 +190,7 @@ export const useMemoriesStore = create<MemoriesStore>()(
           await ApiClient.Memory.delete({ id })
           set(s => {
             s.memories = s.memories.filter(m => m.id !== id)
+            s.total = Math.max(0, s.total - 1)
           })
           try {
             await emitMemoryDeleted(id)
@@ -177,6 +213,8 @@ export const useMemoriesStore = create<MemoriesStore>()(
           const body: DeleteAllResponse = await ApiClient.Memory.deleteAll()
           set(s => {
             s.memories = []
+            s.total = 0
+            s.currentPage = 1
           })
           try {
             await emitMemoryAllCleared(body.deleted)
@@ -196,18 +234,33 @@ export const useMemoriesStore = create<MemoriesStore>()(
         }
       },
 
-      setSearchQuery: q =>
+      // Filter setters all reset to page 1 and reload from the
+      // server. Search is debounced (250ms) so keystrokes don't
+      // hammer the backend; select-style filters fire immediately.
+      setSearchQuery: q => {
         set(s => {
           s.searchQuery = q
-        }),
-      setKindFilter: k =>
+          s.currentPage = 1
+        })
+        if (searchDebounce) clearTimeout(searchDebounce)
+        searchDebounce = setTimeout(() => {
+          void loadMemories(set, get, 1)
+        }, 250)
+      },
+      setKindFilter: k => {
         set(s => {
           s.kindFilter = k
-        }),
-      setSourceFilter: source =>
+          s.currentPage = 1
+        })
+        void loadMemories(set, get, 1)
+      },
+      setSourceFilter: source => {
         set(s => {
           s.sourceFilter = source
-        }),
+          s.currentPage = 1
+        })
+        void loadMemories(set, get, 1)
+      },
 
       reset: () =>
         set(s => {

@@ -1,50 +1,60 @@
 /**
  * DELIBERATE DIVERGENCE from core's SidebarToggleButton.
  *
+ * Differs from core:
+ *   - Single 28px button at every breakpoint (core uses 44px on
+ *     ≤480px for WCAG-2.5.5 touch targets). Tauri desktop is always
+ *     mouse/trackpad; the responsive flip caused a jarring size
+ *     change when resizing the window across the xs threshold.
+ *   - macOS-only `marginLeft: 76px` shift so the button clears the
+ *     traffic-light controls. Cleared in fullscreen mode.
+ *   - <TauriDragRegion> overlay covering the top strip so the
+ *     surrounding empty area drags the window.
+ *
  * Inherits from core:
- *   - useWindowMinSize() responsive sizing (44px on mobile per
- *     WCAG 2.5.5 Target Size; compact 24px on desktop).
  *   - Full ARIA wiring: aria-label, aria-expanded, aria-controls.
- *
- * Desktop-only additions:
- *   - <TauriDragRegion> covering the top strip so the user can
- *     drag-move the window from the empty space around the button.
- *   - macOS-only `marginLeft: 76px` shift so the button doesn't sit
- *     under the traffic-light controls. Cleared in fullscreen mode
- *     (traffic lights vanish then).
- *
- * Keep in sync with `ui/src/modules/layouts/app-layout/components/SidebarToggleButton.tsx`;
- * `just desktop-drift-check` flags any divergence.
  */
 
-import { Button } from 'antd'
+import { Button, Tooltip } from 'antd'
 import { GoSidebarCollapse, GoSidebarExpand } from 'react-icons/go'
 import { Stores } from '@/core/stores'
-import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
 import { TauriDragRegion } from '@ziee/desktop/components/TauriDragRegion.tsx'
 
 export function SidebarToggleButton() {
   const { isSidebarCollapsed, isFullscreen } = Stores.AppLayout
-  const windowMinSize = useWindowMinSize()
 
-  // Mobile (≤480px viewport): 44×44 tap target per WCAG 2.5.5.
-  // Desktop: compact 24px chevron. (core: audit 02 R-1.)
-  const isMobile = windowMinSize.xs
-  const dimension = isMobile ? '44px' : '24px'
-  const iconFontSize = isMobile ? '24px' : '30px'
+  // Tauri desktop is always mouse/trackpad — the WCAG-2.5.5 44px
+  // touch target the core uses isn't required here. Keep a single
+  // compact size so resizing the window across the xs threshold
+  // doesn't morph the chevron (28px button at every breakpoint,
+  // 20px icon that fits inside it cleanly — prior 30px icon
+  // overflowed the 24px button and showed an oversized hover bg).
+  const dimension = '28px'
+  const iconFontSize = '20px'
 
   // macOS Tauri window has traffic-light controls in the top-left ~70px;
   // clear them by shifting the toggle button right. Vanish in fullscreen.
   const macTrafficLightOffset =
     isTauriView && isMacOS && !isFullscreen ? 76 : 12
 
+  // Full-width top-strip drag overlay (z:1) so pages WITHOUT a
+  // HeaderBarContainer (NewChatPage etc.) and the sidebar's top
+  // 50px both remain draggable. HeaderBarContainer raises its own
+  // stacking level (`position: relative; z-index: 2`) so its
+  // content paints above this overlay and its per-component
+  // manual mousedown handler takes over there — that's how header
+  // buttons stay clickable while the rest of the top strip drags.
   return (
     <>
       <TauriDragRegion
         className={'gap-6 fixed z-1 h-[50px] top-0 left-0 w-full'}
       />
       <div className="flex items-center gap-6 fixed z-10 h-[50px] top-0">
+        <Tooltip
+          title={isSidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
+          placement="right"
+        >
         <Button
           type="text"
           onClick={Stores.AppLayout.toggleSidebar}
@@ -72,6 +82,7 @@ export function SidebarToggleButton() {
             <GoSidebarExpand aria-hidden="true" />
           )}
         </Button>
+        </Tooltip>
       </div>
     </>
   )

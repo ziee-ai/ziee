@@ -307,7 +307,7 @@ export function LlmRepositoryDrawer() {
         <Form.Item
           name="auth_test_api_endpoint"
           label="Authentication Test Endpoint"
-          tooltip="Custom endpoint to test authentication. If not provided, the main repository URL will be used for testing."
+          extra="Custom endpoint to test authentication. If not provided, the main repository URL will be used for testing."
         >
           <Input
             disabled={repository?.built_in}

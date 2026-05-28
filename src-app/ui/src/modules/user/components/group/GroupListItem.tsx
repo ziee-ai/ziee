@@ -128,16 +128,23 @@ export function GroupListItem({
             </div>
           </div>
 
+          {/*
+            Layout:
+              row 1: Description (full width, span = column count)
+              row 2: Permissions  |  Created  (half each)
+            On xs the grid collapses to one column so all three
+            stack naturally.
+          */}
           <Descriptions
             size="small"
-            column={{ xs: 1, sm: 2, md: 3 }}
+            column={{ xs: 1, sm: 2 }}
             colon={false}
             styles={{
               label: { fontSize: '12px' },
               content: { fontSize: '12px' },
             }}
           >
-            <Descriptions.Item label="Description">
+            <Descriptions.Item label="Description" span={{ xs: 1, sm: 2 }}>
               {group.description || 'No description'}
             </Descriptions.Item>
             <Descriptions.Item label="Permissions">

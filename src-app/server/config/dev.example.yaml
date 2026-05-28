@@ -56,6 +56,15 @@ server:
   port: 3000  # Use 0 for automatic port selection
   api_prefix: "/api"  # Base path prefix for all API routes
 
+  # Per-peer-IP rate limit (tower-governor token bucket). Optional —
+  # if omitted, defaults to `per_second: 50, burst_size: 500` (see
+  # src/main.rs). Production behind a real reverse proxy should
+  # tighten these; tests bump them up so a sequential sweep against
+  # 127.0.0.1 doesn't 429 itself.
+  rate_limit:
+    per_second: 50
+    burst_size: 500
+
   # CORS settings
   cors:
     allow_origins:

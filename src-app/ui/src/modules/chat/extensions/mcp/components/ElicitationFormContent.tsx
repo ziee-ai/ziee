@@ -100,7 +100,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         name={name}
         label={label}
         rules={rules}
-        tooltip={fieldSchema.description}
+        extra={fieldSchema.description}
       >
         <Select
           options={options}
@@ -119,7 +119,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         name={name}
         label={label}
         valuePropName="checked"
-        tooltip={fieldSchema.description}
+        extra={fieldSchema.description}
       >
         <Switch data-testid={testId} />
       </Form.Item>
@@ -133,7 +133,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         name={name}
         label={label}
         rules={rules}
-        tooltip={fieldSchema.description}
+        extra={fieldSchema.description}
       >
         <InputNumber
           min={fieldSchema.minimum}
@@ -157,7 +157,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         name={name}
         label={label}
         rules={rules}
-        tooltip={fieldSchema.description}
+        extra={fieldSchema.description}
       >
         <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} data-testid={testId} />
       </Form.Item>
@@ -171,7 +171,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         name={name}
         label={label}
         rules={rules}
-        tooltip={fieldSchema.description}
+        extra={fieldSchema.description}
       >
         <DatePicker
           showTime
@@ -219,7 +219,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
         name={name}
         label={label}
         rules={rules}
-        tooltip={fieldSchema.description}
+        extra={fieldSchema.description}
       >
         <Input.Password data-testid={testId} />
       </Form.Item>
@@ -237,7 +237,7 @@ function renderField(name: string, fieldSchema: FieldSchema, required: boolean):
       name={name}
       label={label}
       rules={rules}
-      tooltip={fieldSchema.description}
+      extra={fieldSchema.description}
     >
       <Input type={inputType} data-testid={testId} />
     </Form.Item>

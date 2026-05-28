@@ -259,30 +259,38 @@ async fn setup_server(
     // SECURITY: matches the middleware stack in main.rs::main —
     // 16 MB body limit, 60s timeout, security headers, CORS.
     // Closes 14-core F-01 + 05-file F-09 generalization + A3 headers.
-    // Rate limiter — see main.rs for rationale. 5 req/s per peer IP, burst 60.
-    let (rl_per_sec, rl_burst) = config
-        .server
-        .rate_limit
-        .as_ref()
-        .map(|r| (r.per_second, r.burst_size))
-        .unwrap_or((5, 60));
-    let governor_conf = std::sync::Arc::new(
-        tower_governor::governor::GovernorConfigBuilder::default()
-            .per_second(rl_per_sec)
-            .burst_size(rl_burst)
-            .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
-            .finish()
-            .expect("Failed to build governor config"),
-    );
-    let governor_layer = tower_governor::GovernorLayer {
-        config: governor_conf,
-    };
+    //
+    // Rate limiter is OPTIONAL on this path. The desktop app embeds
+    // this server and serves only its own local webview over
+    // 127.0.0.1 — there is no per-peer-IP attack surface to defend
+    // against, and the rate limiter actively gets in the way of
+    // legitimate burst traffic (chat streams, SSE, multi-file
+    // uploads). When `config.server.rate_limit` is None, the layer
+    // is skipped entirely. Web deployments still set it explicitly
+    // in their config (see config/prod.example.yaml).
+    let governor_layer = config.server.rate_limit.as_ref().map(|r| {
+        let governor_conf = std::sync::Arc::new(
+            tower_governor::governor::GovernorConfigBuilder::default()
+                .per_second(r.per_second)
+                .burst_size(r.burst_size)
+                .key_extractor(tower_governor::key_extractor::PeerIpKeyExtractor)
+                .finish()
+                .expect("Failed to build governor config"),
+        );
+        tower_governor::GovernorLayer {
+            config: governor_conf,
+        }
+    });
 
     let app = api_router
         .finish_api(&mut api_doc)
         .layer(axum::extract::DefaultBodyLimit::max(16 * 1024 * 1024))
-        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)))
-        .layer(governor_layer)
+        .layer(tower_http::timeout::TimeoutLayer::new(std::time::Duration::from_secs(60)));
+    let app = match governor_layer {
+        Some(layer) => app.layer(layer),
+        None => app,
+    };
+    let app = app
         .layer(tower_http::set_header::SetResponseHeaderLayer::if_not_present(
             axum::http::header::HeaderName::from_static("x-content-type-options"),
             axum::http::HeaderValue::from_static("nosniff"),

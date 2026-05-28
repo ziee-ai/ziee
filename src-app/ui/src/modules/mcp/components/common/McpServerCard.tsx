@@ -78,13 +78,6 @@ export function McpServerCard({
     }
   }
 
-  const headerBg =
-    server.transport_type === 'stdio'
-      ? 'bg-blue-50'
-      : server.transport_type === 'http'
-        ? 'bg-green-50'
-        : 'bg-purple-50'
-
   return (
     <Card
       classNames={{
@@ -96,7 +89,12 @@ export function McpServerCard({
       <div className="flex items-start gap-3 flex-wrap">
         {/* Server Info */}
         <div className="flex-1">
-          <div className={`-mx-3 -mt-3 mb-3 px-3 py-2 flex items-center gap-2 flex-wrap ${headerBg}`}>
+          {/* Header row — transport type is already conveyed by the
+            * Tag inside; the per-transport background band has been
+            * removed so MCP cards match the visual rhythm of the
+            * other settings cards (Model Repositories, Rootfs
+            * environments). */}
+          <div className="mb-3 flex items-center gap-2 flex-wrap">
             <div className="flex-1 min-w-48">
               <Flex className="gap-2 items-center">
                 <ToolOutlined aria-hidden="true" className="text-base" />
