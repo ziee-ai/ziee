@@ -685,6 +685,37 @@ impl SandboxBackend for MacVmBackend {
         })
     }
 
+    async fn open_long_lived_session(
+        &self,
+        state: &CodeSandboxState,
+        flavor: &str,
+    ) -> Result<Option<super::vm_long_lived::LongLivedSession>, AppError> {
+        // Make sure the flavor's rootfs is on disk and a VM is warm
+        // (cold-start path identical to one-shot `run`).
+        let cache = cache_dir(state);
+        let disk = runtime_fetch::ensure_fetched(&cache, flavor, |_| {})
+            .await
+            .map_err(|e| AppError::internal_error(format!("rootfs fetch failed: {e}")))?
+            .installed_path;
+        let vm = self.ensure_vm(state, flavor, &disk).await?;
+
+        // Hold an inflight count for the session's lifetime so the
+        // reaper waits for live MCP sessions to drain before evicting.
+        vm.inflight.fetch_add(1, Ordering::SeqCst);
+        let guard = InflightGuard(vm.clone());
+        *vm.last_used.lock().await = Instant::now();
+
+        let stream = UnixStream::connect(&vm.socket_path)
+            .await
+            .map_err(|e| AppError::internal_error(format!("connect VM socket: {e}")))?;
+
+        let session = super::vm_long_lived::open_long_lived_with_guard(
+            stream,
+            Some(Box::new(guard)),
+        );
+        Ok(Some(session))
+    }
+
     async fn evict_flavor(&self, cache_dir: &Path, flavor: &str) -> EvictOutcome {
         // Stop the flavor's VM if running.
         if let Some(handle) = VMS.lock().await.remove(flavor) {

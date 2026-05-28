@@ -75,6 +75,11 @@ pub struct LongLivedSession {
     registry: Arc<Mutex<HashMap<u64, HandleSlot>>>,
     reader_task: Option<JoinHandle<()>>,
     writer_task: Option<JoinHandle<()>>,
+    /// Backend-supplied opaque guard, dropped when the session is dropped.
+    /// Used by the VM backends to decrement a per-flavor inflight counter so
+    /// the VM-evict reaper waits for live MCP sessions to drain. Linux and
+    /// the unsupported backend leave it `None`.
+    _vm_keepalive: Option<Box<dyn std::any::Any + Send + Sync>>,
 }
 
 impl LongLivedSession {
@@ -198,6 +203,21 @@ pub fn open_long_lived<S>(stream: S) -> LongLivedSession
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
+    open_long_lived_with_guard(stream, None)
+}
+
+/// Same as [`open_long_lived`] but lets the caller wedge an opaque
+/// drop-guard into the session. The guard is held until the session is
+/// dropped — used by the VM backends to hold a per-flavor inflight
+/// guard so the VM-evict reaper doesn't tear the VM down underneath a
+/// live MCP session.
+pub fn open_long_lived_with_guard<S>(
+    stream: S,
+    vm_keepalive: Option<Box<dyn std::any::Any + Send + Sync>>,
+) -> LongLivedSession
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let (rd, wr) = tokio::io::split(stream);
 
     let (writer_tx, writer_rx) = mpsc::unbounded_channel::<Frame>();
@@ -212,6 +232,7 @@ where
         registry,
         reader_task: Some(reader_task),
         writer_task: Some(writer_task),
+        _vm_keepalive: vm_keepalive,
     }
 }
 
