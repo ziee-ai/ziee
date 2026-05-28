@@ -15,6 +15,14 @@ struct Cli {
     /// If no value is provided, defaults to ../ui/openapi (desktop UI)
     #[arg(long, value_name = "OUTPUT_DIR", num_args = 0..=1, default_missing_value = "../ui/openapi")]
     generate_openapi: Option<String>,
+
+    /// Boot the embedded server WITHOUT opening a Tauri window.
+    /// Used by the TestServer integration-test harness so it can spawn
+    /// `ziee-desktop --headless` (instead of `ziee`) and exercise the
+    /// remote_access + magic_link + tunnel_auth routes that live only
+    /// in the desktop crate. Production users never set this.
+    #[arg(long, default_value_t = false)]
+    headless: bool,
 }
 
 fn main() {
@@ -50,5 +58,14 @@ fn main() {
     // Get config file from CLI arg or CONFIG_FILE env var
     let config_file = cli.config_file.or_else(|| std::env::var("CONFIG_FILE").ok());
 
-    ziee_desktop::run(config_file).expect("Failed to run desktop app");
+    if cli.headless {
+        // Headless mode: boot the embedded server with all desktop
+        // routes mounted, but NEVER create a Tauri window. Used by
+        // the integration test harness.
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+        rt.block_on(ziee_desktop::run_headless(config_file))
+            .expect("Failed to run headless desktop server");
+    } else {
+        ziee_desktop::run(config_file).expect("Failed to run desktop app");
+    }
 }

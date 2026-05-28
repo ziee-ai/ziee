@@ -3,6 +3,7 @@
   "description": "Ziee monorepo root — npm workspaces let `npm install` resolve both UI packages from one place. See CLAUDE.md for the Cargo equivalent at src-app/Cargo.toml.",
   "version": "0.1.0",
   "devDependencies": {
+    "concurrently": "^10.0.0",
     "syncpack": "^13.0.4"
   },
   "overrides": {

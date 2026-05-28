@@ -52,7 +52,7 @@ async fn sandbox_row_is_accessible_to_default_group_user() {
     use ziee::mcp::McpRepository;
     let mcp_repo = McpRepository::new(pool.clone());
     let resp = mcp_repo
-        .list_accessible(user_id, 1, 100)
+        .list_accessible(user_id, 1, 100, None, None, None)
         .await
         .expect("list_accessible");
 

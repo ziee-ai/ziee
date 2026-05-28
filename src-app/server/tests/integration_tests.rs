@@ -19,4 +19,9 @@ mod memory;
 mod memory_mcp;
 mod onboarding;
 mod project;
+// `remote_access` integration tests live in the desktop crate now —
+// they exercise endpoints served only by the ziee-desktop binary
+// and are physically located at
+// `desktop/tauri/tests/remote_access/`. Run via
+// `cd src-app/desktop/tauri && cargo test --test integration_tests`.
 mod user;

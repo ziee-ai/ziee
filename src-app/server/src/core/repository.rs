@@ -102,6 +102,15 @@ macro_rules! declare_repositories {
             FACTORY.get().expect("RepositoryFactory not initialized. Call init_repositories() first.")
         }
 
+        /// True if `init_repositories()` has been called and the
+        /// global factory is set. Useful for code paths that fire
+        /// before the server's startup sequence has finished (e.g.
+        /// the desktop tauri crate's auto_start tunnel hook, which
+        /// races against the embedded-PostgreSQL boot).
+        pub fn is_repos_initialized() -> bool {
+            FACTORY.get().is_some()
+        }
+
         // ============================================
         // SECTION 3: WRAPPER STRUCTS (Deref pattern)
         // ============================================

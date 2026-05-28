@@ -344,3 +344,50 @@ test-mac:
     cd src-app/server && cargo test --release --target aarch64-apple-darwin --test macos_brewless_boot -- --ignored --nocapture
 test-linux arch="x86_64":
     cd src-app/server && cargo test --release --target {{arch}}-unknown-linux-musl --test linux_distroless_boot -- --ignored --nocapture
+
+# ─── Remote Access (Feature: ngrok tunnel exposure) ─────────────────
+#
+# Tiered test recipes for the Remote Access module. Tier 1+2 are the
+# default gate; Tier 5 (bundle inclusion) is fast and high-signal;
+# Tier 6 is the Playwright E2E; Tier 8 needs real ngrok credentials.
+
+# Tier 1 (unit) + Tier 2 (integration). Default gate; ~30 s.
+# Unit tests live in-source under the desktop crate's modules;
+# integration tests live in `desktop/tauri/tests/remote_access/` and
+# share the TestServer harness from the server crate via #[path].
+check-remote-access-unit:
+    cd src-app/desktop/tauri && cargo test --lib -p ziee-desktop remote_access:: magic_link:: tunnel_auth::
+    cd src-app/desktop/tauri && \
+        bash -c 'source ../../server/tests/.env.test 2>/dev/null || true; \
+            cargo test --test integration_tests -- --test-threads=1 remote_access::'
+
+# Tier 6 — Playwright E2E for the Remote Access desktop page. Both
+# the admin settings page AND the phone-side magic-link consumer
+# live in the desktop bundle now (single-bundle architecture); the
+# spec mocks ngrok so no network is needed.
+check-remote-access-e2e:
+    cd src-app/desktop/ui && npx playwright test remote-access.spec.ts
+
+# Tier 8 — real ngrok integration. Reads NGROK_AUTH_TOKEN (and
+# optionally NGROK_TEST_DOMAIN) from .ngrok-test-credentials.env.
+# Opens a real tunnel, HTTPs through it, then stops. Costs ~2 min
+# of an ngrok session.
+check-remote-access-real-ngrok:
+    @bash -c 'set -euo pipefail; \
+        if [ -f .ngrok-test-credentials.env ]; then \
+            source .ngrok-test-credentials.env; \
+        fi; \
+        if [ -z "${NGROK_AUTH_TOKEN:-}" ]; then \
+            echo "NGROK_AUTH_TOKEN not set; create .ngrok-test-credentials.env or export it" >&2; \
+            exit 1; \
+        fi; \
+        cd src-app/desktop/tauri && \
+            source ../../server/tests/.env.test 2>/dev/null || true; \
+            cargo test --test integration_tests -- --test-threads=1 --ignored \
+                remote_access::real_ngrok'
+
+# All Remote Access tests in one shot (skips the real-ngrok tier
+# unless credentials are present).
+check-remote-access-all: check-remote-access-unit check-remote-access-e2e
+    @echo "✓ remote-access: unit + integration + e2e all green"
+

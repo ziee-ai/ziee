@@ -28,7 +28,7 @@ impl UserRepository {
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
                    avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
-                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             WHERE id = $1
             "#,
@@ -46,7 +46,7 @@ impl UserRepository {
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
                    avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
-                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             WHERE username = $1
             "#,
@@ -64,7 +64,7 @@ impl UserRepository {
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
                    avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
-                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             WHERE email = $1
             "#,
@@ -85,7 +85,7 @@ impl UserRepository {
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
                    avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
-                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             WHERE username = $1 OR email = $1
             "#,
@@ -112,7 +112,7 @@ impl UserRepository {
             r#"
             SELECT id, username, email, email_verified, password_hash, display_name,
                    avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
-                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+                   created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             FROM users
             ORDER BY created_at DESC
             LIMIT $1 OFFSET $2
@@ -143,7 +143,7 @@ impl UserRepository {
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id, username, email, email_verified, password_hash, display_name,
                       avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
-                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             "#,
             username,
             email,
@@ -183,7 +183,7 @@ impl UserRepository {
             VALUES ($1, $2, $3, $4, true, true)
             RETURNING id, username, email, email_verified, password_hash, display_name,
                       avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
-                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             "#,
             username,
             email,
@@ -216,7 +216,7 @@ impl UserRepository {
             WHERE id = $1
             RETURNING id, username, email, email_verified, password_hash, display_name,
                       avatar_url, is_active, is_admin, permissions, completed_onboarding_ids, completed_onboarding_step_ids,
-                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _"
+                      created_at as "created_at: _", updated_at as "updated_at: _", last_login_at as "last_login_at: _", password_changed_at as "password_changed_at: _"
             "#,
             id,
             username,
@@ -229,12 +229,16 @@ impl UserRepository {
         .map_err(AppError::database_error)
     }
 
-    /// Update password hash
+    /// Update password hash. Also bumps `password_changed_at` so the
+    /// Remote Access module can tell whether the admin has rotated
+    /// the bootstrap default password.
     pub async fn update_password(&self, id: Uuid, password_hash: &str) -> Result<(), AppError> {
         sqlx::query!(
             r#"
             UPDATE users
-            SET password_hash = $2, updated_at = NOW()
+            SET password_hash = $2,
+                password_changed_at = NOW(),
+                updated_at = NOW()
             WHERE id = $1
             "#,
             id,
@@ -615,7 +619,8 @@ impl GroupRepository {
                    u.display_name, u.avatar_url, u.is_active, u.is_admin,
                    ARRAY[]::TEXT[] as "permissions!", u.completed_onboarding_ids, u.completed_onboarding_step_ids,
                    u.created_at as "created_at: _", u.updated_at as "updated_at: _",
-                   u.last_login_at as "last_login_at: _"
+                   u.last_login_at as "last_login_at: _",
+                   u.password_changed_at as "password_changed_at: _"
             FROM users u
             INNER JOIN user_groups ug ON u.id = ug.user_id
             WHERE ug.group_id = $1

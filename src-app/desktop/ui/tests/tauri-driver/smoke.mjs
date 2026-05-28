@@ -98,6 +98,30 @@ try {
     )
   }
 
+  // --- Remote Access surface check (Tier 7 of the remote_access
+  // feature). Drive the session to /settings/remote-access and
+  // confirm the ngrok-auth-token card renders. This proves:
+  //   1. The desktop bundle includes the remote-access module
+  //      (Vite glob picked it up).
+  //   2. The settings router accepts /settings/remote-access.
+  //   3. The page renders past its loading state (the store
+  //      successfully called GET /api/remote-access/status against
+  //      the embedded server).
+  try {
+    await session.get('tauri://localhost/settings/remote-access')
+    await session.wait(
+      until.elementLocated(
+        By.xpath("//*[normalize-space(text())='ngrok auth token']"),
+      ),
+      15_000,
+    )
+    console.log('[tauri-driver-smoke] ✓ Remote Access page reachable')
+  } catch (e) {
+    throw new Error(
+      `Remote Access page failed to render: ${e.message || e}`,
+    )
+  }
+
   console.log('[tauri-driver-smoke] PASS')
   process.exit(0)
 } catch (err) {

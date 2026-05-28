@@ -39,6 +39,15 @@ LIBSECCOMP_LINK_TYPE = "static"
 #     in your shell before running cargo directly.
 LIBSECCOMP_LIB_PATH = "/usr/lib/x86_64-linux-gnu"
 
+# Compile-time database URL for sqlx macros. The server's `build.rs`
+# wipes + applies BOTH server migrations and desktop migrations to
+# this DB (port 54321, the docker-compose build container) before
+# any crate-level compilation, so both `ziee` and `ziee-desktop`
+# crates' `sqlx::query_as!()` macros validate against the same
+# fully-migrated schema. Without this, the desktop crate's query
+# macros fail with "set DATABASE_URL to use query macros online".
+DATABASE_URL = "postgresql://postgres:password@127.0.0.1:54321/postgres"
+
 # ─── Cross-build to musl (Linux static distribution) ────────────────
 #
 # `just build-linux <arch>` runs `cargo zigbuild --target
