@@ -185,10 +185,25 @@ const WSL_MIN_VERSION_26: (u32, u32, u32) = (2, 6, 1);
 /// collisions a timestamp id risked under concurrency).
 static REQ_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-/// Vsock ports we assign to per-flavor agents. Monotonic from 10001 so we
-/// stay clear of any well-known low-numbered services. Vsock ports collide
-/// only within the same utility VM; other WSL2 distros don't bind these.
+/// Vsock ports we assign to per-flavor agents. Picked from a registered
+/// range (10001..10100 — see `scripts/register-sandbox-vsock-ports.ps1`).
+/// We seed by PID so two parallel `ziee.exe` processes (e.g. consecutive
+/// Tier 6 test invocations, each spawning a fresh server child) don't
+/// collide on the same port: stale agents from a prior process can outlive
+/// the parent (HIGH-3 / no-PDEATHSIG-across-WSL), and a colliding bind
+/// inside the shared WSL utility VM hits EADDRINUSE silently — the new
+/// agent exits, but the host's hvsocket connect still succeeds against the
+/// STALE listener, executing the new request in the prior conversation's
+/// context. PID-seeded offsets reduce the collision odds to (1/100)^N for
+/// N parallel processes.
+///
+/// `Wsl2Backend::new()` initializes the atomic from the PID at startup.
 static NEXT_VSOCK_PORT: AtomicU32 = AtomicU32::new(10001);
+
+/// Bottom + count of the registered vsock port range. Must match the
+/// `PortStart` and `Count` in `scripts/register-sandbox-vsock-ports.ps1`.
+const VSOCK_PORT_BASE: u32 = 10001;
+const VSOCK_PORT_COUNT: u32 = 100;
 
 /// A booted, warm per-flavor distro: the imported WSL2 distro plus the agent
 /// process listening on an AF_VSOCK port inside the utility VM.
@@ -298,6 +313,14 @@ pub struct Wsl2Backend {
 
 impl Wsl2Backend {
     pub fn new() -> Self {
+        // PID-seed the vsock port allocator so two parallel `ziee.exe`
+        // processes (e.g. Tier 6 sequential `cargo test` runs that spawn
+        // a fresh server per test) start at different ports and don't
+        // race for the same vsock binding inside the shared WSL utility
+        // VM. See the doc on NEXT_VSOCK_PORT for the failure mode.
+        let pid = std::process::id();
+        let offset = pid % VSOCK_PORT_COUNT;
+        NEXT_VSOCK_PORT.store(VSOCK_PORT_BASE + offset, Ordering::Relaxed);
         Self { wsl_vm_id: OnceLock::new() }
     }
 
@@ -316,10 +339,26 @@ impl Wsl2Backend {
     }
 
     /// The bundled Linux `ziee-sandbox-agent` binary (Windows-side path),
-    /// copied into the distro at provision time. Overridable via env for dev.
+    /// copied into the distro at provision time. Resolution order:
+    ///   1. `ZIEE_SANDBOX_AGENT` env (explicit dev override).
+    ///   2. Embedded bundle, extracted to `<app_data>/bin/ziee-sandbox-agent`
+    ///      on first use — the production self-contained path, mirrors
+    ///      macOS's `code_sandbox::embedded::ensure()`. The build-time
+    ///      helper at `build_helper/wsl2_agent.rs` cross-compiles the
+    ///      agent into `binaries/x86_64-pc-windows-msvc/sandbox-runtime/`,
+    ///      which `wsl2_agent_embedded` `include_bytes!`s.
+    ///   3. Sibling of the running exe — legacy dev-path used by Tier 4/6
+    ///      tests where `scripts/build-sandbox-agent-linux.sh` drops the
+    ///      ELF next to the test binary. Kept as a final fallback so a
+    ///      dev box without Docker still works (build.rs's wsl2_agent
+    ///      step is fail-soft, leaving an empty placeholder; the embedded
+    ///      ensure() then errors and we fall through to here).
     fn agent_host_path() -> PathBuf {
         if let Ok(p) = std::env::var("ZIEE_SANDBOX_AGENT") {
             return PathBuf::from(p);
+        }
+        if let Ok(extracted) = crate::modules::code_sandbox::wsl2_agent_embedded::ensure() {
+            return extracted.clone();
         }
         std::env::current_exe()
             .ok()
@@ -377,6 +416,29 @@ impl Wsl2Backend {
         // 2. Provision once (bwrap, agent, identity, AppArmor profile, wsl.conf).
         self.provision_distro(&distro).await?;
 
+        // 2b. Kill any stale agent inside the distro left over from a
+        //     previous server process. Required because:
+        //       (a) The agent runs INSIDE the distro as a wsl.exe-spawned
+        //           child; there is no PDEATHSIG across the WSL boundary,
+        //           so when the previous ziee.exe died (test teardown,
+        //           crash, …) the in-distro agent kept running.
+        //       (b) NEXT_VSOCK_PORT resets to 10001 in each fresh process,
+        //           so a new spawn collides with the stale listener and
+        //           the new agent exits with `EADDRINUSE`. The host's
+        //           connect then reaches the STALE agent, which still
+        //           has the prior process's request_id space and
+        //           workspace assumptions — wrong-context execs follow.
+        //     This is a stronger guarantee than the audit's HIGH-3 fix
+        //     (Frame::Shutdown handshake on Drop) — that path is best-
+        //     effort and the agent can survive `kill -9 ziee.exe`.
+        let _ = run_in_distro(
+            &distro,
+            "pkill -9 -f /usr/local/bin/ziee-sandbox-agent 2>/dev/null; \
+             pkill -9 ziee-sandbox 2>/dev/null; \
+             sleep 0.2; true",
+        )
+        .await;
+
         // 3. Start the agent on an AF_VSOCK port inside the utility VM. This is
         //    the HIGH-1 fix: vsock is point-to-point (host ↔ this-guest), so
         //    no other distro in the shared utility VM can reach the agent the
@@ -403,14 +465,39 @@ impl Wsl2Backend {
         // Wait for the agent's vsock listener to accept. Probe via the same
         // hvsocket API the hot path uses, so a failure here surfaces the exact
         // problem the hot path would hit.
-        let deadline = Instant::now() + Duration::from_secs(30);
+        //
+        // 60s, not 30s — observed empirically that even with the GUID
+        // registered and a listening agent, fresh `wsl.exe -d <distro>
+        // -- agent --listen vsock:N` invocations on a cold WSL utility
+        // VM take 20-30s before the host's AF_HYPERV connect actually
+        // routes through. The exact mechanism is vmcompute-internal
+        // (the `D:P(A;;FA;;;SY)…` DACL on the VM is per-user, so
+        // route-table propagation appears to be lazy). The 30s ceiling
+        // we copied from the macOS libkrun path was racing this window.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut last_err: Option<String> = None;
         loop {
-            if hvsocket::connect(vm_id, vsock_port).await.is_ok() {
-                break;
+            match hvsocket::connect(vm_id, vsock_port).await {
+                Ok(_) => break,
+                Err(e) => last_err = Some(e.to_string()),
             }
             if Instant::now() > deadline {
+                // Same WSA-10060 remediation hint as the test path: the
+                // port-template GUID must be registered under
+                // HKLM\…\GuestCommunicationServices AND vmcompute must
+                // have picked it up since (needs `wsl --shutdown`).
                 return Err(AppError::internal_error(format!(
-                    "WSL2 agent did not start listening on vsock:{vsock_port} within 30s"
+                    "WSL2 agent did not start listening on vsock:{vsock_port} \
+                     within 30s. Last connect error: {}\n\
+                     \n\
+                     If you see WSA error 10060, the AF_HYPERV port \
+                     template GUID is not registered. Run from an admin \
+                     PowerShell:\n\
+                     \n  \
+                     scripts/register-sandbox-vsock-ports.ps1\n\
+                     \n  \
+                     (registers ports 10001..10100 + runs `wsl --shutdown`)",
+                    last_err.unwrap_or_else(|| "<no error captured>".to_string())
                 )));
             }
             tokio::time::sleep(Duration::from_millis(150)).await;
@@ -457,8 +544,12 @@ impl Wsl2Backend {
             return Ok(());
         }
 
-        // 1. Agent binary. Copy via `wslpath` so quoting / drive-case / spaces
-        //    are handled inside the distro.
+        // 1. Agent binary. The pure-Rust `win_to_wsl_path` does the
+        //    Windows→WSL conversion deterministically without spawning
+        //    `wslpath` (which isn't available in every distro — Alpine
+        //    test rootfs ships without it, since the binary's a separate
+        //    `wslu` package). WSL2 auto-mounts /mnt/<drive>/* regardless
+        //    of distro init, so the converted path resolves at runtime.
         let agent_host = Self::agent_host_path();
         if !agent_host.exists() {
             return Err(AppError::internal_error(format!(
@@ -466,7 +557,7 @@ impl Wsl2Backend {
                 agent_host.display()
             )));
         }
-        let agent_mnt = wslpath(distro, &agent_host).await?;
+        let agent_mnt = win_to_wsl_path(&agent_host);
         run_in_distro(
             distro,
             &format!("install -m 0755 '{agent_mnt}' '{GUEST_AGENT_PATH}'"),
@@ -699,7 +790,7 @@ fn win_to_wsl_path(p: &Path) -> String {
 
 #[async_trait]
 impl SandboxBackend for Wsl2Backend {
-    fn probe_host(&self, _cfg: &CodeSandboxConfig) -> Option<HostCapabilities> {
+    fn probe_host(&self, cfg: &CodeSandboxConfig) -> Option<HostCapabilities> {
         // Cheap host-only probe (sub-10 ms): wsl.exe must be on PATH, the
         // default version must be 2 (bwrap needs the WSL2 Linux kernel; WSL1
         // is syscall emulation with no namespaces and never works), AND the
@@ -891,8 +982,11 @@ impl SandboxBackend for Wsl2Backend {
             timeout_ms: secs * 1000,
             seccomp_fd: Some(GUEST_SECCOMP_FD),
             // In-guest cgroup v2 (the agent applies it; prlimit is the backstop).
-            // WIN-TODO: if the WSL2 kernel lacks delegated cgroup v2 the agent
-            // should degrade gracefully to rlimits-only.
+            // Graceful degradation is handled agent-side: if cgroup v2
+            // delegation is missing, `GuestCgroup::create` logs a warn
+            // and returns None, and the bwrap argv's prlimit wrapper
+            // continues to enforce the limits (see sandbox-guest-agent
+            // line ~391). No host-side check needed.
             cgroup: Some(CgroupLimits {
                 memory_max_bytes: limits.memory_max_bytes as u64,
                 memory_swap_max_bytes: limits.memory_swap_max_bytes as u64,
@@ -1006,19 +1100,296 @@ impl SandboxBackend for Wsl2Backend {
 
     async fn exec_raw_argv(
         &self,
-        _argv: Vec<String>,
-        _rootfs_squashfs: &Path,
-        _timeout: std::time::Duration,
+        argv: Vec<String>,
+        rootfs_squashfs: &Path,
+        timeout: std::time::Duration,
     ) -> Result<super::RawExecResult, AppError> {
-        // TODO(windows): port the test-VM helper pattern from mac_vm.rs.
-        // Same shape: ensure a per-rootfs WSL2 distro is up, send the
-        // raw argv via the in-distro agent's existing protocol (the
-        // same protocol mac_vm.rs uses), collect frames, return.
-        // Untested from Mac/Linux dev hosts; finished when a Windows
-        // CI runner lands.
-        Err(AppError::internal_error(
-            "exec_raw_argv: WSL2 backend test-helper not yet implemented",
-        ))
+        // Mirror of mac_vm.rs::exec_raw_argv. The trait param is named
+        // `rootfs_squashfs` because Mac/Linux test fixtures publish a
+        // squashfs; on Windows `wsl --import` only accepts tarball
+        // formats (tar / tar.gz / tar.zst), so we look for a sibling
+        // `.tar.zst` next to the squashfs. The build-test-rootfs.sh
+        // helper publishes both formats side by side.
+        let tarball = resolve_tarball_for_rootfs(rootfs_squashfs)?;
+        let distro = self.ensure_test_distro(&tarball).await?;
+        let req = ExecRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 0,
+            bwrap_path: GUEST_BWRAP_PATH.to_string(),
+            argv,
+            timeout_ms: timeout
+                .as_millis()
+                .min(u64::MAX as u128) as u64,
+            // Per mac_vm test pattern: leave seccomp + cgroup unset so
+            // tier-4 tests can opt into either via their own argv (e.g.
+            // an explicit `--seccomp <fd>` flag) without the seam
+            // injecting one.
+            seccomp_fd: None,
+            cgroup: None,
+        };
+        let secs = timeout.as_secs().max(1);
+        let _permit = distro
+            .sem
+            .acquire()
+            .await
+            .expect("test distro semaphore never closed");
+        distro.inflight.fetch_add(1, Ordering::SeqCst);
+        let _guard = InflightGuard(distro.clone());
+        let stream = hvsocket::connect(distro.vm_id, distro.vsock_port)
+            .await
+            .map_err(|e| {
+                AppError::internal_error(format!(
+                    "connect to test distro vsock:{}: {e}",
+                    distro.vsock_port
+                ))
+            })?;
+        let run = super::vm_client::run_on_stream(stream, req, secs).await?;
+        Ok(super::RawExecResult {
+            exit_code: run.exit_code,
+            stdout: run.stdout.into_bytes(),
+            stderr: run.stderr.into_bytes(),
+            timed_out: run.timed_out,
+        })
+    }
+}
+
+/// Test-only WSL2 distro pool keyed by tarball path. Used by
+/// `exec_raw_argv` so the 30+ tier-4/6 tests in a `cargo test`
+/// invocation share one warm distro per (process, rootfs) rather than
+/// paying the `wsl --import` + provision cost (~30s) per test.
+///
+/// Distinct from the production `DISTROS` registry (which is keyed by
+/// flavor and reaped on idle). Test distros live for the lifetime of the
+/// process; the `kill_on_drop` on the agent `Child` cleans up at exit,
+/// and `wsl --unregister` of the test distro happens lazily on the next
+/// run if a previous run crashed (the import path is idempotent).
+static TEST_DISTROS: Lazy<Mutex<HashMap<PathBuf, Arc<DistroHandle>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Per-tarball test-distro import serialization. Mirrors the per-flavor
+/// `BOOT_LOCKS` for production distros.
+static TEST_BOOT_LOCKS: Lazy<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+async fn test_boot_lock_for(tarball: &Path) -> Arc<Mutex<()>> {
+    TEST_BOOT_LOCKS
+        .lock()
+        .await
+        .entry(tarball.to_path_buf())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+/// Derive the WSL distro name used by `exec_raw_argv` for a given
+/// tarball path. Distinct namespace (`ziee-sandbox-test-*`) from the
+/// production `ziee-sandbox-<flavor>-v<schema>` so a dev who has both
+/// warm in the same WSL host can't collide.
+fn test_distro_name(tarball: &Path) -> String {
+    // Hash the absolute path so the name is stable across `cargo test`
+    // runs, distro-name-safe (no path separators / spaces), and short
+    // enough that `wsl --import` doesn't choke (WSL caps at 64 chars).
+    use sha2::{Digest, Sha256};
+    let abs = std::fs::canonicalize(tarball).unwrap_or_else(|_| tarball.to_path_buf());
+    let mut hasher = Sha256::new();
+    hasher.update(abs.to_string_lossy().as_bytes());
+    let digest = hasher.finalize();
+    // 12 hex chars is 48 bits — collision-free across any realistic
+    // dev's test corpus and keeps the distro name well under WSL's
+    // 64-char limit.
+    let short = hex::encode(&digest[..6]);
+    format!("ziee-sandbox-test-{short}-v{SANDBOX_ROOTFS_SCHEMA_VERSION}")
+}
+
+/// Resolve the tarball path to import from a path the trait gave us.
+/// The trait parameter is named `rootfs_squashfs` because Mac/Linux test
+/// fixtures are squashfs files; the Windows test fixture script must
+/// publish a sibling `.tar.zst` (WSL2 cannot import squashfs directly).
+fn resolve_tarball_for_rootfs(rootfs_path: &Path) -> Result<PathBuf, AppError> {
+    // Already a tarball — pass through.
+    if let Some(name) = rootfs_path.file_name().and_then(|n| n.to_str())
+        && (name.ends_with(".tar.zst")
+            || name.ends_with(".tar.gz")
+            || name.ends_with(".tar"))
+    {
+        return Ok(rootfs_path.to_path_buf());
+    }
+    // Squashfs path — look for the sibling `.tar.zst` (preferred), then
+    // `.tar.gz`, then `.tar`. The build-test-rootfs.sh script publishes
+    // `.tar.zst` alongside the squashfs.
+    if let Some(stem) = rootfs_path.file_stem().and_then(|s| s.to_str())
+        && let Some(parent) = rootfs_path.parent()
+    {
+        for ext in &[".tar.zst", ".tar.gz", ".tar"] {
+            let candidate = parent.join(format!("{stem}{ext}"));
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(AppError::internal_error(format!(
+        "WSL2 exec_raw_argv: no sibling tarball found for {} \
+         (expected `<stem>.tar.zst` / `.tar.gz` / `.tar` next to the squashfs). \
+         The Windows backend cannot `wsl --import` a squashfs directly.",
+        rootfs_path.display()
+    )))
+}
+
+impl Wsl2Backend {
+    /// Boot (or reuse) a WSL2 distro from `tarball` and start the
+    /// `ziee-sandbox-agent` inside on an AF_VSOCK port. Returns the
+    /// shared `DistroHandle`. Cached per-tarball for the lifetime of
+    /// the process — subsequent calls hit the cache.
+    ///
+    /// Used only by `exec_raw_argv` (the tier-4/6 test seam). The
+    /// production `ensure_distro` path is unaffected; this test path
+    /// has its own registry (`TEST_DISTROS`) and distro namespace
+    /// (`ziee-sandbox-test-*`) so the two cannot collide.
+    async fn ensure_test_distro(
+        &self,
+        tarball: &Path,
+    ) -> Result<Arc<DistroHandle>, AppError> {
+        // Fast path: warm distro (don't hold the boot lock across import).
+        let key = std::fs::canonicalize(tarball).unwrap_or_else(|_| tarball.to_path_buf());
+        if let Some(h) = TEST_DISTROS.lock().await.get(&key) {
+            return Ok(h.clone());
+        }
+        let boot_lock = test_boot_lock_for(&key).await;
+        let _boot = boot_lock.lock().await;
+        if let Some(h) = TEST_DISTROS.lock().await.get(&key) {
+            return Ok(h.clone());
+        }
+
+        if !tarball.exists() {
+            return Err(AppError::internal_error(format!(
+                "WSL2 exec_raw_argv: test rootfs tarball not found: {} \
+                 (run `scripts/build-test-rootfs.sh` or `just test-prereqs`)",
+                tarball.display()
+            )));
+        }
+
+        let distro = test_distro_name(&key);
+
+        // 1. Import the distro if it isn't already registered. The import
+        //    is idempotent across runs — if a prior run crashed mid-test,
+        //    the distro is still registered and we skip straight to
+        //    provisioning. The provision sentinel inside the distro
+        //    short-circuits if it's already set up.
+        if !distro_registered(&distro).await {
+            // Each test distro gets its own ext4 vhdx under the system
+            // temp dir. We don't use the production `cache_dir(state)`
+            // because there's no CodeSandboxState in the test path —
+            // and we want test artifacts isolated from the user's app
+            // data dir anyway.
+            let import_dir = std::env::temp_dir()
+                .join("ziee-sandbox-test")
+                .join(&distro);
+            std::fs::create_dir_all(&import_dir).map_err(|e| {
+                AppError::internal_error(format!("create test WSL import dir: {e}"))
+            })?;
+            run_wsl(&[
+                "--import",
+                &distro,
+                &import_dir.to_string_lossy(),
+                &tarball.to_string_lossy(),
+                "--version",
+                "2",
+            ])
+            .await
+            .map_err(|e| {
+                AppError::internal_error(format!("wsl --import {distro}: {e}"))
+            })?;
+        }
+
+        // 2. Run the same provision steps the production path uses
+        //    (apt-install bwrap+rsync, write AppArmor profile, sysctl,
+        //    wsl.conf, identity files, agent binary). Idempotent —
+        //    sentinel check short-circuits on warm distros.
+        self.provision_distro(&distro).await?;
+
+        // 2b. Kill stale agents inside the distro (see the matching
+        //     comment in `ensure_distro` — same reasoning applies here:
+        //     `cargo test` invocations on Tier 6 spawn one ziee.exe
+        //     server per test, but the in-distro agent outlives them).
+        let _ = run_in_distro(
+            &distro,
+            "pkill -9 -f /usr/local/bin/ziee-sandbox-agent 2>/dev/null; \
+             pkill -9 ziee-sandbox 2>/dev/null; \
+             sleep 0.2; true",
+        )
+        .await;
+
+        // 3. Start the agent on a fresh AF_VSOCK port inside the
+        //    utility VM. Same path the production hot path uses, so a
+        //    failure here surfaces the exact problem production would
+        //    hit.
+        let vsock_port = NEXT_VSOCK_PORT.fetch_add(1, Ordering::Relaxed);
+        let vm_id = self.vm_id()?;
+        let agent = tokio::process::Command::new("wsl.exe")
+            .args([
+                "-d",
+                &distro,
+                "-u",
+                "root",
+                "--cd",
+                "/",
+                "--",
+                GUEST_AGENT_PATH,
+                "--listen",
+                &format!("vsock:{vsock_port}"),
+            ])
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| {
+                AppError::internal_error(format!("spawn WSL2 test agent: {e}"))
+            })?;
+
+        // Wait for the agent to start accepting on vsock. See the matching
+        // 60s comment in `ensure_distro` — same vmcompute warmup race.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut last_err: Option<String> = None;
+        loop {
+            match hvsocket::connect(vm_id, vsock_port).await {
+                Ok(_) => break,
+                Err(e) => last_err = Some(e.to_string()),
+            }
+            if Instant::now() > deadline {
+                // WSA 10060 (timeout) typically means the port-template
+                // GUID is not registered under HKLM\…\GuestCommunicationServices,
+                // OR it's registered but vmcompute hasn't picked it up
+                // (needs `wsl --shutdown`). The bundled
+                // `scripts/register-sandbox-vsock-ports.ps1` does both
+                // in one admin invocation.
+                return Err(AppError::internal_error(format!(
+                    "WSL2 test agent did not start listening on vsock:{vsock_port} \
+                     within 30s. Last connect error: {}\n\
+                     \n\
+                     If you see WSA error 10060, the AF_HYPERV port \
+                     template GUID is not registered. Run from an admin \
+                     PowerShell:\n\
+                     \n  \
+                     scripts/register-sandbox-vsock-ports.ps1\n\
+                     \n  \
+                     (registers ports 10001..10100 + runs `wsl --shutdown`)",
+                    last_err.unwrap_or_else(|| "<no error captured>".to_string())
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(150)).await;
+        }
+
+        // Test path gets a generous concurrent-exec cap — tier-4 tests
+        // are mostly sequential but a few parallelize. 4 mirrors the
+        // mac_vm test pool default.
+        let handle = Arc::new(DistroHandle {
+            agent: Mutex::new(agent),
+            distro,
+            vsock_port,
+            vm_id,
+            last_used: Mutex::new(Instant::now()),
+            inflight: AtomicUsize::new(0),
+            sem: Semaphore::new(4),
+        });
+        TEST_DISTROS.lock().await.insert(key, handle.clone());
+        Ok(handle)
     }
 }
 
@@ -1262,5 +1633,299 @@ fn decode_wsl_output(bytes: &[u8]) -> String {
         String::from_utf16_lossy(&u16s)
     } else {
         String::from_utf8_lossy(bytes).into_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── extract_version_triple ────────────────────────────────────────
+
+    #[test]
+    fn extract_version_triple_canonical_wsl_output() {
+        assert_eq!(extract_version_triple("WSL version: 2.6.1.0"), Some((2, 6, 1)));
+        assert_eq!(extract_version_triple("WSL version: 2.5.10.0"), Some((2, 5, 10)));
+        assert_eq!(extract_version_triple("WSL version: 2.7.3.0"), Some((2, 7, 3)));
+    }
+
+    #[test]
+    fn extract_version_triple_no_trailing_build() {
+        assert_eq!(extract_version_triple("WSL version: 2.6.1"), Some((2, 6, 1)));
+    }
+
+    #[test]
+    fn extract_version_triple_localized_prefix() {
+        // Spanish/French/etc localized WSL output also has the triple.
+        assert_eq!(extract_version_triple("Versión de WSL: 2.6.1.0"), Some((2, 6, 1)));
+        assert_eq!(extract_version_triple("Version de WSL\u{a0}: 2.5.10.0"), Some((2, 5, 10)));
+    }
+
+    #[test]
+    fn extract_version_triple_two_components_not_enough() {
+        assert_eq!(extract_version_triple("WSL version: 2.6"), None);
+    }
+
+    #[test]
+    fn extract_version_triple_no_digits() {
+        assert_eq!(extract_version_triple("Kernel version: linux"), None);
+        assert_eq!(extract_version_triple(""), None);
+    }
+
+    #[test]
+    fn extract_version_triple_picks_first_triple_on_line() {
+        // Kernel lines look like `6.6.87.2-1` — also a valid triple match.
+        // Function returns the first dotted-integer triple found, which is
+        // expected (caller scans line-by-line and gates by `wsl_version_is_patched`
+        // which rejects major != 2).
+        assert_eq!(extract_version_triple("Kernel version: 6.6.87.2-1"), Some((6, 6, 87)));
+    }
+
+    // ─── wsl_version_is_patched ────────────────────────────────────────
+
+    #[test]
+    fn wsl_version_is_patched_on_26_channel() {
+        // 2.6.0 — just below fix on the 2.6 channel.
+        assert!(!wsl_version_is_patched((2, 6, 0)));
+        // 2.6.1 — exact fix.
+        assert!(wsl_version_is_patched((2, 6, 1)));
+        // 2.6.2 — above fix.
+        assert!(wsl_version_is_patched((2, 6, 2)));
+        // 2.7.3 — newer channel still considered patched.
+        assert!(wsl_version_is_patched((2, 7, 3)));
+    }
+
+    #[test]
+    fn wsl_version_is_patched_on_25_channel() {
+        // 2.5.9 — below fix on the 2.5 channel.
+        assert!(!wsl_version_is_patched((2, 5, 9)));
+        // 2.5.10 — exact fix.
+        assert!(wsl_version_is_patched((2, 5, 10)));
+        // 2.5.11 — above fix.
+        assert!(wsl_version_is_patched((2, 5, 11)));
+    }
+
+    #[test]
+    fn wsl_version_is_patched_below_25() {
+        assert!(!wsl_version_is_patched((2, 0, 0)));
+        assert!(!wsl_version_is_patched((2, 3, 99)));
+        assert!(!wsl_version_is_patched((2, 4, 5)));
+    }
+
+    #[test]
+    fn wsl_version_is_patched_major_outside_2() {
+        // Pre-WSL2 — refused by the v2 default check upstream; gate returns
+        // false here too. The probe doesn't claim WSL1 is patched.
+        assert!(!wsl_version_is_patched((1, 0, 0)));
+        // Hypothetical WSL3 — out of scope of CVE-2025-53788, treated as patched
+        // (newer kernel branch).
+        assert!(wsl_version_is_patched((3, 0, 0)));
+    }
+
+    // ─── decode_wsl_output ─────────────────────────────────────────────
+
+    #[test]
+    fn decode_wsl_output_handles_utf16_le() {
+        // "OK" in UTF-16LE: 0x4F 0x00 0x4B 0x00. Add some padding to trip
+        // the heuristic.
+        let bytes = b"O\0K\0\n\0a\0b\0";
+        assert_eq!(decode_wsl_output(bytes), "OK\nab");
+    }
+
+    #[test]
+    fn decode_wsl_output_handles_utf8() {
+        let bytes = b"hello world\n";
+        assert_eq!(decode_wsl_output(bytes), "hello world\n");
+    }
+
+    #[test]
+    fn decode_wsl_output_short_input_is_utf8() {
+        // < 4 bytes — heuristic bails to UTF-8.
+        assert_eq!(decode_wsl_output(b"ab"), "ab");
+        assert_eq!(decode_wsl_output(b""), "");
+    }
+
+    #[test]
+    fn decode_wsl_output_odd_length_is_utf8() {
+        // Odd length can't be UTF-16; falls back to lossy UTF-8.
+        let bytes = b"abc";
+        assert_eq!(decode_wsl_output(bytes), "abc");
+    }
+
+    #[test]
+    fn decode_wsl_output_invalid_utf8_is_lossy() {
+        // 0xFF is invalid UTF-8 start byte; lossy decoder substitutes U+FFFD.
+        let bytes = &[b'a', 0xFF, b'b'];
+        let out = decode_wsl_output(bytes);
+        assert!(out.contains('a') && out.contains('b'));
+        assert!(out.contains('\u{FFFD}'));
+    }
+
+    // ─── user_wslconfig_uses_mirrored_mode (parser core) ───────────────
+    //
+    // The real fn reads from %USERPROFILE%\.wslconfig — a host side effect.
+    // We test the parser logic via a thin shim that takes the file text.
+
+    fn wslconfig_text_uses_mirrored_mode(text: &str) -> bool {
+        for line in text.lines() {
+            let line = line.trim();
+            if line.starts_with('#') || line.starts_with(';') || line.is_empty() {
+                continue;
+            }
+            let lower = line.to_ascii_lowercase();
+            if lower.starts_with("networkingmode") && lower.contains("mirrored") {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn wslconfig_mirrored_classic_form() {
+        assert!(wslconfig_text_uses_mirrored_mode(
+            "[wsl2]\nnetworkingMode = mirrored\n"
+        ));
+    }
+
+    #[test]
+    fn wslconfig_mirrored_no_spaces() {
+        assert!(wslconfig_text_uses_mirrored_mode(
+            "[wsl2]\nnetworkingMode=mirrored\n"
+        ));
+    }
+
+    #[test]
+    fn wslconfig_mirrored_uppercase_value() {
+        assert!(wslconfig_text_uses_mirrored_mode(
+            "[wsl2]\nnetworkingMode = Mirrored\n"
+        ));
+    }
+
+    #[test]
+    fn wslconfig_nat_mode_is_not_mirrored() {
+        assert!(!wslconfig_text_uses_mirrored_mode(
+            "[wsl2]\nnetworkingMode = nat\n"
+        ));
+    }
+
+    #[test]
+    fn wslconfig_no_networking_key_is_not_mirrored() {
+        assert!(!wslconfig_text_uses_mirrored_mode(
+            "[wsl2]\nmemory = 8GB\nprocessors = 4\n"
+        ));
+    }
+
+    #[test]
+    fn wslconfig_commented_out_is_not_mirrored() {
+        assert!(!wslconfig_text_uses_mirrored_mode(
+            "[wsl2]\n# networkingMode = mirrored\n; networkingMode = mirrored\n"
+        ));
+    }
+
+    #[test]
+    fn wslconfig_empty_or_missing_is_not_mirrored() {
+        assert!(!wslconfig_text_uses_mirrored_mode(""));
+        assert!(!wslconfig_text_uses_mirrored_mode("   \n   \n"));
+    }
+
+    // ─── WSL_MIN_VERSION constants stay aligned with the gate ──────────
+
+    #[test]
+    fn min_version_constants_are_themselves_patched() {
+        // Sanity: bumping the constants should preserve the property that
+        // each fix-version satisfies the patched gate.
+        assert!(wsl_version_is_patched(WSL_MIN_VERSION_25));
+        assert!(wsl_version_is_patched(WSL_MIN_VERSION_26));
+    }
+
+    // ─── MED-3 regression: no future maintainer accidentally
+    //     re-introduces the WSLENV credential-leak pattern.
+    //
+    // The historical design used `WSLENV=ZIEE_PASSWD:ZIEE_GROUP` to
+    // propagate the synthetic identity into the distro. That leaked the
+    // contents into the in-distro environment, where a sandboxed
+    // process could read it via `/proc/<wsl.exe-relay-pid>/environ`
+    // (the relay PID is reachable from inside the distro by enumerating
+    // /proc — the audit's reachability proof). The fix replaced the env
+    // path with `write_file_into_distro`, which pipes content via stdin
+    // (no environment crossing).
+    //
+    // This test fails fast if a future commit re-introduces the WSLENV
+    // pattern, in either of two forms:
+    //   1. The literal env-var name `"WSLENV"` appearing outside the
+    //      audit/doc comments that intentionally describe the historic
+    //      footgun (allowlist of 4 known mentions in this file).
+    //   2. A `.env("WSLENV", …)` or `.env_remove("WSLENV")` call (any
+    //      direct env manipulation of WSLENV from this module).
+    //
+    // The allowlist of expected mentions is hard-coded; if you legitimately
+    // add a new audit-doc reference, bump the count. The principle is
+    // "every WSLENV mention is INTENTIONAL and reviewed."
+    #[test]
+    fn med3_wslenv_credential_leak_regression() {
+        let full_src = include_str!("wsl2.rs");
+        // Scan only the production code section (everything before the
+        // `#[cfg(test)] mod tests` marker). The test mod itself contains
+        // WSLENV strings in assertion messages + forbidden-pattern
+        // literals; scanning it would conflate "this regression test
+        // exists" with "the regression has re-occurred".
+        //
+        // Normalize CRLF→LF first so the split works regardless of
+        // whether git or the editor preserved Windows line endings.
+        let normalized = full_src.replace("\r\n", "\n");
+        let prod_src = normalized
+            .split_once("#[cfg(test)]\nmod tests {")
+            .map(|(prod, _)| prod)
+            .expect("test mod marker present");
+
+        // Forbidden: any active code path that sets WSLENV on a Command.
+        for forbidden in &[
+            ".env(\"WSLENV\"",
+            ".env_remove(\"WSLENV\"",
+            ".envs([(\"WSLENV\"",
+            "(\"WSLENV\", ",
+        ] {
+            assert!(
+                !prod_src.contains(forbidden),
+                "MED-3 regression: wsl2.rs production code contains `{forbidden}` — \
+                 propagating identity via WSLENV leaks credentials into \
+                 the in-distro environment. Use `write_file_into_distro` \
+                 to pipe content via stdin instead. See the audit comment \
+                 at the top of `provision_distro` and the doc on \
+                 `write_file_into_distro` for the correct pattern."
+            );
+        }
+
+        // The string `WSLENV` may legitimately appear in doc comments
+        // that explain the historic pattern. Count occurrences in the
+        // production section only; fail if it grows beyond the known
+        // allowlist — any new mention must be reviewed for intent.
+        const ALLOWED_DOC_MENTIONS: usize = 6;
+        let mention_count = prod_src.matches("WSLENV").count();
+        assert!(
+            mention_count <= ALLOWED_DOC_MENTIONS,
+            "MED-3 regression: wsl2.rs production code has {mention_count} \
+             occurrences of `WSLENV` but only {ALLOWED_DOC_MENTIONS} are \
+             expected (all in doc/audit comments that describe the historic \
+             credential-leak pattern). If a new mention is intentional doc \
+             text, bump ALLOWED_DOC_MENTIONS in this test. If it's active \
+             code, that's the regression — use `write_file_into_distro` \
+             instead."
+        );
+
+        // Synthetic identity bodies must continue to flow through
+        // `write_file_into_distro` (the safe stdin-pipe alternative).
+        assert!(
+            prod_src.contains("write_file_into_distro(distro, GUEST_PASSWD, SYNTHETIC_PASSWD"),
+            "MED-3 regression: synthetic passwd no longer written via \
+             write_file_into_distro. Revert to stdin-pipe (see the doc \
+             on write_file_into_distro)."
+        );
+        assert!(
+            prod_src.contains("write_file_into_distro(distro, GUEST_GROUP, SYNTHETIC_GROUP"),
+            "MED-3 regression: synthetic group no longer written via \
+             write_file_into_distro. Revert to stdin-pipe (see the doc \
+             on write_file_into_distro)."
+        );
     }
 }

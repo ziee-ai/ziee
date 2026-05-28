@@ -11,6 +11,8 @@ mod uv;
 mod bun;
 #[path = "build_helper/sandbox_runtime.rs"]
 mod sandbox_runtime;
+#[path = "build_helper/wsl2_agent.rs"]
+mod wsl2_agent;
 #[path = "build_helper/pgvector.rs"]
 mod pgvector_build;
 
@@ -152,6 +154,15 @@ fn setup_external_binaries() {
     // fallbacks in mac_vm.rs cover the dev path).
     if let Err(e) = sandbox_runtime::setup(&target, &binaries_dir, &out_dir) {
         eprintln!("Warning: Failed to assemble sandbox-runtime bundle: {}", e);
+    }
+
+    // Cross-compile the Linux sandbox-guest-agent for Windows release
+    // builds (no-op on every other target). Same fail-soft contract as
+    // the mac path: a dev box without Docker still builds the server;
+    // the runtime falls back to the sibling-of-exe agent path that
+    // `scripts/build-sandbox-agent-linux.sh` produces.
+    if let Err(e) = wsl2_agent::setup(&target, &binaries_dir, &out_dir) {
+        eprintln!("Warning: Failed to bundle WSL2 sandbox-guest-agent: {}", e);
     }
 
     // Setup pgvector — fail-soft. If the build fails (missing make,

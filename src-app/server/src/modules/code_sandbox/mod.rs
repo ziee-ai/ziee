@@ -23,6 +23,8 @@ pub mod backend;
 pub mod cgroup;
 pub mod config;
 pub mod embedded;
+#[cfg(target_os = "windows")]
+pub mod wsl2_agent_embedded;
 pub mod handlers;
 pub mod prefetch;
 pub mod runtime_fetch;

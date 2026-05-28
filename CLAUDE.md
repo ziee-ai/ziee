@@ -436,8 +436,27 @@ everything else (download, sha256 + cosign verify, mount, unmount).
    - **Windows:** `wsl --update` to ≥ 2.5.10 / 2.6.1 (`probe_host`
      enforces this; older runtimes are refused with a clear log). The
      server imports the per-flavor distro + provisions it on first
-     `execute_command` (bubblewrap + rsync from inside the distro);
-     no further host setup needed.
+     `execute_command` (bubblewrap + rsync from inside the distro).
+     **Two one-time admin-shell steps** the user must run before the
+     sandbox is usable:
+
+     1. Hyper-V Administrators group (resolves the WSL utility VM's
+        VmId via `hcsdiag list`):
+        ```powershell
+        net localgroup "Hyper-V Administrators" $env:USERNAME /add
+        # Sign out + back in so the group SID attaches at the next login.
+        ```
+
+     2. AF_HYPERV port-template GUID registration (the
+        `HV_GUID_VSOCK_TEMPLATE` family is not auto-routable from the
+        Windows host to a WSL guest's AF_VSOCK listener; vmcompute
+        rejects connect attempts with WSA 10060 unless the specific
+        GUID is registered):
+        ```powershell
+        scripts/register-sandbox-vsock-ports.ps1
+        # Registers ports 10001..10100 + runs `wsl --shutdown` so
+        # vmcompute picks up the new registrations at the next VM boot.
+        ```
 2. Set `code_sandbox.enabled: true` in config.
 3. Boot the server. The startup log shows
    `code_sandbox: registered (rootfs will mount on first execute_command)`.
