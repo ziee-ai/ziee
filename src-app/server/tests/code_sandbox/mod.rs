@@ -30,6 +30,7 @@ mod tier4_hardening;
 mod tier4_pid_ns_fallback;
 mod tier4_cgroup_fallback;
 mod tier4_seccomp;
+mod tier4_mcp_stdio_linux;
 
 // Tier 6 — full HTTP-E2E suite: boots a real TestServer with
 // code_sandbox enabled, posts real JSON-RPC, the handler runs real
