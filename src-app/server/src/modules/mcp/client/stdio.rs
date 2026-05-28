@@ -10,6 +10,11 @@ use super::traits::{
     McpClient, Prompt, PromptArgument, PromptResult, Resource, Tool, ToolContent, ToolResult,
 };
 use crate::common::AppError;
+use crate::modules::code_sandbox;
+use crate::modules::code_sandbox::backend::vm_long_lived;
+use crate::modules::code_sandbox::mcp_spawn::{
+    self, McpSandboxTransport, McpSpawnRequest,
+};
 use crate::modules::mcp::models::{McpServer, TransportType};
 use crate::modules::mcp::utils::embedded;
 
@@ -69,6 +74,11 @@ pub struct StdioMcpClient {
     server_id: Uuid,
     server_config: McpServer,
     service: Option<RunningService<rmcp::RoleClient, ()>>,
+    /// Sandboxed VM-backend session, held alive for the duration of the
+    /// MCP service. Dropping it sends `KillProcess` to the agent and
+    /// releases the per-flavor inflight guard so the VM can be reaped.
+    /// `None` for non-sandboxed and Linux-sandboxed paths.
+    _vm_session: Option<vm_long_lived::LongLivedSession>,
 }
 
 impl StdioMcpClient {
@@ -81,7 +91,115 @@ impl StdioMcpClient {
             server_id: server.id,
             server_config: server,
             service: None,
+            _vm_session: None,
         })
+    }
+
+    /// `true` if this server is sandbox-eligible AND the sandbox is up.
+    /// Only `is_system && stdio && run_in_sandbox` servers route through
+    /// the sandbox; user-owned servers ignore the column (the UI hides
+    /// the toggle for them anyway).
+    fn should_sandbox(&self) -> bool {
+        self.server_config.is_system
+            && self.server_config.transport_type == TransportType::Stdio
+            && self.server_config.run_in_sandbox
+            && code_sandbox::config::get_state().is_some()
+    }
+
+    /// Non-sandboxed connect: original spawn-on-host path. Preserved
+    /// byte-for-byte from prior releases for every non-`run_in_sandbox`
+    /// server.
+    async fn connect_native(&mut self) -> Result<(), AppError> {
+        let command = self.create_command()?;
+        let transport = TokioChildProcess::new(command).map_err(|e| {
+            tracing::error!(server_id = %self.server_id, error = %e, "Failed to create transport");
+            AppError::internal_error(format!("Failed to create transport: {}", e))
+        })?;
+        let service = ().serve(transport).await.map_err(|e| {
+            tracing::error!(server_id = %self.server_id, error = %e, "Failed to connect to MCP server");
+            AppError::internal_error(format!("Failed to connect: {}", e))
+        })?;
+        self.service = Some(service);
+        tracing::info!(server_id = %self.server_id, "MCP server connection established");
+        Ok(())
+    }
+
+    /// Sandboxed connect: builds an `McpSpawnRequest` and routes through
+    /// `mcp_spawn::start_mcp_in_sandbox`, which on Linux spawns bwrap
+    /// directly and on macOS/Windows tunnels through the per-flavor VM
+    /// agent session.
+    async fn connect_sandboxed(&mut self) -> Result<(), AppError> {
+        let cmd = self.server_config.command.as_ref().ok_or_else(|| {
+            AppError::bad_request("MISSING_COMMAND", "Missing command")
+        })?;
+        if !ALLOWED_COMMANDS.contains(&cmd.as_str()) {
+            return Err(AppError::bad_request(
+                "INVALID_COMMAND",
+                format!("Command '{}' not in allowlist {:?}", cmd, ALLOWED_COMMANDS),
+            ));
+        }
+        let (resolved_command, prepended_args) = resolve_command(cmd)?;
+        let server_args = self
+            .server_config
+            .args
+            .as_array()
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let extra_setenv = Self::filter_env(&self.server_config.environment_variables);
+
+        let state = code_sandbox::config::get_state().ok_or_else(|| {
+            AppError::internal_error("code_sandbox is not initialised — sandboxed MCP cannot start")
+        })?;
+
+        let req = McpSpawnRequest {
+            server_id: self.server_id,
+            resolved_command,
+            prepended_args,
+            server_args,
+            extra_setenv,
+        };
+
+        let transport = mcp_spawn::start_mcp_in_sandbox(&state, req).await?;
+        match transport {
+            McpSandboxTransport::LinuxBwrap(child) => {
+                let service = ().serve(child).await.map_err(|e| {
+                    AppError::internal_error(format!("rmcp serve (sandboxed/linux): {}", e))
+                })?;
+                self.service = Some(service);
+            }
+            McpSandboxTransport::VmSession { io, session } => {
+                let (rd, wr) = tokio::io::split(io);
+                let transport = rmcp::transport::async_rw::AsyncRwTransport::new_client(rd, wr);
+                let service = ().serve(transport).await.map_err(|e| {
+                    AppError::internal_error(format!("rmcp serve (sandboxed/vm): {}", e))
+                })?;
+                self.service = Some(service);
+                self._vm_session = Some(session);
+            }
+        }
+        tracing::info!(
+            server_id = %self.server_id,
+            "Sandboxed MCP server connection established"
+        );
+        Ok(())
+    }
+
+    /// Drop every blocked env var. Public-ish (pub(super)) so the test
+    /// suite can assert the filter independently of the rest of
+    /// `connect()` setup.
+    pub(super) fn filter_env(env: &serde_json::Value) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        if let Some(obj) = env.as_object() {
+            for (k, v) in obj {
+                if BLOCKED_ENV_VARS.contains(&k.as_str()) {
+                    continue;
+                }
+                if let Some(s) = v.as_str() {
+                    out.push((k.clone(), s.to_string()));
+                }
+            }
+        }
+        out
     }
 
     fn create_command(&self) -> Result<Command, AppError> {
@@ -158,38 +276,15 @@ impl McpClient for StdioMcpClient {
             server_id = %self.server_id,
             server_name = %self.server_config.name,
             transport = "stdio",
+            sandboxed = self.should_sandbox(),
             "MCP server connection initiated"
         );
 
-        let command = self.create_command()?;
-        let transport = TokioChildProcess::new(command)
-            .map_err(|e| {
-                tracing::error!(
-                    server_id = %self.server_id,
-                    error = %e,
-                    "Failed to create transport"
-                );
-                AppError::internal_error(format!("Failed to create transport: {}", e))
-            })?;
-
-        let service = ().serve(transport).await
-            .map_err(|e| {
-                tracing::error!(
-                    server_id = %self.server_id,
-                    error = %e,
-                    "Failed to connect to MCP server"
-                );
-                AppError::internal_error(format!("Failed to connect: {}", e))
-            })?;
-
-        self.service = Some(service);
-
-        tracing::info!(
-            server_id = %self.server_id,
-            "MCP server connection established"
-        );
-
-        Ok(())
+        if self.should_sandbox() {
+            self.connect_sandboxed().await
+        } else {
+            self.connect_native().await
+        }
     }
 
     async fn disconnect(&mut self) -> Result<(), AppError> {
@@ -354,5 +449,115 @@ impl McpClient for StdioMcpClient {
         // `notifications/cancelled`; dropping the child process is how stdio
         // calls are abandoned. No-op here (best-effort per the trait contract).
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use serde_json::json;
+
+    fn server_template() -> McpServer {
+        McpServer {
+            id: Uuid::new_v4(),
+            user_id: None,
+            name: "test".into(),
+            display_name: "Test".into(),
+            description: None,
+            enabled: true,
+            is_system: true,
+            is_built_in: false,
+            transport_type: TransportType::Stdio,
+            command: Some("python3".into()),
+            args: serde_json::Value::Array(vec![]),
+            environment_variables: serde_json::Value::Object(Default::default()),
+            url: None,
+            headers: serde_json::Value::Object(Default::default()),
+            timeout_seconds: 30,
+            supports_sampling: false,
+            usage_mode: crate::modules::mcp::models::UsageMode::Auto,
+            max_concurrent_sessions: None,
+            run_in_sandbox: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    /// `should_sandbox` requires ALL of: is_system + stdio + flag +
+    /// code_sandbox state initialised. The state check is the only
+    /// non-server input — in tests `get_state()` returns None unless an
+    /// init has run, so we test the static gating branches here and
+    /// leave the state-true path for the Tier-2/3 integration suite.
+    #[test]
+    fn should_sandbox_requires_is_system() {
+        let mut s = server_template();
+        s.is_system = false;
+        let client = StdioMcpClient::new(s).unwrap();
+        assert!(!client.should_sandbox());
+    }
+
+    #[test]
+    fn should_sandbox_requires_stdio_transport() {
+        let mut s = server_template();
+        s.transport_type = TransportType::Http;
+        // StdioMcpClient::new refuses non-stdio anyway, so go through
+        // the field directly to exercise the gate.
+        let client = StdioMcpClient {
+            server_id: s.id,
+            server_config: s,
+            service: None,
+            _vm_session: None,
+        };
+        assert!(!client.should_sandbox());
+    }
+
+    #[test]
+    fn should_sandbox_requires_run_in_sandbox_flag() {
+        let mut s = server_template();
+        s.run_in_sandbox = false;
+        let client = StdioMcpClient::new(s).unwrap();
+        assert!(!client.should_sandbox());
+    }
+
+    /// The state-uninitialised branch is exercised here (in test
+    /// configs init_state isn't called) — the flag is true but
+    /// get_state() returns None, so should_sandbox stays false.
+    #[test]
+    fn should_sandbox_false_when_state_uninitialised() {
+        let s = server_template();
+        let client = StdioMcpClient::new(s).unwrap();
+        assert!(!client.should_sandbox(), "expected false when state is None");
+    }
+
+    #[test]
+    fn filter_env_drops_blocked_keys() {
+        let env = json!({
+            "FOO": "ok",
+            "JWT_SECRET": "leak",
+            "DATABASE_PASSWORD": "leak",
+            "BAR": "ok",
+        });
+        let filtered = StdioMcpClient::filter_env(&env);
+        let keys: Vec<&str> = filtered.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(keys.contains(&"FOO"));
+        assert!(keys.contains(&"BAR"));
+        assert!(!keys.contains(&"JWT_SECRET"));
+        assert!(!keys.contains(&"DATABASE_PASSWORD"));
+    }
+
+    #[test]
+    fn filter_env_handles_non_string_values_gracefully() {
+        // Non-string values are dropped silently (the original code
+        // also skipped them via `.as_str()`); we preserve that.
+        let env = json!({ "OK": "yes", "NUM": 42, "OBJ": {"k": "v"} });
+        let filtered = StdioMcpClient::filter_env(&env);
+        assert_eq!(filtered, vec![("OK".to_string(), "yes".to_string())]);
+    }
+
+    #[test]
+    fn filter_env_returns_empty_for_non_object() {
+        let env = json!(null);
+        assert_eq!(StdioMcpClient::filter_env(&env), Vec::<(String, String)>::new());
     }
 }

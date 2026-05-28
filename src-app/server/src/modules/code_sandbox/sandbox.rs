@@ -605,7 +605,7 @@ pub fn workspace_attachment_path(workspace_root: &Path, file_id: Uuid) -> PathBu
 // bind-mounted read-only over /etc/passwd /etc/group)
 // --------------------------------------------------------------------
 
-struct SyntheticIdentity {
+pub(crate) struct SyntheticIdentity {
     passwd: PathBuf,
     group: PathBuf,
     /// Empty regular file used as the bind source for the DANGEROUS_DOTFILES
@@ -705,6 +705,16 @@ impl SyntheticIdentity {
     fn mask_path(&self) -> &Path {
         &self.mask_path
     }
+
+    // Crate-public accessors exposed so the MCP-in-sandbox spawn path
+    // (`build_mcp_sandbox_command`) can build a `HardeningArgvParams`
+    // without redeclaring the identity-file ownership.
+    pub(crate) fn ensure_for(workspace_root: &Path) -> Result<Self, AppError> {
+        Self::ensure(workspace_root)
+    }
+    pub(crate) fn passwd(&self) -> &Path { &self.passwd }
+    pub(crate) fn group(&self) -> &Path { &self.group }
+    pub(crate) fn mask(&self) -> &Path { &self.mask_path }
 }
 
 /// Write `content` to `path` only if the file doesn't already exist
@@ -723,7 +733,7 @@ fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
 // --------------------------------------------------------------------
 
 #[cfg(target_os = "linux")]
-struct SeccompPipe {
+pub(crate) struct SeccompPipe {
     read_fd: RawFd,
     /// Stable fd number we dup2 the read end to inside the bwrap child
     /// in pre_exec. We pick fd 7 (out of stdio range, plausibly free).
@@ -815,6 +825,15 @@ impl SeccompPipe {
     fn target_fd(&self) -> i32 {
         self.target_fd
     }
+
+    // Crate-public accessors used by the MCP-in-sandbox spawn path.
+    // Keep the original `read_fd` / `target_fd` private so refactors of
+    // the one-shot exec path don't accidentally expose new surface.
+    pub(crate) fn install_pub(bpf: Arc<Vec<u8>>) -> Result<Self, AppError> {
+        Self::install(bpf)
+    }
+    pub(crate) fn read_fd_pub(&self) -> RawFd { self.read_fd }
+    pub(crate) fn target_fd_pub(&self) -> i32 { self.target_fd }
 }
 
 #[cfg(target_os = "linux")]

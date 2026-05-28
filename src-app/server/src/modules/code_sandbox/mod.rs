@@ -35,6 +35,7 @@ pub mod probes;
 pub mod repository;
 pub mod resource_limits;
 pub mod resource_limits_cache;
+pub mod mcp_spawn;
 pub mod routes;
 pub mod sandbox;
 pub mod streaming;
