@@ -9,6 +9,15 @@ use axum::routing::{get, post};
 use super::handlers::*;
 
 /// Public + user auth routes — mounted at `/auth`.
+///
+/// NOTE: `GET /auth/config`, `POST /auth/login-password-only`, and
+/// the magic-link `issue` + `exchange` endpoints all live in the
+/// **desktop tauri crate** (see
+/// `desktop/tauri/src/modules/{remote_access,magic_link}/`). They
+/// depend on the `remote_access_settings` and `magic_link_tokens`
+/// tables that only the desktop binary migrates, so housing them
+/// outside the server crate keeps server-only deployments lean
+/// (no ngrok dep, no orphaned admin-only routes).
 pub fn auth_routes() -> ApiRouter {
     ApiRouter::new()
         .api_route("/register", post_with(register, register_docs))

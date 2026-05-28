@@ -192,6 +192,7 @@ yanked = false
             ),
         ],
         sandbox_cache_tempdir: None,
+                use_desktop_binary: false,
     };
     let server = TestServer::start_with_options(opts).await;
 

@@ -53,6 +53,12 @@ export interface AttachFileRequest {
   file_id: string
 }
 
+export interface AuthConfigResponse {
+  hide_username: boolean
+  magic_link_enabled: boolean
+  password_auth_enabled: boolean
+}
+
 export interface AuthProviderResponse {
   config: any
   created_at: string
@@ -121,6 +127,11 @@ export interface CallToolRequest {
 export interface CallToolResponse {
   content: ToolContent[]
   is_error: boolean
+}
+
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
 }
 
 export interface ChatStreamChunk {
@@ -963,6 +974,15 @@ export interface LoopSettings {
   stop_when_tools_called?: ToolIdentifier[]
 }
 
+export interface MagicLinkExchangeRequest {
+  token: string
+}
+
+export interface MagicLinkIssueResponse {
+  expires_at: string
+  token: string
+}
+
 export interface McpConfig {
   mcp_servers: McpServerConfig[]
 }
@@ -1284,6 +1304,10 @@ export interface PaginationQuery5 {
   project_id?: string
 }
 
+export interface PasswordOnlyLoginRequest {
+  password: string
+}
+
 export interface PendingApprovalsResponse {
   approvals: ToolUseApproval[]
 }
@@ -1446,6 +1470,27 @@ export interface RegisterRequest {
   email: string
   password: string
   username: string
+}
+
+export interface RemoteAccessSettingsResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  created_at: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  updated_at: string
+}
+
+export interface RemoteAccessStatusResponse {
+  auth_token_set: boolean
+  auto_start_tunnel: boolean
+  last_error?: string
+  ngrok_domain?: string
+  password_auth_enabled: boolean
+  password_rotated: boolean
+  public_url?: string
+  started_at?: string
+  tunnel_state: TunnelStateKind
 }
 
 export interface RepositoryAuthConfig {
@@ -1659,6 +1704,10 @@ export interface ServerGroupsRequest {
   group_ids: string[]
 }
 
+export interface SetAdminPasswordRequest {
+  new_password: string
+}
+
 export interface SetMcpServerOAuthConfigRequest {
   client_id: string
   client_secret: string
@@ -1803,6 +1852,13 @@ export interface ToolUseApproval {
 
 export type TransportType = 'stdio' | 'http' | 'sse'
 
+export interface TunnelStartResponse {
+  public_url: string
+  started_at: string
+}
+
+export type TunnelStateKind = 'idle' | 'starting' | 'connected' | 'error'
+
 export interface UpdateAssistantRequest {
   description?: string
   enabled?: boolean
@@ -1937,6 +1993,13 @@ export interface UpdateProjectRequest {
   name?: string
 }
 
+export interface UpdateRemoteAccessSettingsRequest {
+  auto_start_tunnel?: boolean
+  ngrok_auth_token?: string
+  ngrok_domain?: string
+  password_auth_enabled?: boolean
+}
+
 export interface UpdateUserMemorySettingsRequest {
   extraction_enabled?: boolean
   extraction_model_id?: string
@@ -1991,6 +2054,7 @@ export interface User {
   is_active: boolean
   is_admin: boolean
   last_login_at?: string
+  password_changed_at?: string
   permissions: string[]
   updated_at: string
   username: string
@@ -2153,6 +2217,8 @@ export enum Permissions {
   ProjectsDelete = 'projects::delete',
   ProjectsEdit = 'projects::edit',
   ProjectsRead = 'projects::read',
+  RemoteAccessManage = 'remote_access::manage',
+  RemoteAccessRead = 'remote_access::read',
   RuntimeVersionCreate = 'llm_local_runtime::create',
   RuntimeVersionDelete = 'llm_local_runtime::delete',
   RuntimeVersionRead = 'llm_local_runtime::versions_read',
@@ -2254,6 +2320,8 @@ export const PermissionDescriptions: Record<string, string> = {
   ProjectsDelete: 'Delete chat projects',
   ProjectsEdit: 'Edit chat projects (incl. attach/detach files)',
   ProjectsRead: 'Read chat projects',
+  RemoteAccessManage: 'Save the ngrok auth token / custom domain, toggle auto-start, toggle password authentication, start/stop the tunnel, and issue magic-link login tokens.',
+  RemoteAccessRead: 'Read remote-access settings, tunnel status, and current public URL.',
   RuntimeVersionCreate: 'Download and register new runtime versions',
   RuntimeVersionDelete: 'Delete runtime versions',
   RuntimeVersionRead: 'View runtime versions and check for updates',
@@ -2287,10 +2355,14 @@ export const ApiEndpoints = {
   'AssistantTemplate.getDefault': 'GET /api/assistant-templates/default',
   'AssistantTemplate.list': 'GET /api/assistant-templates',
   'AssistantTemplate.update': 'PUT /api/assistant-templates/{id}',
+  'Auth.getConfig': 'GET /api/auth/config',
   'Auth.linkAccount': 'POST /api/auth/link-account',
   'Auth.listProviders': 'GET /api/auth/providers',
   'Auth.login': 'POST /api/auth/login',
+  'Auth.loginPasswordOnly': 'POST /api/auth/login-password-only',
   'Auth.logout': 'POST /api/auth/logout',
+  'Auth.magicLinkExchange': 'POST /api/auth/magic-link/exchange',
+  'Auth.magicLinkIssue': 'POST /api/auth/magic-link/issue',
   'Auth.me': 'GET /api/auth/me',
   'Auth.refresh': 'POST /api/auth/refresh',
   'Auth.register': 'POST /api/auth/register',
@@ -2459,6 +2531,12 @@ export const ApiEndpoints = {
   'Project.update': 'PUT /api/projects/{id}',
   'Project.updateMcpSettings': 'PUT /api/projects/{id}/mcp-settings',
   'Project.uploadAndAttachFile': 'POST /api/projects/{id}/files/upload',
+  'RemoteAccess.getSettings': 'GET /api/remote-access/settings',
+  'RemoteAccess.getStatus': 'GET /api/remote-access/status',
+  'RemoteAccess.setAdminPassword': 'POST /api/remote-access/admin-password',
+  'RemoteAccess.startTunnel': 'POST /api/remote-access/tunnel/start',
+  'RemoteAccess.stopTunnel': 'POST /api/remote-access/tunnel/stop',
+  'RemoteAccess.updateSettings': 'PUT /api/remote-access/settings',
   'RuntimeVersion.checkUpdates': 'GET /api/local-runtime/versions/{engine}/check-updates',
   'RuntimeVersion.delete': 'DELETE /api/local-runtime/versions/{version_id}',
   'RuntimeVersion.download': 'POST /api/local-runtime/versions/download',
@@ -2480,7 +2558,8 @@ export const ApiEndpoints = {
   'UserGroup.getMembers': 'GET /api/groups/{group_id}/members',
   'UserGroup.list': 'GET /api/groups',
   'UserGroup.removeUser': 'DELETE /api/groups/{user_id}/{group_id}/remove',
-  'UserGroup.update': 'POST /api/groups/{group_id}'
+  'UserGroup.update': 'POST /api/groups/{group_id}',
+  'Users.changeOwnPassword': 'POST /api/users/me/password'
 } as const
 
 // API endpoint parameters
@@ -2499,10 +2578,14 @@ export type ApiEndpointParameters = {
   'AssistantTemplate.getDefault': void
   'AssistantTemplate.list': { limit: number; page: number }
   'AssistantTemplate.update': { id: string } & UpdateAssistantRequest
+  'Auth.getConfig': void
   'Auth.linkAccount': LinkAccountRequest
   'Auth.listProviders': void
   'Auth.login': LoginRequest
+  'Auth.loginPasswordOnly': PasswordOnlyLoginRequest
   'Auth.logout': void
+  'Auth.magicLinkExchange': MagicLinkExchangeRequest
+  'Auth.magicLinkIssue': void
   'Auth.me': void
   'Auth.refresh': RefreshTokenRequest
   'Auth.register': RegisterRequest
@@ -2671,6 +2754,12 @@ export type ApiEndpointParameters = {
   'Project.update': { id: string } & UpdateProjectRequest
   'Project.updateMcpSettings': { id: string } & UpdateProjectMcpSettingsRequest
   'Project.uploadAndAttachFile': { id: string } & FormData
+  'RemoteAccess.getSettings': void
+  'RemoteAccess.getStatus': void
+  'RemoteAccess.setAdminPassword': SetAdminPasswordRequest
+  'RemoteAccess.startTunnel': void
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': UpdateRemoteAccessSettingsRequest
   'RuntimeVersion.checkUpdates': { engine: string }
   'RuntimeVersion.delete': { version_id: string; remove_binary?: boolean }
   'RuntimeVersion.download': DownloadVersionRequest
@@ -2693,6 +2782,7 @@ export type ApiEndpointParameters = {
   'UserGroup.list': PaginationQuery
   'UserGroup.removeUser': { user_id: string; group_id: string }
   'UserGroup.update': { group_id: string } & UpdateGroupRequest
+  'Users.changeOwnPassword': ChangePasswordRequest
 }
 
 // API endpoint responses
@@ -2711,10 +2801,14 @@ export type ApiEndpointResponses = {
   'AssistantTemplate.getDefault': Assistant
   'AssistantTemplate.list': AssistantListResponse
   'AssistantTemplate.update': Assistant
+  'Auth.getConfig': AuthConfigResponse
   'Auth.linkAccount': AuthResponse
   'Auth.listProviders': PublicProvidersResponse
   'Auth.login': AuthResponse
+  'Auth.loginPasswordOnly': AuthResponse
   'Auth.logout': void
+  'Auth.magicLinkExchange': AuthResponse
+  'Auth.magicLinkIssue': MagicLinkIssueResponse
   'Auth.me': MeResponse
   'Auth.refresh': TokenPair
   'Auth.register': AuthResponse
@@ -2883,6 +2977,12 @@ export type ApiEndpointResponses = {
   'Project.update': Project
   'Project.updateMcpSettings': Project
   'Project.uploadAndAttachFile': File
+  'RemoteAccess.getSettings': RemoteAccessSettingsResponse
+  'RemoteAccess.getStatus': RemoteAccessStatusResponse
+  'RemoteAccess.setAdminPassword': void
+  'RemoteAccess.startTunnel': TunnelStartResponse
+  'RemoteAccess.stopTunnel': void
+  'RemoteAccess.updateSettings': RemoteAccessSettingsResponse
   'RuntimeVersion.checkUpdates': AvailableUpdatesResponse
   'RuntimeVersion.delete': void
   'RuntimeVersion.download': DownloadVersionResponse
@@ -2905,6 +3005,7 @@ export type ApiEndpointResponses = {
   'UserGroup.list': GroupListResponse
   'UserGroup.removeUser': void
   'UserGroup.update': Group
+  'Users.changeOwnPassword': void
 }
 
 // Type helpers

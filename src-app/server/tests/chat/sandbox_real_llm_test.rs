@@ -116,6 +116,7 @@ async fn enabled_test_server_with_anthropic() -> Option<TestServer> {
                 sandbox_cgroup_parent: String::new(),
                 extra_env: vec![("ANTHROPIC_API_KEY".into(), api_key)],
                 sandbox_cache_tempdir: None,
+                use_desktop_binary: false,
             })
             .await,
         );
@@ -133,6 +134,7 @@ async fn enabled_test_server_with_anthropic() -> Option<TestServer> {
                 sandbox_cgroup_parent: String::new(),
                 extra_env: env,
                 sandbox_cache_tempdir: Some(std::sync::Arc::new(cache)),
+                use_desktop_binary: false,
             })
             .await,
         );

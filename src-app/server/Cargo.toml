@@ -79,6 +79,9 @@ linkme = "0.3"
 dashmap = "6"
 config = "0.15.18"
 
+# (ngrok dep moved to desktop/tauri/Cargo.toml — the remote_access
+# module that uses it lives entirely in the desktop crate now.)
+
 # Utilities
 time = "0.3"
 bcrypt = "0.17.1"

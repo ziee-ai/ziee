@@ -118,6 +118,14 @@ libc = "0.2"
 include_dir = "0.7"
 include-flate = "0.3"
 
+# Remote access tunnel — embedded ngrok client (Remote Access feature).
+# `ngrok` provides the agent that connects to ngrok's edge from inside
+# the desktop process and forwards traffic to the local backend; we
+# wrap it behind the `TunnelDriver` trait in
+# server/src/modules/remote_access/tunnel.rs so tests can substitute a
+# `MockTunnelDriver` that needs no network.
+ngrok = "0.14"
+
 # Test infra
 serial_test = "3.2"
 mockall = "0.13"

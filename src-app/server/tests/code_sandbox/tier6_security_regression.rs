@@ -132,6 +132,7 @@ async fn e2e_clearenv_wipes_server_env_from_sandbox() {
             "this-must-not-leak-to-sandbox".into(),
         )],
         sandbox_cache_tempdir: None,
+                use_desktop_binary: false,
     })
     .await;
 
