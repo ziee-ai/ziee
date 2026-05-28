@@ -170,7 +170,7 @@ export function SandboxResourceLimitsSection() {
             * so the form reads as one cohesive surface, matching
             * the visual rhythm of HardwareSettings / MemoryAdmin
             * forms. */}
-          <Divider orientation="left" orientationMargin={0}>
+          <Divider titlePlacement="start" orientationMargin={0}>
             <Typography.Text type="secondary" className="text-xs">
               Memory
             </Typography.Text>
@@ -221,7 +221,7 @@ export function SandboxResourceLimitsSection() {
             </Col>
           </Row>
 
-          <Divider orientation="left" orientationMargin={0}>
+          <Divider titlePlacement="start" orientationMargin={0}>
             <Typography.Text type="secondary" className="text-xs">
               Processes &amp; CPU
             </Typography.Text>
@@ -312,7 +312,7 @@ export function SandboxResourceLimitsSection() {
             </Col>
           </Row>
 
-          <Divider orientation="left" orientationMargin={0}>
+          <Divider titlePlacement="start" orientationMargin={0}>
             <Typography.Text type="secondary" className="text-xs">
               Files &amp; descriptors
             </Typography.Text>
@@ -352,7 +352,7 @@ export function SandboxResourceLimitsSection() {
             </Col>
           </Row>
 
-          <Divider orientation="left" orientationMargin={0}>
+          <Divider titlePlacement="start" orientationMargin={0}>
             <Typography.Text type="secondary" className="text-xs">
               VM lifecycle (macOS + Windows)
             </Typography.Text>
@@ -394,7 +394,7 @@ export function SandboxResourceLimitsSection() {
             </Col>
           </Row>
 
-          <Divider orientation="left" orientationMargin={0}>
+          <Divider titlePlacement="start" orientationMargin={0}>
             <Typography.Text type="secondary" className="text-xs">
               macOS libkrun VM sizing
             </Typography.Text>

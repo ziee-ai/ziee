@@ -18,16 +18,18 @@
  */
 
 import { useCallback } from 'react'
-import { isTauriView } from '@ziee/desktop/core/platform'
+import { isTauriView, isLinux } from '@ziee/desktop/core/platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const INTERACTIVE_SEL =
-  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger'
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger, .ant-segmented, .ant-segmented-item'
 
 export function SidebarHeaderSpacer() {
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTauriView) return
+      // Linux: WM-native chrome handles drag — see TauriDragRegion.tsx.
+      if (isLinux) return
       if (e.button !== 0) return
       const target = e.target as Element
       if (target.closest?.(INTERACTIVE_SEL)) return
@@ -40,6 +42,7 @@ export function SidebarHeaderSpacer() {
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTauriView) return
+      if (isLinux) return
       const target = e.target as Element
       if (target.closest?.(INTERACTIVE_SEL)) return
       void getCurrentWindow().toggleMaximize()
