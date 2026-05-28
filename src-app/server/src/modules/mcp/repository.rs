@@ -273,15 +273,17 @@ pub async fn create_user_mcp_server(
             user_id, name, display_name, description,
             transport_type, command, args, environment_variables,
             url, headers, timeout_seconds, enabled, is_system,
-            supports_sampling, usage_mode, max_concurrent_sessions
+            supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false,
-                $13, $14, $15)
+                $13, $14, $15, false)
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         "#,
         user_id,
@@ -331,6 +333,7 @@ pub async fn create_user_mcp_server(
         supports_sampling: row.supports_sampling,
         usage_mode: UsageMode::from_str(&row.usage_mode)?,
         max_concurrent_sessions: row.max_concurrent_sessions,
+        run_in_sandbox: row.run_in_sandbox,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -353,6 +356,7 @@ pub async fn get_user_mcp_server(
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1 AND user_id = $2 AND is_system = false
@@ -384,6 +388,7 @@ pub async fn get_user_mcp_server(
         supports_sampling: r.supports_sampling,
         usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
         max_concurrent_sessions: r.max_concurrent_sessions,
+        run_in_sandbox: r.run_in_sandbox,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
     }))
@@ -405,6 +410,7 @@ pub async fn list_user_mcp_servers(
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         FROM mcp_servers
         WHERE user_id = $1 AND is_system = false
@@ -441,6 +447,7 @@ pub async fn list_user_mcp_servers(
             supports_sampling: r.supports_sampling,
             usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
             max_concurrent_sessions: r.max_concurrent_sessions,
+            run_in_sandbox: r.run_in_sandbox,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
@@ -497,6 +504,7 @@ pub async fn update_user_mcp_server(
             supports_sampling = COALESCE($13, supports_sampling),
             usage_mode = COALESCE($14, usage_mode),
             max_concurrent_sessions = COALESCE($15, max_concurrent_sessions),
+            run_in_sandbox = COALESCE($16, run_in_sandbox),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2 AND is_system = false
         RETURNING
@@ -504,6 +512,7 @@ pub async fn update_user_mcp_server(
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         "#,
         id,
@@ -521,6 +530,7 @@ pub async fn update_user_mcp_server(
         request.supports_sampling,
         request.usage_mode.as_ref().map(|m| m.to_string()),
         request.max_concurrent_sessions,
+        request.run_in_sandbox,
     )
     .fetch_one(pool)
     .await
@@ -556,6 +566,7 @@ pub async fn update_user_mcp_server(
         supports_sampling: row.supports_sampling,
         usage_mode: UsageMode::from_str(&row.usage_mode)?,
         max_concurrent_sessions: row.max_concurrent_sessions,
+        run_in_sandbox: row.run_in_sandbox,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -618,15 +629,17 @@ pub async fn create_system_mcp_server(
             name, display_name, description,
             transport_type, command, args, environment_variables,
             url, headers, timeout_seconds, enabled, is_system,
-            supports_sampling, usage_mode, max_concurrent_sessions
+            supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true,
-                $12, $13, $14)
+                $12, $13, $14, $15)
         RETURNING
             id, user_id, name, display_name, description,
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         "#,
         request.name,
@@ -643,6 +656,7 @@ pub async fn create_system_mcp_server(
         supports_sampling,
         usage_mode.to_string(),
         request.max_concurrent_sessions,
+        request.run_in_sandbox.unwrap_or(false),
     )
     .fetch_one(pool)
     .await
@@ -675,6 +689,7 @@ pub async fn create_system_mcp_server(
         supports_sampling: row.supports_sampling,
         usage_mode: UsageMode::from_str(&row.usage_mode)?,
         max_concurrent_sessions: row.max_concurrent_sessions,
+        run_in_sandbox: row.run_in_sandbox,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -783,6 +798,7 @@ pub async fn get_any_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpSer
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1
@@ -811,6 +827,7 @@ pub async fn get_any_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<McpSer
         supports_sampling: r.supports_sampling,
         usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
         max_concurrent_sessions: r.max_concurrent_sessions,
+        run_in_sandbox: r.run_in_sandbox,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
     }))
@@ -824,6 +841,7 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         FROM mcp_servers
         WHERE id = $1 AND is_system = true
@@ -854,6 +872,7 @@ pub async fn get_system_mcp_server(pool: &PgPool, id: Uuid) -> Result<Option<Mcp
         supports_sampling: r.supports_sampling,
         usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
         max_concurrent_sessions: r.max_concurrent_sessions,
+        run_in_sandbox: r.run_in_sandbox,
         created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
         updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
     }))
@@ -876,6 +895,7 @@ pub async fn list_system_mcp_servers(
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         FROM mcp_servers
         WHERE is_system = true
@@ -918,6 +938,7 @@ pub async fn list_system_mcp_servers(
             supports_sampling: r.supports_sampling,
             usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
             max_concurrent_sessions: r.max_concurrent_sessions,
+            run_in_sandbox: r.run_in_sandbox,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
@@ -983,6 +1004,7 @@ pub async fn update_system_mcp_server(
             supports_sampling = COALESCE($12, supports_sampling),
             usage_mode = COALESCE($13, usage_mode),
             max_concurrent_sessions = COALESCE($14, max_concurrent_sessions),
+            run_in_sandbox = COALESCE($15, run_in_sandbox),
             updated_at = NOW()
         WHERE id = $1 AND is_system = true
         RETURNING
@@ -990,6 +1012,7 @@ pub async fn update_system_mcp_server(
             enabled, is_system, is_built_in, transport_type,
             command, args, environment_variables, url, headers, timeout_seconds,
             supports_sampling, usage_mode, max_concurrent_sessions,
+            run_in_sandbox,
             created_at, updated_at
         "#,
         id,
@@ -1006,6 +1029,7 @@ pub async fn update_system_mcp_server(
         request.supports_sampling,
         request.usage_mode.as_ref().map(|m| m.to_string()),
         request.max_concurrent_sessions,
+        request.run_in_sandbox,
     )
     .fetch_one(pool)
     .await
@@ -1041,6 +1065,7 @@ pub async fn update_system_mcp_server(
         supports_sampling: row.supports_sampling,
         usage_mode: UsageMode::from_str(&row.usage_mode)?,
         max_concurrent_sessions: row.max_concurrent_sessions,
+        run_in_sandbox: row.run_in_sandbox,
         created_at: DateTime::from_timestamp(row.created_at.unix_timestamp(), 0)
             .ok_or_else(|| AppError::internal_error("Invalid created_at timestamp"))?,
         updated_at: DateTime::from_timestamp(row.updated_at.unix_timestamp(), 0)
@@ -1104,6 +1129,7 @@ pub async fn get_system_servers_for_group(
                s.enabled, s.is_system, s.is_built_in, s.transport_type,
                s.command, s.args, s.environment_variables, s.url, s.headers, s.timeout_seconds,
                s.supports_sampling, s.usage_mode, s.max_concurrent_sessions,
+               s.run_in_sandbox,
                s.created_at, s.updated_at
         FROM mcp_servers s
         INNER JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
@@ -1138,6 +1164,7 @@ pub async fn get_system_servers_for_group(
             supports_sampling: r.supports_sampling,
             usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
             max_concurrent_sessions: r.max_concurrent_sessions,
+            run_in_sandbox: r.run_in_sandbox,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
@@ -1333,6 +1360,7 @@ pub async fn list_accessible_mcp_servers(
             s.enabled, s.is_system, s.is_built_in, s.transport_type,
             s.command, s.args, s.environment_variables, s.url, s.headers, s.timeout_seconds,
             s.supports_sampling, s.usage_mode, s.max_concurrent_sessions,
+            s.run_in_sandbox,
             s.created_at, s.updated_at
         FROM mcp_servers s
         LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
@@ -1381,6 +1409,7 @@ pub async fn list_accessible_mcp_servers(
             supports_sampling: r.supports_sampling,
             usage_mode: UsageMode::from_str(&r.usage_mode).unwrap(),
             max_concurrent_sessions: r.max_concurrent_sessions,
+            run_in_sandbox: r.run_in_sandbox,
             created_at: DateTime::from_timestamp(r.created_at.unix_timestamp(), 0).unwrap(),
             updated_at: DateTime::from_timestamp(r.updated_at.unix_timestamp(), 0).unwrap(),
         })
