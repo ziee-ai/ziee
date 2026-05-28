@@ -29,14 +29,20 @@
 import { useRef, useLayoutEffect, useCallback } from 'react'
 import { theme } from 'antd'
 import { Stores } from '@/core/stores'
-import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
+import { isTauriView, isMacOS, isLinux } from '@ziee/desktop/core/platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 // Selector matching anything we'd consider an "interactive" descendant.
 // A mousedown on any of these (or their inner content) should NOT
 // initiate a window drag — the click belongs to the control.
 const INTERACTIVE_SEL =
-  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger'
+  // antd's <Segmented> renders `<label class="ant-segmented-item">` with a
+  // hidden <input type="radio"> inside; the visible label div doesn't
+  // match `input` via closest(), so we add `.ant-segmented-item` (and the
+  // wrapping `.ant-segmented`) explicitly. The HubPage tabs sit inside
+  // HeaderBarContainer — without this exemption, mousedown initiates a
+  // window drag and the tab-change click never fires.
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger, .ant-segmented, .ant-segmented-item'
 
 interface HeaderBarContainerProps {
   children?: React.ReactNode
@@ -66,9 +72,14 @@ export const HeaderBarContainer = ({
         ? 48
         : 12
 
-  // Windows/Linux Tauri: ~100px on the right to clear the minimize /
-  // maximize / close trio. Off in fullscreen. Web: 12.
-  const paddingRight = isTauriView && !isFullscreen && !isMacOS ? 100 : 12
+  // Windows Tauri: ~100px on the right to clear decorum's overlay
+  // close/min/max trio (drawn INSIDE the webview at top-right).
+  // Linux Tauri: native WM chrome — the close/min/max trio lives
+  // OUTSIDE the webview (in the WM titlebar above), so no reservation
+  // needed. macOS: traffic lights are top-LEFT; right side stays at 12.
+  // Off in fullscreen. Web: 12.
+  const paddingRight =
+    isTauriView && !isFullscreen && !isMacOS && !isLinux ? 100 : 12
 
   // Coalesced style write — sidebar-collapse animates over ~200ms and
   // triggers many renders; writing padding inline on every render would
@@ -107,6 +118,11 @@ export const HeaderBarContainer = ({
   const handleHeaderMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTauriView) return
+      // Linux uses native WM decorations — the WM titlebar OUTSIDE the
+      // webview already provides window-drag. Bailing here avoids
+      // double-handling that confuses xfwm4 / KWin / Mutter (the WM
+      // sees the drag start AND tries to handle the same mousedown).
+      if (isLinux) return
       if (e.button !== 0) return // left-click only
       const target = e.target as Element
       if (target.closest?.(INTERACTIVE_SEL)) return
@@ -121,6 +137,7 @@ export const HeaderBarContainer = ({
   const handleHeaderDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTauriView) return
+      if (isLinux) return
       const target = e.target as Element
       if (target.closest?.(INTERACTIVE_SEL)) return
       void getCurrentWindow().toggleMaximize()

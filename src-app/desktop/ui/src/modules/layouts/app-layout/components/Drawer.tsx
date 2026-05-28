@@ -39,11 +39,11 @@ import tinycolor from 'tinycolor2'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 import { IoIosArrowBack } from 'react-icons/io'
 import { DivScrollY } from '@/components/common/DivScrollY'
-import { isTauriView, isMacOS } from '@ziee/desktop/core/platform'
+import { isTauriView, isMacOS, isLinux } from '@ziee/desktop/core/platform'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const INTERACTIVE_SEL =
-  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger'
+  'button, a, input, textarea, select, [role="button"], [role="link"], [role="menuitem"], [role="combobox"], [contenteditable="true"], .ant-select, .ant-dropdown-trigger, .ant-segmented, .ant-segmented-item'
 
 export interface DrawerProps extends AntDrawerProps {
   children?: React.ReactNode
@@ -98,6 +98,8 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const handleTitleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTauriView) return
+      // Linux: WM-native chrome handles drag — see TauriDragRegion.tsx.
+      if (isLinux) return
       if (e.button !== 0) return
       const target = e.target as Element
       if (target.closest?.(INTERACTIVE_SEL)) return
@@ -110,6 +112,7 @@ export const Drawer: React.FC<DrawerProps> = props => {
   const handleTitleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!isTauriView) return
+      if (isLinux) return
       const target = e.target as Element
       if (target.closest?.(INTERACTIVE_SEL)) return
       void getCurrentWindow().toggleMaximize()

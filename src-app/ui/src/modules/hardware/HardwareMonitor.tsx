@@ -1,6 +1,7 @@
 import { Alert, App, Button, Card, Progress, Spin, Tag, Typography } from 'antd'
 import { useEffect } from 'react'
 import { Stores } from '@/core/stores'
+import { DivScrollY } from '@/components/common/DivScrollY'
 import { formatBytes } from '@/modules/hardware/utils/formatBytes'
 
 const { Text } = Typography
@@ -170,9 +171,10 @@ export function HardwareMonitor() {
   }
 
   return (
-    <div className="p-3 max-w-4xl mx-auto">
-      <div className="flex flex-col gap-3">
-        {renderConnectionStatus()}
+    <DivScrollY className="h-full w-full flex-col">
+      <div className="p-3 max-w-4xl mx-auto w-full">
+        <div className="flex flex-col gap-3">
+          {renderConnectionStatus()}
 
         {currentUsage ? (
           <>
@@ -325,7 +327,8 @@ export function HardwareMonitor() {
             </div>
           </Card>
         )}
+        </div>
       </div>
-    </div>
+    </DivScrollY>
   )
 }
