@@ -1,5 +1,5 @@
 import { createModule } from '@/core'
-import { BulbOutlined } from '@ant-design/icons'
+import { BookOutlined } from '@ant-design/icons'
 import { SettingsLayoutDef } from '@/modules/settings/SettingsLayout'
 import { Permissions } from '@/api-client/types'
 import { useMemoriesStore } from './stores/Memories.store'
@@ -41,7 +41,7 @@ export default createModule({
       layout: SettingsLayoutDef,
     },
     {
-      path: '/settings/admin/memory',
+      path: '/settings/memory-admin',
       element: MemoryAdminPage,
       requiresAuth: true,
       permission: Permissions.MemoryAdminRead,
@@ -59,7 +59,7 @@ export default createModule({
     settingsUserPages: [
       {
         id: 'memory',
-        icon: <BulbOutlined />,
+        icon: <BookOutlined />,
         label: 'Memory',
         path: 'memory',
         order: 30,
@@ -68,19 +68,17 @@ export default createModule({
     ],
     settingsAdminPages: [
       {
-        id: 'memory',
-        icon: <BulbOutlined />,
+        id: 'memory-admin',
+        icon: <BookOutlined />,
         label: 'Memory',
-        // Two-segment path: clicking the sidebar item navigates to
-        // `/settings/admin/memory` (matches the registered route).
-        // Critically, this also keeps it from colliding with the
-        // user-side settingsUserPages slot's `path: 'memory'` — the
-        // SettingsPage's `forbiddenSettingsItems.find(path === ...)`
-        // is keyed on path-equality, so equal paths cause the
-        // user-side `/settings/memory` URL to spuriously match the
-        // admin entry and 403 even when the user has the user-side
-        // read perm.
-        path: 'admin/memory',
+        // Single-segment path (`memory-admin`, not `admin/memory`) so
+        // SettingsPage's currentSection regex
+        // `/\/settings\/([^/]+)/` captures the full key and the menu
+        // auto-highlights when the URL is `/settings/memory-admin`.
+        // Also keeps it distinct from the user-side `memory` slot
+        // (SettingsPage matches on id, so the two-segment trick from
+        // the previous incarnation is no longer needed).
+        path: 'memory-admin',
         order: 60,
         permission: Permissions.MemoryAdminRead,
       },

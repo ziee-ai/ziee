@@ -109,8 +109,11 @@ impl McpRepository {
         &self,
         page: i64,
         per_page: i64,
+        search: Option<&str>,
+        enabled: Option<bool>,
     ) -> Result<McpServerListResponse, AppError> {
-        let (servers, total) = list_system_mcp_servers(&self.pool, page, per_page).await?;
+        let (servers, total) =
+            list_system_mcp_servers(&self.pool, page, per_page, search, enabled).await?;
         let total_pages = (total + per_page - 1) / per_page;
         Ok(McpServerListResponse {
             servers,
@@ -179,9 +182,14 @@ impl McpRepository {
         user_id: Uuid,
         page: i64,
         per_page: i64,
+        search: Option<&str>,
+        enabled: Option<bool>,
+        is_system: Option<bool>,
     ) -> Result<McpServerListResponse, AppError> {
-        let (servers, total) =
-            list_accessible_mcp_servers(&self.pool, user_id, page, per_page).await?;
+        let (servers, total) = list_accessible_mcp_servers(
+            &self.pool, user_id, page, per_page, search, enabled, is_system,
+        )
+        .await?;
         let total_pages = (total + per_page - 1) / per_page;
         Ok(McpServerListResponse {
             servers,
@@ -856,6 +864,8 @@ pub async fn list_system_mcp_servers(
     pool: &PgPool,
     page: i64,
     per_page: i64,
+    search: Option<&str>,
+    enabled: Option<bool>,
 ) -> Result<(Vec<McpServer>, i64), AppError> {
     let offset = (page - 1) * per_page;
 
@@ -869,11 +879,18 @@ pub async fn list_system_mcp_servers(
             created_at, updated_at
         FROM mcp_servers
         WHERE is_system = true
+          AND ($3::text IS NULL
+               OR name ILIKE '%' || $3 || '%'
+               OR display_name ILIKE '%' || $3 || '%'
+               OR description ILIKE '%' || $3 || '%')
+          AND ($4::boolean IS NULL OR enabled = $4)
         ORDER BY display_name ASC
         LIMIT $1 OFFSET $2
         "#,
         per_page,
-        offset
+        offset,
+        search,
+        enabled,
     )
     .fetch_all(pool)
     .await?;
@@ -906,11 +923,24 @@ pub async fn list_system_mcp_servers(
         })
         .collect();
 
-    let total = sqlx::query!("SELECT COUNT(*) as count FROM mcp_servers WHERE is_system = true")
-        .fetch_one(pool)
-        .await?
-        .count
-        .unwrap_or(0);
+    let total = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM mcp_servers
+        WHERE is_system = true
+          AND ($1::text IS NULL
+               OR name ILIKE '%' || $1 || '%'
+               OR display_name ILIKE '%' || $1 || '%'
+               OR description ILIKE '%' || $1 || '%')
+          AND ($2::boolean IS NULL OR enabled = $2)
+        "#,
+        search,
+        enabled,
+    )
+    .fetch_one(pool)
+    .await?
+    .count
+    .unwrap_or(0);
 
     Ok((servers, total))
 }
@@ -1290,6 +1320,9 @@ pub async fn list_accessible_mcp_servers(
     user_id: Uuid,
     page: i64,
     per_page: i64,
+    search: Option<&str>,
+    enabled: Option<bool>,
+    is_system: Option<bool>,
 ) -> Result<(Vec<McpServer>, i64), AppError> {
     let offset = (page - 1) * per_page;
 
@@ -1305,14 +1338,22 @@ pub async fn list_accessible_mcp_servers(
         LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
         LEFT JOIN user_groups ug ON ugms.group_id = ug.group_id
         WHERE
-            s.user_id = $1
-            OR (s.is_system = true AND ug.user_id = $1)
+            (s.user_id = $1 OR (s.is_system = true AND ug.user_id = $1))
+            AND ($4::text IS NULL
+                 OR s.name ILIKE '%' || $4 || '%'
+                 OR s.display_name ILIKE '%' || $4 || '%'
+                 OR s.description ILIKE '%' || $4 || '%')
+            AND ($5::boolean IS NULL OR s.enabled = $5)
+            AND ($6::boolean IS NULL OR s.is_system = $6)
         ORDER BY s.is_system ASC, s.display_name ASC
         LIMIT $2 OFFSET $3
         "#,
         user_id,
         per_page,
-        offset
+        offset,
+        search,
+        enabled,
+        is_system,
     )
     .fetch_all(pool)
     .await?;
@@ -1345,7 +1386,8 @@ pub async fn list_accessible_mcp_servers(
         })
         .collect();
 
-    // Count total accessible servers
+    // Count total accessible servers — predicates MUST match the
+    // list query above so the UI's <Pagination total> is accurate.
     let total = sqlx::query!(
         r#"
         SELECT COUNT(DISTINCT s.id) as count
@@ -1353,10 +1395,18 @@ pub async fn list_accessible_mcp_servers(
         LEFT JOIN user_group_mcp_servers ugms ON s.id = ugms.mcp_server_id
         LEFT JOIN user_groups ug ON ugms.group_id = ug.group_id
         WHERE
-            s.user_id = $1
-            OR (s.is_system = true AND ug.user_id = $1)
+            (s.user_id = $1 OR (s.is_system = true AND ug.user_id = $1))
+            AND ($2::text IS NULL
+                 OR s.name ILIKE '%' || $2 || '%'
+                 OR s.display_name ILIKE '%' || $2 || '%'
+                 OR s.description ILIKE '%' || $2 || '%')
+            AND ($3::boolean IS NULL OR s.enabled = $3)
+            AND ($4::boolean IS NULL OR s.is_system = $4)
         "#,
-        user_id
+        user_id,
+        search,
+        enabled,
+        is_system,
     )
     .fetch_one(pool)
     .await?

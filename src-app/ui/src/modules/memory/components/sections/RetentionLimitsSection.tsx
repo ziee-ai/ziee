@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Divider,
   Flex,
   Form,
   InputNumber,
@@ -72,7 +73,11 @@ export function RetentionLimitsSection() {
       <Form
         name="memory-admin-retention-form"
         form={form}
-        layout="vertical"
+        layout="horizontal"
+        labelCol={{ flex: '280px' }}
+        wrapperCol={{ flex: 'auto' }}
+        labelAlign="left"
+        colon={false}
         onFinish={handleSubmit}
         disabled={!canManage}
       >
@@ -81,22 +86,25 @@ export function RetentionLimitsSection() {
           label="Soft-delete grace days"
           extra="How long soft-deleted memories stick around before the nightly reaper hard-deletes them. Lower = faster GDPR/erasure compliance; higher = longer audit window for user-initiated undeletes."
         >
-          <InputNumber min={1} max={365} />
+          <InputNumber min={1} max={365} style={{ width: 160 }} />
         </Form.Item>
         <Form.Item
           name="daily_extraction_quota"
           label="Daily extraction quota (per user)"
           extra="Brake against extraction-spam loops. When a user hits this many extraction-sourced memories in a 24h window, further extraction is skipped silently. The hard cost gate is your LLM API spend; this is the secondary brake on row count."
         >
-          <InputNumber min={1} max={10000} />
+          <InputNumber min={1} max={10000} style={{ width: 160 }} />
         </Form.Item>
 
         {canManage && (
-          <Flex justify="end">
-            <Button type="primary" htmlType="submit" loading={saving}>
-              Save
-            </Button>
-          </Flex>
+          <>
+            <Divider className="!my-3" />
+            <Flex justify="end">
+              <Button type="primary" htmlType="submit" loading={saving}>
+                Save
+              </Button>
+            </Flex>
+          </>
         )}
       </Form>
     </Card>

@@ -1,12 +1,15 @@
-import { theme } from 'antd'
 import { AppThemeConfig } from '@/themes/light.ts'
-import { ComponentOverrides, TokenOverrides } from '@/themes/override.ts'
+import {
+  ComponentOverrides,
+  DarkAlgorithm,
+  TokenOverrides,
+} from '@/themes/override.ts'
 import tinycolor from 'tinycolor2'
 
 const BaseBackgroundColor = '#1e1e1e'
 
 export const darkTheme: AppThemeConfig = {
-  algorithm: [theme.darkAlgorithm, theme.compactAlgorithm],
+  algorithm: DarkAlgorithm,
   token: {
     ...TokenOverrides,
     colorBgLayout: BaseBackgroundColor, // Dark background for layout

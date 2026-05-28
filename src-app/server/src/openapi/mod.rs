@@ -33,6 +33,11 @@ pub async fn generate_openapi_spec(
     // Initialize global repository factory
     crate::core::init_repositories((*pool).clone());
 
+    // Module init reads `get_caches_config()` for default paths
+    // (e.g. memory's embedding-engine probe touches llm_engines_dir).
+    // Without this set, the unwrap inside `CachesConfig::*` panics.
+    crate::core::set_caches_config(config.caches.clone());
+
     // Initialize modules using shared builder functions
     let module_context = ModuleContext::new(pool.clone(), std::sync::Arc::new(config.clone()));
     let mut modules = app_builder::create_modules();

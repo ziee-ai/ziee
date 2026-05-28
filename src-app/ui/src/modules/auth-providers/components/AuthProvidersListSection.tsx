@@ -2,18 +2,19 @@ import { useState } from 'react'
 import {
   Alert,
   App,
-  Badge,
   Button,
   Card,
+  Divider,
+  Empty,
+  Flex,
   Popconfirm,
-  Space,
+  Spin,
   Switch,
-  Table,
   Tag,
   Tooltip,
   Typography,
 } from 'antd'
-import type { ColumnsType } from 'antd/es/table'
+import { LockOutlined } from '@ant-design/icons'
 import { Permissions, type AuthProviderResponse } from '@/api-client/types'
 import { Stores } from '@/core/stores'
 import { Can } from '@/core/permissions/Can'
@@ -77,101 +78,71 @@ export function AuthProvidersListSection() {
     }
   }
 
-  const columns: ColumnsType<AuthProviderResponse> = [
-    {
-      title: 'Name',
-      dataIndex: 'name',
-      key: 'name',
-      render: (v: string) => <Text strong>{v}</Text>,
-    },
-    {
-      title: 'Type',
-      dataIndex: 'provider_type',
-      key: 'provider_type',
-      render: (v: string) => <Tag>{v}</Tag>,
-    },
-    {
-      title: 'Status',
-      key: 'status',
-      render: (_: any, row) => (
-        <Badge
-          status={row.enabled ? 'success' : 'default'}
-          text={row.enabled ? 'Enabled' : 'Disabled'}
+  const renderLastTest = (row: AuthProviderResponse) => {
+    if (row.last_test_ok === null || row.last_test_ok === undefined) {
+      return (
+        <Text type="secondary" className="text-xs">
+          Last test: never
+        </Text>
+      )
+    }
+    const when = relativeTime(row.last_test_at)
+    const tip = row.last_test_message ?? ''
+    return row.last_test_ok ? (
+      <Tooltip title={tip}>
+        <Text type="success" className="text-xs">
+          ✓ Last test: ok ({when})
+        </Text>
+      </Tooltip>
+    ) : (
+      <Tooltip title={tip}>
+        <Text type="danger" className="text-xs">
+          ✗ Last test: fail ({when})
+        </Text>
+      </Tooltip>
+    )
+  }
+
+  const renderRowActions = (row: AuthProviderResponse) => (
+    <Can permission={Permissions.AuthProvidersManage}>
+      <Flex align="center" gap="small" wrap>
+        <Switch
+          size="small"
+          checked={row.enabled}
+          loading={pendingToggleId === row.id}
+          onChange={next => onToggle(row, next)}
+          aria-label={`Toggle ${row.name}`}
         />
-      ),
-    },
-    {
-      title: 'Last test',
-      key: 'last_test',
-      render: (_: any, row) => {
-        if (row.last_test_ok === null || row.last_test_ok === undefined) {
-          return <Text type="secondary">never</Text>
-        }
-        const when = relativeTime(row.last_test_at)
-        const tip = row.last_test_message ?? ''
-        return row.last_test_ok ? (
-          <Tooltip title={tip}>
-            <Text type="success">✓ ok ({when})</Text>
-          </Tooltip>
-        ) : (
-          <Tooltip title={tip}>
-            <Text type="danger">✗ fail ({when})</Text>
-          </Tooltip>
-        )
-      },
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      render: (_: any, row) => (
-        <Space wrap>
-          {/* Test endpoint requires AuthProvidersManage — gate the
-              button consistently so reader users don't see a button
-              that 403s on click. */}
-          <Can permission={Permissions.AuthProvidersManage}>
-            <Button
-              size="small"
-              loading={testingIds.has(row.id)}
-              onClick={() => onTest(row)}
-              aria-label={`Test ${row.name}`}
-            >
-              Test
-            </Button>
-            <Button
-              size="small"
-              onClick={() => setDrawer({ mode: 'edit', existing: row })}
-              aria-label={`Edit ${row.name}`}
-            >
-              Edit
-            </Button>
-            <Switch
-              size="small"
-              checked={row.enabled}
-              loading={pendingToggleId === row.id}
-              onChange={next => onToggle(row, next)}
-              aria-label={`Toggle ${row.name}`}
-            />
-            <Popconfirm
-              title={`Delete ${row.name}?`}
-              description="Linked users lose this sign-in method; their accounts remain."
-              okText="Delete"
-              okButtonProps={{ danger: true }}
-              cancelText="Cancel"
-              onConfirm={() => onDelete(row)}
-            >
-              <Button
-                size="small"
-                danger
-                aria-label={`Delete ${row.name}`}
-              >
-                Delete
-              </Button>
-            </Popconfirm>
-          </Can>
-        </Space>
-      ),
-    },
-  ]
+        <Button
+          type="text"
+          size="small"
+          loading={testingIds.has(row.id)}
+          onClick={() => onTest(row)}
+        >
+          Test
+        </Button>
+        <Button
+          type="text"
+          size="small"
+          onClick={() => setDrawer({ mode: 'edit', existing: row })}
+        >
+          Edit
+        </Button>
+        <Popconfirm
+          title={`Delete ${row.name}?`}
+          description="Linked users lose this sign-in method; their accounts remain."
+          okText="Delete"
+          okButtonProps={{ danger: true }}
+          cancelText="Cancel"
+          onConfirm={() => onDelete(row)}
+        >
+          <Button type="text" size="small" danger>
+            Delete
+          </Button>
+        </Popconfirm>
+      </Flex>
+    </Can>
+  )
 
   return (
     <>
@@ -195,17 +166,56 @@ export function AuthProvidersListSection() {
             className="mb-3"
           />
         )}
-        <Table
-          rowKey="id"
-          dataSource={providers}
-          columns={columns}
-          loading={loading}
-          pagination={false}
-          locale={{
-            emptyText:
-              'No providers yet. Click "Add provider" to set up Google, Microsoft, Apple, or a custom OIDC IdP.',
-          }}
-        />
+
+        {loading && providers.length === 0 ? (
+          <div className="flex justify-center py-6">
+            <Spin />
+          </div>
+        ) : providers.length === 0 ? (
+          <Empty
+            description="No providers yet"
+            image={<LockOutlined className="text-4xl opacity-50" />}
+          >
+            <Text type="secondary">
+              Use the + button to add Google, Microsoft, Apple, or a custom
+              OIDC IdP.
+            </Text>
+          </Empty>
+        ) : (
+          <Flex className="flex-col gap-4">
+            <div>
+              {providers.map((row, index) => (
+                <div key={row.id}>
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">
+                        <div className="flex-1 min-w-48">
+                          <Flex align="center" gap="small">
+                            <Text className="font-medium">{row.name}</Text>
+                            <Tag>{row.provider_type}</Tag>
+                            {!row.enabled && (
+                              <Text type="secondary" className="text-xs">
+                                (Disabled)
+                              </Text>
+                            )}
+                          </Flex>
+                        </div>
+                        <div className="flex gap-1 items-center justify-end">
+                          {renderRowActions(row)}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">{renderLastTest(row)}</div>
+                    </div>
+                  </div>
+                  {index < providers.length - 1 && (
+                    <Divider className="my-4" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </Flex>
+        )}
       </Card>
 
       <AuthProviderEditDrawer

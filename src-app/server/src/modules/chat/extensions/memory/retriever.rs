@@ -85,7 +85,7 @@ pub async fn retrieve_and_inject(
     }
 
     // ── 2. Cold-start guard ────────────────────────────────────────
-    let count = match Repos.memory.count_for_user(user_id).await {
+    let count = match Repos.memory.count_for_user(user_id, None, None, None).await {
         Ok(c) => c,
         Err(_) => return Ok(()),
     };

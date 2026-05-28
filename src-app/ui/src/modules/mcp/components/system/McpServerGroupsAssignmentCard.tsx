@@ -36,7 +36,14 @@ export function McpServerGroupsAssignmentCard({
   }
 
   return (
-    <div data-server-id={serverId} data-card-type="user-groups-assignment">
+    // pb-3 keeps the User Groups section from flush-bottoming
+    // against the parent McpServerCard's edge — gives the same
+    // breathing room as the rest of the card's interior padding.
+    <div
+      className="pb-3"
+      data-server-id={serverId}
+      data-card-type="user-groups-assignment"
+    >
       <Collapse
         ghost
         size="small"
@@ -54,8 +61,9 @@ export function McpServerGroupsAssignmentCard({
                   e.stopPropagation()
                   handleManageGroups()
                 }}
-                aria-label="Manage user groups"
-              />
+              >
+                Assign
+              </Button>
             ) : null,
             children: loading ? (
               <Spin size="small" />

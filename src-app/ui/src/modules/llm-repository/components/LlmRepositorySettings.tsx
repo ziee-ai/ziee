@@ -11,8 +11,10 @@ import {
   Divider,
   Empty,
   Flex,
+  Pagination,
   Popconfirm,
   Switch,
+  Tooltip,
   Typography,
 } from 'antd'
 import { Stores } from '@/core/stores'
@@ -26,10 +28,24 @@ export function LlmRepositorySettings() {
   const { message } = App.useApp()
 
   // Stores
-  const { repositories, testing } = Stores.LlmRepository
+  const {
+    repositories,
+    testing,
+    total: totalRepositories,
+    currentPage: storePage,
+    pageSize: storePageSize,
+  } = Stores.LlmRepository
 
   const canEdit = usePermission(Permissions.LlmRepositoriesEdit)
   const canDelete = usePermission(Permissions.LlmRepositoriesDelete)
+
+  const handlePageChange = (page: number, size?: number) => {
+    const nextSize = size || storePageSize
+    // Reset to page 1 when the user changes page size — matches
+    // UsersSettings / UserGroupsSettings behavior.
+    const nextPage = size && size !== storePageSize ? 1 : page
+    Stores.LlmRepository.loadLlmRepositories(nextPage, nextSize)
+  }
 
   const testRepositoryConnection = async (repository: LlmRepository) => {
     // Check if repository has credentials configured
@@ -177,19 +193,17 @@ export function LlmRepositorySettings() {
     >
       {/* Model Repositories */}
       <Card
-        title={
-          <Flex align="center" gap="middle">
-            <CloudDownloadOutlined />
-            <span>Model Repositories</span>
-          </Flex>
-        }
+        title="Model Repositories"
         extra={
           <Can permission={Permissions.LlmRepositoriesCreate}>
-            <Button
-              type={'text'}
-              icon={<PlusOutlined />}
-              onClick={handleAddRepository}
-            />
+            <Tooltip title="Add repository">
+              <Button
+                type={'text'}
+                icon={<PlusOutlined />}
+                onClick={handleAddRepository}
+                aria-label="Add repository"
+              />
+            </Tooltip>
           </Can>
         }
       >
@@ -261,6 +275,27 @@ export function LlmRepositorySettings() {
               </div>
             )}
           </div>
+
+          {totalRepositories > 0 && (
+            <>
+              <Divider className="!my-3" />
+              <Flex justify="end">
+                <Pagination
+                  current={storePage}
+                  total={totalRepositories}
+                  pageSize={storePageSize}
+                  showSizeChanger
+                  showQuickJumper
+                  showTotal={(total, range) =>
+                    `${range[0]}-${range[1]} of ${total} repositories`
+                  }
+                  onChange={handlePageChange}
+                  onShowSizeChange={handlePageChange}
+                  pageSizeOptions={['5', '10', '20', '50']}
+                />
+              </Flex>
+            </>
+          )}
         </Flex>
       </Card>
     </SettingsPageContainer>

@@ -72,6 +72,12 @@ server:
   # OAuth codes via permissive IdPs.
   trust_forwarded_headers: true
 
+  # Per-peer-IP rate limit (tower-governor token bucket). Optional;
+  # falls back to (50 req/s, 500-burst) in main.rs::main when unset.
+  rate_limit:
+    per_second: 50
+    burst_size: 500
+
   # CORS settings
   cors:
     allow_origins:

@@ -1,22 +1,25 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Button,
   Card,
-  Drawer,
+  Descriptions,
+  Divider,
   Dropdown,
   Empty,
+  Flex,
   Form,
   Input,
   InputNumber,
-  Modal,
+  Pagination,
   Popconfirm,
   Select,
-  Space,
-  Table,
+  Spin,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
+import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -44,113 +47,99 @@ const WRITE_PERM = Permissions.MemoryWrite
 export function MyMemoriesSection() {
   const canRead = usePermission(READ_PERM)
   const canWrite = usePermission(WRITE_PERM)
-  const { memories, loading, searchQuery, kindFilter, sourceFilter } =
-    Stores.Memories
+  const {
+    memories,
+    loading,
+    searchQuery,
+    kindFilter,
+    sourceFilter,
+    total: totalMemories,
+    currentPage: storePage,
+    pageSize: storePageSize,
+  } = Stores.Memories
   const [editing, setEditing] = useState<UserMemory | null>(null)
   const [creating, setCreating] = useState(false)
 
-  const filtered = useMemo(() => {
-    return memories.filter((m) => {
-      if (kindFilter && m.kind !== kindFilter) return false
-      if (sourceFilter && m.source !== sourceFilter) return false
-      if (
-        searchQuery &&
-        !m.content.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-        return false
-      return true
-    })
-  }, [memories, kindFilter, sourceFilter, searchQuery])
+  const handlePageChange = (page: number, size?: number) => {
+    const nextSize = size || storePageSize
+    // Reset to page 1 when the user changes page size — matches
+    // UsersSettings / UserGroupsSettings behavior.
+    const nextPage = size && size !== storePageSize ? 1 : page
+    Stores.Memories.load(nextPage, nextSize)
+  }
+
+  // Filtering moved to the server — `memories` already reflects
+  // searchQuery / kindFilter / sourceFilter via the store setters.
+  // Alias kept so the downstream render code doesn't have to change.
+  const filtered = memories
+  // Reference the filter vars so eslint/TS don't flag them as
+  // unused — they ARE consumed (by the controlled Search/Select
+  // values just below), the linter just can't tell at this scope.
+  void searchQuery
+  void kindFilter
+  void sourceFilter
 
   if (!canRead) return null
+
+  const exportMenu = {
+    items: [
+      {
+        key: 'json',
+        label: 'Export as JSON',
+        onClick: () => exportMemories(memories, 'json'),
+      },
+      {
+        key: 'csv',
+        label: 'Export as CSV',
+        onClick: () => exportMemories(memories, 'csv'),
+      },
+    ],
+  }
 
   return (
     <Card
       title="My memories"
       extra={
         canWrite ? (
-          <Space>
+          <Tooltip title="Add memory">
             <Button
-              type="primary"
+              type="text"
               icon={<PlusOutlined />}
               onClick={() => setCreating(true)}
-            >
-              Add memory
-            </Button>
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: 'json',
-                    label: 'Export as JSON',
-                    onClick: () => exportMemories(memories, 'json'),
-                  },
-                  {
-                    key: 'csv',
-                    label: 'Export as CSV',
-                    onClick: () => exportMemories(memories, 'csv'),
-                  },
-                ],
-              }}
-            >
-              <Button icon={<DownloadOutlined />}>Export</Button>
-            </Dropdown>
-            <Popconfirm
-              title="Delete all memories?"
-              description="This is permanent and cannot be undone."
-              okText="Delete"
-              okButtonProps={{ danger: true }}
-              onConfirm={async () => {
-                try {
-                  const n = await Stores.Memories.removeAll()
-                  message.success(`Deleted ${n} memories`)
-                } catch (error) {
-                  message.error(
-                    error instanceof Error
-                      ? error.message
-                      : 'Delete-all failed.',
-                  )
-                }
-              }}
-            >
-              <Button danger>Delete all</Button>
-            </Popconfirm>
-          </Space>
-        ) : (
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: 'json',
-                  label: 'Export as JSON',
-                  onClick: () => exportMemories(memories, 'json'),
-                },
-                {
-                  key: 'csv',
-                  label: 'Export as CSV',
-                  onClick: () => exportMemories(memories, 'csv'),
-                },
-              ],
-            }}
-          >
-            <Button icon={<DownloadOutlined />}>Export</Button>
-          </Dropdown>
-        )
+              aria-label="Add memory"
+            />
+          </Tooltip>
+        ) : null
       }
     >
-      <div className="flex gap-2 mb-4">
+      {/*
+        Filter + action toolbar — responsive. Search grows to fill,
+        Kind/Source selects keep a sensible min-width, Export and
+        Delete-all hug the right edge. `flex-wrap` lets controls
+        stack on narrow widths (≤sm) instead of overflowing.
+      */}
+      {/* mb-3 (12px) below the toolbar. Inline style as a belt-and-
+        * suspenders in case Tailwind doesn't pick the class up for
+        * some reason — antd Flex doesn't reset margins, but visual
+        * verification showed the class wasn't applying. */}
+      <Flex
+        wrap="wrap"
+        gap="small"
+        align="center"
+        style={{ marginBottom: 12 }}
+      >
         <Search
           placeholder="Search content"
           allowClear
           onChange={(e) => Stores.Memories.setSearchQuery(e.target.value)}
-          style={{ maxWidth: 300 }}
+          style={{ minWidth: 200, flex: '1 1 240px', maxWidth: 360 }}
         />
         <Select
           placeholder="Kind"
           allowClear
           value={kindFilter ?? undefined}
           onChange={(v) => Stores.Memories.setKindFilter(v ?? null)}
-          style={{ minWidth: 140 }}
+          style={{ flex: '0 1 160px', minWidth: 120 }}
           options={[
             { value: 'preference', label: 'Preference' },
             { value: 'fact', label: 'Fact' },
@@ -164,120 +153,177 @@ export function MyMemoriesSection() {
           allowClear
           value={sourceFilter ?? undefined}
           onChange={(v) => Stores.Memories.setSourceFilter(v ?? null)}
-          style={{ minWidth: 140 }}
+          style={{ flex: '0 1 160px', minWidth: 120 }}
           options={[
             { value: 'manual', label: 'Manual' },
             { value: 'extraction', label: 'Auto-extracted' },
             { value: 'mcp_tool', label: 'Assistant tool' },
           ]}
         />
-      </div>
+        {/* Spacer pushes Export/Delete to the right when there's
+          * room; on narrow viewports they wrap to the next line
+          * naturally. */}
+        <div className="flex-1" />
+        <Dropdown menu={exportMenu}>
+          <Button icon={<DownloadOutlined />}>Export</Button>
+        </Dropdown>
+        {canWrite && (
+          <Popconfirm
+            title="Delete all memories?"
+            description="This is permanent and cannot be undone."
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+            onConfirm={async () => {
+              try {
+                const n = await Stores.Memories.removeAll()
+                message.success(`Deleted ${n} memories`)
+              } catch (error) {
+                message.error(
+                  error instanceof Error
+                    ? error.message
+                    : 'Delete-all failed.',
+                )
+              }
+            }}
+          >
+            <Button danger>Delete all</Button>
+          </Popconfirm>
+        )}
+      </Flex>
 
-      {filtered.length === 0 && !loading ? (
+      {loading && filtered.length === 0 ? (
+        <div className="flex justify-center py-6">
+          <Spin />
+        </div>
+      ) : filtered.length === 0 ? (
         <Empty description="No memories yet" />
       ) : (
-        <Table<UserMemory>
-          dataSource={filtered}
-          rowKey="id"
-          loading={loading}
-          pagination={{ pageSize: 25 }}
-          columns={[
-            {
-              title: 'Content',
-              dataIndex: 'content',
-              ellipsis: true,
-            },
-            {
-              title: 'Kind',
-              dataIndex: 'kind',
-              width: 110,
-              render: (v: string) => <Tag>{v}</Tag>,
-            },
-            {
-              title: 'Source',
-              dataIndex: 'source',
-              width: 120,
-              render: (v: string) => (
-                <Tag
-                  color={
-                    v === 'manual'
-                      ? 'blue'
-                      : v === 'extraction'
-                        ? 'green'
-                        : 'purple'
-                  }
-                >
-                  {v === 'mcp_tool' ? 'tool' : v}
-                </Tag>
-              ),
-            },
-            {
-              title: 'Importance',
-              dataIndex: 'importance',
-              width: 100,
-            },
-            {
-              title: 'Recalls',
-              dataIndex: 'recall_count',
-              width: 90,
-            },
-            {
-              title: 'Updated',
-              dataIndex: 'updated_at',
-              width: 170,
-              render: (v: string) => (
-                <Text type="secondary">{new Date(v).toLocaleString()}</Text>
-              ),
-            },
-            ...(canWrite
-              ? [
-                  {
-                    title: '',
-                    key: 'actions',
-                    width: 100,
-                    render: (_: unknown, row: UserMemory) => (
-                      <Space>
-                        <Button
-                          icon={<EditOutlined />}
-                          size="small"
-                          onClick={() => setEditing(row)}
-                        />
-                        <Popconfirm
-                          title="Delete this memory?"
-                          okText="Delete"
-                          okButtonProps={{ danger: true }}
-                          onConfirm={async () => {
-                            try {
-                              await Stores.Memories.remove(row.id)
-                              message.success('Memory deleted')
-                            } catch (error) {
-                              message.error(
-                                error instanceof Error
-                                  ? error.message
-                                  : 'Delete failed.',
-                              )
-                            }
-                          }}
+        <Flex className="flex-col gap-4">
+          <div>
+            {filtered.map((row, index) => (
+              <div key={row.id} data-memory-id={row.id}>
+                <div className="flex items-start gap-3 flex-wrap">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap-reverse">
+                      <div className="flex-1 min-w-48">
+                        <Text className="block">{row.content}</Text>
+                      </div>
+                      {canWrite && (
+                        <div className="flex gap-1 items-center justify-end">
+                          <Tooltip title="Edit memory">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<EditOutlined />}
+                              onClick={() => setEditing(row)}
+                              aria-label="Edit memory"
+                            />
+                          </Tooltip>
+                          <Popconfirm
+                            title="Delete this memory?"
+                            okText="Delete"
+                            okButtonProps={{ danger: true }}
+                            onConfirm={async () => {
+                              try {
+                                await Stores.Memories.remove(row.id)
+                                message.success('Memory deleted')
+                              } catch (error) {
+                                message.error(
+                                  error instanceof Error
+                                    ? error.message
+                                    : 'Delete failed.',
+                                )
+                              }
+                            }}
+                          >
+                            <Tooltip title="Delete memory">
+                              <Button
+                                type="text"
+                                size="small"
+                                danger
+                                icon={<DeleteOutlined />}
+                                aria-label={`Delete memory ${row.id}`}
+                              />
+                            </Tooltip>
+                          </Popconfirm>
+                        </div>
+                      )}
+                    </div>
+
+                    <Descriptions
+                      size="small"
+                      column={{ xs: 1, sm: 2, md: 4 }}
+                      colon={false}
+                      styles={{
+                        label: { fontSize: '12px' },
+                        content: { fontSize: '12px' },
+                      }}
+                    >
+                      <Descriptions.Item label="Kind">
+                        <Tag className="!m-0">{row.kind}</Tag>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Source">
+                        <Tag
+                          className="!m-0"
+                          color={
+                            row.source === 'manual'
+                              ? 'blue'
+                              : row.source === 'extraction'
+                                ? 'green'
+                                : 'purple'
+                          }
                         >
-                          <Button
-                            icon={<DeleteOutlined />}
-                            size="small"
-                            danger
-                            aria-label={`Delete memory ${row.id}`}
-                          />
-                        </Popconfirm>
-                      </Space>
-                    ),
-                  },
-                ]
-              : []),
-          ]}
-        />
+                          {row.source === 'mcp_tool' ? 'tool' : row.source}
+                        </Tag>
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Importance">
+                        {row.importance}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Recalls">
+                        {row.recall_count}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Updated" span={{ xs: 1, sm: 2, md: 4 }}>
+                        {new Date(row.updated_at).toLocaleString()}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </div>
+                </div>
+                {index < filtered.length - 1 && (
+                  <Divider className="my-4" />
+                )}
+              </div>
+            ))}
+          </div>
+        </Flex>
+      )}
+
+      {totalMemories > 0 && (
+        <>
+          <Divider className="!my-3" />
+          <Flex justify="end">
+            <Pagination
+              current={storePage}
+              total={totalMemories}
+              pageSize={storePageSize}
+              showSizeChanger
+              showQuickJumper
+              showTotal={(total, range) =>
+                `${range[0]}-${range[1]} of ${total} memories`
+              }
+              onChange={handlePageChange}
+              onShowSizeChange={handlePageChange}
+              pageSizeOptions={['5', '10', '20', '50']}
+            />
+          </Flex>
+        </>
       )}
 
       {canWrite && (
         <>
-          <CreateMemoryModal open={creating} onClose={() => setCreating(false)} />
+          <CreateMemoryDrawer
+            open={creating}
+            onClose={() => setCreating(false)}
+          />
           <EditMemoryDrawer row={editing} onClose={() => setEditing(null)} />
         </>
       )}
@@ -343,7 +389,7 @@ function exportMemories(rows: UserMemory[], format: 'json' | 'csv') {
   URL.revokeObjectURL(url)
 }
 
-function CreateMemoryModal({
+function CreateMemoryDrawer({
   open,
   onClose,
 }: {
@@ -379,13 +425,16 @@ function CreateMemoryModal({
   }
 
   return (
-    <Modal
+    <Drawer
       open={open}
       title="Add memory"
-      onCancel={onClose}
-      onOk={() => form.submit()}
-      confirmLoading={saving}
-      okText="Add"
+      onClose={onClose}
+      size={600}
+      extra={
+        <Button type="primary" loading={saving} onClick={() => form.submit()}>
+          Add
+        </Button>
+      }
     >
       <Form
         form={form}
@@ -421,7 +470,7 @@ function CreateMemoryModal({
           <InputNumber min={0} max={100} />
         </Form.Item>
       </Form>
-    </Modal>
+    </Drawer>
   )
 }
 

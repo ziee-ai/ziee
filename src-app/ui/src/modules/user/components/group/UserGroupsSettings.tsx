@@ -2,13 +2,13 @@ import { PlusOutlined } from '@ant-design/icons'
 import {
   App,
   Button,
-  Card,
   Empty,
   Flex,
   Form,
   Input,
   Pagination,
   Spin,
+  Tooltip,
 } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { useEffect, useState } from 'react'
@@ -116,130 +116,131 @@ export function UserGroupsSettings() {
     Stores.UserGroups.loadUserGroups(newPage, newPageSize)
   }
 
+  // Title row with the Add button on the right — matches the
+  // pattern used by HardwareSettings (Monitor button) and the
+  // other settings pages that hoist their primary action up to
+  // the page title.
+  const titleWithButton = (
+    <div className="flex items-center justify-between w-full">
+      <span>User Groups</span>
+      <Can permission={Permissions.GroupsCreate}>
+        <Tooltip title="Create group">
+          <Button
+            type="text"
+            icon={<PlusOutlined aria-hidden="true" />}
+            onClick={() => setCreateModalVisible(true)}
+            aria-label="Create group"
+          />
+        </Tooltip>
+      </Can>
+    </div>
+  )
+
   return (
-    <SettingsPageContainer title="User Groups">
-      <div>
-        <Card
-          title="User Groups"
-          extra={
-            <Can permission={Permissions.GroupsCreate}>
-              <Button
-                type="text"
-                icon={<PlusOutlined aria-hidden="true" />}
-                onClick={() => setCreateModalVisible(true)}
-                aria-label="Create group"
-              />
-            </Can>
-          }
-        >
-          {loadingGroups ? (
-            <div className="flex justify-center py-8">
-              <Spin size="large" />
-            </div>
-          ) : groups.length === 0 ? (
-            <div>
-              <Empty description="No user groups yet" />
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {groups.map(group => (
-                <GroupListItem
-                  key={group.id}
-                  group={group}
-                  onEdit={openEditModal}
-                  onDelete={handleDeleteGroup}
-                  onViewMembers={handleViewMembers}
-                />
-              ))}
-            </div>
-          )}
+    <SettingsPageContainer title={titleWithButton}>
+      {loadingGroups ? (
+        <div className="flex justify-center py-8">
+          <Spin size="large" />
+        </div>
+      ) : groups.length === 0 ? (
+        <Empty description="No user groups yet" />
+      ) : (
+        // Each GroupListItem already renders its own <Card>, so
+        // dropping the outer wrapping card makes every group a
+        // direct child of SettingsPageContainer — the container's
+        // gap-3 handles the spacing between them.
+        <>
+          {groups.map(group => (
+            <GroupListItem
+              key={group.id}
+              group={group}
+              onEdit={openEditModal}
+              onDelete={handleDeleteGroup}
+              onViewMembers={handleViewMembers}
+            />
+          ))}
+          <div className="flex justify-end">
+            <Pagination
+              current={storePage}
+              total={totalGroups}
+              pageSize={storePageSize}
+              showSizeChanger
+              showQuickJumper
+              showTotal={(total, range) =>
+                `${range[0]}-${range[1]} of ${total} groups`
+              }
+              onChange={handlePageChange}
+              onShowSizeChange={handlePageChange}
+              pageSizeOptions={['5', '10', '20', '50']}
+            />
+          </div>
+        </>
+      )}
 
-          {groups.length > 0 && (
-            <>
-              <div className="flex justify-end mt-4">
-                <Pagination
-                  current={storePage}
-                  total={totalGroups}
-                  pageSize={storePageSize}
-                  showSizeChanger
-                  showQuickJumper
-                  showTotal={(total, range) =>
-                    `${range[0]}-${range[1]} of ${total} groups`
-                  }
-                  onChange={handlePageChange}
-                  onShowSizeChange={handlePageChange}
-                  pageSizeOptions={['5', '10', '20', '50']}
-                />
-              </div>
-            </>
-          )}
-        </Card>
-
-        {/* Create Group Modal */}
-        <Drawer
-          title="Create User Group"
-          open={createModalVisible}
-          onClose={() => {
-            setCreateModalVisible(false)
-            createForm.resetFields()
-          }}
-          footer={null}
-          size={600}
-          mask={{ closable: false }}
+      {/* Create Group Modal */}
+      <Drawer
+        title="Create User Group"
+        open={createModalVisible}
+        onClose={() => {
+          setCreateModalVisible(false)
+          createForm.resetFields()
+        }}
+        footer={null}
+        size={600}
+        mask={{ closable: false }}
+      >
+        <Form
+          form={createForm}
+          layout="vertical"
+          onFinish={handleCreateGroup}
+          disabled={!canCreate}
         >
-          <Form
-            form={createForm}
-            layout="vertical"
-            onFinish={handleCreateGroup}
-            disabled={!canCreate}
+          <Form.Item
+            name="name"
+            label="Group Name"
+            rules={[{ required: true, message: 'Please enter group name' }]}
           >
-            <Form.Item
-              name="name"
-              label="Group Name"
-              rules={[{ required: true, message: 'Please enter group name' }]}
-            >
-              <Input placeholder="Enter group name" />
-            </Form.Item>
-            <Form.Item name="description" label="Description">
-              <TextArea rows={3} placeholder="Enter group description" />
-            </Form.Item>
-            <Form.Item
-              name="permissions"
-              label="Permissions (JSON Array)"
-              rules={[{ validator: validatePermissions }]}
-            >
-              <TextArea
-                rows={6}
-                placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
-              />
-            </Form.Item>
+            <Input placeholder="Enter group name" />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <TextArea rows={3} placeholder="Enter group description" />
+          </Form.Item>
+          <Form.Item
+            name="permissions"
+            label="Permissions (JSON Array)"
+            rules={[{ validator: validatePermissions }]}
+          >
+            <TextArea
+              rows={6}
+              placeholder={`["${Permissions.UsersRead}", "${Permissions.UsersEdit}"]`}
+            />
+          </Form.Item>
 
-            <Form.Item className="mb-0">
-              <Flex className="justify-end gap-2">
-                <Button
-                  onClick={() => {
-                    setCreateModalVisible(false)
-                    createForm.resetFields()
-                  }}
-                >
-                  {canCreate ? 'Cancel' : 'Close'}
+          <Form.Item className="mb-0">
+            <Flex className="justify-end gap-2">
+              <Button
+                onClick={() => {
+                  setCreateModalVisible(false)
+                  createForm.resetFields()
+                }}
+              >
+                {canCreate ? 'Cancel' : 'Close'}
+              </Button>
+              {canCreate && (
+                <Button type="primary" htmlType="submit">
+                  Create
                 </Button>
-                {canCreate && (
-                  <Button type="primary" htmlType="submit">
-                    Create
-                  </Button>
-                )}
-              </Flex>
-            </Form.Item>
-          </Form>
-        </Drawer>
+              )}
+            </Flex>
+          </Form.Item>
+        </Form>
+      </Drawer>
 
-        {/* Edit Group Drawer */}
-        <EditUserGroupDrawer />
+      {/* Edit Group Drawer */}
+      <EditUserGroupDrawer />
 
-        {/* Group Members Drawer */}
-        <GroupMembersDrawer />
-      </div>
+      {/* Group Members Drawer */}
+      <GroupMembersDrawer />
     </SettingsPageContainer>
   )
 }

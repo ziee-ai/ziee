@@ -1,21 +1,46 @@
-import { useEffect, useRef } from 'react'
-import { Button, Typography } from 'antd'
-import { MessageOutlined, PlusOutlined } from '@ant-design/icons'
+import { useEffect, useRef, useState } from 'react'
+import { Button, Tooltip, Typography } from 'antd'
+import {
+  MessageOutlined,
+  PlusOutlined,
+  SearchOutlined,
+} from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { Stores } from '@/core/stores'
 import { ConversationList } from '@/modules/chat/components/ConversationList'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { DivScrollY } from '@/components/common/DivScrollY'
+import { useElementMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
 
 const { Title, Text } = Typography
 
 /**
  * ChatHistoryPage
- * Displays the full chat history with search, pagination, and bulk operations
+ * Displays the full chat history with search, pagination, and bulk operations.
+ *
+ * Search-affordance placement is page-width-aware (not viewport-width):
+ *   - Wide page (>sm, >640px): the search <Input> is portaled into the
+ *     page header on the right.
+ *   - Narrow page (≤sm): a single search ICON button sits in the header.
+ *     Clicking it toggles a body-rendered search box above the list.
+ *     The header button switches to `type="primary"` while the body
+ *     search is open so the user knows the affordance is active.
+ *
+ * The search box itself lives in `ConversationList`; this page just
+ * picks the portal target via the `getSearchBoxContainer` callback.
  */
 export default function ChatHistoryPage() {
   const navigate = useNavigate()
-  const searchBoxContainerRef = useRef<HTMLDivElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
+  const headerSearchRef = useRef<HTMLDivElement>(null)
+  const bodySearchRef = useRef<HTMLDivElement>(null)
+
+  // Page-width-aware breakpoint. `sm` = ≤640px page width. When the
+  // page is in a narrow layout (sidebar open + medium window, or
+  // small window), collapse the header search to an icon button.
+  const minSize = useElementMinSize(pageRef)
+  const isNarrow = minSize.sm
+  const [searchOpenInNarrow, setSearchOpenInNarrow] = useState(false)
 
   // Chat history store for empty state detection
   const { conversations, loading } = Stores.ChatHistory
@@ -31,14 +56,61 @@ export default function ChatHistoryPage() {
     Stores.ChatHistory.__state.loadConversations()
   }, [])
 
+  // Closing the body search affordance when the page grows back to
+  // wide — keeps the UI tidy after a resize.
+  useEffect(() => {
+    if (!isNarrow) setSearchOpenInNarrow(false)
+  }, [isNarrow])
+
+  // ConversationList portals its searchBox into whatever element this
+  // callback returns. null = hide the search (narrow + button-closed).
+  const getSearchBoxContainer = () => {
+    if (!isNarrow) return headerSearchRef.current
+    if (searchOpenInNarrow) return bodySearchRef.current
+    return null
+  }
+
   return (
-    <div className="h-full w-full flex flex-col overflow-y-hidden">
+    <div
+      ref={pageRef}
+      className="h-full w-full flex flex-col overflow-y-hidden"
+    >
       {/* Header */}
       <HeaderBarContainer>
-        <div className="h-full flex items-center justify-between w-full">
-          <Typography.Title level={4} className="!m-0 !leading-tight">
-            Chat History
+        <div className="h-full flex items-center justify-between gap-3 w-full">
+          <Typography.Title
+            level={4}
+            className="!m-0 !leading-tight truncate"
+          >
+            Chats
           </Typography.Title>
+
+          {/* Wide layout: inline search input portal target. */}
+          {!isNarrow && (
+            <div
+              ref={headerSearchRef}
+              style={{ flex: '0 1 320px', minWidth: 200 }}
+            />
+          )}
+
+          {/* Narrow layout: search ICON button that toggles a body
+            * search box. Becomes `primary` when the body search is
+            * open so the active state is visible. */}
+          {isNarrow && (
+            <Tooltip
+              title={searchOpenInNarrow ? 'Hide search' : 'Search'}
+            >
+              <Button
+                type={searchOpenInNarrow ? 'primary' : 'text'}
+                icon={<SearchOutlined />}
+                onClick={() => setSearchOpenInNarrow(v => !v)}
+                aria-label={
+                  searchOpenInNarrow ? 'Hide search' : 'Open search'
+                }
+                aria-pressed={searchOpenInNarrow}
+              />
+            </Tooltip>
+          )}
         </div>
       </HeaderBarContainer>
 
@@ -47,13 +119,17 @@ export default function ChatHistoryPage() {
         {/* Show ConversationList if there are conversations or loading */}
         {(conversations.length > 0 || loading) && (
           <div className="flex flex-1 flex-col w-full justify-center overflow-hidden">
-            {/* Search box — always visible above the scrollable list */}
-            <div className="w-full max-w-4xl self-center px-3 pt-3">
-              <div ref={searchBoxContainerRef} />
-            </div>
+            {/* Body search box — only when narrow + opened via header
+              * button. In wide mode this slot is empty and the search
+              * input lives in the header instead. */}
+            {isNarrow && searchOpenInNarrow && (
+              <div className="w-full max-w-4xl self-center px-3 pt-3">
+                <div ref={bodySearchRef} />
+              </div>
+            )}
             <DivScrollY className="h-full flex flex-col">
               <ConversationList
-                getSearchBoxContainer={() => searchBoxContainerRef.current}
+                getSearchBoxContainer={getSearchBoxContainer}
               />
             </DivScrollY>
           </div>

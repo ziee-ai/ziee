@@ -264,9 +264,11 @@ pub struct ServerConfig {
     #[serde(default)]
     pub cors: Option<CorsConfig>,
     /// Rate-limit configuration (tower-governor). Optional — defaults
-    /// match the A3 hardening posture (5 req/s sustained, 60-burst).
-    /// Tests override with much higher numbers since they run many
-    /// sequential requests against 127.0.0.1 (single peer-IP bucket).
+    /// to 50 req/s sustained, 500-burst (enough for a normal SPA
+    /// cold-load without 429s). Hardened deployments behind a real
+    /// reverse proxy should override downward here; tests override
+    /// upward since sequential sweeps against 127.0.0.1 share a
+    /// single peer-IP bucket.
     #[serde(default)]
     pub rate_limit: Option<RateLimitConfig>,
     /// Honor X-Forwarded-Host / X-Forwarded-Proto in OAuth

@@ -1,5 +1,5 @@
 import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons'
-import { App, Button, Card, Flex, Form, Input, Typography } from 'antd'
+import { App, Button, Card, Divider, Flex, Form, Input, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Stores } from '@/core/stores'
@@ -122,20 +122,7 @@ export function RemoteProviderSettings() {
         }}
         onValuesChange={handleFormChange}
       >
-        <Card
-          title={'API Configuration'}
-          extra={
-            canEditProvider && (
-              <Button
-                type="primary"
-                onClick={handleSaveSettings}
-                disabled={!hasUnsavedChanges}
-              >
-                Save
-              </Button>
-            )
-          }
-        >
+        <Card title={'API Configuration'}>
           <Flex className={'flex-col gap-3'}>
             <div>
               <Title level={5}>API Key</Title>
@@ -186,6 +173,21 @@ export function RemoteProviderSettings() {
               </Form.Item>
             </div>
           </Flex>
+
+          {canEditProvider && (
+            <>
+              <Divider className="!my-3" />
+              <Flex justify="end">
+                <Button
+                  type="primary"
+                  onClick={handleSaveSettings}
+                  disabled={!hasUnsavedChanges}
+                >
+                  Save
+                </Button>
+              </Flex>
+            </>
+          )}
         </Card>
       </Form>
 

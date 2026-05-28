@@ -135,7 +135,7 @@ export function LlmModelParameterField({
   }
 
   return (
-    <Form.Item name={name} label={label} tooltip={help} rules={fieldRules}>
+    <Form.Item name={name} label={label} extra={help} rules={fieldRules}>
       {renderInput()}
     </Form.Item>
   )

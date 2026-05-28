@@ -24,6 +24,12 @@ node_modules/
 playwright-report/
 test-results/
 
+# pgvector build-helper outputs that land inside the vendored
+# submodule dir (downloaded PG binaries + the SDK wrapper script).
+# Regenerated on every `cargo build` of the server crate.
+src-app/server/vendor/pgvector/postgresql-*/
+src-app/server/vendor/pgvector/pg_config_wrapper/
+
 # macOS Finder cruft.
 .DS_Store
 

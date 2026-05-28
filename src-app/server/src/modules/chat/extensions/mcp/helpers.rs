@@ -26,7 +26,9 @@ pub async fn get_all_accessible_config(
     let repo = McpRepository::new(pool.clone());
 
     // Get all accessible servers (user servers + system servers via groups)
-    let response = repo.list_accessible(user_id, 1, 1000).await?;
+    let response = repo
+        .list_accessible(user_id, 1, 1000, None, None, None)
+        .await?;
 
     // Filter out disabled servers
     let enabled_servers: Vec<McpServer> = response

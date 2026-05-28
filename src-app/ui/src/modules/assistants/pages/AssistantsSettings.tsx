@@ -16,6 +16,7 @@ import {
   Popconfirm,
   Spin,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd'
 import { useEffect } from 'react'
@@ -122,12 +123,14 @@ export function AssistantsSettings() {
           title="Template Assistants"
           extra={
             <Can permission={Permissions.AssistantsTemplateCreate}>
-              <Button
-                type="text"
-                icon={<PlusOutlined aria-hidden="true" />}
-                onClick={handleCreate}
-                aria-label="Create assistant"
-              />
+              <Tooltip title="Create assistant">
+                <Button
+                  type="text"
+                  icon={<PlusOutlined aria-hidden="true" />}
+                  onClick={handleCreate}
+                  aria-label="Create assistant"
+                />
+              </Tooltip>
             </Can>
           }
         >

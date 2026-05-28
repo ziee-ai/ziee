@@ -220,15 +220,20 @@ async fn main() {
     // Closes a substantial chunk of the auth/file/chat rate-limit
     // findings (01-auth F-05, 03-user F-12, 04-chat F-04 message-stream
     // rate, 06-llm-provider F-13, 08-llm-local-runtime F-06).
-    // Config-driven rate limits — defaults to the A3 production
-    // posture (5 req/s, 60-burst). Tests bump these so a sequential
-    // test sweep against a single peer-IP bucket doesn't 429 itself.
+    // Config-driven rate limits. Defaults to 50 req/s sustained,
+    // 500-burst — wide enough that a normal SPA cold-load (15-25
+    // parallel API calls + secondary fetches) doesn't trip 429,
+    // tight enough to still blunt brute-force / scraping. Hardened
+    // deployments behind a real reverse proxy should override
+    // downward via `server.rate_limit` in config; tests already
+    // override upward to handle sequential-burst sweeps against a
+    // single peer-IP bucket.
     let (rl_per_sec, rl_burst) = config
         .server
         .rate_limit
         .as_ref()
         .map(|r| (r.per_second, r.burst_size))
-        .unwrap_or((5, 60));
+        .unwrap_or((50, 500));
     let governor_conf = std::sync::Arc::new(
         tower_governor::governor::GovernorConfigBuilder::default()
             .per_second(rl_per_sec)

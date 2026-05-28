@@ -204,7 +204,13 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2"></div>
                   </div>
                 ) : (
-                  <DivScrollY className="flex-col gap-3 w-full flex-1 overflow-x-visible">
+                  // Plain div instead of DivScrollY: the outer
+                  // DivScrollY already handles scroll. DivScrollY
+                  // wraps its children in an internal flex-col
+                  // container, so any `gap-*` on it lands on the
+                  // OverlayScrollbars wrapper and never reaches the
+                  // card siblings — that's why cards had no gap.
+                  <div className="flex flex-col gap-3 w-full flex-1 overflow-x-visible">
                     {visibleConversations.map((conversation: ConversationResponse) => (
                       <div key={conversation.id} className="px-3">
                         <ConversationCard
@@ -235,7 +241,7 @@ export function ConversationList({ getSearchBoxContainer }: ConversationListProp
                         )}
                       </Card>
                     )}
-                  </DivScrollY>
+                  </div>
                 )}
               </DivScrollY>
             )}
