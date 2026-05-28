@@ -35,6 +35,11 @@ mod linux_bwrap;
 // AF_HYPERV vsock on Windows) — used by both VM backends.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod vm_client;
+// Long-lived multiplexed session over a single agent connection —
+// the host side of the MCP-in-sandbox protocol extension. Both VM
+// backends expose a per-flavor session via `long_lived_session_for`.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) mod vm_long_lived;
 #[cfg(target_os = "macos")]
 mod mac_vm;
 // AF_HYPERV (Hyper-V vsock) FFI + WSL utility-VM resolution (HIGH-1 fix).
