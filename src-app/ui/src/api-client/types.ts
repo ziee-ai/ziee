@@ -297,6 +297,7 @@ export interface CreateMcpServerRequest {
   headers?: any
   max_concurrent_sessions?: number
   name: string
+  run_in_sandbox?: boolean
   supports_sampling?: boolean
   timeout_seconds?: number
   transport_type: TransportType
@@ -971,6 +972,7 @@ export interface McpServer {
   is_system: boolean
   max_concurrent_sessions?: number
   name: string
+  run_in_sandbox: boolean
   supports_sampling: boolean
   timeout_seconds: number
   transport_type: TransportType
@@ -1866,6 +1868,7 @@ export interface UpdateMcpServerRequest {
   headers?: any
   max_concurrent_sessions?: number
   name?: string
+  run_in_sandbox?: boolean
   supports_sampling?: boolean
   timeout_seconds?: number
   url?: string
@@ -1962,6 +1965,7 @@ export interface User {
   is_active: boolean
   is_admin: boolean
   last_login_at?: string
+  password_changed_at?: string
   permissions: string[]
   updated_at: string
   username: string
