@@ -292,6 +292,35 @@ impl AppModule for CodeSandboxModule {
     fn init(&mut self, ctx: &ModuleContext) -> Result<(), Box<dyn Error>> {
         self.pool = Some(ctx.db_pool.clone());
 
+        // Windows: ensure the LocalSystem sandbox-helper service is installed
+        // on first run, BEFORE the `enabled` check — the user can turn the
+        // sandbox on later without restarting, so we set this up regardless
+        // of the current config. The helper lets the unprivileged server
+        // resolve the WSL utility-VM id + register the vsock GUIDs WITHOUT
+        // Hyper-V Administrators membership (and with no log-out/in). The
+        // command is self-checking + self-elevating: a silent no-op once
+        // installed, one UAC prompt the first time the app runs. Runs for
+        // both the standalone `ziee` binary and the Tauri-embedded server
+        // (both hit this module init). Windows is always interactive (GUI
+        // install — no headless Windows deployment), so a boot-time UAC is
+        // fine. Best-effort: a declined prompt just defers the failure to the
+        // first sandboxed exec, which surfaces the same install instruction.
+        // Skipped when `ZIEE_WSL_VM_ID` is set (the dev/test bypass that needs
+        // no helper service).
+        #[cfg(windows)]
+        if std::env::var("ZIEE_WSL_VM_ID").is_err() {
+            match backend::helper_service::install::install(false) {
+                Ok(()) => {
+                    tracing::info!("code_sandbox: sandbox-helper service ready")
+                }
+                Err(e) => tracing::warn!(
+                    "code_sandbox: sandbox-helper auto-install skipped ({e}); \
+                     run `ziee --install-sandbox-helper` as Administrator if \
+                     sandboxed execution fails"
+                ),
+            }
+        }
+
         let cfg = ctx.config.code_sandbox.clone().unwrap_or_default();
         if !cfg.enabled {
             tracing::info!(

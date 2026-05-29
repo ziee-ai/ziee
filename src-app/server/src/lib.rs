@@ -415,6 +415,16 @@ pub fn find_available_port(start: u16, end: u16) -> Option<u16> {
     (start..=end).find(|&port| std::net::TcpListener::bind(("127.0.0.1", port)).is_ok())
 }
 
+/// (Windows) True iff the LocalSystem code-sandbox helper service is reachable
+/// (answers a `Ping`). Exposed so the integration-test harness — and, later,
+/// desktop onboarding — can decide whether to trigger an elevated install
+/// before the sandbox is exercised. See
+/// `modules::code_sandbox::backend::helper_service`.
+#[cfg(windows)]
+pub fn sandbox_helper_is_running() -> bool {
+    modules::code_sandbox::backend::helper_service::client::is_running()
+}
+
 /// Cleanup server resources
 pub async fn cleanup_server() {
     tracing::info!("Cleaning up server resources...");

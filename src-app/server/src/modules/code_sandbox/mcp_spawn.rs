@@ -202,6 +202,13 @@ async fn spawn_in_vm_session(
             .map_err(|e| AppError::internal_error(format!("chmod mcp vm workspace: {e}")))?;
     }
 
+    // Ensure the bind source `/workspace/mcp/<server_id>` exists in the guest.
+    // No-op on macOS (virtio-fs shares it); the WSL2 backend creates + rsyncs
+    // the per-server workspace into the distro (no virtio-fs there).
+    backend::active()
+        .prepare_mcp_vm_workspace(state, DEFAULT_MCP_FLAVOR, req.server_id)
+        .await?;
+
     // Build the bwrap argv for the guest with the rootfs-resolved command.
     let guest_argv = build_guest_mcp_argv(&req, &guest_command, &guest_prepended)?;
     let bwrap_path = "/usr/bin/bwrap".to_string();

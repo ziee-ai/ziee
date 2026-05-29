@@ -178,7 +178,25 @@ sandbox-vm-protocol = { path = "../sandbox-vm-protocol" }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
+    # Named-pipe IPC for the LocalSystem sandbox-helper service: create the
+    # pipe with an SDDL security descriptor (Authorization), accept/connect
+    # (Pipes), and the backing file handle (Storage_FileSystem).
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Pipes",
+    "Win32_Storage_FileSystem",
+    # ConnectNamedPipe's signature references OVERLAPPED, so windows-sys gates
+    # it behind the IO feature too.
+    "Win32_System_IO",
 ] }
+# Windows service scaffolding for the LocalSystem sandbox-helper: SCM
+# dispatcher + install/uninstall. The helper resolves the WSL utility VM's
+# VmId (needs Hyper-V Admin / SYSTEM) and registers the vsock GUIDs (HKLM
+# write) so the unprivileged server never needs those rights — mirrors how
+# Docker Desktop brokers privileged WSL work through a LocalSystem service.
+windows-service = "0.7"
+# Safe HKLM access for the GuestCommunicationServices vsock-port registration.
+winreg = "0.52"
 
 [build-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
