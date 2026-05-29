@@ -1581,7 +1581,9 @@ mod tests {
 
         assert_eq!(
             shape, expected,
-            "tool catalog changed — bump SANDBOX_ROOTFS_SCHEMA_VERSION + update this snapshot"
+            "tool catalog changed — coordinate a rootfs major bump (so the wipe \
+             policy in version_manager triggers across existing conversation \
+             workspaces) and update this snapshot"
         );
     }
 
