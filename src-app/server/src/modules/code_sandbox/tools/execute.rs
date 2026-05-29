@@ -63,6 +63,7 @@ pub async fn execute_command(
     });
     if let Some(info) = fetch_info {
         response["fetch_info"] = json!({
+            "version": info.version,
             "flavor": flavor,
             "bytes_downloaded": info.bytes_downloaded,
             "duration_ms": info.duration_ms,

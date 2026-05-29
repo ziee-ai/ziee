@@ -208,6 +208,20 @@ pub struct CodeSandboxState {
     /// cached in `runtime_mount::READY`; per-call code paths fetch
     /// the full caps via `runtime_mount::ensure_rootfs_ready(state).await?`.
     pub host_caps: HostCapabilities,
+    /// Connection pool for the version manager + repository. Needed
+    /// here (rather than threaded through every call) because the
+    /// lazy auto-fetch path in `runtime_mount::ensure_rootfs_ready`
+    /// must resolve the pinned rootfs version against the DB on the
+    /// first `execute_command` of every flavor.
+    ///
+    /// `Option` so the in-process unit tests that exercise
+    /// argv-builder primitives (sandbox.rs, handlers.rs) can construct
+    /// a state without a Tokio runtime around the pool; the lazy
+    /// fetch path checks `is_some()` and errors with a clear
+    /// `code_sandbox not initialized` message if the pool isn't
+    /// wired (which never happens in production — `mod.rs::init`
+    /// always sets it).
+    pub pool: Option<Arc<sqlx::PgPool>>,
 }
 
 // =====================================================================

@@ -19,12 +19,12 @@
 //! `ApiRouter` accepts both `.route()` (untyped) and `.api_route()`
 //! (typed) in the same router — they coexist cleanly.
 
-use aide::axum::routing::{delete_with, get_with};
+use aide::axum::routing::{delete_with, get_with, post_with};
 use aide::axum::ApiRouter;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 
-use crate::modules::code_sandbox::handlers;
+use crate::modules::code_sandbox::{handlers, version_handlers};
 
 pub fn code_sandbox_router() -> ApiRouter {
     ApiRouter::new()
@@ -101,6 +101,35 @@ pub fn code_sandbox_router() -> ApiRouter {
             .put_with(
                 handlers::update_resource_limits_handler,
                 handlers::update_resource_limits_docs,
+            ),
+        )
+        // ──────── Rootfs versions (Plan 5 Phase 2c) ────────
+        .api_route(
+            "/code-sandbox/rootfs/versions",
+            get_with(
+                version_handlers::get_versions_handler,
+                version_handlers::get_versions_docs,
+            ),
+        )
+        .api_route(
+            "/code-sandbox/rootfs/versions/install",
+            post_with(
+                version_handlers::install_version_handler,
+                version_handlers::install_version_docs,
+            ),
+        )
+        .api_route(
+            "/code-sandbox/rootfs/versions/set-pin",
+            post_with(
+                version_handlers::set_pin_handler,
+                version_handlers::set_pin_docs,
+            ),
+        )
+        .api_route(
+            "/code-sandbox/rootfs/versions/{id}",
+            delete_with(
+                version_handlers::delete_version_handler,
+                version_handlers::delete_version_docs,
             ),
         )
 }

@@ -58,7 +58,6 @@ use crate::modules::code_sandbox::runtime_fetch::{
     self, FetchError, FetchOutcome, FetchPhase,
 };
 use crate::modules::code_sandbox::types::{CodeSandboxState, HardeningCapabilities};
-use crate::modules::code_sandbox::{probe_rootfs_schema, SANDBOX_ROOTFS_SCHEMA_VERSION};
 
 // =====================================================================
 // Per-flavor lazy-init state
@@ -254,62 +253,63 @@ pub async fn ensure_rootfs_ready(
 async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
     let cache_dir = derive_cache_dir(state);
 
-    // 0. Auto-fetch on miss. If the cache dir already has a
-    // .squashfs for this flavor, we skip the network entirely
-    // (idempotent — `fetch_flavor` short-circuits on cache hit
-    // too, but skipping it here avoids the tokio::spawn_blocking
-    // overhead for the common warm path).
-    let (sqfs_path, fetch_info) =
-        match find_cached_squashfs_for_flavor(&cache_dir, flavor) {
-            Some(p) => (p, None),
-            None => {
-                tracing::info!(
-                    flavor,
-                    cache_dir = %cache_dir.display(),
-                    "code_sandbox: no cached rootfs for flavor; auto-fetching"
-                );
-                let log_flavor = flavor.to_string();
-                let outcome = runtime_fetch::ensure_fetched(
-                    &cache_dir,
-                    flavor,
-                    move |p| {
-                        // Use tracing for now; Phase 4's structured
-                        // fetch_info field is the user-facing surface.
-                        tracing::info!(
-                            flavor = %log_flavor,
-                            phase = ?p.phase,
-                            "code_sandbox: fetch progress: {}",
-                            p.message
-                        );
-                    },
-                )
-                .await
-                .map_err(|e| ReadyError::FetchFailed {
-                    flavor: flavor.to_string(),
-                    reason: fetch_error_message(&e),
-                })?;
-                (outcome.installed_path.clone(), Some(outcome))
-            }
-        };
+    // 0. Resolve + auto-fetch. `ensure_fetched` is idempotent: a warm
+    //    cache hit short-circuits without touching the network, so we
+    //    don't need a separate fast-path here. The returned outcome
+    //    carries the pinned `version` plus stats for `fetch_info`.
+    let log_flavor = flavor.to_string();
+    let outcome = runtime_fetch::ensure_fetched(
+        &cache_dir,
+        flavor,
+        move |p| {
+            tracing::info!(
+                flavor = %log_flavor,
+                phase = ?p.phase,
+                "code_sandbox: fetch progress: {}",
+                p.message
+            );
+        },
+    )
+    .await
+    .map_err(|e| ReadyError::FetchFailed {
+        flavor: flavor.to_string(),
+        reason: fetch_error_message(&e),
+    })?;
+    let sqfs_path = outcome.installed_path.clone();
+    let fetch_version = outcome.version.clone();
+    // Surface `fetch_info` only when this call actually downloaded.
+    let fetch_info = if outcome.bytes_downloaded > 0 {
+        Some(outcome)
+    } else {
+        None
+    };
 
+    // 1. Mount dir is parented at the per-version cache subdir so two
+    //    versions of the same flavor never collide. Stem includes the
+    //    full asset filename so a future swap can mount the new
+    //    version alongside the draining old one.
     let stem = sqfs_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("sandbox-rootfs")
         .to_string();
-    let mount_dir = cache_dir.join(&stem);
+    let mount_dir = cache_dir.join(&fetch_version).join(&stem);
 
-    // 1. Mount the squashfs (skip if already mounted by harness/prior).
     mount_if_needed(&sqfs_path, &mount_dir, flavor).await?;
 
-    // 2. Schema sentinel check against the flavor's mount.
-    let schema = probe_rootfs_schema(mount_dir.to_str().unwrap_or_default())
-        .map_err(|reason| ReadyError::SchemaReadFailed { reason })?;
-    if schema != SANDBOX_ROOTFS_SCHEMA_VERSION {
-        return Err(ReadyError::SchemaMismatch {
-            found: schema,
-            expected: SANDBOX_ROOTFS_SCHEMA_VERSION,
-        });
+    // 2. Best-effort version sentinel read — informational only. The
+    //    DB row is the source of truth for which release is mounted;
+    //    a mismatch here is logged but no longer rejected.
+    if let Ok(found) = read_version_sentinel(&mount_dir)
+        && !found.is_empty()
+        && found != fetch_version
+    {
+        tracing::warn!(
+            mount = %mount_dir.display(),
+            expected = %fetch_version,
+            found = %found,
+            "code_sandbox: rootfs version sentinel disagrees with DB row"
+        );
     }
 
     // 3. PID-ns probe — needs a config view that points at THIS
@@ -328,6 +328,17 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
         mount_dir,
         fetch_info,
     })
+}
+
+/// Read the `.ziee-sandbox-rootfs-version` sentinel inside the mounted
+/// rootfs. Best-effort: returns an empty string on dev builds (where
+/// `build.sh --version` was unset) and a parse-friendly error on
+/// missing/malformed sentinels. Soft because the DB row is now the
+/// source of truth — a sentinel mismatch is just a breadcrumb for
+/// debugging a misconfigured deployment.
+fn read_version_sentinel(mount_dir: &Path) -> std::io::Result<String> {
+    let p = mount_dir.join(".ziee-sandbox-rootfs-version");
+    std::fs::read_to_string(p).map(|s| s.trim().to_string())
 }
 
 fn fetch_error_message(e: &FetchError) -> String {
@@ -362,30 +373,35 @@ pub fn cache_dir(state: &CodeSandboxState) -> PathBuf {
     derive_cache_dir(state)
 }
 
-/// `true` if a `.squashfs` for `flavor` is already in the cache dir, so
-/// picking that flavor will NOT trigger a download. Used by the
-/// download-consent path to decide whether to prompt the user.
-pub fn is_flavor_cached(state: &CodeSandboxState, flavor: &str) -> bool {
-    find_cached_squashfs_for_flavor(&derive_cache_dir(state), flavor).is_some()
-}
-
-/// Find the most-recently-modified `.squashfs` in `cache_dir` whose
-/// filename ends with `-{flavor}.squashfs`. Returns `None` if no
-/// matching file exists.
-fn find_cached_squashfs_for_flavor(cache_dir: &Path, flavor: &str) -> Option<PathBuf> {
-    let suffix = format!("-{flavor}.squashfs");
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(cache_dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.ends_with(&suffix))
-        })
-        .collect();
-    matches.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
-    matches.last().cloned()
+/// `true` if a downloaded artifact for the currently-pinned version +
+/// `flavor` already exists on disk, so picking that flavor will NOT
+/// trigger a download. Used by the download-consent path in
+/// `streaming.rs` to decide whether to prompt the user before
+/// auto-fetching multi-hundred-MB rootfs payloads.
+///
+/// Conservative on errors: any DB / FS failure resolves to "not
+/// cached", so the consent prompt fires (over-prompting is far less
+/// bad than silently downloading without consent).
+pub async fn is_flavor_cached(state: &CodeSandboxState, flavor: &str) -> bool {
+    use crate::modules::code_sandbox::version_manager;
+    let pool = match state.pool.as_ref() {
+        Some(p) => p,
+        None => return false,
+    };
+    let pinned = match version_manager::current_pin(pool).await {
+        Ok(Some(v)) => v,
+        _ => return false,
+    };
+    let arch = std::env::consts::ARCH;
+    let package = if cfg!(target_os = "windows") {
+        "tar.zst"
+    } else {
+        "squashfs"
+    };
+    match version_manager::find_artifact(pool, &pinned, arch, flavor, package).await {
+        Ok(Some(row)) => std::path::PathBuf::from(&row.artifact_path).exists(),
+        _ => false,
+    }
 }
 
 // =====================================================================

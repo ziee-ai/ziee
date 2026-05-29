@@ -82,7 +82,11 @@ use crate::modules::code_sandbox::types::{
     CgroupMode, CodeSandboxState, HardeningCapabilities, HostCapabilities, PidNsMode,
     SandboxContext, SeccompMode,
 };
-use crate::modules::code_sandbox::SANDBOX_ROOTFS_SCHEMA_VERSION;
+// Phase 2b: distro name uses a stable "v1" suffix as a placeholder
+// until Phase 3 lands per-pinned-version distro names + drain swap.
+// (`SANDBOX_ROOTFS_SCHEMA_VERSION` retired with the legacy TOML
+// resolver — the version pin lives in `code_sandbox_settings` now.)
+const WSL_DISTRO_VERSION_TAG: &str = "1";
 
 // ── Guest contract (paths INSIDE the imported distro) ────────────────────────
 // The distro filesystem is the flavor rootfs, so bwrap's rootfs_dir is "/"
@@ -368,7 +372,7 @@ impl Wsl2Backend {
     }
 
     fn distro_name(flavor: &str) -> String {
-        format!("ziee-sandbox-{flavor}-v{SANDBOX_ROOTFS_SCHEMA_VERSION}")
+        format!("ziee-sandbox-{flavor}-v{WSL_DISTRO_VERSION_TAG}")
     }
 
     /// Per-distro install dir (where `wsl --import` lays down the ext4 vhdx).
@@ -1228,7 +1232,7 @@ fn test_distro_name(tarball: &Path) -> String {
     // dev's test corpus and keeps the distro name well under WSL's
     // 64-char limit.
     let short = hex::encode(&digest[..6]);
-    format!("ziee-sandbox-test-{short}-v{SANDBOX_ROOTFS_SCHEMA_VERSION}")
+    format!("ziee-sandbox-test-{short}-v{WSL_DISTRO_VERSION_TAG}")
 }
 
 /// Resolve the tarball path to import from a path the trait gave us.

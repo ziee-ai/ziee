@@ -1744,6 +1744,10 @@ mod tests {
                 cgroup: CgroupMode::None,
                 seccomp: SeccompMode::NotLinked,
             },
+            // These handler unit tests stub the DB layer via
+            // repository mocks, so the optional version-manager
+            // pool stays None.
+            pool: None,
         }
     }
 

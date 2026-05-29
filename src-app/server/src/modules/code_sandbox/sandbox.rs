@@ -960,6 +960,9 @@ mod tests {
             loopback_url: "http://127.0.0.1:8080/api/code-sandbox".to_string(),
             workspace_root: PathBuf::from("/tmp/ziee-workspace"),
             host_caps: fake_host_caps(),
+            // Tests in this module exercise pure-Rust argv-builder
+            // paths only, so the live DB hook is left None.
+            pool: None,
         }
     }
 
