@@ -25,9 +25,10 @@
 //!   - Else: find the `.squashfs` for `flavor` in the cache dir,
 //!     spawn `squashfuse -f` with `PR_SET_PDEATHSIG=SIGTERM`, poll
 //!     for the mount to appear.
-//!   - Run `probe_rootfs_schema` + `probe_pid_ns` against the
-//!     flavor-specific mount. Cache the resulting
-//!     `HardeningCapabilities` in [`READY[flavor]`].
+//!   - Read the version sentinel (informational only, post Plan 5
+//!     Phase 2) + run `probe_pid_ns` against the flavor-specific
+//!     mount. Cache the resulting `HardeningCapabilities` in
+//!     `READY[<version>/<flavor>]`.
 //! - **Subsequent calls for the same flavor**: atomic load from the
 //!   per-flavor `OnceCell`. Cached failure is sticky.
 //! - **Subsequent calls for a different flavor**: spawn squashfuse
@@ -113,8 +114,6 @@ pub enum ReadyError {
     NoRootfsForFlavor { flavor: String, cache_dir: PathBuf },
     FetchFailed { flavor: String, reason: String },
     MountFailed { reason: String },
-    SchemaMismatch { found: u32, expected: u32 },
-    SchemaReadFailed { reason: String },
     PidNsDisabled { reason: String },
     // ── VM-backend lazy-init failures (Plan 1 §5) ──
     // Cross-platform but currently only constructed on macOS/Windows; kept on
@@ -147,10 +146,9 @@ impl ReadyError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 "SANDBOX_ROOTFS_NOT_FETCHED",
                 format!(
-                    "sandbox cannot start: no rootfs squashfs for flavor {flavor:?} in {}. \
+                    "sandbox cannot start: no rootfs artifact for flavor {flavor:?} in {}. \
                      This is normally auto-fetched on first use; the failure indicates \
-                     either no network at startup or the flavor isn't in the embedded \
-                     known_revisions.toml.",
+                     either no network at startup or the pinned version is missing on GitHub.",
                     cache_dir.display()
                 ),
             ),
@@ -167,22 +165,6 @@ impl ReadyError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 "SANDBOX_MOUNT_FAILED",
                 format!("sandbox cannot start: rootfs mount failed: {reason}"),
-            ),
-            ReadyError::SchemaMismatch { found, expected } => AppError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "SANDBOX_SCHEMA_MISMATCH",
-                format!(
-                    "sandbox cannot start: rootfs schema v{found} but this server \
-                     binary expects v{expected}. Upgrade the rootfs."
-                ),
-            ),
-            ReadyError::SchemaReadFailed { reason } => AppError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "SANDBOX_SCHEMA_UNREADABLE",
-                format!(
-                    "sandbox cannot start: rootfs schema sentinel unreadable: \
-                     {reason}. The rootfs may be corrupt."
-                ),
             ),
             ReadyError::PidNsDisabled { reason } => AppError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -270,8 +252,8 @@ pub async fn ensure_rootfs_ready(
             // (fetch network blip, mount timeout) would otherwise wedge the
             // flavor until an admin evict. Drop the cell so the next call
             // re-inits (recovers when the network/mount recovers; a persistent
-            // failure like a schema mismatch just re-fails cheaply — cache hit,
-            // mount skip, sentinel re-read). `remove_if` with identity guards
+            // failure like a PID-ns probe failure just re-fails cheaply —
+            // cache hit, mount skip). `remove_if` with identity guards
             // against clobbering a fresh cell another caller just inserted.
             ready_map.remove_if(&key, |_, v| Arc::ptr_eq(v, &cell));
             Err(e.to_app_error())

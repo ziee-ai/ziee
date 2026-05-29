@@ -16,7 +16,8 @@
 //! ⚠️ **Validation status:** this file cannot be compiled on Linux (no macOS
 //! toolchain / libkrun). It is grounded in the real libkrun API + the protocol
 //! crate but must be compiled + validated on macOS. Points flagged `MAC-TODO`
-//! need first-run attention. See `src-app/sandbox-rootfs/MACOS-RUNBOOK.md`.
+//! need first-run attention. See `MACOS-RUNBOOK.md` in the standalone
+//! `ziee-ai/sandbox-rootfs` repo.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

@@ -156,9 +156,8 @@ pub async fn start_or_join(
     // flavors this binary knows about. This is the same source the
     // MCP `execute_command` schema enum + REST `list_environments`
     // read from, so all three surfaces agree on what's a valid flavor.
-    // (Filtering by `known_revisions.toml` happens later, inside
-    // runtime_fetch::fetch_flavor — and that's properly per-revision
-    // rather than per-flavor.)
+    // Per-version artifact resolution happens later inside
+    // `version_manager::install_version` (Plan 5 Phase 2).
     if !KNOWN_FLAVORS.iter().any(|m| m.flavor == flavor) {
         let available: Vec<&'static str> =
             KNOWN_FLAVORS.iter().map(|m| m.flavor).collect();
