@@ -325,7 +325,7 @@ async fn do_first_init(state: &CodeSandboxState, flavor: &str) -> ReadyResult {
         .to_string();
     let mount_dir = cache_dir.join(&fetch_version).join(&stem);
 
-    mount_if_needed(&sqfs_path, &mount_dir, flavor).await?;
+    mount_if_needed(&sqfs_path, &mount_dir, flavor, &fetch_version).await?;
 
     // 2. Best-effort version sentinel read — informational only. The
     //    DB row is the source of truth for which release is mounted;
@@ -453,10 +453,25 @@ pub async fn is_flavor_cached(state: &CodeSandboxState, flavor: &str) -> bool {
 // squashfuse spawn (foreground + PDEATHSIG)
 // =====================================================================
 
+/// Compose the MOUNTED registry key. Two pinned versions of the same
+/// flavor must coexist in the registry during a swap-drain cycle (the
+/// old version's squashfuse stays alive until inflight==0 even though
+/// the new pin is already serving fresh `execute_command`s), so the
+/// key encodes BOTH coordinates. Plan 5 Phase 2 explicitly: "`MOUNTED`
+/// registry key flips from `flavor` to `(version, arch, flavor)`."
+fn mount_key(version: &str, flavor: &str) -> String {
+    if version.is_empty() {
+        flavor.to_string()
+    } else {
+        format!("{version}/{flavor}")
+    }
+}
+
 async fn mount_if_needed(
     sqfs_path: &Path,
     mount_dir: &Path,
     flavor: &str,
+    version: &str,
 ) -> Result<(), ReadyError> {
     // Idempotency: if the mount dir already has `usr/`, it's mounted
     // (by the test harness, an operator pre-mount via `just
@@ -522,7 +537,7 @@ async fn mount_if_needed(
     {
         let mut g = slot.lock().await;
         g.insert(
-            flavor.to_string(),
+            mount_key(version, flavor),
             MountedRootfs {
                 child,
                 mount_dir: mount_dir.to_path_buf(),
@@ -598,10 +613,22 @@ pub async fn shutdown() {
 }
 
 /// Snapshot of flavors currently mounted (server-spawned squashfuse live).
-/// Empty if no flavor has been mounted yet.
+/// Empty if no flavor has been mounted yet. Projects the (version,
+/// flavor) composite MOUNTED keys back to a flavor-only set for the
+/// legacy `/code-sandbox/environments` endpoint.
 pub async fn mounted_set() -> std::collections::HashSet<String> {
     match MOUNTED.get() {
-        Some(slot) => slot.lock().await.keys().cloned().collect(),
+        Some(slot) => slot
+            .lock()
+            .await
+            .keys()
+            .map(|k| {
+                // Composite key shape "<version>/<flavor>" — split off the
+                // flavor; fall back to the whole key for legacy entries
+                // (pre-version-aware mounts).
+                k.rsplit_once('/').map(|(_, f)| f.to_string()).unwrap_or_else(|| k.clone())
+            })
+            .collect(),
         None => std::collections::HashSet::new(),
     }
 }
@@ -613,32 +640,51 @@ pub struct EvictOutcome {
     pub was_cached: bool,
 }
 
-/// Evict a flavor from the cache: unmount its squashfuse (if mounted),
-/// drop its READY/MOUNTED registry entries, and delete its cached
-/// `*-{flavor}.squashfs` file(s) under `cache_dir` plus any mirror mount dir.
-/// Idempotent — returns `was_cached: false`, `bytes_freed: 0` when nothing is
-/// present. The next `ensure_rootfs_ready` for the flavor re-fetches + re-mounts.
+/// Evict a flavor from the cache: unmount EVERY pinned version's
+/// squashfuse process for this flavor (if mounted), drop their
+/// READY/MOUNTED registry entries, and delete all cached
+/// `*-{flavor}.squashfs` files under `cache_dir`. Used by the legacy
+/// `/code-sandbox/environments/{flavor}` admin DELETE endpoint.
+/// Idempotent.
+///
+/// For version-aware eviction (the Plan 5 Phase 3 drain-on-swap
+/// path), use [`evict_by_version_flavor`] instead — it kills only
+/// the specific `(version, flavor)` mount and leaves any sibling
+/// version of the same flavor running.
 pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
-    // 1. Drop the READY cell so the next use re-initializes from scratch.
+    // 1. Drop READY cells for any (version, flavor) entry matching
+    //    this flavor.
     if let Some(map) = READY.get() {
-        map.remove(flavor);
+        let suffix = format!("/{flavor}");
+        map.retain(|k, _| k != flavor && !k.ends_with(&suffix));
     }
 
-    // 2. Unmount the squashfuse we spawned (if any) — mirrors shutdown().
+    // 2. Unmount every squashfuse spawn for this flavor (across all
+    //    pinned versions). Same defensive sequence as shutdown().
     if let Some(slot) = MOUNTED.get() {
-        let taken = slot.lock().await.remove(flavor);
-        if let Some(MountedRootfs { mut child, mount_dir }) = taken {
-            if let Some(pid) = child.id() {
-                #[cfg(target_os = "linux")]
-                unsafe {
-                    libc::kill(pid as libc::pid_t, libc::SIGTERM);
+        let suffix = format!("/{flavor}");
+        let stale_keys: Vec<String> = slot
+            .lock()
+            .await
+            .keys()
+            .filter(|k| k.as_str() == flavor || k.ends_with(&suffix))
+            .cloned()
+            .collect();
+        for key in stale_keys {
+            let taken = slot.lock().await.remove(&key);
+            if let Some(MountedRootfs { mut child, mount_dir }) = taken {
+                if let Some(pid) = child.id() {
+                    #[cfg(target_os = "linux")]
+                    unsafe {
+                        libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    let _ = pid;
+                    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
                 }
-                #[cfg(not(target_os = "linux"))]
-                let _ = pid;
-                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
+                let _ = std::fs::remove_dir(&mount_dir);
             }
-            let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
-            let _ = std::fs::remove_dir(&mount_dir);
         }
     }
 
@@ -679,5 +725,78 @@ pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
         }
     }
 
+    EvictOutcome { bytes_freed, was_cached }
+}
+
+/// Version-aware evict: tear down ONLY the `(version, flavor)`
+/// mount, leaving any sibling version of the same flavor (or any
+/// other flavor) untouched. Plan 5 Phase 3 drain-on-swap path.
+///
+/// `version_cache_dir` is the per-version cache subdir
+/// (`<rootfs cache root>/<version>/`) so the cached squashfs at
+/// that path is removed too.
+pub async fn evict_by_version_flavor(
+    version_cache_dir: &Path,
+    version: &str,
+    flavor: &str,
+) -> EvictOutcome {
+    let key = mount_key(version, flavor);
+
+    // 1. Drop the matching READY cell so the next call re-mounts.
+    if let Some(map) = READY.get() {
+        map.remove(&key);
+    }
+
+    // 2. Unmount the specific squashfuse for this (version, flavor).
+    if let Some(slot) = MOUNTED.get() {
+        let taken = slot.lock().await.remove(&key);
+        if let Some(MountedRootfs { mut child, mount_dir }) = taken {
+            if let Some(pid) = child.id() {
+                #[cfg(target_os = "linux")]
+                unsafe {
+                    libc::kill(pid as libc::pid_t, libc::SIGTERM);
+                }
+                #[cfg(not(target_os = "linux"))]
+                let _ = pid;
+                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+            }
+            let _ = Command::new("fusermount").arg("-u").arg(&mount_dir).status().await;
+            let _ = std::fs::remove_dir(&mount_dir);
+        }
+    }
+
+    // 3. Remove the per-version cached squashfs for THIS flavor.
+    let suffix = format!("-{flavor}.squashfs");
+    let mut bytes_freed: u64 = 0;
+    let mut was_cached = false;
+    if let Ok(rd) = std::fs::read_dir(version_cache_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            let is_match = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(&suffix));
+            if !is_match {
+                continue;
+            }
+            was_cached = true;
+            if let Ok(meta) = std::fs::metadata(&p) {
+                bytes_freed += meta.len();
+            }
+            if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                let mnt = version_cache_dir.join(stem);
+                let _ = Command::new("fusermount").arg("-u").arg(&mnt).status().await;
+                let _ = std::fs::remove_dir_all(&mnt);
+            }
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+    tracing::info!(
+        version,
+        flavor,
+        bytes_freed,
+        was_cached,
+        "code_sandbox: evict_by_version_flavor complete"
+    );
     EvictOutcome { bytes_freed, was_cached }
 }

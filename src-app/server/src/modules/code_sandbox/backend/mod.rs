@@ -99,26 +99,29 @@ pub trait SandboxBackend: Send + Sync {
 
     /// Evict a specific (version, flavor) mount after the version
     /// manager's drain task observed the inflight counter hit zero
-    /// (Plan 5 Phase 3). Default impl delegates to `evict_flavor` —
-    /// backends whose mount model is version-blind (just one mount
-    /// per flavor) get correct behavior for free.
+    /// (Plan 5 Phase 3). Default impl is version-aware — it kills
+    /// only the matching `(version, flavor)` squashfuse via
+    /// `runtime_mount::evict_by_version_flavor`, leaving any sibling
+    /// version of the same flavor (e.g. the new pin) alive.
     ///
-    /// Phase 3 lands the trait method + default impl; per-backend
-    /// version-aware overrides (Linux: per-version mount dirs;
-    /// macOS: per-version VM cache; Windows: per-version WSL
-    /// distros) layer on in subsequent commits.
+    /// VM-backed overrides (mac_vm, wsl2) layer per-version cleanup
+    /// on top of this default (libkrun VM teardown, `wsl --unregister`).
     async fn evict_artifact(
         &self,
         mount_dir: &Path,
         flavor: &str,
         version: &str,
     ) -> EvictOutcome {
-        let _ = version; // default impl ignores version
-        // `mount_dir` is the per-version mount dir for this artifact;
-        // its parent is the conventional `cache_dir` shape the legacy
-        // evict_flavor expects.
-        let cache_dir = mount_dir.parent().unwrap_or(mount_dir);
-        self.evict_flavor(cache_dir, flavor).await
+        // `mount_dir` is `<cache_root>/<version>/<asset_stem>`; the
+        // parent is the per-version cache subdir that evict_by_version_flavor
+        // expects (it'll find + remove the per-flavor `.squashfs` next to it).
+        let version_cache_dir = mount_dir.parent().unwrap_or(mount_dir);
+        crate::modules::code_sandbox::runtime_mount::evict_by_version_flavor(
+            version_cache_dir,
+            version,
+            flavor,
+        )
+        .await
     }
 
     /// **Test-only seam.** Execute an arbitrary `bwrap` argv against the
