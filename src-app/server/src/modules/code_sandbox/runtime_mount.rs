@@ -635,10 +635,21 @@ pub struct EvictOutcome {
 /// version of the same flavor running.
 pub async fn evict_flavor(cache_dir: &Path, flavor: &str) -> EvictOutcome {
     // 1. Drop READY cells for any (version, flavor) entry matching
-    //    this flavor.
+    //    this flavor. Also flush the version-manager mount registry
+    //    so MOUNTED_ARTIFACTS doesn't leak stale entries until the
+    //    next server restart.
     if let Some(map) = READY.get() {
         let suffix = format!("/{flavor}");
         map.retain(|k, _| k != flavor && !k.ends_with(&suffix));
+    }
+    let deregistered =
+        crate::modules::code_sandbox::version_manager::deregister_mounts_for_flavor(flavor);
+    if deregistered > 0 {
+        tracing::debug!(
+            flavor,
+            deregistered,
+            "code_sandbox: evict_flavor flushed version-manager registry"
+        );
     }
 
     // 2. Unmount every squashfuse spawn for this flavor (across all

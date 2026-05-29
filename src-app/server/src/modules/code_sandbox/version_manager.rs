@@ -1203,6 +1203,26 @@ pub fn list_mounted_artifacts() -> Vec<Arc<MountedArtifact>> {
     MOUNTED_ARTIFACTS.iter().map(|e| e.value().clone()).collect()
 }
 
+/// Deregister every mount entry whose flavor matches `flavor`. Used
+/// by `runtime_mount::evict_flavor` (the legacy admin DELETE
+/// `/code-sandbox/environments/{flavor}` path) so that wholesale
+/// eviction of a flavor across every pinned version also flushes the
+/// version-manager registry — without this, MOUNTED_ARTIFACTS leaks
+/// stale entries until the next server restart. Returns the count
+/// of entries removed.
+pub fn deregister_mounts_for_flavor(flavor: &str) -> usize {
+    let stale: Vec<Uuid> = MOUNTED_ARTIFACTS
+        .iter()
+        .filter(|e| e.value().flavor == flavor)
+        .map(|e| e.value().artifact_id)
+        .collect();
+    let n = stale.len();
+    for id in stale {
+        MOUNTED_ARTIFACTS.remove(&id);
+    }
+    n
+}
+
 /// Wait on the artifact's `drained` Notify until BOTH inflight
 /// counters read zero. Drain tasks `await` this; in-flight execs +
 /// MCP transports just need to `drop` their guards (which calls
