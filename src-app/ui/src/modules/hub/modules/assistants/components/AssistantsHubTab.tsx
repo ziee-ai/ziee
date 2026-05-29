@@ -4,11 +4,19 @@ import { SearchOutlined, ClearOutlined } from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { AssistantHubCard } from '@/modules/hub/modules/assistants/components/AssistantHubCard'
 import { AssistantFormDrawer } from '@/modules/assistants/components/AssistantFormDrawer'
+import {
+  compatOf,
+  partitionByCompat,
+} from '@/modules/hub/stores/hub-catalog-store'
+import type { IndexItem } from '@/api-client/types'
+import { IncompatibleCollapse } from '@/modules/hub/components/IncompatibleCollapse'
 
 const { Text } = Typography
 
 export function AssistantsHubTab() {
   const { assistants, loading, error } = Stores.HubAssistants // Auto-loads via __init__
+  const catalog = Stores.HubCatalog.catalog
+  const serverVersion = Stores.HubCatalog.serverVersion
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [sortBy, setSortBy] = useState('popular')
@@ -157,17 +165,52 @@ export function AssistantsHubTab() {
 
       {/* Assistants List */}
       <div className="flex-1 overflow-auto px-3 pb-3">
-        <div className="flex flex-col gap-3">
-          {filteredAssistants.map(assistant => (
-            <AssistantHubCard key={assistant.id} assistant={assistant} />
-          ))}
-        </div>
-
-        {filteredAssistants.length === 0 && (
-          <div className="text-center py-12">
-            <Text type="secondary">No assistants found</Text>
-          </div>
-        )}
+        {(() => {
+          const indexById = new Map(
+            (catalog?.items ?? [])
+              .filter(it => it.category === 'assistant')
+              .map(it => [it.id, it]),
+          )
+          const { compatible } = partitionByCompat(
+            filteredAssistants
+              .map(a => indexById.get(a.id))
+              .filter((it): it is IndexItem => !!it),
+            serverVersion,
+          )
+          const compatibleIds = new Set(compatible.map(c => c.id))
+          const compatibleList = filteredAssistants.filter(a =>
+            compatibleIds.has(a.id),
+          )
+          const incompatibleList = filteredAssistants.filter(
+            a => !compatibleIds.has(a.id) && indexById.has(a.id),
+          )
+          const orphans = filteredAssistants.filter(a => !indexById.has(a.id))
+          return (
+            <>
+              <div className="flex flex-col gap-3">
+                {[...compatibleList, ...orphans].map(assistant => (
+                  <AssistantHubCard key={assistant.id} assistant={assistant} />
+                ))}
+              </div>
+              <IncompatibleCollapse
+                items={incompatibleList.map(a => {
+                  const ix = indexById.get(a.id)!
+                  const c = compatOf(ix, serverVersion)
+                  return {
+                    id: a.id,
+                    required: c.status === 'too_old' ? c.required : '',
+                    content: <AssistantHubCard assistant={a} />,
+                  }
+                })}
+              />
+              {filteredAssistants.length === 0 && (
+                <div className="text-center py-12">
+                  <Text type="secondary">No assistants found</Text>
+                </div>
+              )}
+            </>
+          )
+        })()}
       </div>
 
       {/* Assistant Form Drawer */}

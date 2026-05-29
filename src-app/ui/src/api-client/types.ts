@@ -113,6 +113,13 @@ export interface CallToolResponse {
   is_error: boolean
 }
 
+export interface Catalog {
+  generated_at?: string
+  hub_version: string
+  items: IndexItem[]
+  schema_version: number
+}
+
 export interface ChatStreamChunk {
   branch_id?: string
   content?: ContentBlockDelta[]
@@ -642,6 +649,27 @@ export interface HubAssistant {
   use_cases?: string[]
 }
 
+export interface HubCatalogCounts {
+  assistants: number
+  mcp_servers: number
+  models: number
+}
+
+export interface HubCatalogRefreshResponse {
+  cosign_verified: boolean
+  new_version: string
+  previous_version?: string
+  updated: boolean
+}
+
+export interface HubCatalogVersionResponse {
+  counts: HubCatalogCounts
+  hub_version: string
+  server_version: string
+}
+
+export type HubCategory = 'assistant' | 'mcp-server' | 'model'
+
 export interface HubEntity {
   created_at: string
   created_by?: string
@@ -696,6 +724,18 @@ export interface HubMCPServer {
   version?: string
 }
 
+export type HubManifest = {
+  category: 'model'
+} | {
+  category: 'assistant'
+} | {
+  category: 'mcp_server'
+}
+
+export interface HubManifestQuery {
+  category: HubCategory
+}
+
 export interface HubModel {
   description?: string
   auth_required?: boolean
@@ -738,6 +778,20 @@ export interface HubRefreshResponse {
   version: string
 }
 
+export interface HubUpdateRow {
+  current_version: string
+  entity_id: string
+  entity_type: string
+  hub_category: string
+  hub_id: string
+  installed_version?: string
+}
+
+export interface HubUpdatesResponse {
+  catalog_version: string
+  updates: HubUpdateRow[]
+}
+
 export interface HubVersionResponse {
   last_updated?: string
   version: string
@@ -753,6 +807,18 @@ export type ImageSource = {
 } | {
   type: 'file'
   file_id: string
+}
+
+export interface IndexItem {
+  added_at?: string
+  category: HubCategory
+  id: string
+  manifest_path: string
+  min_ziee_version?: string
+  name: string
+  summary: string
+  tags?: string[]
+  verified?: boolean
 }
 
 export interface InstanceResponse {
@@ -2076,6 +2142,7 @@ export enum Permissions {
   GroupsRead = 'groups::read',
   HardwareMonitor = 'hardware::monitor',
   HardwareRead = 'hardware::read',
+  HubAdmin = 'hub::admin',
   HubAssistantsCreate = 'hub::assistants::create',
   HubAssistantsRead = 'hub::assistants::read',
   HubAssistantsRefresh = 'hub::assistants::refresh',
@@ -2177,6 +2244,7 @@ export const PermissionDescriptions: Record<string, string> = {
   GroupsRead: 'View groups and group information',
   HardwareMonitor: 'Monitor real-time hardware usage',
   HardwareRead: 'View hardware information',
+  HubAdmin: 'Administer the hub catalog (refresh, view updates)',
   HubAssistantsCreate: 'Create assistants from hub',
   HubAssistantsRead: 'View hub assistants',
   HubAssistantsRefresh: 'Refresh hub assistants from GitHub',
@@ -2319,12 +2387,17 @@ export const ApiEndpoints = {
   'Hub.createModelFromHub': 'POST /api/hub/models/download',
   'Hub.getAssistants': 'GET /api/hub/assistants',
   'Hub.getAssistantsVersion': 'GET /api/hub/assistants/version',
+  'Hub.getCatalog': 'GET /api/hub/index',
+  'Hub.getCatalogVersion': 'GET /api/hub/version',
   'Hub.getLocalProviders': 'GET /api/hub/models/local-providers',
   'Hub.getMCPServers': 'GET /api/hub/mcp-servers',
   'Hub.getMCPServersVersion': 'GET /api/hub/mcp-servers/version',
+  'Hub.getManifest': 'GET /api/hub/manifest/{id}',
   'Hub.getModels': 'GET /api/hub/models',
   'Hub.getModelsVersion': 'GET /api/hub/models/version',
+  'Hub.getUpdates': 'GET /api/hub/updates',
   'Hub.refreshAssistants': 'POST /api/hub/assistants/refresh',
+  'Hub.refreshCatalog': 'POST /api/hub/refresh',
   'Hub.refreshMCPServers': 'POST /api/hub/mcp-servers/refresh',
   'Hub.refreshModels': 'POST /api/hub/models/refresh',
   'LlmModel.cancelDownload': 'POST /api/llm-models/downloads/{download_id}/cancel',
@@ -2526,12 +2599,17 @@ export type ApiEndpointParameters = {
   'Hub.createModelFromHub': CreateModelFromHubRequest
   'Hub.getAssistants': { lang?: string }
   'Hub.getAssistantsVersion': void
+  'Hub.getCatalog': void
+  'Hub.getCatalogVersion': void
   'Hub.getLocalProviders': void
   'Hub.getMCPServers': { lang?: string }
   'Hub.getMCPServersVersion': void
+  'Hub.getManifest': { id: string; category: HubCategory }
   'Hub.getModels': { lang?: string }
   'Hub.getModelsVersion': void
+  'Hub.getUpdates': void
   'Hub.refreshAssistants': void
+  'Hub.refreshCatalog': void
   'Hub.refreshMCPServers': void
   'Hub.refreshModels': void
   'LlmModel.cancelDownload': { download_id: string }
@@ -2733,12 +2811,17 @@ export type ApiEndpointResponses = {
   'Hub.createModelFromHub': ModelFromHubResponse
   'Hub.getAssistants': HubAssistant[]
   'Hub.getAssistantsVersion': HubVersionResponse
+  'Hub.getCatalog': Catalog
+  'Hub.getCatalogVersion': HubCatalogVersionResponse
   'Hub.getLocalProviders': HubLocalProvidersResponse
   'Hub.getMCPServers': HubMCPServer[]
   'Hub.getMCPServersVersion': HubVersionResponse
+  'Hub.getManifest': HubManifest
   'Hub.getModels': HubModel[]
   'Hub.getModelsVersion': HubVersionResponse
+  'Hub.getUpdates': HubUpdatesResponse
   'Hub.refreshAssistants': HubRefreshResponse
+  'Hub.refreshCatalog': HubCatalogRefreshResponse
   'Hub.refreshMCPServers': HubRefreshResponse
   'Hub.refreshModels': HubRefreshResponse
   'LlmModel.cancelDownload': void

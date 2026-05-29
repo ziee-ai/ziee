@@ -1,10 +1,21 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Button, Dropdown, Flex, Result, Segmented, theme, Typography } from 'antd'
+import {
+  Button,
+  Dropdown,
+  Flex,
+  Result,
+  Segmented,
+  Tag,
+  Tooltip,
+  theme,
+  Typography,
+} from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { IoIosArrowDown, IoIosArrowForward } from 'react-icons/io'
 import { Stores } from '@/core/stores'
 import { evaluatePermission } from '@/core/permissions'
+import { Permissions } from '@/api-client/types'
 import { HeaderBarContainer } from '@/modules/layouts/app-layout/components/HeaderBarContainer'
 import { LazyComponentRenderer } from '@/core/components/LazyComponentRenderer'
 import { useWindowMinSize } from '@/modules/layouts/app-layout/hooks/useWindowMinSize'
@@ -59,19 +70,35 @@ export function HubPage() {
   }, [hasUrlSegment, visibleTabs, navigate, urlSegmentIsForbidden])
 
   const currentTabSlot = visibleTabs.find(t => t.id === activeTab)
-  const canRefresh = currentTabSlot?.permissions.refresh
-    ? evaluatePermission(user, permissions, currentTabSlot.permissions.refresh)
-    : true
+  // Page-level Refresh is admin-only now (calls unified
+  // POST /api/hub/refresh — fetches the latest signed catalog from
+  // GitHub, sha256 + cosign verifies, atomic rotate). Per-tab refresh
+  // hooks are still defined on the slot for backwards-compat with the
+  // legacy event-bus surface, but the button no longer dispatches
+  // through them.
+  const canRefresh = evaluatePermission(user, permissions, Permissions.HubAdmin)
+  const hubVersion = Stores.HubCatalog.hubVersion
+  const serverVersion = Stores.HubCatalog.serverVersion
 
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      if (currentTabSlot?.refresh) {
-        await currentTabSlot.refresh()
-        message.success('Hub data refreshed successfully')
+      await Stores.HubCatalog.refresh()
+      // The refresh handler returns an updated/new_version/cosign_verified
+      // tuple, but the user just needs a success toast.
+      message.success(`Hub catalog refreshed to v${Stores.HubCatalog.hubVersion ?? '?'}`)
+      // Trigger each visible tab's own refresh hook so per-tab lists
+      // re-render against the new catalog (the back-compat per-category
+      // endpoints already serve from the rotated `current/` dir).
+      for (const tab of visibleTabs) {
+        try {
+          await tab.refresh()
+        } catch (e) {
+          console.warn(`hub tab ${tab.id} refresh failed:`, e)
+        }
       }
     } catch (error) {
-      message.error('Failed to refresh hub data')
+      message.error(`Failed to refresh hub catalog: ${(error as Error)?.message ?? error}`)
       console.error(error)
     } finally {
       setRefreshing(false)
@@ -154,16 +181,29 @@ export function HubPage() {
             </div>
           )}
 
-          {canRefresh && (
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRefresh}
-              loading={refreshing}
-              type="text"
-            >
-              {windowMinSize.xs ? null : 'Refresh'}
-            </Button>
-          )}
+          <Flex align="center" gap={8}>
+            {hubVersion && !windowMinSize.xs && (
+              <Tooltip
+                title={
+                  serverVersion
+                    ? `Server v${serverVersion} — installed catalog from ziee-ai/hub`
+                    : 'Installed catalog from ziee-ai/hub'
+                }
+              >
+                <Tag>v{hubVersion}</Tag>
+              </Tooltip>
+            )}
+            {canRefresh && (
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleRefresh}
+                loading={refreshing}
+                type="text"
+              >
+                {windowMinSize.xs ? null : 'Refresh'}
+              </Button>
+            )}
+          </Flex>
         </div>
       </HeaderBarContainer>
 
