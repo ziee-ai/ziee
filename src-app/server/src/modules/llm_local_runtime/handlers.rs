@@ -29,13 +29,28 @@ pub async fn start_model_instance(
     Path(model_id): Path<Uuid>,
     Json(_req): Json<StartInstanceRequest>,
 ) -> ApiResult<Json<InstanceResponse>> {
-    // Check if instance already exists
-    let existing = Repos.local_runtime.get_instance_by_model(model_id).await?;
-    if let Some(_instance) = existing {
-        return Err((
-            StatusCode::CONFLICT,
-            AppError::conflict("Model instance already running"),
-        ));
+    // Only a genuinely-running, healthy instance blocks a new start. A
+    // leftover row in a non-running state — e.g. the `status='stopped'` row
+    // that validation's probe leaves behind (validator::teardown_validation_instance),
+    // or a prior manual stop, or a crashed engine — must NOT 409 with
+    // "already running"; clean it up and start fresh. This mirrors the proxy
+    // auto-start path (auto_start::probe_liveness), which only treats a
+    // running + health-checked instance as live.
+    if let Some(existing) = Repos.local_runtime.get_instance_by_model(model_id).await? {
+        if existing.status == "running" {
+            let dep = get_deployment_manager()
+                .get_deployment(&DeploymentConfig::Local { binary_path: None })
+                .await?;
+            if dep.health_check(&existing.base_url).await.unwrap_or(false) {
+                return Err((
+                    StatusCode::CONFLICT,
+                    AppError::conflict("Model instance already running"),
+                ));
+            }
+        }
+        // Stale / stopped / unhealthy row → drop it so create_instance
+        // (model_id is UNIQUE) can re-insert below.
+        Repos.local_runtime.delete_instance(model_id).await?;
     }
 
     // Get model details

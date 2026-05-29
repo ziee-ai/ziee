@@ -22,9 +22,11 @@ test.describe('Local Runtime — settings page', () => {
 
   test('shows the GPU detection card', async ({ page, testInfra }) => {
     await gotoRuntimeSettings(page, testInfra.baseURL)
+    // detect-gpu spawns host probes and can be slow / 502 on a cold backend
+    // (the store retries) — give the card time to render.
     await expect(
       page.locator('.ant-card').filter({ hasText: /Hardware acceleration|GPU/i }).first(),
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 30000 })
   })
 
   test('shows the installed-versions card (empty state)', async ({ page, testInfra }) => {

@@ -74,15 +74,26 @@ export const useRuntimeConfigStore = create<RuntimeConfigState>()(
 
     loadGpu: async () => {
       set({ loadingGpu: true })
-      try {
-        const gpu = await ApiClient.LocalRuntime.detectGpu(undefined)
-        set({ gpu, loadingGpu: false })
-      } catch (error) {
-        set({
-          error:
-            error instanceof Error ? error.message : 'GPU detection failed',
-          loadingGpu: false,
-        })
+      // detect-gpu spawns host probes and can transiently 502 on a cold
+      // backend; retry a few times with backoff before giving up so the card
+      // isn't left blank.
+      const delays = [1000, 2000, 3000]
+      for (let attempt = 0; attempt <= delays.length; attempt++) {
+        try {
+          const gpu = await ApiClient.LocalRuntime.detectGpu(undefined)
+          set({ gpu, loadingGpu: false })
+          return
+        } catch (error) {
+          if (attempt === delays.length) {
+            set({
+              error:
+                error instanceof Error ? error.message : 'GPU detection failed',
+              loadingGpu: false,
+            })
+          } else {
+            await new Promise(r => setTimeout(r, delays[attempt]))
+          }
+        }
       }
     },
 

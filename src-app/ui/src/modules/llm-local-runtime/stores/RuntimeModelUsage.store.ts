@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { ApiClient } from '@/api-client'
 import { Stores } from '@/core/stores'
-import type { VersionUsageResponse } from '@/api-client/types'
+import type { InstanceResponse, VersionUsageResponse } from '@/api-client/types'
 import type { RuntimeEngine } from '../types'
 import { emitRuntimeModelUsageChanged } from '../events/emitters'
 
@@ -10,18 +10,23 @@ interface RuntimeModelUsageState {
   usage: Map<RuntimeEngine, VersionUsageResponse>
   // Per-engine load-in-flight.
   loading: Map<RuntimeEngine, boolean>
-  // Per-model action-in-flight (start/stop/swap), keyed by model id.
+  // Per-model action-in-flight (start/stop/restart/swap), keyed by model id.
   acting: Map<string, boolean>
+  // Per-model running-instance detail (port/base_url/health/error), lazily
+  // loaded when a row is expanded. `null` = fetched, no instance.
+  instances: Map<string, InstanceResponse | null>
   error: string | null
 
   loadUsage: (engine: RuntimeEngine) => Promise<void>
   startModel: (engine: RuntimeEngine, modelId: string) => Promise<void>
   stopModel: (engine: RuntimeEngine, modelId: string) => Promise<void>
+  restartModel: (engine: RuntimeEngine, modelId: string) => Promise<void>
   swapVersion: (
     engine: RuntimeEngine,
     modelId: string,
     versionId: string
   ) => Promise<void>
+  loadInstance: (modelId: string) => Promise<void>
   clearError: () => void
 
   __init__: { __store__: () => void }
@@ -33,6 +38,7 @@ export const useRuntimeModelUsageStore = create<RuntimeModelUsageState>(
     usage: new Map(),
     loading: new Map(),
     acting: new Map(),
+    instances: new Map(),
     error: null,
 
     loadUsage: async (engine: RuntimeEngine) => {
@@ -78,6 +84,15 @@ export const useRuntimeModelUsageStore = create<RuntimeModelUsageState>(
       await emitRuntimeModelUsageChanged(modelId)
     },
 
+    restartModel: async (engine, modelId) => {
+      await act(set, modelId, () =>
+        ApiClient.LocalRuntime.restartModel({ model_id: modelId })
+      )
+      await get().loadUsage(engine)
+      await get().loadInstance(modelId)
+      await emitRuntimeModelUsageChanged(modelId)
+    },
+
     swapVersion: async (engine, modelId, versionId) => {
       await act(set, modelId, () =>
         ApiClient.LocalRuntime.swapModelVersion({
@@ -87,6 +102,22 @@ export const useRuntimeModelUsageStore = create<RuntimeModelUsageState>(
       )
       await get().loadUsage(engine)
       await emitRuntimeModelUsageChanged(modelId)
+    },
+
+    loadInstance: async (modelId) => {
+      try {
+        const instance = await ApiClient.LocalRuntime.getInstance({
+          model_id: modelId
+        })
+        set(state => ({
+          instances: new Map(state.instances).set(modelId, instance)
+        }))
+      } catch {
+        // 404 = no instance (never started / already reaped).
+        set(state => ({
+          instances: new Map(state.instances).set(modelId, null)
+        }))
+      }
     },
 
     clearError: () => set({ error: null }),

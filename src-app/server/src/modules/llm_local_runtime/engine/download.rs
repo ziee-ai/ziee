@@ -840,52 +840,6 @@ impl Default for BinaryDownloader {
     }
 }
 
-/// Helper function for integration tests to download and cache test binaries
-///
-/// Auto-detects platform and downloads CPU binaries (except macOS which uses Metal)
-pub async fn ensure_test_binary(
-    engine: EngineType,
-    version: &str,
-) -> Result<PathBuf> {
-    let downloader = BinaryDownloader::new()?;
-
-    // Detect current platform
-    let platform = if cfg!(target_os = "linux") {
-        "linux"
-    } else if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else {
-        return Err(RuntimeError::internal("Unsupported platform"));
-    };
-
-    let arch = if cfg!(target_arch = "x86_64") {
-        "x86_64"
-    } else if cfg!(target_arch = "aarch64") {
-        "aarch64"
-    } else {
-        return Err(RuntimeError::internal("Unsupported architecture"));
-    };
-
-    // Use CPU backend for Linux/Windows tests, Metal for macOS
-    let backend = if cfg!(target_os = "macos") {
-        "metal"
-    } else {
-        "cpu"
-    };
-
-    // Check cache first
-    if let Some(cached) = downloader.get_cached_binary(engine, version, platform, arch, backend) {
-        tracing::info!("Using cached binary: {}", cached.display());
-        return Ok(cached);
-    }
-
-    // Download if not cached
-    let info = downloader.download(engine, version, platform, arch, backend).await?;
-
-    Ok(info.path)
-}
 
 #[cfg(test)]
 mod tests {

@@ -2,6 +2,8 @@
 // Detects available GPU acceleration: CUDA (NVIDIA), ROCm (AMD), Metal (Apple Silicon)
 
 use std::process::Command;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 /// Resolve a binary by name to its absolute path, searching only the
 /// trusted system directories (NOT $PATH). Closes
@@ -41,11 +43,46 @@ fn resolve_system_binary(name: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-/// Run a trusted system binary (absolute-path resolved, no `$PATH` lookup)
-/// and capture stdout. Used for runtime host probing.
-fn run_trusted(name: &str, args: &[&str]) -> Option<String> {
+/// Hard cap on how long a single host/GPU probe subprocess may run. A cold
+/// `nvidia-smi` can take tens of seconds (driver/GPU init) — and with no cap a
+/// slow probe stalls the whole `/detect-gpu` handler, so the proxy in front of
+/// it returns 502 and the settings-page GPU card never renders. We'd rather
+/// treat a probe that won't answer in a few seconds as "unavailable" and fall
+/// through to the cheap library-existence checks.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Run a resolved binary and capture its output, abandoning the wait after
+/// `timeout`. Returns None on spawn error or timeout. On timeout the worker
+/// thread + its child are detached (not killed) — the child is a read-only
+/// vendor probe that exits on its own shortly after; we just stop waiting.
+fn probe_command_with_timeout(
+    bin: std::path::PathBuf,
+    args: &[&str],
+    timeout: Duration,
+) -> Option<std::process::Output> {
+    let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(Command::new(bin).args(&owned).output());
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(output)) => Some(output),
+        // spawn error, sender dropped, or timed out → caller treats as "no signal"
+        _ => None,
+    }
+}
+
+/// Resolve a trusted system binary then run it under [`PROBE_TIMEOUT`].
+fn probe_trusted(name: &str, args: &[&str]) -> Option<std::process::Output> {
     let bin = resolve_system_binary(name)?;
-    let out = Command::new(bin).args(args).output().ok()?;
+    probe_command_with_timeout(bin, args, PROBE_TIMEOUT)
+}
+
+/// Run a trusted system binary (absolute-path resolved, no `$PATH` lookup)
+/// and capture stdout, bounded by [`PROBE_TIMEOUT`]. Used for runtime host
+/// probing (`uname`/`sysctl`).
+fn run_trusted(name: &str, args: &[&str]) -> Option<String> {
+    let out = probe_trusted(name, args)?;
     if !out.status.success() {
         return None;
     }
@@ -61,21 +98,28 @@ fn run_trusted(name: &str, args: &[&str]) -> Option<String> {
 /// universal build). On Windows there is no `uname`; a Windows binary only
 /// runs on Windows, so the compile-time constant is the correct fallback.
 pub fn host_platform() -> String {
-    if let Some(uname) = run_trusted("uname", &["-s"]) {
-        let s = uname.trim().to_lowercase();
-        if s.contains("darwin") {
-            return "macos".to_string();
-        }
-        if s.contains("linux") {
-            return "linux".to_string();
-        }
-    }
-    match std::env::consts::OS {
-        "macos" => "macos",
-        "windows" => "windows",
-        _ => "linux",
-    }
-    .to_string()
+    // Memoized: the host OS is stable for the process lifetime, so the `uname`
+    // spawn runs once (not on every detect-gpu / check-updates call).
+    static CACHE: OnceLock<String> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            if let Some(uname) = run_trusted("uname", &["-s"]) {
+                let s = uname.trim().to_lowercase();
+                if s.contains("darwin") {
+                    return "macos".to_string();
+                }
+                if s.contains("linux") {
+                    return "linux".to_string();
+                }
+            }
+            match std::env::consts::OS {
+                "macos" => "macos",
+                "windows" => "windows",
+                _ => "linux",
+            }
+            .to_string()
+        })
+        .clone()
 }
 
 /// The CPU architecture the process is **actually running on**, probed at
@@ -84,28 +128,34 @@ pub fn host_platform() -> String {
 /// x86_64 engine onto Apple Silicon. Maps to the artifact arch token
 /// (`x86_64`/`aarch64`).
 pub fn host_arch() -> String {
-    if host_platform() == "macos" {
-        // Rosetta-translated x86_64 processes still report the *native* arm64
-        // via this sysctl, so we get the right engine slice.
-        if let Some(out) = run_trusted("sysctl", &["-n", "hw.optional.arm64"]) {
-            if out.trim() == "1" {
-                return "aarch64".to_string();
+    // Memoized for the same reason as host_platform.
+    static CACHE: OnceLock<String> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            if host_platform() == "macos" {
+                // Rosetta-translated x86_64 processes still report the *native*
+                // arm64 via this sysctl, so we get the right engine slice.
+                if let Some(out) = run_trusted("sysctl", &["-n", "hw.optional.arm64"]) {
+                    if out.trim() == "1" {
+                        return "aarch64".to_string();
+                    }
+                    return "x86_64".to_string();
+                }
             }
-            return "x86_64".to_string();
-        }
-    }
-    if let Some(m) = run_trusted("uname", &["-m"]) {
-        return match m.trim() {
-            "x86_64" | "amd64" => "x86_64".to_string(),
-            "aarch64" | "arm64" => "aarch64".to_string(),
-            other => other.to_string(),
-        };
-    }
-    match std::env::consts::ARCH {
-        "aarch64" => "aarch64",
-        _ => "x86_64",
-    }
-    .to_string()
+            if let Some(m) = run_trusted("uname", &["-m"]) {
+                return match m.trim() {
+                    "x86_64" | "amd64" => "x86_64".to_string(),
+                    "aarch64" | "arm64" => "aarch64".to_string(),
+                    other => other.to_string(),
+                };
+            }
+            match std::env::consts::ARCH {
+                "aarch64" => "aarch64",
+                _ => "x86_64",
+            }
+            .to_string()
+        })
+        .clone()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,8 +280,7 @@ fn parse_rocm_version_str(s: &str) -> Option<(u32, u32)> {
 
 /// Host CUDA version the driver supports (from `nvidia-smi`), if NVIDIA.
 fn detect_cuda_version() -> Option<(u32, u32)> {
-    let nvidia_smi = resolve_system_binary("nvidia-smi")?;
-    let output = Command::new(nvidia_smi).output().ok()?;
+    let output = probe_trusted("nvidia-smi", &[])?;
     if !output.status.success() {
         return None;
     }
@@ -322,16 +371,23 @@ pub fn recommend_backend(available: &[String]) -> Option<String> {
 }
 
 fn is_cuda_available() -> bool {
+    // Memoized: GPU presence is stable per-process; avoids re-spawning
+    // nvidia-smi on every detect-gpu / recommend-backend call (the repeated
+    // spawns slowed /detect-gpu enough to 502 on a cold backend).
+    static CACHE: OnceLock<bool> = OnceLock::new();
+    *CACHE.get_or_init(is_cuda_available_uncached)
+}
+
+fn is_cuda_available_uncached() -> bool {
     // Try nvidia-smi command (absolute-path resolved, no PATH lookup).
     // Closes 08-llm-local-runtime F-14 (Low). If the binary is not in
     // any trusted dir we skip this probe and fall through to the
     // library-existence check below.
-    if let Some(nvidia_smi) = resolve_system_binary("nvidia-smi")
-        && let Ok(output) = Command::new(nvidia_smi).output()
-            && output.status.success() {
-                tracing::debug!("nvidia-smi command succeeded");
-                return true;
-            }
+    if let Some(output) = probe_trusted("nvidia-smi", &[])
+        && output.status.success() {
+            tracing::debug!("nvidia-smi command succeeded");
+            return true;
+        }
 
     // Try checking for CUDA libraries (Linux)
     #[cfg(target_os = "linux")]
@@ -348,6 +404,11 @@ fn is_cuda_available() -> bool {
 }
 
 fn is_metal_available() -> bool {
+    static CACHE: OnceLock<bool> = OnceLock::new();
+    *CACHE.get_or_init(is_metal_available_uncached)
+}
+
+fn is_metal_available_uncached() -> bool {
     // Metal is available on all modern macOS with Apple Silicon or modern Intel GPUs
     #[cfg(target_os = "macos")]
     {
@@ -361,18 +422,13 @@ fn is_metal_available() -> bool {
         // For Intel Macs, try to check via system_profiler
         #[cfg(target_arch = "x86_64")]
         {
-            if let Some(system_profiler) = resolve_system_binary("system_profiler") {
-                if let Ok(output) = Command::new(system_profiler)
-                    .arg("SPDisplaysDataType")
-                    .output()
-                {
-                    if output.status.success() {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        // Metal is supported on macOS 10.11+ with compatible GPUs
-                        if stdout.contains("Metal") {
-                            tracing::debug!("Metal support detected via system_profiler");
-                            return true;
-                        }
+            if let Some(output) = probe_trusted("system_profiler", &["SPDisplaysDataType"]) {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    // Metal is supported on macOS 10.11+ with compatible GPUs
+                    if stdout.contains("Metal") {
+                        tracing::debug!("Metal support detected via system_profiler");
+                        return true;
                     }
                 }
             }
@@ -390,13 +446,17 @@ fn is_metal_available() -> bool {
 }
 
 fn is_rocm_available() -> bool {
+    static CACHE: OnceLock<bool> = OnceLock::new();
+    *CACHE.get_or_init(is_rocm_available_uncached)
+}
+
+fn is_rocm_available_uncached() -> bool {
     // Try rocm-smi command (absolute-path resolved, no PATH lookup)
-    if let Some(rocm_smi) = resolve_system_binary("rocm-smi")
-        && let Ok(output) = Command::new(rocm_smi).output()
-            && output.status.success() {
-                tracing::debug!("rocm-smi command succeeded");
-                return true;
-            }
+    if let Some(output) = probe_trusted("rocm-smi", &[])
+        && output.status.success() {
+            tracing::debug!("rocm-smi command succeeded");
+            return true;
+        }
 
     // Try checking for ROCm libraries (Linux)
     #[cfg(target_os = "linux")]
@@ -517,5 +577,32 @@ mod tests {
     #[test]
     fn none_when_nothing_published() {
         assert_eq!(recommend_backend_for("linux", Some((12, 4)), None, false, &[]), None);
+    }
+
+    #[test]
+    fn probe_times_out_instead_of_hanging() {
+        // A binary that sleeps far longer than the timeout must return None
+        // promptly, not block — this is the guard that keeps a slow cold
+        // `nvidia-smi` from stalling `/detect-gpu`.
+        let Some(sleep) = resolve_system_binary("sleep") else {
+            return; // no /usr/bin/sleep on this host; skip
+        };
+        let start = std::time::Instant::now();
+        let out = probe_command_with_timeout(sleep, &["10"], Duration::from_millis(150));
+        assert!(out.is_none(), "a probe exceeding the timeout must yield None");
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "must abandon the wait, not block for the child's full runtime"
+        );
+    }
+
+    #[test]
+    fn probe_returns_output_for_fast_binary() {
+        let Some(bin) = resolve_system_binary("uname").or_else(|| resolve_system_binary("true"))
+        else {
+            return;
+        };
+        let out = probe_command_with_timeout(bin, &[], Duration::from_secs(3));
+        assert!(out.is_some(), "a fast probe should return its output");
     }
 }

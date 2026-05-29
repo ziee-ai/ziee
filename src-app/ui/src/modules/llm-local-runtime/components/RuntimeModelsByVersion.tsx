@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Badge,
   Button,
   Card,
+  Descriptions,
   Divider,
   Empty,
   Flex,
@@ -11,19 +12,37 @@ import {
   Tag,
   Typography
 } from 'antd'
-import { PlayCircleOutlined, PoweroffOutlined, ReloadOutlined } from '@ant-design/icons'
+import {
+  DownOutlined,
+  PlayCircleOutlined,
+  PoweroffOutlined,
+  ReloadOutlined,
+  UpOutlined
+} from '@ant-design/icons'
 import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import { Permissions } from '@/api-client/types'
 import type { RuntimeEngine } from '../types'
+import { LiveLogsPanel } from './LiveLogsPanel'
 
 interface Props {
   engine: RuntimeEngine
 }
 
+interface ModelInfo {
+  id: string
+  display_name: string
+  running: boolean
+  pinned: boolean
+}
+
 export function RuntimeModelsByVersion({ engine }: Props) {
-  const { usage, loading, acting } = Stores.RuntimeModelUsage
+  const { usage, loading } = Stores.RuntimeModelUsage
   const canManage = usePermission(Permissions.LocalRuntimeManage)
+  // Logs are a distinct backend permission (`llm_local_runtime::logs`), NOT
+  // bundled under manage — a logs-only operator should see logs, and a
+  // manage-only operator should not see a Logs button that 403s on the stream.
+  const canViewLogs = usePermission(Permissions.LocalRuntimeLogs)
 
   const data = usage.get(engine)
   const isLoading = loading.get(engine) || false
@@ -78,71 +97,17 @@ export function RuntimeModelsByVersion({ engine }: Props) {
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                         {group.providerName}
                       </Typography.Text>
-                      {group.models.map(m => {
-                        const busy = acting.get(m.id) || false
-                        return (
-                          <Flex
-                            key={m.id}
-                            align="center"
-                            justify="space-between"
-                            gap="small"
-                            style={{ padding: '4px 0' }}
-                          >
-                            <Space>
-                              <Badge status={m.running ? 'processing' : 'default'} />
-                              <span>{m.display_name}</span>
-                              {!m.pinned && <Tag color="default">inherited</Tag>}
-                            </Space>
-                            {canManage && (
-                              <Space>
-                                <Select
-                                  size="small"
-                                  style={{ minWidth: 180 }}
-                                  value={entry.version.id}
-                                  options={versionOptions}
-                                  loading={busy}
-                                  disabled={busy || versionOptions.length < 2}
-                                  onChange={versionId =>
-                                    Stores.RuntimeModelUsage.swapVersion(
-                                      engine,
-                                      m.id,
-                                      versionId
-                                    ).catch(() => {})
-                                  }
-                                />
-                                {m.running ? (
-                                  <Button
-                                    size="small"
-                                    danger
-                                    icon={<PoweroffOutlined />}
-                                    loading={busy}
-                                    onClick={() =>
-                                      Stores.RuntimeModelUsage.stopModel(engine, m.id).catch(
-                                        () => {}
-                                      )
-                                    }
-                                  >
-                                    Stop
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    size="small"
-                                    icon={<PlayCircleOutlined />}
-                                    loading={busy}
-                                    onClick={() =>
-                                      Stores.RuntimeModelUsage.startModel(engine, m.id).catch(
-                                        () => {}
-                                      )
-                                    }
-                                  >
-                                    Start
-                                  </Button>
-                                )}
-                              </Space>
-                            )}
-                          </Flex>
-                        )
-                      })}
+                      {group.models.map(m => (
+                        <ModelRow
+                          key={m.id}
+                          engine={engine}
+                          model={m}
+                          versionId={entry.version.id}
+                          versionOptions={versionOptions}
+                          canManage={canManage}
+                          canViewLogs={canViewLogs}
+                        />
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -169,15 +134,139 @@ export function RuntimeModelsByVersion({ engine }: Props) {
   )
 }
 
+function ModelRow({
+  engine,
+  model,
+  versionId,
+  versionOptions,
+  canManage,
+  canViewLogs
+}: {
+  engine: RuntimeEngine
+  model: ModelInfo
+  versionId: string
+  versionOptions: { value: string; label: string }[]
+  canManage: boolean
+  canViewLogs: boolean
+}) {
+  const { acting, instances } = Stores.RuntimeModelUsage
+  const [expanded, setExpanded] = useState(false)
+  const busy = acting.get(model.id) || false
+  const instance = instances.get(model.id)
+
+  // Lazily fetch instance detail when the row is expanded on a running model.
+  useEffect(() => {
+    if (expanded && model.running) {
+      Stores.RuntimeModelUsage.loadInstance(model.id)
+    }
+  }, [expanded, model.running, model.id])
+
+  return (
+    <div style={{ padding: '4px 0' }}>
+      <Flex align="center" justify="space-between" gap="small">
+        <Space>
+          <Badge status={model.running ? 'processing' : 'default'} />
+          <span>{model.display_name}</span>
+          {!model.pinned && <Tag color="default">inherited</Tag>}
+        </Space>
+        <Space>
+          {canManage && (
+            <>
+              <Select
+                size="small"
+                style={{ minWidth: 180 }}
+                value={versionId}
+                options={versionOptions}
+                loading={busy}
+                disabled={busy || versionOptions.length < 2}
+                onChange={vid =>
+                  Stores.RuntimeModelUsage.swapVersion(engine, model.id, vid).catch(() => {})
+                }
+              />
+              {model.running ? (
+                <>
+                  <Button
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    loading={busy}
+                    onClick={() =>
+                      Stores.RuntimeModelUsage.restartModel(engine, model.id).catch(() => {})
+                    }
+                  >
+                    Restart
+                  </Button>
+                  <Button
+                    size="small"
+                    danger
+                    icon={<PoweroffOutlined />}
+                    loading={busy}
+                    onClick={() =>
+                      Stores.RuntimeModelUsage.stopModel(engine, model.id).catch(() => {})
+                    }
+                  >
+                    Stop
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="small"
+                  icon={<PlayCircleOutlined />}
+                  loading={busy}
+                  onClick={() =>
+                    Stores.RuntimeModelUsage.startModel(engine, model.id).catch(() => {})
+                  }
+                >
+                  Start
+                </Button>
+              )}
+            </>
+          )}
+          {model.running && canViewLogs && (
+            <Button
+              size="small"
+              type="text"
+              icon={expanded ? <UpOutlined /> : <DownOutlined />}
+              onClick={() => setExpanded(e => !e)}
+            >
+              Logs
+            </Button>
+          )}
+        </Space>
+      </Flex>
+
+      {expanded && model.running && (
+        <div style={{ marginTop: 8, paddingLeft: 24 }}>
+          {instance && (
+            <Descriptions size="small" column={2} style={{ marginBottom: 8 }}>
+              <Descriptions.Item label="Status">{instance.status}</Descriptions.Item>
+              <Descriptions.Item label="Port">{instance.local_port}</Descriptions.Item>
+              <Descriptions.Item label="Base URL">{instance.base_url}</Descriptions.Item>
+              <Descriptions.Item label="Started">
+                {instance.started_at
+                  ? new Date(instance.started_at).toLocaleString()
+                  : '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Last health check">
+                {instance.last_health_check
+                  ? new Date(instance.last_health_check).toLocaleString()
+                  : '—'}
+              </Descriptions.Item>
+              {instance.error_message && (
+                <Descriptions.Item label="Error">{instance.error_message}</Descriptions.Item>
+              )}
+            </Descriptions>
+          )}
+          <LiveLogsPanel modelId={model.id} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface ProviderGroup {
   providerId: string
   providerName: string
-  models: Array<{
-    id: string
-    display_name: string
-    running: boolean
-    pinned: boolean
-  }>
+  models: ModelInfo[]
 }
 
 function groupByProvider(

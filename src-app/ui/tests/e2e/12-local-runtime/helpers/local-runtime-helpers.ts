@@ -62,12 +62,15 @@ export async function seedLocalProvider(baseURL: string, token: string): Promise
   return (await res.json()).id
 }
 
-/** Create a local llamacpp model under `providerId`. Returns its id. */
+/** Create a local model row under `providerId` (default engine llamacpp).
+ * Returns its id. The row resolves to the engine's default version; no real
+ * model file is downloaded (sufficient for listing/swap/delete-guard tests). */
 export async function seedLocalModel(
   baseURL: string,
   token: string,
   providerId: string,
-  name: string
+  name: string,
+  engine: 'llamacpp' | 'mistralrs' = 'llamacpp'
 ): Promise<string> {
   const res = await fetch(`${baseURL}/api/llm-models`, {
     method: 'POST',
@@ -76,9 +79,9 @@ export async function seedLocalModel(
       provider_id: providerId,
       name,
       display_name: `E2E ${name}`,
-      engine_type: 'llamacpp',
-      engine_settings: { ctx_size: 512, n_gpu_layers: 0 },
-      file_format: 'gguf',
+      engine_type: engine,
+      engine_settings: engine === 'llamacpp' ? { ctx_size: 512, n_gpu_layers: 0 } : {},
+      file_format: engine === 'llamacpp' ? 'gguf' : 'safetensors',
       enabled: true,
     }),
   })
@@ -89,31 +92,36 @@ export async function seedLocalModel(
 }
 
 /**
- * Download + default an engine version from the configured release mirror
- * (`LLM_RUNTIME_RELEASE_MIRROR`, wired when `ZIEE_E2E_ENGINE_MIRROR` is set).
- * Detects the host platform/arch so the artifact matches. Returns version id.
+ * Download an engine version from the REAL `ziee-ai/*` GitHub release (the
+ * backend has no mirror env set, so it hits github.com — same path
+ * `gold_smoke` proves). Detects the host platform/arch so the cpu artifact
+ * matches; enables unsigned downloads (the fork releases aren't cosign-signed).
+ * `version` is a real tag (e.g. `v0.0.1-alpha`) or `latest`. Returns version id.
  */
 export async function downloadEngineViaApi(
   baseURL: string,
   token: string,
-  engine = 'llamacpp'
+  engine = 'llamacpp',
+  version = 'latest',
+  setDefault = true
 ): Promise<string> {
   const headers = jsonHeaders(token)
   const gpu = await (
     await fetch(`${baseURL}/api/local-runtime/detect-gpu`, { headers })
   ).json()
-  // The mock release serves an unsigned artifact.
   await fetch(`${baseURL}/api/local-runtime/settings`, {
     method: 'PUT',
     headers,
-    body: JSON.stringify({ allow_unsigned_downloads: true }),
+    // CPU cold-load + first token is slow; the 30s default is too short to
+    // reach a healthy instance on a manual start (gold_smoke uses 180s too).
+    body: JSON.stringify({ allow_unsigned_downloads: true, auto_start_timeout_secs: 180 }),
   })
   const dl = await fetch(`${baseURL}/api/local-runtime/versions/download`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       engine,
-      version: 'latest',
+      version,
       platform: gpu.platform,
       arch: gpu.arch,
       backend: 'cpu',
@@ -123,9 +131,110 @@ export async function downloadEngineViaApi(
     throw new Error(`downloadEngineViaApi failed: ${dl.status} - ${await dl.text()}`)
   }
   const versionId = (await dl.json()).version.id
-  await fetch(`${baseURL}/api/local-runtime/versions/${versionId}/set-default`, {
+  if (setDefault) {
+    await fetch(`${baseURL}/api/local-runtime/versions/${versionId}/set-default`, {
+      method: 'POST',
+      headers,
+    })
+  }
+  return versionId
+}
+
+/**
+ * Download a real tiny chat GGUF (TinyLlama-1.1B Q4_K_M) from HuggingFace
+ * under `providerId`, polling until the download completes. Mirrors the
+ * backend `gold_smoke` model setup. Returns the committed model {id, name}.
+ * Requires `HUGGINGFACE_API_KEY` in the backend env (~670 MB download).
+ */
+export async function downloadGgufModelViaApi(
+  baseURL: string,
+  token: string,
+  providerId: string
+): Promise<{ id: string; name: string }> {
+  const headers = jsonHeaders(token)
+
+  // Resolve the built-in Hugging Face repository id.
+  const reposBody = await (
+    await fetch(`${baseURL}/api/llm-repositories`, { headers })
+  ).json()
+  const repos = Array.isArray(reposBody) ? reposBody : (reposBody.repositories ?? [])
+  const hf = repos.find((r: { name?: string }) => /hugging\s*face/i.test(r.name ?? ''))
+  if (!hf) throw new Error('downloadGgufModelViaApi: Hugging Face repository not found')
+
+  // Authenticate the repo so the LFS pull isn't anonymous (else HF 401/403).
+  // The key is in the Playwright process env (same one the gate reads).
+  const apiKey = process.env.HUGGINGFACE_API_KEY
+  if (apiKey) {
+    await fetch(`${baseURL}/api/llm-repositories/${hf.id}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        auth_config: {
+          api_key: apiKey,
+          auth_test_api_endpoint: 'https://huggingface.co/api/whoami-v2'
+        }
+      })
+    })
+  }
+
+  const name = `e2e-tinyllama-${Date.now()}`
+  const start = await fetch(`${baseURL}/api/llm-models/download`, {
     method: 'POST',
     headers,
+    body: JSON.stringify({
+      provider_id: providerId,
+      repository_id: hf.id,
+      repository_path: 'TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF',
+      repository_branch: 'main',
+      name,
+      display_name: 'E2E TinyLlama',
+      file_format: 'gguf',
+      main_filename: 'tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
+      source: { type: 'hub', id: 'TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF' },
+      engine_type: 'llamacpp',
+      engine_settings: { ctx_size: 2048, n_gpu_layers: 0 },
+      enabled: true,
+    }),
   })
-  return versionId
+  if (!start.ok) {
+    throw new Error(`model download init failed: ${start.status} - ${await start.text()}`)
+  }
+  const downloadId = (await start.json()).id
+
+  // Poll until the download commits the model (large GGUF → minutes).
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 5000))
+    const sres = await fetch(`${baseURL}/api/llm-models/downloads/${downloadId}`, {
+      headers,
+    })
+    if (!sres.ok) continue
+    const sd = await sres.json()
+    if (sd.status === 'completed' && sd.model_id) {
+      // The commit kicks off async Tier-2 validation, which spins up a probe
+      // engine instance. Wait for it to settle so it doesn't race a later
+      // manual start (which 409s while any instance exists).
+      await waitForModelValidation(baseURL, token, sd.model_id)
+      return { id: sd.model_id, name }
+    }
+    if (sd.status === 'failed' || sd.status === 'cancelled') {
+      throw new Error(`model download ${sd.status}: ${sd.error_message ?? ''}`)
+    }
+  }
+  throw new Error('model download did not complete within timeout')
+}
+
+/** Poll a model's validation_status until terminal (the probe instance is
+ * stopped by then). Tolerant: returns after a bounded wait regardless. */
+async function waitForModelValidation(baseURL: string, token: string, modelId: string) {
+  const headers = jsonHeaders(token)
+  for (let i = 0; i < 60; i++) {
+    const res = await fetch(`${baseURL}/api/llm-models/${modelId}`, { headers })
+    if (res.ok) {
+      const status = (await res.json()).validation_status
+      if (['valid', 'validation_warning', 'invalid', 'failed'].includes(status)) {
+        return
+      }
+    }
+    await new Promise(r => setTimeout(r, 2000))
+  }
 }

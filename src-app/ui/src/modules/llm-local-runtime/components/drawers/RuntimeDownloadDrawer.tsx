@@ -2,17 +2,16 @@ import React from 'react'
 import { Button, Form, Input, message, Select, Space } from 'antd'
 import { Drawer } from '@/modules/layouts/app-layout/components/Drawer'
 import { Stores } from '@/core/stores'
-import { ApiClient } from '@/api-client'
 import type { DownloadVersionRequest } from '@/api-client/types'
 
 export function RuntimeDownloadDrawer() {
   const { open, engine, closeDrawer } = Stores.RuntimeDownloadDrawer
   const { updateChecks, checking } = Stores.RuntimeUpdate
+  // Server-host platform/arch from the GPU-detection store — always available
+  // (local probe), unlike the update check which hits github.com and can fail.
+  const { gpu } = Stores.RuntimeConfig
   const [form] = Form.useForm<DownloadVersionRequest>()
   const [submitting, setSubmitting] = React.useState(false)
-  // Server-host platform/arch from /detect-gpu — always available (local
-  // probe), unlike the update check which hits github.com and can fail.
-  const [host, setHost] = React.useState<{ platform: string; arch: string } | null>(null)
 
   // Backend artifacts depend on the SERVER host (where the engine runs), not
   // the browser. The update check reports the published backends + the
@@ -25,21 +24,21 @@ export function RuntimeDownloadDrawer() {
     new Set(readyVersions.flatMap(v => v.available_backends))
   )
   const recommended = readyVersions[0]?.recommended_backend
-  const platform = updateCheck?.platform ?? host?.platform
-  const arch = updateCheck?.arch ?? host?.arch
+  const platform = updateCheck?.platform ?? gpu?.platform
+  const arch = updateCheck?.arch ?? gpu?.arch
 
-  // On open: probe the host (platform/arch) and kick off the update check.
+  // On open: ensure host detection is loaded + kick off the update check.
   React.useEffect(() => {
     if (!open || !engine) return
-    ApiClient.LocalRuntime.detectGpu()
-      .then(g => setHost({ platform: g.platform, arch: g.arch }))
-      .catch(() => {})
+    if (!gpu) {
+      Stores.RuntimeConfig.loadGpu().catch(() => {})
+    }
     if (!updateCheck && !isChecking) {
       Stores.RuntimeUpdate.checkForUpdates(engine).catch(() => {
         // Surfaced via the store; the form still seeds from detect-gpu + cpu.
       })
     }
-  }, [open, engine, updateCheck, isChecking])
+  }, [open, engine, gpu, updateCheck, isChecking])
 
   // Seed the form as soon as ANY host info is known, so a failed/slow update
   // check can't strand the user with empty required fields (cpu is always a

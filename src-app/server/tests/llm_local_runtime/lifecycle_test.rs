@@ -53,6 +53,36 @@ async fn full_instance_lifecycle() {
     assert_ne!(status["status"].as_str(), Some("running"), "stopped after stop");
 }
 
+/// Regression: starting a model that has a leftover non-running instance row
+/// (left by a prior stop, or by validation's probe) must succeed, NOT 409
+/// with "already running". Only a genuinely-running instance should block.
+#[tokio::test]
+async fn start_succeeds_after_stop() {
+    let mock = mock_release::setup().await;
+    let admin = create_user_with_permissions(&mock.server, "admin", LOCAL_RUNTIME_ADMIN_PERMS).await;
+    let (_provider_id, model_id) = startable(&mock, &admin.token, "restart-after-stop").await;
+
+    // start → stop leaves a status='stopped' instance row behind.
+    assert_eq!(
+        lrt::start_instance(&mock.server, &admin.token, model_id).await.status(),
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        lrt::stop_instance(&mock.server, &admin.token, model_id).await.status(),
+        StatusCode::OK
+    );
+
+    // Starting again must clear the stopped row and start fresh, not 409.
+    let restart = lrt::start_instance(&mock.server, &admin.token, model_id).await;
+    assert_eq!(
+        restart.status(),
+        StatusCode::CREATED,
+        "start after stop must succeed, not 409 on the leftover stopped row"
+    );
+    let status = lrt::get_status(&mock.server, &admin.token, model_id).await;
+    assert_eq!(status["status"].as_str(), Some("running"), "running after restart");
+}
+
 #[tokio::test]
 async fn provider_instances_lists_running() {
     let mock = mock_release::setup().await;

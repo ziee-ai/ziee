@@ -17,8 +17,10 @@ test.describe('Local Runtime — local provider create', () => {
     // No API key / base URL inputs for local providers.
     await expect(drawer.getByLabel(/API Key/i)).toHaveCount(0)
     await expect(drawer.getByLabel(/Base URL/i)).toHaveCount(0)
-    // An info note explains the auto-derivation.
-    await expect(drawer.locator('.ant-alert').first()).toBeVisible()
+    // An info note explains local providers need no API key.
+    await expect(
+      drawer.getByText(/Local providers don't require API keys/i)
+    ).toBeVisible()
   })
 
   test('creating a local provider surfaces the one-time token', async ({ page, testInfra }) => {
