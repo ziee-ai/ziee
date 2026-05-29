@@ -755,6 +755,13 @@ export type ImageSource = {
   file_id: string
 }
 
+export interface InstallVersionRequest {
+  arch: string
+  flavor: string
+  package: string
+  version: string
+}
+
 export interface InstanceResponse {
   base_url: string
   error_message?: string
@@ -1483,6 +1490,28 @@ export interface RichFile {
   mime_type: string
 }
 
+export interface RootfsArtifact {
+  arch: string
+  artifact_path: string
+  cosign_bundle?: string
+  downloaded_at: string
+  flavor: string
+  id: string
+  last_used_at?: string
+  package: string
+  sha256: string
+  status: string
+  version: string
+}
+
+export interface RootfsRelease {
+  asset_names: string[]
+  draft: boolean
+  prerelease: boolean
+  published_at?: string
+  version: string
+}
+
 export interface RuntimeVersionListResponse {
   versions: RuntimeVersionResponse[]
 }
@@ -1658,6 +1687,15 @@ export interface SetMcpServerOAuthConfigRequest {
   scopes?: string
 }
 
+export interface SetPinRequest {
+  version: string
+}
+
+export interface SetPinResponse {
+  status: VersionStatus
+  swap: SwapOutcome
+}
+
 export interface SetupAdminRequest {
   display_name?: string
   email: string
@@ -1687,6 +1725,15 @@ export interface StreamError {
   code?: string
   message: string
 }
+
+export interface SwapOutcome {
+  cache_wipe: SwapPolicy
+  draining_mounts: number
+  pinned: string
+  was?: string
+}
+
+export type SwapPolicy = 'preserve' | 'wipe_caches_on_drain'
 
 export interface SyncCacheResponse {
   message: string
@@ -2036,6 +2083,12 @@ export interface UserMemorySettings {
   user_id: string
 }
 
+export interface VersionStatus {
+  available: RootfsRelease[]
+  installed: RootfsArtifact[]
+  pinned_version?: string
+}
+
 // =============================================================================
 // PERMISSIONS
 // =============================================================================
@@ -2280,10 +2333,14 @@ export const ApiEndpoints = {
   'Branch.getPendingApprovals': 'GET /api/branches/{branch_id}/pending-approvals',
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
+  'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
   'CodeSandbox.evictEnvironment': 'DELETE /api/code-sandbox/environments/{flavor}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
+  'CodeSandbox.getRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
+  'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
   'CodeSandbox.listEnvironments': 'GET /api/code-sandbox/environments',
   'CodeSandbox.listPrefetchTasks': 'GET /api/code-sandbox/prefetch',
+  'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
   'CodeSandbox.startPrefetch': 'POST /api/code-sandbox/prefetch',
   'CodeSandbox.subscribePrefetchEvents': 'GET /api/code-sandbox/prefetch/{flavor}/events',
   'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
@@ -2487,10 +2544,14 @@ export type ApiEndpointParameters = {
   'Branch.getPendingApprovals': { branch_id: string }
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
+  'CodeSandbox.deleteRootfsVersion': { id: string }
   'CodeSandbox.evictEnvironment': { flavor: string }
   'CodeSandbox.getResourceLimits': void
+  'CodeSandbox.getRootfsVersions': void
+  'CodeSandbox.installRootfsVersion': InstallVersionRequest
   'CodeSandbox.listEnvironments': void
   'CodeSandbox.listPrefetchTasks': void
+  'CodeSandbox.setRootfsPin': SetPinRequest
   'CodeSandbox.startPrefetch': StartPrefetchBody
   'CodeSandbox.subscribePrefetchEvents': { flavor: string }
   'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
@@ -2694,10 +2755,14 @@ export type ApiEndpointResponses = {
   'Branch.getPendingApprovals': PendingApprovalsResponse
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
+  'CodeSandbox.deleteRootfsVersion': VersionStatus
   'CodeSandbox.evictEnvironment': EnvironmentsResponse
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
+  'CodeSandbox.getRootfsVersions': VersionStatus
+  'CodeSandbox.installRootfsVersion': RootfsArtifact
   'CodeSandbox.listEnvironments': EnvironmentsResponse
   'CodeSandbox.listPrefetchTasks': ListPrefetchTasksResponse
+  'CodeSandbox.setRootfsPin': SetPinResponse
   'CodeSandbox.startPrefetch': StartPrefetchResponse
   'CodeSandbox.subscribePrefetchEvents': SSEPrefetchEvent
   'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
