@@ -234,9 +234,30 @@ pub async fn ensure_rootfs_ready(
     state: &CodeSandboxState,
     flavor: &str,
 ) -> Result<EnsureOutcome, AppError> {
+    // Plan 5 Phase 2: the READY map is keyed on (version, flavor) so a
+    // pin change invalidates the cached EnsureOutcome — the next call
+    // mounts the new version against a fresh cell while live execs
+    // continue to read the old cell's mount_dir from their captured
+    // EnsureOutcome. Two pinned versions can coexist during drain.
+    let pin = match state.pool.as_ref() {
+        Some(pool) => {
+            crate::modules::code_sandbox::version_manager::ensure_pin_initialized(pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default()
+        }
+        None => String::new(),
+    };
+    let key = if pin.is_empty() {
+        flavor.to_string()
+    } else {
+        format!("{pin}/{flavor}")
+    };
+
     let ready_map = READY.get_or_init(|| async { DashMap::new() }).await;
     let cell: ReadyCell = ready_map
-        .entry(flavor.to_string())
+        .entry(key.clone())
         .or_insert_with(|| Arc::new(OnceCell::new()))
         .clone();
     let cached = cell
@@ -252,7 +273,7 @@ pub async fn ensure_rootfs_ready(
             // failure like a schema mismatch just re-fails cheaply — cache hit,
             // mount skip, sentinel re-read). `remove_if` with identity guards
             // against clobbering a fresh cell another caller just inserted.
-            ready_map.remove_if(flavor, |_, v| Arc::ptr_eq(v, &cell));
+            ready_map.remove_if(&key, |_, v| Arc::ptr_eq(v, &cell));
             Err(e.to_app_error())
         }
     }

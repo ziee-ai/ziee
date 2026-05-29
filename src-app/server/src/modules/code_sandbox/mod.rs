@@ -262,6 +262,40 @@ impl AppModule for CodeSandboxModule {
             workspace_reaper(reaper_root).await;
         });
 
+        // ---- Pin-latest-on-first-run probe (Plan 5 Phase 2) ----
+        // Reads the persisted pin; if NULL and GitHub is reachable,
+        // sets it to the latest semver release. Soft-fail: if GitHub
+        // is unreachable we log + leave the pin NULL, the next
+        // `execute_command` retries via the lazy auto-fetch path.
+        let pin_pool = ctx.db_pool.clone();
+        tokio::spawn(async move {
+            match version_manager::ensure_pin_initialized(&pin_pool).await {
+                Ok(Some(pin)) => {
+                    let installed =
+                        version_manager::list_installed(&pin_pool).await.unwrap_or_default();
+                    let downloaded: Vec<String> = installed
+                        .iter()
+                        .filter(|a| a.version == pin)
+                        .map(|a| format!("{}-{}", a.arch, a.flavor))
+                        .collect();
+                    tracing::info!(
+                        "code_sandbox: rootfs version pinned at v{}; downloaded flavors = {:?}",
+                        pin,
+                        downloaded
+                    );
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        "code_sandbox: rootfs version not yet pinned — \
+                         will pin on first reachable GitHub call"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("code_sandbox: rootfs pin probe failed: {e}");
+                }
+            }
+        });
+
         tracing::info!(
             "code_sandbox: registered (rootfs will mount on first execute_command)"
         );

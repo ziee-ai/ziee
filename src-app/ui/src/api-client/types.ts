@@ -469,6 +469,15 @@ export interface DownloadVersionResponse {
   version: RuntimeVersionResponse
 }
 
+export interface DrainEntry {
+  arch: string
+  artifact_id: string
+  flavor: string
+  inflight_exec: number
+  inflight_mcp: number
+  version: string
+}
+
 export interface EditMessageRequest {
   content: string
 }
@@ -2085,7 +2094,10 @@ export interface UserMemorySettings {
 
 export interface VersionStatus {
   available: RootfsRelease[]
+  conversation_count: number
+  draining: DrainEntry[]
   installed: RootfsArtifact[]
+  mcp_server_workspace_count: number
   pinned_version?: string
 }
 

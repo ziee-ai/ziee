@@ -74,14 +74,36 @@ pub struct RootfsRelease {
 }
 
 /// Snapshot returned by `status()` for the admin UI's "Rootfs
-/// versions" page. Phase 3 will add a `draining: Vec<DrainEntry>`
-/// field once the inflight counter lands.
+/// versions" page.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct VersionStatus {
     pub pinned_version: Option<String>,
     pub installed: Vec<RootfsArtifact>,
     /// Only populated when GitHub is reachable (best-effort).
     pub available: Vec<RootfsRelease>,
+    /// One entry per live mount (registered after a successful
+    /// `runtime_mount::ensure_rootfs_ready`). The admin UI uses
+    /// this to render per-row "in-flight" counts + draining
+    /// indicators on rows being phased out by a set-pin.
+    pub draining: Vec<DrainEntry>,
+    /// Count of per-conversation workspace dirs that would be
+    /// touched by a major-bump wipe. Read by the major-bump confirm
+    /// modal so the admin sees blast radius before clicking through.
+    pub conversation_count: usize,
+    /// Same as above, for per-MCP-server workspaces under
+    /// `<workspace_root>/mcp/<server_id>/`.
+    pub mcp_server_workspace_count: usize,
+}
+
+/// Per-mount snapshot exposed via `status()` and the admin UI.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct DrainEntry {
+    pub artifact_id: Uuid,
+    pub version: String,
+    pub arch: String,
+    pub flavor: String,
+    pub inflight_exec: usize,
+    pub inflight_mcp: usize,
 }
 
 /// Errors callers may want to distinguish from generic `AppError`.
@@ -107,6 +129,15 @@ pub enum VersionError {
     CosignFailed(String),
     Database(String),
     Io(String),
+    /// Refused — at least one mount of this artifact is still
+    /// in-flight (an exec session or a sandboxed MCP server is
+    /// holding it). Plan 5 Phase 3.
+    ArtifactInUse {
+        version: String,
+        arch: String,
+        flavor: String,
+        inflight: usize,
+    },
 }
 
 impl std::fmt::Display for VersionError {
@@ -136,6 +167,11 @@ impl std::fmt::Display for VersionError {
             VersionError::CosignFailed(e) => write!(f, "cosign verification failed: {e}"),
             VersionError::Database(e) => write!(f, "database error: {e}"),
             VersionError::Io(e) => write!(f, "I/O error: {e}"),
+            VersionError::ArtifactInUse { version, arch, flavor, inflight } => write!(
+                f,
+                "artifact v{version} ({arch}-{flavor}) has {inflight} live session(s) — \
+                 cannot delete until they drain"
+            ),
         }
     }
 }
@@ -145,8 +181,11 @@ impl VersionError {
         let (status, code) = match self {
             VersionError::PinNotSet | VersionError::PinUnreachable(_) => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                "ROOTFS_PIN_UNAVAILABLE",
+                "ROOTFS_UNAVAILABLE",
             ),
+            VersionError::ArtifactInUse { .. } => {
+                (StatusCode::CONFLICT, "ROOTFS_ARTIFACT_IN_USE")
+            }
             VersionError::GitHubUnreachable(_) => (
                 StatusCode::BAD_GATEWAY,
                 "ROOTFS_GITHUB_UNREACHABLE",
@@ -503,6 +542,32 @@ pub async fn delete_artifact(pool: &PgPool, id: Uuid) -> Result<(), VersionError
              change the pin first"
         )));
     }
+
+    // Refuse if any live mount of this artifact still has inflight
+    // execs / MCP sessions. Plan 5 Phase 3 explicitly: the delete
+    // handler is the second 409 guard after the pin check.
+    if let Some(mounted) = MOUNTED_ARTIFACTS.get(&row.id) {
+        let live = mounted.value().inflight();
+        if live > 0 {
+            return Err(VersionError::ArtifactInUse {
+                version: row.version.clone(),
+                arch: row.arch.clone(),
+                flavor: row.flavor.clone(),
+                inflight: live,
+            });
+        }
+        // Stale registry entry with no live users — evict via the
+        // backend before tearing the row down.
+        let mount_dir = mounted.value().mount_dir.clone();
+        let flavor = mounted.value().flavor.clone();
+        let version_str = mounted.value().version.clone();
+        drop(mounted);
+        let _ = crate::modules::code_sandbox::backend::active()
+            .evict_artifact(&mount_dir, &flavor, &version_str)
+            .await;
+        MOUNTED_ARTIFACTS.remove(&row.id);
+    }
+
     sqlx::query("DELETE FROM code_sandbox_rootfs_artifacts WHERE id = $1")
         .bind(id)
         .execute(pool)
@@ -864,7 +929,78 @@ pub async fn status(pool: &PgPool) -> Result<VersionStatus, VersionError> {
             Vec::new()
         }
     };
-    Ok(VersionStatus { pinned_version, installed, available })
+    let draining: Vec<DrainEntry> = list_mounted_artifacts()
+        .into_iter()
+        .map(|m| {
+            let (e, mcp) = m.inflight_breakdown();
+            DrainEntry {
+                artifact_id: m.artifact_id,
+                version: m.version.clone(),
+                arch: m.arch.clone(),
+                flavor: m.flavor.clone(),
+                inflight_exec: e,
+                inflight_mcp: mcp,
+            }
+        })
+        .collect();
+    let (conversation_count, mcp_server_workspace_count) =
+        match crate::modules::code_sandbox::config::get_state() {
+            Some(state) => count_workspaces(&state.workspace_root),
+            None => (0, 0),
+        };
+    Ok(VersionStatus {
+        pinned_version,
+        installed,
+        available,
+        draining,
+        conversation_count,
+        mcp_server_workspace_count,
+    })
+}
+
+/// Tally (per-conversation, per-MCP-server) workspace dirs that a
+/// major-bump wipe would walk. Both classes match the layout
+/// `wipe_install_caches_in_root` walks: direct children of
+/// `workspace_root` (minus `attachments` / `identity` / `mcp`) +
+/// `<workspace_root>/mcp/<server_id>/` entries.
+fn count_workspaces(workspace_root: &std::path::Path) -> (usize, usize) {
+    let mut conv = 0usize;
+    let mut mcp = 0usize;
+    if !workspace_root.is_dir() {
+        return (conv, mcp);
+    }
+    let entries = match std::fs::read_dir(workspace_root) {
+        Ok(e) => e,
+        Err(_) => return (conv, mcp),
+    };
+    for entry in entries.flatten() {
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if !meta.is_dir() {
+            continue;
+        }
+        let name = match entry.file_name().to_str() {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name == "mcp" {
+            if let Ok(inner) = std::fs::read_dir(entry.path()) {
+                for sub in inner.flatten() {
+                    if sub.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        mcp += 1;
+                    }
+                }
+            }
+            continue;
+        }
+        if name == "attachments" || name == "identity" {
+            continue;
+        }
+        conv += 1;
+    }
+    (conv, mcp)
 }
 
 // =====================================================================

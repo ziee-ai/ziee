@@ -24,6 +24,7 @@ import { Stores } from '@/core/stores'
 import { usePermission } from '@/core/permissions'
 import {
   Permissions,
+  type DrainEntry,
   type RootfsArtifact,
   type RootfsRelease,
 } from '@/api-client/types'
@@ -114,6 +115,7 @@ export function RootfsVersionsSection() {
     pinnedVersion,
     installed,
     available,
+    draining,
     lastSwap,
     loading,
     error,
@@ -127,6 +129,27 @@ export function RootfsVersionsSection() {
     () => buildRows(installed, available),
     [installed, available],
   )
+
+  // Map (version, arch, flavor) -> DrainEntry so each row can show
+  // its live inflight count + a "Draining" tag when the row's
+  // version isn't the current pin but is still mounted.
+  const drainByKey = useMemo(() => {
+    const m = new Map<string, DrainEntry>()
+    for (const d of draining) {
+      m.set(`${d.version}::${d.arch}::${d.flavor}`, d)
+    }
+    return m
+  }, [draining])
+
+  // Downloaded-flavors summary for the header card. Distinct
+  // (arch, flavor) pairs across every installed artifact row.
+  const downloadedFlavors = useMemo(() => {
+    const set = new Set<string>()
+    for (const a of installed) {
+      set.add(`${a.arch}-${a.flavor}`)
+    }
+    return Array.from(set).sort()
+  }, [installed])
 
   if (!canRead) {
     return (
@@ -142,6 +165,8 @@ export function RootfsVersionsSection() {
 
   const handleSetPin = (version: string) => {
     if (isMajorBump(pinnedVersion, version)) {
+      const convCount = Stores.RootfsVersions.conversationCount ?? 0
+      const mcpCount = Stores.RootfsVersions.mcpServerWorkspaceCount ?? 0
       Modal.confirm({
         title: `Swap to v${version} (major version bump)`,
         content: (
@@ -151,9 +176,17 @@ export function RootfsVersionsSection() {
               v{version}. To protect against ABI mismatches in Python wheels,
               cargo-installed binaries, and node-native modules baked against
               the old rootfs, the following package-manager subdirs will be
-              wiped across <strong>every conversation workspace</strong> and{' '}
-              <strong>every sandboxed MCP server workspace</strong> after
-              in-flight sessions drain:
+              wiped across{' '}
+              <strong>
+                {convCount} conversation workspace
+                {convCount === 1 ? '' : 's'}
+              </strong>{' '}
+              and{' '}
+              <strong>
+                {mcpCount} sandboxed MCP server workspace
+                {mcpCount === 1 ? '' : 's'}
+              </strong>{' '}
+              after in-flight sessions drain:
             </p>
             <ul style={{ marginLeft: 16 }}>
               <li>
@@ -196,6 +229,12 @@ export function RootfsVersionsSection() {
 
     const isPinned = pinnedVersion === row.version
     const isInstalled = !!row.artifact
+    const drainEntry = drainByKey.get(
+      `${row.version}::${row.arch}::${row.flavor}`,
+    )
+    const live =
+      (drainEntry?.inflight_exec ?? 0) + (drainEntry?.inflight_mcp ?? 0)
+    const isDraining = !!drainEntry && !isPinned && live > 0
 
     return (
       <div key={key} data-testid={`rootfs-row-${row.version}-${row.flavor}`}>
@@ -225,6 +264,20 @@ export function RootfsVersionsSection() {
                     </Tag>
                   ) : (
                     <Tag>Available</Tag>
+                  )}
+                  {live > 0 && (
+                    <Tag
+                      color={isDraining ? 'orange' : 'default'}
+                      data-testid={`inflight-${row.version}-${row.flavor}`}
+                    >
+                      {drainEntry?.inflight_exec ?? 0} exec ·{' '}
+                      {drainEntry?.inflight_mcp ?? 0} MCP in-flight
+                    </Tag>
+                  )}
+                  {isDraining && (
+                    <Tag color="orange" data-testid="row-draining">
+                      Draining
+                    </Tag>
                   )}
                 </Flex>
               </div>
@@ -315,6 +368,14 @@ export function RootfsVersionsSection() {
             <Tag data-testid="pinned-chip">
               Not yet pinned (will pin on first reachable GitHub call)
             </Tag>
+          )}
+          {downloadedFlavors.length > 0 && (
+            <>
+              <Text type="secondary"> · downloaded flavors: </Text>
+              <Text data-testid="downloaded-flavors">
+                {downloadedFlavors.join(', ')}
+              </Text>
+            </>
           )}
         </div>
         {lastSwap && lastSwap.draining_mounts > 0 && (

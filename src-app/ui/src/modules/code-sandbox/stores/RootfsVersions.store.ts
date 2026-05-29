@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type {
+  DrainEntry,
   RootfsArtifact,
   RootfsRelease,
   SwapOutcome,
@@ -27,6 +28,16 @@ interface RootfsVersionsStore {
   installed: RootfsArtifact[]
   /** Releases on GitHub (catalog). Empty array if GitHub was unreachable. */
   available: RootfsRelease[]
+  /** Live mounts the server has registered — keyed by artifact_id.
+   * Used to render per-row in-flight counts + a per-row "Draining" tag
+   * during a pin-change-driven evict cycle. */
+  draining: DrainEntry[]
+  /** Count of per-conversation workspace dirs (one per active
+   * conversation). Surfaced in the major-bump confirm modal copy. */
+  conversationCount: number
+  /** Count of per-MCP-server workspace dirs (one per sandboxed MCP
+   * server). Surfaced in the major-bump confirm modal copy. */
+  mcpServerWorkspaceCount: number
   /** Outcome of the last set-pin call. Drives the "n draining" indicator. */
   lastSwap: SwapOutcome | null
   loading: boolean
@@ -79,6 +90,9 @@ export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
       pinnedVersion: null,
       installed: [],
       available: [],
+      draining: [],
+      conversationCount: 0,
+      mcpServerWorkspaceCount: 0,
       lastSwap: null,
       loading: false,
       error: null,
@@ -103,6 +117,9 @@ export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
             s.pinnedVersion = res.pinned_version ?? null
             s.installed = res.installed
             s.available = res.available
+            s.draining = res.draining
+            s.conversationCount = res.conversation_count
+            s.mcpServerWorkspaceCount = res.mcp_server_workspace_count
             s.loading = false
           })
         } catch (e: any) {
@@ -179,6 +196,9 @@ export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
             s.pinnedVersion = res.pinned_version ?? null
             s.installed = res.installed
             s.available = res.available
+            s.draining = res.draining
+            s.conversationCount = res.conversation_count
+            s.mcpServerWorkspaceCount = res.mcp_server_workspace_count
           })
         } catch (e: any) {
           set(s => {
