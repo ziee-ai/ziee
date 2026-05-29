@@ -19,7 +19,9 @@
 //! has its own SSE-progress plumbing via `streaming.rs`.
 
 use axum::http::StatusCode;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
+use futures_util::Stream;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -29,8 +31,11 @@ use crate::modules::code_sandbox::config;
 use crate::modules::code_sandbox::permissions::{
     CodeSandboxEnvironmentsManage, CodeSandboxEnvironmentsRead,
 };
+use crate::modules::code_sandbox::version_install_tasks::{
+    self, InstallTaskState, SSEInstallConnectedData, SSEInstallTaskEvent,
+};
 use crate::modules::code_sandbox::version_manager::{
-    self, RootfsArtifact, SwapOutcome, VersionStatus,
+    self, SwapOutcome, VersionStatus,
 };
 use crate::modules::permissions::openapi::with_permission;
 use crate::modules::permissions::RequirePermissions;
@@ -146,21 +151,20 @@ pub fn get_versions_docs(
 pub async fn install_version_handler(
     _auth: RequirePermissions<(CodeSandboxEnvironmentsManage,)>,
     Json(body): Json<InstallVersionRequest>,
-) -> ApiResult<Json<RootfsArtifact>> {
+) -> ApiResult<Json<InstallTaskState>> {
     let pool = live_pool()?;
     let root = cache_root()?;
-    let (artifact, _stats) = version_manager::install_version(
-        &pool,
-        &root,
-        &body.version,
-        &body.arch,
-        &body.flavor,
-        &body.package,
-        |_| {},
-    )
-    .await
-    .map_err(map_version_err)?;
-    Ok((StatusCode::OK, Json(artifact)))
+    let state = version_install_tasks::start_install_task(
+        (*pool).clone(),
+        root,
+        body.version,
+        body.arch,
+        body.flavor,
+        body.package,
+    );
+    // 202 Accepted: the install runs in tokio::spawn; subscribers to
+    // `/install/subscribe` see live progress.
+    Ok((StatusCode::ACCEPTED, Json(state)))
 }
 
 pub fn install_version_docs(
@@ -169,15 +173,72 @@ pub fn install_version_docs(
     with_permission::<(CodeSandboxEnvironmentsManage,)>(op)
         .id("CodeSandbox.installRootfsVersion")
         .tag("Code Sandbox")
-        .summary("Download + register a rootfs artifact")
+        .summary("Spawn a background install task for a rootfs artifact")
         .description(
-            "Downloads the matching artifact from the GitHub release, \
-             sha256 + cosign verifies it, and records the row in \
-             `code_sandbox_rootfs_artifacts`. Idempotent: a hash-matched \
-             cache hit returns the existing row without touching the \
-             network.",
+            "Spawns a background task to download the matching artifact from \
+             the GitHub release, sha256 + cosign verify it, and record the \
+             row in `code_sandbox_rootfs_artifacts`. Returns 202 Accepted \
+             immediately with the task's initial state; live progress is \
+             available via `GET .../install/subscribe` (SSE).",
         )
-        .response::<200, Json<RootfsArtifact>>()
+        .response::<202, Json<InstallTaskState>>()
+}
+
+// =====================================================================
+// GET /code-sandbox/rootfs/versions/install/subscribe (SSE)
+// =====================================================================
+
+pub async fn subscribe_install_progress_handler(
+    _auth: RequirePermissions<(CodeSandboxEnvironmentsRead,)>,
+) -> ApiResult<Sse<impl Stream<Item = Result<Event, axum::Error>>>> {
+    use async_stream::stream;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let client_id = version_install_tasks::register_client(tx.clone());
+
+    // Connected handshake (typed enum variant → axum Event via
+    // `sse_event_enum!`-generated Into).
+    version_install_tasks::send_to(
+        &tx,
+        SSEInstallTaskEvent::Connected(SSEInstallConnectedData {
+            message: "connected to install task stream".to_string(),
+        }),
+    );
+
+    // Replay the current registry so a fresh subscriber sees what's
+    // already running (or recently finished) without waiting for the
+    // next progress tick.
+    for state in version_install_tasks::list_tasks() {
+        version_install_tasks::send_to(&tx, SSEInstallTaskEvent::TaskState(state));
+    }
+
+    let stream = stream! {
+        // Keep the local sender alive for the stream's lifetime so
+        // the SSE_CLIENTS entry stays valid.
+        let _tx_keeper = tx;
+        while let Some(event) = rx.recv().await {
+            yield event;
+        }
+        version_install_tasks::remove_client(client_id);
+    };
+
+    Ok((StatusCode::OK, Sse::new(stream).keep_alive(KeepAlive::default())))
+}
+
+pub fn subscribe_install_progress_docs(
+    op: aide::transform::TransformOperation,
+) -> aide::transform::TransformOperation {
+    with_permission::<(CodeSandboxEnvironmentsRead,)>(op)
+        .id("CodeSandbox.subscribeRootfsInstallProgress")
+        .tag("Code Sandbox")
+        .summary("Subscribe to rootfs install task progress (SSE)")
+        .description(
+            "Server-Sent Events stream of `connected | taskStarted | progress \
+             | complete | failed | taskState` events for every install task. \
+             On connect the stream emits a `connected` event then replays the \
+             current registry (recent terminal states + in-flight tasks) so a \
+             fresh subscriber doesn't have to wait for the next tick.",
+        )
+        .response::<200, Json<SSEInstallTaskEvent>>()
 }
 
 // =====================================================================

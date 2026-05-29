@@ -4,18 +4,20 @@ import { immer } from 'zustand/middleware/immer'
 import { ApiClient } from '@/api-client'
 import type {
   DrainEntry,
+  InstallTaskState,
   RootfsArtifact,
   RootfsRelease,
+  SSEInstallCompleteData,
+  SSEInstallConnectedData,
+  SSEInstallFailedData,
+  SSEInstallProgressData,
   SwapOutcome,
   VersionStatus,
 } from '@/api-client/types'
 
 /**
  * Per-(version, arch, flavor, package) action state. Drives the
- * install / set-pin / delete buttons' loading flags. Keyed by a
- * synthetic id — for installed rows the artifact_id; for
- * not-yet-downloaded GitHub-side rows the synthetic
- * `<version>::<arch>::<flavor>::<package>`.
+ * install / set-pin / delete buttons' loading flags.
  */
 interface ActionState {
   installing?: boolean
@@ -32,21 +34,26 @@ interface RootfsVersionsStore {
    * Used to render per-row in-flight counts + a per-row "Draining" tag
    * during a pin-change-driven evict cycle. */
   draining: DrainEntry[]
-  /** Count of per-conversation workspace dirs (one per active
-   * conversation). Surfaced in the major-bump confirm modal copy. */
+  /** Count of per-conversation workspace dirs. */
   conversationCount: number
-  /** Count of per-MCP-server workspace dirs (one per sandboxed MCP
-   * server). Surfaced in the major-bump confirm modal copy. */
+  /** Count of per-MCP-server workspace dirs. */
   mcpServerWorkspaceCount: number
-  /** Outcome of the last set-pin call. Drives the "n draining" indicator. */
+  /** Outcome of the last set-pin call. */
   lastSwap: SwapOutcome | null
   loading: boolean
   error: string | null
   actions: Record<string, ActionState>
+  /** Live install task state, keyed by `<version>::<arch>::<flavor>::<package>`.
+   *  Populated by the SSE subscriber; cleared when the task completes
+   *  (a `loadStatus` is fired so the new row appears as Downloaded). */
+  installTasks: Record<string, InstallTaskState>
+  /** True once the SSE subscription has emitted its `connected` event. */
+  sseConnected: boolean
 
   __init__: {
     rootfsVersions?: () => Promise<void>
   }
+  __destroy__?: () => void
 
   loadStatus: () => Promise<void>
   installVersion: (
@@ -57,6 +64,8 @@ interface RootfsVersionsStore {
   ) => Promise<void>
   setPin: (version: string) => Promise<void>
   deleteArtifact: (id: string) => Promise<void>
+  /** Open the SSE channel to receive install progress events. */
+  subscribeToInstallProgress: () => Promise<void>
 }
 
 function rowKey(
@@ -66,6 +75,10 @@ function rowKey(
   pkg: string,
 ): string {
   return `${version}::${arch}::${flavor}::${pkg}`
+}
+
+function taskRowKey(t: InstallTaskState): string {
+  return rowKey(t.version, t.arch, t.flavor, t.package)
 }
 
 function setAction(
@@ -84,6 +97,16 @@ function clearAction(
   delete s.actions[key]
 }
 
+// Module-scoped AbortController for the SSE stream — sits outside
+// immer state because AbortController isn't draftable. Doubles as a
+// guard against double-subscribing.
+let sseController: AbortController | null = null
+
+function cleanupSse() {
+  sseController?.abort()
+  sseController = null
+}
+
 export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
   subscribeWithSelector(
     immer((set, get) => ({
@@ -97,11 +120,20 @@ export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
       loading: false,
       error: null,
       actions: {},
+      installTasks: {},
+      sseConnected: false,
 
       __init__: {
         rootfsVersions: async () => {
           await get().loadStatus()
+          // Open the SSE channel for live install progress. Idempotent
+          // via the sseController guard.
+          void get().subscribeToInstallProgress()
         },
+      },
+
+      __destroy__: () => {
+        cleanupSse()
       },
 
       loadStatus: async () => {
@@ -137,28 +169,26 @@ export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
           s.error = null
         })
         try {
-          await ApiClient.CodeSandbox.installRootfsVersion({
+          // 202 Accepted — server returns InstallTaskState immediately;
+          // live progress streams through the SSE subscription.
+          const initial = await ApiClient.CodeSandbox.installRootfsVersion({
             version,
             arch,
             flavor,
             package: pkg,
           })
-          // Refresh status so the new row shows as installed.
-          await get().loadStatus()
+          set(s => {
+            s.installTasks[key] = initial
+          })
         } catch (e: any) {
           set(s => {
             s.error = e?.message ?? `Failed to install ${version}`
-          })
-        } finally {
-          set(s => {
             clearAction(s, key)
           })
         }
       },
 
       setPin: async (version: string) => {
-        // Synthetic key — applies to the WHOLE version, not a single
-        // (arch, flavor, package) row.
         const key = `pin::${version}`
         set(s => {
           setAction(s, key, { pinning: true })
@@ -209,6 +239,85 @@ export const useRootfsVersionsStore = create<RootfsVersionsStore>()(
             clearAction(s, key)
           })
         }
+      },
+
+      subscribeToInstallProgress: async () => {
+        if (sseController) return // already streaming
+        await ApiClient.CodeSandbox.subscribeRootfsInstallProgress(
+          undefined,
+          {
+            SSE: {
+              __init: ({ abortController }: { abortController: AbortController }) => {
+                sseController = abortController
+              },
+              connected: (_d: SSEInstallConnectedData) => {
+                set(s => {
+                  s.sseConnected = true
+                })
+              },
+              taskStarted: (t: InstallTaskState) => {
+                const key = taskRowKey(t)
+                set(s => {
+                  s.installTasks[key] = t
+                  setAction(s, key, { installing: true })
+                })
+              },
+              taskState: (t: InstallTaskState) => {
+                const key = taskRowKey(t)
+                set(s => {
+                  s.installTasks[key] = t
+                  if (t.status === 'running') {
+                    setAction(s, key, { installing: true })
+                  }
+                })
+              },
+              progress: (d: SSEInstallProgressData) => {
+                set(s => {
+                  // Walk active tasks to find the matching task_id.
+                  for (const key of Object.keys(s.installTasks)) {
+                    const t = s.installTasks[key]
+                    if (t.task_id === d.task_id) {
+                      t.phase = d.phase
+                      t.message = d.message
+                    }
+                  }
+                })
+              },
+              complete: (d: SSEInstallCompleteData) => {
+                set(s => {
+                  for (const key of Object.keys(s.installTasks)) {
+                    const t = s.installTasks[key]
+                    if (t.task_id === d.task_id) {
+                      t.status = 'completed'
+                      t.phase = 'complete'
+                      t.artifact_id = d.artifact_id
+                      t.bytes_downloaded = d.bytes_downloaded
+                      t.duration_ms = d.duration_ms
+                      clearAction(s, key)
+                    }
+                  }
+                })
+                // Reload the artifact list so the row flips to "Downloaded".
+                void get().loadStatus()
+              },
+              failed: (d: SSEInstallFailedData) => {
+                set(s => {
+                  for (const key of Object.keys(s.installTasks)) {
+                    const t = s.installTasks[key]
+                    if (t.task_id === d.task_id) {
+                      t.status = 'failed'
+                      t.phase = 'failed'
+                      t.error = d.error
+                      clearAction(s, key)
+                    }
+                  }
+                  s.error = d.error
+                })
+              },
+              default: (_event: string, _data: unknown) => {},
+            },
+          } as any,
+        )
       },
     })),
   ),

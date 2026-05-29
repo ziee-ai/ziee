@@ -489,21 +489,6 @@ export interface EditMessageResponse {
 
 export type EngineType = 'mistralrs' | 'llamacpp' | 'none'
 
-export interface EnvironmentInfo {
-  description: string
-  approximate_size_mb: number
-  cached: boolean
-  cached_size_bytes?: number
-  flavor: string
-  mounted: boolean
-}
-
-export interface EnvironmentsResponse {
-  available: EnvironmentInfo[]
-}
-
-export type FetchPhase = 'resolving' | 'downloading' | 'verifying_sha256' | 'verifying_cosign' | 'installing'
-
 export interface File {
   checksum?: string
   created_at: string
@@ -764,6 +749,23 @@ export type ImageSource = {
   file_id: string
 }
 
+export interface InstallTaskState {
+  arch: string
+  artifact_id?: string
+  bytes_downloaded?: number
+  completed_at?: string
+  duration_ms?: number
+  error?: string
+  flavor: string
+  message?: string
+  package: string
+  phase?: string
+  started_at: string
+  status: TaskStatus
+  task_id: string
+  version: string
+}
+
 export interface InstallVersionRequest {
   arch: string
   flavor: string
@@ -823,10 +825,6 @@ export interface ListModelsQuery {
   page?: number
   perPage?: number
   providerId?: string
-}
-
-export interface ListPrefetchTasksResponse {
-  tasks: PrefetchTaskSummary[]
 }
 
 export interface ListPromptsResponse {
@@ -1322,18 +1320,6 @@ export interface PingResponse {
   ok: boolean
 }
 
-export type PrefetchStatus = 'running' | 'completed' | 'failed' | 'already_cached'
-
-export interface PrefetchTaskSummary {
-  error?: string
-  flavor: string
-  last_phase?: FetchPhase
-  outcome?: SSEPrefetchCompleteData
-  started_at: string
-  status: PrefetchStatus
-  task_id: string
-}
-
 export interface PreviewQuery {
   page?: number
 }
@@ -1638,33 +1624,36 @@ export type SSEHardwareUsageEvent = {
   update: HardwareUsageUpdate
 }
 
-export interface SSEPrefetchCompleteData {
+export interface SSEInstallCompleteData {
+  artifact_id: string
   bytes_downloaded: number
   cosign_verified: boolean
   duration_ms: number
-}
-
-export interface SSEPrefetchConnectedData {
-  expected_size_mb: number
-  flavor: string
-  status: PrefetchStatus
   task_id: string
 }
 
-export type SSEPrefetchEvent = {
-  connected: SSEPrefetchConnectedData
-  progress: SSEPrefetchProgressData
-  complete: SSEPrefetchCompleteData
-  failed: SSEPrefetchFailedData
-}
-
-export interface SSEPrefetchFailedData {
-  error: string
-}
-
-export interface SSEPrefetchProgressData {
+export interface SSEInstallConnectedData {
   message: string
-  phase: FetchPhase
+}
+
+export interface SSEInstallFailedData {
+  error: string
+  task_id: string
+}
+
+export interface SSEInstallProgressData {
+  message: string
+  phase: string
+  task_id: string
+}
+
+export type SSEInstallTaskEvent = {
+  connected: SSEInstallConnectedData
+  taskStarted: InstallTaskState
+  progress: SSEInstallProgressData
+  complete: SSEInstallCompleteData
+  failed: SSEInstallFailedData
+  taskState: InstallTaskState
 }
 
 export interface SaveUserApiKeyRequest {
@@ -1718,18 +1707,6 @@ export interface SetupStatusResponse {
 
 export type StartInstanceRequest = any
 
-export interface StartPrefetchBody {
-  flavor: string
-}
-
-export interface StartPrefetchResponse {
-  events_url: string
-  expected_size_mb: number
-  flavor: string
-  status: PrefetchStatus
-  task_id: string
-}
-
 export interface StreamError {
   code?: string
   message: string
@@ -1748,6 +1725,8 @@ export interface SyncCacheResponse {
   message: string
   synced_count: number
 }
+
+export type TaskStatus = 'running' | 'completed' | 'failed'
 
 export interface TestExtractRequest {
   assistant_message: string
@@ -2346,15 +2325,11 @@ export const ApiEndpoints = {
   'Branch.list': 'GET /api/conversations/{id}/branches',
   'Chat.getUserLlmProviders': 'GET /api/chat/llm-providers',
   'CodeSandbox.deleteRootfsVersion': 'DELETE /api/code-sandbox/rootfs/versions/{id}',
-  'CodeSandbox.evictEnvironment': 'DELETE /api/code-sandbox/environments/{flavor}',
   'CodeSandbox.getResourceLimits': 'GET /api/code-sandbox/resource-limits',
   'CodeSandbox.getRootfsVersions': 'GET /api/code-sandbox/rootfs/versions',
   'CodeSandbox.installRootfsVersion': 'POST /api/code-sandbox/rootfs/versions/install',
-  'CodeSandbox.listEnvironments': 'GET /api/code-sandbox/environments',
-  'CodeSandbox.listPrefetchTasks': 'GET /api/code-sandbox/prefetch',
   'CodeSandbox.setRootfsPin': 'POST /api/code-sandbox/rootfs/versions/set-pin',
-  'CodeSandbox.startPrefetch': 'POST /api/code-sandbox/prefetch',
-  'CodeSandbox.subscribePrefetchEvents': 'GET /api/code-sandbox/prefetch/{flavor}/events',
+  'CodeSandbox.subscribeRootfsInstallProgress': 'GET /api/code-sandbox/rootfs/versions/install/subscribe',
   'CodeSandbox.updateResourceLimits': 'PUT /api/code-sandbox/resource-limits',
   'Conversation.create': 'POST /api/conversations',
   'Conversation.delete': 'DELETE /api/conversations/{id}',
@@ -2557,15 +2532,11 @@ export type ApiEndpointParameters = {
   'Branch.list': { id: string }
   'Chat.getUserLlmProviders': void
   'CodeSandbox.deleteRootfsVersion': { id: string }
-  'CodeSandbox.evictEnvironment': { flavor: string }
   'CodeSandbox.getResourceLimits': void
   'CodeSandbox.getRootfsVersions': void
   'CodeSandbox.installRootfsVersion': InstallVersionRequest
-  'CodeSandbox.listEnvironments': void
-  'CodeSandbox.listPrefetchTasks': void
   'CodeSandbox.setRootfsPin': SetPinRequest
-  'CodeSandbox.startPrefetch': StartPrefetchBody
-  'CodeSandbox.subscribePrefetchEvents': { flavor: string }
+  'CodeSandbox.subscribeRootfsInstallProgress': void
   'CodeSandbox.updateResourceLimits': UpdateCodeSandboxResourceLimits
   'Conversation.create': CreateConversationRequest
   'Conversation.delete': { id: string }
@@ -2768,15 +2739,11 @@ export type ApiEndpointResponses = {
   'Branch.list': Branch[]
   'Chat.getUserLlmProviders': GetUserProvidersResponse2
   'CodeSandbox.deleteRootfsVersion': VersionStatus
-  'CodeSandbox.evictEnvironment': EnvironmentsResponse
   'CodeSandbox.getResourceLimits': CodeSandboxResourceLimits
   'CodeSandbox.getRootfsVersions': VersionStatus
-  'CodeSandbox.installRootfsVersion': RootfsArtifact
-  'CodeSandbox.listEnvironments': EnvironmentsResponse
-  'CodeSandbox.listPrefetchTasks': ListPrefetchTasksResponse
+  'CodeSandbox.installRootfsVersion': InstallTaskState
   'CodeSandbox.setRootfsPin': SetPinResponse
-  'CodeSandbox.startPrefetch': StartPrefetchResponse
-  'CodeSandbox.subscribePrefetchEvents': SSEPrefetchEvent
+  'CodeSandbox.subscribeRootfsInstallProgress': SSEInstallTaskEvent
   'CodeSandbox.updateResourceLimits': CodeSandboxResourceLimits
   'Conversation.create': Conversation
   'Conversation.delete': void

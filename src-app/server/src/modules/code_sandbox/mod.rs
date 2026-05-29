@@ -26,7 +26,6 @@ pub mod embedded;
 #[cfg(target_os = "windows")]
 pub mod wsl2_agent_embedded;
 pub mod handlers;
-pub mod prefetch;
 pub mod runtime_fetch;
 pub mod runtime_mount;
 pub mod models;
@@ -42,6 +41,7 @@ pub mod streaming;
 pub mod tools;
 pub mod types;
 pub mod version_handlers;
+pub mod version_install_tasks;
 pub mod version_manager;
 
 pub use repository::CodeSandboxRepository;

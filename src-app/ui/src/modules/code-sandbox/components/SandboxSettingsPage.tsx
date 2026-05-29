@@ -1,6 +1,5 @@
 import { SettingsPageContainer } from '@/modules/settings/components/SettingsPageContainer'
 import { RootfsVersionsSection } from './RootfsVersionsSection'
-import { SandboxEnvironmentsSection } from './SandboxEnvironmentsSection'
 import { SandboxResourceLimitsSection } from './SandboxResourceLimitsSection'
 
 /**
@@ -27,7 +26,6 @@ export function SandboxSettingsPage() {
       subtitle="Manage rootfs environments and the runtime resource caps applied to every execute_command."
     >
       <RootfsVersionsSection />
-      <SandboxEnvironmentsSection />
       <SandboxResourceLimitsSection />
     </SettingsPageContainer>
   )

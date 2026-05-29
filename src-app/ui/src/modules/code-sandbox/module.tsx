@@ -5,7 +5,6 @@ import { lazyWithPreload } from '@/utils/lazyWithPreload'
 import { Permissions } from '@/api-client/types'
 import '@/modules/settings/types/SettingsSlots' // Register settings slot types
 import { useRootfsVersionsStore } from './stores/RootfsVersions.store'
-import { useSandboxEnvironmentsStore } from './stores/SandboxEnvironments.store'
 import { useSandboxResourceLimitsStore } from './stores/SandboxResourceLimits.store'
 import './types' // CRITICAL: enable store type declaration merging
 
@@ -45,10 +44,6 @@ export default createModule({
     {
       name: 'RootfsVersions',
       store: useRootfsVersionsStore,
-    },
-    {
-      name: 'SandboxEnvironments',
-      store: useSandboxEnvironmentsStore,
     },
     {
       name: 'SandboxResourceLimits',

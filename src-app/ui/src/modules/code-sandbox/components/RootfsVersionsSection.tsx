@@ -8,6 +8,7 @@ import {
   Flex,
   Modal,
   Popconfirm,
+  Progress,
   Spin,
   Tag,
   Tooltip,
@@ -25,6 +26,7 @@ import { usePermission } from '@/core/permissions'
 import {
   Permissions,
   type DrainEntry,
+  type InstallTaskState,
   type RootfsArtifact,
   type RootfsRelease,
 } from '@/api-client/types'
@@ -110,6 +112,28 @@ function isMajorBump(oldV: string | null, newV: string): boolean {
   return parseSemver(oldV)[0] !== parseSemver(newV)[0]
 }
 
+// Install phases come from the backend's `InstallProgress` enum; map
+// each one to a coarse stepped percentage (the backend doesn't emit
+// byte-granular progress, just discrete phases).
+function phasePercent(phase?: string | null): number {
+  switch (phase) {
+    case 'resolving':
+      return 10
+    case 'downloading':
+      return 50
+    case 'verifying_sha256':
+      return 75
+    case 'verifying_cosign':
+      return 85
+    case 'installing':
+      return 95
+    case 'complete':
+      return 100
+    default:
+      return 5
+  }
+}
+
 export function RootfsVersionsSection() {
   const {
     pinnedVersion,
@@ -120,6 +144,7 @@ export function RootfsVersionsSection() {
     loading,
     error,
     actions,
+    installTasks,
   } = Stores.RootfsVersions
 
   const canManage = usePermission(MANAGE_PERM)
@@ -235,6 +260,9 @@ export function RootfsVersionsSection() {
     const live =
       (drainEntry?.inflight_exec ?? 0) + (drainEntry?.inflight_mcp ?? 0)
     const isDraining = !!drainEntry && !isPinned && live > 0
+    const task: InstallTaskState | undefined = installTasks[key]
+    const isInstalling =
+      !!installState?.installing || task?.status === 'running'
 
     return (
       <div key={key} data-testid={`rootfs-row-${row.version}-${row.flavor}`}>
@@ -282,12 +310,12 @@ export function RootfsVersionsSection() {
                 </Flex>
               </div>
               <div className="flex gap-1 items-center justify-end">
-                {!isInstalled && (
+                {!isInstalled && !isInstalling && (
                   <RenderButton
                     canManage={canManage}
                     label="Download"
                     icon={<CloudDownloadOutlined />}
-                    loading={installState?.installing}
+                    loading={false}
                     onClick={() =>
                       Stores.RootfsVersions.installVersion(
                         row.version,
@@ -297,6 +325,23 @@ export function RootfsVersionsSection() {
                       )
                     }
                   />
+                )}
+                {isInstalling && (
+                  <div
+                    style={{ minWidth: 200 }}
+                    data-testid={`install-progress-${row.version}-${row.flavor}`}
+                  >
+                    <Progress
+                      percent={phasePercent(task?.phase)}
+                      size="small"
+                      status={
+                        task?.status === 'failed' ? 'exception' : 'active'
+                      }
+                    />
+                    <div className="text-xs opacity-70">
+                      {task?.message ?? task?.phase ?? 'queued'}
+                    </div>
+                  </div>
                 )}
                 {isInstalled && !isPinned && (
                   <RenderButton
